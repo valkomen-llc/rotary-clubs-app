@@ -15,9 +15,14 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Basic health check
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', message: 'Rotary Platform API is running' });
+// Basic health and setup check
+app.get('/api/health', async (req, res) => {
+    try {
+        await createInitialAdmin();
+        res.json({ status: 'ok', message: 'Rotary API is running and admin check completed' });
+    } catch (err) {
+        res.status(500).json({ status: 'error', error: err.message });
+    }
 });
 
 // Import routes
