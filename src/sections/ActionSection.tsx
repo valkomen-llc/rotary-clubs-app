@@ -3,7 +3,7 @@ const ActionSection = () => {
     <section
       className="py-16 md:py-20"
       style={{
-        backgroundColor: '#17458f',
+        backgroundColor: '#263b4c',
         backgroundImage: "url('/geo-darkblue.png')",
         backgroundPosition: '50% 0',
         backgroundRepeat: 'repeat',

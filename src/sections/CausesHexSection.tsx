@@ -35,7 +35,7 @@ const styles = `
      CONTENEDOR PRINCIPAL
      ═══════════════════════════════════════════════════════════════════════════ */
   .areas-rotary {
-    background-color: var(--rotary-navy);
+    background-color: #263b4c;
     background-image: url('/geo-darkblue.png');
     background-position: 50% 0;
     background-repeat: repeat;
