@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 210 50% 20%;
+    --card: 0 0% 100%;
+    --card-foreground: 210 50% 20%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 50% 20%;
+    --primary: 210 100% 25%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 43 90% 50%;
+    --secondary-foreground: 210 50% 20%;
+    --muted: 210 20% 96%;
+    --muted-foreground: 210 20% 45%;
+    --accent: 43 90% 50%;
+    --accent-foreground: 210 50% 20%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 210 20% 90%;
+    --input: 210 20% 90%;
+    --ring: 210 100% 25%;
+    --radius: 0.5rem;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+    
+    /* Rotary Colors */
+    --rotary-blue: 210 100% 25%;
+    --rotary-gold: 43 90% 50%;
+    --rotary-navy: 210 80% 18%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@layer utilities {
+  .bg-rotary-blue {
+    background-color: hsl(210 100% 25%);
+  }
+  .bg-rotary-navy {
+    background-color: hsl(210 80% 18%);
+  }
+  .bg-rotary-gold {
+    background-color: hsl(43 90% 50%);
+  }
+  .text-rotary-blue {
+    color: hsl(210 100% 25%);
+  }
+  .text-rotary-gold {
+    color: hsl(43 90% 50%);
+  }
+  .border-rotary-gold {
+    border-color: hsl(43 90% 50%);
+  }
+}

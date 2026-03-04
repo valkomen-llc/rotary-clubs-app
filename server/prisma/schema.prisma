@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  role      String   // administrator, club_admin, donor, member
+  clubId    String?
+  club      Club?    @relation(fields: [clubId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Club {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  logo        String?
+  users       User[]
+  projects    Project[]
+  posts       Post[]
+  settings    Setting[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Media {
+  id        String   @id @default(uuid())
+  filename  String
+  url       String
+  type      String   // image, document
+  size      Int
+  bucket    String?
+  region    String?
+  createdAt DateTime @default(now())
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  image       String?
+  status      String   // active, completed, planned
+  clubId      String
+  club        Club     @relation(fields: [clubId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Post {
+  id        String   @id @default(uuid())
+  title     String
+  content   String
+  image     String?
+  published Boolean  @default(false)
+  clubId    String
+  club      Club     @relation(fields: [clubId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Donation {
+  id          String   @id @default(uuid())
+  amount      Float
+  currency    String   @default("USD")
+  donorName   String?
+  donorEmail  String?
+  status      String   // pending, success, failed
+  date        DateTime @default(now())
+}
+
+model Setting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  clubId    String?
+  club      Club?    @relation(fields: [clubId], references: [id])
+  updatedAt DateTime @updatedAt
+}
+
+model ContentSection {
+  id        String   @id @default(uuid())
+  page      String   // home, about, etc.
+  section   String   // hero, foundation, etc.
+  content   String   // JSON string with the section content
+  updatedAt DateTime @updatedAt
+}
