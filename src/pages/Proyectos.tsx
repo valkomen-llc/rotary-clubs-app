@@ -465,7 +465,16 @@ const Proyectos = () => {
       </section>
 
       {/* Testimonios */}
-      <section className="py-16 md:py-24 bg-rotary-blue">
+      <section
+        className="py-16 md:py-24"
+        style={{
+          backgroundColor: '#263b4c',
+          backgroundImage: "url('/geo-darkblue.png')",
+          backgroundPosition: '50% 0',
+          backgroundRepeat: 'repeat',
+          backgroundSize: '71px 85px'
+        }}
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <span className="inline-block text-rotary-gold text-sm font-semibold uppercase tracking-wider mb-2">
