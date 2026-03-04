@@ -58,9 +58,18 @@ const NuestraJuntaDirectiva = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      
+
       {/* Hero Section */}
-      <section className="bg-rotary-blue py-16 md:py-20">
+      <section
+        className="py-16 md:py-20"
+        style={{
+          backgroundColor: '#263b4c',
+          backgroundImage: "url('/geo-darkblue.png')",
+          backgroundPosition: '50% 0',
+          backgroundRepeat: 'repeat',
+          backgroundSize: '71px 85px'
+        }}
+      >
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl md:text-5xl font-bold text-white mb-6">Nuestra Junta Directiva</h1>
           <p className="text-white/90 text-lg max-w-2xl mx-auto">
@@ -74,19 +83,19 @@ const NuestraJuntaDirectiva = () => {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {juntaDirectiva.map((miembro) => (
-              <div 
-                key={miembro.id} 
+              <div
+                key={miembro.id}
                 className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow flex"
               >
                 {/* Image */}
                 <div className="w-32 h-32 md:w-40 md:h-40 flex-shrink-0">
-                  <img 
-                    src={miembro.imagen} 
+                  <img
+                    src={miembro.imagen}
                     alt={miembro.nombre}
                     className="w-full h-full object-cover"
                   />
                 </div>
-                
+
                 {/* Content */}
                 <div className="p-4 md:p-6 flex flex-col justify-center">
                   <div className="flex items-center gap-2 mb-1">
@@ -114,7 +123,7 @@ const NuestraJuntaDirectiva = () => {
           <h2 className="text-2xl md:text-3xl font-bold text-rotary-blue mb-6">
             ¿Quieres ser parte de nuestro equipo de liderazgo?
           </h2>
-          <button 
+          <button
             className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
           >
             <Star className="w-5 h-5 text-rotary-gold fill-rotary-gold" />
