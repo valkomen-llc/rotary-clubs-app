@@ -28,7 +28,13 @@ const { createInitialAdmin } = require('./controllers/authController');
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 
-app.listen(PORT, async () => {
-    console.log(`Server is running on port ${PORT}`);
-    await createInitialAdmin();
-});
+// Export the app for Vercel Serverless Functions
+module.exports = app;
+
+if (process.env.NODE_ENV !== 'production') {
+    app.listen(PORT, async () => {
+        console.log(`Server is running on port ${PORT}`);
+        await createInitialAdmin();
+    });
+}
+

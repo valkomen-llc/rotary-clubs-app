@@ -1,0 +1,15 @@
+{
+    "version": 2,
+    "rewrites": [
+        {
+            "source": "/api/(.*)",
+            "destination": "/server/server.js"
+        }
+    ],
+    "functions": {
+        "server/server.js": {
+            "runtime": "@vercel/node",
+            "includeFiles": "server/prisma/**"
+        }
+    }
+}
