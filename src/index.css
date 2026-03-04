@@ -69,4 +69,20 @@
   .border-rotary-gold {
     border-color: hsl(43 90% 50%);
   }
+  .fill-rotary-gold {
+    fill: hsl(43 90% 50%);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     ROTARY GEO PATTERN — bg-rotary-geo
+     Patrón geométrico oficial de Rotary para fondos de sección.
+     Uso: className="bg-rotary-geo py-16"
+     ═══════════════════════════════════════════════════════════════ */
+  .bg-rotary-geo {
+    background-color: #263b4c;
+    background-image: url('/geo-darkblue.png');
+    background-position: 50% 0;
+    background-repeat: repeat;
+    background-size: 71px 85px;
+  }
 }
