@@ -23,12 +23,12 @@ const stats = [
 
 const StatsSection = () => {
   return (
-    <section className="py-16 md:py-20 bg-gray-50">
+    <section className="py-16 md:py-20 bg-rotary-concrete">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {stats.map((stat, index) => (
-            <div 
-              key={index} 
+            <div
+              key={index}
               className="bg-white rounded-lg shadow-md p-8 text-center hover:shadow-lg transition-shadow"
             >
               <div className="flex justify-center mb-4">

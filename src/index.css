@@ -32,7 +32,7 @@
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
-    
+
     /* Rotary Colors */
     --rotary-blue: 210 100% 25%;
     --rotary-gold: 43 90% 50%;
@@ -44,6 +44,7 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -54,21 +55,27 @@
   .bg-rotary-blue {
     background-color: hsl(210 100% 25%);
   }
+
   .bg-rotary-navy {
     background-color: hsl(210 80% 18%);
   }
+
   .bg-rotary-gold {
     background-color: hsl(43 90% 50%);
   }
+
   .text-rotary-blue {
     color: hsl(210 100% 25%);
   }
+
   .text-rotary-gold {
     color: hsl(43 90% 50%);
   }
+
   .border-rotary-gold {
     border-color: hsl(43 90% 50%);
   }
+
   .fill-rotary-gold {
     fill: hsl(43 90% 50%);
   }
@@ -84,5 +91,10 @@
     background-position: 50% 0;
     background-repeat: repeat;
     background-size: 71px 85px;
+  }
+
+  .bg-rotary-concrete {
+    background-image: url('/concrete_seamless.jpg');
+    background-repeat: repeat;
   }
 }
