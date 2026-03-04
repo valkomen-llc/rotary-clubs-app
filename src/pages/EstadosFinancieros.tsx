@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { 
-  FileText, 
-  Download, 
-  Upload, 
-  Calendar, 
-  Shield, 
+import {
+  FileText,
+  Download,
+  Upload,
+  Calendar,
+  Shield,
   CheckCircle2,
   AlertCircle,
   Search,
@@ -148,14 +148,16 @@ const EstadosFinancieros = () => {
       <Navbar />
 
       {/* Hero Section */}
-      <section className="relative bg-rotary-blue overflow-hidden">
-        <div className="absolute inset-0 opacity-5">
-          <div className="absolute inset-0" style={{
-            backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)',
-            backgroundSize: '30px 30px'
-          }} />
-        </div>
-        
+      <section
+        className="relative overflow-hidden"
+        style={{
+          backgroundColor: '#263b4c',
+          backgroundImage: "url('/geo-darkblue.png')",
+          backgroundPosition: '50% 0',
+          backgroundRepeat: 'repeat',
+          backgroundSize: '71px 85px'
+        }}
+      >
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-20">
           <div className="text-center max-w-3xl mx-auto">
             <span className="inline-block bg-rotary-gold text-white text-sm font-semibold px-4 py-1 rounded-full mb-4">
@@ -165,7 +167,7 @@ const EstadosFinancieros = () => {
               Estados Financieros
             </h1>
             <p className="text-white/80 text-lg">
-              Documentación legal y tributaria del Rotary Club. 
+              Documentación legal y tributaria del Rotary Club.
               Información transparente para nuestros socios y entidades de control.
             </p>
           </div>
@@ -182,8 +184,8 @@ const EstadosFinancieros = () => {
             <div>
               <h2 className="font-semibold text-amber-800 mb-1">Información para la DIAN</h2>
               <p className="text-amber-700 text-sm">
-                Esta sección contiene la documentación tributaria y legal requerida por la 
-                Dirección de Impuestos y Aduanas Nacionales (DIAN). Los documentos marcados como 
+                Esta sección contiene la documentación tributaria y legal requerida por la
+                Dirección de Impuestos y Aduanas Nacionales (DIAN). Los documentos marcados como
                 privados requieren autenticación para su acceso.
               </p>
             </div>
@@ -206,7 +208,7 @@ const EstadosFinancieros = () => {
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-full focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none"
               />
             </div>
-            
+
             {/* Filtro Tipo */}
             <div className="relative">
               <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -282,7 +284,7 @@ const EstadosFinancieros = () => {
                     </div>
 
                     <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">{doc.nombre}</h3>
-                    
+
                     <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
                       <span className="flex items-center gap-1">
                         <Calendar className="w-4 h-4" />
@@ -295,7 +297,7 @@ const EstadosFinancieros = () => {
                       <span className="text-xs text-gray-400">
                         Subido: {doc.fechaSubida}
                       </span>
-                      <button 
+                      <button
                         className="flex items-center gap-2 text-rotary-blue font-medium text-sm hover:underline"
                         onClick={() => alert(`Descargando: ${doc.nombre}`)}
                       >
@@ -351,11 +353,11 @@ const EstadosFinancieros = () => {
             ¿Necesitas información adicional?
           </h2>
           <p className="text-gray-600 mb-6">
-            Si requieres documentos específicos o tienes dudas sobre nuestra información financiera, 
+            Si requieres documentos específicos o tienes dudas sobre nuestra información financiera,
             no dudes en contactarnos.
           </p>
-          <a 
-            href="/contacto" 
+          <a
+            href="/contacto"
             className="inline-flex items-center justify-center gap-2 bg-rotary-blue text-white px-8 py-3 rounded-full font-semibold hover:bg-rotary-dark-blue transition-colors"
           >
             Contactar
