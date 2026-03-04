@@ -1,8 +1,9 @@
 const ActionSection = () => {
   return (
     <section
-      className="bg-rotary-blue py-16 md:py-20"
+      className="py-16 md:py-20"
       style={{
+        backgroundColor: '#17458f',
         backgroundImage: "url('/geo-darkblue.png')",
         backgroundPosition: '50% 0',
         backgroundRepeat: 'repeat',
