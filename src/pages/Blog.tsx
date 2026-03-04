@@ -139,7 +139,16 @@ const Blog = () => {
       <Navbar />
 
       {/* Hero Section */}
-      <section className="bg-rotary-blue py-16 md:py-20">
+      <section
+        className="py-16 md:py-20"
+        style={{
+          backgroundColor: '#263b4c',
+          backgroundImage: "url('/geo-darkblue.png')",
+          backgroundPosition: '50% 0',
+          backgroundRepeat: 'repeat',
+          backgroundSize: '71px 85px'
+        }}
+      >
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl md:text-5xl font-bold text-white mb-6">Blog</h1>
           <p className="text-white/90 text-lg max-w-2xl mx-auto">
@@ -217,8 +226,8 @@ const Blog = () => {
                   setPaginaActual(1);
                 }}
                 className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${categoriaActiva === categoria
-                    ? 'bg-rotary-blue text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-rotary-blue text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
               >
                 {categoria}
@@ -291,8 +300,8 @@ const Blog = () => {
                   key={pagina}
                   onClick={() => setPaginaActual(pagina)}
                   className={`w-10 h-10 flex items-center justify-center rounded-full font-medium transition-colors ${paginaActual === pagina
-                      ? 'bg-rotary-blue text-white'
-                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                    ? 'bg-rotary-blue text-white'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
                     }`}
                 >
                   {pagina}
