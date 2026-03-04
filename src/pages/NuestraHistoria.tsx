@@ -38,7 +38,16 @@ const NuestraHistoria = () => {
       </section>
 
       {/* Title Section - Blue Background */}
-      <section className="bg-rotary-blue py-12 md:py-16">
+      <section
+        className="py-12 md:py-16"
+        style={{
+          backgroundColor: '#263b4c',
+          backgroundImage: "url('/geo-darkblue.png')",
+          backgroundPosition: '50% 0',
+          backgroundRepeat: 'repeat',
+          backgroundSize: '71px 85px'
+        }}
+      >
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-3xl md:text-4xl font-bold text-white">Nuestra Historia</h1>
         </div>
