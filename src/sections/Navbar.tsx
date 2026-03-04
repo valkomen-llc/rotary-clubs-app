@@ -15,7 +15,7 @@ const languages = [
 ];
 
 const Navbar = () => {
-  const { user, login, logout, isAuthenticated } = useAuth();
+  const { login, logout, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sobreNosotrosOpen, setSobreNosotrosOpen] = useState(false);
