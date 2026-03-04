@@ -1,15 +1,8 @@
 {
-    "version": 2,
     "rewrites": [
         {
             "source": "/api/(.*)",
-            "destination": "/server/server.js"
+            "destination": "/api/index.cjs"
         }
-    ],
-    "functions": {
-        "server/server.js": {
-            "runtime": "nodejs20.x",
-            "includeFiles": "server/prisma/**"
-        }
-    }
+    ]
 }
