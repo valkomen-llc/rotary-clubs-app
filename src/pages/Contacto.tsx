@@ -107,14 +107,16 @@ const Contacto = () => {
       <Navbar />
 
       {/* Hero Section */}
-      <section className="relative bg-rotary-blue overflow-hidden">
-        <div className="absolute inset-0 opacity-5">
-          <div className="absolute inset-0" style={{
-            backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)',
-            backgroundSize: '30px 30px'
-          }} />
-        </div>
-
+      <section
+        className="relative overflow-hidden"
+        style={{
+          backgroundColor: '#263b4c',
+          backgroundImage: "url('/geo-darkblue.png')",
+          backgroundPosition: '50% 0',
+          backgroundRepeat: 'repeat',
+          backgroundSize: '71px 85px'
+        }}
+      >
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
           <div className="text-center max-w-3xl mx-auto">
             <span className="inline-block bg-rotary-gold text-white text-sm font-semibold px-4 py-1 rounded-full mb-6">
