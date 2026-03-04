@@ -16,6 +16,10 @@ app.use(express.json());
 const { createInitialAdmin } = require('../server/controllers/authController');
 
 // Health check unificado con el creador de Admin
+app.get('/api', (req, res) => {
+    res.json({ status: 'ok', message: 'API is responding at /api' });
+});
+
 app.get('/api/health', async (req, res) => {
     try {
         await createInitialAdmin();
