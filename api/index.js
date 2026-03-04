@@ -1,6 +1,9 @@
-const express = require('express');
-const cors = require('cors');
-const dotenv = require('dotenv');
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import authRoutes from '../server/routes/auth.js';
+import adminRoutes from '../server/routes/admin.js';
+import { createInitialAdmin } from '../server/controllers/authController.js';
 
 dotenv.config();
 
@@ -12,14 +15,12 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Esta función es necesaria para que createInitialAdmin funcione en Vercel
-const { createInitialAdmin } = require('../server/controllers/authController');
-
-// Health check unificado con el creador de Admin
+// API root
 app.get('/api', (req, res) => {
     res.json({ status: 'ok', message: 'API is responding at /api' });
 });
 
+// Health check
 app.get('/api/health', async (req, res) => {
     try {
         await createInitialAdmin();
@@ -29,11 +30,8 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
-// Importamos las rutas originales
-const authRoutes = require('../server/routes/auth');
-const adminRoutes = require('../server/routes/admin');
-
+// Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 
-module.exports = app;
+export default app;

@@ -3,7 +3,7 @@ const ActionSection = () => {
     <section
       className="bg-rotary-blue py-16 md:py-20"
       style={{
-        backgroundImage: "url('https://www.rotary.org/sites/all/themes/rotary_rotaryorg/images/geo-darkblue.png')",
+        backgroundImage: "url('/geo-darkblue.png')",
         backgroundPosition: '50% 0',
         backgroundRepeat: 'repeat',
         backgroundSize: '71px 85px'
