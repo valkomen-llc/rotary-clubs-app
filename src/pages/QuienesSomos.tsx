@@ -7,13 +7,13 @@ const QuienesSomos = () => {
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
-      
+
       {/* Hero Section */}
       <section className="relative w-full h-[300px] md:h-[400px] overflow-hidden">
         <div className="absolute inset-0">
-          <img 
-            src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1600&h=500&fit=crop" 
-            alt="Rotary Team" 
+          <img
+            src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1600&h=500&fit=crop"
+            alt="Rotary Team"
             className="w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-black/30" />
@@ -24,7 +24,16 @@ const QuienesSomos = () => {
       </section>
 
       {/* Intro Section - Blue Background */}
-      <section className="bg-rotary-blue py-12 md:py-16">
+      <section
+        className="py-12 md:py-16"
+        style={{
+          backgroundColor: '#263b4c',
+          backgroundImage: "url('/geo-darkblue.png')",
+          backgroundPosition: '50% 0',
+          backgroundRepeat: 'repeat',
+          backgroundSize: '71px 85px'
+        }}
+      >
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <p className="text-white text-lg md:text-xl leading-relaxed">
             Rotary es una red mundial compuesta de 1.400.000 vecinos, amigos, líderes y personas dedicadas a solucionar problemas, quienes ven un planeta en que las personas se unen y toman acción para generar un cambio perdurable en el mundo, sus comunidades y en sí mismos.
@@ -127,7 +136,7 @@ const QuienesSomos = () => {
           <h2 className="text-2xl md:text-3xl font-bold text-rotary-blue mb-6">
             ¿Quieres escribir la historia con nosotros?
           </h2>
-          <button 
+          <button
             className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
           >
             <Star className="w-5 h-5 text-rotary-gold fill-rotary-gold" />
