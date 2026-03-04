@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 
 const Footer = () => {
   return (
-    <footer className="bg-rotary-navy text-white">
+    <footer className="text-white" style={{ backgroundColor: '#0c3c7c' }}>
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           {/* Logo & End Polio */}
@@ -12,10 +12,10 @@ const Footer = () => {
             <div className="flex items-center gap-2 mb-4">
               <div className="w-12 h-12">
                 <svg viewBox="0 0 100 100" className="w-full h-full">
-                  <circle cx="50" cy="50" r="45" fill="none" stroke="white" strokeWidth="3"/>
-                  <circle cx="50" cy="50" r="15" fill="white"/>
-                  <path d="M50 5 L50 35 M50 65 L50 95 M5 50 L35 50 M65 50 L95 50" stroke="white" strokeWidth="3"/>
-                  <path d="M22 22 L43 43 M57 57 L78 78 M78 22 L57 43 M43 57 L22 78" stroke="#F5A623" strokeWidth="3"/>
+                  <circle cx="50" cy="50" r="45" fill="none" stroke="white" strokeWidth="3" />
+                  <circle cx="50" cy="50" r="15" fill="white" />
+                  <path d="M50 5 L50 35 M50 65 L50 95 M5 50 L35 50 M65 50 L95 50" stroke="white" strokeWidth="3" />
+                  <path d="M22 22 L43 43 M57 57 L78 78 M78 22 L57 43 M43 57 L22 78" stroke="#F5A623" strokeWidth="3" />
                 </svg>
               </div>
               <div>
@@ -23,7 +23,7 @@ const Footer = () => {
               </div>
             </div>
             <div className="bg-red-600 text-white text-xs font-bold px-3 py-2 rounded inline-block">
-              END<br/>POLIO<br/>NOW
+              END<br />POLIO<br />NOW
             </div>
           </div>
 
@@ -72,9 +72,9 @@ const Footer = () => {
           <div>
             <h3 className="font-semibold text-lg mb-4">Suscríbete a nuestro Newsletter</h3>
             <div className="flex gap-2">
-              <Input 
-                type="email" 
-                placeholder="Dirección de email" 
+              <Input
+                type="email"
+                placeholder="Dirección de email"
                 className="bg-white/10 border-white/20 text-white placeholder:text-white/50 flex-1"
               />
               <Button className="bg-rotary-gold hover:bg-yellow-500 text-rotary-blue font-semibold px-4">
@@ -116,8 +116,8 @@ const Footer = () => {
       </div>
 
       {/* WhatsApp Float */}
-      <a 
-        href="#" 
+      <a
+        href="#"
         className="fixed bottom-6 right-6 bg-green-500 hover:bg-green-600 text-white p-3 rounded-full shadow-lg transition-colors z-50"
       >
         <MessageCircle className="w-6 h-6" />
