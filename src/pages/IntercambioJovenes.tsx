@@ -1,11 +1,11 @@
-import { 
-  FileText, 
-  Download, 
-  Calendar, 
-  Users, 
-  Globe, 
-  Clock, 
-  DollarSign, 
+import {
+  FileText,
+  Download,
+  Calendar,
+  Users,
+  Globe,
+  Clock,
+  DollarSign,
   MapPin,
   MessageCircle,
   Instagram,
@@ -43,13 +43,13 @@ const IntercambioJovenes = () => {
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
-      
+
       {/* Hero Section */}
       <section className="relative w-full h-[500px] md:h-[600px] overflow-hidden">
         <div className="absolute inset-0">
-          <img 
-            src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&h=800&fit=crop" 
-            alt="Intercambio de Jóvenes Rotary" 
+          <img
+            src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&h=800&fit=crop"
+            alt="Intercambio de Jóvenes Rotary"
             className="w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-rotary-navy/90 via-rotary-navy/70 to-transparent" />
@@ -67,7 +67,7 @@ const IntercambioJovenes = () => {
       </section>
 
       {/* ¿Te interesa vivir una experiencia? */}
-      <section className="py-16 md:py-24 bg-white">
+      <section className="py-16 md:py-24 bg-rotary-concrete">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div>
@@ -90,9 +90,9 @@ const IntercambioJovenes = () => {
               </div>
             </div>
             <div className="relative">
-              <img 
-                src="https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=600&h=500&fit=crop" 
-                alt="Jóvenes en intercambio" 
+              <img
+                src="https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=600&h=500&fit=crop"
+                alt="Jóvenes en intercambio"
                 className="rounded-2xl shadow-xl w-full h-auto object-cover"
               />
             </div>
@@ -111,7 +111,7 @@ const IntercambioJovenes = () => {
               <p className="text-gray-700 mb-8 leading-relaxed">
                 Descarga aquí todos los formularios y formatos necesarios para postularte al Programa de Intercambio de Jóvenes del Distrito 4281
               </p>
-              
+
               {/* Lista de documentos */}
               <div className="space-y-3">
                 {documentos.map((doc) => (
@@ -131,11 +131,11 @@ const IntercambioJovenes = () => {
                 ))}
               </div>
             </div>
-            
+
             <div className="relative">
-              <img 
-                src="https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=600&h=700&fit=crop" 
-                alt="Estudiantes de intercambio" 
+              <img
+                src="https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=600&h=700&fit=crop"
+                alt="Estudiantes de intercambio"
                 className="rounded-2xl shadow-xl w-full h-auto object-cover"
               />
             </div>
@@ -157,9 +157,9 @@ const IntercambioJovenes = () => {
               </div>
             </div>
             <div className="relative">
-              <img 
-                src="https://images.unsplash.com/photo-1552664730-d307ca884978?w=600&h=500&fit=crop" 
-                alt="Jóvenes conectando el mundo" 
+              <img
+                src="https://images.unsplash.com/photo-1552664730-d307ca884978?w=600&h=500&fit=crop"
+                alt="Jóvenes conectando el mundo"
                 className="rounded-2xl shadow-xl w-full h-auto object-cover"
               />
             </div>
@@ -168,7 +168,7 @@ const IntercambioJovenes = () => {
       </section>
 
       {/* Información del programa */}
-      <section className="py-16 md:py-24 bg-white">
+      <section className="py-16 md:py-24 bg-rotary-concrete">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-2xl md:text-3xl font-bold text-center text-gray-900 mb-4">
             Mediante el Intercambio de Jóvenes construimos la paz una persona a la vez.
@@ -254,9 +254,9 @@ const IntercambioJovenes = () => {
                 <Play className="w-8 h-8 text-white ml-1" fill="white" />
               </button>
             </div>
-            <img 
-              src="https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=800&h=450&fit=crop" 
-              alt="Video thumbnail" 
+            <img
+              src="https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=800&h=450&fit=crop"
+              alt="Video thumbnail"
               className="w-full h-full object-cover opacity-50"
             />
           </div>
@@ -274,32 +274,32 @@ const IntercambioJovenes = () => {
               <p className="text-white/80 leading-relaxed mb-8">
                 Ya seas estudiante, padre, rotario o voluntario, estamos aquí para acompañarte en esta gran aventura. ¡Mantente informado, contáctanos o síguenos en redes!
               </p>
-              
+
               {/* Botones de contacto */}
               <div className="space-y-3">
-                <a 
-                  href="#" 
+                <a
+                  href="#"
                   className="flex items-center gap-3 p-4 bg-white/10 hover:bg-white/20 rounded-lg transition-colors text-white"
                 >
                   <MessageCircle className="w-5 h-5 text-rotary-gold" />
                   <span>¿Tienes dudas o necesitas más información? Escríbenos.</span>
                 </a>
-                <a 
-                  href="#" 
+                <a
+                  href="#"
                   className="flex items-center gap-3 p-4 bg-white/10 hover:bg-white/20 rounded-lg transition-colors text-white"
                 >
                   <Calendar className="w-5 h-5 text-rotary-gold" />
                   <span>Noticias, convocatorias y actualizaciones del programa</span>
                 </a>
-                <a 
-                  href="#" 
+                <a
+                  href="#"
                   className="flex items-center gap-3 p-4 bg-white/10 hover:bg-white/20 rounded-lg transition-colors text-white"
                 >
                   <Instagram className="w-5 h-5 text-rotary-gold" />
                   <span>Síguenos y vive el intercambio en Instagram</span>
                 </a>
-                <a 
-                  href="#" 
+                <a
+                  href="#"
                   className="flex items-center gap-3 p-4 bg-white/10 hover:bg-white/20 rounded-lg transition-colors text-white"
                 >
                   <Facebook className="w-5 h-5 text-rotary-gold" />
@@ -307,11 +307,11 @@ const IntercambioJovenes = () => {
                 </a>
               </div>
             </div>
-            
+
             <div className="relative">
-              <img 
-                src="https://images.unsplash.com/photo-1593113598332-cd288d649433?w=600&h=500&fit=crop" 
-                alt="Jóvenes conectando el mundo" 
+              <img
+                src="https://images.unsplash.com/photo-1593113598332-cd288d649433?w=600&h=500&fit=crop"
+                alt="Jóvenes conectando el mundo"
                 className="rounded-2xl shadow-xl w-full h-auto object-cover"
               />
             </div>
