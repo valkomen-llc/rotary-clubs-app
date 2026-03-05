@@ -79,7 +79,7 @@ const NuestraJuntaDirectiva = () => {
       </section>
 
       {/* Junta Directiva Grid */}
-      <section className="py-12 md:py-16">
+      <section className="py-12 md:py-16 bg-rotary-concrete">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {juntaDirectiva.map((miembro) => (
