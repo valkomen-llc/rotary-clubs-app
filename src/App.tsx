@@ -21,6 +21,7 @@ import Contacto from './pages/Contacto';
 import EstadosFinancieros from './pages/EstadosFinancieros';
 import NuestrasCausas from './pages/NuestrasCausas';
 import ManerasDeContribuir from './pages/ManerasDeContribuir';
+import Rotaract from './pages/Rotaract';
 
 function Home() {
   return (
@@ -69,6 +70,7 @@ function App() {
           <Route path="/proyectos/:id" element={<ProyectoDetalle />} />
           <Route path="/contacto" element={<Contacto />} />
           <Route path="/estados-financieros" element={<EstadosFinancieros />} />
+          <Route path="/rotaract" element={<Rotaract />} />
 
           {/* Admin Routes */}
           <Route
