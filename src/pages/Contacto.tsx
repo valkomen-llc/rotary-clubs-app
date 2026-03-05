@@ -397,32 +397,6 @@ const Contacto = () => {
         </div>
       </section>
 
-      {/* CTA Final */}
-      <section className="py-16 md:py-24 bg-rotary-blue">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">
-            ¿Listo para Hacer la Diferencia?
-          </h2>
-          <p className="text-white/80 text-lg mb-8 max-w-2xl mx-auto">
-            Únete a nuestra comunidad de personas comprometidas con transformar vidas
-            a través del servicio.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a
-              href="/proyectos"
-              className="inline-flex items-center justify-center gap-2 bg-rotary-gold text-white px-8 py-4 rounded-full font-semibold hover:bg-[#c9a020] transition-colors"
-            >
-              Ver Proyectos
-            </a>
-            <a
-              href="/quienes-somos"
-              className="inline-flex items-center justify-center gap-2 bg-white text-rotary-blue px-8 py-4 rounded-full font-semibold hover:bg-gray-100 transition-colors"
-            >
-              Conoce Más
-            </a>
-          </div>
-        </div>
-      </section>
 
       <Footer />
     </div>
