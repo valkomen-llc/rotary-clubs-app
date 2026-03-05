@@ -8,7 +8,7 @@ const ManerasDeContribuir = () => {
             <Navbar />
 
             {/* Top Centered Title & Description */}
-            <section className="pt-32 pb-16 bg-white">
+            <section className="pt-32 pb-16 bg-rotary-concrete">
                 <div className="max-w-4xl mx-auto px-4 text-center">
                     <h1 className="text-4xl md:text-6xl font-light text-rotary-blue mb-8">Maneras de contribuir</h1>
                     <p className="text-gray-600 text-lg md:text-xl leading-relaxed max-w-3xl mx-auto">
