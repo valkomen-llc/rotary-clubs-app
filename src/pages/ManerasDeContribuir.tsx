@@ -1,8 +1,15 @@
+import { useState } from 'react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
-import { Heart } from 'lucide-react';
+import { Heart, X, Check } from 'lucide-react';
 
 const ManerasDeContribuir = () => {
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [amount, setAmount] = useState('50');
+    const [frequency, setFrequency] = useState('one-time');
+
+    const amounts = ['10', '25', '50', '100'];
+
     return (
         <div className="min-h-screen bg-white">
             <Navbar />
@@ -38,13 +45,112 @@ const ManerasDeContribuir = () => {
                             sostiene iniciativas de servicio que transforman
                             vidas en nuestra comunidad.
                         </p>
-                        <button className="w-full bg-[#9D2235] hover:bg-[#8B1E2F] text-white font-bold py-[18px] rounded-lg flex items-center justify-center gap-3 transition-colors uppercase tracking-widest text-[13px]">
+                        <button
+                            onClick={() => setIsModalOpen(true)}
+                            className="w-full bg-[#9D2235] hover:bg-[#8B1E2F] text-white font-bold py-[18px] rounded-lg flex items-center justify-center gap-3 transition-colors uppercase tracking-widest text-[13px]"
+                        >
                             <Heart className="w-5 h-5 fill-current" />
                             APORTAR
                         </button>
                     </div>
                 </div>
             </section>
+
+            {/* Donation Modal */}
+            {isModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in duration-300 relative">
+                        {/* Close Button */}
+                        <button
+                            onClick={() => setIsModalOpen(false)}
+                            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
+                        >
+                            <X className="w-6 h-6" />
+                        </button>
+
+                        <div className="p-8">
+                            <div className="text-center mb-8">
+                                <div className="w-16 h-16 bg-[#9D2235]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <Heart className="w-8 h-8 text-[#9D2235]" />
+                                </div>
+                                <h2 className="text-2xl font-bold text-gray-900">Haz tu Donación</h2>
+                                <p className="text-gray-500 mt-2">Apoya nuestras causas y proyectos en curso</p>
+                            </div>
+
+                            <div className="space-y-6">
+                                {/* Frequency Selector */}
+                                <div className="flex p-1 bg-gray-100 rounded-lg">
+                                    <button
+                                        onClick={() => setFrequency('one-time')}
+                                        className={`flex-1 py-2 px-4 rounded-md text-sm font-semibold transition-all ${frequency === 'one-time' ? 'bg-white text-rotary-blue shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    >
+                                        Donación Única
+                                    </button>
+                                    <button
+                                        onClick={() => setFrequency('monthly')}
+                                        className={`flex-1 py-2 px-4 rounded-md text-sm font-semibold transition-all ${frequency === 'monthly' ? 'bg-white text-rotary-blue shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    >
+                                        Donación Mensual
+                                    </button>
+                                </div>
+
+                                {/* Amount Selector */}
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-3">Selecciona el monto (USD)</label>
+                                    <div className="grid grid-cols-4 gap-3 mb-4">
+                                        {amounts.map((amt) => (
+                                            <button
+                                                key={amt}
+                                                onClick={() => setAmount(amt)}
+                                                className={`py-3 rounded-lg font-bold transition-all border-2 ${amount === amt ? 'border-[#9D2235] bg-[#9D2235]/5 text-[#9D2235]' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                                            >
+                                                ${amt}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
+                                        <input
+                                            type="number"
+                                            placeholder="Otro monto"
+                                            value={amounts.includes(amount) ? '' : amount}
+                                            onChange={(e) => setAmount(e.target.value)}
+                                            className="w-full pl-8 pr-4 py-3 border-2 border-gray-200 rounded-lg focus:border-[#9D2235] outline-none transition-all font-semibold"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Info Fields */}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Nombre</label>
+                                        <input type="text" className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#9D2235]/20 outline-none" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Email</label>
+                                        <input type="email" className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#9D2235]/20 outline-none" />
+                                    </div>
+                                </div>
+
+                                <button
+                                    className="w-full bg-[#9D2235] hover:bg-[#8B1E2F] text-white font-bold py-4 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 mt-4"
+                                    onClick={() => {
+                                        alert('Simulando redirección a pasarela de pago...');
+                                        setIsModalOpen(false);
+                                    }}
+                                >
+                                    Donar Ahora
+                                    <Check className="w-5 h-5" />
+                                </button>
+
+                                <p className="text-[10px] text-gray-400 text-center leading-relaxed">
+                                    Al donar, aceptas nuestras políticas de privacidad. Tus datos están protegidos con encriptación SSL de grado bancario.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <Footer />
         </div>
