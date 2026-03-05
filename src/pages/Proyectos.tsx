@@ -1,3 +1,4 @@
+import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Heart,
@@ -13,7 +14,9 @@ import {
   Calendar,
   MapPin,
   CheckCircle2,
-  PlayCircle
+  PlayCircle,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
@@ -192,6 +195,25 @@ const formatShort = (value: number) => {
 };
 
 const Proyectos = () => {
+  const [scrollPosition, setScrollPosition] = useState(0);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const scroll = (direction: 'left' | 'right') => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      const scrollAmount = container.clientWidth;
+      const newScrollPosition = direction === 'left'
+        ? Math.max(0, container.scrollLeft - scrollAmount)
+        : Math.min(container.scrollWidth - container.clientWidth, container.scrollLeft + scrollAmount);
+
+      container.scrollTo({
+        left: newScrollPosition,
+        behavior: 'smooth'
+      });
+      setScrollPosition(newScrollPosition);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
@@ -280,90 +302,130 @@ const Proyectos = () => {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {proyectosActivos.map((proyecto) => {
-              const porcentaje = Math.round((proyecto.recaudado / proyecto.meta) * 100);
-              const Icono = proyecto.icono;
+          <div className="relative group">
+            {/* Carousel Buttons */}
+            <button
+              onClick={() => scroll('left')}
+              className="absolute -left-4 md:-left-6 top-1/2 -translate-y-1/2 z-10 w-12 h-12 bg-white rounded-full shadow-xl flex items-center justify-center hover:bg-gray-100 transition-all opacity-0 group-hover:opacity-100 disabled:opacity-0"
+            >
+              <ChevronLeft className="w-6 h-6 text-rotary-blue" />
+            </button>
+            <button
+              onClick={() => scroll('right')}
+              className="absolute -right-4 md:-right-6 top-1/2 -translate-y-1/2 z-10 w-12 h-12 bg-white rounded-full shadow-xl flex items-center justify-center hover:bg-gray-100 transition-all opacity-0 group-hover:opacity-100 disabled:opacity-0"
+            >
+              <ChevronRight className="w-6 h-6 text-rotary-blue" />
+            </button>
 
-              return (
-                <div key={proyecto.id} className="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow">
-                  <div className="relative aspect-[16/9] overflow-hidden">
-                    <img
-                      src={proyecto.imagen}
-                      alt={proyecto.titulo}
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                    <div className="absolute top-4 left-4 flex items-center gap-2">
-                      <span className="bg-rotary-gold text-white text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1">
-                        <Icono className="w-3 h-3" />
-                        {proyecto.categoria}
-                      </span>
-                    </div>
-                    <div className="absolute bottom-4 left-4 right-4">
-                      <div className="flex items-center gap-4 text-white/90 text-sm">
-                        <span className="flex items-center gap-1">
-                          <MapPin className="w-4 h-4" />
-                          {proyecto.ubicacion}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Users className="w-4 h-4" />
-                          {proyecto.beneficiarios.toLocaleString()} beneficiarios
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+            {/* Scrollable Container */}
+            <div
+              ref={scrollContainerRef}
+              className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-8 pb-8 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            >
+              {proyectosActivos.map((proyecto) => {
+                const porcentaje = Math.round((proyecto.recaudado / proyecto.meta) * 100);
+                const Icono = proyecto.icono;
 
-                  <div className="p-6">
-                    <h3 className="text-xl font-bold text-gray-900 mb-3 line-clamp-2">
-                      {proyecto.titulo}
-                    </h3>
-                    <p className="text-gray-600 text-sm mb-6 line-clamp-2">
-                      {proyecto.descripcion}
-                    </p>
-
-                    {/* Barra de progreso */}
-                    <div className="mb-4">
-                      <div className="flex justify-between text-sm mb-2">
-                        <span className="font-semibold text-rotary-blue">{porcentaje}% recaudado</span>
-                        <span className="text-gray-500">{proyecto.diasRestantes} días restantes</span>
-                      </div>
-                      <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-r from-rotary-blue to-rotary-gold rounded-full transition-all duration-500"
-                          style={{ width: `${Math.min(porcentaje, 100)}%` }}
+                return (
+                  <div
+                    key={proyecto.id}
+                    className="min-w-full md:min-w-[calc(50%-16px)] lg:min-w-[calc(33.333%-21.33px)] snap-center"
+                  >
+                    <div className="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow h-full flex flex-col">
+                      <div className="relative aspect-[16/9] overflow-hidden">
+                        <img
+                          src={proyecto.imagen}
+                          alt={proyecto.titulo}
+                          className="w-full h-full object-cover"
                         />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                        <div className="absolute top-4 left-4 flex items-center gap-2">
+                          <span className="bg-rotary-gold text-white text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1">
+                            <Icono className="w-3 h-3" />
+                            {proyecto.categoria}
+                          </span>
+                        </div>
+                        <div className="absolute bottom-4 left-4 right-4">
+                          <div className="flex items-center gap-4 text-white/90 text-sm">
+                            <span className="flex items-center gap-1">
+                              <MapPin className="w-4 h-4" />
+                              {proyecto.ubicacion}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-6 flex-grow flex flex-col">
+                        <h3 className="text-xl font-bold text-gray-900 mb-3 line-clamp-2 min-h-[3.5rem]">
+                          {proyecto.titulo}
+                        </h3>
+                        <p className="text-gray-600 text-sm mb-6 line-clamp-2">
+                          {proyecto.descripcion}
+                        </p>
+
+                        <div className="mt-auto">
+                          {/* Barra de progreso */}
+                          <div className="mb-4">
+                            <div className="flex justify-between text-sm mb-2">
+                              <span className="font-semibold text-rotary-blue">{porcentaje}% recaudado</span>
+                              <span className="text-gray-500">{proyecto.diasRestantes} d restantes</span>
+                            </div>
+                            <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-rotary-blue to-rotary-gold rounded-full transition-all duration-500"
+                                style={{ width: `${Math.min(porcentaje, 100)}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Stats resumidos */}
+                          <div className="flex justify-between items-center mb-6 py-3 border-t border-b border-gray-100">
+                            <div>
+                              <div className="text-sm font-bold text-gray-900">${formatShort(proyecto.recaudado)}</div>
+                              <div className="text-[10px] text-gray-500 uppercase">Recaudado</div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm font-bold text-gray-900">{proyecto.donantes}</div>
+                              <div className="text-[10px] text-gray-500 uppercase">Donantes</div>
+                            </div>
+                          </div>
+
+                          {/* Botón Donar */}
+                          <Link
+                            to={`/proyectos/${proyecto.id}`}
+                            className="w-full bg-rotary-blue text-white py-3 rounded-full font-semibold hover:bg-rotary-dark-blue transition-colors flex items-center justify-center gap-2 text-sm"
+                          >
+                            <Heart className="w-4 h-4" />
+                            Ver y Donar
+                          </Link>
+                        </div>
                       </div>
                     </div>
-
-                    {/* Stats */}
-                    <div className="grid grid-cols-3 gap-4 mb-6 py-4 border-t border-b border-gray-100">
-                      <div className="text-center">
-                        <div className="text-lg font-bold text-gray-900">{formatShort(proyecto.recaudado)}</div>
-                        <div className="text-xs text-gray-500">de {formatShort(proyecto.meta)}</div>
-                      </div>
-                      <div className="text-center border-x border-gray-100">
-                        <div className="text-lg font-bold text-gray-900">{proyecto.donantes}</div>
-                        <div className="text-xs text-gray-500">donantes</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-lg font-bold text-gray-900">{proyecto.diasRestantes}</div>
-                        <div className="text-xs text-gray-500">días</div>
-                      </div>
-                    </div>
-
-                    {/* Botón Donar */}
-                    <Link
-                      to={`/proyectos/${proyecto.id}`}
-                      className="w-full bg-rotary-blue text-white py-3 rounded-full font-semibold hover:bg-rotary-dark-blue transition-colors flex items-center justify-center gap-2"
-                    >
-                      <Heart className="w-5 h-5" />
-                      Ver Proyecto y Donar
-                    </Link>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+
+            {/* Pagination Dots */}
+            <div className="flex justify-center gap-2 mt-4">
+              {proyectosActivos.map((_, index) => (
+                <button
+                  key={index}
+                  onClick={() => {
+                    const container = scrollContainerRef.current;
+                    if (container) {
+                      container.scrollTo({
+                        left: index * (container.clientWidth / (window.innerWidth >= 1024 ? 3 : window.innerWidth >= 768 ? 2 : 1)),
+                        behavior: 'smooth'
+                      });
+                    }
+                  }}
+                  className={`w-2 h-2 rounded-full transition-all ${Math.round(scrollPosition / 300) === index ? 'bg-rotary-blue w-4' : 'bg-gray-300'
+                    }`}
+                />
+              ))}
+            </div>
           </div>
         </div>
       </section>
