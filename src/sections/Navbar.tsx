@@ -79,6 +79,8 @@ const Navbar = () => {
     { label: 'Nuestros Socios', href: '/nuestros-socios' },
     { label: 'Nuestra Junta Directiva', href: '/nuestra-junta-directiva' },
     { label: 'Programa de Intercambios', href: '/intercambio-jovenes' },
+    { label: 'Rotaract', href: '#' },
+    { label: 'Interact', href: '#' },
     { label: 'La Fundación Rotaria', href: '#' },
     { label: 'Estados Financieros', href: '/estados-financieros' }
   ];
