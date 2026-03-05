@@ -35,8 +35,8 @@ const informacionContacto = [
   {
     icono: Mail,
     titulo: 'Email',
-    contenido: 'info@rotaryecluborigen.org',
-    subtitulo: 'contacto@rotaryecluborigen.org'
+    contenido: 'info@rotaryorigen.org',
+    subtitulo: 'contacto@rotaryorigen.org'
   },
   {
     icono: Clock,
@@ -381,11 +381,11 @@ const Contacto = () => {
               },
               {
                 pregunta: '¿Cómo puedo solicitar apoyo para un proyecto comunitario?',
-                respuesta: 'Envíanos un correo a info@rotaryecluborigen.org describiendo tu proyecto, la comunidad beneficiaria y el presupuesto estimado. Nuestro comité de proyectos lo evaluará.'
+                respuesta: 'Envíanos un correo a info@rotaryorigen.org describiendo tu proyecto, la comunidad beneficiaria y el presupuesto estimado. Nuestro comité de proyectos lo evaluará.'
               },
               {
                 pregunta: '¿El club tiene actividades presenciales o virtuales?',
-                respuesta: 'Como E-Club, nuestras reuniones son principalmente virtuales, pero también organizamos eventos presenciales para proyectos y actividades comunitarias.'
+                respuesta: 'Como club, nuestras reuniones son principalmente virtuales, pero también organizamos eventos presenciales para proyectos y actividades comunitarias.'
               }
             ].map((faq, index) => (
               <div key={index} className="bg-white rounded-xl p-6 shadow-sm">
