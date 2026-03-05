@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   FileText,
   Download,
-  Upload,
   Calendar,
   Shield,
   CheckCircle2,
@@ -313,38 +312,6 @@ const EstadosFinancieros = () => {
         </div>
       </section>
 
-      {/* Sección de Subida (solo para administradores) */}
-      <section className="py-12 md:py-16 bg-gray-50 border-t">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-white rounded-2xl shadow-sm p-8">
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-12 h-12 bg-rotary-blue/10 rounded-full flex items-center justify-center">
-                <Upload className="w-6 h-6 text-rotary-blue" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Subir Nuevo Documento</h2>
-                <p className="text-gray-500 text-sm">Área exclusiva para administradores</p>
-              </div>
-            </div>
-
-            <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-rotary-blue transition-colors cursor-pointer">
-              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <FileText className="w-8 h-8 text-gray-400" />
-              </div>
-              <h3 className="font-medium text-gray-900 mb-2">Arrastra archivos aquí</h3>
-              <p className="text-gray-500 text-sm mb-4">o haz clic para seleccionar archivos</p>
-              <p className="text-gray-400 text-xs">
-                Formatos aceptados: PDF, XLS, XLSX, DOC, DOCX (máx. 20MB)
-              </p>
-            </div>
-
-            <div className="mt-6 flex items-center gap-2 text-sm text-gray-500">
-              <Shield className="w-4 h-4" />
-              <span>Los documentos serán revisados antes de su publicación</span>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* Información de Contacto */}
       <section className="py-12 md:py-16">
