@@ -33,7 +33,7 @@ const NuestrasCausas = () => {
                     <h1 className="text-3xl md:text-4xl font-bold text-white tracking-wider">Nuestras Causas</h1>
                 </div>
             </section>            {/* Intro Content & Video Section */}
-            <section className="py-12 md:py-20 bg-white">
+            <section className="py-12 md:py-20 bg-rotary-concrete">
                 <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
                     <p className="text-xl md:text-2xl text-gray-700 leading-relaxed mb-12 font-light">
                         Rotary se concentra en causas para fortalecer las relaciones internacionales, mejorar vidas, y crear un mundo más propicio para fomentar nuestras iniciativas pro paz y nuestra campaña para erradicar la polio.
@@ -53,7 +53,7 @@ const NuestrasCausas = () => {
             </section>
 
             {/* Causes Grid Section */}
-            <section className="py-16 md:py-24 bg-gray-50/50">
+            <section className="py-16 md:py-24 bg-rotary-concrete">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
                         {/* Area 1: Fomento de la paz */}
@@ -172,7 +172,7 @@ const NuestrasCausas = () => {
             </section>
 
             {/* Polio Section - Full Width Banner */}
-            <section className="bg-white">
+            <section className="bg-rotary-concrete">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
                     <div className="flex flex-col lg:flex-row rounded-3xl overflow-hidden shadow-xl ring-1 ring-gray-100">
                         <div className="lg:w-1/2 h-[300px] lg:h-auto">
