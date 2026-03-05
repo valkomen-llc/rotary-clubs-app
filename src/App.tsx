@@ -22,6 +22,8 @@ import EstadosFinancieros from './pages/EstadosFinancieros';
 import NuestrasCausas from './pages/NuestrasCausas';
 import ManerasDeContribuir from './pages/ManerasDeContribuir';
 import Rotaract from './pages/Rotaract';
+import Interact from './pages/Interact';
+import FundacionRotaria from './pages/FundacionRotaria';
 
 function Home() {
   return (
@@ -71,6 +73,8 @@ function App() {
           <Route path="/contacto" element={<Contacto />} />
           <Route path="/estados-financieros" element={<EstadosFinancieros />} />
           <Route path="/rotaract" element={<Rotaract />} />
+          <Route path="/interact" element={<Interact />} />
+          <Route path="/la-fundacion-rotaria" element={<FundacionRotaria />} />
 
           {/* Admin Routes */}
           <Route
