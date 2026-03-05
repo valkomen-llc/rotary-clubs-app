@@ -304,7 +304,7 @@ const Proyectos = () => {
       </section>
 
       {/* Proyectos Activos - Crowdfunding */}
-      <section id="proyectos-activos" className="py-16 md:py-24 bg-gray-50">
+      <section id="proyectos-activos" className="py-16 md:py-24 bg-rotary-concrete">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <span className="inline-block text-rotary-blue text-sm font-semibold uppercase tracking-wider mb-2">
