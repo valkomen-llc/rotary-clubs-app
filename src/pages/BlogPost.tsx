@@ -771,7 +771,7 @@ const BlogPost = () => {
       </article>
 
       {/* Artículos Relacionados */}
-      <section className="py-12 md:py-16 bg-gray-50">
+      <section className="py-12 md:py-16 bg-rotary-concrete">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-8">Artículos relacionados</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
