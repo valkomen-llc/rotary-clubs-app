@@ -54,7 +54,7 @@ const NuestraHistoria = () => {
       </section>
 
       {/* Intro Content Section */}
-      <section className="py-12 md:py-16 bg-white">
+      <section className="py-12 md:py-16 bg-rotary-concrete">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
 
           {/* Intro paragraphs */}
@@ -101,7 +101,7 @@ const NuestraHistoria = () => {
       </section>
 
       {/* Cronología de Rotary - Split Box */}
-      <section className="py-8 md:py-12 bg-white">
+      <section className="py-8 md:py-12 bg-rotary-concrete">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row overflow-hidden rounded-lg shadow-xl">
             {/* Left Side - Blue Background */}
@@ -128,7 +128,7 @@ const NuestraHistoria = () => {
       </section>
 
       {/* Main Content - Los orígenes de Rotary */}
-      <section className="py-12 md:py-16 bg-white">
+      <section className="py-12 md:py-16 bg-rotary-concrete">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
 
           {/* Los orígenes de Rotary */}
@@ -203,7 +203,7 @@ const NuestraHistoria = () => {
       </section>
 
       {/* Image Gallery Carousel */}
-      <section className="py-8 bg-gray-50">
+      <section className="py-8 bg-rotary-concrete">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="relative">
             {/* Main Image */}
@@ -247,7 +247,7 @@ const NuestraHistoria = () => {
       </section>
 
       {/* Explora nuestros archivos - Split Box */}
-      <section className="py-8 md:py-12 bg-white">
+      <section className="py-8 md:py-12 bg-rotary-concrete">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row overflow-hidden rounded-lg shadow-xl">
             {/* Left Side - Historical Image */}
