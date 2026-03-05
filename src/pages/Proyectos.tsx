@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Heart,
@@ -202,9 +202,19 @@ const Proyectos = () => {
     const container = scrollContainerRef.current;
     if (container) {
       const scrollAmount = container.clientWidth;
-      const newScrollPosition = direction === 'left'
-        ? Math.max(0, container.scrollLeft - scrollAmount)
-        : Math.min(container.scrollWidth - container.clientWidth, container.scrollLeft + scrollAmount);
+      let newScrollPosition;
+
+      if (direction === 'left') {
+        newScrollPosition = container.scrollLeft - scrollAmount;
+        if (newScrollPosition < -10) {
+          newScrollPosition = container.scrollWidth - container.clientWidth;
+        }
+      } else {
+        newScrollPosition = container.scrollLeft + scrollAmount;
+        if (newScrollPosition >= container.scrollWidth - container.clientWidth - 10) {
+          newScrollPosition = 0;
+        }
+      }
 
       container.scrollTo({
         left: newScrollPosition,
@@ -213,6 +223,13 @@ const Proyectos = () => {
       setScrollPosition(newScrollPosition);
     }
   };
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      scroll('right');
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="min-h-screen bg-white">
@@ -332,7 +349,7 @@ const Proyectos = () => {
                     key={proyecto.id}
                     className="min-w-full md:min-w-[calc(50%-16px)] lg:min-w-[calc(33.333%-21.33px)] snap-center"
                   >
-                    <div className="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow h-full flex flex-col">
+                    <div className="bg-white rounded-2xl overflow-hidden border border-gray-200 transition-all h-full flex flex-col">
                       <div className="relative aspect-[16/9] overflow-hidden">
                         <img
                           src={proyecto.imagen}
