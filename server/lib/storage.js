@@ -33,14 +33,16 @@ const upload = multer({
         }
     }),
     fileFilter: (req, file, cb) => {
-        const filetypes = /jpeg|jpg|png|webp|pdf|doc|docx/;
+        const filetypes = /jpeg|jpg|png|webp|svg|pdf|doc|docx/;
         const mimetype = filetypes.test(file.mimetype);
         const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
 
-        if (mimetype && extname) {
+        console.log(`Filtering file: ${file.originalname} (${file.mimetype}) - Allowed: ${mimetype && extname}`);
+
+        if (mimetype || extname) {
             return cb(null, true);
         }
-        cb(new Error("Error: File upload only supports the following filetypes - " + filetypes));
+        cb(new Error("Error: El formato de archivo no es compatible. Use JPG, PNG, WEBP o SVG."));
     },
     limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
