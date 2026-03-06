@@ -17,7 +17,6 @@ const upload = multer({
     storage: multerS3({
         s3: s3,
         bucket: process.env.AWS_BUCKET_NAME || 'rotary-platform-assets',
-        acl: 'public-read',
         metadata: function (req, file, cb) {
             cb(null, { fieldName: file.fieldname });
         },

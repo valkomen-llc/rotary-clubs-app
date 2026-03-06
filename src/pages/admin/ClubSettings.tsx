@@ -85,6 +85,7 @@ const ClubSettings: React.FC = () => {
             }
         } catch (error: any) {
             console.error('Upload error:', error);
+            window.alert('ERROR DE SUBIDA: ' + error.message);
             toast.error(`Error al subir: ${error.message}`);
         } finally {
             setUploading(false);
@@ -139,7 +140,7 @@ const ClubSettings: React.FC = () => {
         <AdminLayout>
             <div className="mb-8 p-4 bg-yellow-50 border-l-4 border-yellow-400">
                 <h1 className="text-2xl font-bold text-gray-800">Configuración del Club</h1>
-                <p className="text-gray-500 text-sm">v1.2.6 - Sistema de Diagnóstico S3 Activo</p>
+                <p className="text-gray-500 text-sm">v1.2.7 - Verificación de Permisos S3</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-8">
