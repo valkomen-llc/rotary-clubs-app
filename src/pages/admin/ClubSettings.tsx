@@ -77,6 +77,8 @@ const ClubSettings: React.FC = () => {
 
             if (response.ok) {
                 const data = await response.json();
+                console.log('Upload success, URL:', data.url);
+                window.alert('¡SUBIDA EXITOSA!\nURL generada: ' + data.url);
                 setFormData(prev => ({ ...prev, logo: data.url }));
                 toast.success('Logo subido con éxito');
             } else {
@@ -140,7 +142,7 @@ const ClubSettings: React.FC = () => {
         <AdminLayout>
             <div className="mb-8">
                 <h1 className="text-2xl font-bold text-gray-800">Configuración del Club</h1>
-                <p className="text-gray-500 text-sm">v1.2.8 - Formatos Extendidos (SVG/JPG/PNG)</p>
+                <p className="text-gray-500 text-sm">v1.2.9 - Verificación de Enlace Público S3</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-8">
@@ -319,7 +321,7 @@ const ClubSettings: React.FC = () => {
                     </button>
                 </div>
                 <div className="text-right">
-                    <span className="text-[10px] text-gray-300">v1.2.5 - Diagnóstico de Subida Activo</span>
+                    <span className="text-[10px] text-gray-300">v1.2.9 - Verificación de Enlace Público S3</span>
                 </div>
             </form>
         </AdminLayout>
