@@ -107,7 +107,7 @@ const Navbar = () => {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-6">
-            <Link to="/" className="text-rotary-blue font-medium text-sm hover:text-rotary-gold transition-colors">Inicio</Link>
+            <Link to="/" className="text-rotary-blue font-rotary-condensed font-bold text-sm hover:text-rotary-gold transition-colors">Inicio</Link>
 
 
 
@@ -115,7 +115,7 @@ const Navbar = () => {
             <div className="relative" ref={sobreNosotrosRef}>
               <button
                 onClick={() => setSobreNosotrosOpen(!sobreNosotrosOpen)}
-                className="flex items-center text-gray-600 text-sm hover:text-rotary-blue transition-colors"
+                className="flex items-center text-gray-600 font-rotary-condensed font-bold text-sm hover:text-rotary-blue transition-colors"
               >
                 Sobre Nosotros <ChevronDown className={`w-4 h-4 ml-1 transition-transform ${sobreNosotrosOpen ? 'rotate-180' : ''}`} />
               </button>
@@ -125,7 +125,7 @@ const Navbar = () => {
                     <Link
                       key={index}
                       to={item.href}
-                      className="flex items-center justify-between px-4 py-2 text-sm text-gray-700 hover:bg-sky-50 hover:text-rotary-blue transition-colors"
+                      className="flex items-center justify-between px-4 py-2 font-rotary-condensed text-sm text-gray-700 hover:bg-sky-50 hover:text-rotary-blue transition-colors"
                       onClick={() => setSobreNosotrosOpen(false)}
                     >
                       {item.label}
@@ -135,9 +135,9 @@ const Navbar = () => {
               )}
             </div>
 
-            <Link to="/proyectos" className="text-gray-600 text-sm hover:text-rotary-blue transition-colors">Proyectos</Link>
-            <Link to="/blog" className="text-gray-600 text-sm hover:text-rotary-blue transition-colors">Noticias</Link>
-            <Link to="/contacto" className="text-gray-600 text-sm hover:text-rotary-blue transition-colors">Contacto</Link>
+            <Link to="/proyectos" className="text-gray-600 font-rotary-condensed font-bold text-sm hover:text-rotary-blue transition-colors">Proyectos</Link>
+            <Link to="/blog" className="text-gray-600 font-rotary-condensed font-bold text-sm hover:text-rotary-blue transition-colors">Noticias</Link>
+            <Link to="/contacto" className="text-gray-600 font-rotary-condensed font-bold text-sm hover:text-rotary-blue transition-colors">Contacto</Link>
           </div>
 
           {/* Right Side Icons */}
@@ -158,7 +158,7 @@ const Navbar = () => {
             ) : (
               <button
                 onClick={() => setLoginModalOpen(true)}
-                className="hidden sm:block text-rotary-blue font-medium text-sm hover:text-rotary-gold transition-colors"
+                className="hidden sm:block text-rotary-blue font-rotary-condensed font-bold text-sm hover:text-rotary-gold transition-colors"
               >
                 Ingresar
               </button>
@@ -184,7 +184,7 @@ const Navbar = () => {
                         setCurrentLanguage(lang);
                         setLanguageOpen(false);
                       }}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-sky-50 transition-colors ${currentLanguage.code === lang.code ? 'text-rotary-blue font-medium' : 'text-gray-700'
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 font-rotary-condensed text-sm hover:bg-sky-50 transition-colors ${currentLanguage.code === lang.code ? 'text-rotary-blue font-medium' : 'text-gray-700'
                         }`}
                     >
                       <span className="text-lg">{lang.flag}</span>
@@ -211,8 +211,8 @@ const Navbar = () => {
         {/* Mobile Menu */}
         {mobileMenuOpen && (
           <div className="md:hidden py-4 border-t">
-            <div className="flex flex-col space-y-3">
-              <Link to="/" className="text-rotary-blue font-medium" onClick={() => setMobileMenuOpen(false)}>Inicio</Link>
+            <div className="flex flex-col space-y-3 font-rotary-condensed font-bold">
+              <Link to="/" className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Inicio</Link>
 
 
               {/* Sobre Nosotros en móvil */}
@@ -230,18 +230,18 @@ const Navbar = () => {
                 ))}
               </div>
 
-              <Link to="/proyectos" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Proyectos</Link>
-              <Link to="/blog" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Noticias</Link>
-              <Link to="/contacto" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Contacto</Link>
+              <Link to="/proyectos" className="text-gray-600 font-rotary-condensed" onClick={() => setMobileMenuOpen(false)}>Proyectos</Link>
+              <Link to="/blog" className="text-gray-600 font-rotary-condensed" onClick={() => setMobileMenuOpen(false)}>Noticias</Link>
+              <Link to="/contacto" className="text-gray-600 font-rotary-condensed" onClick={() => setMobileMenuOpen(false)}>Contacto</Link>
               {isAuthenticated ? (
-                <Link to="/admin/dashboard" className="text-rotary-blue font-medium" onClick={() => setMobileMenuOpen(false)}>Panel</Link>
+                <Link to="/admin/dashboard" className="text-rotary-blue font-rotary-condensed" onClick={() => setMobileMenuOpen(false)}>Panel</Link>
               ) : (
                 <button
                   onClick={() => {
                     setMobileMenuOpen(false);
                     setLoginModalOpen(true);
                   }}
-                  className="text-rotary-blue font-medium text-left"
+                  className="text-rotary-blue text-left font-rotary-condensed"
                 >
                   Ingresar
                 </button>

@@ -30,7 +30,7 @@ const Footer = () => {
           {/* Links de Interés */}
           <div>
             <h3 className="font-semibold text-lg mb-4">Links de Interés</h3>
-            <ul className="space-y-2 text-sm text-white/80">
+            <ul className="space-y-2 font-rotary-condensed text-sm text-white/80">
               <li><a href="#" className="hover:text-rotary-gold transition-colors">Acerca de Rotary</a></li>
               <li><a href="#" className="hover:text-rotary-gold transition-colors">Historia de Rotary</a></li>
               <li><a href="#" className="hover:text-rotary-gold transition-colors">Nuestra Estructura</a></li>
@@ -48,7 +48,7 @@ const Footer = () => {
           {/* Realiza una Acción */}
           <div>
             <h3 className="font-semibold text-lg mb-4">Realiza una Acción</h3>
-            <ul className="space-y-2 text-sm text-white/80">
+            <ul className="space-y-2 font-rotary-condensed text-sm text-white/80">
               <li><a href="#" className="hover:text-rotary-gold transition-colors flex items-center gap-2">
                 <span className="w-1 h-1 bg-rotary-gold rounded-full"></span>
                 Aporte Voluntario

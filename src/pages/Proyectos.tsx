@@ -267,7 +267,7 @@ const Proyectos = () => {
                   e.preventDefault();
                   document.getElementById('proyectos-activos')?.scrollIntoView({ behavior: 'smooth' });
                 }}
-                className="inline-flex items-center justify-center gap-2 bg-rotary-gold text-white px-8 py-4 rounded-full font-semibold hover:bg-[#c9a020] transition-colors"
+                className="inline-flex items-center justify-center gap-2 bg-rotary-gold text-white px-8 py-4 rounded-full font-rotary-condensed font-bold hover:bg-[#c9a020] transition-colors"
               >
                 <Heart className="w-5 h-5" />
                 Donar Ahora
@@ -278,7 +278,7 @@ const Proyectos = () => {
                   e.preventDefault();
                   document.getElementById('como-ayudar')?.scrollIntoView({ behavior: 'smooth' });
                 }}
-                className="inline-flex items-center justify-center gap-2 bg-white text-rotary-blue px-8 py-4 rounded-full font-semibold hover:bg-gray-100 transition-colors"
+                className="inline-flex items-center justify-center gap-2 bg-white text-rotary-blue px-8 py-4 rounded-full font-rotary-condensed font-bold hover:bg-gray-100 transition-colors"
               >
                 <PlayCircle className="w-5 h-5" />
                 Conoce Más
@@ -411,7 +411,7 @@ const Proyectos = () => {
                           {/* Botón Donar */}
                           <Link
                             to={`/proyectos/${proyecto.id}`}
-                            className="w-full bg-rotary-blue text-white py-3 rounded-full font-semibold hover:bg-rotary-dark-blue transition-colors flex items-center justify-center gap-2 text-sm"
+                            className="w-full bg-rotary-blue text-white py-3 rounded-full font-rotary-condensed font-bold hover:bg-rotary-dark-blue transition-colors flex items-center justify-center gap-2 text-sm"
                           >
                             <Heart className="w-4 h-4" />
                             Ver y Donar
@@ -472,7 +472,7 @@ const Proyectos = () => {
                   </div>
                   <h3 className="text-xl font-bold text-gray-900 mb-3">{metodo.titulo}</h3>
                   <p className="text-gray-600 mb-6">{metodo.descripcion}</p>
-                  <button className="inline-flex items-center gap-2 text-rotary-blue font-semibold hover:underline">
+                  <button className="inline-flex items-center gap-2 text-rotary-blue font-rotary-condensed font-bold hover:underline">
                     {metodo.accion}
                     <ArrowRight className="w-4 h-4" />
                   </button>
@@ -600,14 +600,14 @@ const Proyectos = () => {
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
               href="#proyectos-activos"
-              className="inline-flex items-center justify-center gap-2 bg-rotary-blue text-white px-8 py-4 rounded-full font-semibold hover:bg-rotary-dark-blue transition-colors"
+              className="inline-flex items-center justify-center gap-2 bg-rotary-blue text-white px-8 py-4 rounded-full font-rotary-condensed font-bold hover:bg-rotary-dark-blue transition-colors"
             >
               <Heart className="w-5 h-5" />
               Donar Ahora
             </a>
             <Link
               to="/quienes-somos"
-              className="inline-flex items-center justify-center gap-2 bg-gray-100 text-gray-700 px-8 py-4 rounded-full font-semibold hover:bg-gray-200 transition-colors"
+              className="inline-flex items-center justify-center gap-2 bg-gray-100 text-gray-700 px-8 py-4 rounded-full font-rotary-condensed font-bold hover:bg-gray-200 transition-colors"
             >
               Conoce Más
               <ArrowRight className="w-5 h-5" />

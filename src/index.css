@@ -47,7 +47,16 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-family: 'Open Sans', sans-serif;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: 'Open Sans Condensed', sans-serif;
   }
 }
 
@@ -105,5 +114,9 @@
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+
+  .font-rotary-condensed {
+    font-family: 'Open Sans Condensed', sans-serif;
   }
 }

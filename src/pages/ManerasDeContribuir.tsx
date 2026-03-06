@@ -47,7 +47,7 @@ const ManerasDeContribuir = () => {
                         </p>
                         <button
                             onClick={() => setIsModalOpen(true)}
-                            className="w-full bg-[#9D2235] hover:bg-[#8B1E2F] text-white font-bold py-[18px] rounded-lg flex items-center justify-center gap-3 transition-colors uppercase tracking-widest text-[13px]"
+                            className="w-full bg-[#9D2235] hover:bg-[#8B1E2F] text-white font-rotary-condensed font-bold py-[18px] rounded-lg flex items-center justify-center gap-3 transition-colors uppercase tracking-widest text-[13px]"
                         >
                             <Heart className="w-5 h-5 fill-current" />
                             APORTAR
@@ -133,7 +133,7 @@ const ManerasDeContribuir = () => {
                                 </div>
 
                                 <button
-                                    className="w-full bg-[#9D2235] hover:bg-[#8B1E2F] text-white font-bold py-4 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 mt-4"
+                                    className="w-full bg-[#9D2235] hover:bg-[#8B1E2F] text-white font-rotary-condensed font-bold py-4 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 mt-4"
                                     onClick={() => {
                                         alert('Simulando redirección a pasarela de pago...');
                                         setIsModalOpen(false);
