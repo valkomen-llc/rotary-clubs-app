@@ -1,4 +1,4 @@
-import { Facebook, Twitter, Instagram, Youtube, Linkedin, MessageCircle } from 'lucide-react';
+import { Facebook, Twitter, Instagram, Youtube, MessageCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useClub } from '../contexts/ClubContext';
