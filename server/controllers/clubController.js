@@ -33,7 +33,7 @@ const updateClub = async (req, res) => {
         name, description, city, country, district, domain, subdomain,
         email, phone, address,
         facebook, instagram, twitter, youtube,
-        primaryColor, secondaryColor, logo
+        primaryColor, secondaryColor, logo, footerLogo
     } = req.body;
 
     try {
@@ -46,7 +46,7 @@ const updateClub = async (req, res) => {
         const club = await prisma.club.update({
             where: { id },
             data: {
-                name, description, city, country, district, domain, subdomain, logo
+                name, description, city, country, district, domain, subdomain, logo, footerLogo
             }
         });
 

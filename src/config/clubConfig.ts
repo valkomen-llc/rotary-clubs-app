@@ -8,6 +8,7 @@ export interface ClubConfig {
     domain: string;
     subdomain?: string;
     logo?: string;
+    footerLogo?: string;
     logoText: string;
     colors: {
         primary: string;

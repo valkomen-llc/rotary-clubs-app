@@ -23,6 +23,7 @@ const ClubSettings: React.FC = () => {
         primaryColor: '#013388',
         secondaryColor: '#E29C00',
         logo: '',
+        footerLogo: '',
     });
     const [uploading, setUploading] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -46,6 +47,7 @@ const ClubSettings: React.FC = () => {
                 primaryColor: club.colors?.primary || '#013388',
                 secondaryColor: club.colors?.secondary || '#E29C00',
                 logo: club.logo || '',
+                footerLogo: club.footerLogo || '',
             });
         }
     }, [club]);
@@ -88,6 +90,43 @@ const ClubSettings: React.FC = () => {
         } finally {
             setUploading(false);
             if (e.target) e.target.value = ''; // Reset to allow re-selecting same file
+        }
+    };
+
+    const handleFooterLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setUploading(true);
+        const formDataUpload = new FormData();
+        formDataUpload.append('file', file);
+        formDataUpload.append('folder', 'logos-footer');
+
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const apiUrl = import.meta.env.VITE_API_URL || '/api';
+            const targetUrl = `${apiUrl}/media/upload`.replace(/\/+/g, '/').replace(':/', '://');
+
+            const response = await fetch(targetUrl, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formDataUpload
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setFormData(prev => ({ ...prev, footerLogo: data.url }));
+                toast.success('Logo del footer subido con éxito');
+            } else {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Falla en el servidor');
+            }
+        } catch (error: any) {
+            console.error('Footer logo upload error:', error);
+            toast.error(`Error al subir: ${error.message}`);
+        } finally {
+            setUploading(false);
+            if (e.target) e.target.value = '';
         }
     };
 
@@ -194,7 +233,7 @@ const ClubSettings: React.FC = () => {
                 {/* Logo Section */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                     <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
-                        <ImageIcon className="w-5 h-5 text-rotary-blue" /> Logo del Club
+                        <ImageIcon className="w-5 h-5 text-rotary-blue" /> Logo del Header (Principal)
                     </h3>
                     <div className="flex flex-col md:flex-row items-center gap-8">
                         <div className="w-48 h-48 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden bg-gray-50">
@@ -206,13 +245,41 @@ const ClubSettings: React.FC = () => {
                         </div>
                         <div className="flex-1 space-y-4">
                             <p className="text-sm text-gray-500">
-                                Sube el logo oficial de tu club. Se recomienda formato PNG con fondo transparente o SVG.
+                                Sube el logo oficial que se mostrará en la barra de navegación superior.
                             </p>
                             <label className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2.5 rounded-full font-bold cursor-pointer transition-colors">
                                 <Upload className="w-4 h-4" />
-                                {uploading ? 'Subiendo...' : 'Seleccionar Archivo'}
+                                {uploading ? 'Subiendo...' : 'Seleccionar Logo Header'}
                                 <input type="file" className="hidden" accept="image/*" onChange={(e) => {
                                     handleLogoUpload(e);
+                                }} disabled={uploading} />
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Footer Logo Section */}
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
+                        <ImageIcon className="w-5 h-5 text-rotary-blue" /> Logo del Footer
+                    </h3>
+                    <div className="flex flex-col md:flex-row items-center gap-8">
+                        <div className="w-48 h-48 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden bg-gray-50">
+                            {formData.footerLogo ? (
+                                <img src={formData.footerLogo} alt="Footer Logo preview" className="w-full h-full object-contain p-4" crossOrigin="anonymous" />
+                            ) : (
+                                <ImageIcon className="w-12 h-12 text-gray-300" />
+                            )}
+                        </div>
+                        <div className="flex-1 space-y-4">
+                            <p className="text-sm text-gray-500">
+                                Sube el logo que se mostrará en el pie de página de tu sitio.
+                            </p>
+                            <label className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2.5 rounded-full font-bold cursor-pointer transition-colors">
+                                <Upload className="w-4 h-4" />
+                                {uploading ? 'Subiendo...' : 'Seleccionar Logo Footer'}
+                                <input type="file" className="hidden" accept="image/*" onChange={(e) => {
+                                    handleFooterLogoUpload(e);
                                 }} disabled={uploading} />
                             </label>
                         </div>

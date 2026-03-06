@@ -13,8 +13,8 @@ const Footer = () => {
           <div>
             <div className="flex items-center gap-2 mb-4">
               <div className="w-12 h-12 flex items-center justify-center">
-                {club.logo ? (
-                  <img src={club.logo} alt={club.name} className="w-full h-full object-contain" />
+                {club.footerLogo ? (
+                  <img src={club.footerLogo} alt={club.name} className="w-full h-full object-contain" />
                 ) : (
                   <svg viewBox="0 0 100 100" className="w-full h-full">
                     <circle cx="50" cy="50" r="45" fill="none" stroke="white" strokeWidth="3" />
@@ -24,7 +24,7 @@ const Footer = () => {
                   </svg>
                 )}
               </div>
-              {!club.logo && (
+              {!club.footerLogo && (
                 <div>
                   <span className="font-bold text-lg leading-tight block">Rotary Club</span>
                   <span className="font-light text-sm opacity-80">{club.name.replace(/^Rotary Club\s+/i, '')}</span>

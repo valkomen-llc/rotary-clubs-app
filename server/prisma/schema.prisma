@@ -28,6 +28,7 @@ model Club {
   domain      String?  @unique
   subdomain   String?  @unique
   logo        String?
+  footerLogo  String?
   description String?
   status      String   @default("active") // active, inactive
   users       User[]
