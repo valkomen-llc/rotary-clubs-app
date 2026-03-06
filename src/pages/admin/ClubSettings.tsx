@@ -137,9 +137,9 @@ const ClubSettings: React.FC = () => {
 
     return (
         <AdminLayout>
-            <div className="mb-8">
+            <div className="mb-8 p-4 bg-yellow-50 border-l-4 border-yellow-400">
                 <h1 className="text-2xl font-bold text-gray-800">Configuración del Club</h1>
-                <p className="text-gray-500 text-sm">Personaliza la información y apariencia de tu sitio web.</p>
+                <p className="text-gray-500 text-sm">v1.2.6 - Sistema de Diagnóstico S3 Activo</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-8">
@@ -209,10 +209,13 @@ const ClubSettings: React.FC = () => {
                             <p className="text-sm text-gray-500">
                                 Sube el logo oficial de tu club. Se recomienda formato PNG con fondo transparente o SVG.
                             </p>
-                            <label className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2.5 rounded-full font-bold cursor-pointer transition-colors">
+                            <label className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-6 py-2.5 rounded-full font-bold cursor-pointer transition-colors shadow-lg">
                                 <Upload className="w-4 h-4" />
-                                {uploading ? 'Subiendo...' : 'Seleccionar Archivo'}
-                                <input type="file" className="hidden" accept="image/*" onChange={handleLogoUpload} disabled={uploading} />
+                                {uploading ? 'SUBIENDO A S3...' : 'SUBIR LOGO AHORA'}
+                                <input type="file" className="hidden" accept="image/*" onChange={(e) => {
+                                    console.log('Click en subir logo');
+                                    handleLogoUpload(e);
+                                }} disabled={uploading} />
                             </label>
                         </div>
                     </div>
