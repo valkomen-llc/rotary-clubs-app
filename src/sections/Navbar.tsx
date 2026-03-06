@@ -115,7 +115,7 @@ const Navbar = () => {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-6">
-            <Link to="/" className="text-rotary-blue font-bold text-sm hover:text-rotary-gold transition-colors">Inicio</Link>
+            <Link to="/" className="text-rotary-blue font-medium text-sm hover:text-rotary-gold transition-colors">Inicio</Link>
 
 
 
@@ -123,7 +123,7 @@ const Navbar = () => {
             <div className="relative" ref={sobreNosotrosRef}>
               <button
                 onClick={() => setSobreNosotrosOpen(!sobreNosotrosOpen)}
-                className="flex items-center text-gray-600 font-bold text-sm hover:text-rotary-blue transition-colors"
+                className="flex items-center text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"
               >
                 Sobre Nosotros <ChevronDown className={`w-4 h-4 ml-1 transition-transform ${sobreNosotrosOpen ? 'rotate-180' : ''}`} />
               </button>
@@ -143,9 +143,9 @@ const Navbar = () => {
               )}
             </div>
 
-            <Link to="/proyectos" className="text-gray-600 font-bold text-sm hover:text-rotary-blue transition-colors">Proyectos</Link>
-            <Link to="/blog" className="text-gray-600 font-bold text-sm hover:text-rotary-blue transition-colors">Noticias</Link>
-            <Link to="/contacto" className="text-gray-600 font-bold text-sm hover:text-rotary-blue transition-colors">Contacto</Link>
+            <Link to="/proyectos" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors">Proyectos</Link>
+            <Link to="/blog" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors">Noticias</Link>
+            <Link to="/contacto" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors">Contacto</Link>
           </div>
 
           {/* Right Side Icons */}
@@ -219,7 +219,7 @@ const Navbar = () => {
         {/* Mobile Menu */}
         {mobileMenuOpen && (
           <div className="md:hidden py-4 border-t">
-            <div className="flex flex-col space-y-3 font-bold">
+            <div className="flex flex-col space-y-3 font-medium">
               <Link to="/" className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Inicio</Link>
 
 
