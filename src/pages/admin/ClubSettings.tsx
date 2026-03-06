@@ -140,7 +140,7 @@ const ClubSettings: React.FC = () => {
         <AdminLayout>
             <div className="mb-8">
                 <h1 className="text-2xl font-bold text-gray-800">Configuración del Club</h1>
-                <p className="text-gray-500 text-sm">v1.3.2 - Verificación de Doble Proyecto Vercel</p>
+                <p className="text-gray-500 text-sm">v1.3.3 - Verificación de Proyecto: {window.location.hostname}</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-8">
