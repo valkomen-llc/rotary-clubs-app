@@ -84,7 +84,7 @@ const NewsSection = () => {
                   <h3 className="text-white text-sm md:text-base font-light leading-snug mb-2 line-clamp-3">
                     {article.titulo}
                   </h3>
-                  <span className="inline-flex items-center text-white font-rotary-condensed font-semibold text-xs md:text-sm group-hover:underline">
+                  <span className="inline-flex items-center text-white font-semibold text-xs md:text-sm group-hover:underline">
                     Más información
                     <ArrowRight className="w-3 h-3 md:w-4 md:h-4 ml-1 transition-transform group-hover:translate-x-1" />
                   </span>
@@ -130,7 +130,7 @@ const NewsSection = () => {
         <div className="text-center mt-10">
           <Link
             to="/blog"
-            className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-rotary-condensed font-bold px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
+            className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-bold px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
           >
             <Newspaper className="w-5 h-5 text-rotary-gold" />
             Explora más noticias y artículos

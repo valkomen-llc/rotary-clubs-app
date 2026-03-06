@@ -97,7 +97,7 @@ const Blog = () => {
                       <User className="w-4 h-4" />
                       {articulo.autor}
                     </span>
-                    <span className="flex items-center gap-1 text-rotary-blue font-rotary-condensed font-bold text-sm group-hover:underline">
+                    <span className="flex items-center gap-1 text-rotary-blue font-bold text-sm group-hover:underline">
                       Leer más
                       <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                     </span>
@@ -121,7 +121,7 @@ const Blog = () => {
                   setCategoriaActiva(categoria);
                   setPaginaActual(1);
                 }}
-                className={`px-4 py-2 rounded-full text-sm font-rotary-condensed font-bold transition-all ${categoriaActiva === categoria
+                className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${categoriaActiva === categoria
                   ? 'bg-rotary-blue text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
@@ -170,7 +170,7 @@ const Blog = () => {
                   </p>
                   <div className="flex items-center justify-between pt-3 border-t border-gray-100">
                     <span className="text-xs text-gray-500">{articulo.autor}</span>
-                    <span className="flex items-center gap-1 text-rotary-blue text-sm font-rotary-condensed font-bold group-hover:underline">
+                    <span className="flex items-center gap-1 text-rotary-blue text-sm font-bold group-hover:underline">
                       Leer
                       <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-1" />
                     </span>

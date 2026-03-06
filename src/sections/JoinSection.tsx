@@ -14,7 +14,7 @@ const JoinSection = () => {
               Resolver algunos de los problemas más complejos y acuciantes del mundo requiere compromiso y visión. Los socios de Rotary creen que compartimos la responsabilidad de tomar acción para mejorar nuestras comunidades. Únete a nosotros, para que juntos podamos tener un impacto aún mayor.
             </p>
             <button
-              className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-rotary-condensed font-bold px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
+              className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-bold px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
             >
               <Star className="w-5 h-5 text-rotary-gold fill-rotary-gold" />
               Involúcrate en Rotary

@@ -66,7 +66,7 @@ const NuestrasCausas = () => {
                                 <p className="text-gray-600 text-sm leading-relaxed mb-4">
                                     Rotary fomenta el diálogo para promover la comprensión internacional entre los pueblos y culturas. Ayudamos en la formación de líderes adultos y jóvenes para que sean actores en la prevención y mediación de conflictos y brinden apoyo a refugiados que huyen de situaciones de peligro.
                                 </p>
-                                <a href="#" className="text-rotary-blue hover:text-sky-700 font-rotary-condensed font-bold text-sm inline-flex items-center gap-1">
+                                <a href="#" className="text-rotary-blue hover:text-sky-700 font-bold text-sm inline-flex items-center gap-1">
                                     Más información ›
                                 </a>
                             </div>
@@ -82,7 +82,7 @@ const NuestrasCausas = () => {
                                 <p className="text-gray-600 text-sm leading-relaxed mb-4">
                                     Sensibilizamos y equipamos a las comunidades para contener la propagación de enfermedades mortales como la polio, el VIH/SIDA y el paludismo. Nuestra meta es mejorar y ampliar el acceso a la atención de la salud, de bajo costo o gratuita, en las regiones en desarrollo.
                                 </p>
-                                <a href="#" className="text-rotary-blue hover:text-sky-700 font-rotary-condensed font-bold text-sm inline-flex items-center gap-1">
+                                <a href="#" className="text-rotary-blue hover:text-sky-700 font-bold text-sm inline-flex items-center gap-1">
                                     Más información ›
                                 </a>
                             </div>
@@ -98,7 +98,7 @@ const NuestrasCausas = () => {
                                 <p className="text-gray-600 text-sm leading-relaxed mb-4">
                                     Apoyamos iniciativas locales mediante las cuales más personas tienen acceso al agua salubre, saneamiento e higiene. Nuestro propósito no es simplemente construir pozos sino compartir nuestras experiencias con los líderes y docentes de la comunidad para que nuestros proyectos sean sostenibles.
                                 </p>
-                                <a href="#" className="text-rotary-blue hover:text-sky-700 font-rotary-condensed font-bold text-sm inline-flex items-center gap-1">
+                                <a href="#" className="text-rotary-blue hover:text-sky-700 font-bold text-sm inline-flex items-center gap-1">
                                     Más información ›
                                 </a>
                             </div>
@@ -114,7 +114,7 @@ const NuestrasCausas = () => {
                                 <p className="text-gray-600 text-sm leading-relaxed mb-4">
                                     Anualmente alrededor de seis millones de niños menores de cinco años fallecen víctimas de la desnutrición, falta de atención de la salud y saneamiento insalubre. Al ampliar el acceso a mejores servicios de salud, madres e hijos viven sanos y fuertes.
                                 </p>
-                                <a href="#" className="text-rotary-blue hover:text-sky-700 font-rotary-condensed font-bold text-sm inline-flex items-center gap-1">
+                                <a href="#" className="text-rotary-blue hover:text-sky-700 font-bold text-sm inline-flex items-center gap-1">
                                     Más información ›
                                 </a>
                             </div>
@@ -130,7 +130,7 @@ const NuestrasCausas = () => {
                                 <p className="text-gray-600 text-sm leading-relaxed mb-4">
                                     El analfabetismo afecta a más de 775 millones de personas mayores de 15 años. Nuestra meta es alentar a las comunidades para que apoyen programas de alfabetización y educación básica, reduzcan la disparidad de género en la educación y aumenten la tasa de alfabetismo entre los adultos.
                                 </p>
-                                <a href="#" className="text-rotary-blue hover:text-sky-700 font-rotary-condensed font-bold text-sm inline-flex items-center gap-1">
+                                <a href="#" className="text-rotary-blue hover:text-sky-700 font-bold text-sm inline-flex items-center gap-1">
                                     Más información ›
                                 </a>
                             </div>
@@ -146,7 +146,7 @@ const NuestrasCausas = () => {
                                 <p className="text-gray-600 text-sm leading-relaxed mb-4">
                                     Nuestros proyectos de servicio están diseñados para fomentar el desarrollo integral y económico de las comunidades y crear oportunidades de trabajo productivo y remunerado para personas de todas las edades. Trabajamos también con emprendedores y líderes locales.
                                 </p>
-                                <a href="#" className="text-rotary-blue hover:text-sky-700 font-rotary-condensed font-bold text-sm inline-flex items-center gap-1">
+                                <a href="#" className="text-rotary-blue hover:text-sky-700 font-bold text-sm inline-flex items-center gap-1">
                                     Más información ›
                                 </a>
                             </div>
@@ -162,7 +162,7 @@ const NuestrasCausas = () => {
                                 <p className="text-gray-600 text-sm leading-relaxed mb-4">
                                     Tomamos medidas para encontrar soluciones innovadoras y desarrollar proyectos de servicio sostenibles que fortalezcan nuestros ecosistemas locales y nuestro planeta.
                                 </p>
-                                <a href="#" className="text-rotary-blue hover:text-sky-700 font-rotary-condensed font-bold text-sm inline-flex items-center gap-1">
+                                <a href="#" className="text-rotary-blue hover:text-sky-700 font-bold text-sm inline-flex items-center gap-1">
                                     Más información ›
                                 </a>
                             </div>
@@ -188,7 +188,7 @@ const NuestrasCausas = () => {
                                     href="https://www.endpolio.org/es"
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="inline-block border-2 border-white/30 hover:bg-white hover:text-[#A32036] px-8 py-3 rounded-full font-rotary-condensed font-bold transition-all duration-300"
+                                    className="inline-block border-2 border-white/30 hover:bg-white hover:text-[#A32036] px-8 py-3 rounded-full font-bold transition-all duration-300"
                                 >
                                     Ayúdanos a acabar con la polio para siempre
                                 </a>
