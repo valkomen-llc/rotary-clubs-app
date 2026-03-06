@@ -60,7 +60,7 @@ const ClubSettings: React.FC = () => {
         formData.append('folder', 'logos');
 
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('rotary_token');
             const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/media/upload`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` },
@@ -83,7 +83,7 @@ const ClubSettings: React.FC = () => {
         e.preventDefault();
         setLoading(true);
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('rotary_token');
             const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs/${club.id}`, {
                 method: 'PUT',
                 headers: {
@@ -111,6 +111,16 @@ const ClubSettings: React.FC = () => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
+
+    if (!club) {
+        return (
+            <AdminLayout>
+                <div className="flex items-center justify-center p-12 bg-white rounded-xl shadow-sm border border-gray-100">
+                    <p className="text-gray-500 italic">Cargando información del club...</p>
+                </div>
+            </AdminLayout>
+        );
+    }
 
     return (
         <AdminLayout>

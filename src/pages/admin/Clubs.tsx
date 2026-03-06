@@ -28,7 +28,7 @@ const ClubsManagement: React.FC = () => {
 
     const fetchClubs = async () => {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('rotary_token');
             const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -73,7 +73,7 @@ const ClubsManagement: React.FC = () => {
                                 <td className="px-6 py-4">
                                     <div className="flex items-center gap-3">
                                         <div className="w-8 h-8 rounded bg-sky-100 text-rotary-blue flex items-center justify-center font-bold">
-                                            {club.name.charAt(0)}
+                                            {club.name ? club.name.charAt(0) : 'C'}
                                         </div>
                                         <span className="font-medium text-gray-800">{club.name}</span>
                                     </div>
