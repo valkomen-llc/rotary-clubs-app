@@ -67,7 +67,6 @@ const ClubSettings: React.FC = () => {
             const apiUrl = import.meta.env.VITE_API_URL || '/api';
             const targetUrl = `${apiUrl}/media/upload`.replace(/\/+/g, '/').replace(':/', '://'); // Clean double slashes
 
-            console.log('Target API URL:', targetUrl);
 
             const response = await fetch(targetUrl, {
                 method: 'POST',
@@ -85,7 +84,6 @@ const ClubSettings: React.FC = () => {
             }
         } catch (error: any) {
             console.error('Upload error:', error);
-            window.alert('ERROR DE SUBIDA: ' + error.message);
             toast.error(`Error al subir: ${error.message}`);
         } finally {
             setUploading(false);
@@ -140,7 +138,7 @@ const ClubSettings: React.FC = () => {
         <AdminLayout>
             <div className="mb-8">
                 <h1 className="text-2xl font-bold text-gray-800">Configuración del Club</h1>
-                <p className="text-gray-500 text-sm">v1.3.3 - Verificación de Proyecto: {window.location.hostname}</p>
+                <p className="text-gray-500 text-sm">Gestiona la identidad y contacto de tu club.</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-8">
@@ -318,8 +316,8 @@ const ClubSettings: React.FC = () => {
                         {loading ? 'Guardando...' : 'Guardar Cambios'}
                     </button>
                 </div>
-                <div className="text-right">
-                    <span className="text-[10px] text-gray-300">v1.2.9 - Verificación de Enlace Público S3</span>
+                <div className="hidden">
+                    <span className="text-[10px] text-gray-300">v1.2.9</span>
                 </div>
             </form>
         </AdminLayout>

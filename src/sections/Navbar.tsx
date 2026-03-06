@@ -105,10 +105,12 @@ const Navbar = () => {
                 </svg>
               )}
             </div>
-            <div className="flex flex-col">
-              <span className="text-rotary-blue font-bold text-sm leading-tight">Rotary Club</span>
-              <span className="text-rotary-blue text-xs leading-tight">{club.logoText}</span>
-            </div>
+            {!club.logo && (
+              <div className="flex flex-col">
+                <span className="text-rotary-blue font-bold text-sm leading-tight">Rotary Club</span>
+                <span className="text-rotary-blue text-xs leading-tight">{club.name.replace(/^Rotary Club\s+/i, '')}</span>
+              </div>
+            )}
           </Link>
 
           {/* Desktop Navigation */}

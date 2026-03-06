@@ -24,10 +24,12 @@ const Footer = () => {
                   </svg>
                 )}
               </div>
-              <div>
-                <span className="font-bold text-lg leading-tight block">Rotary Club</span>
-                <span className="font-light text-sm opacity-80">{club.name.replace('Rotary Club ', '')}</span>
-              </div>
+              {!club.logo && (
+                <div>
+                  <span className="font-bold text-lg leading-tight block">Rotary Club</span>
+                  <span className="font-light text-sm opacity-80">{club.name.replace(/^Rotary Club\s+/i, '')}</span>
+                </div>
+              )}
             </div>
             <div className="bg-red-600 text-white text-xs font-bold px-3 py-2 rounded inline-block">
               END<br />POLIO<br />NOW
