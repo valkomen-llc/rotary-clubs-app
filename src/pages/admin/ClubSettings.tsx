@@ -54,6 +54,9 @@ const ClubSettings: React.FC = () => {
         const file = e.target.files?.[0];
         if (!file) return;
 
+        console.log('Archivo seleccionado:', file.name);
+        // window.alert('Iniciando subida de: ' + file.name);
+
         setUploading(true);
         const formData = new FormData();
         formData.append('file', file);
@@ -311,6 +314,9 @@ const ClubSettings: React.FC = () => {
                         <Save className="w-5 h-5" />
                         {loading ? 'Guardando...' : 'Guardar Cambios'}
                     </button>
+                </div>
+                <div className="text-right">
+                    <span className="text-[10px] text-gray-300">v1.2.5 - Diagnóstico de Subida Activo</span>
                 </div>
             </form>
         </AdminLayout>
