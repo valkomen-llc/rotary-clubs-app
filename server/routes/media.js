@@ -5,30 +5,37 @@ const { upload } = require('../lib/storage');
 const prisma = require('../lib/prisma');
 
 // Upload a single file
-router.post('/upload', authMiddleware, upload.single('file'), async (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ error: 'No file uploaded' });
-    }
+router.post('/upload', authMiddleware, (req, res) => {
+    upload.single('file')(req, res, async (err) => {
+        if (err) {
+            console.error('Multer/S3 Error:', err);
+            return res.status(400).json({ error: err.message });
+        }
 
-    try {
-        // Save file info to database
-        const media = await prisma.media.create({
-            data: {
-                filename: req.file.key.split('/').pop(),
-                url: req.file.location, // S3 Public URL
-                type: req.file.mimetype.startsWith('image/') ? 'image' : 'document',
-                size: req.file.size,
-                bucket: req.file.bucket,
-                region: process.env.AWS_REGION || 'us-east-1',
-                clubId: req.user.clubId
-            }
-        });
+        if (!req.file) {
+            return res.status(400).json({ error: 'No se seleccionó ningún archivo' });
+        }
 
-        res.json(media);
-    } catch (error) {
-        console.error('Error saving media to DB:', error);
-        res.status(500).json({ error: 'Internal server error while saving media' });
-    }
+        try {
+            // Save file info to database
+            const media = await prisma.media.create({
+                data: {
+                    filename: req.file.key.split('/').pop(),
+                    url: req.file.location, // S3 Public URL
+                    type: req.file.mimetype.startsWith('image/') ? 'image' : 'document',
+                    size: req.file.size,
+                    bucket: req.file.bucket,
+                    region: process.env.AWS_REGION || 'us-east-1',
+                    clubId: req.user.clubId
+                }
+            });
+
+            res.json(media);
+        } catch (error) {
+            console.error('Error saving media to DB:', error);
+            res.status(500).json({ error: 'Error al guardar la información en la base de datos' });
+        }
+    });
 });
 
 // Get media for the current club

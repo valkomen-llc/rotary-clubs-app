@@ -71,9 +71,13 @@ const ClubSettings: React.FC = () => {
                 const data = await response.json();
                 setFormData(prev => ({ ...prev, logo: data.url }));
                 toast.success('Logo subido con éxito');
+            } else {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Falla en el servidor');
             }
-        } catch (error) {
-            toast.error('Error al subir el logo');
+        } catch (error: any) {
+            console.error('Upload error:', error);
+            toast.error(`Error al subir: ${error.message}`);
         } finally {
             setUploading(false);
         }

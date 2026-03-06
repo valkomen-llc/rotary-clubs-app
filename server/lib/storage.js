@@ -3,6 +3,8 @@ const multer = require('multer');
 const multerS3 = require('multer-s3');
 const path = require('path');
 
+console.log(`Initializing S3 for bucket: ${process.env.AWS_BUCKET_NAME} in region: ${process.env.AWS_REGION}`);
+
 const s3 = new S3Client({
     region: process.env.AWS_REGION || 'us-east-1',
     credentials: {
@@ -15,6 +17,7 @@ const upload = multer({
     storage: multerS3({
         s3: s3,
         bucket: process.env.AWS_BUCKET_NAME || 'rotary-platform-assets',
+        acl: 'public-read',
         metadata: function (req, file, cb) {
             cb(null, { fieldName: file.fieldname });
         },
@@ -26,6 +29,7 @@ const upload = multer({
 
             // Path structure: clubs/{club_id}/{folder}/{filename}
             const fullPath = `clubs/${clubId}/${folder}/${fileName}`;
+            console.log(`Uploading to S3: ${fullPath}`);
             cb(null, fullPath);
         }
     }),
