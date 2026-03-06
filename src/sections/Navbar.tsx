@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Search, ShoppingCart, ChevronDown, Menu, X, LogIn } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { useClub } from '../contexts/ClubContext';
 
 const languages = [
   { code: 'DE', name: 'Deutsch', flag: '🇩🇪' },
@@ -15,6 +16,7 @@ const languages = [
 ];
 
 const Navbar = () => {
+  const { club } = useClub();
   const { login, logout, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -50,7 +52,7 @@ const Navbar = () => {
     setLoading(true);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001/api'}/auth/login`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -100,8 +102,8 @@ const Navbar = () => {
               </svg>
             </div>
             <div className="flex flex-col">
-              <span className="text-rotary-blue font-bold text-sm leading-tight">Rotary</span>
-              <span className="text-rotary-blue text-xs leading-tight">Club</span>
+              <span className="text-rotary-blue font-bold text-sm leading-tight">Rotary Club</span>
+              <span className="text-rotary-blue text-xs leading-tight">{club.logoText}</span>
             </div>
           </Link>
 

@@ -53,41 +53,45 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   return isAuthenticated ? <>{children}</> : <Navigate to="/" />;
 };
 
+import { ClubProvider } from './contexts/ClubContext';
+
 function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/quienes-somos" element={<QuienesSomos />} />
-          <Route path="/nuestras-causas" element={<NuestrasCausas />} />
-          <Route path="/maneras-de-contribuir" element={<ManerasDeContribuir />} />
-          <Route path="/nuestra-historia" element={<NuestraHistoria />} />
-          <Route path="/nuestros-socios" element={<NuestrosSocios />} />
-          <Route path="/nuestra-junta-directiva" element={<NuestraJuntaDirectiva />} />
-          <Route path="/intercambio-jovenes" element={<IntercambioJovenes />} />
-          <Route path="/blog" element={<Blog />} />
-          <Route path="/blog/:id" element={<BlogPost />} />
-          <Route path="/proyectos" element={<Proyectos />} />
-          <Route path="/proyectos/:id" element={<ProyectoDetalle />} />
-          <Route path="/contacto" element={<Contacto />} />
-          <Route path="/estados-financieros" element={<EstadosFinancieros />} />
-          <Route path="/rotaract" element={<Rotaract />} />
-          <Route path="/interact" element={<Interact />} />
-          <Route path="/la-fundacion-rotaria" element={<FundacionRotaria />} />
+    <ClubProvider>
+      <AuthProvider>
+        <Router>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/quienes-somos" element={<QuienesSomos />} />
+            <Route path="/nuestras-causas" element={<NuestrasCausas />} />
+            <Route path="/maneras-de-contribuir" element={<ManerasDeContribuir />} />
+            <Route path="/nuestra-historia" element={<NuestraHistoria />} />
+            <Route path="/nuestros-socios" element={<NuestrosSocios />} />
+            <Route path="/nuestra-junta-directiva" element={<NuestraJuntaDirectiva />} />
+            <Route path="/intercambio-jovenes" element={<IntercambioJovenes />} />
+            <Route path="/blog" element={<Blog />} />
+            <Route path="/blog/:id" element={<BlogPost />} />
+            <Route path="/proyectos" element={<Proyectos />} />
+            <Route path="/proyectos/:id" element={<ProyectoDetalle />} />
+            <Route path="/contacto" element={<Contacto />} />
+            <Route path="/estados-financieros" element={<EstadosFinancieros />} />
+            <Route path="/rotaract" element={<Rotaract />} />
+            <Route path="/interact" element={<Interact />} />
+            <Route path="/la-fundacion-rotaria" element={<FundacionRotaria />} />
 
-          {/* Admin Routes */}
-          <Route
-            path="/admin/dashboard"
-            element={
-              <PrivateRoute>
-                <Dashboard />
-              </PrivateRoute>
-            }
-          />
-        </Routes>
-      </Router>
-    </AuthProvider>
+            {/* Admin Routes */}
+            <Route
+              path="/admin/dashboard"
+              element={
+                <PrivateRoute>
+                  <Dashboard />
+                </PrivateRoute>
+              }
+            />
+          </Routes>
+        </Router>
+      </AuthProvider>
+    </ClubProvider>
   );
 }
 

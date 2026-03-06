@@ -1,8 +1,10 @@
 import { Facebook, Twitter, Instagram, Youtube, Linkedin, MessageCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { useClub } from '../contexts/ClubContext';
 
 const Footer = () => {
+  const { club } = useClub();
   return (
     <footer className="text-white" style={{ backgroundColor: '#0c3c7c' }}>
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -19,7 +21,7 @@ const Footer = () => {
                 </svg>
               </div>
               <div>
-                <span className="font-bold text-lg">Rotary</span>
+                <span className="font-bold text-lg">{club.name}</span>
               </div>
             </div>
             <div className="bg-red-600 text-white text-xs font-bold px-3 py-2 rounded inline-block">
@@ -90,26 +92,31 @@ const Footer = () => {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="text-xs text-white/60 text-center md:text-left">
-              © 2026 - Desarrollado por Daniel Yazo, Rotary 4281.{' '}
+              © {new Date().getFullYear()} - {club.name}.{' '}
               <a href="#" className="hover:text-white transition-colors">Política de privacidad</a>{' '}
               <a href="#" className="hover:text-white transition-colors">Condiciones de uso</a>
             </div>
             <div className="flex items-center gap-4">
-              <a href="#" className="text-white/60 hover:text-white transition-colors">
-                <Facebook className="w-5 h-5" />
-              </a>
-              <a href="#" className="text-white/60 hover:text-white transition-colors">
-                <Twitter className="w-5 h-5" />
-              </a>
-              <a href="#" className="text-white/60 hover:text-white transition-colors">
-                <Instagram className="w-5 h-5" />
-              </a>
-              <a href="#" className="text-white/60 hover:text-white transition-colors">
-                <Youtube className="w-5 h-5" />
-              </a>
-              <a href="#" className="text-white/60 hover:text-white transition-colors">
-                <Linkedin className="w-5 h-5" />
-              </a>
+              {club.social.facebook && (
+                <a href={club.social.facebook} target="_blank" rel="noopener noreferrer" className="text-white/60 hover:text-white transition-colors">
+                  <Facebook className="w-5 h-5" />
+                </a>
+              )}
+              {club.social.twitter && (
+                <a href={club.social.twitter} target="_blank" rel="noopener noreferrer" className="text-white/60 hover:text-white transition-colors">
+                  <Twitter className="w-5 h-5" />
+                </a>
+              )}
+              {club.social.instagram && (
+                <a href={club.social.instagram} target="_blank" rel="noopener noreferrer" className="text-white/60 hover:text-white transition-colors">
+                  <Instagram className="w-5 h-5" />
+                </a>
+              )}
+              {club.social.youtube && (
+                <a href={club.social.youtube} target="_blank" rel="noopener noreferrer" className="text-white/60 hover:text-white transition-colors">
+                  <Youtube className="w-5 h-5" />
+                </a>
+              )}
             </div>
           </div>
         </div>
