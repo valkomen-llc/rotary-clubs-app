@@ -61,7 +61,12 @@ const ClubSettings: React.FC = () => {
 
         try {
             const token = localStorage.getItem('rotary_token');
-            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/media/upload`, {
+            const apiUrl = import.meta.env.VITE_API_URL || '/api';
+            const targetUrl = `${apiUrl}/media/upload`.replace(/\/+/g, '/').replace(':/', '://'); // Clean double slashes
+
+            console.log('Target API URL:', targetUrl);
+
+            const response = await fetch(targetUrl, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` },
                 body: formData
