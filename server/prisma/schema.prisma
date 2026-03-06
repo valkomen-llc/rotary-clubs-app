@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "darwin-arm64"]
 }
 
 datasource db {
@@ -11,7 +12,7 @@ model User {
   id        String   @id @default(uuid())
   email     String   @unique
   password  String
-  role      String   // administrator, club_admin, donor, member
+  role      String   // administrator (super_admin), club_admin, member
   clubId    String?
   club      Club?    @relation(fields: [clubId], references: [id])
   createdAt DateTime @default(now())
@@ -21,12 +22,20 @@ model User {
 model Club {
   id          String   @id @default(uuid())
   name        String
-  description String?
+  city        String?
+  country     String?
+  district    String?
+  domain      String?  @unique
+  subdomain   String?  @unique
   logo        String?
+  description String?
+  status      String   @default("active") // active, inactive
   users       User[]
   projects    Project[]
   posts       Post[]
+  donations   Donation[]
   settings    Setting[]
+  content     ContentSection[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -39,6 +48,7 @@ model Media {
   size      Int
   bucket    String?
   region    String?
+  clubId    String?
   createdAt DateTime @default(now())
 }
 
@@ -73,22 +83,28 @@ model Donation {
   donorName   String?
   donorEmail  String?
   status      String   // pending, success, failed
+  clubId      String?
+  club        Club?    @relation(fields: [clubId], references: [id])
   date        DateTime @default(now())
 }
 
 model Setting {
   id        String   @id @default(uuid())
-  key       String   @unique
-  value     String
+  key       String   
+  value     String   @db.Text
   clubId    String?
   club      Club?    @relation(fields: [clubId], references: [id])
   updatedAt DateTime @updatedAt
+
+  @@unique([key, clubId])
 }
 
 model ContentSection {
   id        String   @id @default(uuid())
   page      String   // home, about, etc.
   section   String   // hero, foundation, etc.
-  content   String   // JSON string with the section content
+  content   String   @db.Text // JSON string with the section content
+  clubId    String?
+  club      Club?    @relation(fields: [clubId], references: [id])
   updatedAt DateTime @updatedAt
 }

@@ -8,6 +8,7 @@ const login = async (req, res) => {
     try {
         const user = await prisma.user.findUnique({
             where: { email },
+            include: { club: true }
         });
 
         if (!user) {
@@ -21,7 +22,7 @@ const login = async (req, res) => {
         }
 
         const token = jwt.sign(
-            { id: user.id, email: user.email, role: user.role },
+            { id: user.id, email: user.email, role: user.role, clubId: user.clubId },
             process.env.JWT_SECRET || 'rotary_secret_key',
             { expiresIn: '1d' }
         );
@@ -32,6 +33,7 @@ const login = async (req, res) => {
                 id: user.id,
                 email: user.email,
                 role: user.role,
+                club: user.club
             },
         });
     } catch (err) {

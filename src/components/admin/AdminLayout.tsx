@@ -4,7 +4,6 @@ import {
     LayoutDashboard,
     Users,
     Building2,
-    FileText,
     FolderKanban,
     Newspaper,
     HeartHandshake,
@@ -15,27 +14,42 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
-const menuItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/admin/dashboard' },
-    { icon: Users, label: 'Usuarios', path: '/admin/usuarios' },
-    { icon: Building2, label: 'Clubes', path: '/admin/clubes' },
-    { icon: FileText, label: 'Contenido', path: '/admin/contenido' },
-    { icon: FolderKanban, label: 'Proyectos', path: '/admin/proyectos' },
-    { icon: Newspaper, label: 'Noticias', path: '/admin/noticias' },
-    { icon: HeartHandshake, label: 'Donaciones', path: '/admin/donaciones' },
-    { icon: ImageIcon, label: 'Media Library', path: '/admin/media' },
-    { icon: Settings, label: 'Configuración', path: '/admin/configuracion' },
-];
-
 const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { logout, user } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
 
+    // Define menu items based on role
+    const getMenuItems = () => {
+        if (user?.role === 'administrator') {
+            return [
+                { icon: LayoutDashboard, label: 'Dashboard Global', path: '/admin/dashboard' },
+                { icon: Building2, label: 'Clubes', path: '/admin/clubes' },
+                { icon: Users, label: 'Usuarios Globales', path: '/admin/usuarios' },
+                { icon: Settings, label: 'Configuración Sistema', path: '/admin/configuracion' },
+                { icon: HeartHandshake, label: 'Integraciones', path: '/admin/integraciones' },
+                { icon: ImageIcon, label: 'Media Global', path: '/admin/media' },
+            ];
+        } else if (user?.role === 'club_admin') {
+            return [
+                { icon: LayoutDashboard, label: 'Dashboard Club', path: '/admin/dashboard' },
+                { icon: Building2, label: 'Mi Club', path: '/admin/mi-club' },
+                { icon: FolderKanban, label: 'Proyectos', path: '/admin/proyectos' },
+                { icon: Newspaper, label: 'Noticias', path: '/admin/noticias' },
+                { icon: HeartHandshake, label: 'Donaciones', path: '/admin/donaciones' },
+                { icon: ImageIcon, label: 'Media Library', path: '/admin/media' },
+                { icon: Settings, label: 'Configuración Club', path: '/admin/configuracion' },
+            ];
+        }
+        return [];
+    };
+
     const handleLogout = () => {
         logout();
         navigate('/');
     };
+
+    const menuItems = getMenuItems();
 
     return (
         <div className="flex h-screen bg-gray-50 overflow-hidden">
@@ -55,8 +69,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                             key={item.path}
                             to={item.path}
                             className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-sm group ${location.pathname === item.path
-                                    ? 'bg-white/10 text-white font-medium shadow-sm'
-                                    : 'text-white/70 hover:bg-white/5 hover:text-white'
+                                ? 'bg-white/10 text-white font-medium shadow-sm'
+                                : 'text-white/70 hover:bg-white/5 hover:text-white'
                                 }`}
                         >
                             <item.icon className={`w-5 h-5 transition-colors ${location.pathname === item.path ? 'text-rotary-gold' : 'text-white/40 group-hover:text-white/70'

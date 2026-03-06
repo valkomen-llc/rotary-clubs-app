@@ -1,0 +1,136 @@
+import React, { useEffect, useState } from 'react';
+import AdminLayout from '../../components/admin/AdminLayout';
+import { Plus, Edit2, Trash2, Globe, MapPin } from 'lucide-react';
+import { toast } from 'sonner';
+
+interface Club {
+    id: string;
+    name: string;
+    city: string;
+    country: string;
+    domain: string;
+    subdomain: string;
+    status: string;
+    _count?: {
+        users: number;
+        projects: number;
+        posts: number;
+    };
+}
+
+const ClubsManagement: React.FC = () => {
+    const [clubs, setClubs] = useState<Club[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        fetchClubs();
+    }, []);
+
+    const fetchClubs = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setClubs(data);
+            }
+        } catch (error) {
+            toast.error('Error al cargar clubes');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <AdminLayout>
+            <div className="flex justify-between items-center mb-8">
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-800">Gestión de Clubes</h1>
+                    <p className="text-gray-500 text-sm">Administra todos los clubes de la plataforma.</p>
+                </div>
+                <button className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2 rounded-lg hover:bg-sky-800 transition-colors">
+                    <Plus className="w-4 h-4" /> Nuevo Club
+                </button>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <table className="w-full text-left">
+                    <thead className="bg-gray-50 border-b border-gray-100">
+                        <tr>
+                            <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Club</th>
+                            <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Ubicación</th>
+                            <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Dominios</th>
+                            <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Stats</th>
+                            <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Estado</th>
+                            <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider text-right">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {clubs.map((club) => (
+                            <tr key={club.id} className="hover:bg-gray-50 transition-colors">
+                                <td className="px-6 py-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded bg-sky-100 text-rotary-blue flex items-center justify-center font-bold">
+                                            {club.name.charAt(0)}
+                                        </div>
+                                        <span className="font-medium text-gray-800">{club.name}</span>
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-500">
+                                    <div className="flex items-center gap-1">
+                                        <MapPin className="w-3 h-3" /> {club.city}, {club.country}
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-500 space-y-1">
+                                    <div className="flex items-center gap-1">
+                                        <Globe className="w-3 h-3 text-rotary-blue" /> {club.domain || 'N/A'}
+                                    </div>
+                                    <div className="text-[10px] text-gray-400 font-mono">
+                                        {club.subdomain}.rotaryplatform.org
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4 text-sm">
+                                    <div className="flex gap-4">
+                                        <div className="text-center">
+                                            <p className="text-[10px] text-gray-400 uppercase">Proyectos</p>
+                                            <p className="font-bold">{club._count?.projects || 0}</p>
+                                        </div>
+                                        <div className="text-center">
+                                            <p className="text-[10px] text-gray-400 uppercase">Noticias</p>
+                                            <p className="font-bold">{club._count?.posts || 0}</p>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${club.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                        }`}>
+                                        {club.status}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                    <div className="flex justify-end gap-2">
+                                        <button className="p-2 text-gray-400 hover:text-rotary-blue transition-colors">
+                                            <Edit2 className="w-4 h-4" />
+                                        </button>
+                                        <button className="p-2 text-gray-400 hover:text-red-500 transition-colors">
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+                {clubs.length === 0 && !loading && (
+                    <div className="p-12 text-center text-gray-400">
+                        No hay clubes registrados actualmente.
+                    </div>
+                )}
+            </div>
+        </AdminLayout>
+    );
+};
+
+export default ClubsManagement;
