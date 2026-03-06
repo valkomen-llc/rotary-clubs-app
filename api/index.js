@@ -3,6 +3,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from '../server/routes/auth.js';
 import adminRoutes from '../server/routes/admin.js';
+import clubRoutes from '../server/routes/clubs.js';
+import mediaRoutes from '../server/routes/media.js';
 import { createInitialAdmin } from '../server/controllers/authController.js';
 
 dotenv.config();
@@ -33,5 +35,7 @@ app.get('/api/health', async (req, res) => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/clubs', clubRoutes);
+app.use('/api/media', mediaRoutes);
 
 export default app;
