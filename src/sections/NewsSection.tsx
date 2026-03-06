@@ -1,15 +1,45 @@
 import { useState, useEffect } from 'react';
 import { ArrowRight, ChevronLeft, ChevronRight, Newspaper } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useClub } from '../contexts/ClubContext';
 import { articulosDestacados, articulos } from '../data/news';
 
 const allArticles = [...articulosDestacados, ...articulos];
 
 const NewsSection = () => {
+  const { club } = useClub();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
+  const [dbArticles, setDbArticles] = useState<any[]>([]);
 
   const totalSlides = 3;
+
+  useEffect(() => {
+    const fetchNews = async () => {
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/clubs/${club.id}/posts?limit=9`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.length > 0) {
+            // Map DB fields to component fields
+            const mapped = data.map((post: any) => ({
+              id: post.id,
+              titulo: post.title,
+              imagen: post.image || 'https://images.unsplash.com/photo-1593113598332-cd288d649433?auto=format&fit=crop&q=80',
+              fecha: new Date(post.createdAt).toLocaleDateString()
+            }));
+            setDbArticles(mapped);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching news:', error);
+      }
+    };
+
+    if (club?.id) fetchNews();
+  }, [club?.id]);
+
+  const displayArticles = dbArticles.length > 0 ? dbArticles : allArticles;
 
   // Auto-play carousel every 5 seconds
   useEffect(() => {
@@ -34,12 +64,13 @@ const NewsSection = () => {
 
   // Función para obtener las 3 noticias del slide actual
   const getVisibleArticles = () => {
+    if (displayArticles.length === 0) return [];
     const start = currentSlide;
     return [
-      allArticles[start % allArticles.length],
-      allArticles[(start + 1) % allArticles.length],
-      allArticles[(start + 2) % allArticles.length]
-    ];
+      displayArticles[start % displayArticles.length],
+      displayArticles[(start + 1) % displayArticles.length],
+      displayArticles[(start + 2) % displayArticles.length]
+    ].filter(Boolean);
   };
 
   const visibleArticles = getVisibleArticles();

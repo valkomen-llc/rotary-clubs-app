@@ -47,6 +47,7 @@ import { AuthProvider, useAuth } from './hooks/useAuth';
 
 import Dashboard from './pages/admin/Dashboard';
 import ClubsManagement from './pages/admin/Clubs';
+import ClubSettings from './pages/admin/ClubSettings';
 import { Navigate } from 'react-router-dom';
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
@@ -94,6 +95,14 @@ function App() {
               element={
                 <PrivateRoute>
                   <ClubsManagement />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/admin/configuracion"
+              element={
+                <PrivateRoute>
+                  <ClubSettings />
                 </PrivateRoute>
               }
             />

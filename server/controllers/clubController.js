@@ -29,14 +29,53 @@ const createClub = async (req, res) => {
 
 const updateClub = async (req, res) => {
     const { id } = req.params;
-    const data = req.body;
+    const {
+        name, description, city, country, district, domain, subdomain,
+        email, phone, address,
+        facebook, instagram, twitter, youtube,
+        primaryColor, secondaryColor, logo
+    } = req.body;
+
     try {
+        // Isolation check: only super admin or the club's own admin can edit
+        if (req.user.role !== 'administrator' && req.user.clubId !== id) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        // 1. Update main club info
         const club = await prisma.club.update({
             where: { id },
-            data
+            data: {
+                name, description, city, country, district, domain, subdomain, logo
+            }
         });
+
+        // 2. Update/Upsert settings
+        const settingsToUpdate = {
+            'contact_email': email,
+            'contact_phone': phone,
+            'contact_address': address,
+            'social_facebook': facebook,
+            'social_instagram': instagram,
+            'social_twitter': twitter,
+            'social_youtube': youtube,
+            'color_primary': primaryColor,
+            'color_secondary': secondaryColor
+        };
+
+        for (const [key, value] of Object.entries(settingsToUpdate)) {
+            if (value !== undefined) {
+                await prisma.setting.upsert({
+                    where: { key_clubId: { key, clubId: id } },
+                    update: { value: value.toString() },
+                    create: { key, value: value.toString(), clubId: id }
+                });
+            }
+        }
+
         res.json(club);
     } catch (error) {
+        console.error('Error updating club:', error);
         res.status(500).json({ error: 'Error updating club' });
     }
 };

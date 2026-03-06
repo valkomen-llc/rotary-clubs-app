@@ -29,11 +29,13 @@ app.get('/api/health', async (req, res) => {
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const clubRoutes = require('./routes/clubs');
+const mediaRoutes = require('./routes/media');
 const { createInitialAdmin } = require('./controllers/authController');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/clubs', clubRoutes);
+app.use('/api/media', mediaRoutes);
 
 // Export the app for Vercel Serverless Functions
 module.exports = app;

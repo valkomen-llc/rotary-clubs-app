@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
+import { useClub } from '../contexts/ClubContext';
 
 // Proyectos activos con fundraising
 const proyectosActivos = [
@@ -195,8 +196,43 @@ const formatShort = (value: number) => {
 };
 
 const Proyectos = () => {
+  const { club } = useClub();
   const [scrollPosition, setScrollPosition] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [activeProjects, setActiveProjects] = useState<any[]>([]);
+  const [completedProjects, setCompletedProjects] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/clubs/${club.id}/projects`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.length > 0) {
+            const active = data.filter((p: any) => p.status !== 'completed').map((p: any) => ({
+              ...p,
+              recaudado: p.recaudado || 0, // Fallback if fields are missing in DB
+              meta: p.meta || 1000,
+              ubicacion: p.ubicacion || club.city,
+              categoria: p.categoria || 'Servicio',
+              icono: Heart // Default icon
+            }));
+            const completed = data.filter((p: any) => p.status === 'completed');
+
+            if (active.length > 0) setActiveProjects(active);
+            if (completed.length > 0) setCompletedProjects(completed);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching projects:', error);
+      }
+    };
+
+    if (club?.id) fetchProjects();
+  }, [club?.id]);
+
+  const displayActive = activeProjects.length > 0 ? activeProjects : proyectosActivos;
+  const displayCompleted = completedProjects.length > 0 ? completedProjects : proyectosCompletados;
 
   const scroll = (direction: 'left' | 'right') => {
     const container = scrollContainerRef.current;
@@ -340,7 +376,7 @@ const Proyectos = () => {
               className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-8 pb-8 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
               style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
-              {proyectosActivos.map((proyecto) => {
+              {displayActive.map((proyecto) => {
                 const porcentaje = Math.round((proyecto.recaudado / proyecto.meta) * 100);
                 const Icono = proyecto.icono;
 
@@ -426,7 +462,7 @@ const Proyectos = () => {
 
             {/* Pagination Dots */}
             <div className="flex justify-center gap-2 mt-4">
-              {proyectosActivos.map((_, index) => (
+              {displayActive.map((_, index) => (
                 <button
                   key={index}
                   onClick={() => {
@@ -499,7 +535,7 @@ const Proyectos = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {proyectosCompletados.map((proyecto) => {
+            {displayCompleted.map((proyecto) => {
               const Icono = proyecto.icono;
               const porcentaje = Math.round((proyecto.recaudado / proyecto.meta) * 100);
 

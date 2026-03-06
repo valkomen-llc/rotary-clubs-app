@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1003.0",
+    "@aws-sdk/s3-request-presigner": "^3.1003.0",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -49,6 +51,8 @@
     "input-otp": "^1.4.2",
     "jsonwebtoken": "^9.0.0",
     "lucide-react": "^0.562.0",
+    "multer": "^2.1.1",
+    "multer-s3": "^3.0.1",
     "next-themes": "^0.4.6",
     "react": "^19.2.0",
     "react-day-picker": "^9.13.0",
@@ -77,6 +81,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "nodemon": "^3.1.14",
     "postcss": "^8.5.6",
     "prisma": "^5.20.0",
     "tailwindcss": "^3.4.19",

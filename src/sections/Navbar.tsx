@@ -93,13 +93,17 @@ const Navbar = () => {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
-            <div className="relative w-10 h-10">
-              <svg viewBox="0 0 100 100" className="w-full h-full">
-                <circle cx="50" cy="50" r="45" fill="none" stroke="hsl(210 100% 25%)" strokeWidth="3" />
-                <circle cx="50" cy="50" r="15" fill="hsl(210 100% 25%)" />
-                <path d="M50 5 L50 35 M50 65 L50 95 M5 50 L35 50 M65 50 L95 50" stroke="hsl(210 100% 25%)" strokeWidth="3" />
-                <path d="M22 22 L43 43 M57 57 L78 78 M78 22 L57 43 M43 57 L22 78" stroke="#F5A623" strokeWidth="3" />
-              </svg>
+            <div className="relative w-10 h-10 flex items-center justify-center">
+              {club.logo ? (
+                <img src={club.logo} alt={club.name} className="w-full h-full object-contain" />
+              ) : (
+                <svg viewBox="0 0 100 100" className="w-full h-full">
+                  <circle cx="50" cy="50" r="45" fill="none" stroke="hsl(210 100% 25%)" strokeWidth="3" />
+                  <circle cx="50" cy="50" r="15" fill="hsl(210 100% 25%)" />
+                  <path d="M50 5 L50 35 M50 65 L50 95 M5 50 L35 50 M65 50 L95 50" stroke="hsl(210 100% 25%)" strokeWidth="3" />
+                  <path d="M22 22 L43 43 M57 57 L78 78 M78 22 L57 43 M43 57 L22 78" stroke="#F5A623" strokeWidth="3" />
+                </svg>
+              )}
             </div>
             <div className="flex flex-col">
               <span className="text-rotary-blue font-bold text-sm leading-tight">Rotary Club</span>

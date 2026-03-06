@@ -2,7 +2,12 @@
 export interface ClubConfig {
     id: string;
     name: string;
+    description?: string;
+    city?: string;
+    country?: string;
     domain: string;
+    subdomain?: string;
+    logo?: string;
     logoText: string;
     colors: {
         primary: string;

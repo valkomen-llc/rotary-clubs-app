@@ -12,16 +12,21 @@ const Footer = () => {
           {/* Logo & End Polio */}
           <div>
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-12 h-12">
-                <svg viewBox="0 0 100 100" className="w-full h-full">
-                  <circle cx="50" cy="50" r="45" fill="none" stroke="white" strokeWidth="3" />
-                  <circle cx="50" cy="50" r="15" fill="white" />
-                  <path d="M50 5 L50 35 M50 65 L50 95 M5 50 L35 50 M65 50 L95 50" stroke="white" strokeWidth="3" />
-                  <path d="M22 22 L43 43 M57 57 L78 78 M78 22 L57 43 M43 57 L22 78" stroke="#F5A623" strokeWidth="3" />
-                </svg>
+              <div className="w-12 h-12 flex items-center justify-center">
+                {club.logo ? (
+                  <img src={club.logo} alt={club.name} className="w-full h-full object-contain" />
+                ) : (
+                  <svg viewBox="0 0 100 100" className="w-full h-full">
+                    <circle cx="50" cy="50" r="45" fill="none" stroke="white" strokeWidth="3" />
+                    <circle cx="50" cy="50" r="15" fill="white" />
+                    <path d="M50 5 L50 35 M50 65 L50 95 M50 50 L35 50 M65 50 L95 50" stroke="white" strokeWidth="3" />
+                    <path d="M22 22 L43 43 M57 57 L78 78 M78 22 L57 43 M43 57 L22 78" stroke="#F5A623" strokeWidth="3" />
+                  </svg>
+                )}
               </div>
               <div>
-                <span className="font-bold text-lg">{club.name}</span>
+                <span className="font-bold text-lg leading-tight block">Rotary Club</span>
+                <span className="font-light text-sm opacity-80">{club.name.replace('Rotary Club ', '')}</span>
               </div>
             </div>
             <div className="bg-red-600 text-white text-xs font-bold px-3 py-2 rounded inline-block">
