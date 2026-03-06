@@ -1,14 +1,12 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import authRoutes from '../server/routes/auth.js';
 import adminRoutes from '../server/routes/admin.js';
 import clubRoutes from '../server/routes/clubs.js';
 import mediaRoutes from '../server/routes/media.js';
 import authController from '../server/controllers/authController.js';
 const { createInitialAdmin } = authController;
-
-dotenv.config();
 
 const app = express();
 
