@@ -80,6 +80,7 @@ const ClubSettings: React.FC = () => {
             toast.error(`Error al subir: ${error.message}`);
         } finally {
             setUploading(false);
+            if (e.target) e.target.value = ''; // Reset to allow re-selecting same file
         }
     };
 
