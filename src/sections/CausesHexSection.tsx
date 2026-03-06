@@ -52,7 +52,7 @@ const styles = `
   .areas-rotary__title {
     color: #fff;
     font-size: clamp(1.75rem, 4vw, 2.5rem);
-    font-weight: 700;
+    font-weight: 300;
     margin-bottom: 1.5rem;
     font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   }

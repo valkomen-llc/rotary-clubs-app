@@ -17,7 +17,7 @@ const FoundationSection = () => {
       {/* Contenido - Caja de texto */}
       <div className="relative z-10 min-h-[500px] md:min-h-[600px] flex items-center justify-end max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
         <div className="bg-white rounded-2xl md:rounded-3xl shadow-2xl px-8 md:px-12 py-10 md:py-12 max-w-lg w-full ml-auto">
-          <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-6">
+          <h2 className="text-2xl md:text-3xl font-light text-gray-900 mb-6">
             Nuestra Fundación
           </h2>
           <p className="text-gray-600 text-base md:text-lg leading-relaxed mb-8">

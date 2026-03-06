@@ -7,7 +7,7 @@ const JoinSection = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           {/* Text Content */}
           <div className="text-white">
-            <h2 className="text-3xl md:text-4xl font-bold mb-6 leading-tight">
+            <h2 className="text-3xl md:text-4xl font-light mb-6 leading-tight">
               Únete a Rotary y construyamos juntos un futuro de servicio y amistad, impulsando el cambio y la solidaridad en el mundo
             </h2>
             <p className="text-white/80 mb-8 leading-relaxed">
