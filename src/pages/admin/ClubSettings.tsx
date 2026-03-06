@@ -77,8 +77,6 @@ const ClubSettings: React.FC = () => {
 
             if (response.ok) {
                 const data = await response.json();
-                console.log('Upload success, URL:', data.url);
-                window.alert('¡SUBIDA EXITOSA!\nURL generada: ' + data.url);
                 setFormData(prev => ({ ...prev, logo: data.url }));
                 toast.success('Logo subido con éxito');
             } else {
@@ -203,7 +201,7 @@ const ClubSettings: React.FC = () => {
                     <div className="flex flex-col md:flex-row items-center gap-8">
                         <div className="w-48 h-48 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden bg-gray-50">
                             {formData.logo ? (
-                                <img src={formData.logo} alt="Logo preview" className="w-full h-full object-contain p-4" />
+                                <img src={formData.logo} alt="Logo preview" className="w-full h-full object-contain p-4" crossOrigin="anonymous" />
                             ) : (
                                 <ImageIcon className="w-12 h-12 text-gray-300" />
                             )}
