@@ -4,6 +4,11 @@ interface User {
     id: string;
     email: string;
     role: string;
+    clubId?: string;
+    club?: {
+        id: string;
+        name: string;
+    };
 }
 
 interface AuthContextType {

@@ -9,6 +9,10 @@ const {
     getClubAgentContext
 } = require('../controllers/contentController');
 
+const {
+    getUsers, createUser, updateUser, deleteUser
+} = require('../controllers/userController');
+
 // All admin routes are protected
 router.use(authMiddleware);
 
@@ -23,6 +27,12 @@ router.get('/clubs/:clubId/agent-context', roleMiddleware(['administrator', 'clu
 
 // --- CLUB ADMIN & SUPER ADMIN ROUTES ---
 const adminRoles = ['administrator', 'club_admin'];
+
+// Users management
+router.get('/users', roleMiddleware(adminRoles), getUsers);
+router.post('/users', roleMiddleware(adminRoles), createUser);
+router.put('/users/:id', roleMiddleware(adminRoles), updateUser);
+router.delete('/users/:id', roleMiddleware(adminRoles), deleteUser);
 
 // CMS Content management
 router.get('/sections', roleMiddleware(adminRoles), getSections);

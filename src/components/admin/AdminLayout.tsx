@@ -38,6 +38,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: Building2, label: 'Mi Club', path: '/admin/mi-club' },
                 { icon: FolderKanban, label: 'Proyectos', path: '/admin/proyectos' },
                 { icon: Newspaper, label: 'Noticias', path: '/admin/noticias' },
+                { icon: Users, label: 'Usuarios del Club', path: '/admin/usuarios' },
                 { icon: HeartHandshake, label: 'Donaciones', path: '/admin/donaciones' },
                 { icon: ImageIcon, label: 'Media Library', path: '/admin/media' },
                 { icon: Settings, label: 'Configuración Club', path: '/admin/configuracion' },

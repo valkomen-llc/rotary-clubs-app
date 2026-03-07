@@ -50,6 +50,7 @@ import ClubsManagement from './pages/admin/Clubs';
 import ClubSettings from './pages/admin/ClubSettings';
 import NewsManagement from './pages/admin/News';
 import ProjectsManagement from './pages/admin/Projects';
+import UsersManagement from './pages/admin/Users';
 import { Navigate } from 'react-router-dom';
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
@@ -121,6 +122,14 @@ function App() {
               element={
                 <PrivateRoute>
                   <ProjectsManagement />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/admin/usuarios"
+              element={
+                <PrivateRoute>
+                  <UsersManagement />
                 </PrivateRoute>
               }
             />
