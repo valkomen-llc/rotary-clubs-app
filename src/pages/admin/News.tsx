@@ -38,6 +38,17 @@ const NewsManagement: React.FC = () => {
     }, [club?.id]);
 
     const fetchPosts = async () => {
+        // Concatenate static posts for visualization
+        const staticMapped: Post[] = [...articulosDestacados, ...articulosEstaticos].map(art => ({
+            id: `static-${art.id}`,
+            title: art.titulo,
+            content: art.resumen, // Using summary as content for static
+            image: art.imagen,
+            published: true,
+            createdAt: art.fecha,
+            isStatic: true
+        }));
+
         try {
             const token = localStorage.getItem('rotary_token');
             const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/posts`, {
@@ -45,22 +56,13 @@ const NewsManagement: React.FC = () => {
             });
             if (response.ok) {
                 const dbPosts = await response.json();
-
-                // Concatenate static posts for visualization
-                const staticMapped: Post[] = [...articulosDestacados, ...articulosEstaticos].map(art => ({
-                    id: `static-${art.id}`,
-                    title: art.titulo,
-                    content: art.resumen, // Using summary as content for static
-                    image: art.imagen,
-                    published: true,
-                    createdAt: art.fecha,
-                    isStatic: true
-                }));
-
                 setPosts([...dbPosts, ...staticMapped]);
+            } else {
+                setPosts(staticMapped);
             }
         } catch (error) {
-            toast.error('Error al cargar noticias');
+            console.error('API Error:', error);
+            setPosts(staticMapped);
         }
     };
 

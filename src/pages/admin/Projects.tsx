@@ -23,10 +23,42 @@ const staticProjects = [
         isStatic: true
     },
     {
+        id: 'static-3',
+        title: 'Reforestación de Cuencas Hídricas',
+        description: 'Plantación de 50,000 árboles nativos en cuencas hídricas degradadas para proteger el recurso hídrico y combatir el cambio climático.',
+        image: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=800&h=500&fit=crop',
+        status: 'active',
+        isStatic: true
+    },
+    {
+        id: 'static-4',
+        title: 'Viviendas Dignas para Familias Afectadas',
+        description: 'Construcción de 30 viviendas sismorresistentes para familias que perdieron sus hogares por desastres naturales.',
+        image: 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=800&h=500&fit=crop',
+        status: 'active',
+        isStatic: true
+    },
+    {
         id: 'static-5',
         title: 'Campaña #TodoPorNuestrosHéroes',
         description: 'Entrega de 50,000 equipos de protección personal a trabajadores de la salud durante la pandemia.',
         image: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800&h=500&fit=crop',
+        status: 'completed',
+        isStatic: true
+    },
+    {
+        id: 'static-6',
+        title: 'Introcamp 2024 - Intercambio Juvenil',
+        description: 'Programa de bienvenida para 63 estudiantes de intercambio internacional en Colombia.',
+        image: 'https://images.unsplash.com/photo-1531206715517-5c0ba140b2b8?w=800&h=500&fit=crop',
+        status: 'completed',
+        isStatic: true
+    },
+    {
+        id: 'static-7',
+        title: 'Rotary Pinta Colombia - Fase 1',
+        description: 'Embellecimiento de espacios públicos con murales en 10 ciudades colombianas.',
+        image: 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=800&h=500&fit=crop',
         status: 'completed',
         isStatic: true
     }
@@ -65,6 +97,17 @@ const ProjectsManagement: React.FC = () => {
     }, [club?.id]);
 
     const fetchProjects = async () => {
+        // Map static projects first
+        const mappedStatic: Project[] = staticProjects.map(p => ({
+            id: p.id,
+            title: p.title,
+            description: p.description,
+            image: p.image,
+            status: p.status,
+            createdAt: 'Enero 2024',
+            isStatic: true
+        }));
+
         try {
             const token = localStorage.getItem('rotary_token');
             const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/projects`, {
@@ -72,22 +115,13 @@ const ProjectsManagement: React.FC = () => {
             });
             if (response.ok) {
                 const dbProjects = await response.json();
-
-                // Concatenate static projects
-                const mappedStatic: Project[] = staticProjects.map(p => ({
-                    id: p.id,
-                    title: p.title,
-                    description: p.description,
-                    image: p.image,
-                    status: p.status,
-                    createdAt: 'Enero 2024',
-                    isStatic: true
-                }));
-
                 setProjects([...dbProjects, ...mappedStatic]);
+            } else {
+                setProjects(mappedStatic);
             }
         } catch (error) {
-            toast.error('Error al cargar proyectos');
+            console.error('API Error:', error);
+            setProjects(mappedStatic);
         }
     };
 
