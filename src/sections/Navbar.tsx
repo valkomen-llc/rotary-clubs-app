@@ -93,7 +93,7 @@ const Navbar = () => {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center">
-            <div className="relative" style={{ width: '108px' }}>
+            <div className="relative" style={{ width: '130px' }}>
               {club.logo ? (
                 <img src={club.logo} alt={club.name} className="w-full h-auto object-contain" />
               ) : (
