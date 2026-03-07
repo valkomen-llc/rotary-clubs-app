@@ -2,7 +2,7 @@ import { Star } from 'lucide-react';
 
 const JoinSection = () => {
   return (
-    <section className="bg-rotary-blue py-16 md:py-20">
+    <section className="py-16 md:py-20" style={{ backgroundColor: '#0c3c7c' }}>
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           {/* Text Content */}

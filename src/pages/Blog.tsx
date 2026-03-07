@@ -38,7 +38,7 @@ const Blog = () => {
       <section
         className="py-16 md:py-20"
         style={{
-          backgroundColor: '#263b4c',
+          backgroundColor: '#0c3c7c',
           backgroundImage: "url('/geo-darkblue.png')",
           backgroundPosition: '50% 0',
           backgroundRepeat: 'repeat',
