@@ -12,7 +12,8 @@ import {
     LogOut,
     ChevronLeft,
     Sparkles,
-    Calendar
+    Calendar,
+    BookOpen
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -34,6 +35,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: HeartHandshake, label: 'Integraciones', path: '/admin/integraciones' },
                 { icon: ImageIcon, label: 'Media Global', path: '/admin/media' },
                 { icon: Calendar, label: 'Calendario Global', path: '/admin/calendario' },
+                { icon: BookOpen, label: 'Conocimiento Global', path: '/admin/conocimiento' },
             ];
         } else if (user?.role === 'club_admin') {
             return [
@@ -46,6 +48,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: HeartHandshake, label: 'Donaciones', path: '/admin/donaciones' },
                 { icon: ImageIcon, label: 'Media Library', path: '/admin/media' },
                 { icon: Calendar, label: 'Calendario', path: '/admin/calendario' },
+                { icon: BookOpen, label: 'Conocimiento', path: '/admin/conocimiento' },
                 { icon: Settings, label: 'Configuración Club', path: '/admin/configuracion' },
             ];
         }

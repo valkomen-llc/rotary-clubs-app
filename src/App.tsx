@@ -64,6 +64,7 @@ import { ClubProvider } from './contexts/ClubContext';
 
 import MediaLibrary from './pages/admin/MediaLibrary';
 import ContentCalendar from './pages/admin/ContentCalendar';
+import KnowledgeBase from './pages/admin/KnowledgeBase';
 
 function App() {
   return (
@@ -159,6 +160,14 @@ function App() {
               element={
                 <PrivateRoute>
                   <ContentCalendar />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/admin/conocimiento"
+              element={
+                <PrivateRoute>
+                  <KnowledgeBase />
                 </PrivateRoute>
               }
             />
