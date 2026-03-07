@@ -12,7 +12,7 @@ const Footer = () => {
           {/* Logo & End Polio */}
           <div>
             <div className="flex items-center mb-4">
-              <div className="relative" style={{ width: '108px' }}>
+              <div className="relative" style={{ width: '158px' }}>
                 <img
                   src={club.footerLogo || 'https://rotary-platform-assets.s3.amazonaws.com/logos/rotary-logo-white-main.png'}
                   alt="Rotary logo"
