@@ -2,7 +2,8 @@ const prisma = require('../lib/prisma');
 
 // Public: Get posts for a specific club
 const getPublicPosts = async (req, res) => {
-    const { clubId, limit } = req.query;
+    const { clubId } = req.params;
+    const { limit } = req.query;
     try {
         const posts = await prisma.post.findMany({
             where: {
@@ -20,7 +21,8 @@ const getPublicPosts = async (req, res) => {
 
 // Public: Get projects for a specific club
 const getPublicProjects = async (req, res) => {
-    const { clubId, limit } = req.query;
+    const { clubId } = req.params;
+    const { limit } = req.query;
     try {
         const projects = await prisma.project.findMany({
             where: {
@@ -42,7 +44,8 @@ const getClubPosts = async (req, res) => {
         if (!clubId) return res.status(400).json({ error: 'clubId is required' });
 
         const posts = await prisma.post.findMany({
-            where: { clubId }
+            where: { clubId },
+            orderBy: { createdAt: 'desc' }
         });
         res.json(posts);
     } catch (error) {
@@ -50,8 +53,134 @@ const getClubPosts = async (req, res) => {
     }
 };
 
+const createPost = async (req, res) => {
+    const { title, content, image, published, clubId } = req.body;
+    try {
+        const targetClubId = req.user.role === 'administrator' ? (clubId || req.user.clubId) : req.user.clubId;
+
+        const post = await prisma.post.create({
+            data: { title, content, image, published: published || false, clubId: targetClubId }
+        });
+        res.status(201).json(post);
+    } catch (error) {
+        res.status(500).json({ error: 'Error creating post' });
+    }
+};
+
+const updatePost = async (req, res) => {
+    const { id } = req.params;
+    const { title, content, image, published } = req.body;
+    try {
+        const existing = await prisma.post.findUnique({ where: { id } });
+        if (!existing) return res.status(404).json({ error: 'Post not found' });
+
+        if (req.user.role !== 'administrator' && existing.clubId !== req.user.clubId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        const post = await prisma.post.update({
+            where: { id },
+            data: { title, content, image, published }
+        });
+        res.json(post);
+    } catch (error) {
+        res.status(500).json({ error: 'Error updating post' });
+    }
+};
+
+const deletePost = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const existing = await prisma.post.findUnique({ where: { id } });
+        if (!existing) return res.status(404).json({ error: 'Post not found' });
+
+        if (req.user.role !== 'administrator' && existing.clubId !== req.user.clubId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        await prisma.post.delete({ where: { id } });
+        res.json({ message: 'Post deleted' });
+    } catch (error) {
+        res.status(500).json({ error: 'Error deleting post' });
+    }
+};
+
+const getClubProjects = async (req, res) => {
+    try {
+        const clubId = req.user.role === 'administrator' ? req.query.clubId : req.user.clubId;
+        if (!clubId) return res.status(400).json({ error: 'clubId is required' });
+
+        const projects = await prisma.project.findMany({
+            where: { clubId },
+            orderBy: { createdAt: 'desc' }
+        });
+        res.json(projects);
+    } catch (error) {
+        res.status(500).json({ error: 'Error fetching club projects' });
+    }
+};
+
+const createProject = async (req, res) => {
+    const { title, description, image, status, clubId } = req.body;
+    try {
+        const targetClubId = req.user.role === 'administrator' ? (clubId || req.user.clubId) : req.user.clubId;
+
+        const project = await prisma.project.create({
+            data: { title, description, image, status: status || 'planned', clubId: targetClubId }
+        });
+        res.status(201).json(project);
+    } catch (error) {
+        res.status(500).json({ error: 'Error creating project' });
+    }
+};
+
+const updateProject = async (req, res) => {
+    const { id } = req.params;
+    const { title, description, image, status } = req.body;
+    try {
+        const existing = await prisma.project.findUnique({ where: { id } });
+        if (!existing) return res.status(404).json({ error: 'Project not found' });
+
+        if (req.user.role !== 'administrator' && existing.clubId !== req.user.clubId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        const project = await prisma.project.update({
+            where: { id },
+            data: { title, description, image, status }
+        });
+        res.json(project);
+    } catch (error) {
+        res.status(500).json({ error: 'Error updating project' });
+    }
+};
+
+const deleteProject = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const existing = await prisma.project.findUnique({ where: { id } });
+        if (!existing) return res.status(404).json({ error: 'Project not found' });
+
+        if (req.user.role !== 'administrator' && existing.clubId !== req.user.clubId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        await prisma.project.delete({ where: { id } });
+        res.json({ message: 'Project deleted' });
+    } catch (error) {
+        res.status(500).json({ error: 'Error deleting project' });
+    }
+};
+
 module.exports = {
     getPublicPosts,
     getPublicProjects,
-    getClubPosts
+    getClubPosts,
+    createPost,
+    updatePost,
+    deletePost,
+    getClubProjects,
+    createProject,
+    updateProject,
+    deleteProject
 };
