@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Plus, Edit2, Trash2, Search, Newspaper, X, Upload,
-    Globe, Image as ImageIcon, Video, Tag, Settings, ChevronRight
+    Globe, Image as ImageIcon, Video, Tag, ChevronRight
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useClub } from '../../contexts/ClubContext';
@@ -364,8 +364,8 @@ const NewsManagement: React.FC = () => {
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id as any)}
                                     className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all border-b-2 ${activeTab === tab.id
-                                            ? 'border-rotary-blue text-rotary-blue'
-                                            : 'border-transparent text-gray-400 hover:text-gray-600'
+                                        ? 'border-rotary-blue text-rotary-blue'
+                                        : 'border-transparent text-gray-400 hover:text-gray-600'
                                         }`}
                                 >
                                     <tab.icon className="w-4 h-4" />
