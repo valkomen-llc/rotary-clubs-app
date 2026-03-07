@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authMiddleware, roleMiddleware } = require('../middleware/auth');
 const { getSections, updateSection, createSection } = require('../controllers/cmsController');
-const { getAllClubs, createClub, updateClub, deleteClub } = require('../controllers/clubController');
+const { getAllClubs, getClubById, createClub, updateClub, deleteClub } = require('../controllers/clubController');
 const {
     getClubPosts, createPost, updatePost, deletePost,
     getClubProjects, createProject, updateProject, deleteProject,
@@ -21,12 +21,15 @@ const superAdminOnly = roleMiddleware(['administrator']);
 
 router.get('/clubs', superAdminOnly, getAllClubs);
 router.post('/clubs', superAdminOnly, createClub);
-router.put('/clubs/:id', superAdminOnly, updateClub);
 router.delete('/clubs/:id', superAdminOnly, deleteClub);
 router.get('/clubs/:clubId/agent-context', roleMiddleware(['administrator', 'club_admin']), getClubAgentContext);
 
 // --- CLUB ADMIN & SUPER ADMIN ROUTES ---
 const adminRoles = ['administrator', 'club_admin'];
+
+// Club profile management
+router.get('/clubs/:id', roleMiddleware(adminRoles), getClubById);
+router.put('/clubs/:id', roleMiddleware(adminRoles), updateClub);
 
 // Users management
 router.get('/users', roleMiddleware(adminRoles), getUsers);

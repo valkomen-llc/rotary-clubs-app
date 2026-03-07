@@ -15,6 +15,22 @@ const getAllClubs = async (req, res) => {
     }
 };
 
+const getClubById = async (req, res) => {
+    const { id } = req.params;
+    try {
+        if (req.user.role !== 'administrator' && req.user.clubId !== id) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+        const club = await prisma.club.findUnique({
+            where: { id },
+            include: { settings: true }
+        });
+        res.json(club);
+    } catch (error) {
+        res.status(500).json({ error: 'Error fetching club' });
+    }
+};
+
 const createClub = async (req, res) => {
     const { name, city, country, district, domain, subdomain, description, status } = req.body;
     try {
@@ -94,6 +110,7 @@ const deleteClub = async (req, res) => {
 
 module.exports = {
     getAllClubs,
+    getClubById,
     createClub,
     updateClub,
     deleteClub

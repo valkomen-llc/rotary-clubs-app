@@ -51,6 +51,7 @@ import ClubSettings from './pages/admin/ClubSettings';
 import NewsManagement from './pages/admin/News';
 import ProjectsManagement from './pages/admin/Projects';
 import UsersManagement from './pages/admin/Users';
+import ClubProfile from './pages/admin/ClubProfile';
 import { Navigate } from 'react-router-dom';
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
@@ -130,6 +131,14 @@ function App() {
               element={
                 <PrivateRoute>
                   <UsersManagement />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/admin/mi-club"
+              element={
+                <PrivateRoute>
+                  <ClubProfile />
                 </PrivateRoute>
               }
             />
