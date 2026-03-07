@@ -26,8 +26,12 @@ const Footer = () => {
                 </div>
               )}
             </div>
-            <div className="bg-red-600 text-white text-xs font-bold px-3 py-2 rounded inline-block">
-              END<br />POLIO<br />NOW
+            <div className="mt-6">
+              <img
+                src="https://rotary-platform-assets.s3.amazonaws.com/logos/end-polio-now-logo.png"
+                alt="End Polio Now"
+                className="h-14 w-auto object-contain"
+              />
             </div>
           </div>
 
