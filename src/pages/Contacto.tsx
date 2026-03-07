@@ -2,9 +2,6 @@ import { useState } from 'react';
 import {
   MapPin,
   Phone,
-  Mail,
-  Clock,
-  Send,
   Facebook,
   Instagram,
   Twitter,
@@ -18,52 +15,20 @@ import {
 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
+import { useCMSContent } from '../hooks/useCMSContent';
+import { useClub } from '../contexts/ClubContext';
 
-const informacionContacto = [
-  {
-    icono: MapPin,
-    titulo: 'Dirección',
-    contenido: 'Carrera 7 # 71-21, Torre B Oficina 801',
-    subtitulo: 'Bogotá, Colombia'
-  },
-  {
-    icono: Phone,
-    titulo: 'Teléfono',
-    contenido: '+57 (1) 703 7838',
-    subtitulo: 'Lunes a Viernes, 8am - 5pm'
-  },
-  {
-    icono: Mail,
-    titulo: 'Email',
-    contenido: 'info@rotaryorigen.org',
-    subtitulo: 'contacto@rotaryorigen.org'
-  },
-  {
-    icono: Clock,
-    titulo: 'Horario de Atención',
-    contenido: 'Lunes a Viernes: 8:00 - 17:00',
-    subtitulo: 'Sábados: 9:00 - 12:00'
-  }
-];
-
-const redesSociales = [
-  { nombre: 'Facebook', icono: Facebook, url: '#', color: 'bg-blue-600' },
-  { nombre: 'Instagram', icono: Instagram, url: '#', color: 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-500' },
-  { nombre: 'Twitter', icono: Twitter, url: '#', color: 'bg-sky-500' },
-  { nombre: 'LinkedIn', icono: Linkedin, url: '#', color: 'bg-blue-700' },
-  { nombre: 'YouTube', icono: Youtube, url: '#', color: 'bg-red-600' }
-];
-
-const asuntos = [
-  'Información general',
-  'Quiero ser socio',
-  'Donaciones',
-  'Proyectos',
-  'Prensa y medios',
-  'Otro'
-];
+const redesSocialesIconMap: Record<string, React.ElementType> = {
+  Facebook,
+  Instagram,
+  Twitter,
+  Linkedin,
+  Youtube
+};
 
 const Contacto = () => {
+  const { club } = useClub();
+  const { sections } = useCMSContent('contacto', club.id);
   const [formData, setFormData] = useState({
     nombre: '',
     email: '',
@@ -74,32 +39,65 @@ const Contacto = () => {
   const [enviado, setEnviado] = useState(false);
   const [enviando, setEnviando] = useState(false);
 
+  const getC = (section: string, field: string, fallback: string) => {
+    return sections[section]?.[field] || fallback;
+  }
+
+  const defaultInfo = [
+    {
+      icono: MapPin,
+      titulo: 'Dirección',
+      contenido: club.contact?.address || 'Bogotá, Colombia',
+      subtitulo: club.city || ''
+    },
+    {
+      icono: Phone,
+      titulo: 'Teléfono',
+      contenido: club.contact?.phone || '+57',
+      subtitulo: 'Lunes a Viernes'
+    }
+  ];
+
+  const infoContacto = sections['info-list']?.items?.map((item: any) => ({
+    ...item,
+    icono: MapPin // Default icon since icon strings need mapping
+  })) || defaultInfo;
+
+  const defaultRedes = [
+    { nombre: 'Facebook', icono: Facebook, url: '#', color: 'bg-blue-600' },
+    { nombre: 'Instagram', icono: Instagram, url: '#', color: 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-500' }
+  ];
+
+  const redes = sections['social-list']?.items?.map((item: any) => ({
+    ...item,
+    icono: redesSocialesIconMap[item.red] || Facebook
+  })) || defaultRedes;
+
+  const faqs = sections['faq-list']?.items || [
+    {
+      pregunta: '¿Cómo puedo ser socio?',
+      respuesta: 'Contáctanos para más información sobre el proceso.'
+    }
+  ];
+
+  const asuntos = sections['asuntos']?.items?.map((i: any) => i.value) || [
+    'Información general',
+    'Quiero ser socio',
+    'Donaciones'
+  ];
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setEnviando(true);
-
-    // Simulación de envío
     await new Promise(resolve => setTimeout(resolve, 1500));
-
     setEnviando(false);
     setEnviado(true);
-    setFormData({
-      nombre: '',
-      email: '',
-      telefono: '',
-      asunto: '',
-      mensaje: ''
-    });
-
-    // Resetear mensaje de éxito después de 5 segundos
+    setFormData({ nombre: '', email: '', telefono: '', asunto: '', mensaje: '' });
     setTimeout(() => setEnviado(false), 5000);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
+    setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
   return (
@@ -120,15 +118,14 @@ const Contacto = () => {
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
           <div className="text-center max-w-3xl mx-auto">
             <span className="inline-block bg-rotary-gold text-white text-sm font-semibold px-4 py-1 rounded-full mb-6">
-              Contáctanos
+              {getC('header', 'badge', "Contáctanos")}
             </span>
             <h1 className="text-3xl md:text-5xl font-bold text-white mb-6">
-              Estamos Aquí para{' '}
-              <span className="text-rotary-gold">Ayudarte</span>
+              {getC('header', 'title', "Estamos Aquí para")}{' '}
+              <span className="text-rotary-gold">{getC('header', 'highlight', "Ayudarte")}</span>
             </h1>
             <p className="text-white/80 text-lg md:text-xl">
-              ¿Tienes preguntas sobre nuestros proyectos, quieres ser socio o hacer una donación?
-              Nos encantaría escucharte.
+              {getC('header', 'description', "¿Tienes preguntas sobre nuestros proyectos o quieres ser socio?")}
             </p>
           </div>
         </div>
@@ -138,7 +135,7 @@ const Contacto = () => {
       <section className="py-12 md:py-16 bg-rotary-concrete">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {informacionContacto.map((item, index) => {
+            {infoContacto.map((item: any, index: number) => {
               const Icono = item.icono;
               return (
                 <div key={index} className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow text-center">
@@ -162,10 +159,10 @@ const Contacto = () => {
             {/* Formulario */}
             <div>
               <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
-                Envíanos un Mensaje
+                {getC('form', 'title', "Envíanos un Mensaje")}
               </h2>
               <p className="text-gray-600 mb-8">
-                Completa el formulario y te responderemos lo antes posible.
+                {getC('form', 'description', "Completa el formulario y te responderemos lo antes posible.")}
               </p>
 
               {enviado && (
@@ -174,7 +171,7 @@ const Contacto = () => {
                   <div>
                     <h4 className="font-semibold text-green-800">¡Mensaje enviado!</h4>
                     <p className="text-green-700 text-sm">
-                      Gracias por contactarnos. Te responderemos en un plazo de 24-48 horas.
+                      Gracias por contactarnos. Te responderemos pronto.
                     </p>
                   </div>
                 </div>
@@ -234,7 +231,7 @@ const Contacto = () => {
                         value={formData.telefono}
                         onChange={handleChange}
                         className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
-                        placeholder="+57 (1) 234 5678"
+                        placeholder="+57"
                       />
                     </div>
                   </div>
@@ -253,7 +250,7 @@ const Contacto = () => {
                         className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all appearance-none bg-white"
                       >
                         <option value="">Selecciona un asunto</option>
-                        {asuntos.map((asunto, index) => (
+                        {asuntos.map((asunto: string, index: number) => (
                           <option key={index} value={asunto}>{asunto}</option>
                         ))}
                       </select>
@@ -285,17 +282,7 @@ const Contacto = () => {
                   disabled={enviando}
                   className="w-full bg-rotary-blue text-white py-4 rounded-full font-semibold hover:bg-rotary-dark-blue transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
-                  {enviando ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Enviando...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-5 h-5" />
-                      Enviar Mensaje
-                    </>
-                  )}
+                  {enviando ? "Enviando..." : "Enviar Mensaje"}
                 </button>
               </form>
             </div>
@@ -303,26 +290,25 @@ const Contacto = () => {
             {/* Mapa e Información Adicional */}
             <div>
               <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
-                Nuestra Ubicación
+                {getC('location', 'title', "Nuestra Ubicación")}
               </h2>
               <p className="text-gray-600 mb-8">
-                Visítanos en nuestras oficinas. Estaremos encantados de recibirte.
+                {getC('location', 'description', "Visítanos en nuestras oficinas.")}
               </p>
 
-              {/* Mapa Placeholder */}
               <div className="bg-gray-100 rounded-xl overflow-hidden mb-8 aspect-[4/3]">
                 <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-rotary-blue/5 to-rotary-gold/5">
                   <div className="text-center p-8">
                     <div className="w-20 h-20 bg-rotary-blue/10 rounded-full flex items-center justify-center mx-auto mb-4">
                       <MapPin className="w-10 h-10 text-rotary-blue" />
                     </div>
-                    <h3 className="font-bold text-gray-900 mb-2">Rotary Club</h3>
+                    <h3 className="font-bold text-gray-900 mb-2">{club.name}</h3>
                     <p className="text-gray-600 text-sm">
-                      Carrera 7 # 71-21, Torre B Oficina 801<br />
-                      Bogotá, Colombia
+                      {club.contact?.address}<br />
+                      {club.city}
                     </p>
                     <a
-                      href="https://maps.google.com/?q=Bogotá+Colombia"
+                      href={`https://maps.google.com/?q=${club.contact?.address}+${club.city}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-2 text-rotary-blue font-medium mt-4 hover:underline"
@@ -337,13 +323,13 @@ const Contacto = () => {
               <div>
                 <h3 className="font-bold text-gray-900 mb-4">Síguenos en Redes Sociales</h3>
                 <div className="flex gap-3">
-                  {redesSociales.map((red, index) => {
+                  {redes.map((red: any, index: number) => {
                     const Icono = red.icono;
                     return (
                       <a
                         key={index}
                         href={red.url}
-                        className={`w-12 h-12 ${red.color} rounded-full flex items-center justify-center text-white hover:opacity-90 transition-opacity`}
+                        className={`w-12 h-12 ${red.color || 'bg-rotary-blue'} rounded-full flex items-center justify-center text-white hover:opacity-90 transition-opacity`}
                         title={red.nombre}
                       >
                         <Icono className="w-5 h-5" />
@@ -370,24 +356,7 @@ const Contacto = () => {
           </div>
 
           <div className="space-y-4">
-            {[
-              {
-                pregunta: '¿Cómo puedo ser socio del Rotary Club?',
-                respuesta: 'Para ser socio, debes ser invitado por un socio actual o solicitar una entrevista con nuestro comité de membresía. Contáctanos para más información sobre el proceso.'
-              },
-              {
-                pregunta: '¿Puedo hacer donaciones sin ser socio?',
-                respuesta: '¡Por supuesto! Aceptamos donaciones de personas y empresas. Puedes donar a proyectos específicos o hacer aportes generales a través de nuestra sección de Proyectos.'
-              },
-              {
-                pregunta: '¿Cómo puedo solicitar apoyo para un proyecto comunitario?',
-                respuesta: 'Envíanos un correo a info@rotaryorigen.org describiendo tu proyecto, la comunidad beneficiaria y el presupuesto estimado. Nuestro comité de proyectos lo evaluará.'
-              },
-              {
-                pregunta: '¿El club tiene actividades presenciales o virtuales?',
-                respuesta: 'Como club, nuestras reuniones son principalmente virtuales, pero también organizamos eventos presenciales para proyectos y actividades comunitarias.'
-              }
-            ].map((faq, index) => (
+            {faqs.map((faq: any, index: number) => (
               <div key={index} className="bg-white rounded-xl p-6 shadow-sm">
                 <h3 className="font-bold text-gray-900 mb-2">{faq.pregunta}</h3>
                 <p className="text-gray-600">{faq.respuesta}</p>
@@ -396,7 +365,6 @@ const Contacto = () => {
           </div>
         </div>
       </section>
-
 
       <Footer />
     </div>

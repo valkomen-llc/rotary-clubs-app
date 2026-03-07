@@ -1,16 +1,25 @@
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
+import { useCMSContent } from '../hooks/useCMSContent';
+import { useClub } from '../contexts/ClubContext';
 
 const Rotaract = () => {
+    const { club } = useClub();
+    const { sections } = useCMSContent('rotaract', club.id);
+
+    const getC = (section: string, field: string, fallback: string) => {
+        return sections[section]?.[field] || fallback;
+    }
+
     return (
         <div className="min-h-screen bg-white">
             <Navbar />
 
-            {/* Hero Section - Impact Image */}
+            {/* Hero Section */}
             <section className="relative w-full h-[350px] md:h-[450px] overflow-hidden">
                 <div className="absolute inset-0">
                     <img
-                        src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&h=600&fit=crop"
+                        src={getC('hero', 'image', "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&h=600&fit=crop")}
                         alt="Rotaract"
                         className="w-full h-full object-cover"
                     />
@@ -18,7 +27,7 @@ const Rotaract = () => {
                 </div>
             </section>
 
-            {/* Title Section - Blue Background */}
+            {/* Title Section */}
             <section
                 className="py-12 md:py-16"
                 style={{
@@ -30,7 +39,9 @@ const Rotaract = () => {
                 }}
             >
                 <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-                    <h1 className="text-3xl md:text-4xl font-bold text-white tracking-wider">Rotaract</h1>
+                    <h1 className="text-3xl md:text-4xl font-bold text-white tracking-wider">
+                        {getC('header', 'title', `Rotaract ${club.name}`)}
+                    </h1>
                 </div>
             </section>
 
@@ -39,21 +50,25 @@ const Rotaract = () => {
                 <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="text-center mb-12">
                         <p className="text-xl md:text-2xl text-gray-700 leading-relaxed font-light">
-                            Los clubes Rotaract ofrecen a personas de 18 años en adelante la oportunidad de intercambiar ideas con los líderes de la comunidad, adquirir habilidades profesionales y de liderazgo y, sobre todo, servir y divertirse.
+                            {getC('intro', 'text', "Los clubes Rotaract ofrecen a personas de 18 años en adelante la oportunidad de intercambiar ideas con los líderes de la comunidad, adquirir habilidades profesionales y de liderazgo y, sobre todo, servir y divertirse.")}
                         </p>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mt-16">
-                        <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-                            <h2 className="text-2xl font-bold text-rotary-blue mb-4">¿Qué es Rotaract?</h2>
+                        <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 border-t-4 border-t-rotary-blue">
+                            <h2 className="text-2xl font-bold text-rotary-blue mb-4">
+                                {getC('section1', 'title', "¿Qué es Rotaract?")}
+                            </h2>
                             <p className="text-gray-600 leading-relaxed">
-                                Rotaract es una organización internacional de clubes de servicio para jóvenes, hombres y mujeres, que desean marcar la diferencia en sus comunidades y en el mundo.
+                                {getC('section1', 'content', "Rotaract es una organización internacional de clubes de servicio para jóvenes que desean marcar la diferencia en sus comunidades y en el mundo.")}
                             </p>
                         </div>
-                        <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-                            <h2 className="text-2xl font-bold text-rotary-blue mb-4">Nuestro Impacto</h2>
+                        <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 border-t-4 border-t-rotary-gold">
+                            <h2 className="text-2xl font-bold text-rotary-blue mb-4">
+                                {getC('section2', 'title', "Nuestro Impacto")}
+                            </h2>
                             <p className="text-gray-600 leading-relaxed">
-                                A través de proyectos de servicio local e internacional, los socios de Rotaract ayudan a mejorar la vida de los demás, mientras desarrollan sus propias habilidades de liderazgo.
+                                {getC('section2', 'content', "A través de proyectos de servicio local e internacional, los socios de Rotaract ayudan a mejorar la vida de los demás.")}
                             </p>
                         </div>
                     </div>

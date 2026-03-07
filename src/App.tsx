@@ -52,6 +52,7 @@ import NewsManagement from './pages/admin/News';
 import ProjectsManagement from './pages/admin/Projects';
 import UsersManagement from './pages/admin/Users';
 import ClubProfile from './pages/admin/ClubProfile';
+import AIAssistant from './pages/admin/AIAssistant';
 import { Navigate } from 'react-router-dom';
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
@@ -139,6 +140,14 @@ function App() {
               element={
                 <PrivateRoute>
                   <ClubProfile />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/admin/asistente-ia"
+              element={
+                <PrivateRoute>
+                  <AIAssistant />
                 </PrivateRoute>
               }
             />

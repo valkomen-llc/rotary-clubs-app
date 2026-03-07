@@ -1,8 +1,10 @@
-import { useState } from 'react';
-import { Calendar, User, ArrowRight, Clock, Tag, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Calendar, User, ArrowRight, Tag, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
+import { useClub } from '../contexts/ClubContext';
+import { useCMSContent } from '../hooks/useCMSContent';
 
 const categorias = [
   'Todas',
@@ -13,22 +15,48 @@ const categorias = [
   'Socios'
 ];
 
-import { articulosDestacados, articulos } from '../data/news';
-
 const Blog = () => {
+  const { club } = useClub();
+  const { sections } = useCMSContent('blog', club.id);
+  const [posts, setPosts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [categoriaActiva, setCategoriaActiva] = useState('Todas');
   const [paginaActual, setPaginaActual] = useState(1);
   const articulosPorPagina = 6;
 
+  const getC = (section: string, field: string, fallback: string) => {
+    return sections[section]?.[field] || fallback;
+  }
+
+  useEffect(() => {
+    const fetchPosts = async () => {
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/clubs/${club.id}/posts`);
+        if (response.ok) {
+          const data = await response.json();
+          setPosts(data);
+        }
+      } catch (error) {
+        console.error('Error fetching posts:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (club?.id) fetchPosts();
+  }, [club?.id]);
+
   const articulosFiltrados = categoriaActiva === 'Todas'
-    ? articulos
-    : articulos.filter(art => art.categoria === categoriaActiva);
+    ? posts
+    : posts.filter(art => art.category === categoriaActiva);
 
   const totalPaginas = Math.ceil(articulosFiltrados.length / articulosPorPagina);
   const articulosPagina = articulosFiltrados.slice(
     (paginaActual - 1) * articulosPorPagina,
     paginaActual * articulosPorPagina
   );
+
+  const destacados = posts.filter(p => p.isFeatured).slice(0, 2);
 
   return (
     <div className="min-h-screen bg-white">
@@ -46,68 +74,68 @@ const Blog = () => {
         }}
       >
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-6">Blog</h1>
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-6">
+            {getC('header', 'title', "Noticias y Blog")}
+          </h1>
           <p className="text-white/90 text-lg max-w-2xl mx-auto">
-            Noticias, historias y actualizaciones del Rotary Club. Mantente informado sobre nuestros proyectos, eventos y actividades.
+            {getC('header', 'description', "Actualizaciones del Rotary Club. Mantente informado sobre nuestros proyectos.")}
           </p>
         </div>
       </section>
 
       {/* Artículos Destacados */}
-      <section className="py-12 md:py-16 bg-rotary-concrete">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-8">Artículos Destacados</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
-            {articulosDestacados.map((articulo) => (
-              <Link
-                key={articulo.id}
-                to={`/blog/${articulo.id}`}
-                className="group relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow"
-              >
-                <div className="relative aspect-[16/10] overflow-hidden">
-                  <img
-                    src={articulo.imagen}
-                    alt={articulo.titulo}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                  <span className="absolute top-4 left-4 bg-rotary-gold text-white text-xs font-semibold px-3 py-1 rounded-full">
-                    {articulo.categoria}
-                  </span>
-                </div>
-                <div className="p-6">
-                  <div className="flex items-center gap-4 text-sm text-gray-500 mb-3">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-4 h-4" />
-                      {articulo.fecha}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-4 h-4" />
-                      {articulo.tiempoLectura}
+      {destacados.length > 0 && (
+        <section className="py-12 md:py-16 bg-rotary-concrete">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-8">Artículos Destacados</h2>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
+              {destacados.map((articulo) => (
+                <Link
+                  key={articulo.id}
+                  to={`/blog/${articulo.id}`}
+                  className="group relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow"
+                >
+                  <div className="relative aspect-[16/10] overflow-hidden">
+                    <img
+                      src={articulo.image}
+                      alt={articulo.title}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                    <span className="absolute top-4 left-4 bg-rotary-gold text-white text-xs font-semibold px-3 py-1 rounded-full">
+                      {articulo.category}
                     </span>
                   </div>
-                  <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-rotary-blue transition-colors">
-                    {articulo.titulo}
-                  </h3>
-                  <p className="text-gray-600 text-sm leading-relaxed mb-4">
-                    {articulo.resumen}
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-2 text-sm text-gray-500">
-                      <User className="w-4 h-4" />
-                      {articulo.autor}
-                    </span>
-                    <span className="flex items-center gap-1 text-rotary-blue font-bold text-sm group-hover:underline">
-                      Leer más
-                      <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-                    </span>
+                  <div className="p-6">
+                    <div className="flex items-center gap-4 text-sm text-gray-500 mb-3">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-4 h-4" />
+                        {new Date(articulo.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-rotary-blue transition-colors line-clamp-2">
+                      {articulo.title}
+                    </h3>
+                    <p className="text-gray-600 text-sm leading-relaxed mb-4 line-clamp-2">
+                      {articulo.summary}
+                    </p>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-2 text-sm text-gray-500">
+                        <User className="w-4 h-4" />
+                        {articulo.author?.name || 'Rotary Club'}
+                      </span>
+                      <span className="flex items-center gap-1 text-rotary-blue font-bold text-sm group-hover:underline">
+                        Leer más
+                        <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Filtros y Grid de Artículos */}
       <section className="py-12 md:py-16">
@@ -131,54 +159,59 @@ const Blog = () => {
             ))}
           </div>
 
-          {/* Grid de Artículos */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {articulosPagina.map((articulo) => (
-              <Link
-                key={articulo.id}
-                to={`/blog/${articulo.id}`}
-                className="group bg-white rounded-xl overflow-hidden shadow-md hover:shadow-lg transition-all border border-gray-100"
-              >
-                <div className="relative aspect-[4/3] overflow-hidden">
-                  <img
-                    src={articulo.imagen}
-                    alt={articulo.titulo}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-                  <span className="absolute top-3 left-3 bg-white/90 text-gray-800 text-xs font-semibold px-2 py-1 rounded flex items-center gap-1">
-                    <Tag className="w-3 h-3" />
-                    {articulo.categoria}
-                  </span>
-                </div>
-                <div className="p-5">
-                  <div className="flex items-center gap-3 text-xs text-gray-500 mb-3">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
-                      {articulo.fecha}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {articulo.tiempoLectura}
+          {loading ? (
+            <div className="flex justify-center py-20">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-rotary-blue" />
+            </div>
+          ) : articulosPagina.length === 0 ? (
+            <div className="text-center py-20">
+              <p className="text-gray-500 text-lg">No hay noticias disponibles en esta categoría.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {articulosPagina.map((articulo) => (
+                <Link
+                  key={articulo.id}
+                  to={`/blog/${articulo.id}`}
+                  className="group bg-white rounded-xl overflow-hidden shadow-md hover:shadow-lg transition-all border border-gray-100 h-full flex flex-col"
+                >
+                  <div className="relative aspect-[4/3] overflow-hidden">
+                    <img
+                      src={articulo.image}
+                      alt={articulo.title}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                    <span className="absolute top-3 left-3 bg-white/90 text-gray-800 text-xs font-semibold px-2 py-1 rounded flex items-center gap-1">
+                      <Tag className="w-3 h-3" />
+                      {articulo.category}
                     </span>
                   </div>
-                  <h3 className="text-lg font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-rotary-blue transition-colors">
-                    {articulo.titulo}
-                  </h3>
-                  <p className="text-gray-600 text-sm line-clamp-3 mb-4">
-                    {articulo.resumen}
-                  </p>
-                  <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-                    <span className="text-xs text-gray-500">{articulo.autor}</span>
-                    <span className="flex items-center gap-1 text-rotary-blue text-sm font-bold group-hover:underline">
-                      Leer
-                      <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-1" />
-                    </span>
+                  <div className="p-5 flex-grow flex flex-col">
+                    <div className="flex items-center gap-3 text-xs text-gray-500 mb-3">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        {new Date(articulo.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-rotary-blue transition-colors">
+                      {articulo.title}
+                    </h3>
+                    <p className="text-gray-600 text-sm line-clamp-3 mb-4 flex-grow">
+                      {articulo.summary}
+                    </p>
+                    <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                      <span className="text-xs text-gray-500">{articulo.author?.name || 'Rotary'}</span>
+                      <span className="flex items-center gap-1 text-rotary-blue text-sm font-bold group-hover:underline">
+                        Leer
+                        <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-1" />
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </Link>
-            ))}
-          </div>
+                </Link>
+              ))}
+            </div>
+          )}
 
           {/* Paginación */}
           {totalPaginas > 1 && (

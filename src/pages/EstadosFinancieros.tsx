@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
+import { useCMSContent } from '../hooks/useCMSContent';
+import { useClub } from '../contexts/ClubContext';
 
 interface Documento {
   id: string;
@@ -26,89 +28,6 @@ interface Documento {
   estado: 'aprobado' | 'pendiente' | 'revisado';
   acceso: 'publico' | 'privado';
 }
-
-const documentosEjemplo: Documento[] = [
-  {
-    id: '1',
-    nombre: 'Balance General 2024',
-    tipo: 'balance',
-    anio: 2024,
-    fechaSubida: '15/01/2025',
-    tamano: '2.4 MB',
-    estado: 'aprobado',
-    acceso: 'publico'
-  },
-  {
-    id: '2',
-    nombre: 'Estado de Resultados 2024',
-    tipo: 'resultados',
-    anio: 2024,
-    fechaSubida: '15/01/2025',
-    tamano: '1.8 MB',
-    estado: 'aprobado',
-    acceso: 'publico'
-  },
-  {
-    id: '3',
-    nombre: 'Informe Anual 2024',
-    tipo: 'anual',
-    anio: 2024,
-    fechaSubida: '20/02/2025',
-    tamano: '5.2 MB',
-    estado: 'aprobado',
-    acceso: 'publico'
-  },
-  {
-    id: '4',
-    nombre: 'Declaración de Renta 2024',
-    tipo: 'tributario',
-    anio: 2024,
-    fechaSubida: '10/03/2025',
-    tamano: '3.1 MB',
-    estado: 'aprobado',
-    acceso: 'privado'
-  },
-  {
-    id: '5',
-    nombre: 'Certificado de Existencia y Representación Legal',
-    tipo: 'legal',
-    anio: 2025,
-    fechaSubida: '05/01/2025',
-    tamano: '850 KB',
-    estado: 'aprobado',
-    acceso: 'publico'
-  },
-  {
-    id: '6',
-    nombre: 'Balance General 2023',
-    tipo: 'balance',
-    anio: 2023,
-    fechaSubida: '20/01/2024',
-    tamano: '2.1 MB',
-    estado: 'aprobado',
-    acceso: 'publico'
-  },
-  {
-    id: '7',
-    nombre: 'Estado de Resultados 2023',
-    tipo: 'resultados',
-    anio: 2023,
-    fechaSubida: '20/01/2024',
-    tamano: '1.6 MB',
-    estado: 'aprobado',
-    acceso: 'publico'
-  },
-  {
-    id: '8',
-    nombre: 'Informe Anual 2023',
-    tipo: 'anual',
-    anio: 2023,
-    fechaSubida: '28/02/2024',
-    tamano: '4.8 MB',
-    estado: 'aprobado',
-    acceso: 'publico'
-  }
-];
 
 const tiposDocumento = [
   { value: 'todos', label: 'Todos los documentos' },
@@ -128,10 +47,30 @@ const iconosTipo: Record<string, React.ElementType> = {
 };
 
 const EstadosFinancieros = () => {
+  const { club } = useClub();
+  const { sections } = useCMSContent('estados-financieros', club.id);
   const [filtroTipo, setFiltroTipo] = useState('todos');
   const [filtroAnio, setFiltroAnio] = useState('todos');
   const [busqueda, setBusqueda] = useState('');
-  const [documentos] = useState<Documento[]>(documentosEjemplo);
+
+  const getC = (section: string, field: string, fallback: string) => {
+    return sections[section]?.[field] || fallback;
+  }
+
+  const defaultDocumentos: Documento[] = [
+    {
+      id: '1',
+      nombre: 'Balance General 2024',
+      tipo: 'balance',
+      anio: 2024,
+      fechaSubida: '15/01/2025',
+      tamano: '2.4 MB',
+      estado: 'aprobado',
+      acceso: 'publico'
+    }
+  ];
+
+  const documentos: Documento[] = sections['list']?.items || defaultDocumentos;
 
   const documentosFiltrados = documentos.filter(doc => {
     const matchTipo = filtroTipo === 'todos' || doc.tipo === filtroTipo;
@@ -160,14 +99,13 @@ const EstadosFinancieros = () => {
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-20">
           <div className="text-center max-w-3xl mx-auto">
             <span className="inline-block bg-rotary-gold text-white text-sm font-semibold px-4 py-1 rounded-full mb-4">
-              Transparencia
+              {getC('header', 'badge', "Transparencia")}
             </span>
             <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-4">
-              Estados Financieros
+              {getC('header', 'title', "Estados Financieros")}
             </h1>
             <p className="text-white/80 text-lg">
-              Documentación legal y tributaria del Rotary Club.
-              Información transparente para nuestros socios y entidades de control.
+              {getC('header', 'description', "Documentación legal y tributaria del Rotary Club. Información transparente para nuestros socios.")}
             </p>
           </div>
         </div>
@@ -181,11 +119,11 @@ const EstadosFinancieros = () => {
               <AlertCircle className="w-5 h-5 text-amber-600" />
             </div>
             <div>
-              <h2 className="font-semibold text-amber-800 mb-1">Información para la DIAN</h2>
+              <h2 className="font-semibold text-amber-800 mb-1">
+                {getC('info', 'title', "Información para la DIAN")}
+              </h2>
               <p className="text-amber-700 text-sm">
-                Esta sección contiene la documentación tributaria y legal requerida por la
-                Dirección de Impuestos y Aduanas Nacionales (DIAN). Los documentos marcados como
-                privados requieren autenticación para su acceso.
+                {getC('info', 'text', "Esta sección contiene la documentación tributaria y legal requerida.")}
               </p>
             </div>
           </div>
@@ -247,9 +185,6 @@ const EstadosFinancieros = () => {
             <h2 className="text-xl font-bold text-gray-900">
               Documentos ({documentosFiltrados.length})
             </h2>
-            <span className="text-sm text-gray-500">
-              Última actualización: Febrero 2025
-            </span>
           </div>
 
           {documentosFiltrados.length === 0 ? (
@@ -317,11 +252,10 @@ const EstadosFinancieros = () => {
       <section className="py-12 md:py-16">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">
-            ¿Necesitas información adicional?
+            {getC('contact', 'title', "¿Necesitas información adicional?")}
           </h2>
           <p className="text-gray-600 mb-6">
-            Si requieres documentos específicos o tienes dudas sobre nuestra información financiera,
-            no dudes en contactarnos.
+            {getC('contact', 'text', "Si requieres documentos específicos o tienes dudas, no dudes en contactarnos.")}
           </p>
           <a
             href="/contacto"

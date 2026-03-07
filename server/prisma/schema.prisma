@@ -128,4 +128,6 @@ model ContentSection {
   clubId    String?
   club      Club?    @relation(fields: [clubId], references: [id])
   updatedAt DateTime @updatedAt
+
+  @@unique([page, section, clubId])
 }

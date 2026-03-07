@@ -21,6 +21,7 @@ import {
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useClub } from '../contexts/ClubContext';
+import { useCMSContent } from '../hooks/useCMSContent';
 
 // Proyectos activos con fundraising
 const proyectosActivos = [
@@ -197,10 +198,15 @@ const formatShort = (value: number) => {
 
 const Proyectos = () => {
   const { club } = useClub();
+  const { sections } = useCMSContent('proyectos', club.id);
   const [scrollPosition, setScrollPosition] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [activeProjects, setActiveProjects] = useState<any[]>([]);
   const [completedProjects, setCompletedProjects] = useState<any[]>([]);
+
+  const getC = (section: string, field: string, fallback: string) => {
+    return sections[section]?.[field] || fallback;
+  }
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -289,12 +295,11 @@ const Proyectos = () => {
               Nuestros Proyectos
             </span>
             <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight">
-              Transformando Vidas,{' '}
-              <span className="text-rotary-gold">Un Proyecto a la Vez</span>
+              {getC('header', 'title', "Transformando Vidas,")} {' '}
+              <span className="text-rotary-gold">{getC('header', 'highlight', "Un Proyecto a la Vez")}</span>
             </h1>
             <p className="text-white/80 text-lg md:text-xl max-w-2xl mx-auto mb-10">
-              Cada proyecto que emprendemos es una oportunidad de crear cambios reales y duraderos
-              en las comunidades que servimos. Únete a nuestra misión.
+              {getC('header', 'description', "Cada proyecto que emprendemos es una oportunidad de crear cambios reales y duraderos.")}
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link

@@ -74,8 +74,10 @@ router.get('/by-domain', async (req, res) => {
 // ... will add later with protection
 
 const { getPublicPosts, getPublicProjects } = require('../controllers/contentController');
+const { getPublicSections } = require('../controllers/cmsController');
 
 router.get('/:clubId/posts', getPublicPosts);
 router.get('/:clubId/projects', getPublicProjects);
+router.get('/:clubId/sections', getPublicSections);
 
 module.exports = router;
