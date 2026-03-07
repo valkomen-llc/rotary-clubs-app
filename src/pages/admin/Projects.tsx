@@ -2,9 +2,9 @@ import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Plus, Edit2, Trash2, Search, Filter, FolderKanban, X, Upload,
-    MapPin, Target, TrendingUp, Info, Users, DollarSign, Image as ImageIcon,
+    MapPin, Target, Info, Users, DollarSign, Image as ImageIcon,
     Video, MessageSquare, CalendarDays, Rocket, CheckCircle, ChevronRight,
-    LayoutGrid, ListChecks
+    LayoutGrid
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useClub } from '../../contexts/ClubContext';
@@ -359,8 +359,8 @@ const ProjectsManagement: React.FC = () => {
                             )}
                             <div className="absolute top-3 right-3 flex gap-2">
                                 <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase backdrop-blur-md ${project.status === 'active' ? 'bg-blue-500/80 text-white' :
-                                        project.status === 'completed' ? 'bg-green-500/80 text-white' :
-                                            'bg-gray-500/80 text-white'
+                                    project.status === 'completed' ? 'bg-green-500/80 text-white' :
+                                        'bg-gray-500/80 text-white'
                                     }`}>
                                     {project.status === 'active' ? 'Activo' : project.status === 'completed' ? 'Éxito' : 'Plan'}
                                 </span>
@@ -437,8 +437,8 @@ const ProjectsManagement: React.FC = () => {
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id as any)}
                                     className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all border-b-2 ${activeTab === tab.id
-                                            ? 'border-rotary-blue text-rotary-blue'
-                                            : 'border-transparent text-gray-400 hover:text-gray-600'
+                                        ? 'border-rotary-blue text-rotary-blue'
+                                        : 'border-transparent text-gray-400 hover:text-gray-600'
                                         }`}
                                 >
                                     <tab.icon className="w-4 h-4" />

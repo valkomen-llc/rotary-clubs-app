@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
-import { Plus, Edit2, Trash2, Search, Filter, Newspaper, X, Upload } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Newspaper, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useClub } from '../../contexts/ClubContext';
 import { articulosDestacados, articulos as articulosEstaticos } from '../../data/news';
