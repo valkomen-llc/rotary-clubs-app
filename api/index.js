@@ -5,6 +5,8 @@ import authRoutes from '../server/routes/auth.js';
 import adminRoutes from '../server/routes/admin.js';
 import clubRoutes from '../server/routes/clubs.js';
 import mediaRoutes from '../server/routes/media.js';
+import calendarRoutes from '../server/routes/calendar.js';
+import aiRoutes from '../server/routes/ai.js';
 import authController from '../server/controllers/authController.js';
 const { createInitialAdmin } = authController;
 
@@ -36,5 +38,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/clubs', clubRoutes);
 app.use('/api/media', mediaRoutes);
+app.use('/api/calendar', calendarRoutes);
+app.use('/api/ai', aiRoutes);
 
 export default app;

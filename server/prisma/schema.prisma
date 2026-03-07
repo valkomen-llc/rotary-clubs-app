@@ -38,6 +38,9 @@ model Club {
   donations   Donation[]
   settings    Setting[]
   content     ContentSection[]
+  publications Publication[]
+  events       CalendarEvent[]
+  knowledge    KnowledgeSource[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -131,4 +134,43 @@ model ContentSection {
   updatedAt DateTime @updatedAt
 
   @@unique([page, section, clubId])
+}
+
+model Publication {
+  id          String   @id @default(uuid())
+  title       String
+  content     String   @db.Text
+  platform    String?  // Instagram, Facebook, LinkedIn
+  status      String   @default("draft") // draft, scheduled, published
+  publishDate DateTime
+  mediaUrl    String?
+  aiGenerated Boolean  @default(false)
+  clubId      String
+  club        Club     @relation(fields: [clubId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CalendarEvent {
+  id          String   @id @default(uuid())
+  title       String
+  description String?  @db.Text
+  startDate   DateTime
+  endDate     DateTime?
+  location    String?
+  type        String   @default("meeting") // meeting, project, social, rotary_date
+  clubId      String
+  club        Club     @relation(fields: [clubId], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+model KnowledgeSource {
+  id        String   @id @default(uuid())
+  title     String
+  type      String   // pdf, text, presentation
+  content   String   @db.Text // Extracted text for the AI
+  fileUrl   String?
+  clubId    String?  // Null for global Rotary documents
+  club      Club?    @relation(fields: [clubId], references: [id])
+  createdAt DateTime @default(now())
 }
