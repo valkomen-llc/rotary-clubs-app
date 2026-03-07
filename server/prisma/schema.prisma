@@ -50,6 +50,7 @@ model Media {
   size      Int
   bucket    String?
   region    String?
+  s3Key     String?  // The path inside the bucket
   clubId    String?
   createdAt DateTime @default(now())
 }

@@ -1,8 +1,5 @@
-const express = require('express');
-const router = express.Router();
-const { authMiddleware } = require('../middleware/auth');
-const { upload } = require('../lib/storage');
-const prisma = require('../lib/prisma');
+const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { s3, upload } = require('../lib/storage');
 
 // Upload a single file
 router.post('/upload', authMiddleware, (req, res) => {
@@ -20,13 +17,14 @@ router.post('/upload', authMiddleware, (req, res) => {
             // Save file info to database
             const media = await prisma.media.create({
                 data: {
-                    filename: req.file.key.split('/').pop(),
+                    filename: req.file.originalname,
                     url: req.file.location, // S3 Public URL
                     type: req.file.mimetype.startsWith('image/') ? 'image' : 'document',
                     size: req.file.size,
                     bucket: req.file.bucket,
                     region: process.env.AWS_REGION || 'us-east-1',
-                    clubId: req.user.clubId
+                    clubId: req.user.clubId,
+                    s3Key: req.file.key // Storing key for deletion
                 }
             });
 
@@ -51,6 +49,41 @@ router.get('/', authMiddleware, async (req, res) => {
         res.json(media);
     } catch (error) {
         res.status(500).json({ error: 'Error fetching media library' });
+    }
+});
+
+// Delete media
+router.delete('/:id', authMiddleware, async (req, res) => {
+    const { id } = req.params;
+    try {
+        const media = await prisma.media.findUnique({ where: { id } });
+        if (!media) return res.status(404).json({ error: 'Archivo no encontrado' });
+
+        // Security check
+        if (req.user.role !== 'administrator' && media.clubId !== req.user.clubId) {
+            return res.status(403).json({ error: 'No tienes permiso para borrar este archivo' });
+        }
+
+        // Delete from S3 if metadata exists
+        if (media.s3Key && media.bucket) {
+            try {
+                const deleteParams = {
+                    Bucket: media.bucket,
+                    Key: media.s3Key
+                };
+                await s3.send(new DeleteObjectCommand(deleteParams));
+                console.log(`Deleted from S3: ${media.s3Key}`);
+            } catch (s3Err) {
+                console.error('Failed to delete from S3:', s3Err);
+                // Continue to delete from DB anyway to keep consistent with UI
+            }
+        }
+
+        await prisma.media.delete({ where: { id } });
+        res.json({ message: 'Archivo eliminado correctamente' });
+    } catch (error) {
+        console.error('Error deleting media:', error);
+        res.status(500).json({ error: 'Error al eliminar el archivo' });
     }
 });
 

@@ -62,6 +62,8 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
 
 import { ClubProvider } from './contexts/ClubContext';
 
+import MediaLibrary from './pages/admin/MediaLibrary';
+
 function App() {
   return (
     <ClubProvider>
@@ -140,6 +142,14 @@ function App() {
               element={
                 <PrivateRoute>
                   <ClubProfile />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/admin/media"
+              element={
+                <PrivateRoute>
+                  <MediaLibrary />
                 </PrivateRoute>
               }
             />
