@@ -5,6 +5,12 @@ const prisma = require('../lib/prisma');
 const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { s3, upload } = require('../lib/storage');
 
+const getMediaType = (mimetype) => {
+    if (mimetype.startsWith('image/')) return 'image';
+    if (mimetype.startsWith('video/')) return 'video';
+    return 'document';
+};
+
 // Upload a single file
 router.post('/upload', authMiddleware, (req, res) => {
     upload.single('file')(req, res, async (err) => {
@@ -23,7 +29,7 @@ router.post('/upload', authMiddleware, (req, res) => {
                 data: {
                     filename: req.file.originalname,
                     url: req.file.location, // S3 Public URL
-                    type: req.file.mimetype.startsWith('image/') ? 'image' : 'document',
+                    type: getMediaType(req.file.mimetype),
                     size: req.file.size,
                     bucket: req.file.bucket,
                     region: process.env.AWS_REGION || 'us-east-1',
@@ -38,6 +44,33 @@ router.post('/upload', authMiddleware, (req, res) => {
             res.status(500).json({ error: 'Error al guardar la información en la base de datos' });
         }
     });
+});
+
+// Get folders (clubs with media count) - ONLY SUPER ADMIN
+router.get('/folders', authMiddleware, async (req, res) => {
+    if (req.user.role !== 'administrator') {
+        return res.status(403).json({ error: 'No autorizado' });
+    }
+
+    try {
+        const clubs = await prisma.club.findMany({
+            include: {
+                _count: {
+                    select: { media: true }
+                }
+            }
+        });
+
+        const folders = clubs.map(c => ({
+            id: c.id,
+            name: c.name,
+            count: c._count.media
+        }));
+
+        res.json(folders);
+    } catch (error) {
+        res.status(500).json({ error: 'Error fetching folders' });
+    }
 });
 
 // Get media for the current club
