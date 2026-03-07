@@ -26,7 +26,7 @@ const Footer = () => {
                 </div>
               )}
             </div>
-            <div className="mt-[34px]">
+            <div className="mt-[14px]">
               {club.endPolioLogo ? (
                 <img
                   src={club.endPolioLogo}
