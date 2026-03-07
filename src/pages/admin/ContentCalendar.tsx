@@ -8,7 +8,6 @@ import {
     ChevronRight,
     Instagram,
     Facebook,
-    Trash2,
     Loader2,
     BookOpen,
     AlertCircle,
@@ -166,8 +165,8 @@ const ContentCalendar: React.FC = () => {
                             <div
                                 key={day.toString()}
                                 className={`aspect-square p-2 rounded-2xl border transition-all cursor-pointer group relative flex flex-col gap-1 ${isToday(day)
-                                        ? 'bg-sky-50/50 border-rotary-blue/30 ring-2 ring-rotary-blue/10'
-                                        : 'bg-white border-gray-100 hover:border-rotary-blue/20 hover:shadow-md'
+                                    ? 'bg-sky-50/50 border-rotary-blue/30 ring-2 ring-rotary-blue/10'
+                                    : 'bg-white border-gray-100 hover:border-rotary-blue/20 hover:shadow-md'
                                     }`}
                             >
                                 <span className={`text-xs font-bold ${isToday(day) ? 'text-rotary-blue' : 'text-gray-400'}`}>
