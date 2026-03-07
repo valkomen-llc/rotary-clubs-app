@@ -28,9 +28,9 @@ const Footer = () => {
             </div>
             <div className="mt-6">
               <img
-                src="https://rotary-platform-assets.s3.amazonaws.com/logos/end-polio-now-logo.png"
+                src="https://www.rotary.org/sites/all/themes/rotary_rotaryorg/images/logo-end-polio.svg"
                 alt="End Polio Now"
-                className="h-14 w-auto object-contain"
+                className="h-10 w-auto object-contain brightness-0 invert"
               />
             </div>
           </div>
