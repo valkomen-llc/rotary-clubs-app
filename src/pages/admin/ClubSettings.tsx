@@ -69,8 +69,8 @@ const ClubSettings: React.FC = () => {
         try {
             const token = localStorage.getItem('rotary_token');
             const apiUrl = import.meta.env.VITE_API_URL || '/api';
-            const targetUrl = `${apiUrl}/media/upload`.replace(/\/+/g, '/').replace(':/', '://'); // Clean double slashes
-
+            // Pass folder and clubId in query to ensure Multer captures them early if needed
+            const targetUrl = `${apiUrl}/media/upload?folder=logos&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
 
             const response = await fetch(targetUrl, {
                 method: 'POST',
@@ -107,7 +107,7 @@ const ClubSettings: React.FC = () => {
         try {
             const token = localStorage.getItem('rotary_token');
             const apiUrl = import.meta.env.VITE_API_URL || '/api';
-            const targetUrl = `${apiUrl}/media/upload`.replace(/\/+/g, '/').replace(':/', '://');
+            const targetUrl = `${apiUrl}/media/upload?folder=logos-footer&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
 
             const response = await fetch(targetUrl, {
                 method: 'POST',
@@ -144,7 +144,7 @@ const ClubSettings: React.FC = () => {
         try {
             const token = localStorage.getItem('rotary_token');
             const apiUrl = import.meta.env.VITE_API_URL || '/api';
-            const targetUrl = `${apiUrl}/media/upload`.replace(/\/+/g, '/').replace(':/', '://');
+            const targetUrl = `${apiUrl}/media/upload?folder=logos-endpolio&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
 
             const response = await fetch(targetUrl, {
                 method: 'POST',

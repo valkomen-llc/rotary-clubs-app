@@ -22,14 +22,22 @@ const upload = multer({
             cb(null, { fieldName: file.fieldname });
         },
         key: function (req, file, cb) {
-            // Get clubId from user session (req.user is populated by authMiddleware)
-            const clubId = req.user?.clubId || 'global';
-            const folder = req.body.folder || 'images';
-            const fileName = `${Date.now()}-${file.originalname}`;
+            // Priority for clubId:
+            // 1. Explicitly passed in query (for superadmin managing another club)
+            // 2. Explicitly passed in body (though body might not be parsed yet)
+            // 3. User's own clubId from token
+            const clubId = req.query.clubId || req.body.clubId || req.user?.clubId || 'global';
+
+            // Priority for folder:
+            // 1. Query param
+            // 2. Body param
+            const folder = req.query.folder || req.body.folder || 'images';
+
+            const fileName = `${Date.now()}-${file.originalname.replace(/\s+/g, '_')}`;
 
             // Path structure: clubs/{club_id}/{folder}/{filename}
             const fullPath = `clubs/${clubId}/${folder}/${fileName}`;
-            console.log(`Uploading to S3: ${fullPath}`);
+            console.log(`[S3 Upload] Key: ${fullPath} (User Club: ${req.user?.clubId})`);
             cb(null, fullPath);
         }
     }),
