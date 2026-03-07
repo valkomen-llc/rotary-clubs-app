@@ -25,6 +25,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             return [
                 { icon: LayoutDashboard, label: 'Dashboard Global', path: '/admin/dashboard' },
                 { icon: Building2, label: 'Clubes', path: '/admin/clubes' },
+                { icon: FolderKanban, label: 'Proyectos', path: '/admin/proyectos' },
+                { icon: Newspaper, label: 'Noticias', path: '/admin/noticias' },
                 { icon: Users, label: 'Usuarios Globales', path: '/admin/usuarios' },
                 { icon: Settings, label: 'Configuración Sistema', path: '/admin/configuracion' },
                 { icon: HeartHandshake, label: 'Integraciones', path: '/admin/integraciones' },
