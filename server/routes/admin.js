@@ -5,7 +5,8 @@ const { getSections, updateSection, createSection } = require('../controllers/cm
 const { getAllClubs, createClub, updateClub, deleteClub } = require('../controllers/clubController');
 const {
     getClubPosts, createPost, updatePost, deletePost,
-    getClubProjects, createProject, updateProject, deleteProject
+    getClubProjects, createProject, updateProject, deleteProject,
+    getClubAgentContext
 } = require('../controllers/contentController');
 
 // All admin routes are protected
@@ -18,6 +19,7 @@ router.get('/clubs', superAdminOnly, getAllClubs);
 router.post('/clubs', superAdminOnly, createClub);
 router.put('/clubs/:id', superAdminOnly, updateClub);
 router.delete('/clubs/:id', superAdminOnly, deleteClub);
+router.get('/clubs/:clubId/agent-context', roleMiddleware(['administrator', 'club_admin']), getClubAgentContext);
 
 // --- CLUB ADMIN & SUPER ADMIN ROUTES ---
 const adminRoles = ['administrator', 'club_admin'];

@@ -7,7 +7,10 @@ const getPublicPosts = async (req, res) => {
     try {
         const posts = await prisma.post.findMany({
             where: {
-                clubId: clubId,
+                OR: [
+                    { clubId: clubId },
+                    { clubId: null }
+                ],
                 published: true
             },
             take: limit ? parseInt(limit) : undefined,
@@ -44,7 +47,12 @@ const getClubPosts = async (req, res) => {
         if (!clubId) return res.status(400).json({ error: 'clubId is required' });
 
         const posts = await prisma.post.findMany({
-            where: { clubId },
+            where: {
+                OR: [
+                    { clubId: clubId },
+                    { clubId: null }
+                ]
+            },
             orderBy: { createdAt: 'desc' }
         });
         res.json(posts);
@@ -57,16 +65,20 @@ const createPost = async (req, res) => {
     const {
         title, content, image, published, clubId,
         category, tags, keywords, seoTitle, seoDescription,
-        videoUrl, images
+        videoUrl, images, isAI
     } = req.body;
     try {
-        const targetClubId = req.user.role === 'administrator' ? (clubId || req.user.clubId) : req.user.clubId;
+        let targetClubId = req.user.role === 'administrator' ? (clubId || req.user.clubId) : req.user.clubId;
+
+        if (clubId === 'global' && req.user.role === 'administrator') {
+            targetClubId = null;
+        }
 
         const post = await prisma.post.create({
             data: {
                 title, content, image, published: published || false, clubId: targetClubId,
                 category, tags: tags || [], keywords, seoTitle, seoDescription,
-                videoUrl, images: images || []
+                videoUrl, images: images || [], isAI: isAI || false
             }
         });
         res.status(201).json(post);
@@ -214,6 +226,48 @@ const deleteProject = async (req, res) => {
     }
 };
 
+// AI Agent: Get full club context for content generation
+const getClubAgentContext = async (req, res) => {
+    const { clubId } = req.params;
+    try {
+        const club = await prisma.club.findUnique({
+            where: { id: clubId },
+            include: {
+                projects: {
+                    select: {
+                        title: true,
+                        description: true,
+                        category: true,
+                        status: true,
+                        ubicacion: true,
+                        impacto: true
+                    }
+                },
+                posts: {
+                    take: 5,
+                    orderBy: { createdAt: 'desc' },
+                    select: { title: true, category: true }
+                }
+            }
+        });
+
+        if (!club) return res.status(404).json({ error: 'Club not found' });
+
+        const context = {
+            clubName: club.name,
+            location: `${club.city || ''}, ${club.country || ''}`,
+            district: club.district,
+            description: club.description,
+            recentProjects: club.projects,
+            lastPostTitles: club.posts.map(p => p.title)
+        };
+
+        res.json(context);
+    } catch (error) {
+        res.status(500).json({ error: 'Error fetching AI context' });
+    }
+};
+
 module.exports = {
     getPublicPosts,
     getPublicProjects,
@@ -224,5 +278,6 @@ module.exports = {
     getClubProjects,
     createProject,
     updateProject,
-    deleteProject
+    deleteProject,
+    getClubAgentContext
 };

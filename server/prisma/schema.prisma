@@ -90,8 +90,9 @@ model Post {
   seoDescription String?  @db.Text
   videoUrl       String?
   images         String[] // Gallery images
-  clubId         String
-  club           Club     @relation(fields: [clubId], references: [id])
+  isAI           Boolean  @default(false)
+  clubId         String?
+  club           Club?    @relation(fields: [clubId], references: [id])
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
