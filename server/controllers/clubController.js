@@ -16,13 +16,14 @@ const getAllClubs = async (req, res) => {
 };
 
 const createClub = async (req, res) => {
-    const { name, city, country, district, domain, subdomain, description } = req.body;
+    const { name, city, country, district, domain, subdomain, description, status } = req.body;
     try {
         const club = await prisma.club.create({
-            data: { name, city, country, district, domain, subdomain, description }
+            data: { name, city, country, district, domain, subdomain, description, status: status || 'active' }
         });
         res.status(201).json(club);
     } catch (error) {
+        console.error('Error creating club:', error);
         res.status(500).json({ error: 'Error creating club' });
     }
 };
@@ -33,7 +34,8 @@ const updateClub = async (req, res) => {
         name, description, city, country, district, domain, subdomain,
         email, phone, address,
         facebook, instagram, twitter, youtube,
-        primaryColor, secondaryColor, logo, footerLogo, endPolioLogo
+        primaryColor, secondaryColor, logo, footerLogo, endPolioLogo,
+        status
     } = req.body;
 
     try {
@@ -46,7 +48,7 @@ const updateClub = async (req, res) => {
         const club = await prisma.club.update({
             where: { id },
             data: {
-                name, description, city, country, district, domain, subdomain, logo, footerLogo, endPolioLogo
+                name, description, city, country, district, domain, subdomain, logo, footerLogo, endPolioLogo, status
             }
         });
 
