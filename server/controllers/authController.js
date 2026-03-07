@@ -42,27 +42,62 @@ const login = async (req, res) => {
 };
 
 const createInitialAdmin = async () => {
-    const adminEmail = 'admin@rotary-platform.org';
-    const adminPassword = 'RotaryAdmin2026!';
-
     try {
-        const existingAdmin = await prisma.user.findUnique({
-            where: { email: adminEmail },
+        // 1. Ensure a default club exists for testing
+        let club = await prisma.club.findFirst();
+        if (!club) {
+            club = await prisma.club.create({
+                data: {
+                    name: 'Rotary Club Origen',
+                    city: 'Bogotá',
+                    country: 'Colombia',
+                    district: '4281',
+                    domain: 'localhost',
+                    subdomain: 'origen',
+                    status: 'active'
+                }
+            });
+            console.log('Default club created');
+        }
+
+        // 2. Simplified Super Admin
+        const superEmail = 'admin@rotary.org';
+        const superPass = 'admin123';
+        const hashedSuper = await bcrypt.hash(superPass, 10);
+
+        await prisma.user.upsert({
+            where: { email: superEmail },
+            update: { password: hashedSuper, role: 'administrator' },
+            create: {
+                email: superEmail,
+                password: hashedSuper,
+                role: 'administrator'
+            }
         });
 
-        if (!existingAdmin) {
-            const hashedPassword = await bcrypt.hash(adminPassword, 10);
-            await prisma.user.create({
-                data: {
-                    email: adminEmail,
-                    password: hashedPassword,
-                    role: 'administrator',
-                },
-            });
-            console.log('Initial admin user created');
-        }
+        // 3. Simplified Club Admin
+        const clubEmail = 'club@rotary.org';
+        const clubPass = 'club123';
+        const hashedClub = await bcrypt.hash(clubPass, 10);
+
+        await prisma.user.upsert({
+            where: { email: clubEmail },
+            update: {
+                password: hashedClub,
+                role: 'club_admin',
+                clubId: club.id
+            },
+            create: {
+                email: clubEmail,
+                password: hashedClub,
+                role: 'club_admin',
+                clubId: club.id
+            }
+        });
+
+        console.log('Auth credentials ensured for testing');
     } catch (err) {
-        console.error('Error creating initial admin:', err);
+        console.error('Initial setup error:', err);
     }
 };
 
