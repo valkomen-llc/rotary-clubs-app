@@ -1,3 +1,7 @@
+const express = require('express');
+const router = express.Router();
+const { authMiddleware } = require('../middleware/auth');
+const prisma = require('../lib/prisma');
 const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { s3, upload } = require('../lib/storage');
 
