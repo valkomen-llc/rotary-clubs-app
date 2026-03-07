@@ -55,15 +55,26 @@ model Media {
 }
 
 model Project {
-  id          String   @id @default(uuid())
-  title       String
-  description String
-  image       String?
-  status      String   // active, completed, planned
-  clubId      String
-  club        Club     @relation(fields: [clubId], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String   @id @default(uuid())
+  title           String
+  description     String   @db.Text
+  image           String?
+  status          String   // active, completed, planned
+  category        String?
+  meta            Float?   @default(0)
+  recaudado       Float?   @default(0)
+  donantes        Int?     @default(0)
+  beneficiarios   Int?     @default(0)
+  ubicacion       String?
+  fechaEstimada   DateTime?
+  videoUrl        String?
+  images          String[]  // Multiple image gallery
+  impacto         String?   @db.Text
+  actualizaciones String?   @db.Text
+  clubId          String
+  club            Club     @relation(fields: [clubId], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model Post {

@@ -1,8 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
-import { Plus, Edit2, Trash2, Search, Filter, FolderKanban, X, Upload, MapPin, Target, TrendingUp } from 'lucide-react';
+import {
+    Plus, Edit2, Trash2, Search, Filter, FolderKanban, X, Upload,
+    MapPin, Target, TrendingUp, Info, Users, DollarSign, Image as ImageIcon,
+    Video, MessageSquare, CalendarDays, Rocket, CheckCircle, ChevronRight,
+    LayoutGrid, ListChecks
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useClub } from '../../contexts/ClubContext';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 
 // Hardcoded data from the public page to merge
 const staticProjects = [
@@ -12,54 +19,68 @@ const staticProjects = [
         description: 'Instalación de sistemas de agua potable en 15 comunidades rurales de Cundinamarca y Boyacá que actualmente no tienen acceso a agua limpia.',
         image: 'https://images.unsplash.com/photo-1593113598332-cd288d649433?w=800&h=500&fit=crop',
         status: 'active',
+        category: 'Agua y Saneamiento',
+        meta: 150000000,
+        recaudado: 98500000,
+        donantes: 342,
+        beneficiarios: 8500,
+        ubicacion: 'Cundinamarca & Boyacá',
         isStatic: true
     },
     {
         id: 'static-2',
         title: 'Becas Educativas para Jóvenes Líderes 2026',
-        description: 'Programa de becas completas para 25 jóvenes destacados de comunidades vulnerables para acceder a educación universitaria.',
+        description: '<p>Programa de becas completas para 25 jóvenes destacados de comunidades vulnerables.</p>',
         image: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=800&h=500&fit=crop',
         status: 'active',
+        category: 'Educación',
+        meta: 200000000,
+        recaudado: 156000000,
+        donantes: 518,
+        beneficiarios: 25,
+        ubicacion: 'Nacional',
         isStatic: true
     },
     {
         id: 'static-3',
         title: 'Reforestación de Cuencas Hídricas',
-        description: 'Plantación de 50,000 árboles nativos en cuencas hídricas degradadas para proteger el recurso hídrico y combatir el cambio climático.',
+        description: 'Plantación de 50,000 árboles nativos en cuencas hídricas degradadas.',
         image: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=800&h=500&fit=crop',
         status: 'active',
+        category: 'Medio Ambiente',
+        meta: 80000000,
+        recaudado: 42300000,
+        donantes: 267,
+        beneficiarios: 12000,
+        ubicacion: 'Santander',
         isStatic: true
     },
     {
         id: 'static-4',
         title: 'Viviendas Dignas para Familias Afectadas',
-        description: 'Construcción de 30 viviendas sismorresistentes para familias que perdieron sus hogares por desastres naturales.',
+        description: 'Construcción de 30 viviendas sismorresistentes.',
         image: 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=800&h=500&fit=crop',
         status: 'active',
+        category: 'Vivienda',
+        meta: 450000000,
+        recaudado: 289000000,
+        donantes: 892,
+        beneficiarios: 150,
+        ubicacion: 'Cauca & Huila',
         isStatic: true
     },
     {
         id: 'static-5',
         title: 'Campaña #TodoPorNuestrosHéroes',
-        description: 'Entrega de 50,000 equipos de protección personal a trabajadores de la salud durante la pandemia.',
+        description: 'Entrega de equipos de protección personal.',
         image: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800&h=500&fit=crop',
         status: 'completed',
-        isStatic: true
-    },
-    {
-        id: 'static-6',
-        title: 'Introcamp 2024 - Intercambio Juvenil',
-        description: 'Programa de bienvenida para 63 estudiantes de intercambio internacional en Colombia.',
-        image: 'https://images.unsplash.com/photo-1531206715517-5c0ba140b2b8?w=800&h=500&fit=crop',
-        status: 'completed',
-        isStatic: true
-    },
-    {
-        id: 'static-7',
-        title: 'Rotary Pinta Colombia - Fase 1',
-        description: 'Embellecimiento de espacios públicos con murales en 10 ciudades colombianas.',
-        image: 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=800&h=500&fit=crop',
-        status: 'completed',
+        category: 'Salud',
+        meta: 250000000,
+        recaudado: 267000000,
+        donantes: 1247,
+        beneficiarios: 50000,
+        ubicacion: 'Nacional',
         isStatic: true
     }
 ];
@@ -70,6 +91,17 @@ interface Project {
     description: string;
     image: string | null;
     status: string;
+    category?: string;
+    meta?: number;
+    recaudado?: number;
+    donantes?: number;
+    beneficiarios?: number;
+    ubicacion?: string;
+    fechaEstimada?: string;
+    videoUrl?: string;
+    images?: string[];
+    impacto?: string;
+    actualizaciones?: string;
     createdAt: string;
     isStatic?: boolean;
 }
@@ -82,12 +114,24 @@ const ProjectsManagement: React.FC = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [activeTab, setActiveTab] = useState<'info' | 'crowd' | 'impact' | 'gallery'>('info');
 
     const [formData, setFormData] = useState({
         title: '',
         description: '',
         image: '',
         status: 'planned',
+        category: 'Servicio',
+        meta: 0,
+        recaudado: 0,
+        donantes: 0,
+        beneficiarios: 0,
+        ubicacion: '',
+        fechaEstimada: '',
+        videoUrl: '',
+        images: [] as string[],
+        impacto: '',
+        actualizaciones: '',
     });
 
     useEffect(() => {
@@ -97,16 +141,12 @@ const ProjectsManagement: React.FC = () => {
     }, [club?.id]);
 
     const fetchProjects = async () => {
-        // Map static projects first
         const mappedStatic: Project[] = staticProjects.map(p => ({
+            ...p,
             id: p.id,
-            title: p.title,
-            description: p.description,
-            image: p.image,
-            status: p.status,
-            createdAt: 'Enero 2024',
+            createdAt: '2024-01-01',
             isStatic: true
-        }));
+        } as Project));
 
         try {
             const token = localStorage.getItem('rotary_token');
@@ -120,30 +160,38 @@ const ProjectsManagement: React.FC = () => {
                 setProjects(mappedStatic);
             }
         } catch (error) {
-            console.error('API Error:', error);
             setProjects(mappedStatic);
         }
     };
 
     const handleOpenModal = (project?: Project) => {
+        setActiveTab('info');
         if (project) {
+            const initialData = {
+                title: project.title || '',
+                description: project.description || '',
+                image: project.image || '',
+                status: project.status || 'planned',
+                category: project.category || 'Servicio',
+                meta: project.meta || 0,
+                recaudado: project.recaudado || 0,
+                donantes: project.donantes || 0,
+                beneficiarios: project.beneficiarios || 0,
+                ubicacion: project.ubicacion || '',
+                fechaEstimada: project.fechaEstimada ? new Date(project.fechaEstimada).toISOString().split('T')[0] : '',
+                videoUrl: project.videoUrl || '',
+                images: project.images || [],
+                impacto: project.impacto || '',
+                actualizaciones: project.actualizaciones || '',
+            };
+
             if (project.isStatic) {
                 setEditingProject(null);
-                setFormData({
-                    title: project.title,
-                    description: project.description,
-                    image: project.image || '',
-                    status: project.status,
-                });
-                toast.info('Este es un proyecto estático. Al guardar, se creará una copia editable.');
+                setFormData(initialData);
+                toast.info('Clonando proyecto estático para edición.');
             } else {
                 setEditingProject(project);
-                setFormData({
-                    title: project.title,
-                    description: project.description,
-                    image: project.image || '',
-                    status: project.status,
-                });
+                setFormData(initialData);
             }
         } else {
             setEditingProject(null);
@@ -152,38 +200,55 @@ const ProjectsManagement: React.FC = () => {
                 description: '',
                 image: '',
                 status: 'planned',
+                category: 'Servicio',
+                meta: 0,
+                recaudado: 0,
+                donantes: 0,
+                beneficiarios: 0,
+                ubicacion: club?.city || '',
+                fechaEstimada: '',
+                videoUrl: '',
+                images: [],
+                impacto: '',
+                actualizaciones: '',
             });
         }
         setIsModalOpen(true);
     };
 
-    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, isGallery = false) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
 
         setUploading(true);
-        const uploadData = new FormData();
-        uploadData.append('file', file);
-        uploadData.append('folder', 'projects');
+        const token = localStorage.getItem('rotary_token');
+        const apiUrl = import.meta.env.VITE_API_URL || '/api';
 
         try {
-            const token = localStorage.getItem('rotary_token');
-            const apiUrl = import.meta.env.VITE_API_URL || '/api';
-            const targetUrl = `${apiUrl}/media/upload?folder=projects&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
+            for (let i = 0; i < files.length; i++) {
+                const uploadData = new FormData();
+                uploadData.append('file', files[i]);
+                uploadData.append('folder', 'projects');
 
-            const response = await fetch(targetUrl, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: uploadData
-            });
+                const targetUrl = `${apiUrl}/media/upload?folder=projects&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
+                const response = await fetch(targetUrl, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: uploadData
+                });
 
-            if (response.ok) {
-                const data = await response.json();
-                setFormData(prev => ({ ...prev, image: data.url }));
-                toast.success('Imagen subida con éxito');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (isGallery) {
+                        setFormData(prev => ({ ...prev, images: [...prev.images, data.url] }));
+                    } else {
+                        setFormData(prev => ({ ...prev, image: data.url }));
+                    }
+                }
             }
+            toast.success(isGallery ? 'Fotos añadidas a la galería' : 'Imagen principal actualizada');
         } catch (error) {
-            toast.error('Error al subir imagen');
+            toast.error('Error al subir imágenes');
         } finally {
             setUploading(false);
         }
@@ -202,23 +267,17 @@ const ProjectsManagement: React.FC = () => {
 
             const response = await fetch(url, {
                 method: editingProject ? 'PUT' : 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify(formData)
             });
 
             if (response.ok) {
-                toast.success(editingProject ? 'Proyecto actualizado' : 'Proyecto creado con éxito');
+                toast.success(editingProject ? 'Proyecto actualizado' : 'Proyecto creado');
                 setIsModalOpen(false);
                 fetchProjects();
-            } else {
-                const data = await response.json();
-                throw new Error(data.error || 'Error al procesar la solicitud');
             }
         } catch (error: any) {
-            toast.error(error.message);
+            toast.error('Error al guardar proyecto');
         } finally {
             setIsSubmitting(false);
         }
@@ -226,8 +285,7 @@ const ProjectsManagement: React.FC = () => {
 
     const handleDelete = async (project: Project) => {
         if (project.isStatic) return;
-
-        if (!window.confirm(`¿Estás seguro de eliminar "${project.title}"?`)) return;
+        if (!window.confirm(`¿Eliminar "${project.title}"?`)) return;
 
         try {
             const token = localStorage.getItem('rotary_token');
@@ -235,33 +293,40 @@ const ProjectsManagement: React.FC = () => {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-
             if (response.ok) {
                 toast.success('Proyecto eliminado');
                 fetchProjects();
             }
         } catch (error: any) {
-            toast.error('No se pudo eliminar el proyecto');
+            toast.error('Error al eliminar');
         }
     };
+
+    const formatCurrency = (val?: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(val || 0);
 
     const filteredProjects = projects.filter(p =>
         p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.description.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
+    const quillModules = {
+        toolbar: [
+            [{ 'header': [1, 2, 3, false] }],
+            ['bold', 'italic', 'underline', 'strike'],
+            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+            ['link', 'clean']
+        ],
+    };
+
     return (
         <AdminLayout>
             <div className="flex justify-between items-center mb-8">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800">Gestión de Proyectos</h1>
-                    <p className="text-gray-500 text-sm">Administra las iniciativas de servicio de tu club.</p>
+                    <p className="text-gray-500 text-sm">Administra proyectos, recaudación e historial de impacto.</p>
                 </div>
-                <button
-                    onClick={() => handleOpenModal()}
-                    className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2 rounded-lg hover:bg-sky-800 transition-colors"
-                >
-                    <Plus className="w-4 h-4" /> Nuevo Proyecto
+                <button onClick={() => handleOpenModal()} className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2 rounded-lg hover:bg-sky-800 transition-all font-bold shadow-lg shadow-rotary-blue/20">
+                    <Plus className="w-5 h-5" /> Nuevo Proyecto
                 </button>
             </div>
 
@@ -270,179 +335,417 @@ const ProjectsManagement: React.FC = () => {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
                         type="text"
-                        placeholder="Buscar proyectos..."
-                        className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue transition-all"
+                        placeholder="Buscar proyectos por nombre, descripción o categoría..."
+                        className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-rotary-blue/20 transition-all"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
                 </div>
-                <button className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">
+                <button className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 font-medium">
                     <Filter className="w-4 h-4" /> Filtros
                 </button>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <table className="w-full text-left">
-                    <thead className="bg-gray-50 border-b border-gray-100">
-                        <tr>
-                            <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Proyecto</th>
-                            <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Estado</th>
-                            <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Impacto</th>
-                            <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider text-right">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                        {filteredProjects.map((project) => (
-                            <tr key={project.id} className="hover:bg-gray-50 transition-colors">
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-12 h-12 rounded-lg bg-gray-100 overflow-hidden flex-shrink-0">
-                                            {project.image ? (
-                                                <img src={project.image} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
-                                            ) : (
-                                                <div className="w-full h-full flex items-center justify-center text-gray-300">
-                                                    <FolderKanban className="w-6 h-6" />
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div>
-                                            <p className="font-bold text-gray-800 line-clamp-1">{project.title}</p>
-                                            <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
-                                                <MapPin className="w-3 h-3" /> {club.city}
-                                                {project.isStatic && <span className="text-rotary-gold font-bold ml-2">STATIC</span>}
-                                            </div>
-                                        </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredProjects.map((project) => (
+                    <div key={project.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden group hover:shadow-md transition-all">
+                        <div className="aspect-video relative overflow-hidden">
+                            {project.image ? (
+                                <img src={project.image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" crossOrigin="anonymous" />
+                            ) : (
+                                <div className="w-full h-full bg-gray-50 flex items-center justify-center text-gray-300">
+                                    <FolderKanban className="w-12 h-12" />
+                                </div>
+                            )}
+                            <div className="absolute top-3 right-3 flex gap-2">
+                                <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase backdrop-blur-md ${project.status === 'active' ? 'bg-blue-500/80 text-white' :
+                                        project.status === 'completed' ? 'bg-green-500/80 text-white' :
+                                            'bg-gray-500/80 text-white'
+                                    }`}>
+                                    {project.status === 'active' ? 'Activo' : project.status === 'completed' ? 'Éxito' : 'Plan'}
+                                </span>
+                                {project.isStatic && <span className="px-2 py-1 rounded-md bg-rotary-gold/90 text-white text-[10px] font-bold uppercase backdrop-blur-md">Estatíco</span>}
+                            </div>
+                        </div>
+                        <div className="p-5">
+                            <div className="flex justify-between items-start mb-2">
+                                <h3 className="font-bold text-gray-800 line-clamp-1">{project.title}</h3>
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-gray-400 mb-4">
+                                <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {project.ubicacion || 'Global'}</span>
+                                <span className="flex items-center gap-1"><Target className="w-3 h-3" /> {project.category || 'Servicio'}</span>
+                            </div>
+
+                            {project.meta! > 0 && (
+                                <div className="space-y-2 mb-4">
+                                    <div className="flex justify-between text-[10px] font-bold">
+                                        <span className="text-rotary-blue">{Math.round((project.recaudado! / project.meta!) * 100)}% Recaudado</span>
+                                        <span className="text-gray-400">{formatCurrency(project.meta)} Meta</span>
                                     </div>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${project.status === 'active' ? 'bg-blue-100 text-blue-700' :
-                                        project.status === 'completed' ? 'bg-green-100 text-green-700' :
-                                            'bg-gray-100 text-gray-700'
-                                        }`}>
-                                        {project.status === 'active' ? 'Activo' :
-                                            project.status === 'completed' ? 'Completado' : 'Planeado'}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-4">
-                                        <div className="flex items-center gap-1 text-xs text-gray-500">
-                                            <Target className="w-3 h-3" /> Meta
-                                        </div>
-                                        <div className="flex items-center gap-1 text-xs text-green-600 font-bold">
-                                            <TrendingUp className="w-3 h-3" /> Logrado
-                                        </div>
+                                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                        <div className="h-full bg-rotary-blue" style={{ width: `${Math.min((project.recaudado! / project.meta!) * 100, 100)}%` }} />
                                     </div>
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <div className="flex justify-end gap-2">
-                                        <button
-                                            onClick={() => handleOpenModal(project)}
-                                            className="p-2 text-gray-400 hover:text-rotary-blue transition-colors"
-                                        >
-                                            <Edit2 className="w-4 h-4" />
+                                </div>
+                            )}
+
+                            <div className="flex items-center justify-between pt-4 border-t border-gray-50">
+                                <div className="flex gap-1">
+                                    <button onClick={() => handleOpenModal(project)} className="p-2 text-gray-400 hover:text-rotary-blue hover:bg-sky-50 rounded-lg transition-all">
+                                        <Edit2 className="w-4 h-4" />
+                                    </button>
+                                    {!project.isStatic && (
+                                        <button onClick={() => handleDelete(project)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
+                                            <Trash2 className="w-4 h-4" />
                                         </button>
-                                        {!project.isStatic && (
-                                            <button
-                                                onClick={() => handleDelete(project)}
-                                                className="p-2 text-gray-400 hover:text-red-500 transition-colors"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        )}
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-1 text-[10px] font-bold text-gray-400 uppercase">
+                                    <Users className="w-3 h-3" /> {project.donantes} Donantes
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ))}
             </div>
 
             {/* Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl overflow-hidden animate-in zoom-in duration-200 overflow-y-auto max-h-[90vh]">
-                        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
-                            <h2 className="text-lg font-bold text-gray-800">
-                                {editingProject ? 'Editar Proyecto' : 'Nuevo Proyecto'}
-                            </h2>
-                            <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in duration-200">
+                        {/* Header */}
+                        <div className="px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-800">
+                                    {editingProject ? 'Configurar Proyecto' : 'Crear Nueva Iniciativa'}
+                                </h2>
+                                <p className="text-xs text-gray-400 font-medium">Completa todos los detalles para publicar el proyecto.</p>
+                            </div>
+                            <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white rounded-full text-gray-400 transition-colors shadow-sm">
                                 <X className="w-6 h-6" />
                             </button>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div className="space-y-6">
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Nombre del Proyecto</label>
-                                    <input
-                                        type="text"
-                                        required
-                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue transition-all"
-                                        value={formData.title}
-                                        onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                                        placeholder="Ej: Planta de Tratamiento Vereda El Salto"
-                                    />
-                                </div>
+                        {/* Tabs Navigation */}
+                        <div className="flex px-8 border-b border-gray-100 bg-white sticky top-0 z-10">
+                            {[
+                                { id: 'info', label: 'General', icon: Info },
+                                { id: 'crowd', label: 'Crowdfunding', icon: DollarSign },
+                                { id: 'impact', label: 'Impacto & Blog', icon: MessageSquare },
+                                { id: 'gallery', label: 'Galería & Media', icon: ImageIcon }
+                            ].map(tab => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id as any)}
+                                    className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all border-b-2 ${activeTab === tab.id
+                                            ? 'border-rotary-blue text-rotary-blue'
+                                            : 'border-transparent text-gray-400 hover:text-gray-600'
+                                        }`}
+                                >
+                                    <tab.icon className="w-4 h-4" />
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
 
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Descripción</label>
-                                    <textarea
-                                        required
-                                        rows={6}
-                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue transition-all resize-none"
-                                        value={formData.description}
-                                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                        placeholder="Describe los objetivos y alcance del proyecto..."
-                                    />
-                                </div>
+                        {/* Form Content */}
+                        <div className="flex-1 overflow-y-auto p-8 bg-white">
+                            <form id="projectForm" onSubmit={handleSubmit} className="space-y-8">
 
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Estado</label>
-                                    <select
-                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue transition-all"
-                                        value={formData.status}
-                                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                                    >
-                                        <option value="planned">Planeado / En Diseño</option>
-                                        <option value="active">Activo / Ejecución</option>
-                                        <option value="completed">Completado / Impacto</option>
-                                    </select>
-                                </div>
+                                {activeTab === 'info' && (
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 animate-in slide-in-from-right-4 duration-300">
+                                        <div className="md:col-span-2 space-y-6">
+                                            <div>
+                                                <label className="block text-sm font-bold text-gray-700 mb-2">Título del Proyecto</label>
+                                                <input
+                                                    type="text" required
+                                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none transition-all font-bold text-lg"
+                                                    value={formData.title}
+                                                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                                                    placeholder="Ej: Planta de Potabilización Vereda El Salto"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-bold text-gray-700 mb-2">Descripción General (Editor Visual)</label>
+                                                <div className="rounded-xl border border-gray-200 overflow-hidden">
+                                                    <ReactQuill
+                                                        theme="snow"
+                                                        value={formData.description}
+                                                        onChange={(val) => setFormData({ ...formData, description: val })}
+                                                        modules={quillModules}
+                                                        className="h-64 mb-12"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-sm font-bold text-gray-700 mb-2">Categoría</label>
+                                                    <input
+                                                        type="text"
+                                                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none"
+                                                        value={formData.category}
+                                                        onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                                                        placeholder="Ej: Agua y Saneamiento"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-bold text-gray-700 mb-2">Ubicación</label>
+                                                    <input
+                                                        type="text"
+                                                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none"
+                                                        value={formData.ubicacion}
+                                                        onChange={(e) => setFormData({ ...formData, ubicacion: e.target.value })}
+                                                        placeholder="Ciudad, Depto o Región"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-6">
+                                            <div>
+                                                <label className="block text-sm font-bold text-gray-700 mb-2">Estado Actual</label>
+                                                <select
+                                                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none font-bold bg-white"
+                                                    value={formData.status}
+                                                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                                                >
+                                                    <option value="planned">Planeado (En Diseño)</option>
+                                                    <option value="active">Activo (En Ejecución)</option>
+                                                    <option value="completed">Completado (Éxito)</option>
+                                                </select>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-bold text-gray-700 mb-2">Imagen Principal</label>
+                                                <div className="aspect-square rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center bg-gray-50 overflow-hidden relative group">
+                                                    {formData.image ? (
+                                                        <>
+                                                            <img src={formData.image} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                                <button type="button" onClick={() => setFormData({ ...formData, image: '' })} className="bg-red-500 text-white p-2 rounded-full"><X className="w-4 h-4" /></button>
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <div className="text-center p-4">
+                                                            <Upload className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                                                            <p className="text-[10px] text-gray-400 font-bold uppercase">Click para subir foto</p>
+                                                        </div>
+                                                    )}
+                                                    <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={(e) => handleImageUpload(e)} disabled={uploading} />
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-bold text-gray-700 mb-2">Fecha Estimada / Entrega</label>
+                                                <div className="relative">
+                                                    <CalendarDays className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                                    <input
+                                                        type="date"
+                                                        className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none font-medium"
+                                                        value={formData.fechaEstimada}
+                                                        onChange={(e) => setFormData({ ...formData, fechaEstimada: e.target.value })}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'crowd' && (
+                                    <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
+                                        <div className="flex items-center gap-4 p-6 bg-blue-50/50 rounded-2xl border border-blue-100 text-blue-800">
+                                            <div className="p-3 bg-white rounded-xl shadow-sm"><DollarSign className="w-6 h-6 text-rotary-blue" /></div>
+                                            <div>
+                                                <h4 className="font-bold">Crowdfunding Social</h4>
+                                                <p className="text-xs font-medium opacity-80">Define las metas financieras y el progreso del recaudo para transparencia de los donantes.</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                            <div className="p-5 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-2">
+                                                <label className="block text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Meta Financiera ($)</label>
+                                                <input
+                                                    type="number"
+                                                    className="w-full text-xl font-bold border-none p-0 outline-none focus:ring-0 text-gray-800"
+                                                    value={formData.meta}
+                                                    onChange={(e) => setFormData({ ...formData, meta: parseFloat(e.target.value) || 0 })}
+                                                    placeholder="0.00"
+                                                />
+                                                <p className="text-[10px] text-gray-500 font-medium">Costo total de ejecución</p>
+                                            </div>
+
+                                            <div className="p-5 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-2">
+                                                <label className="block text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Recaudado Actual ($)</label>
+                                                <input
+                                                    type="number"
+                                                    className="w-full text-xl font-bold border-none p-0 outline-none focus:ring-0 text-rotary-blue"
+                                                    value={formData.recaudado}
+                                                    onChange={(e) => setFormData({ ...formData, recaudado: parseFloat(e.target.value) || 0 })}
+                                                    placeholder="0.00"
+                                                />
+                                                <p className="text-[10px] text-gray-500 font-medium">Dinero ya recibido</p>
+                                            </div>
+
+                                            <div className="p-5 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-2">
+                                                <label className="block text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Total Donantes</label>
+                                                <input
+                                                    type="number"
+                                                    className="w-full text-xl font-bold border-none p-0 outline-none focus:ring-0 text-gray-800"
+                                                    value={formData.donantes}
+                                                    onChange={(e) => setFormData({ ...formData, donantes: parseInt(e.target.value) || 0 })}
+                                                    placeholder="0"
+                                                />
+                                                <p className="text-[10px] text-gray-500 font-medium">Número de personas</p>
+                                            </div>
+
+                                            <div className="p-5 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-2">
+                                                <label className="block text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Beneficiarios</label>
+                                                <input
+                                                    type="number"
+                                                    className="w-full text-xl font-bold border-none p-0 outline-none focus:ring-0 text-green-600"
+                                                    value={formData.beneficiarios}
+                                                    onChange={(e) => setFormData({ ...formData, beneficiarios: parseInt(e.target.value) || 0 })}
+                                                    placeholder="0"
+                                                />
+                                                <p className="text-[10px] text-gray-500 font-medium">Impacto directo</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            <label className="block text-sm font-bold text-gray-700">Progreso Visual Proyectado</label>
+                                            <div className="h-4 bg-gray-100 rounded-full overflow-hidden border border-gray-200">
+                                                <div className="h-full bg-gradient-to-r from-rotary-blue to-rotary-gold" style={{ width: `${Math.min((formData.recaudado / formData.meta) * 100, 100) || 0}%` }} />
+                                            </div>
+                                            <p className="text-center text-xs font-bold text-gray-400">
+                                                {formatCurrency(formData.recaudado)} de {formatCurrency(formData.meta)} ({Math.round((formData.recaudado / formData.meta) * 100) || 0}%)
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'impact' && (
+                                    <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                            <div className="space-y-4">
+                                                <label className="flex items-center gap-2 text-sm font-bold text-gray-700">
+                                                    <Rocket className="w-4 h-4 text-rotary-gold" /> Impacto Esperado
+                                                </label>
+                                                <div className="rounded-xl border border-gray-200 overflow-hidden">
+                                                    <ReactQuill
+                                                        theme="snow"
+                                                        value={formData.impacto}
+                                                        onChange={(val) => setFormData({ ...formData, impacto: val })}
+                                                        modules={quillModules}
+                                                        className="h-64 mb-12"
+                                                        placeholder="Explica qué se logrará con este proyecto..."
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-4">
+                                                <label className="flex items-center gap-2 text-sm font-bold text-gray-700">
+                                                    <CheckCircle className="w-4 h-4 text-green-500" /> Últimas Actualizaciones
+                                                </label>
+                                                <div className="rounded-xl border border-gray-200 overflow-hidden">
+                                                    <ReactQuill
+                                                        theme="snow"
+                                                        value={formData.actualizaciones}
+                                                        onChange={(val) => setFormData({ ...formData, actualizaciones: val })}
+                                                        modules={quillModules}
+                                                        className="h-64 mb-12"
+                                                        placeholder="Bitácora de avances, fotos o hitos alcanzados..."
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'gallery' && (
+                                    <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div className="p-6 bg-gray-50 rounded-2xl border border-gray-200 border-dashed flex flex-col items-center justify-center text-center">
+                                                <Video className="w-10 h-10 text-gray-300 mb-2" />
+                                                <label className="block text-sm font-bold text-gray-700 mb-3">Enlace de Video (YouTube/Vimeo)</label>
+                                                <input
+                                                    type="url"
+                                                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none text-sm font-medium"
+                                                    value={formData.videoUrl}
+                                                    onChange={(e) => setFormData({ ...formData, videoUrl: e.target.value })}
+                                                    placeholder="https://youtube.com/watch?v=..."
+                                                />
+                                            </div>
+
+                                            <div className="group relative p-6 bg-gray-900 border border-gray-800 rounded-2xl flex flex-col items-center justify-center text-center overflow-hidden">
+                                                <div className="relative z-10">
+                                                    <Upload className="w-10 h-10 text-rotary-gold mb-2 mx-auto" />
+                                                    <label className="block text-sm font-bold text-white mb-1">Galería de Imágenes</label>
+                                                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-4">Click para seleccionar múltiples</p>
+                                                    <div className="flex justify-center gap-2">
+                                                        <span className="px-3 py-1 bg-white/10 rounded-full text-white text-[10px] font-bold">PNG / JPG</span>
+                                                        <span className="px-3 py-1 bg-white/10 rounded-full text-white text-[10px] font-bold">MAX 5MB</span>
+                                                    </div>
+                                                </div>
+                                                <input type="file" multiple className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={(e) => handleImageUpload(e, true)} disabled={uploading} />
+                                                <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            <h4 className="font-bold text-gray-800 flex items-center gap-2">
+                                                <ImageIcon className="w-4 h-4 text-rotary-blue" /> Imágenes en Galería ({formData.images.length})
+                                            </h4>
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                                {formData.images.map((url, idx) => (
+                                                    <div key={idx} className="aspect-square rounded-xl overflow-hidden border border-gray-100 relative group shadow-sm bg-gray-50">
+                                                        <img src={url} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setFormData(prev => ({ ...prev, images: prev.images.filter((_, i) => i !== idx) }))}
+                                                            className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                                                        >
+                                                            <X className="w-3 h-3" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                                {formData.images.length === 0 && (
+                                                    <div className="aspect-square rounded-xl border-2 border-dashed border-gray-100 flex items-center justify-center text-gray-200">
+                                                        <LayoutGrid className="w-8 h-8" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </form>
+                        </div>
+
+                        {/* Footer Actions */}
+                        <div className="p-8 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
+                            <div className="flex gap-2">
+                                <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2.5 text-gray-500 font-bold hover:text-gray-700 transition-colors">Cancelar</button>
                             </div>
-
-                            <div className="space-y-6">
-                                <label className="block text-sm font-bold text-gray-700">Imagen Destacada</label>
-                                <div className="aspect-video rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center bg-gray-50 overflow-hidden relative">
-                                    {formData.image ? (
-                                        <img src={formData.image} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
-                                    ) : (
-                                        <FolderKanban className="w-12 h-12 text-gray-200" />
-                                    )}
+                            <div className="flex items-center gap-6">
+                                <div className="hidden md:flex flex-col items-end">
+                                    <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Paso Actual</span>
+                                    <span className="text-xs font-bold text-rotary-blue">
+                                        {activeTab === 'info' ? '1. Información General' :
+                                            activeTab === 'crowd' ? '2. Metas de Recaudo' :
+                                                activeTab === 'impact' ? '3. Detalles de Impacto' : '4. Multimedia'}
+                                    </span>
                                 </div>
-                                <label className="w-full flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-3 rounded-lg font-bold cursor-pointer transition-all border border-gray-200">
-                                    <Upload className="w-5 h-5" />
-                                    {uploading ? 'Subiendo...' : 'Seleccionar Imagen del Proyecto'}
-                                    <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} disabled={uploading} />
-                                </label>
-
-                                <div className="pt-12 flex justify-end gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsModalOpen(false)}
-                                        className="px-6 py-2 text-gray-500 font-bold"
-                                    >
-                                        Cancelar
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        disabled={isSubmitting || uploading}
-                                        className="bg-rotary-blue text-white px-8 py-2 rounded-full font-bold hover:bg-sky-800 transition-all shadow-lg select-none disabled:opacity-50"
-                                    >
-                                        {isSubmitting ? 'Guardando...' : (editingProject ? 'Guardar Cambios' : 'Crear Proyecto')}
-                                    </button>
-                                </div>
+                                <button
+                                    form="projectForm"
+                                    type="submit"
+                                    disabled={isSubmitting || uploading}
+                                    className="bg-rotary-blue text-white px-10 py-3 rounded-2xl font-bold hover:bg-sky-800 transition-all shadow-xl shadow-rotary-blue/20 disabled:opacity-50 flex items-center gap-2"
+                                >
+                                    {isSubmitting ? 'Guardando...' : (editingProject ? 'Guardar Cambios' : 'Crear Proyecto')}
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
                             </div>
-                        </form>
+                        </div>
                     </div>
                 </div>
             )}

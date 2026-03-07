@@ -121,22 +121,39 @@ const getClubProjects = async (req, res) => {
 };
 
 const createProject = async (req, res) => {
-    const { title, description, image, status, clubId } = req.body;
+    const {
+        title, description, image, status, clubId,
+        category, meta, recaudado, donantes, beneficiarios,
+        ubicacion, fechaEstimada, videoUrl, images,
+        impacto, actualizaciones
+    } = req.body;
     try {
         const targetClubId = req.user.role === 'administrator' ? (clubId || req.user.clubId) : req.user.clubId;
 
         const project = await prisma.project.create({
-            data: { title, description, image, status: status || 'planned', clubId: targetClubId }
+            data: {
+                title, description, image, status: status || 'planned', clubId: targetClubId,
+                category, meta, recaudado, donantes, beneficiarios,
+                ubicacion, fechaEstimada: fechaEstimada ? new Date(fechaEstimada) : null,
+                videoUrl, images: images || [],
+                impacto, actualizaciones
+            }
         });
         res.status(201).json(project);
     } catch (error) {
+        console.error(error);
         res.status(500).json({ error: 'Error creating project' });
     }
 };
 
 const updateProject = async (req, res) => {
     const { id } = req.params;
-    const { title, description, image, status } = req.body;
+    const {
+        title, description, image, status,
+        category, meta, recaudado, donantes, beneficiarios,
+        ubicacion, fechaEstimada, videoUrl, images,
+        impacto, actualizaciones
+    } = req.body;
     try {
         const existing = await prisma.project.findUnique({ where: { id } });
         if (!existing) return res.status(404).json({ error: 'Project not found' });
@@ -147,10 +164,17 @@ const updateProject = async (req, res) => {
 
         const project = await prisma.project.update({
             where: { id },
-            data: { title, description, image, status }
+            data: {
+                title, description, image, status,
+                category, meta, recaudado, donantes, beneficiarios,
+                ubicacion, fechaEstimada: fechaEstimada ? new Date(fechaEstimada) : null,
+                videoUrl, images,
+                impacto, actualizaciones
+            }
         });
         res.json(project);
     } catch (error) {
+        console.error(error);
         res.status(500).json({ error: 'Error updating project' });
     }
 };
