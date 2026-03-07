@@ -24,6 +24,7 @@ const ClubSettings: React.FC = () => {
         secondaryColor: '#E29C00',
         logo: '',
         footerLogo: '',
+        endPolioLogo: '',
     });
     const [uploading, setUploading] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -48,6 +49,7 @@ const ClubSettings: React.FC = () => {
                 secondaryColor: club.colors?.secondary || '#E29C00',
                 logo: club.logo || '',
                 footerLogo: club.footerLogo || '',
+                endPolioLogo: club.endPolioLogo || '',
             });
         }
     }, [club]);
@@ -123,6 +125,43 @@ const ClubSettings: React.FC = () => {
             }
         } catch (error: any) {
             console.error('Footer logo upload error:', error);
+            toast.error(`Error al subir: ${error.message}`);
+        } finally {
+            setUploading(false);
+            if (e.target) e.target.value = '';
+        }
+    };
+
+    const handleEndPolioLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setUploading(true);
+        const formDataUpload = new FormData();
+        formDataUpload.append('file', file);
+        formDataUpload.append('folder', 'logos-endpolio');
+
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const apiUrl = import.meta.env.VITE_API_URL || '/api';
+            const targetUrl = `${apiUrl}/media/upload`.replace(/\/+/g, '/').replace(':/', '://');
+
+            const response = await fetch(targetUrl, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formDataUpload
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setFormData(prev => ({ ...prev, endPolioLogo: data.url }));
+                toast.success('Logo End Polio subido con éxito');
+            } else {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Falla en el servidor');
+            }
+        } catch (error: any) {
+            console.error('End Polio logo upload error:', error);
             toast.error(`Error al subir: ${error.message}`);
         } finally {
             setUploading(false);
@@ -280,6 +319,34 @@ const ClubSettings: React.FC = () => {
                                 {uploading ? 'Subiendo...' : 'Seleccionar Logo Footer'}
                                 <input type="file" className="hidden" accept="image/*" onChange={(e) => {
                                     handleFooterLogoUpload(e);
+                                }} disabled={uploading} />
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                {/* End Polio Logo Section */}
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
+                        <ImageIcon className="w-5 h-5 text-rotary-blue" /> Logo End Polio Now
+                    </h3>
+                    <div className="flex flex-col md:flex-row items-center gap-8">
+                        <div className="w-48 h-48 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden bg-gray-50">
+                            {formData.endPolioLogo ? (
+                                <img src={formData.endPolioLogo} alt="End Polio Logo preview" className="w-full h-full object-contain p-4" crossOrigin="anonymous" />
+                            ) : (
+                                <ImageIcon className="w-12 h-12 text-gray-300" />
+                            )}
+                        </div>
+                        <div className="flex-1 space-y-4">
+                            <p className="text-sm text-gray-500">
+                                Sube el logo oficial de End Polio Now para tu footer.
+                            </p>
+                            <label className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2.5 rounded-full font-bold cursor-pointer transition-colors">
+                                <Upload className="w-4 h-4" />
+                                {uploading ? 'Subiendo...' : 'Seleccionar Logo End Polio'}
+                                <input type="file" className="hidden" accept="image/*" onChange={(e) => {
+                                    handleEndPolioLogoUpload(e);
                                 }} disabled={uploading} />
                             </label>
                         </div>

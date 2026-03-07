@@ -27,9 +27,10 @@ model Club {
   district    String?
   domain      String?  @unique
   subdomain   String?  @unique
-  logo        String?
-  footerLogo  String?
-  description String?
+  logo          String?
+  footerLogo    String?
+  endPolioLogo  String?
+  description   String?
   status      String   @default("active") // active, inactive
   users       User[]
   projects    Project[]
