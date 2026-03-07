@@ -54,22 +54,35 @@ const getClubPosts = async (req, res) => {
 };
 
 const createPost = async (req, res) => {
-    const { title, content, image, published, clubId } = req.body;
+    const {
+        title, content, image, published, clubId,
+        category, tags, keywords, seoTitle, seoDescription,
+        videoUrl, images
+    } = req.body;
     try {
         const targetClubId = req.user.role === 'administrator' ? (clubId || req.user.clubId) : req.user.clubId;
 
         const post = await prisma.post.create({
-            data: { title, content, image, published: published || false, clubId: targetClubId }
+            data: {
+                title, content, image, published: published || false, clubId: targetClubId,
+                category, tags: tags || [], keywords, seoTitle, seoDescription,
+                videoUrl, images: images || []
+            }
         });
         res.status(201).json(post);
     } catch (error) {
+        console.error(error);
         res.status(500).json({ error: 'Error creating post' });
     }
 };
 
 const updatePost = async (req, res) => {
     const { id } = req.params;
-    const { title, content, image, published } = req.body;
+    const {
+        title, content, image, published,
+        category, tags, keywords, seoTitle, seoDescription,
+        videoUrl, images
+    } = req.body;
     try {
         const existing = await prisma.post.findUnique({ where: { id } });
         if (!existing) return res.status(404).json({ error: 'Post not found' });
@@ -80,10 +93,15 @@ const updatePost = async (req, res) => {
 
         const post = await prisma.post.update({
             where: { id },
-            data: { title, content, image, published }
+            data: {
+                title, content, image, published,
+                category, tags, keywords, seoTitle, seoDescription,
+                videoUrl, images
+            }
         });
         res.json(post);
     } catch (error) {
+        console.error(error);
         res.status(500).json({ error: 'Error updating post' });
     }
 };

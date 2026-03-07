@@ -78,15 +78,22 @@ model Project {
 }
 
 model Post {
-  id        String   @id @default(uuid())
-  title     String
-  content   String
-  image     String?
-  published Boolean  @default(false)
-  clubId    String
-  club      Club     @relation(fields: [clubId], references: [id])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String   @id @default(uuid())
+  title          String
+  content        String   @db.Text
+  image          String?
+  published      Boolean  @default(false)
+  category       String?
+  tags           String[]
+  keywords       String?
+  seoTitle       String?
+  seoDescription String?  @db.Text
+  videoUrl       String?
+  images         String[] // Gallery images
+  clubId         String
+  club           Club     @relation(fields: [clubId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model Donation {

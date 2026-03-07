@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
-import { Plus, Edit2, Trash2, Search, Newspaper, X } from 'lucide-react';
+import {
+    Plus, Edit2, Trash2, Search, Newspaper, X, Upload,
+    Globe, Image as ImageIcon, Video, Tag, Settings, ChevronRight
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useClub } from '../../contexts/ClubContext';
 import { articulosDestacados, articulos as articulosEstaticos } from '../../data/news';
@@ -13,6 +16,13 @@ interface Post {
     content: string;
     image: string | null;
     published: boolean;
+    category?: string;
+    tags?: string[];
+    keywords?: string;
+    seoTitle?: string;
+    seoDescription?: string;
+    videoUrl?: string;
+    images?: string[];
     createdAt: string;
     isStatic?: boolean;
 }
@@ -25,13 +35,23 @@ const NewsManagement: React.FC = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [activeTab, setActiveTab] = useState<'content' | 'gallery' | 'seo'>('content');
 
     const [formData, setFormData] = useState({
         title: '',
         content: '',
         image: '',
         published: true,
+        category: '',
+        tags: [] as string[],
+        keywords: '',
+        seoTitle: '',
+        seoDescription: '',
+        videoUrl: '',
+        images: [] as string[],
     });
+
+    const [tagInput, setTagInput] = useState('');
 
     useEffect(() => {
         if (club?.id) {
@@ -67,12 +87,20 @@ const NewsManagement: React.FC = () => {
     };
 
     const handleOpenModal = (post?: Post) => {
+        setActiveTab('content');
         if (post) {
             const initialData = {
-                title: post.title,
-                content: post.content,
+                title: post.title || '',
+                content: post.content || '',
                 image: post.image || '',
                 published: post.isStatic ? true : post.published,
+                category: post.category || '',
+                tags: post.tags || [],
+                keywords: post.keywords || '',
+                seoTitle: post.seoTitle || '',
+                seoDescription: post.seoDescription || '',
+                videoUrl: post.videoUrl || '',
+                images: post.images || [],
             };
 
             if (post.isStatic) {
@@ -90,36 +118,49 @@ const NewsManagement: React.FC = () => {
                 content: '',
                 image: '',
                 published: true,
+                category: '',
+                tags: [],
+                keywords: '',
+                seoTitle: '',
+                seoDescription: '',
+                videoUrl: '',
+                images: [],
             });
         }
         setIsModalOpen(true);
     };
 
-    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, isGallery = false) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
 
         setUploading(true);
-        const uploadData = new FormData();
-        uploadData.append('file', file);
-        uploadData.append('folder', 'news');
+        const token = localStorage.getItem('rotary_token');
+        const apiUrl = import.meta.env.VITE_API_URL || '/api';
 
         try {
-            const token = localStorage.getItem('rotary_token');
-            const apiUrl = import.meta.env.VITE_API_URL || '/api';
-            const targetUrl = `${apiUrl}/media/upload?folder=news&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
+            for (let i = 0; i < files.length; i++) {
+                const uploadData = new FormData();
+                uploadData.append('file', files[i]);
+                uploadData.append('folder', 'news');
 
-            const response = await fetch(targetUrl, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: uploadData
-            });
+                const targetUrl = `${apiUrl}/media/upload?folder=news&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
+                const response = await fetch(targetUrl, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: uploadData
+                });
 
-            if (response.ok) {
-                const data = await response.json();
-                setFormData(prev => ({ ...prev, image: data.url }));
-                toast.success('Imagen subida');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (isGallery) {
+                        setFormData(prev => ({ ...prev, images: [...prev.images, data.url] }));
+                    } else {
+                        setFormData(prev => ({ ...prev, image: data.url }));
+                    }
+                }
             }
+            toast.success(isGallery ? 'Fotos añadidas a la galería' : 'Imagen de portada actualizada');
         } catch (error) {
             toast.error('Error al subir imagen');
         } finally {
@@ -177,6 +218,20 @@ const NewsManagement: React.FC = () => {
         } catch (error: any) {
             toast.error('Error al eliminar');
         }
+    };
+
+    const handleAddTag = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' && tagInput.trim()) {
+            e.preventDefault();
+            if (!formData.tags.includes(tagInput.trim())) {
+                setFormData(prev => ({ ...prev, tags: [...prev.tags, tagInput.trim()] }));
+            }
+            setTagInput('');
+        }
+    };
+
+    const removeTag = (tagToRemove: string) => {
+        setFormData(prev => ({ ...prev, tags: prev.tags.filter(t => t !== tagToRemove) }));
     };
 
     const filteredPosts = posts.filter(p =>
@@ -284,90 +339,279 @@ const NewsManagement: React.FC = () => {
             {/* Modal */}
             {isModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in duration-200">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in duration-200">
+                        {/* Modal Header */}
                         <div className="px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                            <h2 className="text-xl font-bold text-gray-800">
-                                {editingPost ? 'Editar Artículo' : 'Nueva Noticia'}
-                            </h2>
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-800">
+                                    {editingPost ? 'Editar Artículo' : 'Nueva Noticia'}
+                                </h2>
+                                <p className="text-xs text-gray-400 font-medium">Gestiona el contenido, multimedia y SEO de tu publicación.</p>
+                            </div>
                             <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white rounded-full text-gray-400 transition-colors shadow-sm">
                                 <X className="w-6 h-6" />
                             </button>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                                <div className="space-y-4">
-                                    <label className="block text-sm font-bold text-gray-700">Imagen de Portada</label>
-                                    <div className="aspect-square rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center bg-gray-50 overflow-hidden relative group">
-                                        {formData.image ? (
-                                            <>
-                                                <img src={formData.image} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
-                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                                    <button type="button" onClick={() => setFormData({ ...formData, image: '' })} className="bg-red-500 text-white p-2 rounded-full"><X className="w-4 h-4" /></button>
-                                                </div>
-                                            </>
-                                        ) : (
-                                            <div className="text-center p-4">
-                                                <Newspaper className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                                                <p className="text-[10px] text-gray-400 font-bold uppercase">Click para subir foto</p>
+                        {/* Tabs Navigation */}
+                        <div className="flex px-8 border-b border-gray-100 bg-white sticky top-0 z-10">
+                            {[
+                                { id: 'content', label: 'Contenido', icon: Newspaper },
+                                { id: 'gallery', label: 'Galería & Media', icon: ImageIcon },
+                                { id: 'seo', label: 'SEO & Tráfico', icon: Globe }
+                            ].map(tab => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id as any)}
+                                    className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all border-b-2 ${activeTab === tab.id
+                                            ? 'border-rotary-blue text-rotary-blue'
+                                            : 'border-transparent text-gray-400 hover:text-gray-600'
+                                        }`}
+                                >
+                                    <tab.icon className="w-4 h-4" />
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Form Body */}
+                        <div className="flex-1 overflow-y-auto p-8">
+                            <form id="newsForm" onSubmit={handleSubmit} className="space-y-8">
+
+                                {activeTab === 'content' && (
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 animate-in slide-in-from-right-4 duration-300">
+                                        <div className="md:col-span-2 space-y-6">
+                                            <div>
+                                                <label className="block text-sm font-bold text-gray-700 mb-2">Título de la Noticia</label>
+                                                <input
+                                                    type="text" required
+                                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none transition-all font-bold text-lg"
+                                                    value={formData.title}
+                                                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                                                    placeholder="Escribe un titular llamativo..."
+                                                />
                                             </div>
-                                        )}
-                                        <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={handleImageUpload} disabled={uploading} />
-                                    </div>
-                                </div>
 
-                                <div className="md:col-span-2 space-y-6">
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-700 mb-2">Título de la Noticia</label>
-                                        <input
-                                            type="text" required
-                                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none transition-all font-bold text-lg"
-                                            value={formData.title}
-                                            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                                            placeholder="Escribe un titular impactante..."
-                                        />
-                                    </div>
+                                            <div>
+                                                <label className="block text-sm font-bold text-gray-700 mb-2">Cuerpo de la Noticia (Editor Visual)</label>
+                                                <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
+                                                    <ReactQuill
+                                                        theme="snow"
+                                                        value={formData.content}
+                                                        onChange={(val) => setFormData({ ...formData, content: val })}
+                                                        modules={quillModules}
+                                                        className="h-80 mb-12"
+                                                    />
+                                                </div>
+                                            </div>
 
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-700 mb-2">Contenido del Artículo (Editor Visual)</label>
-                                        <div className="rounded-xl border border-gray-200 overflow-hidden">
-                                            <ReactQuill
-                                                theme="snow"
-                                                value={formData.content}
-                                                onChange={(val) => setFormData({ ...formData, content: val })}
-                                                modules={quillModules}
-                                                className="h-80 mb-12"
-                                            />
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-sm font-bold text-gray-700 mb-2">Categoría</label>
+                                                    <input
+                                                        type="text"
+                                                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none"
+                                                        value={formData.category}
+                                                        onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                                                        placeholder="Ej: Eventos, Proyectos, Servicio"
+                                                    />
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <label className="block text-sm font-bold text-gray-700 mb-2">Estado</label>
+                                                    <label className="flex items-center gap-3 cursor-pointer group h-full">
+                                                        <div className={`w-10 h-6 rounded-full transition-all relative ${formData.published ? 'bg-green-500' : 'bg-gray-200'}`}>
+                                                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${formData.published ? 'left-5' : 'left-1'}`} />
+                                                        </div>
+                                                        <input
+                                                            type="checkbox"
+                                                            className="hidden"
+                                                            checked={formData.published}
+                                                            onChange={(e) => setFormData({ ...formData, published: e.target.checked })}
+                                                        />
+                                                        <span className="text-sm font-bold text-gray-700 group-hover:text-rotary-blue transition-colors">Publicado</span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-6">
+                                            <div>
+                                                <label className="block text-sm font-bold text-gray-700 mb-2">Imagen de Portada</label>
+                                                <div className="aspect-square rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center bg-gray-50 overflow-hidden relative group">
+                                                    {formData.image ? (
+                                                        <>
+                                                            <img src={formData.image} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                                <button type="button" onClick={() => setFormData({ ...formData, image: '' })} className="bg-red-500 text-white p-2 rounded-full"><X className="w-4 h-4" /></button>
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <div className="text-center p-4">
+                                                            <Upload className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                                                            <p className="text-[10px] text-gray-400 font-bold uppercase">Haz clic para subir portada</p>
+                                                        </div>
+                                                    )}
+                                                    <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={(e) => handleImageUpload(e)} disabled={uploading} />
+                                                </div>
+                                            </div>
+
+                                            <div className="p-4 bg-rotary-blue/5 rounded-2xl border border-rotary-blue/10">
+                                                <h4 className="text-xs font-bold text-rotary-blue uppercase mb-2">Tips Pro</h4>
+                                                <p className="text-[10px] text-gray-500 leading-relaxed font-medium">
+                                                    Asegúrate de que la imagen de portada sea de alta calidad. El título debe resumir claramente el evento o noticia para atraer lectores.
+                                                </p>
+                                            </div>
                                         </div>
                                     </div>
+                                )}
 
-                                    <div className="flex items-center gap-4 py-4">
-                                        <label className="flex items-center gap-3 cursor-pointer group">
-                                            <div className={`w-10 h-6 rounded-full transition-all relative ${formData.published ? 'bg-green-500' : 'bg-gray-200'}`}>
-                                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${formData.published ? 'left-5' : 'left-1'}`} />
+                                {activeTab === 'gallery' && (
+                                    <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div className="p-6 bg-gray-50 rounded-2xl border border-gray-200 border-dashed flex flex-col items-center justify-center text-center">
+                                                <Video className="w-10 h-10 text-gray-300 mb-2" />
+                                                <label className="block text-sm font-bold text-gray-700 mb-3">Video de la Noticia (YouTube/Vimeo)</label>
+                                                <input
+                                                    type="url"
+                                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none text-sm font-medium"
+                                                    value={formData.videoUrl}
+                                                    onChange={(e) => setFormData({ ...formData, videoUrl: e.target.value })}
+                                                    placeholder="URL del video..."
+                                                />
                                             </div>
-                                            <input
-                                                type="checkbox"
-                                                className="hidden"
-                                                checked={formData.published}
-                                                onChange={(e) => setFormData({ ...formData, published: e.target.checked })}
-                                            />
-                                            <span className="text-sm font-bold text-gray-700 group-hover:text-rotary-blue transition-colors">Publicar inmediatamente</span>
-                                        </label>
-                                    </div>
-                                </div>
-                            </div>
-                        </form>
 
-                        <div className="p-8 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+                                            <div className="group relative p-6 bg-gray-900 border border-gray-800 rounded-2xl flex flex-col items-center justify-center text-center overflow-hidden">
+                                                <div className="relative z-10 text-white">
+                                                    <Upload className="w-10 h-10 text-rotary-gold mb-2 mx-auto" />
+                                                    <label className="block text-sm font-bold mb-1">Galería de Imágenes</label>
+                                                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-4">Click para seleccionar múltiples</p>
+                                                </div>
+                                                <input type="file" multiple className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={(e) => handleImageUpload(e, true)} disabled={uploading} />
+                                                <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            <h4 className="font-bold text-gray-800 flex items-center gap-2">
+                                                <ImageIcon className="w-4 h-4 text-rotary-blue" /> Imágenes en Galería ({formData.images.length})
+                                            </h4>
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                                {formData.images.map((url, idx) => (
+                                                    <div key={idx} className="aspect-square rounded-xl overflow-hidden border border-gray-100 relative group shadow-sm bg-gray-50">
+                                                        <img src={url} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setFormData(prev => ({ ...prev, images: prev.images.filter((_, i) => i !== idx) }))}
+                                                            className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                                                        >
+                                                            <X className="w-3 h-3" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'seo' && (
+                                    <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
+                                        <div className="p-6 bg-rotary-gold/5 rounded-2xl border border-rotary-gold/10 flex items-center gap-4">
+                                            <Globe className="w-8 h-8 text-rotary-gold" />
+                                            <div>
+                                                <h4 className="font-bold text-gray-800">Optimización SEO</h4>
+                                                <p className="text-xs text-gray-500 font-medium">Maximiza el alcance de esta noticia en Google y otros buscadores.</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                            <div className="space-y-6">
+                                                <div>
+                                                    <label className="block text-sm font-bold text-gray-700 mb-2">Meta Título (SEO)</label>
+                                                    <input
+                                                        type="text"
+                                                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none font-medium"
+                                                        value={formData.seoTitle}
+                                                        onChange={(e) => setFormData({ ...formData, seoTitle: e.target.value })}
+                                                        placeholder="Titular para buscadores..."
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-sm font-bold text-gray-700 mb-2">Meta Descripción</label>
+                                                    <textarea
+                                                        rows={4}
+                                                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none resize-none"
+                                                        value={formData.seoDescription}
+                                                        onChange={(e) => setFormData({ ...formData, seoDescription: e.target.value })}
+                                                        placeholder="Pequeño resumen de 160 caracteres..."
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-6">
+                                                <div>
+                                                    <label className="block text-sm font-bold text-gray-700 mb-2">Palabras Clave (Keywords)</label>
+                                                    <input
+                                                        type="text"
+                                                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none"
+                                                        value={formData.keywords}
+                                                        onChange={(e) => setFormData({ ...formData, keywords: e.target.value })}
+                                                        placeholder="Separadas por comas..."
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-sm font-bold text-gray-700 mb-2">Etiquetas (Tags)</label>
+                                                    <div className="space-y-3">
+                                                        <div className="relative">
+                                                            <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                                            <input
+                                                                type="text"
+                                                                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none"
+                                                                value={tagInput}
+                                                                onChange={(e) => setTagInput(e.target.value)}
+                                                                onKeyDown={handleAddTag}
+                                                                placeholder="Escribe y presiona Enter..."
+                                                            />
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {formData.tags.map(tag => (
+                                                                <span key={tag} className="flex items-center gap-1.5 px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-bold border border-gray-200">
+                                                                    #{tag}
+                                                                    <button type="button" onClick={() => removeTag(tag)} className="hover:text-red-500"><X className="w-3 h-3" /></button>
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </form>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-8 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
                             <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2.5 text-gray-500 font-bold hover:text-gray-700 transition-colors">Cancelar</button>
-                            <button
-                                onClick={handleSubmit}
-                                disabled={isSubmitting || uploading}
-                                className="bg-rotary-blue text-white px-10 py-3 rounded-2xl font-bold hover:bg-sky-800 transition-all shadow-xl shadow-rotary-blue/20 disabled:opacity-50"
-                            >
-                                {isSubmitting ? 'Guardando...' : (editingPost ? 'Guardar Cambios' : 'Publicar Noticia')}
-                            </button>
+                            <div className="flex items-center gap-6">
+                                <div className="hidden md:flex flex-col items-end">
+                                    <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Paso Actual</span>
+                                    <span className="text-xs font-bold text-rotary-blue">
+                                        {activeTab === 'content' ? '1. Redacción' :
+                                            activeTab === 'gallery' ? '2. Multimedia' : '3. SEO & Indexación'}
+                                    </span>
+                                </div>
+                                <button
+                                    form="newsForm"
+                                    type="submit"
+                                    disabled={isSubmitting || uploading}
+                                    className="bg-rotary-blue text-white px-10 py-3 rounded-2xl font-bold hover:bg-sky-800 transition-all shadow-xl shadow-rotary-blue/20 disabled:opacity-50 flex items-center gap-2"
+                                >
+                                    {isSubmitting ? 'Guardando...' : (editingPost ? 'Guardar Cambios' : 'Publicar Noticia')}
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
