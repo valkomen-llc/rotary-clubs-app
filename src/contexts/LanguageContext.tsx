@@ -1,4 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, {
+    createContext, useContext,
+    useState, useEffect, useLayoutEffect,
+    useCallback, useRef,
+} from 'react';
 
 export const SUPPORTED_LANGUAGES = [
     { code: 'es', name: 'Español', flag: '🇪🇸' },
@@ -11,54 +15,47 @@ export const SUPPORTED_LANGUAGES = [
     { code: 'ko', name: '한국어', flag: '🇰🇷' },
 ];
 
-// ─── Cache layers ────────────────────────────────────────────────────────────
-// L0: localStorage — persists across page loads and navigation (instant apply)
-// L1: in-memory (memCache) — fastest, per session
-// L2: API (Gemini via /translate/bulk) — network, only for new texts
+// ─── Cache ────────────────────────────────────────────────────────────────────
+// L0  localStorage  — survives page reloads, applied before first paint
+// L1  memCache      — in-memory, fastest lookup
+// L2  Gemini API    — only for brand-new untranslated strings
 
 const memCache: Record<string, Record<string, string>> = {};
 
-function loadLocalCache(lang: string): Record<string, string> {
-    try {
-        return JSON.parse(localStorage.getItem(`_t_${lang}`) || '{}');
-    } catch { return {}; }
+function loadLS(lang: string): Record<string, string> {
+    try { return JSON.parse(localStorage.getItem(`_t_${lang}`) || '{}'); }
+    catch { return {}; }
 }
-
-function saveLocalCache(lang: string, entries: Record<string, string>) {
+function saveLS(lang: string, entries: Record<string, string>) {
     try {
-        const existing = loadLocalCache(lang);
-        const merged = { ...existing, ...entries };
+        const merged = { ...loadLS(lang), ...entries };
         localStorage.setItem(`_t_${lang}`, JSON.stringify(merged));
-    } catch { /* ignore storage full */ }
+    } catch { /* storage full — ignore */ }
+}
+/** Hydrate L1 from L0 once per language */
+function primeCache(lang: string) {
+    if (!memCache[lang]) memCache[lang] = loadLS(lang);
+}
+function getCached(lang: string, text: string): string | undefined {
+    return memCache[lang]?.[text];
 }
 
-function primeMemCache(lang: string) {
-    if (!memCache[lang]) {
-        memCache[lang] = loadLocalCache(lang);
-    }
-}
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-const ORIG_ATTR = 'data-ot'; // "original text"
+// ─── DOM ──────────────────────────────────────────────────────────────────────
+const ORIG_ATTR = 'data-ot';
 const MIN_LEN = 2;
-const API_URL = import.meta.env.VITE_API_URL || '/api';
-const SKIP_SELECTORS = [
-    'script', 'style', 'noscript',
-    '[data-no-translate]',
-    'input', 'textarea', 'select',
-    'code', 'pre', 'svg',
+const SKIP = [
+    'script', 'style', 'noscript', '[data-no-translate]',
+    'input', 'textarea', 'select', 'code', 'pre', 'svg',
 ].join(',');
 
-// ─── DOM helpers ─────────────────────────────────────────────────────────────
-function collectTextNodes(root: Element): Text[] {
-    const nodes: Text[] = [];
-    const skipSet = new Set<Node>(Array.from(root.querySelectorAll(SKIP_SELECTORS)));
-
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+function getNodes(root: Element): Text[] {
+    const skip = new Set<Node>(Array.from(root.querySelectorAll(SKIP)));
+    const out: Text[] = [];
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
         acceptNode(node) {
             let p = node.parentElement;
             while (p && p !== root) {
-                if (skipSet.has(p)) return NodeFilter.FILTER_REJECT;
+                if (skip.has(p)) return NodeFilter.FILTER_REJECT;
                 p = p.parentElement;
             }
             const t = (node.textContent || '').trim();
@@ -66,44 +63,44 @@ function collectTextNodes(root: Element): Text[] {
             if (/^\d+(\.\d+)?$/.test(t)) return NodeFilter.FILTER_SKIP;
             if (/^https?:\/\//.test(t)) return NodeFilter.FILTER_SKIP;
             return NodeFilter.FILTER_ACCEPT;
-        }
+        },
     });
-
-    let node: Node | null;
-    while ((node = walker.nextNode())) nodes.push(node as Text);
-    return nodes;
+    let n: Node | null;
+    while ((n = w.nextNode())) out.push(n as Text);
+    return out;
 }
 
-function applyCache(root: Element, lang: string): Text[] {
-    const cache = memCache[lang] || {};
-    const nodes = collectTextNodes(root);
-
+/** Apply everything in memCache[lang] to the DOM synchronously */
+function applyAll(root: Element, lang: string) {
+    const cache = memCache[lang] ?? {};
+    const nodes = getNodes(root);
     for (const node of nodes) {
         const parent = node.parentElement;
         if (!parent) continue;
-        // Store original text on first encounter
+        // Record original text on first visit
         if (!parent.hasAttribute(ORIG_ATTR)) {
             parent.setAttribute(ORIG_ATTR, (node.textContent || '').trim());
         }
-        const orig = parent.getAttribute(ORIG_ATTR) || '';
-        const translated = cache[orig];
-        if (translated) {
-            const lead = node.textContent?.match(/^\s*/)?.[0] || '';
-            const trail = node.textContent?.match(/\s*$/)?.[0] || '';
-            node.textContent = lead + translated + trail;
+        const orig = parent.getAttribute(ORIG_ATTR) ?? '';
+        const tr = cache[orig];
+        if (tr) {
+            const lead = node.textContent?.match(/^\s*/)?.[0] ?? '';
+            const trail = node.textContent?.match(/\s*$/)?.[0] ?? '';
+            node.textContent = lead + tr + trail;
         }
     }
     return nodes;
 }
 
-function restoreOriginals(root: Element) {
+/** Restore original Spanish text */
+function restoreAll(root: Element) {
     root.querySelectorAll(`[${ORIG_ATTR}]`).forEach(el => {
         const orig = el.getAttribute(ORIG_ATTR);
         if (orig === null) return;
         for (const child of Array.from(el.childNodes)) {
             if (child.nodeType === Node.TEXT_NODE) {
-                const lead = child.textContent?.match(/^\s*/)?.[0] || '';
-                const trail = child.textContent?.match(/\s*$/)?.[0] || '';
+                const lead = child.textContent?.match(/^\s*/)?.[0] ?? '';
+                const trail = child.textContent?.match(/\s*$/)?.[0] ?? '';
                 child.textContent = lead + orig + trail;
                 break;
             }
@@ -112,171 +109,198 @@ function restoreOriginals(root: Element) {
     });
 }
 
-// ─── API: batch-fetch missing translations ────────────────────────────────────
-async function fetchMissing(texts: string[], lang: string): Promise<Record<string, string>> {
-    const toFetch = texts.filter(t => !memCache[lang]?.[t]);
+// ─── API ──────────────────────────────────────────────────────────────────────
+const API_URL = import.meta.env.VITE_API_URL || '/api';
+const CHUNK = 40;
+
+async function fetchMissing(
+    texts: string[],
+    lang: string,
+): Promise<Record<string, string>> {
+    const toFetch = texts.filter(t => !getCached(lang, t));
     if (!toFetch.length) return {};
 
     const result: Record<string, string> = {};
-    const CHUNK = 40;
-
     for (let i = 0; i < toFetch.length; i += CHUNK) {
         const chunk = toFetch.slice(i, i + CHUNK);
         try {
-            const resp = await fetch(`${API_URL}/translate/bulk`, {
+            const r = await fetch(`${API_URL}/translate/bulk`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ texts: chunk, targetLang: lang }),
             });
-            if (!resp.ok) continue;
-            const data = await resp.json();
-            const arr: string[] = Array.isArray(data.translations) ? data.translations : [];
+            if (!r.ok) continue;
+            const data = await r.json();
+            const arr: string[] = Array.isArray(data.translations)
+                ? data.translations : [];
+            if (!memCache[lang]) memCache[lang] = {};
             chunk.forEach((orig, idx) => {
-                const translated = arr[idx] || orig;
-                if (!memCache[lang]) memCache[lang] = {};
-                memCache[lang][orig] = translated;
-                result[orig] = translated;
+                const tr = arr[idx] || orig;
+                memCache[lang][orig] = tr;
+                result[orig] = tr;
             });
-        } catch { /* network error — keep originals */ }
+        } catch { /* network error */ }
     }
-
-    if (Object.keys(result).length) {
-        saveLocalCache(lang, result);
-    }
+    if (Object.keys(result).length) saveLS(lang, result);
     return result;
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
-interface LangContextType {
+interface LangCtx {
     lang: string;
-    setLang: (lang: string) => void;
+    setLang: (l: string) => void;
     translate: (text: string) => Promise<string>;
     translateSync: (text: string) => string;
     isTranslating: boolean;
 }
-
-const LangContext = createContext<LangContextType | undefined>(undefined);
+const LangContext = createContext<LangCtx | undefined>(undefined);
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [lang, setLangState] = useState<string>(() => {
         const stored = localStorage.getItem('site_language') || 'es';
-        // Prime memory cache immediately so first paint is translated
-        if (stored !== 'es') primeMemCache(stored);
+        if (stored !== 'es') primeCache(stored); // hydrate L1 from L0 synchronously
         return stored;
     });
 
     const rootRef = useRef<Element | null>(null);
     const observerRef = useRef<MutationObserver | null>(null);
-    const pendingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const fetchingRef = useRef(false);
+    const bgTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const fetching = useRef(false);
 
-    const setLang = useCallback((newLang: string) => {
-        localStorage.setItem('site_language', newLang);
-        if (newLang !== 'es') primeMemCache(newLang);
-        setLangState(newLang);
+    const setLang = useCallback((l: string) => {
+        localStorage.setItem('site_language', l);
+        if (l !== 'es') primeCache(l);
+        setLangState(l);
     }, []);
 
-    // Kept for <T> component compatibility
-    const translate = useCallback(async (text: string): Promise<string> => {
+    const translate = useCallback(async (text: string) => {
         if (!text || lang === 'es') return text;
-        if (memCache[lang]?.[text]) return memCache[lang][text];
-        const result = await fetchMissing([text], lang);
-        return result[text] || text;
+        if (getCached(lang, text)) return getCached(lang, text)!;
+        const r = await fetchMissing([text], lang);
+        return r[text] ?? text;
     }, [lang]);
 
-    const translateSync = useCallback((text: string): string => {
+    const translateSync = useCallback((text: string) => {
         if (!text || lang === 'es') return text;
-        return memCache[lang]?.[text] || text;
+        return getCached(lang, text) ?? text;
     }, [lang]);
 
-    // ── Core: apply cache instantly, then silently fetch what's missing ──────
-    const syncPage = useCallback(async (targetLang: string, root: Element) => {
-        if (targetLang === 'es') {
-            restoreOriginals(root);
-            return;
-        }
-
-        // STEP 1 — instant: apply everything already cached (L0+L1)
-        applyCache(root, targetLang);
-
-        // STEP 2 — background: find untranslated nodes & fetch silently
-        if (fetchingRef.current) return;
-        fetchingRef.current = true;
-        try {
-            const nodes = collectTextNodes(root);
-            const missing = [...new Set(
-                nodes
-                    .map(n => n.parentElement?.getAttribute(ORIG_ATTR) || (n.textContent || '').trim())
-                    .filter(t => t.length >= MIN_LEN && !memCache[targetLang]?.[t])
-            )];
-
-            if (!missing.length) return;
-
-            // Pause observer during DOM writes
-            observerRef.current?.disconnect();
-            const fresh = await fetchMissing(missing, targetLang);
-
-            if (Object.keys(fresh).length) {
-                // Apply newly fetched translations
-                const freshNodes = collectTextNodes(root);
-                for (const node of freshNodes) {
-                    const orig = node.parentElement?.getAttribute(ORIG_ATTR) || (node.textContent || '').trim();
-                    if (fresh[orig]) {
-                        const lead = node.textContent?.match(/^\s*/)?.[0] || '';
-                        const trail = node.textContent?.match(/\s*$/)?.[0] || '';
-                        node.textContent = lead + fresh[orig] + trail;
-                    }
-                }
-            }
-        } finally {
-            fetchingRef.current = false;
-            // Reconnect observer
-            if (observerRef.current && targetLang !== 'es') {
-                observerRef.current.observe(root, { childList: true, subtree: true, characterData: false });
-            }
-        }
-    }, []);
-
-    // ── Language change effect ────────────────────────────────────────────────
-    useEffect(() => {
-        const root = rootRef.current || document.getElementById('root');
+    // ── INSTANT: apply cached translations BEFORE browser paints ─────────────
+    // useLayoutEffect fires synchronously after DOM mutations, before paint.
+    useLayoutEffect(() => {
+        const root = document.getElementById('root');
         if (!root) return;
         rootRef.current = root;
 
-        if (pendingRef.current) clearTimeout(pendingRef.current);
-        // Small delay to let React finish rendering current page
-        pendingRef.current = setTimeout(() => syncPage(lang, root), 80);
+        if (lang === 'es') {
+            restoreAll(root);
+            return;
+        }
+        // Apply everything already in L0/L1 cache — zero network, zero delay
+        applyAll(root, lang);
+    }, [lang]);
 
-        return () => { if (pendingRef.current) clearTimeout(pendingRef.current); };
-    }, [lang, syncPage]);
+    // ── BACKGROUND: silently fetch whatever wasn't cached yet ─────────────────
+    useEffect(() => {
+        const root = rootRef.current;
+        if (!root || lang === 'es' || fetching.current) return;
 
-    // ── MutationObserver: handle new content (route changes, async data) ─────
+        const run = async () => {
+            fetching.current = true;
+            observerRef.current?.disconnect();
+            try {
+                const nodes = getNodes(root);
+                const missing = [
+                    ...new Set(
+                        nodes
+                            .map(n =>
+                                n.parentElement?.getAttribute(ORIG_ATTR) ??
+                                (n.textContent ?? '').trim()
+                            )
+                            .filter(t => t.length >= MIN_LEN && !getCached(lang, t))
+                    ),
+                ];
+                if (!missing.length) return;
+
+                const fresh = await fetchMissing(missing, lang);
+                if (!Object.keys(fresh).length) return;
+
+                // Apply newly translated strings
+                const freshNodes = getNodes(root);
+                for (const node of freshNodes) {
+                    const orig = node.parentElement?.getAttribute(ORIG_ATTR)
+                        ?? (node.textContent ?? '').trim();
+                    const tr = fresh[orig];
+                    if (tr) {
+                        const lead = node.textContent?.match(/^\s*/)?.[0] ?? '';
+                        const trail = node.textContent?.match(/\s*$/)?.[0] ?? '';
+                        node.textContent = lead + tr + trail;
+                    }
+                }
+            } finally {
+                fetching.current = false;
+                // reconnect observer after DOM writes
+                if (observerRef.current && lang !== 'es') {
+                    observerRef.current.observe(root, {
+                        childList: true, subtree: true, characterData: false,
+                    });
+                }
+            }
+        };
+
+        run();
+    }, [lang]);
+
+    // ── MutationObserver: re-apply when new content is injected ───────────────
     useEffect(() => {
         const root = document.getElementById('root');
         if (!root) return;
         rootRef.current = root;
 
-        if (observerRef.current) {
-            observerRef.current.disconnect();
-            observerRef.current = null;
-        }
-
+        if (observerRef.current) { observerRef.current.disconnect(); observerRef.current = null; }
         if (lang === 'es') return;
 
         const observer = new MutationObserver(() => {
-            if (fetchingRef.current) return;
-            if (pendingRef.current) clearTimeout(pendingRef.current);
-            pendingRef.current = setTimeout(() => {
+            if (fetching.current) return;
+            if (bgTimer.current) clearTimeout(bgTimer.current);
+            bgTimer.current = setTimeout(() => {
                 const r = rootRef.current;
-                if (r) syncPage(lang, r);
-            }, 300);
+                if (!r) return;
+                // First apply cache instantly, then fetch missing
+                applyAll(r, lang);
+                if (!fetching.current) {
+                    fetching.current = true;
+                    observer.disconnect();
+                    const nodes = getNodes(r);
+                    const missing = [
+                        ...new Set(
+                            nodes
+                                .map(n =>
+                                    n.parentElement?.getAttribute(ORIG_ATTR) ??
+                                    (n.textContent ?? '').trim()
+                                )
+                                .filter(t => t.length >= MIN_LEN && !getCached(lang, t))
+                        ),
+                    ];
+                    if (missing.length) {
+                        fetchMissing(missing, lang).then(fresh => {
+                            if (Object.keys(fresh).length) applyAll(r, lang);
+                        }).finally(() => {
+                            fetching.current = false;
+                            observer.observe(r, { childList: true, subtree: true, characterData: false });
+                        });
+                    } else {
+                        fetching.current = false;
+                        observer.observe(r, { childList: true, subtree: true, characterData: false });
+                    }
+                }
+            }, 200);
         });
 
         observer.observe(root, { childList: true, subtree: true, characterData: false });
         observerRef.current = observer;
-
         return () => { observer.disconnect(); observerRef.current = null; };
-    }, [lang, syncPage]);
+    }, [lang]);
 
     return (
         <LangContext.Provider value={{ lang, setLang, translate, translateSync, isTranslating: false }}>
@@ -291,7 +315,7 @@ export const useLang = () => {
     return ctx;
 };
 
-// ─── Hook for <T> component (single-string auto-translate) ───────────────────
+// ─── <T> component hook (single-string) ──────────────────────────────────────
 export const useTranslated = (text: string): string => {
     const { lang, translate, translateSync } = useLang();
     const [result, setResult] = useState<string>(() => translateSync(text));
