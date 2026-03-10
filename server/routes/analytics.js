@@ -72,15 +72,17 @@ async function getPropertyId() {
     }
 }
 
-// ── GET /api/analytics/debug — shows config state + tests auth without exposing secrets ──
+// ── GET /api/analytics/debug — shows config state + tests auth ──
 router.get('/debug', async (req, res) => {
     const saJson = process.env.GA4_SERVICE_ACCOUNT_JSON;
     let saStatus = 'missing';
     let clientEmail = null;
+    let privateKeyId = null;
     if (saJson) {
         try {
             const sa = JSON.parse(saJson);
             clientEmail = sa.client_email;
+            privateKeyId = sa.private_key_id; // shows WHICH key is active in Vercel
             const hasPem = (sa.private_key || '').includes('BEGIN PRIVATE KEY');
             saStatus = hasPem ? 'ok' : 'invalid_pem';
         } catch { saStatus = 'invalid_json'; }
@@ -88,7 +90,6 @@ router.get('/debug', async (req, res) => {
     let propertyId = '';
     try { propertyId = await getPropertyId(); } catch { propertyId = 'db_error'; }
 
-    // Try to actually get an access token to reveal the exact auth error
     let authTest = 'not_attempted';
     let authError = null;
     if (saStatus === 'ok') {
@@ -101,7 +102,7 @@ router.get('/debug', async (req, res) => {
         }
     }
 
-    res.json({ saStatus, clientEmail, propertyId, ga4PropertyIdEnv: !!process.env.GA4_PROPERTY_ID, authTest, authError });
+    res.json({ saStatus, clientEmail, privateKeyId, propertyId, ga4PropertyIdEnv: !!process.env.GA4_PROPERTY_ID, authTest, authError });
 });
 
 // ── Helper: run a GA4 report ──────────────────────────────────────────────────
