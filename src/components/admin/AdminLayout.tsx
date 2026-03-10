@@ -40,6 +40,24 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         () => club?.onboardingCompleted === false
     );
 
+    // Compute setup completion % from club data (no extra API call needed)
+    const setupPct = React.useMemo(() => {
+        if (!club) return 0;
+        const checks = [
+            { w: 15, ok: !!club.logo },
+            { w: 15, ok: !!(club.description && (club.description as string).length > 20) },
+            { w: 12, ok: !!(club as any).contact?.email || !!(club as any).city },
+            { w: 10, ok: !!((club as any).colors?.primary && (club as any).colors?.primary !== '#013388') },
+            { w: 10, ok: !!(Array.isArray((club as any).social) && (club as any).social.some((s: any) => s.url)) },
+            { w: 8, ok: !!(club as any).domain || !!(club as any).subdomain },
+        ];
+        const total = checks.reduce((a, c) => a + c.w, 0);
+        const done = checks.filter(c => c.ok).reduce((a, c) => a + c.w, 0);
+        return Math.round((done / total) * 100);
+    }, [club]);
+
+    const pctColor = setupPct >= 80 ? 'text-emerald-600 bg-emerald-50' : setupPct >= 60 ? 'text-amber-600 bg-amber-50' : 'text-red-600 bg-red-50';
+
     // Define menu items based on role
     const getMenuItems = () => {
         const isSuperAdmin = user?.role === 'administrator';
@@ -49,11 +67,6 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             { icon: LayoutDashboard, label: 'Overview', path: '/admin/dashboard', category: 'General' },
             { icon: PieChart, label: 'Analytics', path: '/admin/analytics', category: 'General' },
         );
-
-        // Configurar Sitio — visible only for club admins (not super admin)
-        if (!isSuperAdmin) {
-            items.push({ icon: Sparkles, label: 'Configurar Sitio', path: '/admin/configuracion-sitio', category: 'General' });
-        }
 
         if (isSuperAdmin) {
             items.push(
@@ -87,14 +100,15 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             { icon: Wallet, label: 'Bóveda de Fondos', path: '/admin/boveda', category: 'E-commerce' }
         );
 
-        // System — Integraciones + Notificaciones only for super admin; Settings shared
+        // System — Integraciones + Notificaciones only for super admin
+        // Settings: super admin in nav + footer; club users only in footer (not nav)
         if (isSuperAdmin) {
             items.push(
                 { icon: Layers, label: 'Integraciones', path: '/admin/integraciones', category: 'System' },
                 { icon: Bell, label: 'Notificaciones', path: '/admin/notificaciones', category: 'System' },
+                { icon: Settings, label: 'Settings', path: '/admin/configuracion', category: 'System' }
             );
         }
-        items.push({ icon: Settings, label: 'Settings', path: '/admin/configuracion', category: 'System' });
 
         return items;
     };
@@ -196,10 +210,21 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 {/* Sidebar Footer / User Profile */}
                 <div className="p-4 border-t border-gray-100 bg-white sticky bottom-0">
                     <div className="flex flex-col gap-1 mb-4">
-                        <Link to="/admin/configuracion" className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-500 hover:text-gray-900 rounded-xl hover:bg-gray-50 transition-all group">
-                            <Settings className="w-5 h-5 text-gray-400 group-hover:text-gray-600" />
-                            Settings
-                        </Link>
+                        {/* Club users: Configurar Sitio with % | Super admin: Settings */}
+                        {user?.role === 'administrator' ? (
+                            <Link to="/admin/configuracion" className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-500 hover:text-gray-900 rounded-xl hover:bg-gray-50 transition-all group">
+                                <Settings className="w-5 h-5 text-gray-400 group-hover:text-gray-600" />
+                                Settings
+                            </Link>
+                        ) : (
+                            <Link to="/admin/configuracion-sitio" className="flex items-center gap-3 px-4 py-2.5 text-sm rounded-xl hover:bg-gray-50 transition-all group font-semibold text-gray-700">
+                                <Sparkles className="w-5 h-5 text-rotary-blue" />
+                                <span className="flex-1">Configurar Sitio</span>
+                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${pctColor}`}>
+                                    {setupPct}%
+                                </span>
+                            </Link>
+                        )}
                         <button onClick={handleLogout} className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-500 hover:text-red-600 rounded-xl hover:bg-red-50 transition-all group">
                             <LogOut className="w-5 h-5 text-gray-400 group-hover:text-red-500" />
                             Logout
