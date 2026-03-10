@@ -1,0 +1,183 @@
+import { useState, useEffect } from 'react';
+import { ArrowRight, ChevronLeft, ChevronRight, Newspaper } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { useClub } from '../contexts/ClubContext';
+import { useTranslated } from '../contexts/LanguageContext';
+import { T } from '../components/T';
+import { articulosDestacados, articulos } from '../data/news';
+
+const allArticles = [...articulosDestacados, ...articulos];
+
+// Helper: translates a dynamic string (article title)
+const ArticleTitle = ({ text }: { text: string }) => {
+  const translated = useTranslated(text);
+  return <>{translated}</>;
+};
+
+const NewsSection = () => {
+  const { club } = useClub();
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [isAutoPlaying, setIsAutoPlaying] = useState(true);
+  const [dbArticles, setDbArticles] = useState<any[]>([]);
+
+  const totalSlides = 3;
+
+  useEffect(() => {
+    const fetchNews = async () => {
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/clubs/${club.id}/posts?limit=9`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.length > 0) {
+            // Map DB fields to component fields
+            const mapped = data.map((post: any) => ({
+              id: post.id,
+              titulo: post.title,
+              imagen: post.image || 'https://images.unsplash.com/photo-1593113598332-cd288d649433?auto=format&fit=crop&q=80',
+              fecha: new Date(post.createdAt).toLocaleDateString()
+            }));
+            setDbArticles(mapped);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching news:', error);
+      }
+    };
+
+    if (club?.id) fetchNews();
+  }, [club?.id]);
+
+  const displayArticles = dbArticles.length > 0 ? dbArticles : allArticles;
+
+  // Auto-play carousel every 5 seconds
+  useEffect(() => {
+    if (!isAutoPlaying) return;
+    const interval = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % totalSlides);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isAutoPlaying]);
+
+  const nextSlide = () => {
+    setCurrentSlide((prev) => (prev + 1) % totalSlides);
+  };
+
+  const prevSlide = () => {
+    setCurrentSlide((prev) => (prev - 1 + totalSlides) % totalSlides);
+  };
+
+  const goToSlide = (index: number) => {
+    setCurrentSlide(index);
+  };
+
+  // Función para obtener las 3 noticias del slide actual
+  const getVisibleArticles = () => {
+    if (displayArticles.length === 0) return [];
+    const start = currentSlide;
+    return [
+      displayArticles[start % displayArticles.length],
+      displayArticles[(start + 1) % displayArticles.length],
+      displayArticles[(start + 2) % displayArticles.length]
+    ].filter(Boolean);
+  };
+
+  const visibleArticles = getVisibleArticles();
+
+  return (
+    <section className="bg-white py-16 md:py-20">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Título */}
+        <h2 className="text-3xl md:text-4xl font-light text-gray-800 text-center mb-12">
+          <T>Noticias y artículos</T>
+        </h2>
+
+        {/* Carrusel de noticias - 3 columnas */}
+        <div
+          className="relative"
+          onMouseEnter={() => setIsAutoPlaying(false)}
+          onMouseLeave={() => setIsAutoPlaying(true)}
+        >
+          {/* Grid de 3 noticias */}
+          <div
+            className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 transition-all duration-500"
+          >
+            {visibleArticles.map((article, index) => (
+              <Link
+                key={`${currentSlide}-${article.id}-${index}`}
+                to={`/blog/${article.id}`}
+                className="group relative block overflow-hidden rounded-lg"
+                style={{ aspectRatio: '4/3' }}
+              >
+                {/* Imagen de fondo */}
+                <img
+                  src={article.imagen}
+                  alt={article.titulo}
+                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                />
+
+                {/* Overlay degradado */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
+
+                {/* Contenido */}
+                <div className="absolute bottom-0 left-0 right-0 p-4 md:p-5">
+                  <h3 className="text-white text-sm md:text-base font-light leading-snug mb-2 line-clamp-3">
+                    <ArticleTitle text={article.titulo} />
+                  </h3>
+                  <span className="inline-flex items-center text-white font-semibold text-xs md:text-sm group-hover:underline">
+                    <T>Más información</T>
+                    <ArrowRight className="w-3 h-3 md:w-4 md:h-4 ml-1 transition-transform group-hover:translate-x-1" />
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+
+          {/* Botones de navegación */}
+          <button
+            onClick={prevSlide}
+            className="absolute left-0 md:-left-4 top-1/2 -translate-y-1/2 w-10 h-10 md:w-12 md:h-12 bg-white/90 hover:bg-white rounded-full shadow-lg flex items-center justify-center transition-all duration-300 z-10"
+            aria-label="Slide anterior"
+          >
+            <ChevronLeft className="w-5 h-5 md:w-6 md:h-6 text-gray-800" />
+          </button>
+
+          <button
+            onClick={nextSlide}
+            className="absolute right-0 md:-right-4 top-1/2 -translate-y-1/2 w-10 h-10 md:w-12 md:h-12 bg-white/90 hover:bg-white rounded-full shadow-lg flex items-center justify-center transition-all duration-300 z-10"
+            aria-label="Slide siguiente"
+          >
+            <ChevronRight className="w-5 h-5 md:w-6 md:h-6 text-gray-800" />
+          </button>
+
+          {/* Indicadores de puntos */}
+          <div className="flex justify-center gap-2 mt-6">
+            {[0, 1, 2].map((index) => (
+              <button
+                key={index}
+                onClick={() => goToSlide(index)}
+                className={`h-2 rounded-full transition-all duration-300 ${index === currentSlide
+                  ? 'bg-rotary-blue w-8'
+                  : 'bg-gray-300 w-2 hover:bg-gray-400'
+                  }`}
+                aria-label={`Ir a slide ${index + 1}`}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Botón CTA - Mismo estilo que los demás botones del sitio */}
+        <div className="text-center mt-10">
+          <Link
+            to="/blog"
+            className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-bold px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
+          >
+            <Newspaper className="w-5 h-5 text-rotary-gold" />
+            <T>Explora más noticias y artículos</T>
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+export default NewsSection;

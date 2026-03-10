@@ -1,0 +1,171 @@
+import Navbar from '../sections/Navbar';
+import Footer from '../sections/Footer';
+import { useCMSContent } from '../hooks/useCMSContent';
+import { useClub } from '../contexts/ClubContext';
+
+const NuestrasCausas = () => {
+    const { club } = useClub();
+    const { sections } = useCMSContent('nuestras-causas', club.id);
+
+    const getC = (section: string, field: string, fallback: string) => {
+        return sections[section]?.[field] || fallback;
+    }
+
+    const defaultCausas = [
+        {
+            id: 'paz',
+            title: 'Fomento de la paz',
+            image: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=600&h=400&fit=crop",
+            description: "Rotary fomenta el diálogo para promover la comprensión internacional entre los pueblos y culturas."
+        },
+        {
+            id: 'enfermedades',
+            title: 'Prevención y tratamiento de enfermedades',
+            image: "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=600&h=400&fit=crop",
+            description: "Sensibilizamos y equipamos a las comunidades para contener la propagación de enfermedades mortales."
+        },
+        {
+            id: 'agua',
+            title: 'Suministro de agua potable',
+            image: "https://images.unsplash.com/photo-1593113598332-cd288d649433?w=600&h=400&fit=crop",
+            description: "Apoyamos iniciativas locales mediante las cuales más personas tienen acceso al agua salubre."
+        },
+        {
+            id: 'materno',
+            title: 'Salud materno-infantil',
+            image: "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=600&h=400&fit=crop",
+            description: "Al ampliar el acceso a mejores servicios de salud, madres e hijos viven sanos y fuertes."
+        },
+        {
+            id: 'educacion',
+            title: 'Promoción de la educación',
+            image: "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=600&h=400&fit=crop",
+            description: "Nuestra meta es alentar a las comunidades para que apoyen programas de alfabetización."
+        },
+        {
+            id: 'economia',
+            title: 'Desarrollo de las economías locales',
+            image: "https://images.unsplash.com/photo-1531206715517-5c0ba140b2b8?w=600&h=400&fit=crop",
+            description: "Proyectos diseñados para fomentar el desarrollo integral y económico de las comunidades."
+        },
+        {
+            id: 'ambiente',
+            title: 'Protección del medioambiente',
+            image: "https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=600&h=400&fit=crop",
+            description: "Tomamos medidas para encontrar soluciones innovadoras y desarrollar proyectos sostenibles."
+        }
+    ];
+
+    const causas = sections['grid']?.items || defaultCausas;
+
+    return (
+        <div className="min-h-screen bg-white">
+            <Navbar />
+
+            {/* Hero Section */}
+            <section className="relative w-full h-[350px] md:h-[450px] overflow-hidden">
+                <div className="absolute inset-0">
+                    <img
+                        src={getC('hero', 'image', "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=1600&h=600&fit=crop")}
+                        alt="Nuestras Causas"
+                        className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/30" />
+                </div>
+            </section>
+
+            {/* Title Section */}
+            <section
+                className="py-12 md:py-16"
+                style={{
+                    backgroundColor: '#0c3c7c',
+                    backgroundImage: "url('/geo-darkblue.png')",
+                    backgroundPosition: '50% 0',
+                    backgroundRepeat: 'repeat',
+                    backgroundSize: '71px 85px'
+                }}
+            >
+                <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+                    <h1 className="text-3xl md:text-4xl font-bold text-white tracking-wider">
+                        {getC('header', 'title', "Nuestras Causas")}
+                    </h1>
+                </div>
+            </section>
+
+            {/* Intro Section */}
+            <section className="py-12 md:py-20 bg-rotary-concrete">
+                <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+                    <p className="text-xl md:text-2xl text-gray-700 leading-relaxed mb-12 font-light">
+                        {getC('intro', 'text', "Rotary se concentra en causas para fortalecer las relaciones internacionales, mejorar vidas, y crear un mundo más propicio para fomentar nuestras iniciativas pro paz.")}
+                    </p>
+
+                    <div className="relative aspect-video rounded-2xl overflow-hidden shadow-2xl mb-16 ring-1 ring-gray-200 bg-black">
+                        <iframe
+                            className="w-full h-full"
+                            src={getC('intro', 'videoUrl', "https://www.youtube.com/embed/fA_T7M-f7n0")}
+                            title="Nuestras Causas"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                        ></iframe>
+                    </div>
+                </div>
+            </section>
+
+            {/* Causes Grid */}
+            <section className="py-16 md:py-24 bg-rotary-concrete">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
+                        {causas.map((causa: any, i: number) => (
+                            <div key={i} className={`flex flex-col bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100 transition-hover duration-300 hover:shadow-md ${i === 6 ? 'lg:col-start-2' : ''}`}>
+                                <div className="h-48 overflow-hidden">
+                                    <img src={causa.image} alt={causa.title} className="w-full h-full object-cover" />
+                                </div>
+                                <div className="p-6 flex-grow">
+                                    <h3 className="text-xl font-bold text-gray-900 mb-3">{causa.title}</h3>
+                                    <p className="text-gray-600 text-sm leading-relaxed mb-4">
+                                        {causa.description}
+                                    </p>
+                                    <a href="#" className="text-rotary-blue hover:text-sky-700 font-bold text-sm inline-flex items-center gap-1">
+                                        Más información ›
+                                    </a>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            {/* Polio Section */}
+            <section className="bg-rotary-concrete">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
+                    <div className="flex flex-col lg:flex-row rounded-3xl overflow-hidden shadow-xl ring-1 ring-gray-100">
+                        <div className="lg:w-1/2 h-[300px] lg:h-auto">
+                            <img src={getC('polio', 'image', "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&h=600&fit=crop")} alt="Erradicación de la polio" className="w-full h-full object-cover" />
+                        </div>
+                        <div className="lg:w-1/2 bg-[#A32036] p-8 md:p-12 flex flex-col justify-center text-white">
+                            <h2 className="text-3xl md:text-4xl font-bold mb-6">
+                                {getC('polio', 'title', "Erradicación de la polio")}
+                            </h2>
+                            <p className="text-lg leading-relaxed mb-8 opacity-90">
+                                {getC('polio', 'text', "Durante los últimos 35 años, Rotary ha desplegado esfuerzos para eliminar esta enfermedad de la faz de la Tierra.")}
+                            </p>
+                            <div>
+                                <a
+                                    href="https://www.endpolio.org/es"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-block border-2 border-white/30 hover:bg-white hover:text-[#A32036] px-8 py-3 rounded-full font-bold transition-all duration-300"
+                                >
+                                    {getC('polio', 'buttonText', "Ayúdanos a acabar con la polio")}
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <Footer />
+        </div>
+    );
+};
+
+export default NuestrasCausas;

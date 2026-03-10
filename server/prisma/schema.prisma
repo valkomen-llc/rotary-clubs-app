@@ -1,0 +1,413 @@
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x", "debian-openssl-1.1.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  role      String   // administrator (super_admin), club_admin, member
+  clubId    String?
+  club      Club?    @relation(fields: [clubId], references: [id])
+  orders    Order[]
+  communicationLogs CommunicationLog[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Club {
+  id          String   @id @default(uuid())
+  name        String
+  city        String?
+  country     String?
+  district    String?
+  domain      String?  @unique
+  subdomain   String?  @unique
+  logo          String?
+  footerLogo    String?
+  endPolioLogo  String?
+  favicon       String?
+  description   String?
+  status      String   @default("active") // active, inactive
+  users       User[]
+  projects    Project[]
+  posts       Post[]
+  donations   Donation[]
+  settings    Setting[]
+  content     ContentSection[]
+  publications Publication[]
+  events       CalendarEvent[]
+  knowledge    KnowledgeSource[]
+  products    Product[]
+  categories  ProductCategory[]
+  orders      Order[]
+  payments    Payment[]
+  paymentConfigs PaymentProviderConfig[]
+  payouts      PayoutRequest[]
+  
+  notificationConfigs NotificationConfig[]
+  communicationTemplates CommunicationTemplate[]
+  communicationLogs CommunicationLog[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Media {
+  id        String   @id @default(uuid())
+  filename  String
+  url       String
+  type      String   // image, document
+  size      Int
+  bucket    String?
+  region    String?
+  s3Key     String?  // The path inside the bucket
+  clubId    String?
+  createdAt DateTime @default(now())
+}
+
+model Project {
+  id              String   @id @default(uuid())
+  title           String
+  description     String   @db.Text
+  image           String?
+  status          String   // active, completed, planned
+  category        String?
+  meta            Float?   @default(0)
+  recaudado       Float?   @default(0)
+  donantes        Int?     @default(0)
+  beneficiarios   Int?     @default(0)
+  ubicacion       String?
+  fechaEstimada   DateTime?
+  videoUrl        String?
+  images          String[]  // Multiple image gallery
+  impacto         String?   @db.Text
+  actualizaciones String?   @db.Text
+  clubId          String
+  club            Club     @relation(fields: [clubId], references: [id])
+  donations       Donation[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Post {
+  id             String   @id @default(uuid())
+  title          String
+  content        String   @db.Text
+  image          String?
+  published      Boolean  @default(false)
+  category       String?
+  tags           String[]
+  keywords       String?
+  seoTitle       String?
+  seoDescription String?  @db.Text
+  videoUrl       String?
+  images         String[] // Gallery images
+  isAI           Boolean  @default(false)
+  clubId         String?
+  club           Club?    @relation(fields: [clubId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Donation {
+  id          String   @id @default(uuid())
+  amount      Float
+  currency    String   @default("USD")
+  donorName   String?
+  donorEmail  String?
+  status      String   // pending, success, failed
+  clubId      String?
+  club        Club?    @relation(fields: [clubId], references: [id])
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id])
+  message     String?  @db.Text
+  isAnonymous Boolean  @default(false)
+  orderId     String?  @unique
+  order       Order?   @relation(fields: [orderId], references: [id])
+  date        DateTime @default(now())
+}
+
+model Setting {
+  id        String   @id @default(uuid())
+  key       String   
+  value     String   @db.Text
+  clubId    String?
+  club      Club?    @relation(fields: [clubId], references: [id])
+  updatedAt DateTime @updatedAt
+
+  @@unique([key, clubId])
+}
+
+model ContentSection {
+  id        String   @id @default(uuid())
+  page      String   // home, about, etc.
+  section   String   // hero, foundation, etc.
+  content   String   @db.Text // JSON string with the section content
+  clubId    String?
+  club      Club?    @relation(fields: [clubId], references: [id])
+  updatedAt DateTime @updatedAt
+
+  @@unique([page, section, clubId])
+}
+
+model Publication {
+  id          String   @id @default(uuid())
+  title       String
+  content     String   @db.Text
+  platform    String?  // Instagram, Facebook, LinkedIn
+  status      String   @default("draft") // draft, scheduled, published
+  publishDate DateTime
+  mediaUrl    String?
+  aiGenerated Boolean  @default(false)
+  clubId      String
+  club        Club     @relation(fields: [clubId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CalendarEvent {
+  id          String   @id @default(uuid())
+  title       String
+  description String?  @db.Text
+  startDate   DateTime
+  endDate     DateTime?
+  location    String?
+  type        String   @default("meeting") // meeting, project, social, rotary_date
+  clubId      String
+  club        Club     @relation(fields: [clubId], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+model KnowledgeSource {
+  id        String   @id @default(uuid())
+  title     String
+  type      String   // pdf, text, presentation
+  content   String   @db.Text // Extracted text for the AI
+  fileUrl   String?
+  clubId    String?  // Null for global Rotary documents
+  club      Club?    @relation(fields: [clubId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+// --- E-COMMERCE MODELS ---
+
+model ProductCategory {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String
+  clubId    String
+  club      Club     @relation(fields: [clubId], references: [id])
+  products  Product[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([slug, clubId])
+}
+
+model Product {
+  id               String   @id @default(uuid())
+  name             String
+  slug             String
+  description      String   @db.Text
+  price            Float
+  currency         String   @default("USD")
+  status           String   @default("active") // active, draft, archived
+  images           String[]
+  isDigital        Boolean  @default(false)
+  shippingRequired Boolean  @default(false)
+  clubId           String
+  club             Club     @relation(fields: [clubId], references: [id])
+  categoryId       String?
+  category         ProductCategory? @relation(fields: [categoryId], references: [id])
+  variants         ProductVariant[]
+  orderItems       OrderItem[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model ProductVariant {
+  id            String   @id @default(uuid())
+  sku           String?
+  attributes    String   // JSON string, e.g., '{"size": "M", "color": "Blue"}'
+  priceOverride Float?
+  stock         Int      @default(0)
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems    OrderItem[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Order {
+  id          String   @id @default(uuid())
+  subtotal    Float
+  shipping    Float    @default(0)
+  tax         Float    @default(0)
+  discount    Float    @default(0)
+  total       Float
+  currency    String   @default("USD")
+  status      String   @default("pending") // pending, paid, fulfilled, cancelled, refunded
+  customerName  String?
+  customerEmail String?
+  customerPhone String?
+  metadata    String?  @db.Text // JSON string
+  
+  clubId      String
+  club        Club     @relation(fields: [clubId], references: [id])
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  
+  items       OrderItem[]
+  payments    Payment[]
+  donation    Donation? // If the order resulted in a donation
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model OrderItem {
+  id          String   @id @default(uuid())
+  type        String   // product, donation, membership
+  title       String
+  qty         Int
+  unitPrice   Float
+  total       Float
+  
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id])
+  variantId   String?
+  variant     ProductVariant? @relation(fields: [variantId], references: [id])
+  
+  metadata    String?  @db.Text // JSON for donation project info or membership details
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Payment {
+  id          String   @id @default(uuid())
+  provider    String   @default("stripe") // stripe, paypal
+  providerRef String?  // e.g. PaymentIntent ID
+  status      String   // pending, succeeded, failed, refunded
+  amount      Float
+  currency    String
+  rawPayload  String?  @db.Text // JSON strings from webhook
+  
+  orderId     String?
+  order       Order?   @relation(fields: [orderId], references: [id])
+  clubId      String
+  club        Club     @relation(fields: [clubId], references: [id])
+  
+  // Platform fee tracking
+  applicationFee Float? @default(0) // Valkomen/Platform fee amount
+  netAmount      Float? // Amount minus Stripe fee and Application fee
+  isPlatformCollection Boolean @default(true) // True if collected by Valkomen's master account
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model PaymentProviderConfig {
+  id          String   @id @default(uuid())
+  provider    String   // stripe, paypal, custom
+  enabled     Boolean  @default(false)
+  publicKey   String?
+  secretRef   String?  // Env var or encrypted string
+  settings    String?  @db.Text // JSON string for metadata/config
+  
+  clubId      String
+  club        Club     @relation(fields: [clubId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([provider, clubId])
+}
+
+model PayoutRequest {
+  id          String   @id @default(uuid())
+  amount      Float
+  currency    String   @default("USD")
+  status      String   @default("pending") // pending, processing, completed, rejected
+  bankDetails String?  @db.Text // JSON string with destination accounts
+  notes       String?  @db.Text
+  
+  clubId      String
+  club        Club     @relation(fields: [clubId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ==========================================
+// MÓDULO CRM Y NOTIFICACIONES
+// ==========================================
+
+model NotificationConfig {
+  id          String   @id @default(uuid())
+  type        String   @default("smtp") // smtp, whatsapp
+  enabled     Boolean  @default(false)
+  
+  // SMTP Fields
+  host        String?
+  port        Int?
+  user        String?
+  password    String?
+  fromName    String?
+  fromEmail   String?
+  
+  // WhatsApp Fields
+  apiKey      String?
+  phoneNumber String?
+  wsSession   String?  @db.Text // Para almacenar la sesión si se usa librería QR
+  
+  clubId      String
+  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([type, clubId])
+}
+
+model CommunicationTemplate {
+  id          String   @id @default(uuid())
+  name        String   // Ejemplo: "Bienvenida Socio", "Alerta Vencimiento"
+  type        String   @default("email") // email, whatsapp
+  subject     String?  // Solo aplica para Email
+  content     String   @db.Text // Texto o HTML con variables (ej. {{nombre_usuario}})
+  
+  clubId      String
+  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CommunicationLog {
+  id          String   @id @default(uuid())
+  type        String   // email, whatsapp
+  recipient   String   // Correo o Número de Teléfono
+  subject     String?
+  content     String   @db.Text
+  status      String   @default("sent") // sent, failed, pending
+  errorMsg    String?  @db.Text
+  
+  clubId      String
+  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  
+  sentById    String?
+  sentBy      User?    @relation(fields: [sentById], references: [id], onDelete: SetNull)
+  
+  createdAt   DateTime @default(now())
+}

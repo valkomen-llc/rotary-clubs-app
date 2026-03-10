@@ -1,0 +1,240 @@
+import db from '../lib/db.js';
+import { PrismaClient } from '@prisma/client';
+const prisma = new PrismaClient();
+
+// Public: Get posts for a specific club
+export const getPublicPosts = async (req, res) => {
+    const { clubId } = req.params;
+    const { limit } = req.query;
+    try {
+        const limitClause = limit ? `LIMIT ${parseInt(limit)}` : '';
+        const result = await db.query(
+            `SELECT * FROM "Post" WHERE ("clubId" = $1 OR "clubId" IS NULL) AND published = true
+             ORDER BY "createdAt" DESC ${limitClause}`,
+            [clubId]
+        );
+        res.json(result.rows);
+    } catch (error) {
+        res.status(500).json({ error: 'Error fetching posts' });
+    }
+};
+
+// Public: Get projects for a specific club
+export const getPublicProjects = async (req, res) => {
+    const { clubId } = req.params;
+    const { limit } = req.query;
+    try {
+        const limitClause = limit ? `LIMIT ${parseInt(limit)}` : '';
+        const result = await db.query(
+            `SELECT * FROM "Project" WHERE "clubId" = $1 ORDER BY "createdAt" DESC ${limitClause}`,
+            [clubId]
+        );
+        res.json(result.rows);
+    } catch (error) {
+        res.status(500).json({ error: 'Error fetching projects' });
+    }
+};
+
+// Admin: Get posts
+export const getClubPosts = async (req, res) => {
+    try {
+        const clubId = req.user.role === 'administrator' ? req.query.clubId : req.user.clubId;
+        if (!clubId) return res.status(400).json({ error: 'clubId is required' });
+        const result = await db.query(
+            `SELECT * FROM "Post" WHERE "clubId" = $1 OR "clubId" IS NULL ORDER BY "createdAt" DESC`,
+            [clubId]
+        );
+        res.json(result.rows);
+    } catch (error) {
+        res.status(500).json({ error: 'Error fetching club posts' });
+    }
+};
+
+export const createPost = async (req, res) => {
+    const { title, content, image, published, clubId, category, tags, keywords, seoTitle, seoDescription, videoUrl, images, isAI } = req.body;
+    try {
+        let targetClubId = req.user.role === 'administrator' ? (clubId || req.user.clubId) : req.user.clubId;
+        if (clubId === 'global' && req.user.role === 'administrator') targetClubId = null;
+
+        const result = await db.query(
+            `INSERT INTO "Post" (id, title, content, image, published, "clubId", category, tags, keywords, "seoTitle", "seoDescription", "videoUrl", images, "isAI", "createdAt", "updatedAt")
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW()) RETURNING *`,
+            [title, content, image, published || false, targetClubId, category, tags || [], keywords, seoTitle, seoDescription, videoUrl, images || [], isAI || false]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error creating post' });
+    }
+};
+
+export const updatePost = async (req, res) => {
+    const { id } = req.params;
+    const { title, content, image, published, category, tags, keywords, seoTitle, seoDescription, videoUrl, images } = req.body;
+    try {
+        const existing = await db.query('SELECT * FROM "Post" WHERE id = $1', [id]);
+        if (!existing.rows[0]) return res.status(404).json({ error: 'Post not found' });
+        if (req.user.role !== 'administrator' && existing.rows[0].clubId !== req.user.clubId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+        const result = await db.query(
+            `UPDATE "Post" SET title=$1, content=$2, image=$3, published=$4, category=$5, tags=$6, keywords=$7,
+             "seoTitle"=$8, "seoDescription"=$9, "videoUrl"=$10, images=$11, "updatedAt"=NOW()
+             WHERE id=$12 RETURNING *`,
+            [title, content, image, published, category, tags, keywords, seoTitle, seoDescription, videoUrl, images, id]
+        );
+        res.json(result.rows[0]);
+    } catch (error) {
+        res.status(500).json({ error: 'Error updating post' });
+    }
+};
+
+export const deletePost = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const existing = await db.query('SELECT * FROM "Post" WHERE id = $1', [id]);
+        if (!existing.rows[0]) return res.status(404).json({ error: 'Post not found' });
+        if (req.user.role !== 'administrator' && existing.rows[0].clubId !== req.user.clubId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+        await db.query('DELETE FROM "Post" WHERE id = $1', [id]);
+        res.json({ message: 'Post deleted' });
+    } catch (error) {
+        res.status(500).json({ error: 'Error deleting post' });
+    }
+};
+
+export const getClubProjects = async (req, res) => {
+    try {
+        const clubId = req.user.role === 'administrator' ? req.query.clubId : req.user.clubId;
+        if (!clubId) return res.status(400).json({ error: 'clubId is required' });
+
+        const projects = await prisma.project.findMany({
+            where: { clubId },
+            orderBy: { createdAt: 'desc' }
+        });
+        res.json(projects);
+    } catch (error) {
+        res.status(500).json({ error: 'Error fetching club projects' });
+    }
+};
+
+export const createProject = async (req, res) => {
+    const { title, description, image, status, clubId, category, meta, recaudado, donantes, beneficiarios, ubicacion, fechaEstimada, videoUrl, images, impacto, actualizaciones } = req.body;
+    try {
+        const targetClubId = req.user.role === 'administrator' ? (clubId || req.user.clubId) : req.user.clubId;
+
+        const project = await prisma.project.create({
+            data: {
+                title,
+                description,
+                image,
+                status: status || 'planned',
+                clubId: targetClubId,
+                category,
+                meta: meta ? parseFloat(meta) : 0,
+                recaudado: recaudado ? parseFloat(recaudado) : 0,
+                donantes: donantes ? parseInt(donantes) : 0,
+                beneficiarios: beneficiarios ? parseInt(beneficiarios) : 0,
+                ubicacion,
+                fechaEstimada: fechaEstimada ? new Date(fechaEstimada) : null,
+                videoUrl,
+                images: images || [],
+                impacto,
+                actualizaciones
+            }
+        });
+        res.status(201).json(project);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error creating project' });
+    }
+};
+
+export const updateProject = async (req, res) => {
+    const { id } = req.params;
+    const { title, description, image, status, category, meta, recaudado, donantes, beneficiarios, ubicacion, fechaEstimada, videoUrl, images, impacto, actualizaciones } = req.body;
+    try {
+        const existing = await prisma.project.findUnique({ where: { id } });
+        if (!existing) return res.status(404).json({ error: 'Project not found' });
+
+        if (req.user.role !== 'administrator' && existing.clubId !== req.user.clubId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        const project = await prisma.project.update({
+            where: { id },
+            data: {
+                title,
+                description,
+                image,
+                status,
+                category,
+                meta: meta ? parseFloat(meta) : 0,
+                recaudado: recaudado ? parseFloat(recaudado) : 0,
+                donantes: donantes ? parseInt(donantes) : 0,
+                beneficiarios: beneficiarios ? parseInt(beneficiarios) : 0,
+                ubicacion,
+                fechaEstimada: fechaEstimada ? new Date(fechaEstimada) : null,
+                videoUrl,
+                images: images || [],
+                impacto,
+                actualizaciones
+            }
+        });
+        res.json(project);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error updating project' });
+    }
+};
+
+export const deleteProject = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const existing = await prisma.project.findUnique({ where: { id } });
+        if (!existing) return res.status(404).json({ error: 'Project not found' });
+
+        if (req.user.role !== 'administrator' && existing.clubId !== req.user.clubId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        await prisma.project.delete({ where: { id } });
+        res.json({ message: 'Project deleted' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error deleting project' });
+    }
+};
+
+export const getClubAgentContext = async (req, res) => {
+    const { clubId } = req.params;
+    try {
+        const club = await db.query('SELECT * FROM "Club" WHERE id = $1', [clubId]);
+        if (!club.rows[0]) return res.status(404).json({ error: 'Club not found' });
+        const projects = await db.query(
+            'SELECT title, description, category, status, ubicacion, impacto FROM "Project" WHERE "clubId" = $1',
+            [clubId]
+        );
+        const posts = await db.query(
+            'SELECT title, category FROM "Post" WHERE "clubId" = $1 ORDER BY "createdAt" DESC LIMIT 5',
+            [clubId]
+        );
+        const c = club.rows[0];
+        res.json({
+            clubName: c.name,
+            location: `${c.city || ''}, ${c.country || ''}`,
+            district: c.district,
+            description: c.description,
+            recentProjects: projects.rows,
+            lastPostTitles: posts.rows.map(p => p.title)
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Error fetching AI context' });
+    }
+};
+
+export default {
+    getPublicPosts, getPublicProjects, getClubPosts, createPost, updatePost, deletePost,
+    getClubProjects, createProject, updateProject, deleteProject, getClubAgentContext
+};
