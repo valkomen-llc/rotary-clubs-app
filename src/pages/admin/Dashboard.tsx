@@ -5,8 +5,6 @@ import {
     TrendingUp, Globe, Users, MoreVertical, ExternalLink, Wallet, Building2
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
-import AnalyticsWidget from '../../components/admin/AnalyticsWidget';
-import ErrorBoundary from '../../components/ErrorBoundary';
 import {
     AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer
 } from 'recharts';
@@ -37,19 +35,6 @@ const mockUsers = [
 const Dashboard: React.FC = () => {
     const { user } = useAuth();
     const [stats, setStats] = useState<any | null>(null);
-
-    // Derive the club hostname safely without depending on ClubContext
-    // (admin routes may not be wrapped by ClubProvider)
-    const siteHostname = (() => {
-        try {
-            const stored = localStorage.getItem('rotary_club');
-            if (stored) {
-                const c = JSON.parse(stored);
-                return c.domain || (c.subdomain ? `${c.subdomain}.clubplatform.org` : window.location.hostname);
-            }
-        } catch { /* ignore */ }
-        return window.location.hostname;
-    })();
 
     useEffect(() => {
         fetchDashboardData();
@@ -217,10 +202,10 @@ const Dashboard: React.FC = () => {
                 </div>
             </div>
 
-            {/* GA4 Analytics Widget — per-club metrics, wrapped in error boundary */}
-            <ErrorBoundary fallbackLabel="Error al cargar analíticas">
+            {/* GA4 Analytics Widget — temporarily disabled for debugging */}
+            {/* <ErrorBoundary fallbackLabel="Error al cargar analíticas">
                 <AnalyticsWidget hostname={siteHostname} gaId={undefined} />
-            </ErrorBoundary>
+            </ErrorBoundary> */}
 
             {/* Recently Active Table */}
             <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden group hover:shadow-xl transition-all">
