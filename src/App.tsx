@@ -61,6 +61,31 @@ import RegistroPage from './pages/RegistroPage';
 import AppLogin from './pages/AppLogin';
 import ComingSoon from './pages/ComingSoon';
 
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
+// Inject GA4 script dynamically with the real Measurement ID
+function injectGA4Tag(gaId: string) {
+  if (!gaId || !gaId.startsWith('G-')) return;
+  // Don't double-inject
+  if (document.getElementById('ga4-tag-script')) return;
+
+  const s1 = document.createElement('script');
+  s1.id = 'ga4-tag-script';
+  s1.async = true;
+  s1.src = `https://www.googletagmanager.com/gtag/js?id=${gaId}`;
+  document.head.appendChild(s1);
+
+  const s2 = document.createElement('script');
+  s2.id = 'ga4-tag-config';
+  s2.innerHTML = [
+    'window.dataLayer = window.dataLayer || [];',
+    'function gtag(){dataLayer.push(arguments);}',
+    "gtag('js', new Date());",
+    `gtag('config', '${gaId}', { anonymize_ip: true });`,
+  ].join('\n');
+  document.head.appendChild(s2);
+}
+
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated } = useAuth();
   return isAuthenticated ? <>{children}</> : <Navigate to="/" />;
@@ -118,6 +143,14 @@ const AnalyticsTracker = () => {
 
 // Main App Router component
 function App() {
+  // Auto-load real GA4 Measurement ID on startup (applies to all club domains)
+  useEffect(() => {
+    fetch(`${API_BASE}/translate/analytics`)
+      .then(r => r.json())
+      .then(d => { if (d?.gaId) injectGA4Tag(d.gaId); })
+      .catch(() => { /* GA4 not configured yet - no-op */ });
+  }, []);
+
   return (
     <ClubProvider>
       <LanguageProvider>
