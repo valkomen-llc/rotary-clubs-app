@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import AnalyticsWidget from '../../components/admin/AnalyticsWidget';
+import ErrorBoundary from '../../components/ErrorBoundary';
 import {
     AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer
 } from 'recharts';
@@ -216,8 +217,10 @@ const Dashboard: React.FC = () => {
                 </div>
             </div>
 
-            {/* GA4 Analytics Widget — per-club metrics */}
-            <AnalyticsWidget hostname={siteHostname} gaId={undefined} />
+            {/* GA4 Analytics Widget — per-club metrics, wrapped in error boundary */}
+            <ErrorBoundary fallbackLabel="Error al cargar analíticas">
+                <AnalyticsWidget hostname={siteHostname} gaId={undefined} />
+            </ErrorBoundary>
 
             {/* Recently Active Table */}
             <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden group hover:shadow-xl transition-all">
