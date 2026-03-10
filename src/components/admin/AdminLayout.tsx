@@ -303,8 +303,6 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                         {/* KPI indicators with hover tooltips */}
                         <div className="hidden lg:flex items-center gap-1">
                             {[
-                                { icon: TrendingUp, value: `$${stats?.donations?.toLocaleString() || '0'}`, label: 'Donaciones / Tienda' },
-                                { icon: Wallet, value: `$${stats?.availableFunds?.toLocaleString() || '0'}`, label: 'Fondos Disponibles' },
                                 { icon: FolderKanban, value: fmtN(stats?.projects || 0), label: 'Proyectos de Servicio' },
                                 { icon: Users, value: fmtN(stats?.users || 0), label: 'Socios / Miembros' },
                                 { icon: Store, value: fmtN(stats?.products || 0), label: 'Productos en Tienda' },
@@ -330,23 +328,54 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
                         <div className="h-8 w-[1px] bg-gray-100 mx-1" />
 
-                        <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-all relative">
-                            <Bell className="w-5 h-5" />
-                            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
-                        </button>
+                        {/* Prominent action icons: Donations, Funds, Notifications, Messages */}
+                        <div className="flex items-center gap-1">
+                            {/* Donaciones / Tienda */}
+                            <div className="relative group/don">
+                                <Link to="/admin/boveda" className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-emerald-50 transition-all">
+                                    <TrendingUp className="w-4.5 h-4.5 text-emerald-500" />
+                                    <span className="text-[12px] font-black text-gray-800">${stats?.donations?.toLocaleString() || '0'}</span>
+                                </Link>
+                                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-1.5 bg-gray-900 text-white text-[10px] font-bold rounded-lg whitespace-nowrap opacity-0 invisible group-hover/don:opacity-100 group-hover/don:visible transition-all duration-200 z-50 pointer-events-none shadow-xl">
+                                    Donaciones / Tienda
+                                    <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45" />
+                                </div>
+                            </div>
 
-                        <Link
-                            to="/admin/leads"
-                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all relative"
-                            title="Mensajes de formulario de contacto"
-                        >
-                            <Mail className="w-5 h-5" />
-                            {unreadLeads > 0 && (
-                                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-blue-600 text-white text-[9px] font-black rounded-full border-2 border-white px-1">
-                                    {unreadLeads > 99 ? '99+' : unreadLeads}
-                                </span>
-                            )}
-                        </Link>
+                            {/* Fondos Disponibles */}
+                            <div className="relative group/fon">
+                                <Link to="/admin/boveda" className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-amber-50 transition-all">
+                                    <Wallet className="w-4.5 h-4.5 text-amber-500" />
+                                    <span className="text-[12px] font-black text-gray-800">${stats?.availableFunds?.toLocaleString() || '0'}</span>
+                                </Link>
+                                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-1.5 bg-gray-900 text-white text-[10px] font-bold rounded-lg whitespace-nowrap opacity-0 invisible group-hover/fon:opacity-100 group-hover/fon:visible transition-all duration-200 z-50 pointer-events-none shadow-xl">
+                                    Fondos Disponibles
+                                    <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45" />
+                                </div>
+                            </div>
+
+                            <div className="h-6 w-[1px] bg-gray-200 mx-0.5" />
+
+                            {/* Bell Notifications */}
+                            <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-all relative">
+                                <Bell className="w-5 h-5" />
+                                <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
+                            </button>
+
+                            {/* Mail — unread leads */}
+                            <Link
+                                to="/admin/leads"
+                                className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all relative"
+                                title="Mensajes de formulario de contacto"
+                            >
+                                <Mail className="w-5 h-5" />
+                                {unreadLeads > 0 && (
+                                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-blue-600 text-white text-[9px] font-black rounded-full border-2 border-white px-1">
+                                        {unreadLeads > 99 ? '99+' : unreadLeads}
+                                    </span>
+                                )}
+                            </Link>
+                        </div>
 
                         <div className="h-8 w-[1px] bg-gray-100 mx-1" />
 
@@ -365,7 +394,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     </div>
                 </div>
             </main>
-        </div>
+        </div >
     );
 };
 
