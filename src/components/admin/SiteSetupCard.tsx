@@ -43,49 +43,13 @@ const SiteSetupCard: React.FC<Props> = ({ stats, onOpenWizard }) => {
 
     const ITEMS: CheckItem[] = [
         {
-            id: 'logo',
-            label: 'Logo del club',
-            desc: 'Sube el logo oficial PNG con fondo transparente',
-            done: !!(club?.logo),
+            id: 'club-info',
+            label: 'Información del club',
+            desc: 'Completa el perfil de tu club: logo, descripción, contacto, colores y redes sociales',
+            done: !!(club?.logo && club?.description && club.description.length > 20),
             href: '/admin/mi-club',
             category: 'Identidad',
-            weight: 12,
-        },
-        {
-            id: 'colors',
-            label: 'Colores personalizados',
-            desc: 'Define los colores institucionales del club',
-            done: !!(club?.colors?.primary && club?.colors?.primary !== '#013388'),
-            href: '/admin/mi-club',
-            category: 'Identidad',
-            weight: 8,
-        },
-        {
-            id: 'description',
-            label: 'Descripción del club',
-            desc: 'Escribe una descripción corta de la misión del club',
-            done: !!(club?.description && club.description.length > 20),
-            href: '/admin/mi-club',
-            category: 'Identidad',
-            weight: 10,
-        },
-        {
-            id: 'contact',
-            label: 'Información de contacto',
-            desc: 'Añade email, teléfono y dirección',
-            done: !!(club?.contact?.email || stats?.clubCity),
-            href: '/admin/mi-club',
-            category: 'Identidad',
-            weight: 10,
-        },
-        {
-            id: 'social',
-            label: 'Redes sociales',
-            desc: 'Conecta al menos una red social del club',
-            done: !!(Array.isArray(club?.social) && club.social.some((s: any) => s.url)),
-            href: '/admin/mi-club',
-            category: 'Identidad',
-            weight: 8,
+            weight: 20,
         },
         {
             id: 'project',
@@ -94,7 +58,7 @@ const SiteSetupCard: React.FC<Props> = ({ stats, onOpenWizard }) => {
             done: (stats?.projects || 0) > 0,
             href: '/admin/proyectos',
             category: 'Contenido',
-            weight: 12,
+            weight: 20,
         },
         {
             id: 'news',
@@ -103,16 +67,16 @@ const SiteSetupCard: React.FC<Props> = ({ stats, onOpenWizard }) => {
             done: (stats?.posts || 0) > 0,
             href: '/admin/noticias',
             category: 'Contenido',
-            weight: 10,
+            weight: 20,
         },
         {
             id: 'members',
             label: 'Directorio de socios',
             desc: 'Agrega al menos un socio al directorio',
-            done: (stats?.users || 0) > 1, // > 1 because admin itself is a user
+            done: (stats?.users || 0) > 1,
             href: '/admin/usuarios',
             category: 'Contenido',
-            weight: 10,
+            weight: 20,
         },
         {
             id: 'media',
@@ -121,7 +85,7 @@ const SiteSetupCard: React.FC<Props> = ({ stats, onOpenWizard }) => {
             done: (stats?.media || 0) > 0,
             href: '/admin/media',
             category: 'Contenido',
-            weight: 8,
+            weight: 10,
         },
         {
             id: 'ga4',
@@ -130,9 +94,10 @@ const SiteSetupCard: React.FC<Props> = ({ stats, onOpenWizard }) => {
             done: gaConfigured,
             href: '/admin/integraciones',
             category: 'Integraciones',
-            weight: 12,
+            weight: 10,
         },
     ];
+
 
     const totalWeight = ITEMS.reduce((a, b) => a + b.weight, 0);
     const doneWeight = ITEMS.filter(i => i.done).reduce((a, b) => a + b.weight, 0);
