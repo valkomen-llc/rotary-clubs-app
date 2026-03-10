@@ -54,6 +54,7 @@ import MediaLibrary from './pages/admin/MediaLibrary';
 import ContentCalendar from './pages/admin/ContentCalendar';
 import KnowledgeBase from './pages/admin/KnowledgeBase';
 import Integrations from './pages/admin/Integrations';
+import AnalyticsPage from './pages/admin/Analytics';
 import ChatBot from './components/ChatBot';
 import LandingPage from './pages/LandingPage';
 import RegistroPage from './pages/RegistroPage';
@@ -157,6 +158,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <Dashboard />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/analytics"
+                  element={
+                    <PrivateRoute>
+                      <AnalyticsPage />
                     </PrivateRoute>
                   }
                 />

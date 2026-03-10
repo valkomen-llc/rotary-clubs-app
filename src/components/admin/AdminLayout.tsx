@@ -43,7 +43,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const getMenuItems = () => {
         const items = [
             { icon: LayoutDashboard, label: 'Overview', path: '/admin/dashboard', category: 'General' },
-            { icon: PieChart, label: 'Analytics', path: '/admin/dashboard?tab=analytics', category: 'General' },
+            { icon: PieChart, label: 'Analytics', path: '/admin/analytics', category: 'General' },
         ];
 
         if (user?.role === 'administrator') {
