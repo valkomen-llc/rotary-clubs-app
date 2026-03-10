@@ -9,7 +9,7 @@ const memCache = {};
 // Simple hash for caching
 const hashText = (text, lang) => `${lang}::${text.substring(0, 120)}`;
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
+const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_ENDPOINT = (key) =>
     `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent?key=${key}`;
 
