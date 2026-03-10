@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { Link } from 'react-router-dom';
 import {
-    TrendingUp, Users, ExternalLink, MoreVertical,
+    TrendingUp, Users, ExternalLink,
     Wallet, Building2, RefreshCw, BarChart3, Eye,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
@@ -24,12 +24,6 @@ const FALLBACK_DATA = [
 
 const PERIOD_MAP: Record<string, string> = { '7d': '7', '30d': '30', '90d': '90', '12m': '365' };
 
-const mockUsers = [
-    { name: 'Lana Steiner', email: 'hi@lanadesign.com', status: 'Enrolled', progress: 70, rating: 5 },
-    { name: 'Phoenix Baker', email: 'phoenix@phoenix.com', status: 'Enrolled', progress: 60, rating: 4 },
-    { name: 'Candice Wu', email: 'hello@candicewu.com', status: 'Enrolled', progress: 30, rating: 4 },
-    { name: 'Olivia Rhye', email: 'hello@oliviarrhye.com', status: 'Enrolled', progress: 80, rating: 0 },
-];
 
 const Dashboard: React.FC = () => {
     const { user } = useAuth();
@@ -230,99 +224,6 @@ const Dashboard: React.FC = () => {
                                 activeDot={{ fill: '#0c3c7c', stroke: 'white', strokeWidth: 2, r: 5 }} />
                         </AreaChart>
                     </ResponsiveContainer>
-                </div>
-            </div>
-
-            {/* Recently Active Table */}
-            <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden group hover:shadow-xl transition-all">
-                <div className="flex justify-between items-center px-10 py-8 border-b border-gray-50">
-                    <h3 className="text-xl font-black text-gray-900">Recently active</h3>
-                    <button className="text-gray-400 hover:text-gray-600">
-                        <MoreVertical className="w-5 h-5" />
-                    </button>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="bg-gray-50/50 border-b border-gray-50">
-                                <th className="px-10 py-5">
-                                    <div className="w-5 h-5 border-2 border-gray-200 rounded flex items-center justify-center cursor-pointer hover:border-rotary-blue transition-colors">
-                                        <div className="w-2 h-2 bg-rotary-blue rounded-sm opacity-0" />
-                                    </div>
-                                </th>
-                                <th className="px-2 py-5 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Customer</th>
-                                <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Status</th>
-                                <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Progress</th>
-                                <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Rating</th>
-                                <th className="px-10 py-5"></th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                            {mockUsers.map((u, i) => (
-                                <tr key={i} className="hover:bg-gray-50/30 transition-colors group/row">
-                                    <td className="px-10 py-6">
-                                        <div className="w-5 h-5 border-2 border-gray-200 rounded flex items-center justify-center cursor-pointer group-hover/row:border-rotary-blue transition-colors">
-                                            <div className="w-2 h-2 bg-rotary-blue rounded-sm opacity-0" />
-                                        </div>
-                                    </td>
-                                    <td className="px-2 py-6">
-                                        <div className="flex items-center gap-4">
-                                            <div className="w-10 h-10 rounded-full bg-gray-100 border-2 border-white shadow-sm flex items-center justify-center font-bold text-gray-400 overflow-hidden">
-                                                {/* Placeholder for avatar */}
-                                                <span>{u.name.charAt(0)}</span>
-                                            </div>
-                                            <div>
-                                                <p className="text-sm font-black text-gray-900">{u.name}</p>
-                                                <p className="text-[10px] text-gray-400 font-bold tracking-tight">{u.email}</p>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-6">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                                            <span className="text-xs font-bold text-gray-700">{u.status}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-6">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden shadow-inner">
-                                                <div
-                                                    className="h-full bg-gray-900 rounded-full transition-all duration-1000"
-                                                    style={{ width: `${u.progress}%` }}
-                                                />
-                                            </div>
-                                            <span className="text-[10px] font-black text-gray-400">{u.progress}%</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-6">
-                                        <div className="flex gap-1 text-gray-200 group-hover/row:text-rotary-blue transition-colors">
-                                            {[...Array(5)].map((_, starI) => (
-                                                <svg
-                                                    key={starI}
-                                                    className={`w-3.5 h-3.5 ${starI < u.rating ? 'fill-current' : 'fill-gray-100'}`}
-                                                    viewBox="0 0 20 20"
-                                                >
-                                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                                                </svg>
-                                            ))}
-                                        </div>
-                                    </td>
-                                    <td className="px-10 py-6 text-right">
-                                        <button className="text-gray-300 hover:text-gray-500">
-                                            <MoreVertical className="w-4 h-4" />
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-                <div className="p-8 border-t border-gray-50 flex justify-between items-center text-sm font-bold text-gray-500">
-                    <p>Page 1 of 10</p>
-                    <div className="flex gap-2">
-                        <button className="px-4 py-2 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all shadow-sm">Previous</button>
-                        <button className="px-4 py-2 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all shadow-sm">Next</button>
-                    </div>
                 </div>
             </div>
         </AdminLayout>
