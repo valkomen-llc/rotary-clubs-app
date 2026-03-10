@@ -185,9 +185,8 @@ const Dashboard: React.FC = () => {
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 mb-8 overflow-hidden">
                 <div className="flex justify-between items-start mb-8">
                     <div>
-                        <h3 className="text-lg font-black text-gray-900 tracking-tight flex items-center gap-2">
+                        <h3 className="text-lg font-black text-gray-900 tracking-tight">
                             Website traffic
-                            {!trafficMock && <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full">Google Analytics 4</span>}
                         </h3>
                         <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">
                             {isSuperAdmin ? 'Todos los sitios' : (clubHostname || 'Tu sitio')} · {trafficTotals.sessions > 0 ? `${fmtN(trafficTotals.sessions)} sesiones` : 'sin datos aún'}

@@ -95,12 +95,6 @@ const AnalyticsPage: React.FC = () => {
                         {isSuperAdmin
                             ? 'Todos los sitios de la plataforma'
                             : clubHostname || 'Tu sitio web'}
-                        {!data?.mock && data && (
-                            <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                Google Analytics 4
-                            </span>
-                        )}
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -142,9 +136,6 @@ const AnalyticsPage: React.FC = () => {
                             <div className={`w-10 h-10 rounded-xl ${kpi.bg} flex items-center justify-center`}>
                                 <kpi.icon className={`w-5 h-5 ${kpi.color}`} />
                             </div>
-                            {!loading && !data?.mock && data && (
-                                <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">GA4</span>
-                            )}
                         </div>
                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-1.5">{kpi.label}</p>
                         {loading
