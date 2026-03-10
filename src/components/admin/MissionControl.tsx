@@ -174,7 +174,7 @@ const MissionControl: React.FC = () => {
     };
 
     return (
-        <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden hover:shadow-xl transition-all mt-8">
+        <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden hover:shadow-xl transition-all">
             {/* Header */}
             <div className="px-10 pt-8 pb-4">
                 <div className="flex items-center justify-between">
@@ -203,7 +203,7 @@ const MissionControl: React.FC = () => {
                     className={`relative rounded-2xl overflow-hidden transition-all duration-500 ${chatAgent ? 'w-[55%]' : 'w-full'}`}
                     style={{
                         background: 'linear-gradient(180deg, #1a1b3a 0%, #2d2b55 40%, #3b3875 70%, #4a4690 100%)',
-                        height: '420px',
+                        height: 'calc(100vh - 320px)', minHeight: '400px',
                     }}
                 >
                     {/* Stars */}
@@ -348,7 +348,7 @@ const MissionControl: React.FC = () => {
                 {chatAgent && (
                     <div
                         className="w-[45%] rounded-r-2xl border border-l-0 border-gray-200 bg-white flex flex-col overflow-hidden"
-                        style={{ height: '420px', animation: 'slideInRight 0.3s ease-out' }}
+                        style={{ height: 'calc(100vh - 320px)', minHeight: '400px', animation: 'slideInRight 0.3s ease-out' }}
                     >
                         {/* Chat Header */}
                         <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
