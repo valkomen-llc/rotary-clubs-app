@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
-    CheckCircle2, Circle, ChevronRight, Sparkles, X,
+    CheckCircle2, Circle, ChevronRight, Sparkles, X, Bot,
 } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -18,9 +17,10 @@ interface CheckItem {
 
 interface Props {
     stats: any; // from /api/admin/stats
+    onOpenWizard: () => void;
 }
 
-const SiteSetupCard: React.FC<Props> = ({ stats }) => {
+const SiteSetupCard: React.FC<Props> = ({ stats, onOpenWizard }) => {
     const [dismissed, setDismissed] = useState(false);
     const [gaConfigured, setGaConfigured] = useState(false);
     const [expanded, setExpanded] = useState(true);
@@ -163,7 +163,6 @@ const SiteSetupCard: React.FC<Props> = ({ stats }) => {
             </div>
         );
     }
-
     return (
         <div className="bg-white border border-gray-100 rounded-2xl shadow-sm mb-8 overflow-hidden">
             {/* Header */}
@@ -219,6 +218,18 @@ const SiteSetupCard: React.FC<Props> = ({ stats }) => {
                 </div>
             </div>
 
+            {/* Open wizard CTA */}
+            <div className="px-6 pb-5">
+                <button
+                    onClick={onOpenWizard}
+                    className="w-full flex items-center justify-center gap-2.5 bg-rotary-blue text-white px-5 py-3 rounded-xl font-bold text-sm hover:bg-rotary-blue/90 transition-all shadow-lg shadow-rotary-blue/20 group"
+                >
+                    <Bot className="w-4 h-4" />
+                    Continuar configuración con asistente IA
+                    <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                </button>
+            </div>
+
             {/* Checklist */}
             {expanded && (
                 <div className="border-t border-gray-50 px-6 py-4 space-y-8">
@@ -239,32 +250,28 @@ const SiteSetupCard: React.FC<Props> = ({ stats }) => {
                                 </div>
                                 <div className="space-y-2">
                                     {catItems.map(item => (
-                                        <Link
+                                        <div
                                             key={item.id}
-                                            to={item.href}
-                                            className={`flex items-center gap-3 p-3 rounded-xl border transition-all group ${item.done
-                                                ? 'border-emerald-100 bg-emerald-50/40 cursor-default pointer-events-none'
-                                                : 'border-gray-100 hover:border-rotary-blue/20 hover:bg-rotary-blue/5 cursor-pointer'
+                                            className={`flex items-center gap-3 p-3 rounded-xl border ${item.done
+                                                ? 'border-emerald-100 bg-emerald-50/40'
+                                                : 'border-gray-100 bg-gray-50/40'
                                                 }`}
                                         >
                                             <div className="flex-shrink-0">
                                                 {item.done
                                                     ? <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                                                    : <Circle className="w-5 h-5 text-gray-300 group-hover:text-rotary-blue/50 transition-colors" />
+                                                    : <Circle className="w-5 h-5 text-gray-300" />
                                                 }
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <p className={`text-sm font-bold truncate ${item.done ? 'text-emerald-700 line-through decoration-emerald-300' : 'text-gray-800'}`}>
+                                                <p className={`text-sm font-bold truncate ${item.done ? 'text-emerald-700 line-through decoration-emerald-300' : 'text-gray-700'}`}>
                                                     {item.label}
                                                 </p>
                                                 {!item.done && (
                                                     <p className="text-[11px] text-gray-400 truncate">{item.desc}</p>
                                                 )}
                                             </div>
-                                            {!item.done && (
-                                                <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-rotary-blue transition-colors flex-shrink-0" />
-                                            )}
-                                        </Link>
+                                        </div>
                                     ))}
                                 </div>
                             </div>

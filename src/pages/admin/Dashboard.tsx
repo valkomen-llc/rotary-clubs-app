@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import SiteSetupCard from '../../components/admin/SiteSetupCard';
+import OnboardingWizard from '../../components/admin/OnboardingWizard';
 import {
     AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer
 } from 'recharts';
@@ -42,6 +43,7 @@ const Dashboard: React.FC = () => {
     const [trafficLoading, setTrafficLoading] = useState(false);
     const [trafficMock, setTrafficMock] = useState(false);
     const [period, setPeriod] = useState('30d');
+    const [showWizard, setShowWizard] = useState(false);
 
     // Safely read club hostname from localStorage (no hook dependency)
     const clubHostname: string | null = (() => {
@@ -95,6 +97,10 @@ const Dashboard: React.FC = () => {
 
     return (
         <AdminLayout>
+            {/* OnboardingWizard — reopenable by club admins from the setup card */}
+            {!isSuperAdmin && showWizard && (
+                <OnboardingWizard onDismiss={() => setShowWizard(false)} />
+            )}
             <div className="flex justify-between items-center mb-10">
                 <div>
                     <h1 className="text-3xl font-black text-gray-900 tracking-tight">Reporting overview</h1>
@@ -117,7 +123,7 @@ const Dashboard: React.FC = () => {
             </div>
 
             {/* Site Setup Progress — only for club admins */}
-            {!isSuperAdmin && <SiteSetupCard stats={stats} />}
+            {!isSuperAdmin && <SiteSetupCard stats={stats} onOpenWizard={() => setShowWizard(true)} />}
 
             <div className={`grid grid-cols-1 sm:grid-cols-2 ${isSuperAdmin ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-6 mb-8`}>
                 {/* Donations */}
