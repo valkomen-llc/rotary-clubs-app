@@ -187,4 +187,63 @@ router.get('/settings', async (req, res) => {
     res.json({ configured: hasKey });
 });
 
+// ── GET /api/translate/usage ──────────────────────────────────────────────────
+// Returns translation usage stats for super admin. Auth handled by frontend guard.
+router.get('/usage', async (req, res) => {
+    try {
+        // Total cached translation entries in DB
+        const totalResult = await db.query(
+            `SELECT COUNT(*) AS total FROM "Setting"
+             WHERE key LIKE 'translation::%' AND "clubId" IS NULL`
+        );
+        const total = parseInt(totalResult.rows[0]?.total || '0', 10);
+
+        // Per-language breakdown — extract lang from key prefix "translation::lang::..."
+        const byLangResult = await db.query(
+            `SELECT
+                split_part(split_part(key, '::', 2), '::', 1) AS lang,
+                COUNT(*) AS count,
+                SUM(char_length(value)) AS chars
+             FROM "Setting"
+             WHERE key LIKE 'translation::%' AND "clubId" IS NULL
+             GROUP BY 1
+             ORDER BY 2 DESC`
+        );
+
+        // In-memory cache counters (cross-session estimate)
+        const memCacheTotal = Object.values(memCache).reduce((acc, m) => acc + Object.keys(m).length, 0);
+
+        // Cost estimate: Gemini 2.0 Flash input ≈ $0.075/1M tokens, output ≈ $0.30/1M tokens
+        // Rough heuristic: avg 30 tokens input + 35 tokens output per translation call
+        const AVG_INPUT_TOKENS = 30;
+        const AVG_OUTPUT_TOKENS = 35;
+        const INPUT_COST_PER_M = 0.075;
+        const OUTPUT_COST_PER_M = 0.30;
+        const estimatedCost = (
+            (total * AVG_INPUT_TOKENS / 1_000_000) * INPUT_COST_PER_M +
+            (total * AVG_OUTPUT_TOKENS / 1_000_000) * OUTPUT_COST_PER_M
+        );
+
+        const estimatedTokensInput = total * AVG_INPUT_TOKENS;
+        const estimatedTokensOutput = total * AVG_OUTPUT_TOKENS;
+
+        res.json({
+            totalCachedTranslations: total,
+            memCacheEntries: memCacheTotal,
+            byLanguage: byLangResult.rows.map(r => ({
+                lang: r.lang,
+                count: parseInt(r.count, 10),
+                chars: parseInt(r.chars || '0', 10),
+            })),
+            estimatedTokensInput,
+            estimatedTokensOutput,
+            estimatedCostUSD: parseFloat(estimatedCost.toFixed(6)),
+            model: 'gemini-2.0-flash',
+            pricingNote: 'Estimación: $0.075/M tokens entrada + $0.30/M tokens salida (precios de Google AI Studio)',
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 export default router;
