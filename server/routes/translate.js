@@ -50,7 +50,7 @@ router.post('/', async (req, res) => {
     try {
         const { GoogleGenerativeAI } = await import('@google/generative-ai');
         const genAI = new GoogleGenerativeAI(geminiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
         const langNames = {
             en: 'English', fr: 'French', pt: 'Portuguese',
@@ -106,7 +106,7 @@ router.post('/bulk', async (req, res) => {
     try {
         const { GoogleGenerativeAI } = await import('@google/generative-ai');
         const genAI = new GoogleGenerativeAI(geminiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
         const langNames = {
             en: 'English', fr: 'French', pt: 'Portuguese',
