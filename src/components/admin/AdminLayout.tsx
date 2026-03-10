@@ -22,7 +22,8 @@ import {
     Store,
     Receipt,
     Wallet,
-    ExternalLink
+    ExternalLink,
+    Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -41,10 +42,17 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
     // Define menu items based on role
     const getMenuItems = () => {
-        const items = [
+        const items: any[] = [];
+
+        // Show 'Configurar Sitio' as first item for club admins who haven't finished setup
+        if (user?.role !== 'administrator' && club?.onboardingCompleted !== true) {
+            items.push({ icon: Sparkles, label: 'Configurar Sitio', path: '/admin/configuracion-sitio', category: 'Setup', badge: 'pendiente' });
+        }
+
+        items.push(
             { icon: LayoutDashboard, label: 'Overview', path: '/admin/dashboard', category: 'General' },
             { icon: PieChart, label: 'Analytics', path: '/admin/analytics', category: 'General' },
-        ];
+        );
 
         if (user?.role === 'administrator') {
             items.push(
@@ -145,24 +153,35 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 <nav className="flex-1 overflow-y-auto px-4 py-4 space-y-6 scrollbar-hide">
                     {categories.map((cat) => (
                         <div key={cat} className="space-y-1">
-                            <p className="px-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-2">{cat}</p>
+                            <p className={`px-4 text-[10px] font-black uppercase tracking-[0.2em] mb-2 ${cat === 'Setup' ? 'text-amber-500' : 'text-gray-400'}`}>{cat === 'Setup' ? '✦ Pendiente' : cat}</p>
                             {menuItems
                                 .filter(item => item.category === cat)
-                                .map((item: any) => (
-                                    <Link
-                                        key={item.path}
-                                        to={item.path}
-                                        className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all text-sm group ${location.pathname === item.path
-                                            ? 'bg-gray-50 text-gray-900 font-bold'
-                                            : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-900'
-                                            }`}
-                                    >
-                                        <item.icon className={`w-5 h-5 transition-colors ${location.pathname === item.path ? 'text-rotary-blue' : 'text-gray-400 group-hover:text-gray-600'
-                                            }`} />
-                                        <span className="flex-1">{item.label}</span>
-                                        {item.expandable && <ChevronDown className="w-3.5 h-3.5 text-gray-300" />}
-                                    </Link>
-                                ))}
+                                .map((item: any) => {
+                                    const isActive = location.pathname === item.path;
+                                    const isSetup = item.badge === 'pendiente';
+                                    return (
+                                        <Link
+                                            key={item.path}
+                                            to={item.path}
+                                            className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all text-sm group ${isActive
+                                                    ? isSetup ? 'bg-amber-50 text-amber-800 font-bold' : 'bg-gray-50 text-gray-900 font-bold'
+                                                    : isSetup
+                                                        ? 'text-amber-700 bg-amber-50/60 hover:bg-amber-50 font-semibold border border-amber-100'
+                                                        : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-900'
+                                                }`}
+                                        >
+                                            <item.icon className={`w-5 h-5 transition-colors ${isActive
+                                                ? isSetup ? 'text-amber-600' : 'text-rotary-blue'
+                                                : isSetup ? 'text-amber-500' : 'text-gray-400 group-hover:text-gray-600'
+                                                }`} />
+                                            <span className="flex-1">{item.label}</span>
+                                            {isSetup && (
+                                                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+                                            )}
+                                            {item.expandable && <ChevronDown className="w-3.5 h-3.5 text-gray-300" />}
+                                        </Link>
+                                    );
+                                })}
                         </div>
                     ))}
                 </nav>
