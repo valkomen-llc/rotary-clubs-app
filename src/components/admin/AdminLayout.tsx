@@ -26,6 +26,7 @@ import {
     Sparkles,
     TrendingUp,
     Eye,
+    Mail,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -45,6 +46,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [stats, setStats] = useState<any>(null);
     const [gaTotals, setGaTotals] = useState<{ users: number; pageViews: number }>({ users: 0, pageViews: 0 });
     const [gaMock, setGaMock] = useState(false);
+    const [unreadLeads, setUnreadLeads] = useState(0);
 
     const isSuperAdmin = user?.role === 'administrator';
     const clubHostname: string | null = (() => {
@@ -66,6 +68,16 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             .then(r => r.json())
             .then(d => { setGaMock(!!d.mock); if (d.totals) setGaTotals(d.totals); })
             .catch(() => setGaMock(true));
+        // Fetch unread leads count
+        const fetchUnread = () => {
+            fetch(`${API}/leads?status=new`, { headers: { Authorization: `Bearer ${token}` } })
+                .then(r => r.ok ? r.json() : null)
+                .then(d => d && setUnreadLeads(d.total || 0))
+                .catch(() => { });
+        };
+        fetchUnread();
+        const interval = setInterval(fetchUnread, 60000); // poll every 60s
+        return () => clearInterval(interval);
     }, []);
     // Local control for wizard visibility — dismissable without context refresh
     const [showWizard, setShowWizard] = useState<boolean>(
@@ -322,6 +334,19 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                             <Bell className="w-5 h-5" />
                             <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
                         </button>
+
+                        <Link
+                            to="/admin/leads"
+                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all relative"
+                            title="Mensajes de formulario de contacto"
+                        >
+                            <Mail className="w-5 h-5" />
+                            {unreadLeads > 0 && (
+                                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-blue-600 text-white text-[9px] font-black rounded-full border-2 border-white px-1">
+                                    {unreadLeads > 99 ? '99+' : unreadLeads}
+                                </span>
+                            )}
+                        </Link>
 
                         <div className="h-8 w-[1px] bg-gray-100 mx-1" />
 
