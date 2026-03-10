@@ -5,6 +5,8 @@ import {
     TrendingUp, Globe, Users, MoreVertical, ExternalLink, Wallet, Building2
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useClub } from '../../contexts/ClubContext';
+import AnalyticsWidget from '../../components/admin/AnalyticsWidget';
 import {
     AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer
 } from 'recharts';
@@ -34,7 +36,11 @@ const mockUsers = [
 
 const Dashboard: React.FC = () => {
     const { user } = useAuth();
+    const { club } = useClub();
     const [stats, setStats] = useState<any | null>(null);
+
+    // Determine site hostname for analytics
+    const siteHostname = club?.domain || (club?.subdomain ? `${club.subdomain}.clubplatform.org` : window.location.hostname);
 
     useEffect(() => {
         fetchDashboardData();
@@ -201,6 +207,9 @@ const Dashboard: React.FC = () => {
                     </ResponsiveContainer>
                 </div>
             </div>
+
+            {/* GA4 Analytics Widget — per-club metrics */}
+            <AnalyticsWidget hostname={siteHostname} clubName={club?.name} gaId={undefined} />
 
             {/* Recently Active Table */}
             <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden group hover:shadow-xl transition-all">

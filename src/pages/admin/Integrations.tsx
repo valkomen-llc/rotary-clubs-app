@@ -5,7 +5,7 @@ import {
     RefreshCw, Sparkles, CheckCircle, Languages, Eye, EyeOff,
     TrendingUp, Cpu, DollarSign, Database, AlertCircle,
     ChevronDown, ChevronUp, MapPin, Clock, Activity, ExternalLink,
-    LineChart, Zap, Settings2,
+    LineChart, Zap,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -96,6 +96,11 @@ const Integrations: React.FC = () => {
     const [gaSaved, setGaSaved] = useState(false);
     const [gaError, setGaError] = useState('');
     const [gaEvents, setGaEvents] = useState<string[]>([]);
+    // GA4 Property ID (numeric, for Data API)
+    const [_propId, setPropId] = useState('');
+    const [propIdInput, setPropIdInput] = useState('');
+    const [propIdSaving, setPropIdSaving] = useState(false);
+    const [propIdSaved, setPropIdSaved] = useState(false);
 
     // Chatbot / misc
     const [chatbotEnabled, setChatbotEnabled] = useState(true);
@@ -115,11 +120,15 @@ const Integrations: React.FC = () => {
     const [expandedLang, setExpandedLang] = useState<string | null>(null);
     const [expandedDomain, setExpandedDomain] = useState<string | null>(null);
 
-    // Load GA4 ID from DB on mount
+    // Load GA4 ID + Property ID from DB on mount
     useEffect(() => {
         fetch(`${API}/translate/analytics`)
             .then(r => r.json())
             .then(d => { setGaId(d.gaId || ''); setGaIdInput(d.gaId || ''); })
+            .catch(() => { });
+        fetch(`${API}/analytics/property-id`)
+            .then(r => r.json())
+            .then(d => { setPropId(d.propertyId || ''); setPropIdInput(d.propertyId || ''); })
             .catch(() => { });
         fetch(`${API}/translate/settings`)
             .then(r => r.json())
@@ -157,6 +166,23 @@ const Integrations: React.FC = () => {
             setTimeout(() => setGaSaved(false), 3000);
         } catch (e: any) { setGaError(e.message); }
         finally { setGaSaving(false); }
+    };
+
+    const savePropId = async () => {
+        if (!propIdInput.trim()) return;
+        setPropIdSaving(true);
+        try {
+            const r = await fetch(`${API}/analytics/property-id`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ propertyId: propIdInput.trim() }),
+            });
+            if (!r.ok) throw new Error('Error al guardar');
+            setPropId(propIdInput.trim());
+            setPropIdSaved(true);
+            setTimeout(() => setPropIdSaved(false), 3000);
+        } catch { /* ignore */ }
+        finally { setPropIdSaving(false); }
     };
 
     const trackTestEvent = useCallback(() => {
@@ -270,6 +296,26 @@ const Integrations: React.FC = () => {
                             {gaError && <p className="text-xs text-red-500 font-medium ml-1">{gaError}</p>}
                             <p className="text-[10px] text-gray-400 font-medium ml-1">
                                 Encuéntralo en <a href="https://analytics.google.com" target="_blank" rel="noopener noreferrer" className="text-orange-500 underline">Google Analytics</a> → Admin → Flujos de datos → elegir flujo → ID de medición.
+                            </p>
+
+                            {/* Property ID (for Data API — per-club metrics) */}
+                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 pt-2">Property ID (Data API — métricas por club)</label>
+                            <div className="flex gap-3">
+                                <input
+                                    type="text"
+                                    value={propIdInput}
+                                    onChange={e => setPropIdInput(e.target.value)}
+                                    placeholder="123456789"
+                                    className="flex-1 bg-gray-50 border border-gray-200 rounded-2xl py-4 px-6 text-sm font-bold text-gray-900 focus:bg-white focus:outline-none focus:ring-4 focus:ring-orange-500/10 focus:border-orange-400 transition-all"
+                                />
+                                <button onClick={savePropId} disabled={propIdSaving || !propIdInput}
+                                    className="px-6 py-4 bg-orange-500 text-white rounded-2xl text-xs font-black hover:bg-orange-600 transition-all disabled:opacity-40 whitespace-nowrap flex items-center gap-2">
+                                    {propIdSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                                    {propIdSaved ? '¡Guardado!' : 'Guardar'}
+                                </button>
+                            </div>
+                            <p className="text-[10px] text-gray-400 font-medium ml-1">
+                                En GA4 → Admin → Detalles de la propiedad → <strong>ID de propiedad</strong> (número, ej: 123456789). Necesario para métricas en los paneles de cada club.
                             </p>
 
                             {/* Test event button */}
