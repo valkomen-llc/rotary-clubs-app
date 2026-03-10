@@ -141,7 +141,20 @@ async function fetchMissing(
             });
         } catch { /* network error */ }
     }
-    if (Object.keys(result).length) saveLS(lang, result);
+    if (Object.keys(result).length) {
+        saveLS(lang, result);
+        // Fire-and-forget: log this domain/page to usage panel
+        fetch(`${API_URL}/translate/log-domain`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                lang,
+                domain: window.location.hostname,
+                page: window.location.pathname,
+                count: Object.keys(result).length,
+            }),
+        }).catch(() => { });
+    }
     return result;
 }
 

@@ -18,7 +18,7 @@ const langNames = {
     de: 'German', it: 'Italian', ja: 'Japanese', ko: 'Korean'
 };
 
-// Core Gemini call using native fetch (v1 REST API — no SDK)
+// Core Gemini call using native fetch (v1 REST API)
 async function geminiTranslate(prompt, apiKey, maxOutputTokens = 2048) {
     const resp = await fetch(GEMINI_ENDPOINT(apiKey), {
         method: 'POST',
@@ -39,19 +39,12 @@ async function geminiTranslate(prompt, apiKey, maxOutputTokens = 2048) {
 // ── POST /api/translate ──────────────────────────────────────────────────────
 router.post('/', async (req, res) => {
     const { text, targetLang } = req.body;
-
-    if (!text || !targetLang || targetLang === 'es') {
-        return res.json({ translated: text });
-    }
+    if (!text || !targetLang || targetLang === 'es') return res.json({ translated: text });
 
     const cacheKey = hashText(text, targetLang);
 
-    // L1: Memory cache
-    if (memCache[cacheKey]) {
-        return res.json({ translated: memCache[cacheKey], source: 'memory' });
-    }
+    if (memCache[cacheKey]) return res.json({ translated: memCache[cacheKey], source: 'memory' });
 
-    // L2: Database cache
     try {
         const existing = await db.query(
             `SELECT value FROM "Setting" WHERE key = $1 AND "clubId" IS NULL LIMIT 1`,
@@ -61,16 +54,10 @@ router.post('/', async (req, res) => {
             memCache[cacheKey] = existing.rows[0].value;
             return res.json({ translated: existing.rows[0].value, source: 'cache' });
         }
-    } catch (_) { /* DB cache miss is ok */ }
+    } catch (_) { }
 
-    // L3: Gemini REST API
     const geminiKey = process.env.GEMINI_API_KEY;
-    if (!geminiKey) {
-        return res.status(503).json({
-            error: 'Gemini API key not configured.',
-            translated: text
-        });
-    }
+    if (!geminiKey) return res.status(503).json({ error: 'Gemini API key not configured.', translated: text });
 
     try {
         const langName = langNames[targetLang] || targetLang;
@@ -85,18 +72,13 @@ Text to translate:
 ${text}`;
 
         const translated = await geminiTranslate(prompt, geminiKey);
-
-        // Save to L1 memory
         memCache[cacheKey] = translated;
-
-        // Save to L2 DB cache (async, don't wait)
         db.query(
             `INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt")
              VALUES (gen_random_uuid(), $1, $2, NULL, NOW())
              ON CONFLICT (key, "clubId") DO UPDATE SET value = $2, "updatedAt" = NOW()`,
             [`translation::${cacheKey}`, translated]
-        ).catch(() => { /* ignore cache write errors */ });
-
+        ).catch(() => { });
         return res.json({ translated, source: 'gemini' });
     } catch (err) {
         console.error('Gemini translation error:', err.message);
@@ -112,22 +94,15 @@ router.post('/bulk', async (req, res) => {
     }
 
     const geminiKey = process.env.GEMINI_API_KEY;
-    if (!geminiKey) {
-        return res.json({ translations: texts });
-    }
+    if (!geminiKey) return res.json({ translations: texts });
 
-    // Pre-fill from L1 and L2 caches, collect what needs fetching
     const results = new Array(texts.length).fill(null);
     const toFetchIndices = [];
 
     for (let i = 0; i < texts.length; i++) {
         const text = texts[i];
         const cacheKey = hashText(text, targetLang);
-        if (memCache[cacheKey]) {
-            results[i] = memCache[cacheKey];
-            continue;
-        }
-        // L2: DB cache
+        if (memCache[cacheKey]) { results[i] = memCache[cacheKey]; continue; }
         try {
             const existing = await db.query(
                 `SELECT value FROM "Setting" WHERE key = $1 AND "clubId" IS NULL LIMIT 1`,
@@ -138,20 +113,18 @@ router.post('/bulk', async (req, res) => {
                 results[i] = existing.rows[0].value;
                 continue;
             }
-        } catch (_) { /* ok */ }
+        } catch (_) { }
         toFetchIndices.push(i);
     }
 
-    if (toFetchIndices.length === 0) {
-        return res.json({ translations: results });
-    }
+    if (toFetchIndices.length === 0) return res.json({ translations: results });
 
     try {
         const langName = langNames[targetLang] || targetLang;
         const toFetchTexts = toFetchIndices.map(i => texts[i]);
         const numbered = toFetchTexts.map((t, i) => `[${i + 1}] ${t}`).join('\n');
         const prompt = `Translate the following numbered list to ${langName}.
-Return ONLY the translated numbered list in the exact format [1] translation, [2] translation, etc. — one per line.
+Return ONLY the translated numbered list in the exact format [1] translation, [2] translation, etc. -- one per line.
 Do NOT add extra commentary. Keep proper nouns unchanged: Rotary, Rotaract, Interact, ClubPlatform.
 
 ${numbered}`;
@@ -162,8 +135,6 @@ ${numbered}`;
             const match = responseText.match(new RegExp(`\\[${i + 1}\\]\\s*(.+?)(?=\\[${i + 2}\\]|$)`, 's'));
             const translated = match ? match[1].trim() : texts[origIdx];
             results[origIdx] = translated;
-
-            // Persist to L1 + L2 cache async
             const ck = hashText(texts[origIdx], targetLang);
             memCache[ck] = translated;
             db.query(
@@ -171,7 +142,7 @@ ${numbered}`;
                  VALUES (gen_random_uuid(), $1, $2, NULL, NOW())
                  ON CONFLICT (key, "clubId") DO UPDATE SET value = $2, "updatedAt" = NOW()`,
                 [`translation::${ck}`, translated]
-            ).catch(() => { /* ignore cache write errors */ });
+            ).catch(() => { });
         });
 
         return res.json({ translations: results });
@@ -187,18 +158,14 @@ router.get('/settings', async (req, res) => {
     res.json({ configured: hasKey });
 });
 
-// ── GET /api/translate/usage ──────────────────────────────────────────────────
-// Returns translation usage stats for super admin. Auth handled by frontend guard.
+// ── GET /api/translate/usage -- Super Admin usage stats ──────────────────────
 router.get('/usage', async (req, res) => {
     try {
-        // Total cached translation entries in DB
         const totalResult = await db.query(
-            `SELECT COUNT(*) AS total FROM "Setting"
-             WHERE key LIKE 'translation::%' AND "clubId" IS NULL`
+            `SELECT COUNT(*) AS total FROM "Setting" WHERE key LIKE 'translation::%' AND "clubId" IS NULL`
         );
         const total = parseInt(totalResult.rows[0]?.total || '0', 10);
 
-        // Per-language breakdown — extract lang from key prefix "translation::lang::..."
         const byLangResult = await db.query(
             `SELECT
                 split_part(split_part(key, '::', 2), '::', 1) AS lang,
@@ -206,26 +173,46 @@ router.get('/usage', async (req, res) => {
                 SUM(char_length(value)) AS chars
              FROM "Setting"
              WHERE key LIKE 'translation::%' AND "clubId" IS NULL
-             GROUP BY 1
-             ORDER BY 2 DESC`
+             GROUP BY 1 ORDER BY 2 DESC`
         );
 
-        // In-memory cache counters (cross-session estimate)
+        // Domain usage logs: key format txlog::LANG::DOMAIN
+        const logsResult = await db.query(
+            `SELECT key, value FROM "Setting" WHERE key LIKE 'txlog::%' AND "clubId" IS NULL`
+        );
+
+        const domainsByLang = {};
+        for (const row of logsResult.rows) {
+            const parts = row.key.split('::');
+            if (parts.length < 3) continue;
+            const lang = parts[1];
+            const domain = parts[2];
+            let info = { count: 0, pages: [], lastSeen: null };
+            try { info = JSON.parse(row.value); } catch { /* ok */ }
+            if (!domainsByLang[lang]) domainsByLang[lang] = [];
+            domainsByLang[lang].push({ domain, count: info.count || 0, pages: info.pages || [], lastSeen: info.lastSeen || null });
+        }
+
+        // Enrich with Club name
+        const allDomains = [...new Set(logsResult.rows.map(r => r.key.split('::')[2]).filter(Boolean))];
+        const clubNames = {};
+        if (allDomains.length) {
+            const clubRes = await db.query(
+                `SELECT domain, subdomain, name FROM "Club" WHERE domain = ANY($1) OR subdomain = ANY($1)`,
+                [allDomains]
+            );
+            for (const c of clubRes.rows) {
+                if (c.domain) clubNames[c.domain] = c.name;
+                if (c.subdomain) clubNames[c.subdomain] = c.name;
+            }
+        }
+        for (const lang of Object.keys(domainsByLang)) {
+            domainsByLang[lang] = domainsByLang[lang].map(d => ({ ...d, clubName: clubNames[d.domain] || null }));
+        }
+
         const memCacheTotal = Object.values(memCache).reduce((acc, m) => acc + Object.keys(m).length, 0);
-
-        // Cost estimate: Gemini 2.0 Flash input ≈ $0.075/1M tokens, output ≈ $0.30/1M tokens
-        // Rough heuristic: avg 30 tokens input + 35 tokens output per translation call
-        const AVG_INPUT_TOKENS = 30;
-        const AVG_OUTPUT_TOKENS = 35;
-        const INPUT_COST_PER_M = 0.075;
-        const OUTPUT_COST_PER_M = 0.30;
-        const estimatedCost = (
-            (total * AVG_INPUT_TOKENS / 1_000_000) * INPUT_COST_PER_M +
-            (total * AVG_OUTPUT_TOKENS / 1_000_000) * OUTPUT_COST_PER_M
-        );
-
-        const estimatedTokensInput = total * AVG_INPUT_TOKENS;
-        const estimatedTokensOutput = total * AVG_OUTPUT_TOKENS;
+        const AVG_IN = 30, AVG_OUT = 35;
+        const estimatedCost = (total * AVG_IN / 1_000_000) * 0.075 + (total * AVG_OUT / 1_000_000) * 0.30;
 
         res.json({
             totalCachedTranslations: total,
@@ -234,16 +221,68 @@ router.get('/usage', async (req, res) => {
                 lang: r.lang,
                 count: parseInt(r.count, 10),
                 chars: parseInt(r.chars || '0', 10),
+                domains: domainsByLang[r.lang] || [],
             })),
-            estimatedTokensInput,
-            estimatedTokensOutput,
+            estimatedTokensInput: total * AVG_IN,
+            estimatedTokensOutput: total * AVG_OUT,
             estimatedCostUSD: parseFloat(estimatedCost.toFixed(6)),
             model: 'gemini-2.0-flash',
-            pricingNote: 'Estimación: $0.075/M tokens entrada + $0.30/M tokens salida (precios de Google AI Studio)',
+            pricingNote: '$0.075/M tokens entrada + $0.30/M tokens salida (Google AI Studio)',
         });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
+});
+
+// ── POST /api/translate/log-domain -- frontend registers which domain/page translated
+router.post('/log-domain', async (req, res) => {
+    const { lang, domain, page, count } = req.body;
+    if (!lang || !domain) return res.json({ ok: false });
+    const key = `txlog::${lang}::${domain}`;
+    try {
+        const existing = await db.query(
+            `SELECT value FROM "Setting" WHERE key = $1 AND "clubId" IS NULL LIMIT 1`, [key]
+        );
+        let info = { count: 0, pages: [], lastSeen: null };
+        if (existing.rows.length) { try { info = JSON.parse(existing.rows[0].value); } catch { /* ok */ } }
+        info.count = (info.count || 0) + (count || 1);
+        info.lastSeen = new Date().toISOString();
+        if (page && !info.pages.includes(page)) {
+            info.pages = [...(info.pages || []).slice(-19), page]; // max 20 unique pages
+        }
+        await db.query(
+            `INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt")
+             VALUES (gen_random_uuid(), $1, $2, NULL, NOW())
+             ON CONFLICT (key, "clubId") DO UPDATE SET value = $2, "updatedAt" = NOW()`,
+            [key, JSON.stringify(info)]
+        );
+        res.json({ ok: true });
+    } catch (err) { res.json({ ok: false, error: err.message }); }
+});
+
+// ── GET /api/translate/analytics -- load GA4 config ──────────────────────────
+router.get('/analytics', async (req, res) => {
+    try {
+        const r = await db.query(
+            `SELECT value FROM "Setting" WHERE key = 'analytics_ga4_id' AND "clubId" IS NULL LIMIT 1`
+        );
+        res.json({ gaId: r.rows[0]?.value || '' });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST /api/translate/analytics -- save GA4 ID ─────────────────────────────
+router.post('/analytics', async (req, res) => {
+    const { gaId } = req.body;
+    if (!gaId) return res.status(400).json({ error: 'gaId required' });
+    try {
+        await db.query(
+            `INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt")
+             VALUES (gen_random_uuid(), 'analytics_ga4_id', $1, NULL, NOW())
+             ON CONFLICT (key, "clubId") DO UPDATE SET value = $1, "updatedAt" = NOW()`,
+            [gaId]
+        );
+        res.json({ ok: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 export default router;
