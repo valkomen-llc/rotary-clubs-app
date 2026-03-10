@@ -1,9 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
     MessageCircle, Palette, Globe, FileText, FolderKanban,
     Users, Rocket, Sparkles, Calendar, Activity, Radio,
-    Shield, Zap, X,
+    Shield, Zap, X, Send, Loader2,
 } from 'lucide-react';
+
+const API = import.meta.env.VITE_API_URL || '/api';
+
+// DiceBear avatar URLs — each agent gets a unique character
+const avatar = (seed: string) => `https://api.dicebear.com/9.x/adventurer/svg?seed=${seed}&backgroundColor=transparent`;
+
+interface ChatMessage {
+    role: 'user' | 'assistant';
+    text: string;
+}
 
 interface Agent {
     id: string;
@@ -14,86 +24,154 @@ interface Agent {
     status: 'active' | 'standby' | 'upcoming';
     availability: string;
     avatarColor: string;
-    deskPos: { x: number; y: number }; // position in the office grid (%)
+    avatarSeed: string;
+    deskPos: { x: number; y: number };
     greeting: string;
 }
 
 const AGENTS: Agent[] = [
     {
-        id: 'chatbot', name: 'Aria', role: 'ChatBot Público',
-        description: 'Responde preguntas de visitantes 24/7 en tu sitio web',
+        id: 'aria', name: 'Aria', role: 'ChatBot Público',
+        description: 'Responde preguntas de visitantes 24/7',
         icon: MessageCircle, status: 'active', availability: '24/7',
-        avatarColor: '#3B82F6', deskPos: { x: 8, y: 20 },
-        greeting: '¡Hola! Soy Aria 💬 Atiendo a los visitantes de tu sitio web las 24 horas. ¿Necesitas algo?',
+        avatarColor: '#3B82F6', avatarSeed: 'Aria',
+        deskPos: { x: 5, y: 18 },
+        greeting: '¡Hola! Soy Aria 💬 Atiendo visitantes de tu sitio las 24 horas.',
     },
     {
-        id: 'content-suggest', name: 'Marco', role: 'Consejero RRSS',
-        description: 'Genera ideas de publicaciones para redes sociales',
+        id: 'marco', name: 'Marco', role: 'Consejero RRSS',
+        description: 'Genera estrategia de contenido social',
         icon: Calendar, status: 'active', availability: 'On-demand',
-        avatarColor: '#8B5CF6', deskPos: { x: 28, y: 15 },
-        greeting: '¡Hey! Soy Marco 📱 Creo estrategias de contenido para tus redes sociales.',
+        avatarColor: '#8B5CF6', avatarSeed: 'Marco',
+        deskPos: { x: 23, y: 13 },
+        greeting: '¡Hey! Soy Marco 📱 Creo estrategia para tus redes.',
     },
     {
-        id: 'onboarding-welcome', name: 'Sol', role: 'Bienvenida',
-        description: 'Guía al club en su primer paso de configuración',
+        id: 'sol', name: 'Sol', role: 'Bienvenida',
+        description: 'Guía a clubes nuevos en la plataforma',
         icon: Sparkles, status: 'active', availability: 'Wizard',
-        avatarColor: '#F59E0B', deskPos: { x: 48, y: 10 },
-        greeting: '¡Bienvenido! ✨ Soy Sol, y mi trabajo es darte la mejor primera impresión del sistema.',
+        avatarColor: '#F59E0B', avatarSeed: 'Sol',
+        deskPos: { x: 41, y: 8 },
+        greeting: '¡Bienvenido! ✨ Soy Sol, tu primera guía.',
     },
     {
-        id: 'onboarding-visual', name: 'Luna', role: 'Identidad Visual',
-        description: 'Asesora en logo y colores institucionales',
+        id: 'luna', name: 'Luna', role: 'Identidad Visual',
+        description: 'Asesora en logo y colores',
         icon: Palette, status: 'active', availability: 'Wizard',
-        avatarColor: '#EC4899', deskPos: { x: 68, y: 15 },
-        greeting: '¡Hola! 🎨 Soy Luna. Me especializo en que tu club luzca increíble con el logo y colores correctos.',
+        avatarColor: '#EC4899', avatarSeed: 'Luna',
+        deskPos: { x: 59, y: 13 },
+        greeting: '¡Hola! 🎨 Soy Luna, la experta en branding.',
     },
     {
-        id: 'onboarding-info', name: 'Leo', role: 'Información',
-        description: 'Ayuda a redactar la descripción y contacto del club',
+        id: 'leo', name: 'Leo', role: 'Información',
+        description: 'Redacta textos profesionales del club',
         icon: FileText, status: 'active', availability: 'Wizard',
-        avatarColor: '#10B981', deskPos: { x: 85, y: 20 },
-        greeting: 'Soy Leo 📝 Te ayudo a redactar textos profesionales para tu club. ¡La comunicación es clave!',
+        avatarColor: '#10B981', avatarSeed: 'Leo',
+        deskPos: { x: 77, y: 18 },
+        greeting: 'Soy Leo 📝 Te ayudo con los textos del club.',
     },
     {
-        id: 'onboarding-social', name: 'Nube', role: 'Redes Sociales',
-        description: 'Configura las URLs de redes sociales del club',
+        id: 'nube', name: 'Nube', role: 'Redes Sociales',
+        description: 'Configura perfiles en redes sociales',
         icon: Globe, status: 'active', availability: 'Wizard',
-        avatarColor: '#0EA5E9', deskPos: { x: 8, y: 55 },
-        greeting: '¡Hola! 🌐 Soy Nube. Conecto tu club con el mundo a través de redes sociales.',
+        avatarColor: '#0EA5E9', avatarSeed: 'Nube',
+        deskPos: { x: 5, y: 55 },
+        greeting: '¡Hola! 🌐 Soy Nube, conecto tu club con el mundo.',
     },
     {
-        id: 'onboarding-content', name: 'Iris', role: 'Contenido Web',
-        description: 'Crea textos de hero, banner y sobre nosotros',
+        id: 'iris', name: 'Iris', role: 'Contenido Web',
+        description: 'Crea textos impactantes para tu sitio',
         icon: FileText, status: 'active', availability: 'Wizard',
-        avatarColor: '#6366F1', deskPos: { x: 28, y: 50 },
-        greeting: 'Soy Iris 💜 Diseño las palabras perfectas para tu página de inicio y secciones del sitio.',
+        avatarColor: '#6366F1', avatarSeed: 'Iris',
+        deskPos: { x: 23, y: 50 },
+        greeting: 'Soy Iris 💜 Diseño las palabras de tu página.',
     },
     {
-        id: 'onboarding-projects', name: 'Kai', role: 'Proyectos',
-        description: 'Documenta proyectos de servicio del club',
+        id: 'kai', name: 'Kai', role: 'Proyectos',
+        description: 'Documenta proyectos de servicio',
         icon: FolderKanban, status: 'active', availability: 'Wizard',
-        avatarColor: '#F97316', deskPos: { x: 48, y: 55 },
-        greeting: '¡Qué tal! 🔥 Soy Kai. Documento los proyectos de servicio para que el mundo los conozca.',
+        avatarColor: '#F97316', avatarSeed: 'Kai',
+        deskPos: { x: 41, y: 55 },
+        greeting: '¡Qué tal! 🔥 Soy Kai, el de proyectos.',
     },
     {
-        id: 'onboarding-members', name: 'Vera', role: 'Directorio',
-        description: 'Carga el directorio de socios del club',
+        id: 'vera', name: 'Vera', role: 'Directorio',
+        description: 'Gestiona el directorio de socios',
         icon: Users, status: 'active', availability: 'Wizard',
-        avatarColor: '#14B8A6', deskPos: { x: 68, y: 50 },
-        greeting: 'Soy Vera 👥 Organizo el directorio de socios. ¡Cada miembro cuenta!',
+        avatarColor: '#14B8A6', avatarSeed: 'Vera',
+        deskPos: { x: 59, y: 50 },
+        greeting: 'Soy Vera 👥 Organizo tu directorio de socios.',
     },
     {
-        id: 'onboarding-publish', name: 'Nova', role: 'Publicación',
-        description: 'Revisa y lanza el sitio web del club',
+        id: 'nova', name: 'Nova', role: 'Publicación',
+        description: 'Lanza y revisa tu sitio web',
         icon: Rocket, status: 'active', availability: 'Wizard',
-        avatarColor: '#EF4444', deskPos: { x: 85, y: 55 },
-        greeting: '¡Soy Nova! 🚀 Mi misión es asegurar que tu sitio esté perfecto antes de publicarlo.',
+        avatarColor: '#EF4444', avatarSeed: 'Nova',
+        deskPos: { x: 77, y: 55 },
+        greeting: '¡Soy Nova! 🚀 Te ayudo a publicar tu sitio.',
     },
 ];
 
 const MissionControl: React.FC = () => {
     const [hoveredAgent, setHoveredAgent] = useState<Agent | null>(null);
+    const [chatAgent, setChatAgent] = useState<Agent | null>(null);
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [input, setInput] = useState('');
+    const [loading, setLoading] = useState(false);
+    const chatEndRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
+
     const activeCount = AGENTS.filter(a => a.status === 'active').length;
+
+    // Scroll to bottom of chat
+    useEffect(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages]);
+
+    // Focus input when chat opens
+    useEffect(() => {
+        if (chatAgent) {
+            setTimeout(() => inputRef.current?.focus(), 200);
+        }
+    }, [chatAgent]);
+
+    const openChat = (agent: Agent) => {
+        setChatAgent(agent);
+        setMessages([{ role: 'assistant', text: agent.greeting }]);
+        setInput('');
+    };
+
+    const closeChat = () => {
+        setChatAgent(null);
+        setMessages([]);
+    };
+
+    const sendMessage = async () => {
+        if (!input.trim() || !chatAgent || loading) return;
+        const userMsg = input.trim();
+        setInput('');
+        setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+        setLoading(true);
+
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const res = await fetch(`${API}/ai/agent-chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({
+                    message: userMsg,
+                    agentId: chatAgent.id,
+                    history: messages.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text })),
+                }),
+            });
+            const data = await res.json();
+            setMessages(prev => [...prev, { role: 'assistant', text: data.reply || 'No pude responder.' }]);
+        } catch {
+            setMessages(prev => [...prev, { role: 'assistant', text: 'Error al conectar con el agente. Intenta de nuevo.' }]);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     return (
         <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden hover:shadow-xl transition-all mt-8">
@@ -106,7 +184,9 @@ const MissionControl: React.FC = () => {
                         </div>
                         <div>
                             <h3 className="text-xl font-black text-gray-900 tracking-tight">Mission Control</h3>
-                            <p className="text-[11px] text-gray-400 font-medium">Tu equipo de agentes IA trabajando en la oficina virtual</p>
+                            <p className="text-[11px] text-gray-400 font-medium">
+                                Haz clic en un agente para conversar con él
+                            </p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 rounded-full">
@@ -116,10 +196,11 @@ const MissionControl: React.FC = () => {
                 </div>
             </div>
 
-            {/* Virtual Office Scene */}
-            <div className="mx-6 mb-6 relative">
+            {/* Office + Chat side by side */}
+            <div className="flex mx-6 mb-6 gap-0 relative">
+                {/* Virtual Office */}
                 <div
-                    className="relative rounded-2xl overflow-hidden"
+                    className={`relative rounded-2xl overflow-hidden transition-all duration-500 ${chatAgent ? 'w-[55%]' : 'w-full'}`}
                     style={{
                         background: 'linear-gradient(180deg, #1a1b3a 0%, #2d2b55 40%, #3b3875 70%, #4a4690 100%)',
                         height: '420px',
@@ -127,16 +208,16 @@ const MissionControl: React.FC = () => {
                 >
                     {/* Stars */}
                     <div className="absolute inset-0 overflow-hidden">
-                        {[...Array(40)].map((_, i) => (
+                        {[...Array(30)].map((_, i) => (
                             <div
-                                key={`star-${i}`}
+                                key={`s-${i}`}
                                 className="absolute rounded-full bg-white"
                                 style={{
                                     width: Math.random() * 2 + 1,
                                     height: Math.random() * 2 + 1,
                                     left: `${Math.random() * 100}%`,
-                                    top: `${Math.random() * 50}%`,
-                                    opacity: Math.random() * 0.6 + 0.2,
+                                    top: `${Math.random() * 45}%`,
+                                    opacity: Math.random() * 0.5 + 0.2,
                                     animation: `twinkle ${2 + Math.random() * 3}s ease-in-out infinite`,
                                     animationDelay: `${Math.random() * 3}s`,
                                 }}
@@ -144,44 +225,32 @@ const MissionControl: React.FC = () => {
                         ))}
                     </div>
 
-                    {/* Floor grid */}
+                    {/* Floor */}
                     <div
                         className="absolute bottom-0 left-0 right-0"
                         style={{
                             height: '55%',
                             background: 'linear-gradient(180deg, transparent, rgba(99,102,241,0.08) 20%, rgba(99,102,241,0.15))',
-                            borderTop: '1px solid rgba(99,102,241,0.2)',
+                            borderTop: '1px solid rgba(99,102,241,0.15)',
                         }}
-                    >
-                        {/* Grid lines */}
-                        {[...Array(8)].map((_, i) => (
-                            <div
-                                key={`grid-h-${i}`}
-                                className="absolute left-0 right-0"
-                                style={{
-                                    top: `${(i + 1) * 12}%`,
-                                    height: '1px',
-                                    background: 'rgba(99,102,241,0.08)',
-                                }}
-                            />
-                        ))}
-                        {[...Array(12)].map((_, i) => (
-                            <div
-                                key={`grid-v-${i}`}
-                                className="absolute top-0 bottom-0"
-                                style={{
-                                    left: `${(i + 1) * 8}%`,
-                                    width: '1px',
-                                    background: 'rgba(99,102,241,0.08)',
-                                }}
-                            />
-                        ))}
+                    />
+
+                    {/* Window */}
+                    <div className="absolute top-[4%] left-1/2 -translate-x-1/2">
+                        <div className="w-16 h-10 rounded-lg border border-white/10 bg-white/5 flex items-center justify-center">
+                            <span className="text-lg" style={{ filter: 'drop-shadow(0 0 6px rgba(96,165,250,0.3))' }}>🌍</span>
+                        </div>
                     </div>
 
-                    {/* Agents at desks */}
+                    {/* Decorations */}
+                    <div className="absolute left-[1%] bottom-[6%] text-xl opacity-50">🌿</div>
+                    <div className="absolute right-[2%] bottom-[30%] text-sm opacity-40">🪴</div>
+
+                    {/* Agents */}
                     {AGENTS.map(agent => {
                         const isHovered = hoveredAgent?.id === agent.id;
-                        const Icon = agent.icon;
+                        const isChatting = chatAgent?.id === agent.id;
+                        const isActive = isHovered || isChatting;
 
                         return (
                             <div
@@ -190,100 +259,82 @@ const MissionControl: React.FC = () => {
                                 style={{
                                     left: `${agent.deskPos.x}%`,
                                     top: `${agent.deskPos.y}%`,
-                                    zIndex: isHovered ? 50 : 10,
+                                    zIndex: isActive ? 50 : 10,
                                 }}
                                 onMouseEnter={() => setHoveredAgent(agent)}
                                 onMouseLeave={() => setHoveredAgent(null)}
+                                onClick={() => openChat(agent)}
                             >
-                                {/* Speech bubble on hover */}
-                                {isHovered && (
+                                {/* Tooltip on hover (only if no chat open for this agent) */}
+                                {isHovered && !isChatting && (
                                     <div
-                                        className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-56 animate-fadeIn"
-                                        style={{ animation: 'fadeSlideUp 0.25s ease-out' }}
+                                        className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-44"
+                                        style={{ animation: 'fadeSlideUp 0.2s ease-out' }}
                                     >
-                                        <div className="bg-white rounded-2xl p-3.5 shadow-2xl border border-gray-100 relative">
-                                            <p className="text-[11px] font-bold text-gray-800 leading-relaxed">
-                                                {agent.greeting}
-                                            </p>
-                                            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
-                                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider">{agent.role}</span>
-                                                <span className="text-[9px] font-bold text-emerald-600 flex items-center gap-1">
-                                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                                    {agent.availability}
-                                                </span>
-                                            </div>
-                                            {/* Bubble arrow */}
-                                            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white border-b border-r border-gray-100 rotate-45" />
+                                        <div className="bg-white rounded-xl p-2.5 shadow-xl border border-gray-100 relative">
+                                            <p className="text-[10px] font-bold text-gray-700">{agent.greeting}</p>
+                                            <div className="text-[8px] font-black text-gray-400 uppercase mt-1">{agent.role}</div>
+                                            <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-b border-r border-gray-100 rotate-45" />
                                         </div>
                                     </div>
                                 )}
 
-                                {/* Desk */}
+                                {/* Desk + screen */}
                                 <div className="relative">
-                                    {/* Desk surface */}
                                     <div
-                                        className="absolute top-10 left-1/2 -translate-x-1/2 transition-all duration-300"
+                                        className="absolute top-14 left-1/2 -translate-x-1/2 transition-all duration-300"
                                         style={{
-                                            width: '56px',
-                                            height: '20px',
-                                            borderRadius: '4px',
-                                            background: isHovered
+                                            width: '50px', height: '16px', borderRadius: '3px',
+                                            background: isActive
                                                 ? `linear-gradient(135deg, ${agent.avatarColor}40, ${agent.avatarColor}20)`
-                                                : 'linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05))',
-                                            border: `1px solid ${isHovered ? agent.avatarColor + '60' : 'rgba(255,255,255,0.1)'}`,
-                                            boxShadow: isHovered ? `0 4px 20px ${agent.avatarColor}30` : 'none',
+                                                : 'linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.04))',
+                                            border: `1px solid ${isActive ? agent.avatarColor + '50' : 'rgba(255,255,255,0.08)'}`,
                                         }}
                                     >
-                                        {/* Screen glow on desk */}
                                         <div
-                                            className="absolute -top-4 left-1/2 -translate-x-1/2 w-6 h-4 rounded-sm"
+                                            className="absolute -top-3 left-1/2 -translate-x-1/2 w-5 h-3 rounded-sm"
                                             style={{
-                                                background: isHovered
-                                                    ? `linear-gradient(180deg, ${agent.avatarColor}90, ${agent.avatarColor}30)`
-                                                    : 'linear-gradient(180deg, rgba(99,102,241,0.4), rgba(99,102,241,0.1))',
-                                                boxShadow: isHovered
-                                                    ? `0 0 15px ${agent.avatarColor}50`
-                                                    : '0 0 8px rgba(99,102,241,0.2)',
+                                                background: isActive
+                                                    ? `linear-gradient(180deg, ${agent.avatarColor}80, ${agent.avatarColor}20)`
+                                                    : 'linear-gradient(180deg, rgba(99,102,241,0.3), rgba(99,102,241,0.08))',
+                                                boxShadow: isActive ? `0 0 12px ${agent.avatarColor}40` : 'none',
                                             }}
                                         />
                                     </div>
 
-                                    {/* Agent avatar */}
+                                    {/* Character Avatar */}
                                     <div
                                         className={`
-                                            relative w-10 h-10 rounded-full flex items-center justify-center
-                                            transition-all duration-300 ease-out mx-auto
-                                            ${isHovered ? 'scale-[1.35] -translate-y-3' : 'scale-100'}
+                                            relative w-12 h-12 rounded-full mx-auto overflow-hidden
+                                            transition-all duration-300 ease-out
+                                            ${isActive ? 'scale-[1.4] -translate-y-2' : 'scale-100'}
                                         `}
                                         style={{
-                                            background: `linear-gradient(135deg, ${agent.avatarColor}, ${agent.avatarColor}cc)`,
-                                            boxShadow: isHovered
-                                                ? `0 8px 30px ${agent.avatarColor}60, 0 0 40px ${agent.avatarColor}25`
-                                                : `0 2px 8px ${agent.avatarColor}30`,
-                                            border: `2px solid ${isHovered ? 'white' : 'rgba(255,255,255,0.3)'}`,
+                                            border: `2.5px solid ${isActive ? 'white' : 'rgba(255,255,255,0.3)'}`,
+                                            boxShadow: isActive
+                                                ? `0 8px 25px ${agent.avatarColor}50, 0 0 30px ${agent.avatarColor}20`
+                                                : `0 2px 6px rgba(0,0,0,0.2)`,
+                                            background: agent.avatarColor + '30',
                                         }}
                                     >
-                                        <Icon className="w-4 h-4 text-white drop-shadow-sm" />
-
-                                        {/* Typing indicator when hovered */}
-                                        {isHovered && (
-                                            <div className="absolute -bottom-1 -right-1 bg-white rounded-full px-1.5 py-0.5 shadow-lg flex items-center gap-0.5">
-                                                <div className="w-1 h-1 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                                                <div className="w-1 h-1 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                                                <div className="w-1 h-1 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-                                            </div>
-                                        )}
-
-                                        {/* Online indicator */}
-                                        {!isHovered && (
-                                            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-[#2d2b55]" />
-                                        )}
+                                        <img
+                                            src={avatar(agent.avatarSeed)}
+                                            alt={agent.name}
+                                            className="w-full h-full"
+                                            loading="lazy"
+                                        />
                                     </div>
 
-                                    {/* Name tag */}
+                                    {/* Online dot */}
+                                    <div className={`
+                                        absolute top-0.5 right-[calc(50%-24px)] w-3 h-3 rounded-full border-2 border-[#2d2b55]
+                                        ${isChatting ? 'bg-blue-400 animate-pulse' : 'bg-emerald-400'}
+                                    `} />
+
+                                    {/* Name */}
                                     <p className={`
-                                        text-center mt-6 text-[10px] font-bold transition-all duration-300
-                                        ${isHovered ? 'text-white' : 'text-white/50'}
+                                        text-center mt-5 text-[9px] font-bold transition-all duration-300 whitespace-nowrap
+                                        ${isActive ? 'text-white' : 'text-white/40'}
                                     `}>
                                         {agent.name}
                                     </p>
@@ -291,24 +342,97 @@ const MissionControl: React.FC = () => {
                             </div>
                         );
                     })}
+                </div>
 
-                    {/* Decorative elements */}
-                    {/* Plant 1 */}
-                    <div className="absolute left-[2%] bottom-[8%] text-2xl opacity-60">🌿</div>
-                    {/* Plant 2 */}
-                    <div className="absolute right-[3%] bottom-[35%] text-xl opacity-50">🪴</div>
-                    {/* Coffee */}
-                    <div className="absolute left-[40%] bottom-[6%] text-sm opacity-40">☕</div>
-                    {/* Clock */}
-                    <div className="absolute right-[10%] top-[8%] text-lg opacity-40">🕐</div>
+                {/* Chat Panel — slides in when agent is selected */}
+                {chatAgent && (
+                    <div
+                        className="w-[45%] rounded-r-2xl border border-l-0 border-gray-200 bg-white flex flex-col overflow-hidden"
+                        style={{ height: '420px', animation: 'slideInRight 0.3s ease-out' }}
+                    >
+                        {/* Chat Header */}
+                        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
+                            <div
+                                className="w-9 h-9 rounded-full overflow-hidden border-2 flex-shrink-0"
+                                style={{ borderColor: chatAgent.avatarColor, background: chatAgent.avatarColor + '20' }}
+                            >
+                                <img src={avatar(chatAgent.avatarSeed)} alt={chatAgent.name} className="w-full h-full" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <h4 className="text-sm font-black text-gray-900 truncate">{chatAgent.name}</h4>
+                                <p className="text-[10px] font-bold text-gray-400 truncate">{chatAgent.role} · {chatAgent.availability}</p>
+                            </div>
+                            <div className="flex items-center gap-1.5 mr-1">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                <span className="text-[9px] font-bold text-emerald-600">Online</span>
+                            </div>
+                            <button onClick={closeChat} className="p-1.5 text-gray-300 hover:text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
 
-                    {/* Window with Earth */}
-                    <div className="absolute top-[5%] left-1/2 -translate-x-1/2">
-                        <div className="w-20 h-14 rounded-lg border border-white/10 bg-white/5 flex items-center justify-center overflow-hidden">
-                            <span className="text-2xl" style={{ filter: 'drop-shadow(0 0 8px rgba(96,165,250,0.3))' }}>🌍</span>
+                        {/* Messages */}
+                        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3" style={{ scrollBehavior: 'smooth' }}>
+                            {messages.map((msg, i) => (
+                                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} gap-2`}>
+                                    {msg.role === 'assistant' && (
+                                        <div
+                                            className="w-7 h-7 rounded-full overflow-hidden border flex-shrink-0 mt-0.5"
+                                            style={{ borderColor: chatAgent.avatarColor + '40', background: chatAgent.avatarColor + '15' }}
+                                        >
+                                            <img src={avatar(chatAgent.avatarSeed)} alt="" className="w-full h-full" />
+                                        </div>
+                                    )}
+                                    <div className={`
+                                        max-w-[80%] px-3.5 py-2.5 rounded-2xl text-[12px] leading-relaxed font-medium
+                                        ${msg.role === 'user'
+                                            ? 'bg-gray-900 text-white rounded-br-md'
+                                            : 'bg-gray-100 text-gray-700 rounded-bl-md'}
+                                    `}>
+                                        {msg.text}
+                                    </div>
+                                </div>
+                            ))}
+                            {loading && (
+                                <div className="flex items-center gap-2">
+                                    <div
+                                        className="w-7 h-7 rounded-full overflow-hidden border flex-shrink-0"
+                                        style={{ borderColor: chatAgent.avatarColor + '40', background: chatAgent.avatarColor + '15' }}
+                                    >
+                                        <img src={avatar(chatAgent.avatarSeed)} alt="" className="w-full h-full" />
+                                    </div>
+                                    <div className="bg-gray-100 rounded-2xl rounded-bl-md px-4 py-3 flex items-center gap-1">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                                        <div className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                                        <div className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                                    </div>
+                                </div>
+                            )}
+                            <div ref={chatEndRef} />
+                        </div>
+
+                        {/* Input */}
+                        <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-100 bg-white flex-shrink-0">
+                            <input
+                                ref={inputRef}
+                                value={input}
+                                onChange={e => setInput(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && sendMessage()}
+                                placeholder={`Pregúntale a ${chatAgent.name}...`}
+                                className="flex-1 px-4 py-2.5 bg-gray-50 rounded-xl text-sm outline-none border border-gray-100 focus:border-gray-300 focus:bg-white transition-all font-medium"
+                                disabled={loading}
+                            />
+                            <button
+                                onClick={sendMessage}
+                                disabled={loading || !input.trim()}
+                                className="w-9 h-9 rounded-xl flex items-center justify-center text-white transition-all disabled:opacity-40"
+                                style={{ background: chatAgent.avatarColor }}
+                            >
+                                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                            </button>
                         </div>
                     </div>
-                </div>
+                )}
             </div>
 
             {/* Footer */}
@@ -325,7 +449,7 @@ const MissionControl: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2">
                     <Zap className="w-3.5 h-3.5 text-amber-400" />
-                    <span className="text-[10px] font-bold text-gray-400">Fase 1 — Panel de monitoreo</span>
+                    <span className="text-[10px] font-bold text-gray-400">Fase 1 — Panel interactivo</span>
                 </div>
             </div>
 
@@ -333,11 +457,15 @@ const MissionControl: React.FC = () => {
             <style>{`
                 @keyframes twinkle {
                     0%, 100% { opacity: 0.2; }
-                    50% { opacity: 0.8; }
+                    50% { opacity: 0.7; }
                 }
                 @keyframes fadeSlideUp {
-                    from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+                    from { opacity: 0; transform: translateX(-50%) translateY(6px); }
                     to { opacity: 1; transform: translateX(-50%) translateY(0); }
+                }
+                @keyframes slideInRight {
+                    from { opacity: 0; transform: translateX(20px); }
+                    to { opacity: 1; transform: translateX(0); }
                 }
             `}</style>
         </div>
