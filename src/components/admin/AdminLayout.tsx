@@ -23,6 +23,7 @@ import {
     Receipt,
     Wallet,
     ExternalLink,
+    Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -48,6 +49,11 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             { icon: LayoutDashboard, label: 'Overview', path: '/admin/dashboard', category: 'General' },
             { icon: PieChart, label: 'Analytics', path: '/admin/analytics', category: 'General' },
         );
+
+        // Configurar Sitio — visible only for club admins (not super admin)
+        if (!isSuperAdmin) {
+            items.push({ icon: Sparkles, label: 'Configurar Sitio', path: '/admin/configuracion-sitio', category: 'General' });
+        }
 
         if (isSuperAdmin) {
             items.push(
