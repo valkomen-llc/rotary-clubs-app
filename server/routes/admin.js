@@ -24,7 +24,7 @@ router.get('/stats', async (req, res) => {
         const whereClub = clubId ? `WHERE "clubId" = $1` : '';
         const params = clubId ? [clubId] : [];
 
-        const [users, posts, projects, media, publications, knowledge, clubInfo, platformPaymentsSum, payoutRequestsSum, activeClubsCount, donationsSum] = await Promise.all([
+        const [users, posts, projects, media, publications, knowledge, clubInfo, platformPaymentsSum, payoutRequestsSum, activeClubsCount, donationsSum, products] = await Promise.all([
             db.query(`SELECT COUNT(*) FROM "User" ${whereClub}`, params),
             db.query(`SELECT COUNT(*) FROM "Post" ${whereClub}`, params),
             db.query(`SELECT COUNT(*) FROM "Project" ${whereClub}`, params),
@@ -35,7 +35,8 @@ router.get('/stats', async (req, res) => {
             db.query(`SELECT SUM("netAmount") FROM "Payment" WHERE "isPlatformCollection" = true AND status = 'succeeded' ${clubId ? `AND "clubId" = $1` : ''}`, params),
             db.query(`SELECT SUM(amount) FROM "PayoutRequest" WHERE status IN ('pending', 'processing', 'completed') ${clubId ? `AND "clubId" = $1` : ''}`, params),
             db.query(`SELECT COUNT(*) FROM "Club" WHERE status = 'active'`),
-            db.query(`SELECT SUM(amount) FROM "Donation" ${whereClub}`, params)
+            db.query(`SELECT SUM(amount) FROM "Donation" ${whereClub}`, params),
+            db.query(`SELECT COUNT(*) FROM "Product" ${whereClub}`, params),
         ]);
 
         const club = clubInfo.rows[0];
@@ -57,7 +58,8 @@ router.get('/stats', async (req, res) => {
             clubDomain: club?.domain || club?.subdomain || '',
             availableFunds,
             activeClubs: parseInt(activeClubsCount.rows[0].count),
-            donations
+            donations,
+            products: parseInt(products.rows[0].count),
         });
     } catch (error) {
         console.error('Stats error:', error);

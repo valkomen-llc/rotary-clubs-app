@@ -287,26 +287,31 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     </div>
 
                     <div className="flex items-center gap-2">
-                        {/* KPI indicators */}
-                        <div className="hidden md:flex items-center gap-1">
-                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-100 hover:bg-white transition-all cursor-default" title="Donaciones / Tienda">
-                                <TrendingUp className="w-3.5 h-3.5 text-gray-400" />
-                                <span className="text-[11px] font-black text-gray-700">${stats?.donations?.toLocaleString() || '0'}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-100 hover:bg-white transition-all cursor-default" title="Fondos Disponibles">
-                                <Wallet className="w-3.5 h-3.5 text-gray-400" />
-                                <span className="text-[11px] font-black text-gray-700">${stats?.availableFunds?.toLocaleString() || '0'}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-100 hover:bg-white transition-all cursor-default" title="Usuarios Únicos">
-                                <Users className="w-3.5 h-3.5 text-gray-400" />
-                                <span className="text-[11px] font-black text-gray-700">{fmtN(gaTotals.users)}</span>
-                                {!gaMock && <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-1 py-0 rounded">GA4</span>}
-                            </div>
-                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-100 hover:bg-white transition-all cursor-default" title="Páginas Vistas">
-                                <Eye className="w-3.5 h-3.5 text-gray-400" />
-                                <span className="text-[11px] font-black text-gray-700">{fmtN(gaTotals.pageViews)}</span>
-                                {!gaMock && <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-1 py-0 rounded">GA4</span>}
-                            </div>
+                        {/* KPI indicators with hover tooltips */}
+                        <div className="hidden lg:flex items-center gap-1">
+                            {[
+                                { icon: TrendingUp, value: `$${stats?.donations?.toLocaleString() || '0'}`, label: 'Donaciones / Tienda' },
+                                { icon: Wallet, value: `$${stats?.availableFunds?.toLocaleString() || '0'}`, label: 'Fondos Disponibles' },
+                                { icon: FolderKanban, value: fmtN(stats?.projects || 0), label: 'Proyectos de Servicio' },
+                                { icon: Users, value: fmtN(stats?.users || 0), label: 'Socios / Miembros' },
+                                { icon: Store, value: fmtN(stats?.products || 0), label: 'Productos en Tienda' },
+                                { icon: Newspaper, value: fmtN(stats?.publications || 0), label: 'Publicaciones del Blog' },
+                                { icon: Users, value: fmtN(gaTotals.users), label: 'Usuarios Únicos (Web)', badge: !gaMock ? 'GA4' : undefined },
+                                { icon: Eye, value: fmtN(gaTotals.pageViews), label: 'Páginas Vistas (Web)', badge: !gaMock ? 'GA4' : undefined },
+                            ].map((kpi, i) => (
+                                <div key={i} className="relative group/kpi">
+                                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-50 rounded-lg border border-gray-100 hover:bg-white hover:shadow-sm transition-all cursor-default">
+                                        <kpi.icon className="w-3.5 h-3.5 text-gray-400" />
+                                        <span className="text-[11px] font-black text-gray-700">{kpi.value}</span>
+                                        {kpi.badge && <span className="text-[7px] font-black text-emerald-600 bg-emerald-50 px-1 rounded">{kpi.badge}</span>}
+                                    </div>
+                                    {/* Tooltip */}
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-1.5 bg-gray-900 text-white text-[10px] font-bold rounded-lg whitespace-nowrap opacity-0 invisible group-hover/kpi:opacity-100 group-hover/kpi:visible transition-all duration-200 z-50 pointer-events-none shadow-xl">
+                                        {kpi.label}
+                                        <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45" />
+                                    </div>
+                                </div>
+                            ))}
                         </div>
 
                         <div className="h-8 w-[1px] bg-gray-100 mx-1" />
