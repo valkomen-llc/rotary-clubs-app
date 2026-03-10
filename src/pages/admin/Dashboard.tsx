@@ -6,6 +6,7 @@ import {
     Wallet, Building2, RefreshCw, BarChart3, Eye,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import MissionControl from '../../components/admin/MissionControl';
 import {
     AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer
 } from 'recharts';
@@ -226,6 +227,9 @@ const Dashboard: React.FC = () => {
                     </ResponsiveContainer>
                 </div>
             </div>
+
+            {/* Mission Control — AI Agents Panel */}
+            <MissionControl />
         </AdminLayout>
     );
 };
