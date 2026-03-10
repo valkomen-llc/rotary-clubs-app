@@ -79,7 +79,7 @@ async function getAccessToken() {
 async function getPropertyId() {
     try {
         const r = await db.query(
-            `SELECT value FROM "Setting" WHERE key = 'analytics_ga4_property_id' AND "clubId" IS NULL LIMIT 1`
+            `SELECT value FROM "Setting" WHERE key = 'analytics_ga4_property_id' AND "clubId" IS NULL ORDER BY "updatedAt" DESC LIMIT 1`
         );
         return r.rows[0]?.value || process.env.GA4_PROPERTY_ID || '';
     } catch (e) {
@@ -329,14 +329,21 @@ router.post('/property-id', async (req, res) => {
     const { propertyId } = req.body;
     if (!propertyId) return res.status(400).json({ error: 'propertyId required' });
     try {
+        // NULL-safe upsert: PostgreSQL ON CONFLICT doesn't fire when clubId IS NULL
+        // (NULL != NULL in unique index semantics). Use DELETE + INSERT instead.
+        await db.query(
+            `DELETE FROM "Setting" WHERE key = 'analytics_ga4_property_id' AND "clubId" IS NULL`
+        );
         await db.query(
             `INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt")
-             VALUES (gen_random_uuid(), 'analytics_ga4_property_id', $1, NULL, NOW())
-             ON CONFLICT (key, "clubId") DO UPDATE SET value = $1, "updatedAt" = NOW()`,
+             VALUES (gen_random_uuid(), 'analytics_ga4_property_id', $1, NULL, NOW())`,
             [propertyId]
         );
-        res.json({ ok: true });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+        res.json({ ok: true, propertyId });
+    } catch (err) {
+        console.error('[Analytics] save propertyId error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // ── GET /api/analytics/property-id ───────────────────────────────────────────
