@@ -9,9 +9,34 @@ const memCache = {};
 // Simple hash for caching
 const hashText = (text, lang) => `${lang}::${text.substring(0, 120)}`;
 
-// ── POST /api/translate ─────────────────────────────────────────────────────
-// Public (no auth required) — caches by text + lang in DB
-// Body: { text: string, targetLang: string }  (targetLang = 'en', 'fr', etc.)
+const GEMINI_MODEL = 'gemini-2.0-flash';
+const GEMINI_ENDPOINT = (key) =>
+    `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent?key=${key}`;
+
+const langNames = {
+    en: 'English', fr: 'French', pt: 'Portuguese',
+    de: 'German', it: 'Italian', ja: 'Japanese', ko: 'Korean'
+};
+
+// Core Gemini call using native fetch (v1 REST API — no SDK)
+async function geminiTranslate(prompt, apiKey) {
+    const resp = await fetch(GEMINI_ENDPOINT(apiKey), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }
+        })
+    });
+    if (!resp.ok) {
+        const err = await resp.text();
+        throw new Error(`Gemini API ${resp.status}: ${err}`);
+    }
+    const data = await resp.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+}
+
+// ── POST /api/translate ──────────────────────────────────────────────────────
 router.post('/', async (req, res) => {
     const { text, targetLang } = req.body;
 
@@ -38,38 +63,28 @@ router.post('/', async (req, res) => {
         }
     } catch (_) { /* DB cache miss is ok */ }
 
-    // L3: Gemini API
+    // L3: Gemini REST API
     const geminiKey = process.env.GEMINI_API_KEY;
     if (!geminiKey) {
         return res.status(503).json({
-            error: 'Gemini API key not configured. Go to Integrations and add your GEMINI_API_KEY.',
+            error: 'Gemini API key not configured.',
             translated: text
         });
     }
 
     try {
-        const { GoogleGenerativeAI } = await import('@google/generative-ai');
-        const genAI = new GoogleGenerativeAI(geminiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-
-        const langNames = {
-            en: 'English', fr: 'French', pt: 'Portuguese',
-            de: 'German', it: 'Italian', ja: 'Japanese', ko: 'Korean'
-        };
         const langName = langNames[targetLang] || targetLang;
-
-        const prompt = `Translate the following text to ${langName}. 
+        const prompt = `Translate the following text to ${langName}.
 Rules:
 - Return ONLY the translated text, nothing else
 - Preserve HTML tags if present
-- Keep proper nouns (Rotary, Rotaract, etc.) unchanged
+- Keep proper nouns (Rotary, Rotaract, Interact) unchanged
 - Maintain the same tone and formatting
 
 Text to translate:
 ${text}`;
 
-        const result = await model.generateContent(prompt);
-        const translated = result.response.text().trim();
+        const translated = await geminiTranslate(prompt, geminiKey);
 
         // Save to L1 memory
         memCache[cacheKey] = translated;
@@ -89,9 +104,7 @@ ${text}`;
     }
 });
 
-// ── POST /api/translate/bulk ────────────────────────────────────────────────
-// Translate multiple strings at once (for page load)
-// Body: { texts: string[], targetLang: string }
+// ── POST /api/translate/bulk ─────────────────────────────────────────────────
 router.post('/bulk', async (req, res) => {
     const { texts, targetLang } = req.body;
     if (!texts || !targetLang || targetLang === 'es') {
@@ -104,17 +117,7 @@ router.post('/bulk', async (req, res) => {
     }
 
     try {
-        const { GoogleGenerativeAI } = await import('@google/generative-ai');
-        const genAI = new GoogleGenerativeAI(geminiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-
-        const langNames = {
-            en: 'English', fr: 'French', pt: 'Portuguese',
-            de: 'German', it: 'Italian', ja: 'Japanese', ko: 'Korean'
-        };
         const langName = langNames[targetLang] || targetLang;
-
-        // Send all as numbered list for efficiency
         const numbered = texts.map((t, i) => `[${i + 1}] ${t}`).join('\n');
         const prompt = `Translate the following numbered list to ${langName}.
 Return ONLY the translated numbered list in the same format [1], [2], etc.
@@ -122,19 +125,15 @@ Do not translate proper nouns: Rotary, Rotaract, Interact.
 
 ${numbered}`;
 
-        const result = await model.generateContent(prompt);
-        const responseText = result.response.text().trim();
+        const responseText = await geminiTranslate(prompt, geminiKey);
 
-        // Parse numbered responses
         const translations = texts.map((original, i) => {
             const match = responseText.match(new RegExp(`\\[${i + 1}\\]\\s*(.+?)(?=\\[${i + 2}\\]|$)`, 's'));
             return match ? match[1].trim() : original;
         });
 
-        // Cache all results
         texts.forEach((text, i) => {
-            const key = hashText(text, targetLang);
-            memCache[key] = translations[i];
+            memCache[hashText(text, targetLang)] = translations[i];
         });
 
         return res.json({ translations });
@@ -143,8 +142,7 @@ ${numbered}`;
     }
 });
 
-// ── GET /api/translate/settings ─────────────────────────────────────────────
-// Check if Gemini is configured (for the Integrations page)
+// ── GET /api/translate/settings ──────────────────────────────────────────────
 router.get('/settings', async (req, res) => {
     const hasKey = !!process.env.GEMINI_API_KEY;
     res.json({ configured: hasKey });
