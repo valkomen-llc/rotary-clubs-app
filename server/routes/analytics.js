@@ -31,8 +31,14 @@ async function getAccessToken() {
     const signingInput = `${headerB64}.${payloadB64}`;
 
     // Import PEM private key
-    const pemKey = sa.private_key;
-    const pemBody = pemKey.replace(/-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----|\n/g, '');
+    // Handle both actual \n newlines AND literal '\n' strings (Vercel env var edge case)
+    const pemKey = (sa.private_key || '').replace(/\\n/g, '\n');
+    const pemBody = pemKey
+        .replace(/-----BEGIN PRIVATE KEY-----/g, '')
+        .replace(/-----END PRIVATE KEY-----/g, '')
+        .replace(/\n/g, '')
+        .replace(/\r/g, '')
+        .trim();
     const binaryKey = Buffer.from(pemBody, 'base64');
 
     const cryptoKey = await crypto.subtle.importKey(
@@ -71,11 +77,34 @@ async function getAccessToken() {
 
 // ── Get GA4 Property ID from DB ───────────────────────────────────────────────
 async function getPropertyId() {
-    const r = await db.query(
-        `SELECT value FROM "Setting" WHERE key = 'analytics_ga4_property_id' AND "clubId" IS NULL LIMIT 1`
-    );
-    return r.rows[0]?.value || process.env.GA4_PROPERTY_ID || '';
+    try {
+        const r = await db.query(
+            `SELECT value FROM "Setting" WHERE key = 'analytics_ga4_property_id' AND "clubId" IS NULL LIMIT 1`
+        );
+        return r.rows[0]?.value || process.env.GA4_PROPERTY_ID || '';
+    } catch (e) {
+        console.error('[Analytics] getPropertyId error:', e.message);
+        return process.env.GA4_PROPERTY_ID || '';
+    }
 }
+
+// ── GET /api/analytics/debug — shows config state without exposing secrets ────
+router.get('/debug', async (req, res) => {
+    const saJson = process.env.GA4_SERVICE_ACCOUNT_JSON;
+    let saStatus = 'missing';
+    let clientEmail = null;
+    if (saJson) {
+        try {
+            const sa = JSON.parse(saJson);
+            clientEmail = sa.client_email;
+            const hasPem = (sa.private_key || '').includes('BEGIN PRIVATE KEY');
+            saStatus = hasPem ? 'ok' : 'invalid_pem';
+        } catch { saStatus = 'invalid_json'; }
+    }
+    let propertyId = '';
+    try { propertyId = await getPropertyId(); } catch { propertyId = 'db_error'; }
+    res.json({ saStatus, clientEmail, propertyId, ga4PropertyIdEnv: !!process.env.GA4_PROPERTY_ID });
+});
 
 // ── Helper: run a GA4 report ──────────────────────────────────────────────────
 async function runGA4Report(propertyId, token, body) {
