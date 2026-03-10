@@ -6,6 +6,7 @@ import {
     Wallet, Building2, RefreshCw, BarChart3, Eye,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import SiteSetupCard from '../../components/admin/SiteSetupCard';
 import {
     AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer
 } from 'recharts';
@@ -115,7 +116,9 @@ const Dashboard: React.FC = () => {
                 </div>
             </div>
 
-            {/* Metric Cards */}
+            {/* Site Setup Progress — only for club admins */}
+            {!isSuperAdmin && <SiteSetupCard stats={stats} />}
+
             <div className={`grid grid-cols-1 sm:grid-cols-2 ${isSuperAdmin ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-6 mb-8`}>
                 {/* Donations */}
                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all group">
