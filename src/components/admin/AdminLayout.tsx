@@ -44,9 +44,9 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const getMenuItems = () => {
         const items: any[] = [];
 
-        // Show 'Configurar Sitio' as first item for club admins who haven't finished setup
-        if (user?.role !== 'administrator' && club?.onboardingCompleted !== true) {
-            items.push({ icon: Sparkles, label: 'Configurar Sitio', path: '/admin/configuracion-sitio', category: 'Setup', badge: 'pendiente' });
+        // Configurar Sitio is always first for club admins (regardless of completion)
+        if (user?.role !== 'administrator') {
+            items.push({ icon: Sparkles, label: 'Configurar Sitio', path: '/admin/configuracion-sitio', category: 'General' });
         }
 
         items.push(
@@ -164,10 +164,10 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                             key={item.path}
                                             to={item.path}
                                             className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all text-sm group ${isActive
-                                                    ? isSetup ? 'bg-amber-50 text-amber-800 font-bold' : 'bg-gray-50 text-gray-900 font-bold'
-                                                    : isSetup
-                                                        ? 'text-amber-700 bg-amber-50/60 hover:bg-amber-50 font-semibold border border-amber-100'
-                                                        : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-900'
+                                                ? isSetup ? 'bg-amber-50 text-amber-800 font-bold' : 'bg-gray-50 text-gray-900 font-bold'
+                                                : isSetup
+                                                    ? 'text-amber-700 bg-amber-50/60 hover:bg-amber-50 font-semibold border border-amber-100'
+                                                    : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-900'
                                                 }`}
                                         >
                                             <item.icon className={`w-5 h-5 transition-colors ${isActive
