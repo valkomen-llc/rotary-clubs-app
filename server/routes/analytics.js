@@ -88,7 +88,7 @@ async function getPropertyId() {
     }
 }
 
-// ── GET /api/analytics/debug — shows config state without exposing secrets ────
+// ── GET /api/analytics/debug — shows config state + tests auth without exposing secrets ──
 router.get('/debug', async (req, res) => {
     const saJson = process.env.GA4_SERVICE_ACCOUNT_JSON;
     let saStatus = 'missing';
@@ -103,7 +103,21 @@ router.get('/debug', async (req, res) => {
     }
     let propertyId = '';
     try { propertyId = await getPropertyId(); } catch { propertyId = 'db_error'; }
-    res.json({ saStatus, clientEmail, propertyId, ga4PropertyIdEnv: !!process.env.GA4_PROPERTY_ID });
+
+    // Try to actually get an access token to reveal the exact auth error
+    let authTest = 'not_attempted';
+    let authError = null;
+    if (saStatus === 'ok') {
+        try {
+            const token = await getAccessToken();
+            authTest = token ? 'success' : 'empty_token';
+        } catch (e) {
+            authTest = 'failed';
+            authError = e.message;
+        }
+    }
+
+    res.json({ saStatus, clientEmail, propertyId, ga4PropertyIdEnv: !!process.env.GA4_PROPERTY_ID, authTest, authError });
 });
 
 // ── Helper: run a GA4 report ──────────────────────────────────────────────────
