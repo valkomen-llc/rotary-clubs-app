@@ -107,6 +107,88 @@ function parseRows(report) {
     });
 }
 
+// ── GET /api/analytics/traffic?days=30&hostname=optional (super admin = no hostname) ──
+router.get('/traffic', async (req, res) => {
+    const { days = '30', hostname } = req.query;
+
+    try {
+        const propertyId = await getPropertyId();
+        if (!propertyId) {
+            return res.json({ mock: true, chartData: [], totals: { sessions: 0, users: 0, pageViews: 0 }, topPages: [], topCountries: [] });
+        }
+
+        const token = await getAccessToken();
+        const dateRange = [{ startDate: `${days}daysAgo`, endDate: 'today' }];
+
+        // Build hostname filter only if hostname is provided (club users)
+        const dimensionFilter = hostname ? {
+            filter: {
+                fieldName: 'hostName',
+                stringFilter: { matchType: 'CONTAINS', value: hostname },
+            },
+        } : undefined;
+
+        const reportBody = (dims, mets, orderBys, limit = 90) => ({
+            dateRanges: dateRange,
+            dimensions: dims.map(name => ({ name })),
+            metrics: mets.map(name => ({ name })),
+            ...(dimensionFilter && { dimensionFilter }),
+            ...(orderBys && { orderBys }),
+            limit,
+        });
+
+        const [overviewReport, pagesReport, countriesReport] = await Promise.all([
+            runGA4Report(propertyId, token, reportBody(
+                ['date'],
+                ['sessions', 'totalUsers', 'screenPageViews'],
+                [{ dimension: { dimensionName: 'date' } }],
+            )),
+            runGA4Report(propertyId, token, reportBody(
+                ['pagePath'],
+                ['screenPageViews'],
+                [{ metric: { metricName: 'screenPageViews' }, desc: true }],
+                5,
+            )),
+            runGA4Report(propertyId, token, reportBody(
+                ['country'],
+                ['sessions'],
+                [{ metric: { metricName: 'sessions' }, desc: true }],
+                5,
+            )),
+        ]);
+
+        const overviewRows = parseRows(overviewReport);
+        const totals = overviewRows.reduce((acc, r) => ({
+            sessions: acc.sessions + (r.sessions || 0),
+            users: acc.users + (r.totalUsers || 0),
+            pageViews: acc.pageViews + (r.screenPageViews || 0),
+        }), { sessions: 0, users: 0, pageViews: 0 });
+
+        const chartData = overviewRows.map(r => ({
+            name: r.date ? `${r.date.slice(6, 8)}/${r.date.slice(4, 6)}` : '',
+            value: r.sessions || 0,
+            users: r.totalUsers || 0,
+            pageViews: r.screenPageViews || 0,
+        }));
+
+        res.json({
+            chartData,
+            totals,
+            topPages: parseRows(pagesReport).map(r => ({ path: r.pagePath, views: r.screenPageViews || 0 })),
+            topCountries: parseRows(countriesReport).map(r => ({ country: r.country, sessions: r.sessions || 0 })),
+            days: parseInt(days, 10),
+            hostname: hostname || 'all',
+        });
+    } catch (err) {
+        console.error('[Analytics/traffic]', err.message);
+        res.json({
+            mock: true, error: err.message,
+            chartData: [], totals: { sessions: 0, users: 0, pageViews: 0 },
+            topPages: [], topCountries: [],
+        });
+    }
+});
+
 // ── GET /api/analytics/club-stats?hostname=rotarymedellin.org&days=30 ─────────
 router.get('/club-stats', async (req, res) => {
     const { hostname, days = '30' } = req.query;
