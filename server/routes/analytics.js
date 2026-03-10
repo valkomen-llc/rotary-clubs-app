@@ -24,38 +24,21 @@ async function getAccessToken() {
         exp: now + 3600,
     };
 
-    // Minimal RS256 JWT signing using Web Crypto (Node 18+)
     const enc = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
-    const headerB64 = enc(header);
-    const payloadB64 = enc(payload);
-    const signingInput = `${headerB64}.${payloadB64}`;
+    const signingInput = `${enc(header)}.${enc(payload)}`;
 
-    // Import PEM private key
-    // Handle both actual \n newlines AND literal '\n' strings (Vercel env var edge case)
+    // Use node:crypto createSign — accepts PEM directly, no manual DER parsing
+    // This is more reliable than crypto.subtle which requires stripping PEM headers
+    const { createSign } = await import('node:crypto');
+
+    // Normalize private key: handle both actual \n and literal \n from env vars
     const pemKey = (sa.private_key || '').replace(/\\n/g, '\n');
-    const pemBody = pemKey
-        .replace(/-----BEGIN PRIVATE KEY-----/g, '')
-        .replace(/-----END PRIVATE KEY-----/g, '')
-        .replace(/\n/g, '')
-        .replace(/\r/g, '')
-        .trim();
-    const binaryKey = Buffer.from(pemBody, 'base64');
 
-    const cryptoKey = await crypto.subtle.importKey(
-        'pkcs8',
-        binaryKey,
-        { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-        false,
-        ['sign']
-    );
-
-    const signature = await crypto.subtle.sign(
-        'RSASSA-PKCS1-v1_5',
-        cryptoKey,
-        Buffer.from(signingInput)
-    );
-
-    const jwt = `${signingInput}.${Buffer.from(signature).toString('base64url')}`;
+    const signer = createSign('RSA-SHA256');
+    signer.update(signingInput);
+    signer.end();
+    const signature = signer.sign(pemKey);
+    const jwt = `${signingInput}.${signature.toString('base64url')}`;
 
     // Exchange JWT for access token
     const tokenResp = await fetch('https://oauth2.googleapis.com/token', {
@@ -74,6 +57,7 @@ async function getAccessToken() {
     const tokenData = await tokenResp.json();
     return tokenData.access_token;
 }
+
 
 // ── Get GA4 Property ID from DB ───────────────────────────────────────────────
 async function getPropertyId() {
