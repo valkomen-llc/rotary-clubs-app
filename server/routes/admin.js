@@ -39,6 +39,13 @@ router.get('/stats', async (req, res) => {
             db.query(`SELECT COUNT(*) FROM "Product" ${whereClub}`, params),
         ]);
 
+        // Lead table may not exist yet on first deploy
+        let leadsCount = 0;
+        try {
+            const lr = await db.query(`SELECT COUNT(*) FROM "Lead" ${whereClub}`, params);
+            leadsCount = parseInt(lr.rows[0].count);
+        } catch { /* table not created yet */ }
+
         const club = clubInfo.rows[0];
         const totalCollected = parseFloat(platformPaymentsSum.rows[0]?.sum || 0);
         const totalRequested = parseFloat(payoutRequestsSum.rows[0]?.sum || 0);
@@ -60,6 +67,7 @@ router.get('/stats', async (req, res) => {
             activeClubs: parseInt(activeClubsCount.rows[0].count),
             donations,
             products: parseInt(products.rows[0].count),
+            leads: leadsCount,
         });
     } catch (error) {
         console.error('Stats error:', error);

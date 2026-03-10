@@ -56,6 +56,7 @@ import KnowledgeBase from './pages/admin/KnowledgeBase';
 import Integrations from './pages/admin/Integrations';
 import AnalyticsPage from './pages/admin/Analytics';
 import SiteSetupPage from './pages/admin/SiteSetup';
+import LeadsManagement from './pages/admin/Leads';
 import ChatBot from './components/ChatBot';
 import LandingPage from './pages/LandingPage';
 import RegistroPage from './pages/RegistroPage';
@@ -336,6 +337,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <Integrations />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/leads"
+                  element={
+                    <PrivateRoute>
+                      <LeadsManagement />
                     </PrivateRoute>
                   }
                 />

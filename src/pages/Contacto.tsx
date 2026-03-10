@@ -89,11 +89,31 @@ const Contacto = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setEnviando(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setEnviando(false);
-    setEnviado(true);
-    setFormData({ nombre: '', email: '', telefono: '', asunto: '', mensaje: '' });
-    setTimeout(() => setEnviado(false), 5000);
+    try {
+      const API = import.meta.env.VITE_API_URL || '/api';
+      const res = await fetch(`${API}/leads/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.nombre,
+          email: formData.email,
+          phone: formData.telefono || null,
+          subject: formData.asunto,
+          message: formData.mensaje,
+          clubId: club.id,
+          source: 'contact_form',
+        }),
+      });
+      if (res.ok) {
+        setEnviado(true);
+        setFormData({ nombre: '', email: '', telefono: '', asunto: '', mensaje: '' });
+        setTimeout(() => setEnviado(false), 5000);
+      }
+    } catch (err) {
+      console.error('Error submitting form:', err);
+    } finally {
+      setEnviando(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {

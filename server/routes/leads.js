@@ -1,0 +1,142 @@
+import express from 'express';
+import db from '../lib/db.js';
+import { authMiddleware } from '../middleware/auth.js';
+
+const router = express.Router();
+
+// ── Auto-create Lead table if it doesn't exist ────────────────────────────
+const ensureTable = async () => {
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "Lead" (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            "clubId" UUID REFERENCES "Club"(id),
+            name VARCHAR(255) NOT NULL,
+            email VARCHAR(255) NOT NULL,
+            phone VARCHAR(50),
+            subject VARCHAR(255),
+            message TEXT,
+            source VARCHAR(50) DEFAULT 'contact_form',
+            status VARCHAR(30) DEFAULT 'new',
+            notes TEXT,
+            "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_lead_club ON "Lead" ("clubId", "createdAt" DESC);
+        CREATE INDEX IF NOT EXISTS idx_lead_status ON "Lead" (status);
+    `);
+};
+ensureTable().catch(err => console.error('Lead table init:', err.message));
+
+// ── PUBLIC: Submit a lead from contact form (no auth needed) ──────────────
+router.post('/submit', async (req, res) => {
+    try {
+        const { name, email, phone, subject, message, clubId, source } = req.body;
+        if (!name || !email) return res.status(400).json({ error: 'name and email are required' });
+
+        const result = await db.query(
+            `INSERT INTO "Lead" (name, email, phone, subject, message, "clubId", source)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING id, name, email, "createdAt"`,
+            [name, email, phone || null, subject || null, message || null, clubId || null, source || 'contact_form']
+        );
+
+        res.status(201).json({ success: true, lead: result.rows[0] });
+    } catch (error) {
+        console.error('Lead submit error:', error);
+        res.status(500).json({ error: 'Error saving lead' });
+    }
+});
+
+// ── ADMIN: List leads for the club (or all for super admin) ───────────────
+router.get('/', authMiddleware, async (req, res) => {
+    try {
+        const clubId = req.user.role === 'administrator' ? req.query.clubId : req.user.clubId;
+        const status = req.query.status;
+        const search = req.query.search;
+
+        let where = [];
+        let params = [];
+        let idx = 1;
+
+        if (clubId) {
+            where.push(`"clubId" = $${idx++}`);
+            params.push(clubId);
+        }
+        if (status && status !== 'all') {
+            where.push(`status = $${idx++}`);
+            params.push(status);
+        }
+        if (search) {
+            where.push(`(name ILIKE $${idx} OR email ILIKE $${idx})`);
+            params.push(`%${search}%`);
+            idx++;
+        }
+
+        const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+        const result = await db.query(
+            `SELECT * FROM "Lead" ${whereClause} ORDER BY "createdAt" DESC LIMIT 200`,
+            params
+        );
+
+        // Also return counts by status
+        const countsWhere = clubId ? `WHERE "clubId" = $1` : '';
+        const countsParams = clubId ? [clubId] : [];
+        const counts = await db.query(
+            `SELECT status, COUNT(*) as count FROM "Lead" ${countsWhere} GROUP BY status`,
+            countsParams
+        );
+
+        const totalResult = await db.query(
+            `SELECT COUNT(*) FROM "Lead" ${countsWhere}`,
+            countsParams
+        );
+
+        res.json({
+            leads: result.rows,
+            total: parseInt(totalResult.rows[0].count),
+            statusCounts: counts.rows.reduce((acc, r) => ({ ...acc, [r.status]: parseInt(r.count) }), {}),
+        });
+    } catch (error) {
+        console.error('Lead list error:', error);
+        res.status(500).json({ error: 'Error fetching leads' });
+    }
+});
+
+// ── ADMIN: Update lead status or add notes ────────────────────────────────
+router.patch('/:id', authMiddleware, async (req, res) => {
+    try {
+        const { status, notes } = req.body;
+        const updates = [];
+        const params = [];
+        let idx = 1;
+
+        if (status) { updates.push(`status = $${idx++}`); params.push(status); }
+        if (notes !== undefined) { updates.push(`notes = $${idx++}`); params.push(notes); }
+        updates.push(`"updatedAt" = NOW()`);
+
+        params.push(req.params.id);
+        const result = await db.query(
+            `UPDATE "Lead" SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`,
+            params
+        );
+
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Lead not found' });
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Lead update error:', error);
+        res.status(500).json({ error: 'Error updating lead' });
+    }
+});
+
+// ── ADMIN: Delete a lead ──────────────────────────────────────────────────
+router.delete('/:id', authMiddleware, async (req, res) => {
+    try {
+        await db.query(`DELETE FROM "Lead" WHERE id = $1`, [req.params.id]);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Lead delete error:', error);
+        res.status(500).json({ error: 'Error deleting lead' });
+    }
+});
+
+export default router;

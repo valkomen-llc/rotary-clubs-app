@@ -63,5 +63,6 @@ app.use('/api/communications', async (req, res, next) => (await getCommunication
 app.use('/api/translate', async (req, res, next) => (await getTranslate())(req, res, next));
 app.use('/api/public', async (req, res, next) => (await getPublicRoutes())(req, res, next));
 app.use('/api/analytics', async (req, res, next) => (await getAnalytics())(req, res, next));
+app.use('/api/leads', async (req, res, next) => (await getLeads())(req, res, next));
 
 export default app;

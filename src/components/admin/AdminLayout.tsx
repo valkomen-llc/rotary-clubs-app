@@ -105,13 +105,14 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: Building2, label: 'Clubes', path: '/admin/clubes', category: 'Management' },
                 { icon: Users, label: 'Super Users', path: '/admin/usuarios', category: 'Management' },
                 { icon: HeartHandshake, label: 'Donaciones Globales', path: '/admin/donaciones', category: 'Management' },
-                { icon: Bell, label: 'CRM y Envíos Centrales', path: '/admin/crm', category: 'Management' }
+                { icon: Bell, label: 'CRM y Envíos Centrales', path: '/admin/crm', category: 'Management' },
+                { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: 'Management' },
             );
         } else {
             items.push(
                 { icon: Building2, label: 'Mi Club', path: '/admin/mi-club', category: 'Club' },
                 { icon: Users, label: 'Socios', path: '/admin/usuarios', category: 'Club' },
-                { icon: UserPlus, label: 'Beneficiarios', path: '/admin/usuarios?type=beneficiary', category: 'Club' }
+                { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: 'Club' },
             );
         }
 
@@ -296,6 +297,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                 { icon: Users, value: fmtN(stats?.users || 0), label: 'Socios / Miembros' },
                                 { icon: Store, value: fmtN(stats?.products || 0), label: 'Productos en Tienda' },
                                 { icon: Newspaper, value: fmtN(stats?.publications || 0), label: 'Publicaciones del Blog' },
+                                { icon: UserPlus, value: fmtN(stats?.leads || 0), label: 'Contactos & Leads' },
                                 { icon: Users, value: fmtN(gaTotals.users), label: 'Usuarios Únicos (Web)', badge: !gaMock ? 'GA4' : undefined },
                                 { icon: Eye, value: fmtN(gaTotals.pageViews), label: 'Páginas Vistas (Web)', badge: !gaMock ? 'GA4' : undefined },
                             ].map((kpi, i) => (
