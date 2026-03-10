@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
     LayoutDashboard,
@@ -24,10 +24,15 @@ import {
     Wallet,
     ExternalLink,
     Sparkles,
+    TrendingUp,
+    Eye,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import OnboardingWizard from './OnboardingWizard';
+
+const API = import.meta.env.VITE_API_URL || '/api';
+const fmtN = (n: number) => n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 
 const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { logout, user } = useAuth();
@@ -35,6 +40,33 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const navigate = useNavigate();
     const location = useLocation();
     const [searchQuery, setSearchQuery] = useState('');
+
+    // ── Header KPIs ──
+    const [stats, setStats] = useState<any>(null);
+    const [gaTotals, setGaTotals] = useState<{ users: number; pageViews: number }>({ users: 0, pageViews: 0 });
+    const [gaMock, setGaMock] = useState(false);
+
+    const isSuperAdmin = user?.role === 'administrator';
+    const clubHostname: string | null = (() => {
+        try {
+            const s = localStorage.getItem('rotary_club');
+            if (s) { const c = JSON.parse(s); return c.domain || (c.subdomain ? `${c.subdomain}.clubplatform.org` : null); }
+        } catch { }
+        return null;
+    })();
+
+    useEffect(() => {
+        // Fetch dashboard stats
+        const token = localStorage.getItem('rotary_token');
+        fetch(`${API}/admin/stats`, { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.ok ? r.json() : null).then(d => d && setStats(d)).catch(() => { });
+        // Fetch GA4 totals
+        const hp = isSuperAdmin ? '' : (clubHostname ? `&hostname=${encodeURIComponent(clubHostname)}` : '');
+        fetch(`${API}/analytics/traffic?days=30${hp}`)
+            .then(r => r.json())
+            .then(d => { setGaMock(!!d.mock); if (d.totals) setGaTotals(d.totals); })
+            .catch(() => setGaMock(true));
+    }, []);
     // Local control for wizard visibility — dismissable without context refresh
     const [showWizard, setShowWizard] = useState<boolean>(
         () => club?.onboardingCompleted === false
@@ -254,13 +286,39 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                         <p className="text-xs text-gray-400 font-medium">{user?.role === 'administrator' ? 'Sistema Central' : 'Gestión de Club'}</p>
                     </div>
 
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                        {/* KPI indicators */}
+                        <div className="hidden md:flex items-center gap-1">
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-100 hover:bg-white transition-all cursor-default" title="Donaciones / Tienda">
+                                <TrendingUp className="w-3.5 h-3.5 text-gray-400" />
+                                <span className="text-[11px] font-black text-gray-700">${stats?.donations?.toLocaleString() || '0'}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-100 hover:bg-white transition-all cursor-default" title="Fondos Disponibles">
+                                <Wallet className="w-3.5 h-3.5 text-gray-400" />
+                                <span className="text-[11px] font-black text-gray-700">${stats?.availableFunds?.toLocaleString() || '0'}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-100 hover:bg-white transition-all cursor-default" title="Usuarios Únicos">
+                                <Users className="w-3.5 h-3.5 text-gray-400" />
+                                <span className="text-[11px] font-black text-gray-700">{fmtN(gaTotals.users)}</span>
+                                {!gaMock && <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-1 py-0 rounded">GA4</span>}
+                            </div>
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-100 hover:bg-white transition-all cursor-default" title="Páginas Vistas">
+                                <Eye className="w-3.5 h-3.5 text-gray-400" />
+                                <span className="text-[11px] font-black text-gray-700">{fmtN(gaTotals.pageViews)}</span>
+                                {!gaMock && <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-1 py-0 rounded">GA4</span>}
+                            </div>
+                        </div>
+
+                        <div className="h-8 w-[1px] bg-gray-100 mx-1" />
+
                         <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-all relative">
                             <Bell className="w-5 h-5" />
                             <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
                         </button>
-                        <div className="h-8 w-[1px] bg-gray-100 mx-2" />
-                        <div className="flex items-center gap-3 pl-2">
+
+                        <div className="h-8 w-[1px] bg-gray-100 mx-1" />
+
+                        <div className="flex items-center gap-3 pl-1">
                             <div className="text-right hidden sm:block">
                                 <p className="text-[10px] font-black text-gray-900 leading-none">Status</p>
                                 <p className="text-[9px] text-emerald-500 font-bold uppercase tracking-widest mt-1">Live Online</p>
