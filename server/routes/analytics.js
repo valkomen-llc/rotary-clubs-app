@@ -142,7 +142,7 @@ router.get('/traffic', async (req, res) => {
     try {
         const propertyId = await getPropertyId();
         if (!propertyId) {
-            return res.json({ mock: true, chartData: [], totals: { sessions: 0, users: 0, pageViews: 0 }, topPages: [], topCountries: [] });
+            return res.json({ mock: true, chartData: [], totals: { sessions: 0, users: 0, pageViews: 0 }, topPages: [], topCountries: [], topCities: [] });
         }
 
         const token = await getAccessToken();
@@ -165,7 +165,7 @@ router.get('/traffic', async (req, res) => {
             limit,
         });
 
-        const [overviewReport, pagesReport, countriesReport] = await Promise.all([
+        const [overviewReport, pagesReport, countriesReport, citiesReport] = await Promise.all([
             runGA4Report(propertyId, token, reportBody(
                 ['date'],
                 ['sessions', 'totalUsers', 'screenPageViews'],
@@ -181,7 +181,14 @@ router.get('/traffic', async (req, res) => {
                 ['country'],
                 ['sessions'],
                 [{ metric: { metricName: 'sessions' }, desc: true }],
-                5,
+                10,
+            )),
+            // Cities: dimension 'city' + 'country' for context
+            runGA4Report(propertyId, token, reportBody(
+                ['city', 'country', 'region'],
+                ['sessions'],
+                [{ metric: { metricName: 'sessions' }, desc: true }],
+                10,
             )),
         ]);
 
@@ -204,6 +211,14 @@ router.get('/traffic', async (req, res) => {
             totals,
             topPages: parseRows(pagesReport).map(r => ({ path: r.pagePath, views: r.screenPageViews || 0 })),
             topCountries: parseRows(countriesReport).map(r => ({ country: r.country, sessions: r.sessions || 0 })),
+            topCities: parseRows(citiesReport)
+                .filter(r => r.city && r.city !== '(not set)')
+                .map(r => ({
+                    city: r.city,
+                    country: r.country || '',
+                    region: r.region || '',
+                    sessions: r.sessions || 0,
+                })),
             days: parseInt(days, 10),
             hostname: hostname || 'all',
         });
@@ -212,7 +227,7 @@ router.get('/traffic', async (req, res) => {
         res.json({
             mock: true, error: err.message,
             chartData: [], totals: { sessions: 0, users: 0, pageViews: 0 },
-            topPages: [], topCountries: [],
+            topPages: [], topCountries: [], topCities: [],
         });
     }
 });

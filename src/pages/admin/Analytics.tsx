@@ -25,6 +25,7 @@ interface TrafficData {
     totals: { sessions: number; users: number; pageViews: number };
     topPages: { path: string; views: number }[];
     topCountries: { country: string; sessions: number }[];
+    topCities: { city: string; country: string; region: string; sessions: number }[];
     mock?: boolean;
     error?: string;
 }
@@ -41,6 +42,7 @@ const AnalyticsPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [period, setPeriod] = useState('30d');
     const [metric, setMetric] = useState<'value' | 'users' | 'pageViews'>('value');
+    const [geoTab, setGeoTab] = useState<'countries' | 'cities'>('cities');
 
     const clubHostname: string | null = (() => {
         try {
@@ -76,8 +78,10 @@ const AnalyticsPage: React.FC = () => {
     const chartData = (data?.chartData?.length ?? 0) > 0 ? data!.chartData : [];
     const topPages = data?.topPages ?? [];
     const topCountries = data?.topCountries ?? [];
+    const topCities = data?.topCities ?? [];
     const maxPageViews = topPages[0]?.views || 1;
     const maxCountrySessions = topCountries[0]?.sessions || 1;
+    const maxCitySessions = topCities[0]?.sessions || 1;
 
     const metricLabel = metric === 'value' ? 'Sesiones' : metric === 'users' ? 'Usuarios' : 'Páginas vistas';
 
@@ -205,20 +209,20 @@ const AnalyticsPage: React.FC = () => {
                 </div>
             </div>
 
-            {/* Bottom grid — Top Pages + Countries */}
+            {/* Top Pages + Geo Tabs (Countries / Cities) */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                 {/* Top Pages */}
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
                     <div className="flex items-center gap-2 mb-5">
                         <FileText className="w-4 h-4 text-rotary-blue" />
-                        <h3 className="text-sm font-black text-gray-900">Páginas más visitadas</h3>
+                        <h3 className="text-sm font-black text-gray-900">P\u00e1ginas m\u00e1s visitadas</h3>
                     </div>
                     {loading ? (
                         <div className="space-y-4">
                             {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} h="h-6" w="w-full" />)}
                         </div>
                     ) : topPages.length === 0 ? (
-                        <p className="text-sm text-gray-400 text-center py-8">Sin datos aún</p>
+                        <p className="text-sm text-gray-400 text-center py-8">Sin datos a\u00fan</p>
                     ) : (
                         <div className="space-y-3">
                             {topPages.map((p, i) => (
@@ -239,39 +243,77 @@ const AnalyticsPage: React.FC = () => {
                     )}
                 </div>
 
-                {/* Top Countries */}
+                {/* Geo tab: Countries / Cities */}
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                    <div className="flex items-center gap-2 mb-5">
-                        <MapPin className="w-4 h-4 text-violet-500" />
-                        <h3 className="text-sm font-black text-gray-900">Tráfico por país</h3>
-                    </div>
-                    {loading ? (
-                        <div className="space-y-4">
-                            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} h="h-6" w="w-full" />)}
+                    <div className="flex items-center justify-between mb-5">
+                        <div className="flex items-center gap-2">
+                            <MapPin className="w-4 h-4 text-violet-500" />
+                            <h3 className="text-sm font-black text-gray-900">Ubicaciones</h3>
                         </div>
-                    ) : topCountries.length === 0 ? (
-                        <p className="text-sm text-gray-400 text-center py-8">Sin datos aún</p>
-                    ) : (
-                        <div className="space-y-3">
-                            {topCountries.map((c, i) => (
-                                <div key={i} className="flex items-center gap-3">
-                                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black text-white flex-shrink-0"
-                                        style={{ backgroundColor: COLORS[i % COLORS.length] }}>
-                                        {i + 1}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between mb-1">
-                                            <span className="text-xs font-bold text-gray-700 truncate">{c.country || 'Desconocido'}</span>
-                                            <span className="text-xs font-black text-gray-500 ml-2">{fmtN(c.sessions)}</span>
-                                        </div>
-                                        <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                            <div className="h-full rounded-full transition-all duration-700"
-                                                style={{ width: `${(c.sessions / maxCountrySessions) * 100}%`, backgroundColor: COLORS[i % COLORS.length] }} />
-                                        </div>
-                                    </div>
-                                </div>
+                        <div className="flex bg-gray-50 p-0.5 rounded-lg border border-gray-100">
+                            {(['cities', 'countries'] as const).map((t) => (
+                                <button key={t} onClick={() => setGeoTab(t)}
+                                    className={`px-3 py-1 rounded-md text-[10px] font-black transition-all ${geoTab === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-700'
+                                        }`}>
+                                    {t === 'cities' ? 'Ciudades' : 'Pa\u00edses'}
+                                </button>
                             ))}
                         </div>
+                    </div>
+
+                    {loading ? (
+                        <div className="space-y-4">
+                            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} h="h-8" w="w-full" />)}
+                        </div>
+                    ) : geoTab === 'cities' ? (
+                        topCities.length === 0
+                            ? <p className="text-sm text-gray-400 text-center py-8">Sin datos de ciudades a\u00fan</p>
+                            : <div className="space-y-3">
+                                {topCities.map((c, i) => (
+                                    <div key={i} className="flex items-center gap-3">
+                                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black text-white flex-shrink-0"
+                                            style={{ backgroundColor: COLORS[i % COLORS.length] }}>
+                                            {i + 1}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <div className="min-w-0">
+                                                    <span className="text-xs font-black text-gray-800 truncate block">{c.city}</span>
+                                                    <span className="text-[10px] text-gray-400 font-medium">{c.region ? `${c.region}, ` : ''}{c.country}</span>
+                                                </div>
+                                                <span className="text-xs font-black text-gray-500 ml-2 flex-shrink-0">{fmtN(c.sessions)}</span>
+                                            </div>
+                                            <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
+                                                <div className="h-full rounded-full transition-all duration-700"
+                                                    style={{ width: `${(c.sessions / maxCitySessions) * 100}%`, backgroundColor: COLORS[i % COLORS.length] }} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                    ) : (
+                        topCountries.length === 0
+                            ? <p className="text-sm text-gray-400 text-center py-8">Sin datos de pa\u00edses a\u00fan</p>
+                            : <div className="space-y-3">
+                                {topCountries.map((c, i) => (
+                                    <div key={i} className="flex items-center gap-3">
+                                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black text-white flex-shrink-0"
+                                            style={{ backgroundColor: COLORS[i % COLORS.length] }}>
+                                            {i + 1}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span className="text-xs font-bold text-gray-700 truncate">{c.country || 'Desconocido'}</span>
+                                                <span className="text-xs font-black text-gray-500 ml-2">{fmtN(c.sessions)}</span>
+                                            </div>
+                                            <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                                <div className="h-full rounded-full transition-all duration-700"
+                                                    style={{ width: `${(c.sessions / maxCountrySessions) * 100}%`, backgroundColor: COLORS[i % COLORS.length] }} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                     )}
                 </div>
             </div>
