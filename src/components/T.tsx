@@ -7,19 +7,14 @@
  *   <T>Quiénes Somos</T>
  *   <T>Únete a nuestro club</T>
  */
-import { useTranslated } from '../../contexts/LanguageContext';
+import { useTranslated } from '../contexts/LanguageContext';
 
 interface TProps {
     children: string;
-    className?: string;
-    as?: keyof JSX.IntrinsicElements;
 }
 
-export const T = ({ children, className, as: Tag = 'span' }: TProps) => {
+export const T = ({ children }: TProps) => {
     const translated = useTranslated(children);
-    if (className || Tag !== 'span') {
-        return <Tag className={className}>{translated}</Tag>;
-    }
     return <>{translated}</>;
 };
 
