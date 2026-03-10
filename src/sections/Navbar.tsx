@@ -19,7 +19,7 @@ const Navbar = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sobreNosotrosOpen, setSobreNosotrosOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
-  const { lang, setLang } = useLang();
+  const { lang, setLang, isTranslating } = useLang();
   const currentLanguage = SUPPORTED_LANGUAGES.find(l => l.code === lang) || SUPPORTED_LANGUAGES[0];
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -227,13 +227,20 @@ const Navbar = () => {
             )}
 
             {/* Language Selector */}
-            <div className="relative" ref={languageRef}>
+            <div className="relative" ref={languageRef} data-no-translate>
               <button
                 onClick={() => setLanguageOpen(!languageOpen)}
                 className="flex items-center gap-2 px-3 py-1.5 border border-rotary-blue rounded-full text-sm text-rotary-blue hover:bg-sky-50 transition-colors"
               >
-                <span className="text-lg">{currentLanguage.flag}</span>
-                <span className="font-medium">{currentLanguage.code}</span>
+                {isTranslating ? (
+                  <svg className="w-4 h-4 animate-spin text-rotary-blue" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  <span className="text-lg">{currentLanguage.flag}</span>
+                )}
+                <span className="font-medium">{currentLanguage.code.toUpperCase()}</span>
                 <ChevronDown className={`w-4 h-4 transition-transform ${languageOpen ? 'rotate-180' : ''}`} />
               </button>
 

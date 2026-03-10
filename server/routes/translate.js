@@ -19,13 +19,13 @@ const langNames = {
 };
 
 // Core Gemini call using native fetch (v1 REST API — no SDK)
-async function geminiTranslate(prompt, apiKey) {
+async function geminiTranslate(prompt, apiKey, maxOutputTokens = 2048) {
     const resp = await fetch(GEMINI_ENDPOINT(apiKey), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }
+            generationConfig: { temperature: 0.1, maxOutputTokens }
         })
     });
     if (!resp.ok) {
@@ -78,7 +78,7 @@ router.post('/', async (req, res) => {
 Rules:
 - Return ONLY the translated text, nothing else
 - Preserve HTML tags if present
-- Keep proper nouns (Rotary, Rotaract, Interact) unchanged
+- Keep proper nouns (Rotary, Rotaract, Interact, ClubPlatform) unchanged
 - Maintain the same tone and formatting
 
 Text to translate:
@@ -107,8 +107,8 @@ ${text}`;
 // ── POST /api/translate/bulk ─────────────────────────────────────────────────
 router.post('/bulk', async (req, res) => {
     const { texts, targetLang } = req.body;
-    if (!texts || !targetLang || targetLang === 'es') {
-        return res.json({ translations: texts });
+    if (!texts || !Array.isArray(texts) || !targetLang || targetLang === 'es') {
+        return res.json({ translations: texts || [] });
     }
 
     const geminiKey = process.env.GEMINI_API_KEY;
@@ -116,29 +116,68 @@ router.post('/bulk', async (req, res) => {
         return res.json({ translations: texts });
     }
 
+    // Pre-fill from L1 and L2 caches, collect what needs fetching
+    const results = new Array(texts.length).fill(null);
+    const toFetchIndices = [];
+
+    for (let i = 0; i < texts.length; i++) {
+        const text = texts[i];
+        const cacheKey = hashText(text, targetLang);
+        if (memCache[cacheKey]) {
+            results[i] = memCache[cacheKey];
+            continue;
+        }
+        // L2: DB cache
+        try {
+            const existing = await db.query(
+                `SELECT value FROM "Setting" WHERE key = $1 AND "clubId" IS NULL LIMIT 1`,
+                [`translation::${cacheKey}`]
+            );
+            if (existing.rows.length > 0) {
+                memCache[cacheKey] = existing.rows[0].value;
+                results[i] = existing.rows[0].value;
+                continue;
+            }
+        } catch (_) { /* ok */ }
+        toFetchIndices.push(i);
+    }
+
+    if (toFetchIndices.length === 0) {
+        return res.json({ translations: results });
+    }
+
     try {
         const langName = langNames[targetLang] || targetLang;
-        const numbered = texts.map((t, i) => `[${i + 1}] ${t}`).join('\n');
+        const toFetchTexts = toFetchIndices.map(i => texts[i]);
+        const numbered = toFetchTexts.map((t, i) => `[${i + 1}] ${t}`).join('\n');
         const prompt = `Translate the following numbered list to ${langName}.
-Return ONLY the translated numbered list in the same format [1], [2], etc.
-Do not translate proper nouns: Rotary, Rotaract, Interact.
+Return ONLY the translated numbered list in the exact format [1] translation, [2] translation, etc. — one per line.
+Do NOT add extra commentary. Keep proper nouns unchanged: Rotary, Rotaract, Interact, ClubPlatform.
 
 ${numbered}`;
 
-        const responseText = await geminiTranslate(prompt, geminiKey);
+        const responseText = await geminiTranslate(prompt, geminiKey, 8192);
 
-        const translations = texts.map((original, i) => {
+        toFetchIndices.forEach((origIdx, i) => {
             const match = responseText.match(new RegExp(`\\[${i + 1}\\]\\s*(.+?)(?=\\[${i + 2}\\]|$)`, 's'));
-            return match ? match[1].trim() : original;
+            const translated = match ? match[1].trim() : texts[origIdx];
+            results[origIdx] = translated;
+
+            // Persist to L1 + L2 cache async
+            const ck = hashText(texts[origIdx], targetLang);
+            memCache[ck] = translated;
+            db.query(
+                `INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt")
+                 VALUES (gen_random_uuid(), $1, $2, NULL, NOW())
+                 ON CONFLICT (key, "clubId") DO UPDATE SET value = $2, "updatedAt" = NOW()`,
+                [`translation::${ck}`, translated]
+            ).catch(() => { /* ignore cache write errors */ });
         });
 
-        texts.forEach((text, i) => {
-            memCache[hashText(text, targetLang)] = translations[i];
-        });
-
-        return res.json({ translations });
+        return res.json({ translations: results });
     } catch (err) {
-        return res.json({ translations: texts, error: err.message });
+        toFetchIndices.forEach(i => { results[i] = texts[i]; });
+        return res.json({ translations: results, error: err.message });
     }
 });
 
