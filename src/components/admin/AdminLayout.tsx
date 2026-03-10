@@ -23,7 +23,6 @@ import {
     Receipt,
     Wallet,
     ExternalLink,
-    Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -42,19 +41,15 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
     // Define menu items based on role
     const getMenuItems = () => {
+        const isSuperAdmin = user?.role === 'administrator';
         const items: any[] = [];
-
-        // Configurar Sitio is always first for club admins (regardless of completion)
-        if (user?.role !== 'administrator') {
-            items.push({ icon: Sparkles, label: 'Configurar Sitio', path: '/admin/configuracion-sitio', category: 'General' });
-        }
 
         items.push(
             { icon: LayoutDashboard, label: 'Overview', path: '/admin/dashboard', category: 'General' },
             { icon: PieChart, label: 'Analytics', path: '/admin/analytics', category: 'General' },
         );
 
-        if (user?.role === 'administrator') {
+        if (isSuperAdmin) {
             items.push(
                 { icon: Building2, label: 'Clubes', path: '/admin/clubes', category: 'Management' },
                 { icon: Users, label: 'Super Users', path: '/admin/usuarios', category: 'Management' },
@@ -69,13 +64,16 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             );
         }
 
+        // Content — Base IA only for super admin
         items.push(
             { icon: Newspaper, label: 'Noticias', path: '/admin/noticias', category: 'Content' },
             { icon: FolderKanban, label: 'Proyectos', path: '/admin/proyectos', category: 'Content' },
             { icon: Calendar, label: 'Eventos', path: '/admin/calendario', category: 'Content' },
             { icon: ImageIcon, label: 'Multimedia', path: '/admin/media', category: 'Content' },
-            { icon: BookOpen, label: 'Base IA', path: '/admin/conocimiento', category: 'Content' }
         );
+        if (isSuperAdmin) {
+            items.push({ icon: BookOpen, label: 'Base IA', path: '/admin/conocimiento', category: 'Content' });
+        }
 
         items.push(
             { icon: Store, label: 'Tienda', path: '/admin/tienda', category: 'E-commerce' },
@@ -83,11 +81,14 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             { icon: Wallet, label: 'Bóveda de Fondos', path: '/admin/boveda', category: 'E-commerce' }
         );
 
-        items.push(
-            { icon: Layers, label: 'Integraciones', path: '/admin/integraciones', category: 'System' },
-            { icon: Bell, label: 'Notificaciones', path: '/admin/notificaciones', category: 'System' },
-            { icon: Settings, label: 'Settings', path: '/admin/configuracion', category: 'System' }
-        );
+        // System — Integraciones + Notificaciones only for super admin; Settings shared
+        if (isSuperAdmin) {
+            items.push(
+                { icon: Layers, label: 'Integraciones', path: '/admin/integraciones', category: 'System' },
+                { icon: Bell, label: 'Notificaciones', path: '/admin/notificaciones', category: 'System' },
+            );
+        }
+        items.push({ icon: Settings, label: 'Settings', path: '/admin/configuracion', category: 'System' });
 
         return items;
     };
