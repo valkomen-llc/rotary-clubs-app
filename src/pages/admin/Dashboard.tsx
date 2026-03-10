@@ -5,7 +5,6 @@ import {
     TrendingUp, Globe, Users, MoreVertical, ExternalLink, Wallet, Building2
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
-import { useClub } from '../../contexts/ClubContext';
 import AnalyticsWidget from '../../components/admin/AnalyticsWidget';
 import {
     AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer
@@ -36,11 +35,20 @@ const mockUsers = [
 
 const Dashboard: React.FC = () => {
     const { user } = useAuth();
-    const { club } = useClub();
     const [stats, setStats] = useState<any | null>(null);
 
-    // Determine site hostname for analytics
-    const siteHostname = club?.domain || (club?.subdomain ? `${club.subdomain}.clubplatform.org` : window.location.hostname);
+    // Derive the club hostname safely without depending on ClubContext
+    // (admin routes may not be wrapped by ClubProvider)
+    const siteHostname = (() => {
+        try {
+            const stored = localStorage.getItem('rotary_club');
+            if (stored) {
+                const c = JSON.parse(stored);
+                return c.domain || (c.subdomain ? `${c.subdomain}.clubplatform.org` : window.location.hostname);
+            }
+        } catch { /* ignore */ }
+        return window.location.hostname;
+    })();
 
     useEffect(() => {
         fetchDashboardData();
@@ -209,7 +217,7 @@ const Dashboard: React.FC = () => {
             </div>
 
             {/* GA4 Analytics Widget — per-club metrics */}
-            <AnalyticsWidget hostname={siteHostname} clubName={club?.name} gaId={undefined} />
+            <AnalyticsWidget hostname={siteHostname} gaId={undefined} />
 
             {/* Recently Active Table */}
             <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden group hover:shadow-xl transition-all">
