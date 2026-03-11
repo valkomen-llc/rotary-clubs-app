@@ -134,6 +134,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             { icon: FolderKanban, label: 'Proyectos', path: '/admin/proyectos', category: 'Content' },
             { icon: Calendar, label: 'Eventos', path: '/admin/calendario', category: 'Content' },
             { icon: ImageIcon, label: 'Multimedia', path: '/admin/media', category: 'Content' },
+            { icon: HelpCircle, label: 'Preguntas Frecuentes', path: '/admin/faqs', category: 'Content' },
         );
         if (isSuperAdmin) {
             items.push({ icon: BookOpen, label: 'Base IA', path: '/admin/conocimiento', category: 'Content' });

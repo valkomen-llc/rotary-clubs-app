@@ -94,13 +94,46 @@ const Contacto = () => {
   })) || defaultInfo;
 
 
-
-  const faqs = sections['faq-list']?.items || [
+  const defaultFaqs = [
     {
-      pregunta: '¿Cómo puedo ser socio?',
-      respuesta: 'Contáctanos para más información sobre el proceso.'
+      pregunta: '¿Cómo puedo ser socio de Rotary?',
+      respuesta: 'La afiliación a los clubes rotarios es por invitación. Puedes completar nuestro formulario de interés seleccionando el asunto "Quiero ser socio" y nos pondremos en contacto contigo para guiarte en el proceso.'
+    },
+    {
+      pregunta: '¿Qué es Rotary International?',
+      respuesta: 'Rotary International es una organización global de líderes comunitarios y profesionales que se dedican a abordar los problemas más apremiantes del mundo. Con más de 1,4 millones de socios en más de 46.000 clubes, Rotary conecta a personas que comparten la pasión por el servicio.'
+    },
+    {
+      pregunta: '¿Cuáles son las áreas de interés de Rotary?',
+      respuesta: 'Rotary enfoca sus esfuerzos en siete áreas: promoción de la paz, lucha contra las enfermedades, suministro de agua potable, salud materno-infantil, educación y alfabetización, desarrollo de las economías locales y protección del medio ambiente.'
+    },
+    {
+      pregunta: '¿Cuánto cuesta ser socio?',
+      respuesta: 'Las cuotas varían según el club. Generalmente incluyen una cuota de admisión y cuotas periódicas que cubren gastos operativos y contribuciones a proyectos. Contáctanos para conocer los detalles específicos de nuestro club.'
+    },
+    {
+      pregunta: '¿Puedo hacer una donación sin ser socio?',
+      respuesta: 'Sí, cualquier persona puede contribuir a La Fundación Rotaria o a los proyectos de nuestro club. Las donaciones son deducibles de impuestos y el 100% se destina a proyectos humanitarios y educativos.'
+    },
+    {
+      pregunta: '¿Qué beneficios tiene ser socio de Rotary?',
+      respuesta: 'Como socio disfrutas de oportunidades de networking profesional, desarrollo de liderazgo, participación en proyectos de servicio locales e internacionales, acceso a becas y programas de intercambio, y la satisfacción de generar un cambio positivo en tu comunidad.'
     }
   ];
+
+  const [liveFaqs, setLiveFaqs] = useState<any[]>([]);
+
+  useEffect(() => {
+    const API = import.meta.env.VITE_API_URL || '/api';
+    fetch(`${API}/faqs?clubId=${club.id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.faqs?.length) setLiveFaqs(data.faqs); })
+      .catch(() => { });
+  }, [club.id]);
+
+  const faqs = liveFaqs.length > 0
+    ? liveFaqs.map((f: any) => ({ pregunta: f.question, respuesta: f.answer }))
+    : (sections['faq-list']?.items || defaultFaqs);
 
   const asuntos = sections['asuntos']?.items?.map((i: any) => i.value) || [
     'Información general',
