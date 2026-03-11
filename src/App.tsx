@@ -25,6 +25,7 @@ import ManerasDeContribuir from './pages/ManerasDeContribuir';
 import Rotaract from './pages/Rotaract';
 import Interact from './pages/Interact';
 import FundacionRotaria from './pages/FundacionRotaria';
+import Involucrate from './pages/Involucrate';
 import Eventos from './pages/Eventos';
 import Aportes from './pages/Aportes';
 import Checkout from './pages/Checkout';
@@ -180,6 +181,7 @@ function App() {
                 <Route path="/rotaract" element={<Rotaract />} />
                 <Route path="/interact" element={<Interact />} />
                 <Route path="/la-fundacion-rotaria" element={<FundacionRotaria />} />
+                <Route path="/involucrate" element={<Involucrate />} />
                 <Route path="/eventos" element={<Eventos />} />
                 <Route path="/aportes" element={<Aportes />} />
                 <Route path="/checkout" element={<Checkout />} />
