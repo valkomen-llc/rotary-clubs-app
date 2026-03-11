@@ -498,16 +498,20 @@ const Contacto = () => {
                       </select>
                     </div>
 
-                    {/* ¿Por qué quieres involucrarte? */}
+                    {/* Motivación / Contribución */}
                     <div>
                       <label htmlFor="porqueInvolucrar" className="block text-sm font-medium text-gray-700 mb-2">
-                        ¿Por qué quieres involucrarte?
+                        {formData.asunto === 'Donaciones'
+                          ? '¿Cómo te gustaría contribuir?'
+                          : '¿Por qué quieres involucrarte?'}
                       </label>
                       <textarea id="porqueInvolucrar" name="porqueInvolucrar" value={formData.porqueInvolucrar}
                         onChange={(e) => { if (e.target.value.length <= 250) handleChange(e); }}
                         rows={4}
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all resize-none"
-                        placeholder="Cuéntanos tus motivaciones..." />
+                        placeholder={formData.asunto === 'Donaciones'
+                          ? 'Ej: Donación económica, en especie, patrocinio de evento...'
+                          : 'Cuéntanos tus motivaciones...'} />
                       <p className="text-xs text-gray-400 mt-1">Quedan {250 - formData.porqueInvolucrar.length} caracteres</p>
                     </div>
 
