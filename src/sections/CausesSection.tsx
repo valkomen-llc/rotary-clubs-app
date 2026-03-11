@@ -1,4 +1,5 @@
 import { Globe } from 'lucide-react';
+import { useClub } from '../contexts/ClubContext';
 
 const causes = [
   {
@@ -39,13 +40,14 @@ const causes = [
 ];
 
 const CausesSection = () => {
+  const { club } = useClub();
   return (
     <section className="bg-rotary-navy py-16 md:py-24">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-16">
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">
-            Rotary Club
+            {club?.name || 'Rotary Club'}
           </h2>
           <p className="text-white/80 max-w-3xl mx-auto leading-relaxed text-sm md:text-base">
             La labor de Rotary surge directamente de las necesidades de las comunidades, cada una con sus propios desafíos. Para maximizar nuestro impacto, hemos enfocado nuestras acciones en siete áreas prioritarias que abordan las necesidades más urgentes y comunes de la humanidad. A través de la Fundación Rotaria, que gestiona y distribuye los recursos, implementamos proyectos y actividades con resultados comprobados y sostenibles en beneficio de la comunidad.

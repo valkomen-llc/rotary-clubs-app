@@ -11,6 +11,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Globe } from 'lucide-react';
+import { useClub } from '../contexts/ClubContext';
 
 /* 
   ═══════════════════════════════════════════════════════════════════════════════
@@ -426,6 +427,7 @@ const areasByColumn = {
 };
 
 const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
+  const { club } = useClub();
   const [currentSlide, setCurrentSlide] = useState(0);
   const carouselRef = useRef<HTMLDivElement>(null);
 
@@ -457,7 +459,7 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
         {showHeader && (
           <header className="areas-rotary__header">
             <h2 id="areas-title" className="areas-rotary__title">
-              Rotary Club
+              {club?.name || 'Rotary Club'}
             </h2>
             <p className="areas-rotary__description">
               La labor de Rotary surge directamente de las necesidades de las comunidades, cada una con sus propios desafíos.
