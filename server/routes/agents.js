@@ -153,24 +153,22 @@ const seedAgents = async (clubId) => {
 };
 
 // ── GET: List agents for a club ───────────────────────────────────────────
+let _dedupDone = false;
 router.get('/', authMiddleware, async (req, res) => {
     try {
         await ensureTable();
         const clubId = req.user.clubId || null;
 
-        // Clean up duplicates: keep only oldest of each agent name per clubId
-        try {
-            await db.query(`
-                WITH ranked AS (
-                    SELECT id, ROW_NUMBER() OVER (
-                        PARTITION BY name, COALESCE("clubId"::text, '__null__')
-                        ORDER BY "createdAt" ASC
-                    ) AS rn
-                    FROM "Agent"
-                )
-                DELETE FROM "Agent" WHERE id IN (SELECT id FROM ranked WHERE rn > 1)
-            `);
-        } catch (_) { }
+        // One-time cleanup: if duplicates exist, delete all and re-seed
+        if (!_dedupDone) {
+            const countRes = await db.query('SELECT COUNT(*) FROM "Agent"');
+            const total = parseInt(countRes.rows[0].count);
+            if (total > 9) {
+                await db.query('DELETE FROM "Agent"');
+                console.log(`Cleaned up ${total} duplicate agents, will re-seed`);
+            }
+            _dedupDone = true;
+        }
 
         // Auto-seed if no agents exist
         await seedAgents(clubId);
