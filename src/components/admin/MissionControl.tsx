@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
-    Radio, X, Send, Loader2, Paperclip, Mic, MicOff, FileText,
+    Radio, X, Send, Loader2, Paperclip, Mic, MicOff, FileText, Volume2, VolumeX,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -86,6 +86,8 @@ const MissionControl: React.FC = () => {
     const [attachment, setAttachment] = useState<ChatAttachment | null>(null);
     const [isRecording, setIsRecording] = useState(false);
     const recognitionRef = useRef<any>(null);
+    const [voiceMode, setVoiceMode] = useState(false);
+    const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
 
     const getHeaders = () => ({
         'Content-Type': 'application/json',
@@ -123,13 +125,6 @@ const MissionControl: React.FC = () => {
         return () => window.removeEventListener('openAgentChat', handler);
     }, [agents]);
 
-    const openChat = (agent: Agent) => {
-        setChatAgent(agent);
-        setMessages([{ role: 'assistant', text: agent.greeting || `¡Hola! Soy ${agent.name} 👋` }]);
-        setInput('');
-        setAttachment(null);
-    };
-    const closeChat = () => { setChatAgent(null); setMessages([]); setAttachment(null); stopRecording(); };
 
     // ── File handling ──────────────────────────────────────────────────────
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -187,6 +182,39 @@ const MissionControl: React.FC = () => {
         else startRecording();
     };
 
+    // ── Text-to-Speech ────────────────────────────────────────────────────
+    const speakText = useCallback((text: string, msgIdx?: number) => {
+        if (!window.speechSynthesis) return;
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'es-ES';
+        utterance.rate = 1.05;
+        utterance.pitch = 1.0;
+        // Try to pick a Spanish voice
+        const voices = window.speechSynthesis.getVoices();
+        const esVoice = voices.find(v => v.lang.startsWith('es'));
+        if (esVoice) utterance.voice = esVoice;
+        if (msgIdx !== undefined) {
+            setSpeakingIdx(msgIdx);
+            utterance.onend = () => setSpeakingIdx(null);
+            utterance.onerror = () => setSpeakingIdx(null);
+        }
+        window.speechSynthesis.speak(utterance);
+    }, []);
+
+    const openChat = (agent: Agent) => {
+        setChatAgent(agent);
+        setMessages([{ role: 'assistant', text: agent.greeting || `¡Hola! Soy ${agent.name} 👋` }]);
+        setInput('');
+        setAttachment(null);
+    };
+    const closeChat = () => {
+        setChatAgent(null); setMessages([]); setAttachment(null);
+        stopRecording();
+        window.speechSynthesis?.cancel();
+        setSpeakingIdx(null);
+    };
+
     const sendMessage = async () => {
         if ((!input.trim() && !attachment) || !chatAgent || loading) return;
         const userMsg = input.trim();
@@ -206,7 +234,9 @@ const MissionControl: React.FC = () => {
                 }),
             });
             const data = await res.json();
-            setMessages(prev => [...prev, { role: 'assistant', text: data.reply || 'No pude responder.' }]);
+            const reply = data.reply || 'No pude responder.';
+            setMessages(prev => [...prev, { role: 'assistant', text: reply }]);
+            if (voiceMode) speakText(reply);
         } catch {
             setMessages(prev => [...prev, { role: 'assistant', text: 'Error al conectar. Intenta de nuevo.' }]);
         } finally { setLoading(false); }
@@ -343,6 +373,14 @@ const MissionControl: React.FC = () => {
                                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                                 <span className="text-[9px] font-bold text-emerald-600">Online</span>
                             </div>
+                            <button
+                                onClick={() => { setVoiceMode(!voiceMode); if (voiceMode) window.speechSynthesis?.cancel(); }}
+                                className={`p-1.5 rounded-lg transition-colors ${voiceMode ? 'text-[#0067C8] bg-blue-50' : 'text-gray-300 hover:text-gray-500 hover:bg-gray-100'
+                                    }`}
+                                title={voiceMode ? 'Desactivar respuestas por voz' : 'Activar respuestas por voz'}
+                            >
+                                {voiceMode ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                            </button>
                             <button onClick={closeChat} className="p-1.5 text-gray-300 hover:text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
                                 <X className="w-4 h-4" />
                             </button>
@@ -375,6 +413,20 @@ const MissionControl: React.FC = () => {
                                             </div>
                                         )}
                                         {msg.text && <div className="px-3.5 py-2.5">{msg.text}</div>}
+                                        {msg.role === 'assistant' && msg.text && (
+                                            <div className="px-3.5 pb-1.5 flex justify-end">
+                                                <button
+                                                    onClick={() => speakText(msg.text, i)}
+                                                    className={`p-1 rounded-md transition-all ${speakingIdx === i
+                                                        ? 'text-[#0067C8] bg-blue-50'
+                                                        : 'text-gray-300 hover:text-gray-500 hover:bg-gray-50'
+                                                        }`}
+                                                    title="Escuchar respuesta"
+                                                >
+                                                    <Volume2 className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             ))}
