@@ -257,10 +257,18 @@ const Contacto = () => {
             {/* Formulario */}
             <div>
               <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
-                {getC('form', 'title', "Envíanos un Mensaje")}
+                {formData.asunto === 'Quiero ser socio'
+                  ? 'Solicitud de Membresía'
+                  : formData.asunto === 'Donaciones'
+                    ? 'Quiero Contribuir'
+                    : 'Envíanos un Mensaje'}
               </h2>
               <p className="text-gray-600 mb-8">
-                {getC('form', 'description', "Completa el formulario y te responderemos lo antes posible.")}
+                {formData.asunto === 'Quiero ser socio'
+                  ? 'Completa tus datos y nos pondremos en contacto para guiarte en el proceso de afiliación.'
+                  : formData.asunto === 'Donaciones'
+                    ? 'Gracias por tu interés en apoyar nuestros proyectos. Déjanos tus datos para coordinar tu donación.'
+                    : 'Completa el formulario y te responderemos lo antes posible.'}
               </p>
 
               {enviado && (
