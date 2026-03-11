@@ -82,20 +82,25 @@ const MissionControl: React.FC = () => {
     const chatEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
 
-    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+    const getHeaders = () => ({
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token || localStorage.getItem('rotary_token')}`,
+    });
 
     // Fetch agents from API
     useEffect(() => {
         const fetchAgents = async () => {
             try {
-                const res = await fetch(`${API_URL}/agents`, { headers });
-                const data = await res.json();
-                setAgents((data.agents || []).filter((a: Agent) => a.active));
+                const res = await fetch(`${API_URL}/agents`, { headers: getHeaders() });
+                if (res.ok) {
+                    const data = await res.json();
+                    setAgents((data.agents || []).filter((a: Agent) => a.active));
+                }
             } catch (e) { console.error('Failed to load agents:', e); }
             finally { setLoadingAgents(false); }
         };
         fetchAgents();
-    }, []);
+    }, [token]);
 
     useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
     useEffect(() => { if (chatAgent) setTimeout(() => inputRef.current?.focus(), 200); }, [chatAgent]);
@@ -115,7 +120,7 @@ const MissionControl: React.FC = () => {
         setLoading(true);
         try {
             const res = await fetch(`${API_URL}/ai/agent-chat`, {
-                method: 'POST', headers,
+                method: 'POST', headers: getHeaders(),
                 body: JSON.stringify({ message: userMsg, agentId: chatAgent.id, history: messages.map(m => ({ role: m.role, text: m.text })) }),
             });
             const data = await res.json();
