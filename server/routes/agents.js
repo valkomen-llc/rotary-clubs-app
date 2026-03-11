@@ -5,30 +5,37 @@ import { authMiddleware } from '../middleware/auth.js';
 const router = express.Router();
 
 // ── Auto-create Agent table ───────────────────────────────────────────────
+let tableReady = false;
 const ensureTable = async () => {
-    await db.query(`
-        CREATE TABLE IF NOT EXISTS "Agent" (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            "clubId" UUID REFERENCES "Club"(id),
-            name VARCHAR(100) NOT NULL,
-            role VARCHAR(200) NOT NULL,
-            category VARCHAR(50),
-            description TEXT,
-            "systemPrompt" TEXT,
-            "aiModel" VARCHAR(50) DEFAULT 'gpt-4',
-            "avatarSeed" VARCHAR(50),
-            "avatarColor" VARCHAR(20),
-            capabilities TEXT[] DEFAULT '{}',
-            active BOOLEAN DEFAULT true,
-            "order" INT DEFAULT 0,
-            greeting TEXT,
-            "createdAt" TIMESTAMPTZ DEFAULT NOW(),
-            "updatedAt" TIMESTAMPTZ DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS idx_agent_club ON "Agent" ("clubId", "order");
-    `);
+    if (tableReady) return;
+    try {
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS "Agent" (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                "clubId" UUID REFERENCES "Club"(id),
+                name VARCHAR(100) NOT NULL,
+                role VARCHAR(200) NOT NULL,
+                category VARCHAR(50),
+                description TEXT,
+                "systemPrompt" TEXT,
+                "aiModel" VARCHAR(50) DEFAULT 'gpt-4',
+                "avatarSeed" VARCHAR(50),
+                "avatarColor" VARCHAR(20),
+                capabilities TEXT[] DEFAULT '{}',
+                active BOOLEAN DEFAULT true,
+                "order" INT DEFAULT 0,
+                greeting TEXT,
+                "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+                "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS idx_agent_club ON "Agent" ("clubId", "order");
+        `);
+        tableReady = true;
+        console.log('Agent table ready');
+    } catch (err) {
+        console.error('Agent table init error:', err.message);
+    }
 };
-ensureTable().catch(err => console.error('Agent table init:', err.message));
 
 // ── Default agents seed data ──────────────────────────────────────────────
 const DEFAULT_AGENTS = [
@@ -140,6 +147,7 @@ const seedAgents = async (clubId) => {
 // ── GET: List agents for a club ───────────────────────────────────────────
 router.get('/', authMiddleware, async (req, res) => {
     try {
+        await ensureTable();
         const clubId = req.user.clubId || null;
         // Auto-seed if no agents exist
         await seedAgents(clubId);
