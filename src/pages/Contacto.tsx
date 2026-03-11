@@ -219,15 +219,11 @@ const Contacto = () => {
       >
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
           <div className="text-center max-w-3xl mx-auto">
-            <span className="inline-block text-white text-sm font-semibold px-4 py-1 rounded-full mb-6" style={{ backgroundColor: '#f7a81b' }}>
-              {getC('header', 'badge', "Contáctanos")}
-            </span>
             <h1 className="text-3xl md:text-5xl font-bold text-white mb-6">
-              {getC('header', 'title', "Estamos Aquí para")}{' '}
-              <span className="text-white">{getC('header', 'highlight', "Ayudarte")}</span>
+              Contáctanos
             </h1>
             <p className="text-white/80 text-lg md:text-xl">
-              {getC('header', 'description', "¿Tienes preguntas sobre nuestros proyectos o quieres ser socio?")}
+              Estamos Aquí para Ayudarte
             </p>
           </div>
         </div>
