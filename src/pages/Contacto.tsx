@@ -9,6 +9,7 @@ import {
   FileText,
   Briefcase,
   Clock,
+  Mail,
 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
@@ -72,6 +73,18 @@ const Contacto = () => {
       titulo: 'Teléfono',
       contenido: club.contact?.phone || '+57',
       subtitulo: 'Lunes a Viernes'
+    },
+    {
+      icono: Mail,
+      titulo: 'Correo electrónico',
+      contenido: club.contact?.email || 'info@rotary.org',
+      subtitulo: 'Respuesta en 24-48 horas'
+    },
+    {
+      icono: Clock,
+      titulo: 'Horario de reuniones',
+      contenido: (club.contact as any)?.schedule || 'Consultar horario',
+      subtitulo: (club.contact as any)?.meetingPlace || 'Día y lugar por confirmar'
     }
   ];
 
