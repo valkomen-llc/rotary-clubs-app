@@ -146,23 +146,33 @@ const seedAgents = async (clubId) => {
 
 // ── GET: List agents for a club ───────────────────────────────────────────
 router.get('/', authMiddleware, async (req, res) => {
+    const debug = {};
     try {
         await ensureTable();
+        debug.tableReady = tableReady;
         const clubId = req.user.clubId || null;
-        // Auto-seed if no agents exist
-        await seedAgents(clubId);
+        debug.clubId = clubId;
+        debug.userKeys = Object.keys(req.user || {});
 
-        // Handle NULL clubId (super admin) vs specific club
-        const whereClause = clubId ? '"clubId" = $1' : '("clubId" IS NULL OR "clubId" IS NOT NULL)';
-        const params = clubId ? [clubId] : [];
-        const result = await db.query(
-            `SELECT * FROM "Agent" WHERE ${whereClause} ORDER BY "order" ASC, "createdAt" ASC`,
-            params
-        );
-        res.json({ agents: result.rows });
+        // Auto-seed if no agents exist
+        try {
+            await seedAgents(clubId);
+            debug.seedOk = true;
+        } catch (seedErr) {
+            debug.seedError = seedErr.message;
+        }
+
+        // For super admin (null clubId), show ALL agents
+        const result = clubId
+            ? await db.query(`SELECT * FROM "Agent" WHERE "clubId" = $1 ORDER BY "order" ASC`, [clubId])
+            : await db.query(`SELECT * FROM "Agent" ORDER BY "order" ASC, "createdAt" ASC`);
+
+        debug.resultCount = result.rows.length;
+        res.json({ agents: result.rows, _debug: debug });
     } catch (error) {
+        debug.error = error.message;
         console.error('Agent list error:', error);
-        res.json({ agents: [] });
+        res.json({ agents: [], _debug: debug });
     }
 });
 
