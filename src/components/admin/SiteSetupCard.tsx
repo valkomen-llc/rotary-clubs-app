@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
     CheckCircle2, Circle, ChevronRight, Sparkles, X, Bot,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -21,6 +22,7 @@ interface Props {
 }
 
 const SiteSetupCard: React.FC<Props> = ({ stats, onOpenWizard }) => {
+    const navigate = useNavigate();
     const [dismissed, setDismissed] = useState(false);
     const [gaConfigured, setGaConfigured] = useState(false);
     const [expanded, setExpanded] = useState(true);
@@ -217,9 +219,10 @@ const SiteSetupCard: React.FC<Props> = ({ stats, onOpenWizard }) => {
                                     {catItems.map(item => (
                                         <div
                                             key={item.id}
-                                            className={`flex items-center gap-3 p-3 rounded-xl border ${item.done
-                                                ? 'border-emerald-100 bg-emerald-50/40'
-                                                : 'border-gray-100 bg-gray-50/40'
+                                            onClick={() => navigate(item.href)}
+                                            className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${item.done
+                                                ? 'border-emerald-100 bg-emerald-50/40 hover:bg-emerald-50'
+                                                : 'border-gray-100 bg-gray-50/40 hover:bg-white hover:border-gray-200 hover:shadow-sm'
                                                 }`}
                                         >
                                             <div className="flex-shrink-0">
@@ -236,6 +239,7 @@ const SiteSetupCard: React.FC<Props> = ({ stats, onOpenWizard }) => {
                                                     <p className="text-[11px] text-gray-400 truncate">{item.desc}</p>
                                                 )}
                                             </div>
+                                            <ChevronRight className={`w-4 h-4 flex-shrink-0 ${item.done ? 'text-emerald-300' : 'text-gray-300'}`} />
                                         </div>
                                     ))}
                                 </div>
