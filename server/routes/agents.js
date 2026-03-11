@@ -6,7 +6,6 @@ const router = express.Router();
 
 // ── Auto-create Agent table ───────────────────────────────────────────────
 let tableReady = false;
-let _tableError = null;
 const ensureTable = async () => {
     if (tableReady) return;
     try {
@@ -35,7 +34,6 @@ const ensureTable = async () => {
         tableReady = true;
         console.log('Agent table ensured successfully');
     } catch (err) {
-        _tableError = err.message;
         console.error('Agent table init error:', err.message);
         // Try to check if table already exists despite error
         try {
@@ -153,22 +151,10 @@ const seedAgents = async (clubId) => {
 };
 
 // ── GET: List agents for a club ───────────────────────────────────────────
-let _dedupDone = false;
 router.get('/', authMiddleware, async (req, res) => {
     try {
         await ensureTable();
         const clubId = req.user.clubId || null;
-
-        // One-time cleanup: if duplicates exist, delete all and re-seed
-        if (!_dedupDone) {
-            const countRes = await db.query('SELECT COUNT(*) FROM "Agent"');
-            const total = parseInt(countRes.rows[0].count);
-            if (total > 9) {
-                await db.query('DELETE FROM "Agent"');
-                console.log(`Cleaned up ${total} duplicate agents, will re-seed`);
-            }
-            _dedupDone = true;
-        }
 
         // Auto-seed if no agents exist
         await seedAgents(clubId);
