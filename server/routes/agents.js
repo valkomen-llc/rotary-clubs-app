@@ -159,9 +159,9 @@ router.get('/', authMiddleware, async (req, res) => {
         // Auto-seed if no agents exist
         await seedAgents(clubId);
 
-        // For super admin (null clubId), show ALL agents
+        // Club users see global agents (super admin) + their own club agents
         const result = clubId
-            ? await db.query(`SELECT * FROM "Agent" WHERE "clubId" = $1 ORDER BY "order" ASC`, [clubId])
+            ? await db.query(`SELECT * FROM "Agent" WHERE "clubId" = $1 OR "clubId" IS NULL ORDER BY "order" ASC, "createdAt" ASC`, [clubId])
             : await db.query(`SELECT * FROM "Agent" ORDER BY "order" ASC, "createdAt" ASC`);
 
         res.json({ agents: result.rows });
