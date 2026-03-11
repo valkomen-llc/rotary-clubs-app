@@ -76,7 +76,7 @@ const Involucrate = () => {
                 }}
             >
                 <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-6">
-                    <p className="text-white leading-snug font-light" style={{ fontSize: '35px' }}>
+                    <p className="text-white leading-snug font-light" style={{ fontSize: '30px' }}>
                         Únete a los más de 1,2 millones de vecinos, amigos, líderes y solucionadores de problemas de Rotary los cuales ven un planeta en que las personas se unen y toman acción para generar un cambio perdurable en el mundo, sus comunidades y en sí mismos.
                     </p>
                     <p className="text-white/85 text-base md:text-lg leading-relaxed">
