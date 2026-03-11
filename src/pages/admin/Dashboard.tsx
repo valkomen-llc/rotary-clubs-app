@@ -12,10 +12,6 @@ const Dashboard: React.FC = () => {
             <div className="flex justify-between items-center mb-8 gap-4">
                 <AgentProgressBar />
                 <div className="flex items-center gap-3 flex-shrink-0">
-                    <button className="flex items-center gap-2 bg-gray-50 border border-gray-100 px-4 py-2 rounded-xl text-sm font-bold text-gray-700 hover:bg-white transition-all">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        What's new?
-                    </button>
                     <Link to="/" target="_blank" className="bg-white border border-gray-200 px-4 py-2 rounded-xl text-sm font-bold text-gray-700 flex items-center gap-2 hover:bg-gray-50 transition-all shadow-sm">
                         View site <ExternalLink className="w-4 h-4" />
                     </Link>

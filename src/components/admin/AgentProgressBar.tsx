@@ -33,6 +33,14 @@ const AgentProgressBar: React.FC = () => {
     const [current, setCurrent] = useState(0);
     const [fade, setFade] = useState(true);
 
+    const handleAgentClick = (agentName: string) => {
+        // Dispatch event for MissionControl to open chat with this agent
+        window.dispatchEvent(new CustomEvent('openAgentChat', { detail: { agentName } }));
+        // Scroll down to Mission Control
+        const mc = document.querySelector('[data-mission-control]');
+        if (mc) mc.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+
     const fetchProgress = useCallback(async () => {
         try {
             const res = await fetch(`${API_URL}/site-progress`, {
@@ -81,9 +89,10 @@ const AgentProgressBar: React.FC = () => {
 
     return (
         <div className="flex items-center gap-4 min-w-0 flex-1">
-            {/* Agent avatar + info (animated) */}
+            {/* Agent avatar + info (animated) — clickable */}
             <div
-                className="flex items-center gap-3 min-w-0 flex-1"
+                className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer group/bar"
+                onClick={() => handleAgentClick(item.agentName)}
                 style={{
                     opacity: fade ? 1 : 0,
                     transform: fade ? 'translateY(0)' : 'translateY(8px)',
@@ -140,17 +149,6 @@ const AgentProgressBar: React.FC = () => {
                     </span>
                 </div>
                 <span className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">Total</span>
-            </div>
-
-            {/* Dot navigation */}
-            <div className="flex-shrink-0 flex gap-1 pl-2">
-                {items.map((_, i) => (
-                    <button
-                        key={i}
-                        onClick={() => { setFade(false); setTimeout(() => { setCurrent(i); setFade(true); }, 200); }}
-                        className={`w-1.5 h-1.5 rounded-full transition-all ${i === current ? 'bg-gray-700 scale-125' : 'bg-gray-200 hover:bg-gray-400'}`}
-                    />
-                ))}
             </div>
         </div>
     );

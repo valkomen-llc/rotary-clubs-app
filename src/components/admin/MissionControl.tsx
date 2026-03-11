@@ -105,6 +105,19 @@ const MissionControl: React.FC = () => {
     useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
     useEffect(() => { if (chatAgent) setTimeout(() => inputRef.current?.focus(), 200); }, [chatAgent]);
 
+    // Listen for openAgentChat events from AgentProgressBar
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const name = (e as CustomEvent).detail?.agentName;
+            if (name) {
+                const agent = agents.find(a => a.name === name);
+                if (agent) openChat(agent);
+            }
+        };
+        window.addEventListener('openAgentChat', handler);
+        return () => window.removeEventListener('openAgentChat', handler);
+    }, [agents]);
+
     const openChat = (agent: Agent) => {
         setChatAgent(agent);
         setMessages([{ role: 'assistant', text: agent.greeting || `¡Hola! Soy ${agent.name} 👋` }]);
@@ -145,7 +158,7 @@ const MissionControl: React.FC = () => {
     const activeCount = agents.length;
 
     return (
-        <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden hover:shadow-xl transition-all">
+        <div data-mission-control className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden hover:shadow-xl transition-all">
             {/* Header */}
             <div className="px-8 pt-6 pb-3">
                 <div className="flex items-center justify-between">
