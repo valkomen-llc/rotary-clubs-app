@@ -120,19 +120,6 @@ const MissionControl: React.FC = () => {
                         borderRadius: '0 0 50% 50%/0 0 100% 100%',
                     }} />
 
-                    {/* === CEILING LIGHTS === */}
-                    <div className="absolute top-0 left-[20%] w-[15%] h-3 rounded-b-full" style={{ background: 'linear-gradient(180deg, #fbbf24, transparent)', opacity: 0.4 }} />
-                    <div className="absolute top-0 left-[45%] w-[10%] h-3 rounded-b-full" style={{ background: 'linear-gradient(180deg, #fbbf24, transparent)', opacity: 0.3 }} />
-                    <div className="absolute top-0 right-[20%] w-[15%] h-3 rounded-b-full" style={{ background: 'linear-gradient(180deg, #fbbf24, transparent)', opacity: 0.4 }} />
-
-                    {/* Light cone effects on wall */}
-                    <div className="absolute top-0 left-[15%] w-[20%] h-[35%]" style={{
-                        background: 'radial-gradient(ellipse at top, rgba(251,191,36,0.08) 0%, transparent 70%)',
-                    }} />
-                    <div className="absolute top-0 right-[15%] w-[20%] h-[35%]" style={{
-                        background: 'radial-gradient(ellipse at top, rgba(251,191,36,0.08) 0%, transparent 70%)',
-                    }} />
-
 
                     {/* === FLOOR === */}
                     <div className="absolute bottom-0 left-0 right-0" style={{
