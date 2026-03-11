@@ -134,20 +134,17 @@ const Footer = () => {
       {/* Copyright */}
       <div className="border-t border-white/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-2 text-white/50 text-sm">
-            <p>© {new Date().getFullYear()} Rotary International. Todos los derechos reservados.</p>
-            <p>
-              Desarrollo tecnológico por{' '}
-              <a
-                href="https://valkomen.co"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-white/70 hover:text-white transition-colors font-medium"
-              >
-                Valkomen LLC
-              </a>
-            </p>
-          </div>
+          <p className="text-center text-white/50 text-sm">
+            © {new Date().getFullYear()} {club.name}. Todos los derechos reservados. | Powered by{' '}
+            <a
+              href="https://valkomen.co"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-white/70 hover:text-white transition-colors font-medium"
+            >
+              Valkomen LLC
+            </a>
+          </p>
         </div>
       </div>
     </footer>
