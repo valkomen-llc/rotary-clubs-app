@@ -117,28 +117,39 @@ const DEFAULT_AGENTS = [
 
 // ── Seed default agents ───────────────────────────────────────────────────
 const seedAgents = async (clubId) => {
-    const existing = await db.query('SELECT COUNT(*) FROM "Agent" WHERE "clubId" = $1', [clubId]);
-    if (parseInt(existing.rows[0].count) > 0) return;
+    try {
+        // Handle NULL clubId (super admin) vs specific club
+        const whereClause = clubId ? '"clubId" = $1' : '"clubId" IS NULL';
+        const params = clubId ? [clubId] : [];
+        const existing = await db.query(`SELECT COUNT(*) FROM "Agent" WHERE ${whereClause}`, params);
+        if (parseInt(existing.rows[0].count) > 0) return;
 
-    for (const agent of DEFAULT_AGENTS) {
-        await db.query(
-            `INSERT INTO "Agent" (name, role, category, description, "systemPrompt", "aiModel", "avatarSeed", "avatarColor", capabilities, active, "order", greeting, "clubId")
-             VALUES ($1, $2, $3, $4, $5, 'gpt-4', $6, $7, $8, true, $9, $10, $11)`,
-            [agent.name, agent.role, agent.category, agent.description, agent.systemPrompt, agent.avatarSeed, agent.avatarColor, agent.capabilities, agent.order, agent.greeting, clubId]
-        );
+        for (const agent of DEFAULT_AGENTS) {
+            await db.query(
+                `INSERT INTO "Agent" (name, role, category, description, "systemPrompt", "aiModel", "avatarSeed", "avatarColor", capabilities, active, "order", greeting, "clubId")
+                 VALUES ($1, $2, $3, $4, $5, 'gpt-4', $6, $7, $8, true, $9, $10, $11)`,
+                [agent.name, agent.role, agent.category, agent.description, agent.systemPrompt, agent.avatarSeed, agent.avatarColor, agent.capabilities, agent.order, agent.greeting, clubId || null]
+            );
+        }
+        console.log(`Seeded ${DEFAULT_AGENTS.length} agents for clubId: ${clubId || 'global'}`);
+    } catch (err) {
+        console.error('Seed agents error:', err.message);
     }
 };
 
 // ── GET: List agents for a club ───────────────────────────────────────────
 router.get('/', authMiddleware, async (req, res) => {
     try {
-        const clubId = req.user.clubId;
+        const clubId = req.user.clubId || null;
         // Auto-seed if no agents exist
         await seedAgents(clubId);
 
+        // Handle NULL clubId (super admin) vs specific club
+        const whereClause = clubId ? '"clubId" = $1' : '("clubId" IS NULL OR "clubId" IS NOT NULL)';
+        const params = clubId ? [clubId] : [];
         const result = await db.query(
-            `SELECT * FROM "Agent" WHERE "clubId" = $1 ORDER BY "order" ASC, "createdAt" ASC`,
-            [clubId]
+            `SELECT * FROM "Agent" WHERE ${whereClause} ORDER BY "order" ASC, "createdAt" ASC`,
+            params
         );
         res.json({ agents: result.rows });
     } catch (error) {
