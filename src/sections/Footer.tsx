@@ -106,9 +106,8 @@ const Footer = () => {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="text-xs text-white/60 text-center md:text-left">
-              © {new Date().getFullYear()} - {club.name}.{' '}
-              <a href="#" className="hover:text-white transition-colors">Política de privacidad</a>{' '}
-              <a href="#" className="hover:text-white transition-colors">Condiciones de uso</a>
+              © {new Date().getFullYear()} {club.name}. Todos los derechos reservados. | Powered by{' '}
+              <a href="https://valkomen.co" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors font-medium">Valkomen LLC</a>
             </div>
             <div className="flex items-center gap-4">
               {club.social.map((link, idx) => {
@@ -128,23 +127,6 @@ const Footer = () => {
               })}
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Copyright */}
-      <div className="border-t border-white/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <p className="text-center text-white/50 text-sm">
-            © {new Date().getFullYear()} {club.name}. Todos los derechos reservados. | Powered by{' '}
-            <a
-              href="https://valkomen.co"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-white/70 hover:text-white transition-colors font-medium"
-            >
-              Valkomen LLC
-            </a>
-          </p>
         </div>
       </div>
     </footer>
