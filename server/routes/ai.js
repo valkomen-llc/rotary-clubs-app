@@ -37,8 +37,26 @@ router.post('/agent-chat', authMiddleware, async (req, res) => {
     const { message, agentId, history } = req.body;
     if (!message || !agentId) return res.status(400).json({ error: 'message and agentId are required' });
 
-    const agent = MISSION_AGENTS[agentId];
-    if (!agent) return res.status(404).json({ error: 'Agent not found' });
+    let agentName, agentPersona, aiModel = 'gpt-3.5-turbo';
+
+    // Try to find agent in DB first
+    try {
+        const dbAgent = await db.query('SELECT * FROM "Agent" WHERE id = $1 OR LOWER(name) = $1', [agentId]);
+        if (dbAgent.rows.length > 0) {
+            const a = dbAgent.rows[0];
+            agentName = a.name;
+            agentPersona = a.systemPrompt;
+            aiModel = a.aiModel === 'gpt-4' ? 'gpt-4' : a.aiModel === 'gpt-3.5' ? 'gpt-3.5-turbo' : a.aiModel || 'gpt-3.5-turbo';
+        }
+    } catch (_) { }
+
+    // Fallback to hardcoded agents
+    if (!agentPersona) {
+        const agent = MISSION_AGENTS[agentId];
+        if (!agent) return res.status(404).json({ error: 'Agent not found' });
+        agentName = agent.name;
+        agentPersona = agent.persona;
+    }
 
     let clubName = 'tu club';
     try {
@@ -46,9 +64,8 @@ router.post('/agent-chat', authMiddleware, async (req, res) => {
         if (clubResult.rows[0]) clubName = clubResult.rows[0].name;
     } catch (_) { }
 
-    const systemPrompt = `${agent.persona}\nEl nombre del club del usuario es: "${clubName}". Responde SIEMPRE en español, de forma concisa y amigable (máximo 3 párrafos cortos). Usa emojis con moderación para dar calidez.`;
+    const systemPrompt = `${agentPersona}\nEl nombre del club del usuario es: "${clubName}". Responde SIEMPRE en español, de forma concisa y amigable (máximo 3 párrafos cortos). Usa emojis con moderación para dar calidez.`;
 
-    // Build conversation messages (include history for context)
     const messages = [{ role: 'system', content: systemPrompt }];
     if (Array.isArray(history)) {
         history.slice(-6).forEach(h => messages.push({ role: h.role, content: h.text }));
@@ -60,12 +77,12 @@ router.post('/agent-chat', authMiddleware, async (req, res) => {
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
-                body: JSON.stringify({ model: 'gpt-3.5-turbo', messages, max_tokens: 400, temperature: 0.7 })
+                body: JSON.stringify({ model: aiModel, messages, max_tokens: 400, temperature: 0.7 })
             });
             const data = await response.json();
-            return res.json({ reply: data.choices?.[0]?.message?.content || 'No pude generar una respuesta.', agentName: agent.name });
+            return res.json({ reply: data.choices?.[0]?.message?.content || 'No pude generar una respuesta.', agentName });
         }
-        res.json({ reply: `¡Hola! Soy ${agent.name} 👋 En este momento necesito que se configure la API de OpenAI para poder ayudarte. ¡Pronto estaré disponible!`, agentName: agent.name });
+        res.json({ reply: `¡Hola! Soy ${agentName} 👋 En este momento necesito que se configure la API de OpenAI para poder ayudarte. ¡Pronto estaré disponible!`, agentName });
     } catch (error) {
         res.status(500).json({ error: 'Error en el agente IA' });
     }

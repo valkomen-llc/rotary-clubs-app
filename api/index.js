@@ -45,10 +45,11 @@ const getCommunications = async () => _communications || (({ default: _communica
 const getTranslate = async () => _translate || (({ default: _translate } = await import('../server/routes/translate.js')), _translate);
 const getPublicRoutes = async () => _public || (({ default: _public } = await import('../server/routes/public.js')), _public);
 
-let _analytics, _leads, _faqs;
+let _analytics, _leads, _faqs, _agents;
 const getAnalytics = async () => _analytics || (({ default: _analytics } = await import('../server/routes/analytics.js')), _analytics);
 const getLeads = async () => _leads || (({ default: _leads } = await import('../server/routes/leads.js')), _leads);
 const getFaqs = async () => _faqs || (({ default: _faqs } = await import('../server/routes/faqs.js')), _faqs);
+const getAgents = async () => _agents || (({ default: _agents } = await import('../server/routes/agents.js')), _agents);
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 app.use('/api/auth', async (req, res, next) => (await getAuth())(req, res, next));
@@ -67,5 +68,6 @@ app.use('/api/public', async (req, res, next) => (await getPublicRoutes())(req, 
 app.use('/api/analytics', async (req, res, next) => (await getAnalytics())(req, res, next));
 app.use('/api/leads', async (req, res, next) => (await getLeads())(req, res, next));
 app.use('/api/faqs', async (req, res, next) => (await getFaqs())(req, res, next));
+app.use('/api/agents', async (req, res, next) => (await getAgents())(req, res, next));
 
 export default app;

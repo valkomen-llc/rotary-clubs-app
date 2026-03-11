@@ -27,6 +27,7 @@ import {
     TrendingUp,
     Eye,
     Mail,
+    Bot,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -150,6 +151,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         // Settings: super admin in nav + footer; club users only in footer (not nav)
         if (isSuperAdmin) {
             items.push(
+                { icon: Bot, label: 'Agentes IA', path: '/admin/agentes', category: 'System' },
                 { icon: Layers, label: 'Integraciones', path: '/admin/integraciones', category: 'System' },
                 { icon: Bell, label: 'Notificaciones', path: '/admin/notificaciones', category: 'System' },
                 { icon: Settings, label: 'Settings', path: '/admin/configuracion', category: 'System' }

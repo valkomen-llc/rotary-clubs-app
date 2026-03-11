@@ -59,6 +59,7 @@ import AnalyticsPage from './pages/admin/Analytics';
 import SiteSetupPage from './pages/admin/SiteSetup';
 import LeadsManagement from './pages/admin/Leads';
 import FAQManagement from './pages/admin/FAQs';
+import AgentsManagement from './pages/admin/Agents';
 import ChatBot from './components/ChatBot';
 import LandingPage from './pages/LandingPage';
 import RegistroPage from './pages/RegistroPage';
@@ -356,6 +357,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <FAQManagement />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/agentes"
+                  element={
+                    <PrivateRoute>
+                      <AgentsManagement />
                     </PrivateRoute>
                   }
                 />
