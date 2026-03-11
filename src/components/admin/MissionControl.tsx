@@ -14,34 +14,161 @@ interface Agent {
     id: string; name: string; role: string; description: string;
     icon: React.ElementType; status: 'active' | 'standby' | 'upcoming';
     availability: string; avatarColor: string; avatarSeed: string;
-    greeting: string; row: number; col: number;
+    greeting: string;
 }
 
-const AGENTS: Agent[] = [
-    // Row 0 — back row (farthest, smallest)
-    { id: 'sol', name: 'Sol', role: 'Bienvenida', description: 'Guía a clubes nuevos', icon: Sparkles, status: 'active', availability: 'Wizard', avatarColor: '#F59E0B', avatarSeed: 'Sol', greeting: '¡Bienvenido! ✨ Soy Sol, tu primera guía.', row: 0, col: 0 },
-    { id: 'luna', name: 'Luna', role: 'Identidad Visual', description: 'Asesora en branding', icon: Palette, status: 'active', availability: 'Wizard', avatarColor: '#EC4899', avatarSeed: 'Luna', greeting: '¡Hola! 🎨 Soy Luna, la experta en branding.', row: 0, col: 1 },
-    { id: 'leo', name: 'Leo', role: 'Redactor', description: 'Redacta textos profesionales', icon: FileText, status: 'active', availability: 'Wizard', avatarColor: '#10B981', avatarSeed: 'Leo', greeting: 'Soy Leo 📝 Te ayudo con los textos.', row: 0, col: 2 },
-    // Row 1 — middle row
-    { id: 'aria', name: 'Aria', role: 'ChatBot Público', description: 'Responde 24/7', icon: MessageCircle, status: 'active', availability: '24/7', avatarColor: '#3B82F6', avatarSeed: 'Aria', greeting: '¡Hola! Soy Aria 💬 Atiendo visitantes 24/7.', row: 1, col: 0 },
-    { id: 'marco', name: 'Marco', role: 'Consejero RRSS', description: 'Estrategia social', icon: Calendar, status: 'active', availability: 'On-demand', avatarColor: '#8B5CF6', avatarSeed: 'Marco', greeting: '¡Hey! Soy Marco 📱 Creo estrategia para redes.', row: 1, col: 1 },
-    { id: 'iris', name: 'Iris', role: 'Contenido Web', description: 'Crea textos web', icon: FileText, status: 'active', availability: 'Wizard', avatarColor: '#6366F1', avatarSeed: 'Iris', greeting: 'Soy Iris 💜 Diseño las palabras de tu página.', row: 1, col: 2 },
-    { id: 'kai', name: 'Kai', role: 'Proyectos', description: 'Documenta proyectos', icon: FolderKanban, status: 'active', availability: 'Wizard', avatarColor: '#F97316', avatarSeed: 'Kai', greeting: '¡Qué tal! 🔥 Soy Kai, el de proyectos.', row: 1, col: 3 },
-    // Row 2 — front row (closest, largest)
-    { id: 'nube', name: 'Nube', role: 'Redes Sociales', description: 'Configura redes', icon: Globe, status: 'active', availability: 'Wizard', avatarColor: '#0EA5E9', avatarSeed: 'Nube', greeting: '¡Hola! 🌐 Soy Nube, conecto tu club con el mundo.', row: 2, col: 0 },
-    { id: 'vera', name: 'Vera', role: 'Directorio', description: 'Gestiona socios', icon: Users, status: 'active', availability: 'Wizard', avatarColor: '#14B8A6', avatarSeed: 'Vera', greeting: 'Soy Vera 👥 Organizo tu directorio.', row: 2, col: 1 },
-    { id: 'nova', name: 'Nova', role: 'Publicación', description: 'Lanza tu sitio', icon: Rocket, status: 'active', availability: 'Wizard', avatarColor: '#EF4444', avatarSeed: 'Nova', greeting: '¡Soy Nova! 🚀 Te ayudo a publicar tu sitio.', row: 2, col: 2 },
+// Hierarchy: Aria (top) → Sol + Marco (mid) → rest (bottom two rows)
+const ARIA: Agent = {
+    id: 'aria', name: 'Aria', role: 'Directora de Comunicaciones',
+    description: 'Líder del equipo · Coordina todos los agentes · ChatBot público 24/7',
+    icon: MessageCircle, status: 'active', availability: '24/7',
+    avatarColor: '#3B82F6', avatarSeed: 'Aria',
+    greeting: '¡Hola! Soy Aria 💬 Coordino la oficina y atiendo visitantes 24/7.',
+};
+
+const MID_TIER: Agent[] = [
+    {
+        id: 'sol', name: 'Sol', role: 'Coordinadora de Onboarding',
+        description: 'Bienvenida · Guía a clubes nuevos · Setup inicial',
+        icon: Sparkles, status: 'active', availability: 'Wizard',
+        avatarColor: '#F59E0B', avatarSeed: 'Sol',
+        greeting: '¡Bienvenido! ✨ Soy Sol, tu primera guía.',
+    },
+    {
+        id: 'marco', name: 'Marco', role: 'Director de Estrategia Digital',
+        description: 'Estrategia de contenido · RRSS · Calendario editorial',
+        icon: Calendar, status: 'active', availability: 'On-demand',
+        avatarColor: '#8B5CF6', avatarSeed: 'Marco',
+        greeting: '¡Hey! Soy Marco 📱 Creo estrategia para redes.',
+    },
 ];
 
-// Row configs: scale, yBase, xPositions
-const ROW_CONFIGS = [
-    { scale: 0.65, yPercent: 38, xPositions: [25, 50, 75] },          // Back row — 3 agents
-    { scale: 0.8, yPercent: 55, xPositions: [15, 38, 62, 85] },       // Middle row — 4 agents
-    { scale: 1.0, yPercent: 75, xPositions: [20, 50, 80] },           // Front row — 3 agents
+const SPECIALISTS_ROW1: Agent[] = [
+    {
+        id: 'luna', name: 'Luna', role: 'Identidad Visual',
+        description: 'Branding · Logo · Paleta de colores',
+        icon: Palette, status: 'active', availability: 'Wizard',
+        avatarColor: '#EC4899', avatarSeed: 'Luna',
+        greeting: '¡Hola! 🎨 Soy Luna, la experta en branding.',
+    },
+    {
+        id: 'leo', name: 'Leo', role: 'Redactor',
+        description: 'Textos institucionales · Noticias · Comunicados',
+        icon: FileText, status: 'active', availability: 'Wizard',
+        avatarColor: '#10B981', avatarSeed: 'Leo',
+        greeting: 'Soy Leo 📝 Te ayudo con los textos.',
+    },
+    {
+        id: 'iris', name: 'Iris', role: 'Contenido Web',
+        description: 'Páginas del sitio · SEO · Copywriting',
+        icon: FileText, status: 'active', availability: 'Wizard',
+        avatarColor: '#6366F1', avatarSeed: 'Iris',
+        greeting: 'Soy Iris 💜 Diseño las palabras de tu página.',
+    },
+    {
+        id: 'nube', name: 'Nube', role: 'Redes Sociales',
+        description: 'Perfiles sociales · Conexiones · Publicación',
+        icon: Globe, status: 'active', availability: 'Wizard',
+        avatarColor: '#0EA5E9', avatarSeed: 'Nube',
+        greeting: '¡Hola! 🌐 Soy Nube, conecto tu club con el mundo.',
+    },
 ];
+
+const SPECIALISTS_ROW2: Agent[] = [
+    {
+        id: 'kai', name: 'Kai', role: 'Proyectos',
+        description: 'Documentación · Seguimiento · Impacto',
+        icon: FolderKanban, status: 'active', availability: 'Wizard',
+        avatarColor: '#F97316', avatarSeed: 'Kai',
+        greeting: '¡Qué tal! 🔥 Soy Kai, el de proyectos.',
+    },
+    {
+        id: 'vera', name: 'Vera', role: 'Directorio',
+        description: 'Socios · Contactos · Sincronización',
+        icon: Users, status: 'active', availability: 'Wizard',
+        avatarColor: '#14B8A6', avatarSeed: 'Vera',
+        greeting: 'Soy Vera 👥 Organizo tu directorio.',
+    },
+    {
+        id: 'nova', name: 'Nova', role: 'Publicación',
+        description: 'Deploy · Revisión · Lanzamiento del sitio',
+        icon: Rocket, status: 'active', availability: 'Wizard',
+        avatarColor: '#EF4444', avatarSeed: 'Nova',
+        greeting: '¡Soy Nova! 🚀 Te ayudo a publicar tu sitio.',
+    },
+];
+
+const ALL_AGENTS = [ARIA, ...MID_TIER, ...SPECIALISTS_ROW1, ...SPECIALISTS_ROW2];
+
+/* ─── Agent Card ─── */
+const AgentCard: React.FC<{
+    agent: Agent;
+    isTop?: boolean;
+    isMid?: boolean;
+    isChatting: boolean;
+    onClick: () => void;
+}> = ({ agent, isTop, isMid, isChatting, onClick }) => {
+    const Icon = agent.icon;
+    return (
+        <div
+            onClick={onClick}
+            className={`
+                relative group cursor-pointer rounded-xl border transition-all duration-300
+                ${isChatting
+                    ? 'border-amber-500/60 bg-white/[0.08] shadow-lg shadow-amber-500/10'
+                    : 'border-white/10 bg-white/[0.04] hover:border-white/25 hover:bg-white/[0.07]'}
+                ${isTop ? 'px-6 py-5' : isMid ? 'px-5 py-4' : 'px-4 py-3.5'}
+            `}
+        >
+            {/* Left accent bar */}
+            <div className="absolute left-0 top-3 bottom-3 w-[3px] rounded-full" style={{ background: agent.avatarColor }} />
+
+            <div className="flex items-center gap-3">
+                {/* Avatar */}
+                <div
+                    className={`rounded-full overflow-hidden border-2 flex-shrink-0 group-hover:scale-110 transition-transform ${isTop ? 'w-14 h-14' : isMid ? 'w-12 h-12' : 'w-10 h-10'}`}
+                    style={{
+                        borderColor: agent.avatarColor,
+                        background: agent.avatarColor + '20',
+                        boxShadow: `0 0 15px ${agent.avatarColor}25`,
+                    }}
+                >
+                    <img src={avatar(agent.avatarSeed)} alt={agent.name} className="w-full h-full" loading="lazy" />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                    {/* Role badge */}
+                    <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: agent.avatarColor }}>
+                        {agent.role}
+                    </span>
+
+                    {/* Name */}
+                    <h4 className={`font-black text-white leading-tight ${isTop ? 'text-lg' : isMid ? 'text-base' : 'text-sm'}`}>
+                        {agent.name}
+                    </h4>
+
+                    {/* Description */}
+                    <p className="text-[10px] text-white/40 mt-0.5 leading-relaxed">{agent.description}</p>
+                </div>
+
+                {/* Status + availability badge */}
+                <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                    <div className={`w-2.5 h-2.5 rounded-full ${isChatting ? 'bg-blue-400 animate-pulse' : 'bg-emerald-400'}`} />
+                    <span className="text-[8px] font-bold text-white/25 uppercase">{agent.availability}</span>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/* ─── Connector Line ─── */
+const VerticalLine: React.FC<{ height?: string }> = ({ height = '28px' }) => (
+    <div className="flex justify-center">
+        <div style={{ width: '2px', height, background: 'linear-gradient(180deg, #f59e0b, rgba(245,158,11,0.2))' }} />
+    </div>
+);
 
 const MissionControl: React.FC = () => {
-    const [hoveredAgent, setHoveredAgent] = useState<Agent | null>(null);
     const [chatAgent, setChatAgent] = useState<Agent | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
@@ -49,7 +176,7 @@ const MissionControl: React.FC = () => {
     const chatEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
 
-    const activeCount = AGENTS.filter(a => a.status === 'active').length;
+    const activeCount = ALL_AGENTS.filter(a => a.status === 'active').length;
 
     useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
     useEffect(() => { if (chatAgent) setTimeout(() => inputRef.current?.focus(), 200); }, [chatAgent]);
@@ -102,180 +229,76 @@ const MissionControl: React.FC = () => {
                 </div>
             </div>
 
-            {/* Office Layout + Chat */}
+            {/* Main Layout */}
             <div className="flex mx-6 mb-6 gap-0 relative">
-                {/* The Virtual Office */}
+                {/* Org Chart */}
                 <div
-                    className={`relative rounded-2xl overflow-hidden transition-all duration-500 ${chatAgent ? 'w-[55%]' : 'w-full'}`}
-                    style={{ height: 'calc(100vh - 320px)', minHeight: '450px' }}
+                    className={`relative rounded-2xl overflow-hidden overflow-y-auto transition-all duration-500 ${chatAgent ? 'w-[55%]' : 'w-full'}`}
+                    style={{
+                        background: 'linear-gradient(180deg, #0c1445 0%, #162058 40%, #1a2460 70%, #131b4d 100%)',
+                        height: 'calc(100vh - 320px)', minHeight: '450px',
+                    }}
                 >
-                    {/* === BACK WALL === */}
-                    <div className="absolute inset-0" style={{
-                        background: 'linear-gradient(180deg, #0c1445 0%, #162058 30%, #1e2a6e 50%, #1a2460 70%, #131b4d 100%)',
-                    }} />
-
-                    {/* Curved wall top edge */}
-                    <div className="absolute top-0 left-0 right-0 h-8" style={{
-                        background: 'linear-gradient(180deg, #080e30, transparent)',
-                        borderRadius: '0 0 50% 50%/0 0 100% 100%',
-                    }} />
-
-
-                    {/* === FLOOR === */}
-                    <div className="absolute bottom-0 left-0 right-0" style={{
-                        height: '55%',
-                        background: 'linear-gradient(180deg, transparent 0%, rgba(30,42,110,0.3) 10%, rgba(20,30,80,0.6) 30%, rgba(15,22,60,0.9) 100%)',
-                    }}>
-                        {/* Floor grid lines for perspective */}
-                        <div className="absolute inset-0 overflow-hidden opacity-[0.06]" style={{
-                            backgroundImage: `linear-gradient(rgba(255,255,255,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.3) 1px, transparent 1px)`,
-                            backgroundSize: '60px 40px',
-                            transform: 'perspective(400px) rotateX(30deg)',
-                            transformOrigin: 'center top',
-                        }} />
-                    </div>
-
-
-
-                    {/* === AGENTS AT WORKSTATIONS === */}
-                    {AGENTS.map(agent => {
-                        const rowCfg = ROW_CONFIGS[agent.row];
-                        const xPos = rowCfg.xPositions[agent.col];
-                        const scale = rowCfg.scale;
-                        const yPos = rowCfg.yPercent;
-                        const isHovered = hoveredAgent?.id === agent.id;
-                        const isChatting = chatAgent?.id === agent.id;
-                        const isActive = isHovered || isChatting;
-
-                        return (
-                            <div
-                                key={agent.id}
-                                className="absolute cursor-pointer"
-                                style={{
-                                    left: `${xPos}%`,
-                                    top: `${yPos}%`,
-                                    transform: `translate(-50%, -50%) scale(${scale})`,
-                                    zIndex: agent.row * 10 + (isActive ? 50 : 5),
-                                    transition: 'all 0.3s ease',
-                                }}
-                                onMouseEnter={() => setHoveredAgent(agent)}
-                                onMouseLeave={() => setHoveredAgent(null)}
-                                onClick={() => openChat(agent)}
-                            >
-                                {/* Tooltip */}
-                                {isHovered && !isChatting && (
-                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-48" style={{ animation: 'fadeSlideUp 0.2s ease-out' }}>
-                                        <div className="bg-white rounded-xl p-3 shadow-2xl border border-gray-100 relative">
-                                            <p className="text-[10px] font-bold text-gray-700">{agent.greeting}</p>
-                                            <div className="text-[8px] font-black text-gray-400 uppercase mt-1.5 flex items-center gap-1">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                                {agent.role} · {agent.availability}
-                                            </div>
-                                            <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-b border-r border-gray-100 rotate-45" />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* === WORKSTATION === */}
-                                <div className="relative" style={{ width: '90px' }}>
-                                    {/* Monitor on desk */}
-                                    <div className="absolute left-1/2 -translate-x-1/2" style={{ top: '28px', zIndex: 1 }}>
-                                        {/* Monitor frame */}
-                                        <div className="relative mx-auto" style={{
-                                            width: '48px', height: '30px', borderRadius: '3px',
-                                            background: isActive
-                                                ? `linear-gradient(135deg, ${agent.avatarColor}90, ${agent.avatarColor}40)`
-                                                : 'linear-gradient(135deg, rgba(96,165,250,0.3), rgba(96,165,250,0.08))',
-                                            border: `1px solid ${isActive ? agent.avatarColor + '80' : 'rgba(255,255,255,0.1)'}`,
-                                            boxShadow: isActive
-                                                ? `0 0 20px ${agent.avatarColor}40, 0 2px 8px rgba(0,0,0,0.3)`
-                                                : '0 2px 6px rgba(0,0,0,0.3)',
-                                            transition: 'all 0.3s ease',
-                                        }}>
-                                            {/* Screen icon */}
-                                            <div className="absolute inset-0 flex items-center justify-center">
-                                                <agent.icon className="w-3.5 h-3.5" style={{ color: isActive ? 'white' : 'rgba(255,255,255,0.4)' }} />
-                                            </div>
-                                        </div>
-                                        {/* Monitor stand */}
-                                        <div className="mx-auto" style={{ width: '4px', height: '6px', background: 'rgba(255,255,255,0.15)' }} />
-                                        {/* Monitor base */}
-                                        <div className="mx-auto" style={{ width: '16px', height: '3px', borderRadius: '1px', background: 'rgba(255,255,255,0.1)' }} />
-                                    </div>
-
-                                    {/* Desk surface */}
-                                    <div className="absolute left-1/2 -translate-x-1/2" style={{
-                                        top: '64px', width: '70px', height: '12px', borderRadius: '2px',
-                                        background: isActive
-                                            ? `linear-gradient(135deg, ${agent.avatarColor}25, ${agent.avatarColor}10)`
-                                            : 'linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))',
-                                        border: `1px solid ${isActive ? agent.avatarColor + '30' : 'rgba(255,255,255,0.06)'}`,
-                                        boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
-                                        transition: 'all 0.3s ease',
-                                    }} />
-
-                                    {/* Character Avatar */}
-                                    <div
-                                        className="relative mx-auto overflow-hidden transition-all duration-300 ease-out"
-                                        style={{
-                                            width: '52px', height: '52px', borderRadius: '50%',
-                                            border: `2.5px solid ${isActive ? 'white' : 'rgba(255,255,255,0.3)'}`,
-                                            boxShadow: isActive
-                                                ? `0 8px 30px ${agent.avatarColor}50, 0 0 40px ${agent.avatarColor}20`
-                                                : '0 2px 8px rgba(0,0,0,0.3)',
-                                            background: agent.avatarColor + '25',
-                                            transform: isActive ? 'scale(1.3) translateY(-6px)' : 'scale(1)',
-                                            zIndex: 5,
-                                        }}
-                                    >
-                                        <img src={avatar(agent.avatarSeed)} alt={agent.name} className="w-full h-full" loading="lazy" />
-                                    </div>
-
-                                    {/* Online indicator */}
-                                    <div className="absolute z-10" style={{ top: '2px', right: 'calc(50% - 26px)' }}>
-                                        <div className={`w-3 h-3 rounded-full border-2 ${isChatting ? 'bg-blue-400 animate-pulse border-[#1a2460]' : 'bg-emerald-400 border-[#1a2460]'}`} />
-                                    </div>
-
-                                    {/* Name label */}
-                                    <p className="text-center mt-2 font-bold whitespace-nowrap transition-all duration-300" style={{
-                                        fontSize: '9px',
-                                        color: isActive ? 'white' : 'rgba(255,255,255,0.35)',
-                                        textShadow: isActive ? `0 0 10px ${agent.avatarColor}80` : 'none',
-                                    }}>
-                                        {agent.name}
-                                    </p>
-                                    <p className="text-center font-medium whitespace-nowrap" style={{
-                                        fontSize: '7px',
-                                        color: isActive ? agent.avatarColor : 'rgba(255,255,255,0.2)',
-                                    }}>
-                                        {agent.role}
-                                    </p>
-                                </div>
+                    <div className="p-6 md:p-8">
+                        {/* Level 1 — Aria (top) */}
+                        <div className="flex justify-center">
+                            <div className="w-full max-w-md">
+                                <AgentCard agent={ARIA} isTop isChatting={chatAgent?.id === ARIA.id} onClick={() => openChat(ARIA)} />
                             </div>
-                        );
-                    })}
+                        </div>
 
-                    {/* === AMBIENT PARTICLES === */}
-                    <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                        {[...Array(15)].map((_, i) => (
-                            <div
-                                key={`p-${i}`}
-                                className="absolute rounded-full bg-blue-400"
-                                style={{
-                                    width: Math.random() * 2 + 1,
-                                    height: Math.random() * 2 + 1,
-                                    left: `${Math.random() * 100}%`,
-                                    top: `${Math.random() * 100}%`,
-                                    opacity: Math.random() * 0.15 + 0.05,
-                                    animation: `float ${4 + Math.random() * 6}s ease-in-out infinite`,
-                                    animationDelay: `${Math.random() * 5}s`,
-                                }}
-                            />
-                        ))}
+                        <VerticalLine />
+
+                        {/* Branch lines to mid tier */}
+                        <div className="flex justify-center">
+                            <div className="w-full max-w-lg relative">
+                                <div className="absolute top-0 left-1/4 right-1/4 h-[2px]" style={{ background: 'linear-gradient(90deg, rgba(245,158,11,0.2), #f59e0b, rgba(245,158,11,0.2))' }} />
+                            </div>
+                        </div>
+
+                        {/* Level 2 — Sol + Marco */}
+                        <div className="grid grid-cols-2 gap-4 max-w-2xl mx-auto mt-0">
+                            <div>
+                                <VerticalLine height="16px" />
+                                <AgentCard agent={MID_TIER[0]} isMid isChatting={chatAgent?.id === MID_TIER[0].id} onClick={() => openChat(MID_TIER[0])} />
+                            </div>
+                            <div>
+                                <VerticalLine height="16px" />
+                                <AgentCard agent={MID_TIER[1]} isMid isChatting={chatAgent?.id === MID_TIER[1].id} onClick={() => openChat(MID_TIER[1])} />
+                            </div>
+                        </div>
+
+                        <VerticalLine />
+
+                        {/* Branch lines to specialists */}
+                        <div className="flex justify-center">
+                            <div className="w-full max-w-3xl relative">
+                                <div className="absolute top-0 left-[12%] right-[12%] h-[2px]" style={{ background: 'linear-gradient(90deg, rgba(245,158,11,0.15), #f59e0b40, rgba(245,158,11,0.15))' }} />
+                            </div>
+                        </div>
+
+                        {/* Level 3 — Specialists Row 1 */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-4xl mx-auto mt-0">
+                            {SPECIALISTS_ROW1.map(agent => (
+                                <div key={agent.id}>
+                                    <VerticalLine height="16px" />
+                                    <AgentCard agent={agent} isChatting={chatAgent?.id === agent.id} onClick={() => openChat(agent)} />
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="my-4" />
+
+                        {/* Level 4 — Specialists Row 2 */}
+                        <div className="grid grid-cols-3 gap-3 max-w-3xl mx-auto">
+                            {SPECIALISTS_ROW2.map(agent => (
+                                <AgentCard key={agent.id} agent={agent} isChatting={chatAgent?.id === agent.id} onClick={() => openChat(agent)} />
+                            ))}
+                        </div>
                     </div>
                 </div>
 
-                {/* === CHAT PANEL === */}
+                {/* Chat Panel */}
                 {chatAgent && (
                     <div
                         className="w-[45%] rounded-r-2xl border border-l-0 border-gray-200 bg-white flex flex-col overflow-hidden"
@@ -352,23 +375,11 @@ const MissionControl: React.FC = () => {
                 )}
             </div>
 
-
-
             {/* CSS Animations */}
             <style>{`
-                @keyframes fadeSlideUp {
-                    from { opacity: 0; transform: translateX(-50%) translateY(6px); }
-                    to { opacity: 1; transform: translateX(-50%) translateY(0); }
-                }
                 @keyframes slideInRight {
                     from { opacity: 0; transform: translateX(20px); }
                     to { opacity: 1; transform: translateX(0); }
-                }
-                @keyframes float {
-                    0%, 100% { transform: translateY(0px) translateX(0px); opacity: 0.05; }
-                    25% { transform: translateY(-15px) translateX(5px); opacity: 0.15; }
-                    50% { transform: translateY(-5px) translateX(-5px); opacity: 0.08; }
-                    75% { transform: translateY(-20px) translateX(8px); opacity: 0.12; }
                 }
             `}</style>
         </div>
