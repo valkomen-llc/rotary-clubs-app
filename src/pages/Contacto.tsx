@@ -50,6 +50,9 @@ const Contacto = () => {
     paisPrefijo: '',
     horaContacto: '',
     metodoContacto: '',
+    comoSupiste: '',
+    porqueInvolucrar: '',
+    comentarios: '',
   });
   const [enviado, setEnviado] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -131,6 +134,9 @@ const Contacto = () => {
         paisPrefijo: formData.paisPrefijo,
         horaContacto: formData.horaContacto,
         metodoContacto: formData.metodoContacto,
+        comoSupiste: formData.comoSupiste,
+        porqueInvolucrar: formData.porqueInvolucrar,
+        comentarios: formData.comentarios,
       } : {};
 
       const res = await fetch(`${API}/leads/submit`, {
@@ -153,6 +159,7 @@ const Contacto = () => {
           nombre: '', apellido: '', email: '', telefono: '', asunto: '', mensaje: '',
           profesion: '', empleador: '', rangoEdad: '', genero: '',
           tipoTelefono: '', paisPrefijo: '', horaContacto: '', metodoContacto: '',
+          comoSupiste: '', porqueInvolucrar: '', comentarios: '',
         });
         setTimeout(() => setEnviado(false), 5000);
       }
@@ -439,6 +446,60 @@ const Contacto = () => {
                         <option value="whatsapp">WhatsApp</option>
                         <option value="cualquiera">Cualquiera</option>
                       </select>
+                    </div>
+
+                    {/* ¿Cómo supiste de Rotary? */}
+                    <div>
+                      <label htmlFor="comoSupiste" className="block text-sm font-medium text-gray-700 mb-2">
+                        ¿Cómo supiste de Rotary?
+                      </label>
+                      <select id="comoSupiste" name="comoSupiste" value={formData.comoSupiste} onChange={handleChange}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all appearance-none bg-white">
+                        <option value="">- Seleccione -</option>
+                        <option value="amigo-familiar">Un amigo o familiar</option>
+                        <option value="evento">Un evento de Rotary</option>
+                        <option value="redes-sociales">Redes sociales</option>
+                        <option value="internet">Búsqueda en internet</option>
+                        <option value="prensa">Prensa o medios</option>
+                        <option value="trabajo">En el trabajo</option>
+                        <option value="otro">Otro</option>
+                      </select>
+                    </div>
+
+                    {/* ¿Por qué quieres involucrarte? */}
+                    <div>
+                      <label htmlFor="porqueInvolucrar" className="block text-sm font-medium text-gray-700 mb-2">
+                        ¿Por qué quieres involucrarte?
+                      </label>
+                      <textarea id="porqueInvolucrar" name="porqueInvolucrar" value={formData.porqueInvolucrar}
+                        onChange={(e) => { if (e.target.value.length <= 250) handleChange(e); }}
+                        rows={4}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all resize-none"
+                        placeholder="Cuéntanos tus motivaciones..." />
+                      <p className="text-xs text-gray-400 mt-1">Quedan {250 - formData.porqueInvolucrar.length} caracteres</p>
+                    </div>
+
+                    {/* Comentarios adicionales */}
+                    <div>
+                      <label htmlFor="comentarios" className="block text-sm font-medium text-gray-700 mb-2">
+                        Comentarios adicionales
+                      </label>
+                      <textarea id="comentarios" name="comentarios" value={formData.comentarios}
+                        onChange={(e) => { if (e.target.value.length <= 250) handleChange(e); }}
+                        rows={4}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all resize-none"
+                        placeholder="¿Algo más que quieras agregar?" />
+                      <p className="text-xs text-gray-400 mt-1">Quedan {250 - formData.comentarios.length} caracteres</p>
+                    </div>
+
+                    {/* Política de Privacidad */}
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 text-sm text-gray-600 leading-relaxed">
+                      <p>
+                        Tu privacidad es importante para Rotary International y La Fundación Rotaria (en adelante, "Rotary") y los datos personales que compartas con Rotary solo se utilizarán para fines oficiales. Esto significa que los datos personales que proporciones se utilizarán principalmente para tu membresía potencial y activa (si se te invita a convertirte en socio) de un club rotario, lo cual incluye invitaciones para que participes en otras oportunidades de membresía, informes sobre datos relacionados a la membresía, procesamientos financieros, apoyo a La Fundación Rotaria, facilitación de planificación de eventos, comunicación de mensajes organizacionales clave y respuestas a cualquier inquietud que puedas tener. Los datos personales que proporciones se compartirán con funcionarios distritales y de club de Rotary, así como con sus delegados. Los datos personales recogidos en este formulario están sujetos a la{' '}
+                        <a href="https://my.rotary.org/es/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-rotary-blue underline font-semibold hover:text-rotary-gold transition-colors">
+                          Política de privacidad de Rotary
+                        </a>.
+                      </p>
                     </div>
                   </>
                 ) : (
