@@ -158,12 +158,17 @@ router.get('/', authMiddleware, async (req, res) => {
         await ensureTable();
         const clubId = req.user.clubId || null;
 
-        // Clean up duplicates (one-time): keep only one of each agent name
+        // Clean up duplicates: keep only oldest of each agent name per clubId
         try {
             await db.query(`
-                DELETE FROM "Agent" WHERE id NOT IN (
-                    SELECT DISTINCT ON (name, "clubId") id FROM "Agent" ORDER BY name, "clubId", "createdAt" ASC
+                WITH ranked AS (
+                    SELECT id, ROW_NUMBER() OVER (
+                        PARTITION BY name, COALESCE("clubId"::text, '__null__')
+                        ORDER BY "createdAt" ASC
+                    ) AS rn
+                    FROM "Agent"
                 )
+                DELETE FROM "Agent" WHERE id IN (SELECT id FROM ranked WHERE rn > 1)
             `);
         } catch (_) { }
 
