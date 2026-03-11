@@ -184,7 +184,7 @@ const MissionControl: React.FC = () => {
                             {/* Level 1 — Directors */}
                             {directors.length > 0 && (
                                 <>
-                                    <div className={`grid gap-4 max-w-3xl mx-auto ${directors.length === 1 ? 'max-w-md' : `grid-cols-${Math.min(directors.length, 3)}`}`}>
+                                    <div className={`grid gap-4 ${directors.length === 1 ? 'max-w-md mx-auto' : `grid-cols-${Math.min(directors.length, 3)}`}`}>
                                         {directors.map(agent => (
                                             <AgentCard key={agent.id} agent={agent} tier="top" isChatting={chatAgent?.id === agent.id} onClick={() => openChat(agent)} />
                                         ))}
@@ -207,7 +207,7 @@ const MissionControl: React.FC = () => {
                                         <p className="text-center text-[9px] font-black uppercase tracking-[0.2em] text-white/20 mb-3">
                                             {CATEGORY_LABELS[catKey]}
                                         </p>
-                                        <div className={`grid gap-3 max-w-4xl mx-auto`}
+                                        <div className={`grid gap-3`}
                                             style={{ gridTemplateColumns: `repeat(${Math.min(catAgents.length, 4)}, 1fr)` }}>
                                             {catAgents.map(agent => (
                                                 <div key={agent.id}>
