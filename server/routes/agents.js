@@ -6,6 +6,7 @@ const router = express.Router();
 
 // ── Auto-create Agent table ───────────────────────────────────────────────
 let tableReady = false;
+let _tableError = null;
 const ensureTable = async () => {
     if (tableReady) return;
     try {
@@ -34,6 +35,7 @@ const ensureTable = async () => {
         tableReady = true;
         console.log('Agent table ensured successfully');
     } catch (err) {
+        _tableError = err.message;
         console.error('Agent table init error:', err.message);
         // Try to check if table already exists despite error
         try {
@@ -159,6 +161,7 @@ router.get('/', authMiddleware, async (req, res) => {
         const clubId = req.user.clubId || null;
         debug.clubId = clubId;
         debug.userKeys = Object.keys(req.user || {});
+        debug.tableError = _tableError;
 
         // Auto-seed if no agents exist
         try {
