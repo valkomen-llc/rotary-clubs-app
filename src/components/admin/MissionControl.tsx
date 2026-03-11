@@ -36,8 +36,8 @@ const AgentCard: React.FC<{
         className={`
             relative group cursor-pointer rounded-xl border transition-all duration-300
             ${isChatting
-                ? 'border-amber-500/60 bg-white/[0.08] shadow-lg shadow-amber-500/10'
-                : 'border-white/10 bg-white/[0.04] hover:border-white/25 hover:bg-white/[0.07]'}
+                ? 'border-[#F7A81B]/60 bg-white/[0.10] shadow-lg shadow-[#F7A81B]/15'
+                : 'border-[#00A2E0]/15 bg-white/[0.04] hover:border-[#00A2E0]/40 hover:bg-white/[0.08]'}
             ${tier === 'top' ? 'px-6 py-5' : tier === 'mid' ? 'px-5 py-4' : 'px-4 py-3.5'}
         `}
     >
@@ -67,7 +67,7 @@ const AgentCard: React.FC<{
 /* ─── Connector Line ─── */
 const VLine: React.FC<{ h?: string }> = ({ h = '28px' }) => (
     <div className="flex justify-center">
-        <div style={{ width: '2px', height: h, background: 'linear-gradient(180deg, #f59e0b, rgba(245,158,11,0.2))' }} />
+        <div style={{ width: '2px', height: h, background: 'linear-gradient(180deg, #F7A81B, rgba(247,168,27,0.15))' }} />
     </div>
 );
 
@@ -163,7 +163,7 @@ const MissionControl: React.FC = () => {
             <div className="px-8 pt-6 pb-3">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gray-900 to-gray-700 flex items-center justify-center shadow-lg">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#17458F] to-[#0067C8] flex items-center justify-center shadow-lg shadow-[#0067C8]/30">
                             <Radio className="w-5 h-5 text-white" />
                         </div>
                         <div>
@@ -184,16 +184,35 @@ const MissionControl: React.FC = () => {
                 <div
                     className={`relative rounded-2xl overflow-hidden overflow-y-auto transition-all duration-500 ${chatAgent ? 'w-[55%]' : 'w-full'}`}
                     style={{
-                        background: 'linear-gradient(180deg, #0c1445 0%, #162058 40%, #1a2460 70%, #131b4d 100%)',
+                        background: 'linear-gradient(160deg, #17458F 0%, #0067C8 30%, #17458F 60%, #0d2d5e 100%)',
                         height: 'calc(100vh - 320px)', minHeight: '450px',
                     }}
                 >
+                    {/* Cybernetic grid overlay */}
+                    <div className="absolute inset-0 pointer-events-none" style={{
+                        backgroundImage: `
+                            linear-gradient(rgba(0,162,224,0.06) 1px, transparent 1px),
+                            linear-gradient(90deg, rgba(0,162,224,0.06) 1px, transparent 1px)
+                        `,
+                        backgroundSize: '40px 40px',
+                    }} />
+                    {/* Top glow accent */}
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[60%] h-[2px]" style={{
+                        background: 'linear-gradient(90deg, transparent, #00A2E0, #F7A81B, #00A2E0, transparent)',
+                    }} />
+                    {/* Corner glow */}
+                    <div className="absolute top-0 right-0 w-48 h-48 pointer-events-none" style={{
+                        background: 'radial-gradient(circle at top right, rgba(0,162,224,0.12), transparent 70%)',
+                    }} />
+                    <div className="absolute bottom-0 left-0 w-48 h-48 pointer-events-none" style={{
+                        background: 'radial-gradient(circle at bottom left, rgba(247,168,27,0.08), transparent 70%)',
+                    }} />
                     {loadingAgents ? (
                         <div className="flex items-center justify-center h-full">
-                            <div className="w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                            <div className="w-8 h-8 border-4 border-[#00A2E0] border-t-transparent rounded-full animate-spin" />
                         </div>
                     ) : (
-                        <div className="p-6 md:p-8">
+                        <div className="relative p-6 md:p-8">
                             {/* Level 1 — Directors */}
                             {directors.length > 0 && (
                                 <>
@@ -205,7 +224,7 @@ const MissionControl: React.FC = () => {
                                     <VLine />
                                     <div className="flex justify-center">
                                         <div className="w-full max-w-lg relative">
-                                            <div className="absolute top-0 left-1/4 right-1/4 h-[2px]" style={{ background: 'linear-gradient(90deg, rgba(245,158,11,0.2), #f59e0b, rgba(245,158,11,0.2))' }} />
+                                            <div className="absolute top-0 left-1/4 right-1/4 h-[2px]" style={{ background: 'linear-gradient(90deg, rgba(247,168,27,0.15), #F7A81B, rgba(247,168,27,0.15))' }} />
                                         </div>
                                     </div>
                                 </>
@@ -314,6 +333,10 @@ const MissionControl: React.FC = () => {
                 @keyframes slideInRight {
                     from { opacity: 0; transform: translateX(20px); }
                     to { opacity: 1; transform: translateX(0); }
+                }
+                @keyframes cyberPulse {
+                    0%, 100% { opacity: 0.06; }
+                    50% { opacity: 0.12; }
                 }
             `}</style>
         </div>
