@@ -15,6 +15,7 @@ const Involucrate = () => {
             color: 'bg-blue-600',
             lightBg: 'bg-blue-50',
             lightText: 'text-blue-600',
+            asunto: 'Quiero ser socio',
         },
         {
             icon: Heart,
@@ -23,6 +24,7 @@ const Involucrate = () => {
             color: 'bg-rose-500',
             lightBg: 'bg-rose-50',
             lightText: 'text-rose-500',
+            asunto: 'Información general',
         },
         {
             icon: Globe,
@@ -31,6 +33,7 @@ const Involucrate = () => {
             color: 'bg-emerald-500',
             lightBg: 'bg-emerald-50',
             lightText: 'text-emerald-500',
+            asunto: 'Donaciones',
         },
     ];
 
@@ -106,7 +109,7 @@ const Involucrate = () => {
                                 <h3 className="text-xl font-bold text-gray-900 mb-3">{forma.title}</h3>
                                 <p className="text-gray-600 leading-relaxed mb-6">{forma.desc}</p>
                                 <Link
-                                    to="/contacto"
+                                    to={`/contacto?asunto=${encodeURIComponent(forma.asunto)}`}
                                     className={`inline-flex items-center gap-2 ${forma.lightText} font-bold text-sm hover:gap-3 transition-all`}
                                 >
                                     Más información <ArrowRight className="w-4 h-4" />

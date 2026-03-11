@@ -18,26 +18,29 @@ const ensureTable = async () => {
             source VARCHAR(50) DEFAULT 'contact_form',
             status VARCHAR(30) DEFAULT 'new',
             notes TEXT,
+            metadata JSONB DEFAULT '{}',
             "createdAt" TIMESTAMPTZ DEFAULT NOW(),
             "updatedAt" TIMESTAMPTZ DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_lead_club ON "Lead" ("clubId", "createdAt" DESC);
         CREATE INDEX IF NOT EXISTS idx_lead_status ON "Lead" (status);
     `);
+    // Add metadata column if table already existed without it
+    await db.query(`ALTER TABLE "Lead" ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'`).catch(() => { });
 };
 ensureTable().catch(err => console.error('Lead table init:', err.message));
 
 // ── PUBLIC: Submit a lead from contact form (no auth needed) ──────────────
 router.post('/submit', async (req, res) => {
     try {
-        const { name, email, phone, subject, message, clubId, source } = req.body;
+        const { name, email, phone, subject, message, clubId, source, metadata } = req.body;
         if (!name || !email) return res.status(400).json({ error: 'name and email are required' });
 
         const result = await db.query(
-            `INSERT INTO "Lead" (name, email, phone, subject, message, "clubId", source)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
+            `INSERT INTO "Lead" (name, email, phone, subject, message, "clubId", source, metadata)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              RETURNING id, name, email, "createdAt"`,
-            [name, email, phone || null, subject || null, message || null, clubId || null, source || 'contact_form']
+            [name, email, phone || null, subject || null, message || null, clubId || null, source || 'contact_form', JSON.stringify(metadata || {})]
         );
 
         res.status(201).json({ success: true, lead: result.rows[0] });

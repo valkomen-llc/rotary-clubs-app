@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   MapPin,
   Phone,
@@ -11,12 +11,15 @@ import {
   MessageCircle,
   User,
   AtSign,
-  FileText
+  FileText,
+  Briefcase,
+  Clock,
 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
+import { useSearchParams } from 'react-router-dom';
 
 const redesSocialesIconMap: Record<string, React.ElementType> = {
   Facebook,
@@ -29,15 +32,38 @@ const redesSocialesIconMap: Record<string, React.ElementType> = {
 const Contacto = () => {
   const { club } = useClub();
   const { sections } = useCMSContent('contacto', club.id);
+  const [searchParams] = useSearchParams();
+
   const [formData, setFormData] = useState({
     nombre: '',
+    apellido: '',
     email: '',
     telefono: '',
     asunto: '',
-    mensaje: ''
+    mensaje: '',
+    // Extended fields
+    profesion: '',
+    empleador: '',
+    rangoEdad: '',
+    genero: '',
+    tipoTelefono: '',
+    paisPrefijo: '',
+    horaContacto: '',
+    metodoContacto: '',
   });
   const [enviado, setEnviado] = useState(false);
   const [enviando, setEnviando] = useState(false);
+
+  // Pre-select subject from URL param (?asunto=Quiero+ser+socio)
+  useEffect(() => {
+    const asuntoParam = searchParams.get('asunto');
+    if (asuntoParam) {
+      setFormData(prev => ({ ...prev, asunto: asuntoParam }));
+    }
+  }, [searchParams]);
+
+  // Determine if extended fields should show
+  const showExtended = formData.asunto === 'Quiero ser socio' || formData.asunto === 'Donaciones';
 
   const getC = (section: string, field: string, fallback: string) => {
     return sections[section]?.[field] || fallback;
@@ -91,22 +117,43 @@ const Contacto = () => {
     setEnviando(true);
     try {
       const API = import.meta.env.VITE_API_URL || '/api';
+      const fullName = showExtended
+        ? `${formData.nombre} ${formData.apellido}`.trim()
+        : formData.nombre;
+
+      const metadata = showExtended ? {
+        apellido: formData.apellido,
+        profesion: formData.profesion,
+        empleador: formData.empleador,
+        rangoEdad: formData.rangoEdad,
+        genero: formData.genero,
+        tipoTelefono: formData.tipoTelefono,
+        paisPrefijo: formData.paisPrefijo,
+        horaContacto: formData.horaContacto,
+        metodoContacto: formData.metodoContacto,
+      } : {};
+
       const res = await fetch(`${API}/leads/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: formData.nombre,
+          name: fullName,
           email: formData.email,
           phone: formData.telefono || null,
           subject: formData.asunto,
           message: formData.mensaje,
           clubId: club.id,
-          source: 'contact_form',
+          source: showExtended ? 'involucrate_form' : 'contact_form',
+          metadata,
         }),
       });
       if (res.ok) {
         setEnviado(true);
-        setFormData({ nombre: '', email: '', telefono: '', asunto: '', mensaje: '' });
+        setFormData({
+          nombre: '', apellido: '', email: '', telefono: '', asunto: '', mensaje: '',
+          profesion: '', empleador: '', rangoEdad: '', genero: '',
+          tipoTelefono: '', paisPrefijo: '', horaContacto: '', metodoContacto: '',
+        });
         setTimeout(() => setEnviado(false), 5000);
       }
     } catch (err) {
@@ -198,101 +245,260 @@ const Contacto = () => {
               )}
 
               <form onSubmit={handleSubmit} className="space-y-5">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  <div>
-                    <label htmlFor="nombre" className="block text-sm font-medium text-gray-700 mb-2">
-                      Nombre completo *
-                    </label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                      <input
-                        type="text"
-                        id="nombre"
-                        name="nombre"
-                        required
-                        value={formData.nombre}
-                        onChange={handleChange}
-                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
-                        placeholder="Tu nombre"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                      Correo electrónico *
-                    </label>
-                    <div className="relative">
-                      <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                      <input
-                        type="email"
-                        id="email"
-                        name="email"
-                        required
-                        value={formData.email}
-                        onChange={handleChange}
-                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
-                        placeholder="tu@email.com"
-                      />
-                    </div>
+                {/* Asunto FIRST — controls which fields appear */}
+                <div>
+                  <label htmlFor="asunto" className="block text-sm font-medium text-gray-700 mb-2">
+                    Asunto *
+                  </label>
+                  <div className="relative">
+                    <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <select
+                      id="asunto"
+                      name="asunto"
+                      required
+                      value={formData.asunto}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all appearance-none bg-white"
+                    >
+                      <option value="">Selecciona un asunto</option>
+                      {asuntos.map((asunto: string, index: number) => (
+                        <option key={index} value={asunto}>{asunto}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  <div>
-                    <label htmlFor="telefono" className="block text-sm font-medium text-gray-700 mb-2">
-                      Teléfono
-                    </label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                      <input
-                        type="tel"
-                        id="telefono"
-                        name="telefono"
-                        value={formData.telefono}
-                        onChange={handleChange}
-                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
-                        placeholder="+57"
-                      />
-                    </div>
+                {showExtended && (
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-2">
+                    <p className="text-sm text-blue-800 font-medium">
+                      📋 Completa la información adicional para que podamos conocerte mejor y brindarte una atención personalizada.
+                    </p>
                   </div>
-                  <div>
-                    <label htmlFor="asunto" className="block text-sm font-medium text-gray-700 mb-2">
-                      Asunto *
-                    </label>
-                    <div className="relative">
-                      <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                      <select
-                        id="asunto"
-                        name="asunto"
-                        required
-                        value={formData.asunto}
-                        onChange={handleChange}
-                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all appearance-none bg-white"
-                      >
-                        <option value="">Selecciona un asunto</option>
-                        {asuntos.map((asunto: string, index: number) => (
-                          <option key={index} value={asunto}>{asunto}</option>
-                        ))}
+                )}
+
+                {/* ─── SECCIÓN: Acerca de mí (extended) ─── */}
+                {showExtended ? (
+                  <>
+                    <h3 className="text-lg font-bold text-gray-800 border-b border-gray-200 pb-2">Acerca de mí</h3>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      <div>
+                        <label htmlFor="nombre" className="block text-sm font-medium text-gray-700 mb-2">
+                          Nombre *
+                        </label>
+                        <input type="text" id="nombre" name="nombre" required value={formData.nombre} onChange={handleChange}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
+                          placeholder="Tu nombre" />
+                      </div>
+                      <div>
+                        <label htmlFor="apellido" className="block text-sm font-medium text-gray-700 mb-2">
+                          Apellido *
+                        </label>
+                        <input type="text" id="apellido" name="apellido" required value={formData.apellido} onChange={handleChange}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
+                          placeholder="Tu apellido" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+                        Correo electrónico *
+                      </label>
+                      <div className="relative">
+                        <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        <input type="email" id="email" name="email" required value={formData.email} onChange={handleChange}
+                          className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
+                          placeholder="tu@email.com" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      <div>
+                        <label htmlFor="profesion" className="block text-sm font-medium text-gray-700 mb-2">
+                          Profesión *
+                        </label>
+                        <div className="relative">
+                          <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                          <input type="text" id="profesion" name="profesion" required value={formData.profesion} onChange={handleChange}
+                            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
+                            placeholder="Tu profesión" />
+                        </div>
+                      </div>
+                      <div>
+                        <label htmlFor="empleador" className="block text-sm font-medium text-gray-700 mb-2">
+                          Empleador
+                        </label>
+                        <input type="text" id="empleador" name="empleador" value={formData.empleador} onChange={handleChange}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
+                          placeholder="Empresa u organización" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      <div>
+                        <label htmlFor="rangoEdad" className="block text-sm font-medium text-gray-700 mb-2">
+                          Rango de edad *
+                        </label>
+                        <select id="rangoEdad" name="rangoEdad" required value={formData.rangoEdad} onChange={handleChange}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all appearance-none bg-white">
+                          <option value="">- Seleccione -</option>
+                          <option value="18-25">18 - 25 años</option>
+                          <option value="26-35">26 - 35 años</option>
+                          <option value="36-45">36 - 45 años</option>
+                          <option value="46-55">46 - 55 años</option>
+                          <option value="56-65">56 - 65 años</option>
+                          <option value="65+">65+ años</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="genero" className="block text-sm font-medium text-gray-700 mb-2">
+                          Género
+                        </label>
+                        <select id="genero" name="genero" value={formData.genero} onChange={handleChange}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all appearance-none bg-white">
+                          <option value="">- Seleccione -</option>
+                          <option value="masculino">Masculino</option>
+                          <option value="femenino">Femenino</option>
+                          <option value="otro">Otro</option>
+                          <option value="prefiero-no-decir">Prefiero no decir</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Teléfono preferido */}
+                    <h3 className="text-lg font-bold text-gray-800 border-b border-gray-200 pb-2 mt-4">Teléfono preferido</h3>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      <div>
+                        <label htmlFor="telefono" className="block text-sm font-medium text-gray-700 mb-2">
+                          Teléfono
+                        </label>
+                        <div className="relative">
+                          <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                          <input type="tel" id="telefono" name="telefono" value={formData.telefono} onChange={handleChange}
+                            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
+                            placeholder="+57 300 123 4567" />
+                        </div>
+                      </div>
+                      <div>
+                        <label htmlFor="tipoTelefono" className="block text-sm font-medium text-gray-700 mb-2">
+                          Tipo
+                        </label>
+                        <select id="tipoTelefono" name="tipoTelefono" value={formData.tipoTelefono} onChange={handleChange}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all appearance-none bg-white">
+                          <option value="">- Seleccione -</option>
+                          <option value="celular">Celular</option>
+                          <option value="fijo">Fijo</option>
+                          <option value="trabajo">Trabajo</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      <div>
+                        <label htmlFor="paisPrefijo" className="block text-sm font-medium text-gray-700 mb-2">
+                          País (prefijo)
+                        </label>
+                        <select id="paisPrefijo" name="paisPrefijo" value={formData.paisPrefijo} onChange={handleChange}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all appearance-none bg-white">
+                          <option value="">- Seleccione -</option>
+                          <option value="+57">🇨🇴 Colombia (+57)</option>
+                          <option value="+1">🇺🇸 Estados Unidos (+1)</option>
+                          <option value="+52">🇲🇽 México (+52)</option>
+                          <option value="+34">🇪🇸 España (+34)</option>
+                          <option value="+54">🇦🇷 Argentina (+54)</option>
+                          <option value="+56">🇨🇱 Chile (+56)</option>
+                          <option value="+51">🇵🇪 Perú (+51)</option>
+                          <option value="+593">🇪🇨 Ecuador (+593)</option>
+                          <option value="+58">🇻🇪 Venezuela (+58)</option>
+                          <option value="otro">Otro</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="horaContacto" className="block text-sm font-medium text-gray-700 mb-2">
+                          Hora en que prefiero que me llamen
+                        </label>
+                        <div className="relative">
+                          <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                          <input type="text" id="horaContacto" name="horaContacto" value={formData.horaContacto} onChange={handleChange}
+                            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
+                            placeholder="Ej: 9:00 AM - 12:00 PM" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label htmlFor="metodoContacto" className="block text-sm font-medium text-gray-700 mb-2">
+                        Método de contacto preferido
+                      </label>
+                      <select id="metodoContacto" name="metodoContacto" value={formData.metodoContacto} onChange={handleChange}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all appearance-none bg-white">
+                        <option value="">- Seleccione -</option>
+                        <option value="email">Correo electrónico</option>
+                        <option value="telefono">Teléfono</option>
+                        <option value="whatsapp">WhatsApp</option>
+                        <option value="cualquiera">Cualquiera</option>
                       </select>
                     </div>
-                  </div>
-                </div>
+                  </>
+                ) : (
+                  <>
+                    {/* ─── Standard form fields ─── */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      <div>
+                        <label htmlFor="nombre" className="block text-sm font-medium text-gray-700 mb-2">
+                          Nombre completo *
+                        </label>
+                        <div className="relative">
+                          <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                          <input type="text" id="nombre" name="nombre" required value={formData.nombre} onChange={handleChange}
+                            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
+                            placeholder="Tu nombre" />
+                        </div>
+                      </div>
+                      <div>
+                        <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+                          Correo electrónico *
+                        </label>
+                        <div className="relative">
+                          <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                          <input type="email" id="email" name="email" required value={formData.email} onChange={handleChange}
+                            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
+                            placeholder="tu@email.com" />
+                        </div>
+                      </div>
+                    </div>
 
+                    <div>
+                      <label htmlFor="telefono" className="block text-sm font-medium text-gray-700 mb-2">
+                        Teléfono
+                      </label>
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        <input type="tel" id="telefono" name="telefono" value={formData.telefono} onChange={handleChange}
+                          className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
+                          placeholder="+57" />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Mensaje — always visible */}
                 <div>
                   <label htmlFor="mensaje" className="block text-sm font-medium text-gray-700 mb-2">
-                    Mensaje *
+                    Mensaje {!showExtended && '*'}
                   </label>
                   <div className="relative">
                     <MessageCircle className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
                     <textarea
                       id="mensaje"
                       name="mensaje"
-                      required
-                      rows={5}
+                      required={!showExtended}
+                      rows={showExtended ? 3 : 5}
                       value={formData.mensaje}
                       onChange={handleChange}
                       className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all resize-none"
-                      placeholder="Escribe tu mensaje aquí..."
+                      placeholder={showExtended ? "¿Algo que quieras contarnos? (opcional)" : "Escribe tu mensaje aquí..."}
                     />
                   </div>
                 </div>
