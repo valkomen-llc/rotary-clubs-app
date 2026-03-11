@@ -134,44 +134,6 @@ const MissionControl: React.FC = () => {
                     }} />
 
 
-
-                    {/* Center — Rotary Logo */}
-                    <div className="absolute top-[6%] left-1/2 -translate-x-1/2 z-10">
-                        <div className="relative">
-                            {/* Glow behind logo */}
-                            <div className="absolute inset-0 -m-4 rounded-full" style={{
-                                background: 'radial-gradient(circle, rgba(251,191,36,0.25) 0%, transparent 70%)',
-                                filter: 'blur(10px)',
-                            }} />
-                            {/* Rotary Gear SVG */}
-                            <svg viewBox="0 0 100 100" className="w-20 h-20 md:w-24 md:h-24 relative z-10" style={{ filter: 'drop-shadow(0 0 15px rgba(251,191,36,0.4))' }}>
-                                {/* Outer gear teeth */}
-                                <circle cx="50" cy="50" r="45" fill="none" stroke="#d4a017" strokeWidth="2" opacity="0.6" />
-                                {[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((angle, i) => {
-                                    const rad = (angle * Math.PI) / 180;
-                                    const x1 = 50 + 38 * Math.cos(rad); const y1 = 50 + 38 * Math.sin(rad);
-                                    const x2 = 50 + 47 * Math.cos(rad); const y2 = 50 + 47 * Math.sin(rad);
-                                    return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#d4a017" strokeWidth="6" strokeLinecap="round" opacity="0.8" />;
-                                })}
-                                {/* Inner circle */}
-                                <circle cx="50" cy="50" r="32" fill="none" stroke="#d4a017" strokeWidth="2.5" opacity="0.9" />
-                                {/* Gear body */}
-                                <circle cx="50" cy="50" r="28" fill="#1a2460" stroke="#c99a0c" strokeWidth="1.5" />
-                                {/* Rotary wheel spokes */}
-                                {[0, 60, 120, 180, 240, 300].map((angle, i) => {
-                                    const rad = (angle * Math.PI) / 180;
-                                    return <line key={`s-${i}`} x1="50" y1="50" x2={50 + 22 * Math.cos(rad)} y2={50 + 22 * Math.sin(rad)} stroke="#c99a0c" strokeWidth="2.5" opacity="0.8" />;
-                                })}
-                                <circle cx="50" cy="50" r="8" fill="#c99a0c" opacity="0.9" />
-                                <circle cx="50" cy="50" r="4" fill="#1a2460" />
-                                {/* Text */}
-                                <text x="50" y="88" textAnchor="middle" fill="#c99a0c" fontSize="5.5" fontWeight="bold" fontFamily="Arial" opacity="0.9">ROTARY</text>
-                            </svg>
-                        </div>
-                    </div>
-
-
-
                     {/* === FLOOR === */}
                     <div className="absolute bottom-0 left-0 right-0" style={{
                         height: '55%',
@@ -186,19 +148,7 @@ const MissionControl: React.FC = () => {
                         }} />
                     </div>
 
-                    {/* === DECORATIONS === */}
-                    <div className="absolute left-[1%] bottom-[8%] text-xl opacity-40 select-none">🌿</div>
-                    <div className="absolute right-[2%] bottom-[25%] text-sm opacity-35 select-none">🪴</div>
-                    <div className="absolute left-[2%] bottom-[35%] text-xs opacity-30 select-none">☕</div>
 
-                    {/* Robot left */}
-                    <div className="absolute left-[1%] bottom-[15%] select-none" style={{ fontSize: '28px', opacity: 0.7, filter: 'drop-shadow(0 0 6px rgba(96,165,250,0.3))' }}>
-                        🤖
-                    </div>
-                    {/* Robot right */}
-                    <div className="absolute right-[1%] bottom-[45%] select-none" style={{ fontSize: '22px', opacity: 0.5, filter: 'drop-shadow(0 0 6px rgba(96,165,250,0.3))' }}>
-                        🤖
-                    </div>
 
                     {/* === AGENTS AT WORKSTATIONS === */}
                     {AGENTS.map(agent => {
