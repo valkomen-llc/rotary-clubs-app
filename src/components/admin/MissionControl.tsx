@@ -133,17 +133,10 @@ const MissionControl: React.FC = () => {
                         background: 'radial-gradient(ellipse at top, rgba(251,191,36,0.08) 0%, transparent 70%)',
                     }} />
 
-                    {/* === WALL SCREENS === */}
-                    {/* Left screen — World Map */}
-                    <div className="absolute top-[4%] left-[3%] w-[28%] h-[28%] rounded-lg overflow-hidden border border-white/10 shadow-lg" style={{
-                        boxShadow: '0 0 30px rgba(59,130,246,0.15), inset 0 0 20px rgba(0,0,0,0.3)',
-                    }}>
-                        <img src="/mission-control-map.png" alt="World Map" className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
-                    </div>
+
 
                     {/* Center — Rotary Logo */}
-                    <div className="absolute top-[2%] left-1/2 -translate-x-1/2 z-10">
+                    <div className="absolute top-[6%] left-1/2 -translate-x-1/2 z-10">
                         <div className="relative">
                             {/* Glow behind logo */}
                             <div className="absolute inset-0 -m-4 rounded-full" style={{
@@ -177,21 +170,7 @@ const MissionControl: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Right screen — Analytics */}
-                    <div className="absolute top-[4%] right-[3%] w-[28%] h-[28%] rounded-lg overflow-hidden border border-white/10 shadow-lg" style={{
-                        boxShadow: '0 0 30px rgba(139,92,246,0.15), inset 0 0 20px rgba(0,0,0,0.3)',
-                    }}>
-                        <img src="/mission-control-charts.png" alt="Analytics" className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
-                    </div>
 
-                    {/* Small center screen — Social Feed (below logo) */}
-                    <div className="absolute top-[28%] left-1/2 -translate-x-1/2 w-[22%] h-[14%] rounded-md overflow-hidden border border-white/10" style={{
-                        boxShadow: '0 0 20px rgba(96,165,250,0.1)',
-                    }}>
-                        <img src="/mission-control-social.png" alt="Social" className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-                    </div>
 
                     {/* === FLOOR === */}
                     <div className="absolute bottom-0 left-0 right-0" style={{
