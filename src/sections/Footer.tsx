@@ -108,6 +108,10 @@ const Footer = () => {
             <div className="text-xs text-white/60 text-center md:text-left">
               © {new Date().getFullYear()} {club.name}. Todos los derechos reservados. | Powered by{' '}
               <a href="https://valkomen.co" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors font-medium">Valkomen LLC</a>
+              {' · '}
+              <a href="https://my.rotary.org/privacy-policy" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Política de privacidad</a>
+              {' · '}
+              <a href="https://my.rotary.org/terms-of-use" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Condiciones de uso</a>
             </div>
             <div className="flex items-center gap-4">
               {club.social.map((link, idx) => {
