@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
     MessageCircle, Palette, Globe, FileText, FolderKanban,
-    Users, Rocket, Sparkles, Calendar, Activity, Radio,
-    Shield, Zap, X, Send, Loader2,
+    Users, Rocket, Sparkles, Calendar, Radio,
+    X, Send, Loader2,
 } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -352,23 +352,7 @@ const MissionControl: React.FC = () => {
                 )}
             </div>
 
-            {/* Footer */}
-            <div className="bg-gray-50/80 border-t border-gray-100 px-8 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-6">
-                    <div className="flex items-center gap-2">
-                        <Shield className="w-4 h-4 text-gray-400" />
-                        <span className="text-[10px] font-bold text-gray-500">Powered by OpenAI GPT-4 · Gemini</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Activity className="w-4 h-4 text-emerald-400" />
-                        <span className="text-[10px] font-bold text-gray-500">Todos los sistemas operativos</span>
-                    </div>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Zap className="w-3.5 h-3.5 text-amber-400" />
-                    <span className="text-[10px] font-bold text-gray-400">Valkomen AI Platform v2.0</span>
-                </div>
-            </div>
+
 
             {/* CSS Animations */}
             <style>{`
