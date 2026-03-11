@@ -43,7 +43,8 @@ const AgentProgressBar: React.FC = () => {
 
     const fetchProgress = useCallback(async () => {
         try {
-            const res = await fetch(`${API_URL}/site-progress`, {
+            const hostname = window.location.hostname;
+            const res = await fetch(`${API_URL}/site-progress?hostname=${encodeURIComponent(hostname)}`, {
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token || localStorage.getItem('rotary_token')}`,

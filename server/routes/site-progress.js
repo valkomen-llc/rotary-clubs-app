@@ -218,9 +218,25 @@ const AGENT_AREAS = [
 // ── GET /api/site-progress ────────────────────────────────────────────────
 router.get('/', authMiddleware, async (req, res) => {
     try {
-        const clubId = req.user.clubId;
+        let clubId = req.user.clubId;
+
+        // If no clubId in JWT (super admin), resolve from hostname
         if (!clubId) {
-            // Super admin: return a sample overview
+            const hostname = req.query.hostname;
+            if (hostname && hostname !== 'app.clubplatform.org' && hostname !== 'clubplatform.org' && hostname !== 'localhost') {
+                // Try to find club by custom domain or subdomain
+                const clubResult = await db.query(
+                    `SELECT id FROM "Club" WHERE domain = $1 OR subdomain = $2 LIMIT 1`,
+                    [hostname, hostname.replace('.clubplatform.org', '')]
+                );
+                if (clubResult.rows.length > 0) {
+                    clubId = clubResult.rows[0].id;
+                }
+            }
+        }
+
+        if (!clubId) {
+            // Truly super admin with no club context
             return res.json({
                 progress: AGENT_AREAS.map(a => ({
                     agentName: a.name, area: a.area, pct: 100,
