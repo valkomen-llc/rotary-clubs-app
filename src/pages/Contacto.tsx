@@ -11,6 +11,7 @@ import {
   Clock,
   Mail,
   ChevronDown,
+  Heart,
 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
@@ -47,6 +48,7 @@ const Contacto = () => {
   const [enviado, setEnviado] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [donationAmount, setDonationAmount] = useState('50');
 
   // Pre-select subject from URL param (?asunto=Quiero+ser+socio)
   useEffect(() => {
@@ -699,6 +701,55 @@ const Contacto = () => {
                         </div>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Donation Card — only when "Donaciones" */}
+              {formData.asunto === 'Donaciones' && (
+                <div className="mt-10">
+                  <div className="bg-white rounded-xl shadow-lg p-8 border border-gray-100">
+                    <h3 className="text-xl font-bold text-gray-800 text-center mb-3">
+                      Aporte voluntario al Club
+                    </h3>
+                    <p className="text-gray-600 text-sm text-center mb-8 leading-relaxed">
+                      Tu contribución fortalece el impacto del club {club.name} y sostiene iniciativas de servicio que transforman vidas.
+                    </p>
+
+                    <label className="block text-sm font-semibold text-gray-700 mb-3">Selecciona el monto (USD)</label>
+                    <div className="grid grid-cols-4 gap-2 mb-4">
+                      {['10', '25', '50', '100'].map((amt) => (
+                        <button
+                          key={amt}
+                          type="button"
+                          onClick={() => setDonationAmount(amt)}
+                          className={`py-3 rounded-lg font-bold transition-all border-2 text-sm ${donationAmount === amt
+                              ? 'border-[#9D2235] bg-[#9D2235]/5 text-[#9D2235]'
+                              : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                            }`}
+                        >
+                          ${amt}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="relative mb-6">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
+                      <input
+                        type="number"
+                        placeholder="Otro monto"
+                        value={['10', '25', '50', '100'].includes(donationAmount) ? '' : donationAmount}
+                        onChange={(e) => setDonationAmount(e.target.value)}
+                        className="w-full pl-8 pr-4 py-3 border-2 border-gray-200 rounded-lg focus:border-[#9D2235] outline-none transition-all font-semibold"
+                      />
+                    </div>
+
+                    <a
+                      href="/aportes"
+                      className="w-full bg-[#9D2235] hover:bg-[#8B1E2F] text-white font-bold py-4 rounded-lg flex items-center justify-center gap-3 transition-colors uppercase tracking-widest text-xs"
+                    >
+                      <Heart className="w-5 h-5 fill-current" />
+                      DONAR AHORA
+                    </a>
                   </div>
                 </div>
               )}
