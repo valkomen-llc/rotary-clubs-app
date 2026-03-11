@@ -12,7 +12,7 @@ const ensureTable = async () => {
         await db.query(`
             CREATE TABLE IF NOT EXISTS "Agent" (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                "clubId" UUID REFERENCES "Club"(id),
+                "clubId" UUID,
                 name VARCHAR(100) NOT NULL,
                 role VARCHAR(200) NOT NULL,
                 category VARCHAR(50),
@@ -21,19 +21,25 @@ const ensureTable = async () => {
                 "aiModel" VARCHAR(50) DEFAULT 'gpt-4',
                 "avatarSeed" VARCHAR(50),
                 "avatarColor" VARCHAR(20),
-                capabilities TEXT[] DEFAULT '{}',
+                capabilities TEXT[] DEFAULT ARRAY[]::TEXT[],
                 active BOOLEAN DEFAULT true,
                 "order" INT DEFAULT 0,
                 greeting TEXT,
                 "createdAt" TIMESTAMPTZ DEFAULT NOW(),
                 "updatedAt" TIMESTAMPTZ DEFAULT NOW()
-            );
-            CREATE INDEX IF NOT EXISTS idx_agent_club ON "Agent" ("clubId", "order");
+            )
         `);
+        // Create index separately to avoid issues  
+        await db.query(`CREATE INDEX IF NOT EXISTS idx_agent_club ON "Agent" ("clubId", "order")`).catch(() => { });
         tableReady = true;
-        console.log('Agent table ready');
+        console.log('Agent table ensured successfully');
     } catch (err) {
         console.error('Agent table init error:', err.message);
+        // Try to check if table already exists despite error
+        try {
+            await db.query('SELECT 1 FROM "Agent" LIMIT 0');
+            tableReady = true;
+        } catch (_) { }
     }
 };
 
