@@ -2,11 +2,6 @@ import { useState, useEffect } from 'react';
 import {
   MapPin,
   Phone,
-  Facebook,
-  Instagram,
-  Twitter,
-  Linkedin,
-  Youtube,
   CheckCircle2,
   MessageCircle,
   User,
@@ -21,13 +16,6 @@ import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
 import { useSearchParams } from 'react-router-dom';
 
-const redesSocialesIconMap: Record<string, React.ElementType> = {
-  Facebook,
-  Instagram,
-  Twitter,
-  Linkedin,
-  Youtube
-};
 
 const Contacto = () => {
   const { club } = useClub();
@@ -92,15 +80,7 @@ const Contacto = () => {
     icono: MapPin // Default icon since icon strings need mapping
   })) || defaultInfo;
 
-  const defaultRedes = [
-    { nombre: 'Facebook', icono: Facebook, url: '#', color: 'bg-blue-600' },
-    { nombre: 'Instagram', icono: Instagram, url: '#', color: 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-500' }
-  ];
 
-  const redes = sections['social-list']?.items?.map((item: any) => ({
-    ...item,
-    icono: redesSocialesIconMap[item.red] || Facebook
-  })) || defaultRedes;
 
   const faqs = sections['faq-list']?.items || [
     {
@@ -544,25 +524,27 @@ const Contacto = () => {
                   </>
                 )}
 
-                {/* Mensaje — always visible */}
-                <div>
-                  <label htmlFor="mensaje" className="block text-sm font-medium text-gray-700 mb-2">
-                    Mensaje {!showExtended && '*'}
-                  </label>
-                  <div className="relative">
-                    <MessageCircle className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                    <textarea
-                      id="mensaje"
-                      name="mensaje"
-                      required={!showExtended}
-                      rows={showExtended ? 3 : 5}
-                      value={formData.mensaje}
-                      onChange={handleChange}
-                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all resize-none"
-                      placeholder={showExtended ? "¿Algo que quieras contarnos? (opcional)" : "Escribe tu mensaje aquí..."}
-                    />
+                {/* Mensaje — only for standard form */}
+                {!showExtended && (
+                  <div>
+                    <label htmlFor="mensaje" className="block text-sm font-medium text-gray-700 mb-2">
+                      Mensaje *
+                    </label>
+                    <div className="relative">
+                      <MessageCircle className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                      <textarea
+                        id="mensaje"
+                        name="mensaje"
+                        required
+                        rows={5}
+                        value={formData.mensaje}
+                        onChange={handleChange}
+                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all resize-none"
+                        placeholder="Escribe tu mensaje aquí..."
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <button
                   type="submit"
@@ -606,25 +588,6 @@ const Contacto = () => {
                 </div>
               </div>
 
-              {/* Redes Sociales */}
-              <div>
-                <h3 className="font-bold text-gray-900 mb-4">Síguenos en Redes Sociales</h3>
-                <div className="flex gap-3">
-                  {redes.map((red: any, index: number) => {
-                    const Icono = red.icono;
-                    return (
-                      <a
-                        key={index}
-                        href={red.url}
-                        className={`w-12 h-12 ${red.color || 'bg-rotary-blue'} rounded-full flex items-center justify-center text-white hover:opacity-90 transition-opacity`}
-                        title={red.nombre}
-                      >
-                        <Icono className="w-5 h-5" />
-                      </a>
-                    );
-                  })}
-                </div>
-              </div>
             </div>
           </div>
         </div>
