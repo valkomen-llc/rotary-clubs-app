@@ -1,13 +1,14 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
-    Radio, X, Send, Loader2,
+    Radio, X, Send, Loader2, Paperclip, Mic, MicOff, FileText,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const avatarUrl = (seed: string) => `https://api.dicebear.com/9.x/adventurer/svg?seed=${seed}&backgroundColor=transparent`;
 
-interface ChatMessage { role: 'user' | 'assistant'; text: string; }
+interface ChatAttachment { name: string; type: string; size: number; url: string; }
+interface ChatMessage { role: 'user' | 'assistant'; text: string; attachment?: ChatAttachment; }
 
 interface Agent {
     id: string; name: string; role: string; category: string;
@@ -81,6 +82,10 @@ const MissionControl: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const chatEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [attachment, setAttachment] = useState<ChatAttachment | null>(null);
+    const [isRecording, setIsRecording] = useState(false);
+    const recognitionRef = useRef<any>(null);
 
     const getHeaders = () => ({
         'Content-Type': 'application/json',
@@ -122,19 +127,83 @@ const MissionControl: React.FC = () => {
         setChatAgent(agent);
         setMessages([{ role: 'assistant', text: agent.greeting || `¡Hola! Soy ${agent.name} 👋` }]);
         setInput('');
+        setAttachment(null);
     };
-    const closeChat = () => { setChatAgent(null); setMessages([]); };
+    const closeChat = () => { setChatAgent(null); setMessages([]); setAttachment(null); stopRecording(); };
+
+    // ── File handling ──────────────────────────────────────────────────────
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const url = URL.createObjectURL(file);
+        setAttachment({ name: file.name, type: file.type, size: file.size, url });
+        e.target.value = '';
+    };
+    const removeAttachment = () => {
+        if (attachment) URL.revokeObjectURL(attachment.url);
+        setAttachment(null);
+    };
+    const formatFileSize = (bytes: number) => {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / 1048576).toFixed(1) + ' MB';
+    };
+
+    // ── Voice recording (Web Speech API) ───────────────────────────────────
+    const startRecording = useCallback(() => {
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            alert('Tu navegador no soporta reconocimiento de voz. Usa Chrome o Edge.');
+            return;
+        }
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'es-ES';
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.onresult = (event: any) => {
+            let transcript = '';
+            for (let i = 0; i < event.results.length; i++) {
+                transcript += event.results[i][0].transcript;
+            }
+            setInput(transcript);
+        };
+        recognition.onerror = () => setIsRecording(false);
+        recognition.onend = () => setIsRecording(false);
+        recognition.start();
+        recognitionRef.current = recognition;
+        setIsRecording(true);
+    }, []);
+
+    const stopRecording = useCallback(() => {
+        if (recognitionRef.current) {
+            recognitionRef.current.stop();
+            recognitionRef.current = null;
+        }
+        setIsRecording(false);
+    }, []);
+
+    const toggleRecording = () => {
+        if (isRecording) stopRecording();
+        else startRecording();
+    };
 
     const sendMessage = async () => {
-        if (!input.trim() || !chatAgent || loading) return;
+        if ((!input.trim() && !attachment) || !chatAgent || loading) return;
         const userMsg = input.trim();
+        const currentAttachment = attachment;
         setInput('');
-        setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+        setAttachment(null);
+        if (isRecording) stopRecording();
+        setMessages(prev => [...prev, { role: 'user', text: userMsg || (currentAttachment ? `📎 ${currentAttachment.name}` : ''), attachment: currentAttachment || undefined }]);
         setLoading(true);
         try {
             const res = await fetch(`${API_URL}/ai/agent-chat`, {
                 method: 'POST', headers: getHeaders(),
-                body: JSON.stringify({ message: userMsg, agentId: chatAgent.id, history: messages.map(m => ({ role: m.role, text: m.text })) }),
+                body: JSON.stringify({
+                    message: userMsg + (currentAttachment ? ` [Archivo adjunto: ${currentAttachment.name}]` : ''),
+                    agentId: chatAgent.id,
+                    history: messages.map(m => ({ role: m.role, text: m.text })),
+                }),
             });
             const data = await res.json();
             setMessages(prev => [...prev, { role: 'assistant', text: data.reply || 'No pude responder.' }]);
@@ -288,9 +357,24 @@ const MissionControl: React.FC = () => {
                                             <img src={avatarUrl(chatAgent.avatarSeed)} alt="" className="w-full h-full" />
                                         </div>
                                     )}
-                                    <div className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl text-[12px] leading-relaxed font-medium ${msg.role === 'user' ? 'bg-gray-900 text-white rounded-br-md' : 'bg-gray-100 text-gray-700 rounded-bl-md'
+                                    <div className={`max-w-[80%] rounded-2xl text-[12px] leading-relaxed font-medium overflow-hidden ${msg.role === 'user' ? 'bg-gray-900 text-white rounded-br-md' : 'bg-gray-100 text-gray-700 rounded-bl-md'
                                         }`}>
-                                        {msg.text}
+                                        {msg.attachment && (
+                                            <div className="px-3.5 pt-2.5">
+                                                {msg.attachment.type.startsWith('image/') ? (
+                                                    <img src={msg.attachment.url} alt={msg.attachment.name} className="rounded-lg max-h-40 object-cover" />
+                                                ) : (
+                                                    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${msg.role === 'user' ? 'bg-white/10' : 'bg-white'}`}>
+                                                        <FileText className="w-4 h-4 flex-shrink-0 opacity-60" />
+                                                        <div className="min-w-0">
+                                                            <p className="text-[11px] font-bold truncate">{msg.attachment.name}</p>
+                                                            <p className="text-[9px] opacity-50">{formatFileSize(msg.attachment.size)}</p>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                        {msg.text && <div className="px-3.5 py-2.5">{msg.text}</div>}
                                     </div>
                                 </div>
                             ))}
@@ -310,17 +394,59 @@ const MissionControl: React.FC = () => {
                             <div ref={chatEndRef} />
                         </div>
 
-                        <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-100 bg-white flex-shrink-0">
+                        {/* Attachment preview */}
+                        {attachment && (
+                            <div className="flex items-center gap-2 px-4 py-2 border-t border-gray-50 bg-blue-50/50">
+                                {attachment.type.startsWith('image/') ? (
+                                    <img src={attachment.url} alt="" className="w-10 h-10 rounded-lg object-cover" />
+                                ) : (
+                                    <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center border border-gray-100">
+                                        <FileText className="w-5 h-5 text-gray-400" />
+                                    </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-[11px] font-bold text-gray-700 truncate">{attachment.name}</p>
+                                    <p className="text-[9px] text-gray-400">{formatFileSize(attachment.size)}</p>
+                                </div>
+                                <button onClick={removeAttachment} className="p-1 hover:bg-gray-100 rounded-full">
+                                    <X className="w-3.5 h-3.5 text-gray-400" />
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Input area */}
+                        <div className="flex items-center gap-1.5 px-3 py-2.5 border-t border-gray-100 bg-white flex-shrink-0">
+                            {/* File upload */}
+                            <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelect}
+                                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" />
+                            <button onClick={() => fileInputRef.current?.click()} disabled={loading}
+                                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all disabled:opacity-40"
+                                title="Adjuntar archivo">
+                                <Paperclip className="w-4 h-4" />
+                            </button>
+
+                            {/* Voice */}
+                            <button onClick={toggleRecording} disabled={loading}
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all disabled:opacity-40 ${isRecording ? 'bg-red-50 text-red-500 animate-pulse' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                                    }`}
+                                title={isRecording ? 'Detener grabación' : 'Grabar voz'}>
+                                {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                            </button>
+
+                            {/* Text input */}
                             <input
                                 ref={inputRef} value={input}
                                 onChange={e => setInput(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && sendMessage()}
-                                placeholder={`Pregúntale a ${chatAgent.name}...`}
-                                className="flex-1 px-4 py-2.5 bg-gray-50 rounded-xl text-sm outline-none border border-gray-100 focus:border-gray-300 focus:bg-white transition-all font-medium"
+                                placeholder={isRecording ? '🎙️ Escuchando...' : `Pregúntale a ${chatAgent.name}...`}
+                                className={`flex-1 px-3 py-2 bg-gray-50 rounded-xl text-sm outline-none border transition-all font-medium ${isRecording ? 'border-red-200 bg-red-50/30' : 'border-gray-100 focus:border-gray-300 focus:bg-white'
+                                    }`}
                                 disabled={loading}
                             />
-                            <button onClick={sendMessage} disabled={loading || !input.trim()}
-                                className="w-9 h-9 rounded-xl flex items-center justify-center text-white transition-all disabled:opacity-40"
+
+                            {/* Send */}
+                            <button onClick={sendMessage} disabled={loading || (!input.trim() && !attachment)}
+                                className="w-8 h-8 rounded-lg flex items-center justify-center text-white transition-all disabled:opacity-40"
                                 style={{ background: chatAgent.avatarColor }}>
                                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                             </button>
