@@ -10,6 +10,7 @@ import {
   Briefcase,
   Clock,
   Mail,
+  ChevronDown,
 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
@@ -45,6 +46,7 @@ const Contacto = () => {
   });
   const [enviado, setEnviado] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   // Pre-select subject from URL param (?asunto=Quiero+ser+socio)
   useEffect(() => {
@@ -651,11 +653,25 @@ const Contacto = () => {
             </p>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-3">
             {faqs.map((faq: any, index: number) => (
-              <div key={index} className="bg-white rounded-xl p-6 shadow-sm">
-                <h3 className="font-bold text-gray-900 mb-2">{faq.pregunta}</h3>
-                <p className="text-gray-600">{faq.respuesta}</p>
+              <div key={index} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+                <button
+                  onClick={() => setOpenFaq(openFaq === index ? null : index)}
+                  className="w-full flex items-center justify-between px-6 py-5 text-left hover:bg-gray-50 transition-colors"
+                >
+                  <h3 className="font-bold text-gray-900 pr-4">{faq.pregunta}</h3>
+                  <ChevronDown
+                    className={`w-5 h-5 text-gray-400 flex-shrink-0 transition-transform duration-300 ${openFaq === index ? 'rotate-180' : ''
+                      }`}
+                  />
+                </button>
+                <div
+                  className={`overflow-hidden transition-all duration-300 ease-in-out ${openFaq === index ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+                    }`}
+                >
+                  <p className="px-6 pb-5 text-gray-600 leading-relaxed">{faq.respuesta}</p>
+                </div>
               </div>
             ))}
           </div>
