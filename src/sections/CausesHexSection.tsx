@@ -10,6 +10,7 @@
 */
 
 import { useState, useRef, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Globe } from 'lucide-react';
 import { useClub } from '../contexts/ClubContext';
 
@@ -600,10 +601,10 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
 
         {/* CTA Button */}
         <div className="areas-rotary__cta">
-          <a href="#areas-interes" className="areas-rotary__button">
+          <Link to="/nuestras-causas" className="areas-rotary__button">
             <Globe className="w-5 h-5" />
             Nuestras Áreas de Interés
-          </a>
+          </Link>
         </div>
       </section>
     </>
