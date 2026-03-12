@@ -86,7 +86,7 @@ const NuestrasCausas = () => {
                 }}
             >
                 <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-                    <h1 className="text-3xl md:text-4xl font-bold text-white tracking-wider">
+                    <h1 className="text-4xl md:text-5xl text-white">
                         {getC('header', 'title', "Nuestras Causas")}
                     </h1>
                 </div>
