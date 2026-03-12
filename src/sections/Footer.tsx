@@ -105,7 +105,7 @@ const Footer = () => {
       <div className="border-t border-white/10">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="text-xs text-white/60 text-center md:text-left">
+            <div className="text-white/60 text-center md:text-left" style={{ fontSize: '10px' }}>
               © {new Date().getFullYear()} {club.name}. Todos los derechos reservados. | Powered by{' '}
               <a href="https://valkomen.com" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors font-medium">Valkomen LLC</a>
               {' · '}
