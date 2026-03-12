@@ -59,7 +59,7 @@ const CausesCarousel = () => {
   const visibleCards = getVisibleCards();
 
   return (
-    <section className="py-16 md:py-20 bg-gradient-to-br from-sky-400 via-blue-600 to-purple-900">
+    <section className="py-16 md:py-20">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="relative flex items-center justify-center">
           {/* Left Arrow */}
