@@ -86,7 +86,7 @@ const NuestrasCausas = () => {
                 }}
             >
                 <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-                    <h1 className="text-4xl md:text-5xl text-white">
+                    <h1 className="text-white" style={{ fontSize: '35px' }}>
                         {getC('header', 'title', "Nuestras Causas")}
                     </h1>
                 </div>
@@ -100,13 +100,13 @@ const NuestrasCausas = () => {
                     </p>
 
                     <div className="relative aspect-video rounded-2xl overflow-hidden shadow-2xl mb-16 ring-1 ring-gray-200 bg-black">
-                        <iframe
+                        <video
                             className="w-full h-full"
-                            src={getC('intro', 'videoUrl', "https://www.youtube.com/embed/fA_T7M-f7n0")}
-                            title="Nuestras Causas"
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowFullScreen
-                        ></iframe>
+                            src="https://cdn1-originals.webdamdb.com/13799_162776313?cache=1751402723&response-content-disposition=inline;filename=2024_050_OVERVIEW_60_16x9_ES_SUB.mp4&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cCo6Ly9jZG4xLW9yaWdpbmFscy53ZWJkYW1kYi5jb20vMTM3OTlfMTYyNzc2MzEzP2NhY2hlPTE3NTE0MDI3MjMmcmVzcG9uc2UtY29udGVudC1kaXNwb3NpdGlvbj1pbmxpbmU7ZmlsZW5hbWU9MjAyNF8wNTBfT1ZFUlZJRVdfNjBfMTZ4OV9FU19TVUIubXA0IiwiQ29uZGl0aW9uIjp7IkRhdGVMZXNzVGhhbiI6eyJBV1M6RXBvY2hUaW1lIjoyMTQ3NDE0NDAwfX19XX0_&Signature=kZIoi4xa6z1Gdubae5Hpet4iws1KJIKW0EhxiyWdfUpxUFyYb7opE2TJWp19EBdPcCBaBZ9kmW1WrGTO2k~E5qqfl1KvST8kq54TqNx~FYUE-LXBf-gncwjXL1vNemJNfzhqVXlLqI0d~Yb0oMLnAqzsueHjPWrlCirymfliDQURudYxvFc1VsEFtFqpwKgB9BKkz-RHzYykMXMzidViNnRzJzh3uzv0F6xQaeZYYLQ4SCdQ7j3~1scDm-Wsjia2mc20QLIVscUDSUExU55aJIlqHznDa6fCsrq8~ckDanCgDQgseYJnU4371FXHSkBtNnWlzQZE1tskEGHuKogqCA__&Key-Pair-Id=APKAI2ASI2IOLRFF2RHA"
+                            controls
+                            playsInline
+                            preload="metadata"
+                        />
                     </div>
                 </div>
             </section>
