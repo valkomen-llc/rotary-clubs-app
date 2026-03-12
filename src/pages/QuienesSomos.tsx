@@ -54,7 +54,7 @@ const QuienesSomos = () => {
       </section>
 
       {/* Main Content */}
-      <section className="py-12 md:py-16 bg-rotary-concrete">
+      <section className="py-12 md:py-16 bg-rotary-concrete" style={{ color: '#39424a' }}>
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Intro paragraph */}
           <p className="text-gray-700 mb-8 leading-relaxed">
