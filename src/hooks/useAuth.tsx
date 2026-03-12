@@ -31,7 +31,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (savedToken && savedUser) {
             setToken(savedToken);
             setUser(JSON.parse(savedUser));
+
+            // Validate token is still valid by hitting a lightweight endpoint
+            const apiUrl = import.meta.env.VITE_API_URL || '/api';
+            fetch(`${apiUrl}/admin/stats`, {
+                headers: { Authorization: `Bearer ${savedToken}` },
+            }).then(r => {
+                if (r.status === 401) {
+                    // Token expired — clear stale session
+                    setToken(null);
+                    setUser(null);
+                    localStorage.removeItem('rotary_token');
+                    localStorage.removeItem('rotary_user');
+                }
+            }).catch(() => { /* network error, retain session */ });
         }
+    }, []);
+
+    // Listen for 401 events from any API call to auto-logout
+    useEffect(() => {
+        const handle401 = () => {
+            setToken(null);
+            setUser(null);
+            localStorage.removeItem('rotary_token');
+            localStorage.removeItem('rotary_user');
+        };
+        window.addEventListener('auth:401', handle401);
+        return () => window.removeEventListener('auth:401', handle401);
     }, []);
 
     const login = (newToken: string, newUser: User) => {
