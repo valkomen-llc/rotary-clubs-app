@@ -57,21 +57,21 @@ const QuienesSomos = () => {
       <section className="py-12 md:py-16 bg-rotary-concrete" style={{ color: '#39424a' }}>
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Intro paragraph */}
-          <p className="text-gray-700 mb-8 leading-relaxed">
+          <p className="mb-8 leading-relaxed">
             {getC('main', 'description', "Para resolver los problemas más acuciantes, la dedicación y la visión son requisitos indispensables. Por más de 110 años, la gente de acción de Rotary ha abordado los problemas más graves con pasión, energía y competencia. Ya se traten de proyectos de alfabetización, el fomento de la paz, y el acceso a fuentes de agua y atención de la salud, nos esforzamos por mejorar el mundo, siempre perseverantes hasta cumplir con nuestro cometido.")}
           </p>
 
           {/* Quote */}
-          <h2 className="text-2xl md:text-3xl font-bold text-rotary-blue mb-6 leading-tight">
+          <h2 className="text-2xl md:text-3xl font-bold mb-6 leading-tight">
             {getC('main', 'highlight', "Más allá de lo que Rotary signifique para nosotros, el mundo lo conocerá por las obras que realice.")}
           </h2>
 
           {/* Description and list */}
-          <p className="text-gray-700 mb-4 leading-relaxed">
+          <p className="mb-4 leading-relaxed">
             {getC('main', 'listTitle', `Como socios de el club ${club.name} asumimos la responsabilidad de tomar acción, a fin de abordar los problemas más perniciosos que afectan a la humanidad. Unidos con nuestros 46 000 clubes:`)}
           </p>
 
-          <ul className="space-y-2 mb-10 text-gray-700">
+          <ul className="space-y-2 mb-10">
             {(sections['main']?.items || [
               "Promovemos la paz",
               "Combatimos enfermedades",
@@ -82,33 +82,33 @@ const QuienesSomos = () => {
               "Protegemos el medioambiente"
             ]).map((item: string, i: number) => (
               <li key={i} className="flex items-start gap-2">
-                <span className="text-rotary-blue font-bold">–</span>
+                <span className="font-bold">–</span>
                 <span>{item}</span>
               </li>
             ))}
           </ul>
 
           {/* Nuestra misión */}
-          <h2 className="text-2xl md:text-3xl font-bold text-rotary-blue mb-4">
+          <h2 className="text-2xl md:text-3xl font-bold mb-4">
             Nuestra misión
           </h2>
-          <p className="text-gray-700 mb-8 leading-relaxed">
+          <p className="mb-8 leading-relaxed">
             {getC('mision', 'text', "Ese compromiso sigue vigente hoy gracias a una organización verdaderamente internacional. Apenas 16 años después de su fundación, Rotary contaba con clubes en todos los continentes. Nuestros socios están presentes en todos los rincones del mundo y trabajan para dar solución a los problemas más acuciantes del mundo.")}
           </p>
 
           {/* Declaración de la visión */}
-          <h2 className="text-2xl md:text-3xl font-bold text-rotary-blue mb-4">
+          <h2 className="text-2xl md:text-3xl font-bold mb-4">
             Declaración de la visión
           </h2>
-          <p className="text-gray-700 mb-8 leading-relaxed">
+          <p className="mb-8 leading-relaxed">
             {getC('vision', 'text', "Juntos contemplamos un mundo donde las personas se unen y toman acción para generar un cambio perdurable en nosotros mismos, en nuestras comunidades y en el mundo entero.")}
           </p>
 
           {/* ¿Por qué nos diferenciamos? */}
-          <h2 className="text-2xl md:text-3xl font-bold text-rotary-blue mb-4">
+          <h2 className="text-2xl md:text-3xl font-bold mb-4">
             ¿Por qué nos diferenciamos?
           </h2>
-          <div className="space-y-4 text-gray-700">
+          <div className="space-y-4">
             {(sections['differences']?.items || [
               { title: "Percibimos las cosas de manera distinta", desc: "Nos valemos de nuestra perspectiva multidisciplinaria para afrontar los desafíos desde diversos enfoques." },
               { title: "Tenemos nuestra propia manera de pensar", desc: "Ponemos nuestro liderazgo y experiencia profesional a servicio de los demás para solucionar los problemas sociales que afectan a nuestras comunidades." },
