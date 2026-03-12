@@ -29,7 +29,7 @@ const QuienesSomos = () => {
           <div className="absolute inset-0 bg-black/30" />
         </div>
         <div className="relative h-full flex items-center justify-center">
-          <h1 className="text-4xl md:text-5xl font-bold text-white">
+          <h1 className="text-4xl md:text-5xl text-white">
             {getC('hero', 'title', "Quienes Somos")}
           </h1>
         </div>
@@ -123,7 +123,9 @@ const QuienesSomos = () => {
       </section>
 
       {/* Causes Carousel */}
-      <CausesCarousel />
+      <div className="bg-rotary-geo">
+        <CausesCarousel />
+      </div>
 
       {/* CTA Section */}
       <section className="py-12 md:py-16 bg-gray-50">
