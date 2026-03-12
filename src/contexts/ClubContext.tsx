@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { ClubConfig } from '../config/clubConfig';
-import { getClubByHostname, DEFAULT_CLUB } from '../config/clubConfig';
+import { getClubByHostname } from '../config/clubConfig';
 
 declare global {
     interface Window {
@@ -33,24 +33,6 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return;
         }
 
-        // Super admin portal: provide platform-level config
-        if (isAppPortal) {
-            const platformClub: ClubConfig = {
-                ...DEFAULT_CLUB,
-                id: 'platform',
-                name: 'Rotary Platform',
-                domain: 'app.clubplatform.org',
-                logoText: 'Rotary Platform',
-                logo: 'https://www.rotary.org/sites/all/themes/rotary_rotaryorg/images/defined/rotary-logo-color.png',
-                isMainPlatform: true,
-                onboardingCompleted: true,
-                status: 'active',
-                colors: { primary: '#17458F', secondary: '#F7A81B' },
-            };
-            setClub(platformClub);
-            setIsLoading(false);
-            return;
-        }
         const fetchClub = async () => {
             try {
                 const hostname = window.location.hostname;
