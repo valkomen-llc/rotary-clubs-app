@@ -1,4 +1,5 @@
 import { Star } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import CausesCarousel from '../sections/CausesCarousel';
@@ -130,15 +131,16 @@ const QuienesSomos = () => {
       {/* CTA Section */}
       <section className="py-12 md:py-16 bg-gray-50">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-2xl md:text-3xl font-bold text-rotary-blue mb-6">
+          <h2 className="text-2xl md:text-3xl mb-6" style={{ color: '#39424a' }}>
             ¿Quieres escribir la historia con nosotros?
           </h2>
-          <button
+          <Link
+            to="/involucrate"
             className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
           >
             <Star className="w-5 h-5 text-rotary-gold fill-rotary-gold" />
             Involúcrate en Rotary
-          </button>
+          </Link>
         </div>
       </section>
 
