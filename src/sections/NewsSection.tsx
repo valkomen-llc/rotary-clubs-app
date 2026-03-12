@@ -169,7 +169,7 @@ const NewsSection = () => {
         <div className="text-center mt-10">
           <Link
             to="/blog"
-            className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-bold px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
+            className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
           >
             <Newspaper className="w-5 h-5 text-rotary-gold" />
             <T>Explora más noticias y artículos</T>
