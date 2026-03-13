@@ -128,13 +128,9 @@ const NuestrasCausas = () => {
                             </div>
                         ))}
                     </div>
-                </div>
-            </section>
 
-            {/* Polio Section */}
-            <section className="bg-rotary-concrete">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
-                    <div className="flex flex-col lg:flex-row rounded-3xl overflow-hidden shadow-xl ring-1 ring-gray-100">
+                    {/* Polio - 80px below causes grid */}
+                    <div className="flex flex-col lg:flex-row rounded-3xl overflow-hidden shadow-xl ring-1 ring-gray-100" style={{ marginTop: '80px' }}>
                         <div className="lg:w-1/2 h-[300px] lg:h-auto">
                             <img src={getC('polio', 'image', "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&h=600&fit=crop")} alt="Erradicación de la polio" className="w-full h-full object-cover" />
                         </div>
