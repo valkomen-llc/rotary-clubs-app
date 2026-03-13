@@ -92,14 +92,14 @@ const NuestrasCausas = () => {
                 </div>
             </section>
 
-            {/* Intro Section */}
-            <section className="py-12 md:py-20 bg-rotary-concrete">
-                <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-                    <p className="text-xl md:text-2xl text-gray-700 leading-relaxed mb-12 font-light">
+            {/* Intro + Causes Section */}
+            <section className="bg-rotary-concrete" style={{ paddingTop: '48px', paddingBottom: '64px' }}>
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <p className="text-xl md:text-2xl text-gray-700 leading-relaxed font-light text-center max-w-4xl mx-auto" style={{ marginBottom: '48px' }}>
                         {getC('intro', 'text', "Rotary se concentra en causas para fortalecer las relaciones internacionales, mejorar vidas, y crear un mundo más propicio para fomentar nuestras iniciativas pro paz.")}
                     </p>
 
-                    <div className="relative aspect-video rounded-2xl overflow-hidden shadow-2xl mb-16 ring-1 ring-gray-200 bg-black">
+                    <div className="relative aspect-video rounded-2xl overflow-hidden shadow-2xl ring-1 ring-gray-200 bg-black max-w-4xl mx-auto">
                         <video
                             className="w-full h-full"
                             src="https://cdn1-originals.webdamdb.com/13799_162776313?cache=1751402723&response-content-disposition=inline;filename=2024_050_OVERVIEW_60_16x9_ES_SUB.mp4&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cCo6Ly9jZG4xLW9yaWdpbmFscy53ZWJkYW1kYi5jb20vMTM3OTlfMTYyNzc2MzEzP2NhY2hlPTE3NTE0MDI3MjMmcmVzcG9uc2UtY29udGVudC1kaXNwb3NpdGlvbj1pbmxpbmU7ZmlsZW5hbWU9MjAyNF8wNTBfT1ZFUlZJRVdfNjBfMTZ4OV9FU19TVUIubXA0IiwiQ29uZGl0aW9uIjp7IkRhdGVMZXNzVGhhbiI6eyJBV1M6RXBvY2hUaW1lIjoyMTQ3NDE0NDAwfX19XX0_&Signature=kZIoi4xa6z1Gdubae5Hpet4iws1KJIKW0EhxiyWdfUpxUFyYb7opE2TJWp19EBdPcCBaBZ9kmW1WrGTO2k~E5qqfl1KvST8kq54TqNx~FYUE-LXBf-gncwjXL1vNemJNfzhqVXlLqI0d~Yb0oMLnAqzsueHjPWrlCirymfliDQURudYxvFc1VsEFtFqpwKgB9BKkz-RHzYykMXMzidViNnRzJzh3uzv0F6xQaeZYYLQ4SCdQ7j3~1scDm-Wsjia2mc20QLIVscUDSUExU55aJIlqHznDa6fCsrq8~ckDanCgDQgseYJnU4371FXHSkBtNnWlzQZE1tskEGHuKogqCA__&Key-Pair-Id=APKAI2ASI2IOLRFF2RHA"
@@ -108,13 +108,9 @@ const NuestrasCausas = () => {
                             preload="metadata"
                         />
                     </div>
-                </div>
-            </section>
 
-            {/* Causes Grid */}
-            <section className="py-16 md:py-24 bg-rotary-concrete">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
+                    {/* Causes Grid - 80px below video */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12" style={{ marginTop: '80px' }}>
                         {causas.map((causa: any, i: number) => (
                             <div key={i} className={`flex flex-col bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100 transition-hover duration-300 hover:shadow-md ${i === 6 ? 'lg:col-start-2' : ''}`}>
                                 <div className="h-48 overflow-hidden">
