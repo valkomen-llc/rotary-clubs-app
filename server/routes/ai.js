@@ -498,7 +498,13 @@ Debes responder SIEMPRE con un JSON válido con esta estructura exacta (sin mark
   ],
   "suggestedImageKeywords": ["keyword1", "keyword2"]
 }
-REGLAS: Montos en COP. Título memorable y emocional. HTML real en description/impacto/actualizaciones. Beneficiarios conservadores y realistas. No inventes nombres reales ni datos verificables.`;
+REGLAS CRÍTICAS:
+- MONTOS en COP (pesos colombianos).
+- TÍTULO memorable y emocional.
+- HTML real (etiquetas <p>, <strong>, <ul>, <li>) en description/impacto/actualizaciones.
+- Beneficiarios conservadores y realistas.
+- No inventes nombres reales ni datos verificables.
+- IMPORTANTÍSIMO: Tu respuesta debe ser ÚNICAMENTE el JSON. Ni una sola palabra antes ni después del JSON. Sin saludos, sin explicaciones, sin ```json, sin ```. Solo el objeto JSON crudo empezando con { y terminando con }.`;
 
 // POST /api/ai/projects/generate — Genera un proyecto completo desde un prompt
 router.post('/projects/generate', authMiddleware, upload.array('files', 15), async (req, res) => {
@@ -527,9 +533,29 @@ router.post('/projects/generate', authMiddleware, upload.array('files', 15), asy
     try {
         const raw = await routeToModel(slug, PROJECT_SYSTEM_PROMPT, userPrompt);
 
-        // Limpiar posible markdown wrapper
-        const cleaned = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-        const project = JSON.parse(cleaned);
+        // Extracción robusta del JSON — Gemini 2.5 a veces añade texto extra
+        let cleaned = raw
+            .replace(/```json\s*/gi, '')
+            .replace(/```\s*/g, '')
+            .trim();
+
+        // Buscar el primer bloque JSON válido {  ...  } en la respuesta
+        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            console.error('No JSON found in response. Raw:', raw.slice(0, 300));
+            return res.status(422).json({ error: 'El modelo no devolvió JSON válido. Intenta de nuevo.' });
+        }
+
+        let project;
+        try {
+            project = JSON.parse(jsonMatch[0]);
+        } catch (parseErr) {
+            // Segundo intento: limpiar caracteres de control que rompen el parse
+            const sanitized = jsonMatch[0]
+                .replace(/[\x00-\x1F\x7F]/g, (c) => c === '\n' || c === '\r' || c === '\t' ? c : '')
+                .replace(/,\s*([}\]])/g, '$1'); // trailing commas
+            project = JSON.parse(sanitized);
+        }
 
         res.json({
             project,
@@ -537,7 +563,7 @@ router.post('/projects/generate', authMiddleware, upload.array('files', 15), asy
             generatedAt: new Date().toISOString()
         });
     } catch (error) {
-        console.error('Project generation error:', error);
+        console.error('Project generation error:', error.message);
         if (error instanceof SyntaxError) {
             return res.status(422).json({ error: 'El modelo no devolvió JSON válido. Intenta de nuevo o usa otro modelo.' });
         }
