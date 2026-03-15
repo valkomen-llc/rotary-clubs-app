@@ -1,10 +1,42 @@
 import db from '../lib/db.js';
+import { routeToModel, getDefaultModel, BUILTIN_MODELS, encryptKey, decryptKey } from '../lib/ai-router.js';
 
 // Generate social media suggestions based on month and knowledge base
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 
 const router = express.Router();
+
+// ── auto-create ai_model_configs table ───────────────────────────────────────
+let modelsTableReady = false;
+const ensureModelsTable = async () => {
+    if (modelsTableReady) return;
+    try {
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS ai_model_configs (
+                id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                slug         VARCHAR(80) UNIQUE NOT NULL,
+                provider     VARCHAR(50) NOT NULL,
+                display_name VARCHAR(100) NOT NULL,
+                model_id     VARCHAR(100) NOT NULL,
+                base_url     VARCHAR(255),
+                api_key_enc  TEXT,
+                is_active    BOOLEAN DEFAULT FALSE,
+                is_default   BOOLEAN DEFAULT FALSE,
+                description  TEXT,
+                speed        VARCHAR(20) DEFAULT 'medium',
+                cost_tier    INT DEFAULT 2,
+                max_tokens   INTEGER DEFAULT 4096,
+                created_at   TIMESTAMPTZ DEFAULT NOW(),
+                updated_at   TIMESTAMPTZ DEFAULT NOW()
+            )
+        `);
+        modelsTableReady = true;
+    } catch (err) {
+        console.error('ai_model_configs table error:', err.message);
+        try { await db.query('SELECT 1 FROM ai_model_configs LIMIT 0'); modelsTableReady = true; } catch (_) { }
+    }
+};
 
 // ── Onboarding AI Agents ──────────────────────────────────────────────────
 const ONBOARDING_AGENT_PROMPTS = {
@@ -299,6 +331,213 @@ router.post('/knowledge', authMiddleware, async (req, res) => {
         res.json(result.rows[0]);
     } catch (error) {
         res.status(500).json({ error: 'Error adding knowledge source' });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── AI MODEL REGISTRY ──────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+
+// GET /api/ai/models — Lista todos los modelos (builtin + configurados en BD)
+router.get('/models', authMiddleware, async (req, res) => {
+    await ensureModelsTable();
+    try {
+        // Modelos configurados en BD
+        const dbResult = await db.query(
+            `SELECT slug, provider, display_name, model_id, is_active, is_default,
+                    description, speed, cost_tier, base_url,
+                    CASE WHEN api_key_enc IS NOT NULL THEN TRUE ELSE FALSE END AS has_key
+             FROM ai_model_configs ORDER BY is_default DESC, cost_tier ASC`
+        );
+        const dbSlugs = new Set(dbResult.rows.map(r => r.slug));
+
+        // Combinar con builtin (los que no están en BD aparecen como 'sin configurar')
+        const builtinRows = BUILTIN_MODELS
+            .filter(m => !dbSlugs.has(m.slug))
+            .map(m => ({ ...m, is_active: false, has_key: false, db_configured: false }));
+
+        const dbRows = dbResult.rows.map(r => ({ ...r, db_configured: true }));
+        res.json({ models: [...dbRows, ...builtinRows] });
+    } catch (error) {
+        console.error('GET /ai/models error:', error);
+        res.status(500).json({ error: 'Error al listar modelos' });
+    }
+});
+
+// POST /api/ai/models — Registrar/actualizar un modelo con API key
+router.post('/models', authMiddleware, async (req, res) => {
+    await ensureModelsTable();
+    const { slug, provider, display_name, model_id, api_key, base_url, is_default, description, speed, cost_tier, max_tokens } = req.body;
+    if (!slug || !provider || !display_name || !model_id) {
+        return res.status(400).json({ error: 'slug, provider, display_name y model_id son requeridos' });
+    }
+    try {
+        const apiKeyEnc = api_key ? encryptKey(api_key) : null;
+
+        // Si se marca como default, quitar default de los demás
+        if (is_default) await db.query(`UPDATE ai_model_configs SET is_default = FALSE`);
+
+        const result = await db.query(
+            `INSERT INTO ai_model_configs (slug, provider, display_name, model_id, api_key_enc, base_url, is_active, is_default, description, speed, cost_tier, max_tokens)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+             ON CONFLICT (slug) DO UPDATE SET
+               provider = EXCLUDED.provider,
+               display_name = EXCLUDED.display_name,
+               model_id = EXCLUDED.model_id,
+               api_key_enc = COALESCE(EXCLUDED.api_key_enc, ai_model_configs.api_key_enc),
+               base_url = EXCLUDED.base_url,
+               is_active = EXCLUDED.is_active,
+               is_default = EXCLUDED.is_default,
+               description = EXCLUDED.description,
+               speed = EXCLUDED.speed,
+               cost_tier = EXCLUDED.cost_tier,
+               max_tokens = EXCLUDED.max_tokens,
+               updated_at = NOW()
+             RETURNING slug, provider, display_name, is_active, is_default`,
+            [slug, provider, display_name, model_id, apiKeyEnc, base_url || null,
+             req.body.is_active !== false, is_default || false,
+             description || null, speed || 'medium', cost_tier || 2, max_tokens || 4096]
+        );
+        res.json({ model: result.rows[0] });
+    } catch (error) {
+        console.error('POST /ai/models error:', error);
+        res.status(500).json({ error: 'Error al guardar modelo' });
+    }
+});
+
+// PUT /api/ai/models/:slug — Actualizar un modelo (activar/desactivar, cambiar default)
+router.put('/models/:slug', authMiddleware, async (req, res) => {
+    await ensureModelsTable();
+    const { slug } = req.params;
+    const { is_active, is_default, api_key, display_name, description } = req.body;
+    try {
+        if (is_default === true) await db.query(`UPDATE ai_model_configs SET is_default = FALSE`);
+        const apiKeyEnc = api_key ? encryptKey(api_key) : null;
+        const result = await db.query(
+            `UPDATE ai_model_configs SET
+               is_active    = COALESCE($1, is_active),
+               is_default   = COALESCE($2, is_default),
+               api_key_enc  = CASE WHEN $3 IS NOT NULL THEN $3 ELSE api_key_enc END,
+               display_name = COALESCE($4, display_name),
+               description  = COALESCE($5, description),
+               updated_at   = NOW()
+             WHERE slug = $6
+             RETURNING slug, provider, display_name, is_active, is_default`,
+            [is_active, is_default, apiKeyEnc, display_name, description, slug]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Modelo no encontrado' });
+        res.json({ model: result.rows[0] });
+    } catch (error) {
+        console.error('PUT /ai/models error:', error);
+        res.status(500).json({ error: 'Error al actualizar modelo' });
+    }
+});
+
+// DELETE /api/ai/models/:slug — Quitar API key / quitar de BD
+router.delete('/models/:slug', authMiddleware, async (req, res) => {
+    await ensureModelsTable();
+    try {
+        await db.query(`DELETE FROM ai_model_configs WHERE slug = $1`, [req.params.slug]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al eliminar modelo' });
+    }
+});
+
+// POST /api/ai/models/:slug/test — Probar conectividad del modelo
+router.post('/models/:slug/test', authMiddleware, async (req, res) => {
+    await ensureModelsTable();
+    try {
+        const text = await routeToModel(
+            req.params.slug,
+            'Responde SOLO con la siguiente frase exacta en formato JSON: {"ok": true, "model": "<model_name>"}',
+            'Test de conectividad'
+        );
+        // Intentar parsear como JSON
+        try {
+            const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+            res.json({ success: true, response: parsed });
+        } catch {
+            res.json({ success: true, response: { raw: text.slice(0, 200) } });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── PROJECT AI GENERATION ──────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+
+const PROJECT_SYSTEM_PROMPT = `Eres ProyectIA, un experto en diseño de proyectos sociales y crowdfunding digital para clubes Rotary en Latinoamérica.
+Tu rol es tomar una idea en lenguaje natural y convertirla en un proyecto de crowdfunding completo, alineado con los valores de Rotary International ("Service Above Self") y las 7 Áreas de Enfoque de The Rotary Foundation:
+1. Promoción de la paz | 2. Prevención y tratamiento de enfermedades | 3. Agua, saneamiento e higiene
+4. Salud de la madre y el niño | 5. Apoyo a la educación | 6. Desarrollo económico y comunitario | 7. Medioambiente
+
+Debes responder SIEMPRE con un JSON válido con esta estructura exacta (sin markdown, sin comentarios):
+{
+  "title": "Título emotivo y memorable — máx 70 caracteres",
+  "description": "<p>Descripción HTML 300-500 palabras. Contexto del problema, solución propuesta, metodología.</p>",
+  "category": "Área de enfoque Rotary más relevante",
+  "tags": ["etiqueta1", "etiqueta2", "etiqueta3"],
+  "status": "planned",
+  "ubicacion": "Ciudad o región específica del proyecto",
+  "meta": 0,
+  "beneficiarios": 0,
+  "fechaEstimada": "YYYY-MM-DD",
+  "impacto": "<p>HTML con impacto: métricas, ODS, cambio social esperado.</p>",
+  "actualizaciones": "<p>HTML con plan de hitos y seguimiento inicial.</p>",
+  "seoDescription": "Meta description de exactamente 155 caracteres para SEO",
+  "callToAction": "Texto del botón de donación (máx 40 chars)",
+  "fundraisingFormats": [
+    { "type": "donacion_unica", "label": "Donación única", "amounts": [25000, 50000, 100000, 500000], "description": "Qué cubre cada monto" },
+    { "type": "socio_proyecto", "label": "Socio del Proyecto (mensual)", "amounts": [20000, 50000, 100000], "description": "Beneficios del socio mensual" }
+  ],
+  "suggestedImageKeywords": ["keyword1", "keyword2"]
+}
+REGLAS: Montos en COP. Título memorable y emocional. HTML real en description/impacto/actualizaciones. Beneficiarios conservadores y realistas. No inventes nombres reales ni datos verificables.`;
+
+// POST /api/ai/projects/generate — Genera un proyecto completo desde un prompt
+router.post('/projects/generate', authMiddleware, async (req, res) => {
+    const { prompt, modelSlug } = req.body;
+    if (!prompt || prompt.trim().length < 10) {
+        return res.status(400).json({ error: 'El prompt debe tener al menos 10 caracteres' });
+    }
+
+    // Contexto del club
+    let clubContext = '';
+    try {
+        const clubResult = await db.query(
+            `SELECT name, city, country, description FROM "Club" WHERE id = $1`,
+            [req.user.clubId]
+        );
+        const c = clubResult.rows[0];
+        if (c) clubContext = `\nContexto del club: "${c.name}", ubicado en ${c.city}, ${c.country}. ${c.description || ''}`;
+    } catch (_) { }
+
+    // Elegir modelo
+    const slug = modelSlug || await getDefaultModel();
+    const currentDate = new Date().toISOString().split('T')[0];
+    const userPrompt = `Fecha actual: ${currentDate}.${clubContext}\n\nIdea del administrador:\n"${prompt.trim()}"`;
+
+    try {
+        const raw = await routeToModel(slug, PROJECT_SYSTEM_PROMPT, userPrompt);
+
+        // Limpiar posible markdown wrapper
+        const cleaned = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+        const project = JSON.parse(cleaned);
+
+        res.json({
+            project,
+            modelUsed: slug,
+            generatedAt: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Project generation error:', error);
+        if (error instanceof SyntaxError) {
+            return res.status(422).json({ error: 'El modelo no devolvió JSON válido. Intenta de nuevo o usa otro modelo.' });
+        }
+        res.status(500).json({ error: error.message || 'Error al generar el proyecto' });
     }
 });
 

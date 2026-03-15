@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
+import ProjectAIModal from '../../components/admin/ProjectAIModal';
 import {
     Plus, Edit2, Trash2, Search, Filter, FolderKanban, X, Upload,
     MapPin, Target, Info, Users, DollarSign, Image as ImageIcon,
     Video, MessageSquare, CalendarDays, Rocket, CheckCircle, ChevronRight,
-    LayoutGrid
+    LayoutGrid, Sparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useClub } from '../../contexts/ClubContext';
@@ -110,6 +111,7 @@ const ProjectsManagement: React.FC = () => {
     const { club } = useClub();
     const [projects, setProjects] = useState<Project[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isAIModalOpen, setIsAIModalOpen] = useState(false);
     const [editingProject, setEditingProject] = useState<Project | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -216,6 +218,31 @@ const ProjectsManagement: React.FC = () => {
         setIsModalOpen(true);
     };
 
+    // Aplica el JSON generado por ProyectIA al formulario
+    const handleAIApply = (generated: any) => {
+        setEditingProject(null);
+        setActiveTab('info');
+        setFormData({
+            title:         generated.title        || '',
+            description:   generated.description  || '',
+            image:         '',
+            status:        'planned',
+            category:      generated.category     || 'Servicio',
+            meta:          generated.meta         || 0,
+            recaudado:     0,
+            donantes:      0,
+            beneficiarios: generated.beneficiarios || 0,
+            ubicacion:     generated.ubicacion    || club?.city || '',
+            fechaEstimada: generated.fechaEstimada || '',
+            videoUrl:      '',
+            images:        [],
+            impacto:       generated.impacto       || '',
+            actualizaciones: generated.actualizaciones || '',
+        });
+        setIsAIModalOpen(false);
+        setIsModalOpen(true);
+    };
+
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, isGallery = false) => {
         const files = e.target.files;
         if (!files || files.length === 0) return;
@@ -319,15 +346,24 @@ const ProjectsManagement: React.FC = () => {
     };
 
     return (
+        <>
         <AdminLayout>
             <div className="flex justify-between items-center mb-8">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800">Gestión de Proyectos</h1>
                     <p className="text-gray-500 text-sm">Administra proyectos, recaudación e historial de impacto.</p>
                 </div>
-                <button onClick={() => handleOpenModal()} className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2 rounded-lg hover:bg-sky-800 transition-all font-bold shadow-lg shadow-rotary-blue/20">
-                    <Plus className="w-5 h-5" /> Nuevo Proyecto
-                </button>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => setIsAIModalOpen(true)}
+                        className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-4 py-2 rounded-lg hover:from-indigo-700 hover:to-violet-700 transition-all font-bold shadow-lg shadow-violet-200/50"
+                    >
+                        <Sparkles className="w-4 h-4" /> Crear con IA
+                    </button>
+                    <button onClick={() => handleOpenModal()} className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2 rounded-lg hover:bg-sky-800 transition-all font-bold shadow-lg shadow-rotary-blue/20">
+                        <Plus className="w-5 h-5" /> Nuevo Proyecto
+                    </button>
+                </div>
             </div>
 
             <div className="mb-6 flex gap-4">
@@ -750,6 +786,15 @@ const ProjectsManagement: React.FC = () => {
                 </div>
             )}
         </AdminLayout>
+
+        {/* Modal IA */}
+        {isAIModalOpen && (
+            <ProjectAIModal
+                onClose={() => setIsAIModalOpen(false)}
+                onApply={handleAIApply}
+            />
+        )}
+        </>
     );
 };
 
