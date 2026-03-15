@@ -207,7 +207,7 @@ const ProjectAIModal: React.FC<Props> = ({ onClose, onApply }) => {
     const handleFileAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files || []);
         const valid = files.filter(f => f.size < 10 * 1024 * 1024); // max 10 MB
-        setAttachments(prev => [...prev, ...valid].slice(0, 5)); // max 5 archivos
+        setAttachments(prev => [...prev, ...valid].slice(0, 15)); // max 15 archivos
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
@@ -413,7 +413,7 @@ const ProjectAIModal: React.FC<Props> = ({ onClose, onApply }) => {
                             </div>
                             <div className="flex-1">
                                 <p className="text-xs font-bold text-gray-600">Sube imágenes, videos o documentos</p>
-                                <p className="text-[10px] text-gray-400 font-medium">PNG, JPG, MP4, PDF, DOC, TXT · Máx. 5 archivos · 10 MB c/u</p>
+                                <p className="text-[10px] text-gray-400 font-medium">PNG, JPG, MP4, PDF, DOC, TXT · Máx. 15 archivos · 10 MB c/u</p>
                             </div>
                         </div>
                         <input
