@@ -352,4 +352,86 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     }
 });
 
+// ── POST: Deploy agents to ALL active clubs (super admin only) ────────────
+router.post('/deploy-all', authMiddleware, async (req, res) => {
+    try {
+        // Only super admin (administrator role) can do this
+        if (req.user.role !== 'administrator') {
+            return res.status(403).json({ error: 'Solo el super administrador puede desplegar agentes globalmente.' });
+        }
+
+        await ensureTable();
+
+        // Get all active clubs
+        const clubsResult = await db.query(
+            `SELECT id, name FROM "Club" WHERE status = 'active' ORDER BY name ASC`
+        );
+        const clubs = clubsResult.rows;
+
+        if (clubs.length === 0) {
+            return res.json({ success: true, clubsProcessed: 0, message: 'No hay clubes activos.' });
+        }
+
+        let clubsProcessed = 0;
+        let agentsUpserted = 0;
+        const errors = [];
+
+        for (const club of clubs) {
+            try {
+                const whereClause = '"clubId" = $1';
+
+                for (const agent of DEFAULT_AGENTS) {
+                    try {
+                        const existing = await db.query(
+                            `SELECT id FROM "Agent" WHERE name = $1 AND ${whereClause}`,
+                            [agent.name, club.id]
+                        );
+
+                        if (existing.rows.length > 0) {
+                            await db.query(
+                                `UPDATE "Agent"
+                                 SET role = $1, description = $2, "systemPrompt" = $3,
+                                     greeting = $4, capabilities = $5, "updatedAt" = NOW()
+                                 WHERE name = $6 AND "clubId" = $7`,
+                                [agent.role, agent.description, agent.systemPrompt,
+                                 agent.greeting, agent.capabilities, agent.name, club.id]
+                            );
+                        } else {
+                            await db.query(
+                                `INSERT INTO "Agent" (name, role, category, description, "systemPrompt", "aiModel", "avatarSeed", "avatarColor", capabilities, active, "order", greeting, "clubId")
+                                 VALUES ($1, $2, $3, $4, $5, 'gpt-4', $6, $7, $8, true, $9, $10, $11)`,
+                                [agent.name, agent.role, agent.category, agent.description,
+                                 agent.systemPrompt, agent.avatarSeed, agent.avatarColor,
+                                 agent.capabilities, agent.order, agent.greeting, club.id]
+                            );
+                        }
+                        agentsUpserted++;
+                    } catch (agentErr) {
+                        errors.push(`${club.name} / ${agent.name}: ${agentErr.message}`);
+                    }
+                }
+                clubsProcessed++;
+            } catch (clubErr) {
+                errors.push(`${club.name}: ${clubErr.message}`);
+            }
+        }
+
+        console.log(`Deploy-all: ${clubsProcessed} clubes, ${agentsUpserted} agentes actualizados`);
+
+        res.json({
+            success: true,
+            clubsProcessed,
+            totalClubs: clubs.length,
+            agentsUpserted,
+            agentsPerClub: DEFAULT_AGENTS.length,
+            errors: errors.length > 0 ? errors : undefined,
+            clubs: clubs.map(c => c.name),
+        });
+
+    } catch (error) {
+        console.error('Deploy-all error:', error);
+        res.status(500).json({ error: 'Error al desplegar agentes: ' + error.message });
+    }
+});
+
 export default router;

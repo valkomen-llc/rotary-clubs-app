@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     Plus, Save, X, Edit2, Trash2, ToggleLeft, ToggleRight,
-    ChevronDown, ChevronUp, Bot,
+    ChevronDown, ChevronUp, Bot, Rocket, CheckCircle, AlertTriangle, Loader
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import AdminLayout from '../../components/admin/AdminLayout';
@@ -43,6 +43,9 @@ const CAPABILITY_OPTIONS = [
     { value: 'media_relations', label: 'Relaciones con medios' },
     { value: 'calendar', label: 'Calendario editorial' },
     { value: 'analytics', label: 'Analytics y métricas' },
+    // Proyectos y Testimonios
+    { value: 'manage_projects', label: '📁 Gestionar proyectos del club' },
+    { value: 'edit_testimonials', label: '💬 Crear y editar testimonios' },
 ];
 
 interface Agent {
@@ -77,10 +80,42 @@ const AgentsManagement: React.FC = () => {
     const [saving, setSaving] = useState(false);
     const [expandedPrompt, setExpandedPrompt] = useState<string | null>(null);
 
+    // ── Deploy a todos los clubes ──
+    const [deploying, setDeploying] = useState(false);
+    const [showDeployConfirm, setShowDeployConfirm] = useState(false);
+    const [deployResult, setDeployResult] = useState<{
+        clubsProcessed: number; totalClubs: number;
+        agentsUpserted: number; agentsPerClub: number; clubs: string[];
+        errors?: string[];
+    } | null>(null);
+
     const getHeaders = () => ({
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token || localStorage.getItem('rotary_token')}`,
     });
+
+    const deployAll = async () => {
+        setDeploying(true);
+        setShowDeployConfirm(false);
+        setDeployResult(null);
+        try {
+            const res = await fetch(`${API}/agents/deploy-all`, {
+                method: 'POST',
+                headers: getHeaders(),
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setDeployResult(data);
+                fetchAgents();
+            } else {
+                alert('Error: ' + (data.error || 'Error desconocido'));
+            }
+        } catch (e) {
+            alert('Error de conexión al desplegar agentes');
+        } finally {
+            setDeploying(false);
+        }
+    };
 
     const fetchAgents = useCallback(async () => {
         setLoading(true);
@@ -163,6 +198,7 @@ const AgentsManagement: React.FC = () => {
     );
 
     return (
+        <>
         <AdminLayout>
             <div className="space-y-6">
                 {/* Header */}
@@ -176,10 +212,22 @@ const AgentsManagement: React.FC = () => {
                             <p className="text-sm text-gray-500">Configura los agentes de la Oficina de Comunicaciones</p>
                         </div>
                     </div>
-                    <button onClick={startCreate}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-bold hover:bg-gray-800 transition-colors">
-                        <Plus className="w-4 h-4" /> Nuevo Agente
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {/* Desplegar a todos los clubes */}
+                        <button
+                            onClick={() => setShowDeployConfirm(true)}
+                            disabled={deploying}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors disabled:opacity-60"
+                        >
+                            {deploying
+                                ? <><Loader className="w-4 h-4 animate-spin" /> Desplegando...</>
+                                : <><Rocket className="w-4 h-4" /> Desplegar a todos los clubes</>}
+                        </button>
+                        <button onClick={startCreate}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-bold hover:bg-gray-800 transition-colors">
+                            <Plus className="w-4 h-4" /> Nuevo Agente
+                        </button>
+                    </div>
                 </div>
 
                 {/* Create/Edit Form */}
@@ -378,6 +426,108 @@ const AgentsManagement: React.FC = () => {
                 })}
             </div>
         </AdminLayout>
+
+        {/* ── Modal confirmación deploy ─────────────────────────── */}
+        {showDeployConfirm && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="w-12 h-12 rounded-2xl bg-emerald-100 flex items-center justify-center">
+                            <Rocket className="w-6 h-6 text-emerald-600" />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-gray-800 text-lg">Desplegar agentes a todos los clubes</h3>
+                            <p className="text-xs text-gray-400">Esta acción actualizará los 9 agentes en todos los clubes activos</p>
+                        </div>
+                    </div>
+                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-5 text-sm text-amber-700">
+                        <strong>¿Qué hace esto?</strong>
+                        <ul className="mt-2 space-y-1 text-xs">
+                            <li>✅ Crea los 9 agentes en clubes que aún no los tienen</li>
+                            <li>✅ Actualiza prompts, roles y capacidades en clubes existentes</li>
+                            <li>✅ Incluye los nuevos roles de proyectos (Rafael, Camila, Santiago, Andrés)</li>
+                            <li>⚠️ No elimina agentes personalizados que el club haya creado</li>
+                        </ul>
+                    </div>
+                    <div className="flex gap-3">
+                        <button onClick={() => setShowDeployConfirm(false)}
+                            className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors">
+                            Cancelar
+                        </button>
+                        <button onClick={deployAll}
+                            className="flex-1 px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                            <Rocket className="w-4 h-4 inline mr-1.5" /> Confirmar despliegue
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* ── Panel resultado deploy ────────────────────────────── */}
+        {deployResult && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6">
+                    <div className="flex items-center gap-3 mb-5">
+                        <div className="w-12 h-12 rounded-2xl bg-emerald-100 flex items-center justify-center">
+                            <CheckCircle className="w-6 h-6 text-emerald-600" />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-gray-800 text-lg">¡Despliegue completado!</h3>
+                            <p className="text-xs text-gray-400">Los agentes han sido sincronizados en todos los clubes</p>
+                        </div>
+                    </div>
+
+                    {/* Stats */}
+                    <div className="grid grid-cols-3 gap-3 mb-5">
+                        <div className="bg-emerald-50 rounded-2xl p-3 text-center">
+                            <p className="text-2xl font-black text-emerald-600">{deployResult?.clubsProcessed ?? 0}</p>
+                            <p className="text-xs text-emerald-600 font-medium">Clubes actualizados</p>
+                        </div>
+                        <div className="bg-blue-50 rounded-2xl p-3 text-center">
+                            <p className="text-2xl font-black text-blue-600">{deployResult?.agentsUpserted ?? 0}</p>
+                            <p className="text-xs text-blue-600 font-medium">Agentes sincronizados</p>
+                        </div>
+                        <div className="bg-purple-50 rounded-2xl p-3 text-center">
+                            <p className="text-2xl font-black text-purple-600">{deployResult?.agentsPerClub ?? 9}</p>
+                            <p className="text-xs text-purple-600 font-medium">Agentes por club</p>
+                        </div>
+                    </div>
+
+                    {/* Lista de clubes */}
+                    {deployResult?.clubs && deployResult.clubs.length > 0 && (
+                        <div className="mb-4">
+                            <p className="text-xs font-bold text-gray-500 uppercase mb-2">Clubes sincronizados</p>
+                            <div className="bg-gray-50 rounded-2xl p-3 max-h-32 overflow-y-auto">
+                                {deployResult.clubs.map((c, i) => (
+                                    <div key={i} className="flex items-center gap-2 text-xs text-gray-600 py-0.5">
+                                        <CheckCircle className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+                                        {c}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Errores si los hay */}
+                    {deployResult?.errors && deployResult.errors.length > 0 && (
+                        <div className="mb-4 bg-red-50 border border-red-200 rounded-2xl p-3">
+                            <p className="text-xs font-bold text-red-600 mb-1 flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3" /> Errores parciales ({deployResult.errors.length})
+                            </p>
+                            {deployResult.errors.map((e, i) => (
+                                <p key={i} className="text-xs text-red-500">{e}</p>
+                            ))}
+                        </div>
+                    )}
+
+                    <button onClick={() => setDeployResult(null)}
+                        className="w-full px-4 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-bold hover:bg-gray-800 transition-colors">
+                        Cerrar
+                    </button>
+                </div>
+            </div>
+        )}
+    </>
     );
 };
 
