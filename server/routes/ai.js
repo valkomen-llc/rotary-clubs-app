@@ -490,16 +490,23 @@ router.post('/projects/generate', authMiddleware, upload.array('files', 15), asy
         fileContext = `\n\nArchivos de contexto adjuntos por el administrador (usar como referencia conceptual):\n${fileList}`;
     }
 
-    // Contexto del club
+    // Contexto del club — solo nombre y ciudad, NO la descripción completa
+    // (la descripción puede mencionar otras ciudades y confundir al modelo)
+    let clubName = 'el Club Rotario';
+    let clubCity = '';
     let clubContext = '';
     try {
         const targetClubId = clubId || req.user.clubId;
         const clubResult = await db.query(
-            `SELECT name, city, country, description FROM "Club" WHERE id = $1`,
+            `SELECT name, city, country FROM "Club" WHERE id = $1`,
             [targetClubId]
         );
         const c = clubResult.rows[0];
-        if (c) clubContext = `\nContexto del club: "${c.name}", ubicado en ${c.city}, ${c.country}. ${c.description || ''}`;
+        if (c) {
+            clubName = c.name;
+            clubCity = c.city;
+            clubContext = `\nClub organizador: "${c.name}" (${c.city}, ${c.country}).`;
+        }
     } catch (_) { }
 
     // Elegir modelo — forzar gemini-2.5-flash que está verificado para este API key
@@ -507,7 +514,7 @@ router.post('/projects/generate', authMiddleware, upload.array('files', 15), asy
     const FAST_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro'];
     const slug = FAST_MODELS.includes(modelSlug) ? modelSlug : 'gemini-2.5-flash';
     const currentDate = new Date().toISOString().split('T')[0];
-    const userPrompt = `Fecha actual: ${currentDate}.${clubContext}${fileContext}\n\nIdea del administrador:\n"${prompt.trim()}"`;
+    const userPrompt = `Fecha: ${currentDate}.${clubContext}${fileContext}\n\nIdea del proyecto:\n"${prompt.trim()}"`;
 
     try {
         const raw = await routeToModel(slug, PROJECT_SYSTEM_PROMPT, userPrompt);
