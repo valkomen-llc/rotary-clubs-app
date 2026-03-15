@@ -246,7 +246,20 @@ const ProjectAIModal: React.FC<Props> = ({ onClose, onApply }) => {
             }
 
             const res = await fetch(`${API}/ai/projects/generate`, { method: 'POST', headers, body });
-            const data = await res.json();
+
+            // Leer como texto primero — Vercel puede devolver HTML en errores 502/504
+            const text = await res.text();
+            let data: any;
+            try {
+                data = JSON.parse(text);
+            } catch {
+                // El servidor devolvió algo que no es JSON (timeout, crash, gateway error)
+                if (res.status === 504 || res.status === 502 || text.toLowerCase().includes('timeout')) {
+                    throw new Error('La generación tardó demasiado. Vercel tiene límite de 10s. Intenta con un prompt más corto o sin archivos adjuntos.');
+                }
+                throw new Error(`Error del servidor (${res.status}). Intenta de nuevo en unos segundos.`);
+            }
+
             if (!res.ok) throw new Error(data.error || 'Error al generar el proyecto');
             onApply(data.project);
             onClose();
