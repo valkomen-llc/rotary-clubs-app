@@ -70,6 +70,17 @@ const EXAMPLE_PROMPTS = [
     'Kits escolares y material didáctico para 50 escuelas públicas en zona rural',
 ];
 
+// Catálogo estático — siempre visible en el selector
+const KNOWN_MODELS: AIModel[] = [
+    { slug: 'gemini-2-flash',   provider: 'google',    display_name: 'Gemini 2.0 Flash',   is_active: false, is_default: true,  has_key: false, db_configured: false, description: 'Rápido y eficiente para la mayoría de proyectos', speed: 'fast'   },
+    { slug: 'gemini-1-5-pro',   provider: 'google',    display_name: 'Gemini 1.5 Pro',     is_active: false, is_default: false, has_key: false, db_configured: false, description: 'Mayor capacidad de razonamiento y detalle',        speed: 'medium' },
+    { slug: 'gpt-4o',           provider: 'openai',    display_name: 'GPT-4o',             is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'Modelo multimodal líder de OpenAI',                speed: 'medium' },
+    { slug: 'gpt-4o-mini',      provider: 'openai',    display_name: 'GPT-4o Mini',        is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'Rápido y económico, ideal para drafts',            speed: 'fast'   },
+    { slug: 'claude-3-5-sonnet',provider: 'anthropic', display_name: 'Claude 3.5 Sonnet', is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'Redacción excepcional y análisis profundo',         speed: 'medium' },
+    { slug: 'claude-haiku',     provider: 'anthropic', display_name: 'Claude 3 Haiku',    is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'El más veloz de Anthropic',                         speed: 'fast'   },
+    { slug: 'mistral-large',    provider: 'mistral',   display_name: 'Mistral Large',      is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'Potente modelo europeo open-weight',                speed: 'medium' },
+];
+
 const ProjectAIModal: React.FC<Props> = ({ onClose, onApply }) => {
     const { club } = useClub();
     const [prompt, setPrompt] = useState('');
@@ -100,19 +111,30 @@ const ProjectAIModal: React.FC<Props> = ({ onClose, onApply }) => {
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
-    // Cargar modelos disponibles
+    // Cargar modelos disponibles y combinar con catálogo estático
     useEffect(() => {
         const token = localStorage.getItem('rotary_token');
         fetch(`${API}/ai/models`, { headers: { Authorization: `Bearer ${token}` } })
             .then(r => r.json())
             .then(data => {
-                const available = (data.models || []) as AIModel[];
-                setModels(available);
-                // Seleccionar el modelo default o el primero disponible
-                const def = available.find(m => m.is_default) || available.find(m => m.has_key || !m.db_configured) || available[0];
+                const live = (data.models || []) as AIModel[];
+                // Combinar: el backend enriquece con estado real; para los demás usar catálogo
+                const merged = KNOWN_MODELS.map(km => {
+                    const liveModel = live.find(l => l.slug === km.slug);
+                    return liveModel ? { ...km, ...liveModel } : km;
+                });
+                setModels(merged);
+                // Seleccionar Gemini Flash por defecto, o el primero disponible del backend
+                const def = merged.find(m => m.is_default && (m.has_key || !m.db_configured))
+                    || merged.find(m => m.has_key || !m.db_configured)
+                    || merged[0];
                 if (def) setSelectedSlug(def.slug);
             })
-            .catch(() => { });
+            .catch(() => {
+                // Sin backend: mostrar catálogo completo con Gemini como único activo via .env
+                setModels(KNOWN_MODELS);
+                setSelectedSlug('gemini-2-flash');
+            });
     }, []);
 
     const selectedModel = models.find(m => m.slug === selectedSlug);
@@ -237,64 +259,66 @@ const ProjectAIModal: React.FC<Props> = ({ onClose, onApply }) => {
                             </button>
 
                             {modelDropdown && (
-                                <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden">
+                                <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden max-h-72 overflow-y-auto">
                                     {/* Grupo por proveedor */}
                                     {['google', 'openai', 'anthropic', 'mistral', 'custom'].map(provider => {
                                         const providerModels = models.filter(m => m.provider === provider);
                                         if (providerModels.length === 0) return null;
                                         return (
                                             <div key={provider}>
-                                                <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
+                                                <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
                                                     <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
                                                         {PROVIDER_LABELS[provider]}
                                                     </span>
                                                 </div>
-                                                {providerModels.map(model => (
-                                                    <button
-                                                        key={model.slug}
-                                                        onClick={() => { setSelectedSlug(model.slug); setModelDropdown(false); }}
-                                                        disabled={model.db_configured && !model.has_key && !model.is_active}
-                                                        className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-violet-50 transition-colors text-left border-b border-gray-50 last:border-0
-                                                            ${selectedSlug === model.slug ? 'bg-violet-50' : ''}
-                                                            ${(model.db_configured && !model.has_key && !model.is_active) ? 'opacity-40 cursor-not-allowed' : ''}`}
-                                                    >
-                                                        <div className="w-2 h-2 rounded-full flex-shrink-0 mt-0.5"
-                                                            style={{ background: model.is_active || (!model.db_configured) ? PROVIDER_COLORS[model.provider] : '#D1D5DB' }} />
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center gap-2 flex-wrap">
-                                                                <span className="font-bold text-gray-800 text-sm">{model.display_name}</span>
-                                                                {model.is_default && (
-                                                                    <span className="text-[8px] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-100">★ DEFAULT</span>
-                                                                )}
-                                                                {!model.db_configured && (
-                                                                    <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-100">
-                                                                        usa .env
-                                                                    </span>
-                                                                )}
-                                                                {model.db_configured && !model.has_key && (
-                                                                    <span className="text-[8px] font-black text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded-full border border-gray-100">sin key</span>
+                                                {providerModels.map(model => {
+                                                    const isAvailable = model.has_key || !model.db_configured;
+                                                    const isComingSoon = !isAvailable;
+                                                    return (
+                                                        <button
+                                                            key={model.slug}
+                                                            onClick={() => { if (isAvailable) { setSelectedSlug(model.slug); setModelDropdown(false); } }}
+                                                            disabled={isComingSoon}
+                                                            className={`w-full flex items-center gap-3 px-4 py-3 transition-colors text-left border-b border-gray-50 last:border-0
+                                                                ${selectedSlug === model.slug ? 'bg-violet-50' : ''}
+                                                                ${isComingSoon ? 'opacity-50 cursor-not-allowed bg-gray-50/50' : 'hover:bg-violet-50 cursor-pointer'}`}
+                                                        >
+                                                            <div className="w-2 h-2 rounded-full flex-shrink-0 mt-0.5"
+                                                                style={{ background: isAvailable ? PROVIDER_COLORS[model.provider] : '#D1D5DB' }} />
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                    <span className={`font-bold text-sm ${isComingSoon ? 'text-gray-400' : 'text-gray-800'}`}>{model.display_name}</span>
+                                                                    {model.is_default && isAvailable && (
+                                                                        <span className="text-[8px] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-100">★ DEFAULT</span>
+                                                                    )}
+                                                                    {!model.db_configured && (
+                                                                        <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-100">activo</span>
+                                                                    )}
+                                                                    {isComingSoon && (
+                                                                        <span className="text-[8px] font-black text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full border border-gray-200">🔒 Próximamente</span>
+                                                                    )}
+                                                                </div>
+                                                                {model.description && (
+                                                                    <p className="text-[10px] text-gray-400 mt-0.5 truncate">{model.description}</p>
                                                                 )}
                                                             </div>
-                                                            {model.description && (
-                                                                <p className="text-[10px] text-gray-400 mt-0.5 truncate">{model.description}</p>
+                                                            {model.speed && isAvailable && (
+                                                                <span className="text-[9px] text-gray-400 font-medium flex-shrink-0">
+                                                                    {SPEED_LABELS[model.speed]}
+                                                                </span>
                                                             )}
-                                                        </div>
-                                                        {model.speed && (
-                                                            <span className="text-[9px] text-gray-400 font-medium flex-shrink-0">
-                                                                {SPEED_LABELS[model.speed]}
-                                                            </span>
-                                                        )}
-                                                        {selectedSlug === model.slug && (
-                                                            <CheckCircle2 className="w-4 h-4 text-violet-500 flex-shrink-0" />
-                                                        )}
-                                                    </button>
-                                                ))}
+                                                            {selectedSlug === model.slug && (
+                                                                <CheckCircle2 className="w-4 h-4 text-violet-500 flex-shrink-0" />
+                                                            )}
+                                                        </button>
+                                                    );
+                                                })}
                                             </div>
                                         );
                                     })}
-                                    <div className="px-4 py-2.5 bg-gray-50 border-t border-gray-100">
-                                        <p className="text-[10px] text-gray-400 font-medium">
-                                            ⚙️ Configura más modelos en <strong>Integraciones → Modelos IA</strong>
+                                    <div className="px-4 py-2.5 bg-gradient-to-r from-violet-50 to-indigo-50 border-t border-gray-100">
+                                        <p className="text-[10px] text-violet-600 font-bold">
+                                            🔑 Activa más modelos en <strong>Integraciones → Modelos IA</strong>
                                         </p>
                                     </div>
                                 </div>
