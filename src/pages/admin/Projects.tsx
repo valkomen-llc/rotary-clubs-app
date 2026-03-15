@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import ProjectAIModal from '../../components/admin/ProjectAIModal';
 import {
@@ -34,11 +34,26 @@ interface Project {
     createdAt: string;
     deletedAt?: string | null;
     isStatic?: boolean;
+    clubId?: string;
     club?: { id: string; name: string; subdomain: string | null };
 }
 
 const ProjectsManagement: React.FC = () => {
     const { club, isAppPortal: _isAppPortal } = useClub();
+
+    // Detectar si el usuario es super admin desde el JWT
+    const isSuperAdmin = useMemo(() => {
+        try {
+            const token = localStorage.getItem('rotary_token');
+            if (!token) return false;
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            return payload?.role === 'administrator';
+        } catch { return false; }
+    }, []);
+
+    const [clubs, setClubs] = useState<{ id: string; name: string }[]>([]);
+    const [filterClub, setFilterClub] = useState('all');
+
     const [projects, setProjects] = useState<Project[]>([]);
     const [trashedProjects, setTrashedProjects] = useState<Project[]>([]);
     const [showTrash, setShowTrash] = useState(false);
@@ -74,11 +89,23 @@ const ProjectsManagement: React.FC = () => {
     });
 
     useEffect(() => {
-        if (club?.id) {
+        if (club?.id || isSuperAdmin) {
             fetchProjects();
             fetchTrash();
         }
-    }, [club?.id]);
+    }, [club?.id, isSuperAdmin]);
+
+    // Cargar clubes para el selector (solo super admin)
+    useEffect(() => {
+        if (!isSuperAdmin) return;
+        const token = localStorage.getItem('rotary_token');
+        fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        })
+            .then(r => r.ok ? r.json() : [])
+            .then(data => setClubs(Array.isArray(data) ? data : []))
+            .catch(() => {});
+    }, [isSuperAdmin]);
 
     const fetchProjects = async () => {
         try {
@@ -382,7 +409,8 @@ const ProjectsManagement: React.FC = () => {
                 (p.ubicacion || '').toLowerCase().includes(q);
             const matchesStatus = filterStatus === 'all' || p.status === filterStatus;
             const matchesCategory = filterCategory === 'all' || p.category === filterCategory;
-            return matchesSearch && matchesStatus && matchesCategory;
+            const matchesClub = filterClub === 'all' || p.club?.id === filterClub || p.clubId === filterClub;
+            return matchesSearch && matchesStatus && matchesCategory && matchesClub;
         })
         .sort((a, b) => {
             if (filterSort === 'meta') return (b.meta || 0) - (a.meta || 0);
@@ -471,6 +499,20 @@ const ProjectsManagement: React.FC = () => {
                         <option value="meta">🎯 Mayor meta</option>
                         <option value="recaudado">💰 Mayor recaudación</option>
                     </select>
+
+                    {/* Filtro por club — solo visible para super admins con múltiples clubes */}
+                    {isSuperAdmin && clubs.length > 0 && (
+                        <select
+                            value={filterClub}
+                            onChange={e => setFilterClub(e.target.value)}
+                            className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 outline-none focus:ring-2 focus:ring-rotary-blue/20 bg-white cursor-pointer"
+                        >
+                            <option value="all">🏢 Todos los clubes</option>
+                            {clubs.map(c => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                        </select>
+                    )}
                 </div>
 
                 {/* Fila 2: estado + área de interés */}
