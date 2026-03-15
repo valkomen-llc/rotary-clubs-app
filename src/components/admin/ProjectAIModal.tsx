@@ -458,8 +458,8 @@ const ProjectAIModal: React.FC<Props> = ({ onClose, onApply }) => {
                         )}
                     </div>
 
-                    {/* Selector de motor IA */}
-                    <div>
+                    {/* Selector de motor IA — oculto, se usa gemini-2.5-flash por defecto */}
+                    <div className="hidden">
                         <label className="block text-sm font-black text-gray-800 mb-2">Motor de IA</label>
                         <div className="relative" ref={dropdownRef}>
                             <button

@@ -24,7 +24,7 @@ async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, maxTokens
 
     const body = {
         contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n---\n\n${userPrompt}` }] }],
-        generationConfig: { maxOutputTokens: maxTokens || 4096, temperature: 0.7 }
+        generationConfig: { maxOutputTokens: Math.min(maxTokens || 1500, 1500), temperature: 0.7 }
     };
 
     let lastError = '';
@@ -155,6 +155,30 @@ export const BUILTIN_MODELS = [
     { slug: 'claude-3-haiku',        provider: 'anthropic', display_name: 'Claude 3 Haiku',        model_id: 'claude-3-haiku-20240307',    is_default: false, description: 'El más rápido de Anthropic — económico y eficiente',        speed: 'fast',   cost_tier: 1 },
     { slug: 'mistral-large',         provider: 'mistral',   display_name: 'Mistral Large',         model_id: 'mistral-large-latest',       is_default: false, description: 'Alternativa europea con excelente calidad',                 speed: 'medium', cost_tier: 2 },
 ];
+
+export const PROJECT_SYSTEM_PROMPT = `Eres ProyectIA. Genera un proyecto de crowdfunding Rotary como JSON puro.
+Responde SOLO con el JSON. Sin texto adicional, sin markdown, sin explicaciones.
+{
+  "title": "Título emotivo — máx 70 chars",
+  "description": "<p>150-200 palabras HTML. Problema, solución, metodología.</p>",
+  "category": "Área de enfoque Rotary relevante",
+  "tags": ["tag1", "tag2", "tag3"],
+  "status": "planned",
+  "ubicacion": "Ciudad/región",
+  "meta": 0,
+  "beneficiarios": 0,
+  "fechaEstimada": "YYYY-MM-DD",
+  "impacto": "<p>50-80 palabras sobre impacto y ODS.</p>",
+  "actualizaciones": "<p>50-80 palabras sobre plan de hitos.</p>",
+  "seoDescription": "Descripción SEO de 140-155 caracteres",
+  "callToAction": "Texto botón donación — máx 40 chars",
+  "fundraisingFormats": [
+    {"type":"donacion_unica","label":"Donación única","amounts":[25000,50000,100000,500000],"description":"Impacto de cada monto"},
+    {"type":"socio_proyecto","label":"Socio mensual","amounts":[20000,50000,100000],"description":"Beneficios del socio"}
+  ],
+  "suggestedImageKeywords": ["keyword1", "keyword2"]
+}
+Montos en COP. Datos realistas y conservadores.`;
 
 // ── Main router function ──────────────────────────────────────────────────────
 
