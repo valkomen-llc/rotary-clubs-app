@@ -107,15 +107,23 @@ export const deletePost = async (req, res) => {
 
 export const getClubProjects = async (req, res) => {
     try {
-        const clubId = req.user.role === 'administrator' ? req.query.clubId : req.user.clubId;
-        if (!clubId) return res.status(400).json({ error: 'clubId is required' });
+        const clubId = req.user.role === 'administrator'
+            ? (req.query.clubId || null)
+            : req.user.clubId;
+
+        // Super admin sin clubId específico: retorna todos los proyectos
+        const whereClause = clubId
+            ? { clubId, deletedAt: null }
+            : { deletedAt: null };
 
         const projects = await prisma.project.findMany({
-            where: { clubId, deletedAt: null },
-            orderBy: { createdAt: 'desc' }
+            where: whereClause,
+            orderBy: { createdAt: 'desc' },
+            include: { club: { select: { id: true, name: true, subdomain: true } } }
         });
         res.json(projects);
     } catch (error) {
+        console.error(error);
         res.status(500).json({ error: 'Error fetching club projects' });
     }
 };

@@ -34,10 +34,11 @@ interface Project {
     createdAt: string;
     deletedAt?: string | null;
     isStatic?: boolean;
+    club?: { id: string; name: string; subdomain: string | null };
 }
 
 const ProjectsManagement: React.FC = () => {
-    const { club } = useClub();
+    const { club, isAppPortal: _isAppPortal } = useClub();
     const [projects, setProjects] = useState<Project[]>([]);
     const [trashedProjects, setTrashedProjects] = useState<Project[]>([]);
     const [showTrash, setShowTrash] = useState(false);
@@ -650,14 +651,19 @@ const ProjectsManagement: React.FC = () => {
                                     <FolderKanban className="w-12 h-12" />
                                 </div>
                             )}
-                            <div className="absolute top-3 right-3 flex gap-2">
+                            <div className="absolute top-3 right-3 flex gap-2 flex-wrap justify-end">
                                 <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase backdrop-blur-md ${project.status === 'active' ? 'bg-blue-500/80 text-white' :
                                     project.status === 'completed' ? 'bg-green-500/80 text-white' :
                                         'bg-gray-500/80 text-white'
                                     }`}>
                                     {project.status === 'active' ? 'Activo' : project.status === 'completed' ? 'Éxito' : 'Plan'}
                                 </span>
-                                {project.isStatic && <span className="px-2 py-1 rounded-md bg-rotary-gold/90 text-white text-[10px] font-bold uppercase backdrop-blur-md">Estatíco</span>}
+                                {/* Badge del club de origen (visible en vista global) */}
+                                {project.club && (
+                                    <span className="px-2 py-1 rounded-md bg-rotary-blue/80 text-white text-[10px] font-bold uppercase backdrop-blur-md max-w-[100px] truncate">
+                                        {project.club.name}
+                                    </span>
+                                )}
                             </div>
                         </div>
                         <div className="p-5">
