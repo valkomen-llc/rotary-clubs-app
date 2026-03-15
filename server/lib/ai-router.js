@@ -35,8 +35,14 @@ async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, maxTokens
         generationConfig: {
             maxOutputTokens: Math.min(maxTokens || 2000, 2000),
             temperature: 0.4,
-            responseMimeType: 'application/json'  // Fuerza JSON puro — Gemini no añade texto extra
-        }
+            responseMimeType: 'application/json'
+        },
+        safetySettings: [
+            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+        ]
     };
 
     let lastError = '';
@@ -50,7 +56,12 @@ async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, maxTokens
         try {
             const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
             const data = await res.json();
-            if (res.ok) return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            // Log detallado de la respuesta para debugging en produccion
+            const candidate = data.candidates?.[0];
+            const finishReason = candidate?.finishReason;
+            const rawText = candidate?.content?.parts?.[0]?.text || '';
+            console.log(`[Gemini] model=${id} status=${res.status} finishReason=${finishReason} chars=${rawText.length} raw100=${rawText.slice(0,100)}`);
+            if (res.ok) return rawText;
             if (res.status === 404 || res.status === 400) { lastError = data.error?.message || `${id} not found`; continue; }
             throw new Error(data.error?.message || 'Error Gemini API');
         } catch (e) {
