@@ -399,8 +399,15 @@ const ProjectAIModal: React.FC<Props> = ({ onClose, onApply }) => {
                             className="w-full px-4 py-3 border border-gray-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-all text-sm text-gray-700 leading-relaxed"
                         />
                         <div className="flex items-center justify-between mt-1">
-                            <p className="text-[10px] text-gray-400 font-medium">Mínimo 10 caracteres · Más detalle = mejor resultado</p>
-                            <span className={`text-[10px] font-bold ${prompt.length > 4500 ? 'text-red-500' : 'text-gray-300'}`}>{prompt.length}/5000</span>
+                            <p className="text-[10px] text-gray-400 font-medium">
+                                {prompt.length > 1500
+                                    ? <span className="text-amber-500 font-bold">✂ El texto se resumirá automáticamente al generar (óptimo: ≤1500 chars)</span>
+                                    : 'Mínimo 10 caracteres · 500-1500 chars = resultado óptimo'
+                                }
+                            </p>
+                            <span className={`text-[10px] font-bold ${prompt.length > 3000 ? 'text-red-500' : prompt.length > 1500 ? 'text-amber-500' : 'text-gray-300'}`}>
+                                {prompt.length}/5000
+                            </span>
                         </div>
                     </div>
 

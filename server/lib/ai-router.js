@@ -22,9 +22,13 @@ async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, maxTokens
         { version: 'v1beta', id: 'gemini-pro-latest' },   // último fallback
     ];
 
-    // Limitar el userPrompt a 3500 chars para evitar confusión del modelo con prompts muy largos
-    const truncatedUserPrompt = userPrompt.length > 3500
-        ? userPrompt.slice(0, 3500) + '\n[Texto truncado por longitud]'
+    // Limitar el userPrompt a 1500 chars (óptimo calidad/costo):
+    // - Input tokens son muy baratos ($0.075/1M tokens = ~$0.0001 por request)
+    // - Prompts más cortos = respuestas de mayor calidad y menor latencia
+    // - 1500 chars (~375 tokens) da suficiente contexto para generar un proyecto completo
+    const MAX_INPUT_CHARS = 1500;
+    const truncatedUserPrompt = userPrompt.length > MAX_INPUT_CHARS
+        ? userPrompt.slice(0, MAX_INPUT_CHARS) + '\n[Resumen del resto: ' + userPrompt.slice(MAX_INPUT_CHARS, MAX_INPUT_CHARS + 200).trim() + '...]'
         : userPrompt;
 
     const body = {
