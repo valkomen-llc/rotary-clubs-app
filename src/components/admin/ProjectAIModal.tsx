@@ -254,11 +254,16 @@ const ProjectAIModal: React.FC<Props> = ({ onClose, onApply }) => {
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200 max-h-[92vh] flex flex-col">
 
-                {/* Header */}
+                {/* Header — estilo "Somos gente de acción" */}
                 <div className="relative overflow-hidden flex-shrink-0">
-                    <div className="absolute inset-0 bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700" />
-                    <div className="absolute inset-0 opacity-20"
-                        style={{ backgroundImage: 'radial-gradient(circle at 20% 50%, white 1px, transparent 1px), radial-gradient(circle at 80% 20%, white 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+                    <div className="absolute inset-0"
+                        style={{
+                            backgroundColor: '#0c3c7c',
+                            backgroundImage: "url('/geo-darkblue.png')",
+                            backgroundPosition: '50% 0',
+                            backgroundRepeat: 'repeat',
+                            backgroundSize: '71px 85px',
+                        }} />
                     <div className="relative px-8 py-6 flex items-center justify-between">
                         <div className="flex items-center gap-4">
                             <div className="w-12 h-12 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center border border-white/30">
