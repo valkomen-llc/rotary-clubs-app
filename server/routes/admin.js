@@ -107,14 +107,16 @@ router.delete('/posts/:id', roleMiddleware(adminRoles), deletePost);
 
 router.get('/projects', roleMiddleware(adminRoles), getClubProjects);
 router.post('/projects', roleMiddleware(adminRoles), createProject);
-router.put('/projects/:id', roleMiddleware(adminRoles), updateProject);
-router.delete('/projects/:id', roleMiddleware(adminRoles), deleteProject);
 
-// Papelera de proyectos
+// Rutas específicas PRIMERO (antes de /:id para evitar que Express las trate como parámetros)
 router.get('/projects/trash', roleMiddleware(adminRoles), getTrashedProjects);
-router.put('/projects/:id/restore', roleMiddleware(adminRoles), restoreProject);
-router.delete('/projects/:id/permanent', roleMiddleware(adminRoles), permanentDeleteProject);
 router.post('/projects/bulk-delete', roleMiddleware(adminRoles), bulkDeleteProjects);
+
+// Rutas con parámetro dinámico
+router.put('/projects/:id', roleMiddleware(adminRoles), updateProject);
+router.delete('/projects/:id', roleMiddleware(adminRoles), deleteProject);          // soft-delete → papelera
+router.put('/projects/:id/restore', roleMiddleware(adminRoles), restoreProject);
+router.delete('/projects/:id/permanent', roleMiddleware(adminRoles), permanentDeleteProject); // borrado real
 
 // --- PUBLISH / UNPUBLISH CLUB SITE ---
 router.patch('/clubs/:id/publish', roleMiddleware(adminRoles), async (req, res) => {
