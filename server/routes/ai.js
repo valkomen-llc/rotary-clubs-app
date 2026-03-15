@@ -472,9 +472,29 @@ router.post('/models/:slug/test', authMiddleware, async (req, res) => {
 // ── PROJECT AI GENERATION ──────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
-const PROJECT_SYSTEM_PROMPT = `Genera un proyecto Rotary. Responde SOLO con este JSON sin texto adicional:
-{"title":"titulo impactante max 60 chars","description":"texto plano 50 palabras exactas","category":"area Rotary","tags":["tag1","tag2","tag3"],"ubicacion":"ciudad","meta":50000000,"beneficiarios":100,"seoDescription":"seo 155 chars","callToAction":"dona ahora max 35 chars","suggestedImageKeywords":["palabra1","palabra2"]}
-Montos en COP. Solo JSON.`;
+const PROJECT_SYSTEM_PROMPT = `Eres ProyectIA, asistente experto en proyectos Rotary para Latinoamerica.
+Genera un proyecto de crowdfunding completo basado en la idea del administrador.
+Responde UNICAMENTE con un JSON valido. Sin texto adicional, sin markdown, sin HTML.
+
+ESTRUCTURA REQUERIDA (todos los campos son obligatorios):
+{
+  "title": "Titulo memorable y emotivo, maximo 70 caracteres",
+  "subtitle": "Subtitulo motivador, maximo 120 caracteres, diferente al titulo",
+  "description": "Descripcion detallada del proyecto en 150 a 180 palabras en texto plano. Incluye: 1) Contexto y problema social, 2) Solucion propuesta y metodologia, 3) Poblacion beneficiaria especifica, 4) Por que es urgente actuar. Sin comillas dobles dentro del texto.",
+  "category": "Una de: Salud Materno-Infantil, Agua y Saneamiento, Educacion, Desarrollo Economico, Paz y Reconciliacion, Medio Ambiente, Prevencion de Enfermedades",
+  "tags": ["etiqueta1", "etiqueta2", "etiqueta3", "etiqueta4"],
+  "ubicacion": "Ciudad o municipio especifico donde se ejecuta el proyecto",
+  "meta": 50000000,
+  "beneficiarios": 100,
+  "fechaEstimada": "2025-12-31",
+  "impacto": "Texto plano de 80 a 100 palabras describiendo: impacto social medible, ODS relacionados (maximo 2), cambio esperado en la comunidad a 1 ano. Sin comillas dobles.",
+  "actualizaciones": "Texto plano de 60 a 80 palabras con plan de hitos: hito mes 1 a 3, hito mes 4 a 6, hito mes 7 a 9, entrega final mes 10 a 12. Sin comillas dobles.",
+  "seoDescription": "Meta descripcion SEO entre 140 y 155 caracteres exactos. Usa palabras clave del proyecto.",
+  "callToAction": "Frase de llamada a donar, maximo 40 caracteres",
+  "fundraising": {"meta": 50000000, "montoMinimoUnico": 25000, "montosUnico": [25000, 50000, 100000, 250000, 500000], "montosMensual": [20000, 50000, 100000]},
+  "suggestedImageKeywords": ["keyword1", "keyword2", "keyword3"]
+}
+IMPORTANTE: Los montos van en COP colombianos. Los numeros sin puntos ni comas. Datos realistas basados en el proyecto especifico. NO inventes nombres de personas reales.`;
 
 // POST /api/ai/projects/generate — Genera un proyecto completo desde un prompt
 router.post('/projects/generate', authMiddleware, upload.array('files', 15), async (req, res) => {
@@ -549,18 +569,34 @@ router.post('/projects/generate', authMiddleware, upload.array('files', 15), asy
             project = JSON.parse(sanitized);
         }
 
-        // Completar campos que la IA no genera (para reducir tokens de output)
-        const name = clubContext.match(/"([^"]+)"/)?.[1] || 'el Club Rotario';
+        // Completar/enriquecer campos con defaults inteligentes del servidor
         const fullProject = {
             status: 'planned',
-            impacto: `${project.description?.slice(0, 120) || 'Este proyecto generará un impacto significativo'} — alineado con los Objetivos de Desarrollo Sostenible y los valores Rotary de Servicio Sobre el Interés Propio.`,
-            actualizaciones: `El ${name} publicará informes trimestrales con avances, fotos y testimonios de los beneficiarios. La transparencia y rendición de cuentas son pilares fundamentales del proyecto.`,
+            // fundraisingFormats construido desde el campo fundraising de la IA
             fundraisingFormats: [
-                { type: 'donacion_unica', label: 'Donación única', amounts: [25000, 50000, 100000, 500000], description: 'Tu aporte directo apoya el proyecto inmediatamente.' },
-                { type: 'socio_proyecto', label: 'Socio del Proyecto (mensual)', amounts: [20000, 50000, 100000], description: 'Contribuye mensualmente y asegura la continuidad del proyecto.' }
+                {
+                    type: 'donacion_unica',
+                    label: 'Donación única',
+                    amounts: project.fundraising?.montosUnico || [25000, 50000, 100000, 250000, 500000],
+                    description: `Tu donación apoya directamente a ${project.beneficiarios || 'los'} beneficiarios del proyecto.`
+                },
+                {
+                    type: 'socio_proyecto',
+                    label: 'Socio del Proyecto (mensual)',
+                    amounts: project.fundraising?.montosMensual || [20000, 50000, 100000],
+                    description: `Como socio mensual, garantizas la continuidad y sostenibilidad de ${project.title || 'este proyecto'}.`
+                }
             ],
-            ...project  // Los campos generados por IA sobreescriben si los hay
+            // Tomar meta del campo fundraising de la IA o del campo meta directo
+            meta: project.fundraising?.meta || project.meta || 50000000,
+            // Todos los demas campos vienen de la IA
+            ...project,
+            // Asegurar que meta no sea string
+            meta: Number(project.fundraising?.meta || project.meta || 50000000),
+            beneficiarios: Number(project.beneficiarios || 100),
         };
+        // Limpiar campo fundraising auxiliar que no necesita el frontend
+        delete fullProject.fundraising;
 
         res.json({
             project: fullProject,

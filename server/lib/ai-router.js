@@ -26,7 +26,7 @@ async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, maxTokens
     // - Input tokens son muy baratos ($0.075/1M tokens = ~$0.0001 por request)
     // - Prompts más cortos = respuestas de mayor calidad y menor latencia
     // - 1500 chars (~375 tokens) da suficiente contexto para generar un proyecto completo
-    const MAX_INPUT_CHARS = 1500;
+    const MAX_INPUT_CHARS = 2500;
     const truncatedUserPrompt = userPrompt.length > MAX_INPUT_CHARS
         ? userPrompt.slice(0, MAX_INPUT_CHARS) + '\n[Resumen del resto: ' + userPrompt.slice(MAX_INPUT_CHARS, MAX_INPUT_CHARS + 200).trim() + '...]'
         : userPrompt;
