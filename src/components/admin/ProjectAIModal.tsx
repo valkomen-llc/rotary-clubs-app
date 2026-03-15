@@ -380,11 +380,12 @@ const ProjectAIModal: React.FC<Props> = ({ onClose, onApply }) => {
                             onChange={e => { setPrompt(e.target.value); setError(''); }}
                             placeholder="Ej: Quiero instalar sistemas de agua potable en 3 veredas del municipio de Popayán, beneficiando a 800 familias campesinas con filtros de purificación y capacitación en mantenimiento..."
                             rows={4}
+                            maxLength={5000}
                             className="w-full px-4 py-3 border border-gray-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-all text-sm text-gray-700 leading-relaxed"
                         />
                         <div className="flex items-center justify-between mt-1">
                             <p className="text-[10px] text-gray-400 font-medium">Mínimo 10 caracteres · Más detalle = mejor resultado</p>
-                            <span className={`text-[10px] font-bold ${prompt.length > 800 ? 'text-red-500' : 'text-gray-300'}`}>{prompt.length}/1000</span>
+                            <span className={`text-[10px] font-bold ${prompt.length > 4500 ? 'text-red-500' : 'text-gray-300'}`}>{prompt.length}/5000</span>
                         </div>
                     </div>
 
