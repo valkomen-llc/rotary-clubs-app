@@ -12,16 +12,38 @@ async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, maxTokens
     const key = apiKey || process.env.GEMINI_API_KEY;
     if (!key) throw new Error('Gemini API Key no configurada');
 
-    // Usar /v1/ (estable) en lugar de /v1beta/ — los modelos 1.5 requieren la API estable
-    const url = `https://generativelanguage.googleapis.com/v1/models/${modelId}:generateContent?key=${key}`;
+    // Lista de modelos a intentar en orden (fallback automático)
+    // Cubre API keys antiguas (gemini-pro) y nuevas (1.5-flash-001)
+    const candidates = [
+        { version: 'v1beta', id: modelId },           // modelo solicitado
+        { version: 'v1',     id: 'gemini-1.5-flash-001' },
+        { version: 'v1',     id: 'gemini-1.5-flash-002' },
+        { version: 'v1beta', id: 'gemini-1.5-flash' },
+        { version: 'v1beta', id: 'gemini-pro' },       // modelo original, siempre disponible
+    ];
+
     const body = {
         contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n---\n\n${userPrompt}` }] }],
         generationConfig: { maxOutputTokens: maxTokens || 4096, temperature: 0.7 }
     };
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error?.message || 'Error Gemini API');
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    let lastError = '';
+    for (const { version, id } of candidates) {
+        const url = `https://generativelanguage.googleapis.com/${version}/models/${id}:generateContent?key=${key}`;
+        try {
+            const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            const data = await res.json();
+            if (res.ok) return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            // 404 = modelo no disponible → intentar el siguiente
+            if (res.status === 404) { lastError = data.error?.message || `${id} not found`; continue; }
+            // Otro error (auth, quota, etc.) → propagar inmediatamente
+            throw new Error(data.error?.message || 'Error Gemini API');
+        } catch (e) {
+            if (e.message.includes('not found') || e.message.includes('no longer')) { lastError = e.message; continue; }
+            throw e;
+        }
+    }
+    throw new Error(`Ningún modelo Gemini disponible para este API key. Último error: ${lastError}`);
 }
 
 async function callOpenAI({ modelId, apiKey, systemPrompt, userPrompt, maxTokens }) {
