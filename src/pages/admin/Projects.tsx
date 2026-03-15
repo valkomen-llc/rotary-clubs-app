@@ -380,7 +380,7 @@ const ProjectsManagement: React.FC = () => {
         } catch { toast.error('Error al eliminar'); }
     };
 
-    // Toggle selección individual
+    // Toggle selección individual (solo proyectos no estáticos)
     const toggleSelect = (id: string) => {
         setSelectedIds(prev => {
             const next = new Set(prev);
@@ -389,9 +389,13 @@ const ProjectsManagement: React.FC = () => {
         });
     };
 
-    // Seleccionar / deseleccionar todos (solo proyectos no estáticos)
+    // Seleccionar / deseleccionar todos los proyectos no estáticos visibles
     const toggleSelectAll = () => {
         const nonStaticIds = filteredProjects.filter(p => !p.isStatic).map(p => p.id);
+        if (nonStaticIds.length === 0) {
+            toast.info('Los proyectos de ejemplo no se pueden seleccionar');
+            return;
+        }
         if (nonStaticIds.every(id => selectedIds.has(id))) {
             setSelectedIds(new Set());
         } else {
@@ -663,15 +667,18 @@ const ProjectsManagement: React.FC = () => {
                     <div key={project.id} className={`bg-white rounded-2xl border shadow-sm overflow-hidden group hover:shadow-md transition-all relative ${
                         selectedIds.has(project.id) ? 'border-rotary-blue ring-2 ring-rotary-blue/20' : 'border-gray-100'
                     }`}>
-                        {/* Checkbox de selección */}
-                        {isSelecting && !project.isStatic && (
+                        {/* Checkbox de selección — aparece en TODOS los proyectos */}
+                        {isSelecting && (
                             <button
-                                onClick={() => toggleSelect(project.id)}
-                                className="absolute top-3 left-3 z-10 w-6 h-6 rounded-lg flex items-center justify-center transition-all"
+                                onClick={() => !project.isStatic && toggleSelect(project.id)}
+                                title={project.isStatic ? 'Los proyectos de ejemplo no se pueden eliminar' : ''}
+                                className={`absolute top-3 left-3 z-20 w-6 h-6 rounded-lg flex items-center justify-center transition-all shadow ${
+                                    project.isStatic ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                                }`}
                             >
                                 {selectedIds.has(project.id)
-                                    ? <CheckSquare className="w-5 h-5 text-rotary-blue drop-shadow-md" />
-                                    : <Square className="w-5 h-5 text-white/90 drop-shadow-md" />}
+                                    ? <CheckSquare className="w-5 h-5 text-rotary-blue drop-shadow" />
+                                    : <Square className="w-5 h-5 text-white drop-shadow" />}
                             </button>
                         )}
                         <div className="aspect-video relative overflow-hidden">
