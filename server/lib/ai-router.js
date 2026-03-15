@@ -117,13 +117,14 @@ const HANDLERS = {
 
 // ── Modelos pre-registrados (fallback si la BD aún no tiene registros) ────────
 export const BUILTIN_MODELS = [
-    { slug: 'gemini-2.0-flash', provider: 'google', display_name: 'Gemini 2.0 Flash', model_id: 'gemini-2.0-flash', is_default: true, description: 'Rápido y económico — ideal para generación masiva', speed: 'fast', cost_tier: 1 },
-    { slug: 'gemini-1.5-pro', provider: 'google', display_name: 'Gemini 1.5 Pro', model_id: 'gemini-1.5-pro', is_default: false, description: 'Mayor capacidad de razonamiento para proyectos complejos', speed: 'medium', cost_tier: 2 },
-    { slug: 'gpt-4o', provider: 'openai', display_name: 'GPT-4o', model_id: 'gpt-4o', is_default: false, description: 'Máxima calidad de texto — el más potente de OpenAI', speed: 'medium', cost_tier: 3 },
-    { slug: 'gpt-4o-mini', provider: 'openai', display_name: 'GPT-4o Mini', model_id: 'gpt-4o-mini', is_default: false, description: 'Económico y rápido — ideal para drafts y pruebas', speed: 'fast', cost_tier: 1 },
-    { slug: 'claude-3-5-sonnet', provider: 'anthropic', display_name: 'Claude 3.5 Sonnet', model_id: 'claude-3-5-sonnet-20241022', is_default: false, description: 'Excelente narrativa y redacción — ideal para descripciones de proyectos', speed: 'medium', cost_tier: 2 },
-    { slug: 'claude-3-haiku', provider: 'anthropic', display_name: 'Claude 3 Haiku', model_id: 'claude-3-haiku-20240307', is_default: false, description: 'El más rápido de Anthropic — económico y eficiente', speed: 'fast', cost_tier: 1 },
-    { slug: 'mistral-large', provider: 'mistral', display_name: 'Mistral Large', model_id: 'mistral-large-latest', is_default: false, description: 'Alternativa europea con excelente calidad', speed: 'medium', cost_tier: 2 },
+    { slug: 'gemini-2.0-flash-lite', provider: 'google',    display_name: 'Gemini 2.0 Flash Lite', model_id: 'gemini-2.0-flash-lite',       is_default: true,  description: 'Rápido y eficiente — reemplazo oficial de gemini-2.0-flash', speed: 'fast',   cost_tier: 1 },
+    { slug: 'gemini-1.5-flash',      provider: 'google',    display_name: 'Gemini 1.5 Flash',      model_id: 'gemini-1.5-flash',            is_default: false, description: 'Modelo estáble y veloz, ampliamente disponible',            speed: 'fast',   cost_tier: 1 },
+    { slug: 'gemini-1.5-pro',        provider: 'google',    display_name: 'Gemini 1.5 Pro',        model_id: 'gemini-1.5-pro',              is_default: false, description: 'Mayor capacidad de razonamiento para proyectos complejos',  speed: 'medium', cost_tier: 2 },
+    { slug: 'gpt-4o',               provider: 'openai',    display_name: 'GPT-4o',               model_id: 'gpt-4o',                      is_default: false, description: 'Máxima calidad de texto — el más potente de OpenAI',          speed: 'medium', cost_tier: 3 },
+    { slug: 'gpt-4o-mini',          provider: 'openai',    display_name: 'GPT-4o Mini',          model_id: 'gpt-4o-mini',                 is_default: false, description: 'Económico y rápido — ideal para drafts y pruebas',           speed: 'fast',   cost_tier: 1 },
+    { slug: 'claude-3-5-sonnet',    provider: 'anthropic', display_name: 'Claude 3.5 Sonnet',    model_id: 'claude-3-5-sonnet-20241022',  is_default: false, description: 'Excelente narrativa y redacción — ideal para descripciones',  speed: 'medium', cost_tier: 2 },
+    { slug: 'claude-3-haiku',       provider: 'anthropic', display_name: 'Claude 3 Haiku',       model_id: 'claude-3-haiku-20240307',     is_default: false, description: 'El más rápido de Anthropic — económico y eficiente',          speed: 'fast',   cost_tier: 1 },
+    { slug: 'mistral-large',        provider: 'mistral',   display_name: 'Mistral Large',        model_id: 'mistral-large-latest',        is_default: false, description: 'Alternativa europea con excelente calidad',                speed: 'medium', cost_tier: 2 },
 ];
 
 // ── Main router function ──────────────────────────────────────────────────────
@@ -183,7 +184,7 @@ export async function getDefaultModel() {
         if (result.rows.length > 0) return result.rows[0].slug;
     } catch (_) { }
     // Fallback: primer modelo builtin marcado como default
-    return BUILTIN_MODELS.find(m => m.is_default)?.slug || 'gemini-2.0-flash';
+    return BUILTIN_MODELS.find(m => m.is_default)?.slug || 'gemini-2.0-flash-lite';
 }
 
 // ── Simple XOR encryption for API keys (upgrade to AES in production) ────────
