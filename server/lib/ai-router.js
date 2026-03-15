@@ -12,13 +12,14 @@ async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, maxTokens
     const key = apiKey || process.env.GEMINI_API_KEY;
     if (!key) throw new Error('Gemini API Key no configurada');
 
-    // Cadena de modelos verificados disponibles para este API key (v1beta)
+    // Cadena de modelos verificados para este API key (v1beta)
+    // gemini-2.5-flash confirmado funcionando — modelos 2.0 deprecados para esta cuenta
     const candidates = [
-        { version: 'v1beta', id: modelId },           // modelo solicitado por el usuario
-        { version: 'v1beta', id: 'gemini-2.0-flash' }, // estable y disponible
-        { version: 'v1beta', id: 'gemini-2.0-flash-lite' },
-        { version: 'v1beta', id: 'gemini-flash-latest' },
-        { version: 'v1beta', id: 'gemini-pro-latest' }, // último fallback estable
+        { version: 'v1beta', id: modelId },              // modelo solicitado por el usuario
+        { version: 'v1beta', id: 'gemini-2.5-flash' },   // ✅ verificado funcionando
+        { version: 'v1beta', id: 'gemini-2.5-pro' },     // alternativa más potente
+        { version: 'v1beta', id: 'gemini-flash-latest' }, // alias del último flash
+        { version: 'v1beta', id: 'gemini-pro-latest' },   // último fallback
     ];
 
     const body = {
@@ -144,9 +145,9 @@ const HANDLERS = {
 
 // ── Modelos pre-registrados (fallback si la BD aún no tiene registros) ────────
 export const BUILTIN_MODELS = [
-    { slug: 'gemini-2.0-flash',      provider: 'google',    display_name: 'Gemini 2.0 Flash',      model_id: 'gemini-2.0-flash',           is_default: true,  description: 'Rápido y potente — modelo principal de Gemini',              speed: 'fast',   cost_tier: 1 },
-    { slug: 'gemini-2.5-flash',      provider: 'google',    display_name: 'Gemini 2.5 Flash',      model_id: 'gemini-2.5-flash',           is_default: false, description: 'El modelo más avanzado y rápido de Google (2025)',          speed: 'fast',   cost_tier: 2 },
-    { slug: 'gemini-2.5-pro',        provider: 'google',    display_name: 'Gemini 2.5 Pro',        model_id: 'gemini-2.5-pro',             is_default: false, description: 'Máxima capacidad de razonamiento de Google',               speed: 'medium', cost_tier: 3 },
+    { slug: 'gemini-2.5-flash',      provider: 'google',    display_name: 'Gemini 2.5 Flash',      model_id: 'gemini-2.5-flash',           is_default: true,  description: 'El más rápido y avanzado de Google — verificado disponible',   speed: 'fast',   cost_tier: 1 },
+    { slug: 'gemini-2.5-pro',        provider: 'google',    display_name: 'Gemini 2.5 Pro',        model_id: 'gemini-2.5-pro',             is_default: false, description: 'Máxima capacidad de razonamiento de Google',                speed: 'medium', cost_tier: 3 },
+    { slug: 'gemini-2.0-flash',      provider: 'google',    display_name: 'Gemini 2.0 Flash',      model_id: 'gemini-2.0-flash',           is_default: false, description: 'Modelo 2.0 de Google',                                    speed: 'fast',   cost_tier: 1 },
     { slug: 'gemini-2.0-flash-lite', provider: 'google',    display_name: 'Gemini 2.0 Flash Lite', model_id: 'gemini-2.0-flash-lite',      is_default: false, description: 'Versión ligera y económica de Gemini 2.0 Flash',           speed: 'fast',   cost_tier: 1 },
     { slug: 'gpt-4o',                provider: 'openai',    display_name: 'GPT-4o',                model_id: 'gpt-4o',                     is_default: false, description: 'Máxima calidad de texto — el más potente de OpenAI',        speed: 'medium', cost_tier: 3 },
     { slug: 'gpt-4o-mini',           provider: 'openai',    display_name: 'GPT-4o Mini',           model_id: 'gpt-4o-mini',                is_default: false, description: 'Económico y rápido — ideal para drafts y pruebas',          speed: 'fast',   cost_tier: 1 },
@@ -212,7 +213,7 @@ export async function getDefaultModel() {
         if (result.rows.length > 0) return result.rows[0].slug;
     } catch (_) { }
     // Fallback: primer modelo builtin marcado como default
-    return BUILTIN_MODELS.find(m => m.is_default)?.slug || 'gemini-2.0-flash';
+    return BUILTIN_MODELS.find(m => m.is_default)?.slug || 'gemini-2.5-flash';
 }
 
 // ── Simple XOR encryption for API keys (upgrade to AES in production) ────────
