@@ -680,21 +680,21 @@ const ProjectsManagement: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredProjects.map((project) => (
-                    <div key={project.id} className={`bg-white rounded-2xl border shadow-sm overflow-hidden group hover:shadow-md transition-all relative ${
+                    <div key={project.id} className={`bg-white rounded-2xl border shadow-sm overflow-hidden group hover:shadow-md transition-all ${
                         selectedIds.has(project.id) ? 'border-rotary-blue ring-2 ring-rotary-blue/20' : 'border-gray-100'
                     }`}>
-                        {/* Checkbox de selección — funciona en TODOS los proyectos */}
-                        {isSelecting && (
-                            <button
-                                onClick={() => toggleSelect(project.id)}
-                                className="absolute top-3 left-3 z-20 w-6 h-6 rounded-lg flex items-center justify-center cursor-pointer transition-all shadow"
-                            >
-                                {selectedIds.has(project.id)
-                                    ? <CheckSquare className="w-5 h-5 text-rotary-blue drop-shadow" />
-                                    : <Square className="w-5 h-5 text-white drop-shadow" />}
-                            </button>
-                        )}
                         <div className="aspect-video relative overflow-hidden">
+                            {/* Checkbox DENTRO del contenedor de imagen — mismo stacking context */}
+                            {isSelecting && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); toggleSelect(project.id); }}
+                                    className="absolute top-3 left-3 z-20 w-8 h-8 rounded-xl flex items-center justify-center cursor-pointer bg-black/25 hover:bg-black/40 backdrop-blur-sm transition-all"
+                                >
+                                    {selectedIds.has(project.id)
+                                        ? <CheckSquare className="w-5 h-5 text-white" />
+                                        : <Square className="w-5 h-5 text-white" />}
+                                </button>
+                            )}
                             {project.image ? (
                                 <img src={project.image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" crossOrigin="anonymous" />
                             ) : (
