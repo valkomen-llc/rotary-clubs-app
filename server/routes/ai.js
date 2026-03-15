@@ -4,6 +4,9 @@ import { routeToModel, getDefaultModel, BUILTIN_MODELS, encryptKey, decryptKey }
 // Generate social media suggestions based on month and knowledge base
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
+import multer from 'multer';
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 15 } });
 
 const router = express.Router();
 
@@ -498,8 +501,8 @@ Debes responder SIEMPRE con un JSON válido con esta estructura exacta (sin mark
 REGLAS: Montos en COP. Título memorable y emocional. HTML real en description/impacto/actualizaciones. Beneficiarios conservadores y realistas. No inventes nombres reales ni datos verificables.`;
 
 // POST /api/ai/projects/generate — Genera un proyecto completo desde un prompt
-router.post('/projects/generate', authMiddleware, async (req, res) => {
-    const { prompt, modelSlug } = req.body;
+router.post('/projects/generate', authMiddleware, upload.array('files', 15), async (req, res) => {
+    const { prompt, modelSlug, clubId } = req.body;
     if (!prompt || prompt.trim().length < 10) {
         return res.status(400).json({ error: 'El prompt debe tener al menos 10 caracteres' });
     }
@@ -507,9 +510,10 @@ router.post('/projects/generate', authMiddleware, async (req, res) => {
     // Contexto del club
     let clubContext = '';
     try {
+        const targetClubId = clubId || req.user.clubId;
         const clubResult = await db.query(
             `SELECT name, city, country, description FROM "Club" WHERE id = $1`,
-            [req.user.clubId]
+            [targetClubId]
         );
         const c = clubResult.rows[0];
         if (c) clubContext = `\nContexto del club: "${c.name}", ubicado en ${c.city}, ${c.country}. ${c.description || ''}`;
