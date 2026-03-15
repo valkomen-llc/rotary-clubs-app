@@ -89,6 +89,7 @@ model Project {
   images          String[]  // Multiple image gallery
   impacto         String?   @db.Text
   actualizaciones String?   @db.Text
+  deletedAt       DateTime? // null = activo, fecha = en papelera
   clubId          String
   club            Club     @relation(fields: [clubId], references: [id])
   donations       Donation[]

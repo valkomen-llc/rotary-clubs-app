@@ -5,7 +5,7 @@ import {
     Edit2, Trash2, Search, FolderKanban, X, Upload,
     MapPin, Target, Info, Users, DollarSign, Image as ImageIcon,
     Video, MessageSquare, CalendarDays, Rocket, CheckCircle, ChevronRight,
-    LayoutGrid, Sparkles
+    LayoutGrid, Sparkles, RotateCcw, CheckSquare, Square, Trash
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useClub } from '../../contexts/ClubContext';
@@ -104,12 +104,17 @@ interface Project {
     impacto?: string;
     actualizaciones?: string;
     createdAt: string;
+    deletedAt?: string | null;
     isStatic?: boolean;
 }
 
 const ProjectsManagement: React.FC = () => {
     const { club } = useClub();
     const [projects, setProjects] = useState<Project[]>([]);
+    const [trashedProjects, setTrashedProjects] = useState<Project[]>([]);
+    const [showTrash, setShowTrash] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [isSelecting, setIsSelecting] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isAIModalOpen, setIsAIModalOpen] = useState(false);
     const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -142,17 +147,14 @@ const ProjectsManagement: React.FC = () => {
     useEffect(() => {
         if (club?.id) {
             fetchProjects();
+            fetchTrash();
         }
     }, [club?.id]);
 
     const fetchProjects = async () => {
         const mappedStatic: Project[] = staticProjects.map(p => ({
-            ...p,
-            id: p.id,
-            createdAt: '2024-01-01',
-            isStatic: true
+            ...p, id: p.id, createdAt: '2024-01-01', isStatic: true
         } as Project));
-
         try {
             const token = localStorage.getItem('rotary_token');
             const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/projects`, {
@@ -161,12 +163,18 @@ const ProjectsManagement: React.FC = () => {
             if (response.ok) {
                 const dbProjects = await response.json();
                 setProjects([...dbProjects, ...mappedStatic]);
-            } else {
-                setProjects(mappedStatic);
-            }
-        } catch (error) {
-            setProjects(mappedStatic);
-        }
+            } else setProjects(mappedStatic);
+        } catch { setProjects(mappedStatic); }
+    };
+
+    const fetchTrash = async () => {
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const r = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/projects/trash`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (r.ok) setTrashedProjects(await r.json());
+        } catch {}
     };
 
     const handleOpenModal = (project?: Project) => {
@@ -313,22 +321,81 @@ const ProjectsManagement: React.FC = () => {
         }
     };
 
+    // Mover a papelera (soft delete)
     const handleDelete = async (project: Project) => {
-        if (project.isStatic) return;
-        if (!window.confirm(`¿Eliminar "${project.title}"?`)) return;
-
+        if (project.isStatic) { toast.error('Los proyectos estáticos no se pueden eliminar.'); return; }
+        if (!window.confirm(`¿Mover "${project.title}" a la papelera?`)) return;
         try {
             const token = localStorage.getItem('rotary_token');
-            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/projects/${project.id}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
+            const r = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/projects/${project.id}`, {
+                method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
             });
-            if (response.ok) {
-                toast.success('Proyecto eliminado');
-                fetchProjects();
-            }
-        } catch (error: any) {
-            toast.error('Error al eliminar');
+            if (r.ok) { toast.success('Proyecto movido a la papelera'); fetchProjects(); fetchTrash(); setIsModalOpen(false); }
+            else toast.error('Error al eliminar');
+        } catch { toast.error('Error al eliminar'); }
+    };
+
+    // Eliminación masiva
+    const handleBulkDelete = async () => {
+        const deletable = Array.from(selectedIds).filter(id => !projects.find(p => p.id === id)?.isStatic);
+        if (deletable.length === 0) { toast.error('Solo puedes eliminar proyectos propios'); return; }
+        if (!window.confirm(`¿Mover ${deletable.length} proyecto(s) a la papelera?`)) return;
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const r = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/projects/bulk-delete`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: deletable })
+            });
+            if (r.ok) {
+                toast.success(`${deletable.length} proyecto(s) movidos a la papelera`);
+                setSelectedIds(new Set()); setIsSelecting(false);
+                fetchProjects(); fetchTrash();
+            } else toast.error('Error al eliminar');
+        } catch { toast.error('Error al eliminar'); }
+    };
+
+    // Restaurar desde papelera
+    const handleRestore = async (id: string) => {
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const r = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/projects/${id}/restore`, {
+                method: 'PUT', headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (r.ok) { toast.success('Proyecto restaurado'); fetchProjects(); fetchTrash(); }
+            else toast.error('Error al restaurar');
+        } catch { toast.error('Error al restaurar'); }
+    };
+
+    // Borrado permanente
+    const handlePermanentDelete = async (id: string, title: string) => {
+        if (!window.confirm(`¿Eliminar permanentemente "${title}"? Esta acción no se puede deshacer.`)) return;
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const r = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/projects/${id}/permanent`, {
+                method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (r.ok) { toast.success('Proyecto eliminado permanentemente'); fetchTrash(); }
+            else toast.error('Error al eliminar permanentemente');
+        } catch { toast.error('Error al eliminar'); }
+    };
+
+    // Toggle selección individual
+    const toggleSelect = (id: string) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            next.has(id) ? next.delete(id) : next.add(id);
+            return next;
+        });
+    };
+
+    // Seleccionar / deseleccionar todos (solo proyectos no estáticos)
+    const toggleSelectAll = () => {
+        const nonStaticIds = filteredProjects.filter(p => !p.isStatic).map(p => p.id);
+        if (nonStaticIds.every(id => selectedIds.has(id))) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(nonStaticIds));
         }
     };
 
@@ -394,7 +461,31 @@ const ProjectsManagement: React.FC = () => {
                     <h1 className="text-2xl font-bold text-gray-800">Gestión de Proyectos</h1>
                     <p className="text-gray-500 text-sm">Administra proyectos, recaudación e historial de impacto.</p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                    {/* Modo selección */}
+                    <button
+                        onClick={() => { setIsSelecting(v => !v); setSelectedIds(new Set()); }}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg border font-bold text-sm transition-all ${
+                            isSelecting ? 'bg-gray-100 border-gray-300 text-gray-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                        }`}>
+                        {isSelecting ? <X className="w-4 h-4" /> : <CheckSquare className="w-4 h-4" />}
+                        {isSelecting ? 'Cancelar' : 'Seleccionar'}
+                    </button>
+                    {/* Papelera */}
+                    <button
+                        onClick={() => setShowTrash(v => !v)}
+                        className={`relative flex items-center gap-2 px-4 py-2 rounded-lg border font-bold text-sm transition-all ${
+                            showTrash ? 'bg-red-50 border-red-200 text-red-600' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                        }`}>
+                        <Trash className="w-4 h-4" />
+                        Papelera
+                        {trashedProjects.length > 0 && (
+                            <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center">
+                                {trashedProjects.length}
+                            </span>
+                        )}
+                    </button>
+                    {/* Nuevo proyecto */}
                     <button
                         onClick={() => setIsAIModalOpen(true)}
                         className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2 rounded-lg hover:bg-sky-800 transition-all font-bold shadow-lg shadow-rotary-blue/20"
@@ -486,17 +577,103 @@ const ProjectsManagement: React.FC = () => {
                     )}
                 </div>
 
-                {/* Comptador de resultados */}
-                <p className="text-xs text-gray-400 font-medium">
-                    {filteredProjects.length} proyecto{filteredProjects.length !== 1 ? 's' : ''}
-                    {filterCategory !== 'all' && <> en <strong className="text-gray-600">{filterCategory}</strong></>}
-                    {filterStatus !== 'all' && <> · estado <strong className="text-gray-600">{filterStatus}</strong></>}
-                </p>
+                {/* Contador de resultados */}
+                <div className="flex items-center justify-between">
+                    <p className="text-xs text-gray-400 font-medium">
+                        {filteredProjects.length} proyecto{filteredProjects.length !== 1 ? 's' : ''}
+                        {filterCategory !== 'all' && <> en <strong className="text-gray-600">{filterCategory}</strong></>}
+                        {filterStatus !== 'all' && <> · estado <strong className="text-gray-600">{filterStatus}</strong></>}
+                    </p>
+                </div>
             </div>
+
+            {/* ── Barra de selección masiva ── */}
+            {isSelecting && (
+                <div className="mb-4 flex items-center gap-3 px-4 py-3 bg-rotary-blue/5 border border-rotary-blue/20 rounded-2xl">
+                    <button onClick={toggleSelectAll}
+                        className="flex items-center gap-2 text-xs font-bold text-rotary-blue hover:text-sky-800 transition-colors">
+                        {filteredProjects.filter(p => !p.isStatic).every(p => selectedIds.has(p.id))
+                            ? <><CheckSquare className="w-4 h-4" /> Deseleccionar todo</>
+                            : <><Square className="w-4 h-4" /> Seleccionar todo</>}
+                    </button>
+                    <span className="text-xs text-gray-400 font-medium">
+                        {selectedIds.size} seleccionado{selectedIds.size !== 1 ? 's' : ''}
+                    </span>
+                    {selectedIds.size > 0 && (
+                        <button onClick={handleBulkDelete}
+                            className="ml-auto flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-bold transition-all">
+                            <Trash2 className="w-3.5 h-3.5" /> Mover a papelera ({selectedIds.size})
+                        </button>
+                    )}
+                </div>
+            )}
+
+            {/* ── Vista de papelera ── */}
+            {showTrash && (
+                <div className="mb-8">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="p-2 bg-red-50 rounded-xl"><Trash className="w-5 h-5 text-red-500" /></div>
+                        <div>
+                            <h2 className="font-black text-gray-800 text-base">Papelera de Proyectos</h2>
+                            <p className="text-xs text-gray-400">{trashedProjects.length} proyecto{trashedProjects.length !== 1 ? 's' : ''} eliminado{trashedProjects.length !== 1 ? 's' : ''}</p>
+                        </div>
+                    </div>
+                    {trashedProjects.length === 0 ? (
+                        <div className="text-center py-10 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                            <Trash className="w-10 h-10 text-gray-200 mx-auto mb-2" />
+                            <p className="text-sm text-gray-400 font-medium">La papelera está vacía</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            {trashedProjects.map(p => (
+                                <div key={p.id} className="flex items-center gap-4 bg-white border border-gray-100 rounded-2xl px-5 py-3 shadow-sm">
+                                    {p.image ? (
+                                        <img src={p.image} alt="" className="w-12 h-12 object-cover rounded-xl flex-shrink-0" />
+                                    ) : (
+                                        <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                            <FolderKanban className="w-5 h-5 text-gray-300" />
+                                        </div>
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                        <p className="font-bold text-gray-700 text-sm truncate">{p.title}</p>
+                                        <p className="text-[10px] text-gray-400">
+                                            {p.category || 'Sin categoría'} · Eliminado {p.deletedAt ? new Date(p.deletedAt).toLocaleDateString('es-CO') : ''}
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                        <button onClick={() => handleRestore(p.id)}
+                                            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold transition-all">
+                                            <RotateCcw className="w-3.5 h-3.5" /> Restaurar
+                                        </button>
+                                        <button onClick={() => handlePermanentDelete(p.id, p.title)}
+                                            className="flex items-center gap-1.5 px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs font-bold transition-all">
+                                            <Trash2 className="w-3.5 h-3.5" /> Eliminar
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    <hr className="my-6 border-gray-100" />
+                </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredProjects.map((project) => (
-                    <div key={project.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden group hover:shadow-md transition-all">
+                    <div key={project.id} className={`bg-white rounded-2xl border shadow-sm overflow-hidden group hover:shadow-md transition-all relative ${
+                        selectedIds.has(project.id) ? 'border-rotary-blue ring-2 ring-rotary-blue/20' : 'border-gray-100'
+                    }`}>
+                        {/* Checkbox de selección */}
+                        {isSelecting && !project.isStatic && (
+                            <button
+                                onClick={() => toggleSelect(project.id)}
+                                className="absolute top-3 left-3 z-10 w-6 h-6 rounded-lg flex items-center justify-center transition-all"
+                            >
+                                {selectedIds.has(project.id)
+                                    ? <CheckSquare className="w-5 h-5 text-rotary-blue drop-shadow-md" />
+                                    : <Square className="w-5 h-5 text-white/90 drop-shadow-md" />}
+                            </button>
+                        )}
                         <div className="aspect-video relative overflow-hidden">
                             {project.image ? (
                                 <img src={project.image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" crossOrigin="anonymous" />
@@ -873,6 +1050,13 @@ const ProjectsManagement: React.FC = () => {
                         <div className="p-8 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
                             <div className="flex gap-2">
                                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2.5 text-gray-500 font-bold hover:text-gray-700 transition-colors">Cancelar</button>
+                                {editingProject && !editingProject.isStatic && (
+                                    <button type="button"
+                                        onClick={() => handleDelete(editingProject)}
+                                        className="flex items-center gap-2 px-4 py-2.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl font-bold text-sm transition-all border border-red-100">
+                                        <Trash2 className="w-4 h-4" /> Mover a papelera
+                                    </button>
+                                )}
                             </div>
                             <div className="flex items-center gap-6">
                                 <div className="hidden md:flex flex-col items-end">

@@ -5,7 +5,8 @@ import { getSections, updateSection, createSection, batchUpsertSections } from '
 import { getAllClubs, getClubById, createClub, updateClub, deleteClub } from '../controllers/clubController.js';
 import {
     getClubPosts, createPost, updatePost, deletePost,
-    getClubProjects, createProject, updateProject, deleteProject,
+    getClubProjects, getTrashedProjects, createProject, updateProject, deleteProject,
+    bulkDeleteProjects, restoreProject, permanentDeleteProject,
     getClubAgentContext
 } from '../controllers/contentController.js';
 import {
@@ -108,6 +109,12 @@ router.get('/projects', roleMiddleware(adminRoles), getClubProjects);
 router.post('/projects', roleMiddleware(adminRoles), createProject);
 router.put('/projects/:id', roleMiddleware(adminRoles), updateProject);
 router.delete('/projects/:id', roleMiddleware(adminRoles), deleteProject);
+
+// Papelera de proyectos
+router.get('/projects/trash', roleMiddleware(adminRoles), getTrashedProjects);
+router.put('/projects/:id/restore', roleMiddleware(adminRoles), restoreProject);
+router.delete('/projects/:id/permanent', roleMiddleware(adminRoles), permanentDeleteProject);
+router.post('/projects/bulk-delete', roleMiddleware(adminRoles), bulkDeleteProjects);
 
 // --- PUBLISH / UNPUBLISH CLUB SITE ---
 router.patch('/clubs/:id/publish', roleMiddleware(adminRoles), async (req, res) => {

@@ -26,7 +26,8 @@ export const getPublicProjects = async (req, res) => {
     try {
         const limitClause = limit ? `LIMIT ${parseInt(limit)}` : '';
         const result = await db.query(
-            `SELECT * FROM "Project" WHERE "clubId" = $1 ORDER BY "createdAt" DESC ${limitClause}`,
+            `SELECT * FROM "Project" WHERE "clubId" = $1 AND ("deletedAt" IS NULL)
+             ORDER BY "createdAt" DESC ${limitClause}`,
             [clubId]
         );
         res.json(result.rows);
@@ -110,12 +111,28 @@ export const getClubProjects = async (req, res) => {
         if (!clubId) return res.status(400).json({ error: 'clubId is required' });
 
         const projects = await prisma.project.findMany({
-            where: { clubId },
+            where: { clubId, deletedAt: null },
             orderBy: { createdAt: 'desc' }
         });
         res.json(projects);
     } catch (error) {
         res.status(500).json({ error: 'Error fetching club projects' });
+    }
+};
+
+// Papelera: proyectos con soft-delete
+export const getTrashedProjects = async (req, res) => {
+    try {
+        const clubId = req.user.role === 'administrator' ? req.query.clubId : req.user.clubId;
+        if (!clubId) return res.status(400).json({ error: 'clubId is required' });
+
+        const projects = await prisma.project.findMany({
+            where: { clubId, deletedAt: { not: null } },
+            orderBy: { deletedAt: 'desc' }
+        });
+        res.json(projects);
+    } catch (error) {
+        res.status(500).json({ error: 'Error fetching trashed projects' });
     }
 };
 
@@ -189,21 +206,73 @@ export const updateProject = async (req, res) => {
     }
 };
 
+// Soft delete (mover a papelera)
 export const deleteProject = async (req, res) => {
     const { id } = req.params;
     try {
         const existing = await prisma.project.findUnique({ where: { id } });
         if (!existing) return res.status(404).json({ error: 'Project not found' });
-
         if (req.user.role !== 'administrator' && existing.clubId !== req.user.clubId) {
             return res.status(403).json({ error: 'Access denied' });
         }
-
-        await prisma.project.delete({ where: { id } });
-        res.json({ message: 'Project deleted' });
+        await prisma.project.update({ where: { id }, data: { deletedAt: new Date() } });
+        res.json({ message: 'Project moved to trash' });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error deleting project' });
+    }
+};
+
+// Bulk soft-delete
+export const bulkDeleteProjects = async (req, res) => {
+    const { ids } = req.body; // array of UUIDs
+    try {
+        if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids[] required' });
+        await prisma.project.updateMany({
+            where: {
+                id: { in: ids },
+                ...(req.user.role !== 'administrator' ? { clubId: req.user.clubId } : {})
+            },
+            data: { deletedAt: new Date() }
+        });
+        res.json({ message: `${ids.length} projects moved to trash` });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error bulk deleting projects' });
+    }
+};
+
+// Restaurar desde papelera
+export const restoreProject = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const existing = await prisma.project.findUnique({ where: { id } });
+        if (!existing) return res.status(404).json({ error: 'Project not found' });
+        if (req.user.role !== 'administrator' && existing.clubId !== req.user.clubId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+        await prisma.project.update({ where: { id }, data: { deletedAt: null } });
+        res.json({ message: 'Project restored' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error restoring project' });
+    }
+};
+
+// Borrado permanente (desde papelera)
+export const permanentDeleteProject = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const existing = await prisma.project.findUnique({ where: { id } });
+        if (!existing) return res.status(404).json({ error: 'Project not found' });
+        if (req.user.role !== 'administrator' && existing.clubId !== req.user.clubId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+        await prisma.project.delete({ where: { id } });
+        res.json({ message: 'Project permanently deleted' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error permanently deleting project' });
     }
 };
 
@@ -236,5 +305,7 @@ export const getClubAgentContext = async (req, res) => {
 
 export default {
     getPublicPosts, getPublicProjects, getClubPosts, createPost, updatePost, deletePost,
-    getClubProjects, createProject, updateProject, deleteProject, getClubAgentContext
+    getClubProjects, getTrashedProjects, createProject, updateProject,
+    deleteProject, bulkDeleteProjects, restoreProject, permanentDeleteProject,
+    getClubAgentContext
 };
