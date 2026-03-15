@@ -12,7 +12,8 @@ async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, maxTokens
     const key = apiKey || process.env.GEMINI_API_KEY;
     if (!key) throw new Error('Gemini API Key no configurada');
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${key}`;
+    // Usar /v1/ (estable) en lugar de /v1beta/ — los modelos 1.5 requieren la API estable
+    const url = `https://generativelanguage.googleapis.com/v1/models/${modelId}:generateContent?key=${key}`;
     const body = {
         contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n---\n\n${userPrompt}` }] }],
         generationConfig: { maxOutputTokens: maxTokens || 4096, temperature: 0.7 }
@@ -117,9 +118,9 @@ const HANDLERS = {
 
 // ── Modelos pre-registrados (fallback si la BD aún no tiene registros) ────────
 export const BUILTIN_MODELS = [
-    { slug: 'gemini-1.5-flash',      provider: 'google',    display_name: 'Gemini 1.5 Flash',      model_id: 'gemini-1.5-flash',            is_default: true,  description: 'Estable y veloz — disponible para todas las cuentas',       speed: 'fast',   cost_tier: 1 },
-    { slug: 'gemini-1.5-pro',        provider: 'google',    display_name: 'Gemini 1.5 Pro',        model_id: 'gemini-1.5-pro',              is_default: false, description: 'Mayor capacidad de razonamiento para proyectos complejos',  speed: 'medium', cost_tier: 2 },
-    { slug: 'gemini-2.0-flash-lite', provider: 'google',    display_name: 'Gemini 2.0 Flash Lite', model_id: 'gemini-2.0-flash-lite',       is_default: false, description: 'Modelo 2.0 de Google (requiere cuenta habilitada)',         speed: 'fast',   cost_tier: 1 },
+    { slug: 'gemini-1.5-flash',      provider: 'google',    display_name: 'Gemini 1.5 Flash',      model_id: 'gemini-1.5-flash-latest',     is_default: true,  description: 'Estable y veloz — disponible para todas las cuentas',       speed: 'fast',   cost_tier: 1 },
+    { slug: 'gemini-1.5-pro',        provider: 'google',    display_name: 'Gemini 1.5 Pro',        model_id: 'gemini-1.5-pro-latest',       is_default: false, description: 'Mayor capacidad de razonamiento para proyectos complejos',  speed: 'medium', cost_tier: 2 },
+    { slug: 'gemini-2.0-flash-lite', provider: 'google',    display_name: 'Gemini 2.0 Flash Lite', model_id: 'gemini-2.0-flash-lite-001',   is_default: false, description: 'Modelo 2.0 de Google (requiere cuenta habilitada)',         speed: 'fast',   cost_tier: 1 },
     { slug: 'gpt-4o',                provider: 'openai',    display_name: 'GPT-4o',                model_id: 'gpt-4o',                      is_default: false, description: 'Máxima calidad de texto — el más potente de OpenAI',        speed: 'medium', cost_tier: 3 },
     { slug: 'gpt-4o-mini',           provider: 'openai',    display_name: 'GPT-4o Mini',           model_id: 'gpt-4o-mini',                 is_default: false, description: 'Económico y rápido — ideal para drafts y pruebas',          speed: 'fast',   cost_tier: 1 },
     { slug: 'claude-3-5-sonnet',     provider: 'anthropic', display_name: 'Claude 3.5 Sonnet',     model_id: 'claude-3-5-sonnet-20241022',  is_default: false, description: 'Excelente narrativa y redacción — ideal para descripciones', speed: 'medium', cost_tier: 2 },
