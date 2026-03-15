@@ -39,7 +39,11 @@ interface Project {
 }
 
 const ProjectsManagement: React.FC = () => {
-    const { club, isAppPortal: _isAppPortal } = useClub();
+    const { club, isAppPortal } = useClub();
+
+    // En el portal central (app.clubplatform.org) el super admin no filtra por club
+    // En dominios de club específicos sía filtra por el club activo
+    const clubIdForFetch = isAppPortal ? null : (club?.id && club.id !== 'loading' ? club.id : null);
 
     // Detectar si el usuario es super admin desde el JWT
     const isSuperAdmin = useMemo(() => {
@@ -89,11 +93,10 @@ const ProjectsManagement: React.FC = () => {
     });
 
     useEffect(() => {
-        if (club?.id || isSuperAdmin) {
-            fetchProjects();
-            fetchTrash();
-        }
-    }, [club?.id, isSuperAdmin]);
+        // Carga proyectos siempre (super admin sin club = todos; con club = del club)
+        fetchProjects();
+        fetchTrash();
+    }, [clubIdForFetch, isSuperAdmin]);
 
     // Cargar clubes para el selector (solo super admin)
     useEffect(() => {
@@ -106,11 +109,11 @@ const ProjectsManagement: React.FC = () => {
             .then(data => setClubs(Array.isArray(data) ? data : []))
             .catch(() => {});
     }, [isSuperAdmin]);
-
     const fetchProjects = async () => {
         try {
             const token = localStorage.getItem('rotary_token');
-            const params = club?.id ? `?clubId=${club.id}` : '';
+            // Si hay un clubId válido lo enviamos; si no, el backend retorna todos (para super admin)
+            const params = clubIdForFetch ? `?clubId=${clubIdForFetch}` : '';
             const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/projects${params}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -124,7 +127,7 @@ const ProjectsManagement: React.FC = () => {
     const fetchTrash = async () => {
         try {
             const token = localStorage.getItem('rotary_token');
-            const params = club?.id ? `?clubId=${club.id}` : '';
+            const params = clubIdForFetch ? `?clubId=${clubIdForFetch}` : '';
             const r = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/projects/trash${params}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
