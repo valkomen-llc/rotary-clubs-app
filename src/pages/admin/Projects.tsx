@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import ProjectAIModal from '../../components/admin/ProjectAIModal';
 import {
-    Plus, Edit2, Trash2, Search, Filter, FolderKanban, X, Upload,
+    Plus, Edit2, Trash2, Search, FolderKanban, X, Upload,
     MapPin, Target, Info, Users, DollarSign, Image as ImageIcon,
     Video, MessageSquare, CalendarDays, Rocket, CheckCircle, ChevronRight,
     LayoutGrid, Sparkles
@@ -116,6 +116,9 @@ const ProjectsManagement: React.FC = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [filterStatus, setFilterStatus] = useState('all');
+    const [filterCategory, setFilterCategory] = useState('all');
+    const [filterSort, setFilterSort] = useState('recent');
     const [activeTab, setActiveTab] = useState<'info' | 'crowd' | 'impact' | 'gallery'>('info');
 
     const [formData, setFormData] = useState({
@@ -331,10 +334,48 @@ const ProjectsManagement: React.FC = () => {
 
     const formatCurrency = (val?: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(val || 0);
 
-    const filteredProjects = projects.filter(p =>
-        p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.description.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    // Áreas de interés Rotary + categorías adicionales
+    const AREAS_ROTARY = [
+        { value: 'all',                  label: 'Todas las áreas',        icon: '🌐' },
+        { value: 'Paz',                  label: 'Paz',                    icon: '☮️' },
+        { value: 'Enfermedades',         label: 'Enfermedades',           icon: '🦠' },
+        { value: 'Agua y Saneamiento',   label: 'Agua y Saneamiento',     icon: '💧' },
+        { value: 'Salud Materna',        label: 'Salud Materna',          icon: '🤰' },
+        { value: 'Educación',            label: 'Educación',              icon: '📚' },
+        { value: 'Economía',             label: 'Economía Local',         icon: '💼' },
+        { value: 'Medio Ambiente',       label: 'Medio Ambiente',         icon: '🌱' },
+        { value: 'Salud',                label: 'Salud',                  icon: '❤️‍🩹' },
+        { value: 'Vivienda',             label: 'Vivienda',               icon: '🏠' },
+        { value: 'Servicio',             label: 'Servicio',               icon: '🤝' },
+        { value: 'Tecnología',           label: 'Tecnología',             icon: '💻' },
+    ];
+
+    const allCategories = Array.from(new Set(projects.map(p => p.category).filter(Boolean) as string[]));
+    const extraCategories = allCategories.filter(c => !AREAS_ROTARY.find(a => a.value === c));
+    const allAreas = [
+        ...AREAS_ROTARY,
+        ...extraCategories.map(c => ({ value: c, label: c, icon: '📌' }))
+    ];
+
+    const filteredProjects = projects
+        .filter(p => {
+            const q = searchQuery.toLowerCase();
+            const matchesSearch = !q ||
+                p.title.toLowerCase().includes(q) ||
+                p.description.toLowerCase().includes(q) ||
+                (p.category || '').toLowerCase().includes(q) ||
+                (p.ubicacion || '').toLowerCase().includes(q);
+            const matchesStatus = filterStatus === 'all' || p.status === filterStatus;
+            const matchesCategory = filterCategory === 'all' || p.category === filterCategory;
+            return matchesSearch && matchesStatus && matchesCategory;
+        })
+        .sort((a, b) => {
+            if (filterSort === 'meta') return (b.meta || 0) - (a.meta || 0);
+            if (filterSort === 'recaudado') return (b.recaudado || 0) - (a.recaudado || 0);
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(); // recent
+        });
+
+    const activeFiltersCount = [filterStatus !== 'all', filterCategory !== 'all', filterSort !== 'recent'].filter(Boolean).length;
 
     const quillModules = {
         toolbar: [
@@ -366,20 +407,94 @@ const ProjectsManagement: React.FC = () => {
                 </div>
             </div>
 
-            <div className="mb-6 flex gap-4">
-                <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                        type="text"
-                        placeholder="Buscar proyectos por nombre, descripción o categoría..."
-                        className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-rotary-blue/20 transition-all"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
+            {/* Barra de filtros */}
+            <div className="mb-6 space-y-3">
+                {/* Fila 1: búsqueda + ordenación */}
+                <div className="flex gap-3">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="Buscar por nombre, categoría, ubicación..."
+                            className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-rotary-blue/20 transition-all text-sm"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                        {searchQuery && (
+                            <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        )}
+                    </div>
+                    <select
+                        value={filterSort}
+                        onChange={e => setFilterSort(e.target.value)}
+                        className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 outline-none focus:ring-2 focus:ring-rotary-blue/20 bg-white cursor-pointer"
+                    >
+                        <option value="recent">📅 Más recientes</option>
+                        <option value="meta">🎯 Mayor meta</option>
+                        <option value="recaudado">💰 Mayor recaudación</option>
+                    </select>
                 </div>
-                <button className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 font-medium">
-                    <Filter className="w-4 h-4" /> Filtros
-                </button>
+
+                {/* Fila 2: estado + área de interés */}
+                <div className="flex gap-2 flex-wrap items-center">
+                    {/* Estado */}
+                    <div className="flex gap-1.5">
+                        {[
+                            { value: 'all',       label: 'Todos',       color: 'gray'  },
+                            { value: 'active',    label: '✦ Activos',   color: 'blue'  },
+                            { value: 'completed', label: '✔ Éxito',     color: 'green' },
+                            { value: 'planned',   label: '◉ Planificados', color: 'orange' },
+                        ].map(s => (
+                            <button key={s.value}
+                                onClick={() => setFilterStatus(s.value)}
+                                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all border ${
+                                    filterStatus === s.value
+                                        ? s.color === 'blue'   ? 'bg-blue-600 text-white border-blue-600'
+                                        : s.color === 'green'  ? 'bg-emerald-600 text-white border-emerald-600'
+                                        : s.color === 'orange' ? 'bg-orange-500 text-white border-orange-500'
+                                        : 'bg-gray-800 text-white border-gray-800'
+                                        : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                                }`}>
+                                {s.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="w-px h-5 bg-gray-200" />
+
+                    {/* Áreas de interés — scroll horizontal */}
+                    <div className="flex gap-1.5 overflow-x-auto pb-0.5 flex-1 min-w-0" style={{ scrollbarWidth: 'none' }}>
+                        {allAreas.map(area => (
+                            <button key={area.value}
+                                onClick={() => setFilterCategory(area.value)}
+                                className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border ${
+                                    filterCategory === area.value
+                                        ? 'bg-rotary-blue text-white border-rotary-blue'
+                                        : 'bg-white text-gray-500 border-gray-200 hover:border-rotary-blue/50 hover:text-rotary-blue'
+                                }`}>
+                                <span>{area.icon}</span> {area.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Contador de filtros activos + reset */}
+                    {activeFiltersCount > 0 && (
+                        <button
+                            onClick={() => { setFilterStatus('all'); setFilterCategory('all'); setFilterSort('recent'); setSearchQuery(''); }}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-bold bg-red-50 text-red-500 border border-red-100 hover:bg-red-100 transition-all whitespace-nowrap">
+                            <X className="w-3 h-3" /> Limpiar ({activeFiltersCount})
+                        </button>
+                    )}
+                </div>
+
+                {/* Comptador de resultados */}
+                <p className="text-xs text-gray-400 font-medium">
+                    {filteredProjects.length} proyecto{filteredProjects.length !== 1 ? 's' : ''}
+                    {filterCategory !== 'all' && <> en <strong className="text-gray-600">{filterCategory}</strong></>}
+                    {filterStatus !== 'all' && <> · estado <strong className="text-gray-600">{filterStatus}</strong></>}
+                </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
