@@ -504,8 +504,14 @@ router.post('/projects/generate', authMiddleware, upload.array('files', 15), asy
         const c = clubResult.rows[0];
         if (c) {
             clubName = c.name;
-            clubCity = c.city;
-            clubContext = `\nClub organizador: "${c.name}" (${c.city}, ${c.country}).`;
+            // Si city está vacía, inferirla del nombre del club
+            const knownCities = ['Bogotá','Medellín','Cali','Barranquilla','Cartagena',
+                'Bucaramanga','Pereira','Armenia','Manizales','Pasto','Ibagué',
+                'Buenaventura','Cúcuta','Villavicencio','Santa Marta','Popayán'];
+            const inferredCity = c.city || knownCities.find(city => c.name.includes(city)) || '';
+            clubCity = inferredCity;
+            const loc = inferredCity ? ` (${inferredCity}, ${c.country || 'Colombia'})` : ` (Colombia)`;
+            clubContext = `\nClub organizador: "${c.name}"${loc}.`;
         }
     } catch (_) { }
 
