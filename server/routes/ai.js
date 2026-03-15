@@ -472,28 +472,28 @@ router.post('/models/:slug/test', authMiddleware, async (req, res) => {
 // ── PROJECT AI GENERATION ──────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
-const PROJECT_SYSTEM_PROMPT = `Eres ProyectIA. Genera proyectos de crowdfunding Rotary. Responde SOLO con JSON puro sin texto adicional.
+const PROJECT_SYSTEM_PROMPT = `Responde SOLO con JSON. Sin texto adicional. Sin HTML. Sin markdown.
 {
-  "title": "Titulo emotivo maximo 70 caracteres",
-  "description": "<p>100 a 150 palabras en HTML. Problema, solucion, metodologia.</p>",
-  "category": "Area de enfoque Rotary",
+  "title": "Titulo emotivo max 60 chars",
+  "description": "Texto plano, 80 palabras maximo. Describe el proyecto.",
+  "category": "Area Rotary relevante",
   "tags": ["tag1", "tag2", "tag3"],
   "status": "planned",
   "ubicacion": "Ciudad o region",
-  "meta": 0,
-  "beneficiarios": 0,
-  "fechaEstimada": "YYYY-MM-DD",
-  "impacto": "<p>50 palabras: impacto social y ODS.</p>",
-  "actualizaciones": "<p>50 palabras: plan de hitos.</p>",
-  "seoDescription": "Meta SEO de 140 a 155 caracteres",
-  "callToAction": "Texto boton maximo 40 caracteres",
+  "meta": 5000000,
+  "beneficiarios": 100,
+  "fechaEstimada": "2025-12-31",
+  "impacto": "Texto plano, 30 palabras maximo. Impacto social.",
+  "actualizaciones": "Texto plano, 30 palabras maximo. Plan de hitos.",
+  "seoDescription": "Max 155 caracteres para SEO.",
+  "callToAction": "Dona ahora",
   "fundraisingFormats": [
-    {"type":"donacion_unica","label":"Donacion unica","amounts":[25000,50000,100000,500000],"description":"Impacto de cada monto"},
-    {"type":"socio_proyecto","label":"Socio mensual","amounts":[20000,50000,100000],"description":"Beneficios del socio"}
+    {"type":"donacion_unica","label":"Donacion unica","amounts":[25000,50000,100000,500000],"description":"Impacto de tu donacion"},
+    {"type":"socio_proyecto","label":"Socio mensual","amounts":[20000,50000,100000],"description":"Apoya mensualmente"}
   ],
-  "suggestedImageKeywords": ["keyword1", "keyword2"]
+  "suggestedImageKeywords": ["palabra1", "palabra2"]
 }
-Montos en COP. Datos realistas. Responde UNICAMENTE con el JSON empezando en { y terminando en }.`;
+Montos en COP. Datos realistas.`;
 
 // POST /api/ai/projects/generate — Genera un proyecto completo desde un prompt
 router.post('/projects/generate', authMiddleware, upload.array('files', 15), async (req, res) => {

@@ -22,9 +22,21 @@ async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, maxTokens
         { version: 'v1beta', id: 'gemini-pro-latest' },   // último fallback
     ];
 
+    // Limitar el userPrompt a 3500 chars para evitar confusión del modelo con prompts muy largos
+    const truncatedUserPrompt = userPrompt.length > 3500
+        ? userPrompt.slice(0, 3500) + '\n[Texto truncado por longitud]'
+        : userPrompt;
+
     const body = {
-        contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n---\n\n${userPrompt}` }] }],
-        generationConfig: { maxOutputTokens: Math.min(maxTokens || 1500, 1500), temperature: 0.7 }
+        // systemInstruction: campo nativo de Gemini para instrucciones del sistema
+        // Más efectivo que concatenar con el user prompt
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: 'user', parts: [{ text: truncatedUserPrompt }] }],
+        generationConfig: {
+            maxOutputTokens: Math.min(maxTokens || 2000, 2000),
+            temperature: 0.4,
+            responseMimeType: 'application/json'  // Fuerza JSON puro — Gemini no añade texto extra
+        }
     };
 
     let lastError = '';
