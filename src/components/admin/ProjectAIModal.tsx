@@ -7,9 +7,9 @@ const API = import.meta.env.VITE_API_URL || '/api';
 
 // ── Versión del asistente ─────────────────────────────────────────────────────
 const ASSISTANT_VERSIONS = [
-    { id: 'rotary-v1',   label: 'Rotary IA v1.0',     badge: '★', color: '#1E40AF' },
-    { id: 'valkomen-v1', label: 'Valkomen AI v1.2',   badge: '✦', color: '#7C3AED' },
-    { id: 'proyectia-v2',label: 'ProyectIA v2.0 Beta', badge: '⚡', color: '#0F766E' },
+    { id: 'valkomen-v1',  label: 'Valkomen IA v1.0',    badge: '✦', color: '#7C3AED' },
+    { id: 'rotary-v1',   label: 'Rotary IA v1.0',      badge: '★', color: '#1E40AF' },
+    { id: 'proyectia-v2',label: 'ProyectIA v2.0 Beta',  badge: '⚡', color: '#0F766E' },
 ];
 const DEFAULT_VERSION = ASSISTANT_VERSIONS[0];
 
@@ -17,6 +17,7 @@ interface AIModel {
     slug: string;
     provider: string;
     display_name: string;
+    short_code: string;
     is_active: boolean;
     is_default: boolean;
     has_key: boolean;
@@ -78,13 +79,13 @@ const EXAMPLE_PROMPTS = [
 
 // Catálogo estático — siempre visible en el selector
 const KNOWN_MODELS: AIModel[] = [
-    { slug: 'gemini-2-flash',    provider: 'google',    display_name: 'Gemini 2.0 Flash',   is_active: false, is_default: true,  has_key: false, db_configured: false, description: 'Rápido y eficiente para la mayoría de proyectos', speed: 'fast'   },
-    { slug: 'gemini-1-5-pro',    provider: 'google',    display_name: 'Gemini 1.5 Pro',     is_active: false, is_default: false, has_key: false, db_configured: false, description: 'Mayor capacidad de razonamiento y detalle',       speed: 'medium' },
-    { slug: 'gpt-4o',            provider: 'openai',    display_name: 'GPT-4o',             is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'Modelo multimodal líder de OpenAI',               speed: 'medium' },
-    { slug: 'gpt-4o-mini',       provider: 'openai',    display_name: 'GPT-4o Mini',        is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'Rápido y económico, ideal para drafts',           speed: 'fast'   },
-    { slug: 'claude-3-5-sonnet', provider: 'anthropic', display_name: 'Claude 3.5 Sonnet', is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'Redacción excepcional y análisis profundo',        speed: 'medium' },
-    { slug: 'claude-haiku',      provider: 'anthropic', display_name: 'Claude 3 Haiku',    is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'El más veloz de Anthropic',                        speed: 'fast'   },
-    { slug: 'mistral-large',     provider: 'mistral',   display_name: 'Mistral Large',      is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'Potente modelo europeo open-weight',               speed: 'medium' },
+    { slug: 'gemini-2-flash',    provider: 'google',    display_name: 'Gemini 2.0 Flash',   short_code: 'G2.0FR',    is_active: false, is_default: true,  has_key: false, db_configured: false, description: 'Rápido y eficiente para la mayoría de proyectos', speed: 'fast'   },
+    { slug: 'gemini-1-5-pro',    provider: 'google',    display_name: 'Gemini 1.5 Pro',     short_code: 'G1.5P',     is_active: false, is_default: false, has_key: false, db_configured: false, description: 'Mayor capacidad de razonamiento y detalle',       speed: 'medium' },
+    { slug: 'gpt-4o',            provider: 'openai',    display_name: 'GPT-4o',             short_code: 'GPT4O',     is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'Modelo multimodal líder de OpenAI',               speed: 'medium' },
+    { slug: 'gpt-4o-mini',       provider: 'openai',    display_name: 'GPT-4o Mini',        short_code: 'GPT4M',     is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'Rápido y económico, ideal para drafts',           speed: 'fast'   },
+    { slug: 'claude-3-5-sonnet', provider: 'anthropic', display_name: 'Claude 3.5 Sonnet', short_code: 'CL3.5S',    is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'Redacción excepcional y análisis profundo',        speed: 'medium' },
+    { slug: 'claude-haiku',      provider: 'anthropic', display_name: 'Claude 3 Haiku',    short_code: 'CL3H',      is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'El más veloz de Anthropic',                        speed: 'fast'   },
+    { slug: 'mistral-large',     provider: 'mistral',   display_name: 'Mistral Large',      short_code: 'MST-L',     is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'Potente modelo europeo open-weight',               speed: 'medium' },
 ];
 
 // Tipos de archivo permitidos
@@ -438,18 +439,17 @@ const ProjectAIModal: React.FC<Props> = ({ onClose, onApply }) => {
                                 className="w-full flex items-center justify-between px-4 py-3 border border-gray-200 rounded-2xl hover:border-violet-300 transition-colors bg-white"
                             >
                                 {selectedModel ? (
-                                    <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2">
                                         <div className="w-2 h-2 rounded-full flex-shrink-0"
                                             style={{ background: PROVIDER_COLORS[selectedModel.provider] || '#6B7280' }} />
-                                        <span className="font-bold text-gray-800 text-sm">{selectedVersion.label}</span>
-                                        <span className="text-[10px] text-gray-400 font-medium">· {selectedModel.display_name}</span>
+                                        <span className="font-bold text-gray-800 text-sm">
+                                            {selectedVersion.label}
+                                            <span className="text-gray-400 font-medium"> · {selectedModel.short_code}</span>
+                                        </span>
                                         {selectedModel.is_default && (
                                             <span className="flex items-center gap-1 text-[9px] font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">
-                                                <Star className="w-2.5 h-2.5" /> PREDETERMINADO
+                                                <Star className="w-2.5 h-2.5" /> DEFAULT
                                             </span>
-                                        )}
-                                        {selectedModel.speed && (
-                                            <span className="text-[10px] text-gray-400 font-medium">{SPEED_LABELS[selectedModel.speed]}</span>
                                         )}
                                     </div>
                                 ) : (
