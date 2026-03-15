@@ -513,6 +513,13 @@ router.post('/projects/generate', authMiddleware, upload.array('files', 15), asy
         return res.status(400).json({ error: 'El prompt debe tener al menos 10 caracteres' });
     }
 
+    // Contexto de archivos adjuntos (solo nombres/tipos como texto — no enviamos binarios a la API)
+    let fileContext = '';
+    if (req.files && req.files.length > 0) {
+        const fileList = req.files.map(f => `- ${f.originalname} (${f.mimetype}, ${Math.round(f.size/1024)}KB)`).join('\n');
+        fileContext = `\n\nArchivos de contexto adjuntos por el administrador (usar como referencia conceptual):\n${fileList}`;
+    }
+
     // Contexto del club
     let clubContext = '';
     try {
@@ -525,10 +532,12 @@ router.post('/projects/generate', authMiddleware, upload.array('files', 15), asy
         if (c) clubContext = `\nContexto del club: "${c.name}", ubicado en ${c.city}, ${c.country}. ${c.description || ''}`;
     } catch (_) { }
 
-    // Elegir modelo
-    const slug = modelSlug || await getDefaultModel();
+    // Elegir modelo — forzar gemini-2.5-flash que está verificado para este API key
+    // Los modelos 2.0 están deprecados y causarían latencia extra en el fallback
+    const FAST_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro'];
+    const slug = FAST_MODELS.includes(modelSlug) ? modelSlug : 'gemini-2.5-flash';
     const currentDate = new Date().toISOString().split('T')[0];
-    const userPrompt = `Fecha actual: ${currentDate}.${clubContext}\n\nIdea del administrador:\n"${prompt.trim()}"`;
+    const userPrompt = `Fecha actual: ${currentDate}.${clubContext}${fileContext}\n\nIdea del administrador:\n"${prompt.trim()}"`;
 
     try {
         const raw = await routeToModel(slug, PROJECT_SYSTEM_PROMPT, userPrompt);
