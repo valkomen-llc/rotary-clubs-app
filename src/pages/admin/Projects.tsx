@@ -335,24 +335,44 @@ const ProjectsManagement: React.FC = () => {
         } catch { toast.error('Error al eliminar'); }
     };
 
-    // Eliminación masiva
+    // Eliminación masiva — proyectos reales via API, estáticos se ocultan del estado local
     const handleBulkDelete = async () => {
-        const deletable = Array.from(selectedIds).filter(id => !projects.find(p => p.id === id)?.isStatic);
-        if (deletable.length === 0) { toast.error('Solo puedes eliminar proyectos propios'); return; }
-        if (!window.confirm(`¿Mover ${deletable.length} proyecto(s) a la papelera?`)) return;
-        try {
-            const token = localStorage.getItem('rotary_token');
-            const r = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/projects/bulk-delete`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ids: deletable })
-            });
-            if (r.ok) {
-                toast.success(`${deletable.length} proyecto(s) movidos a la papelera`);
-                setSelectedIds(new Set()); setIsSelecting(false);
-                fetchProjects(); fetchTrash();
-            } else toast.error('Error al eliminar');
-        } catch { toast.error('Error al eliminar'); }
+        const total = selectedIds.size;
+        if (total === 0) return;
+        if (!window.confirm(`¿Mover ${total} proyecto(s) a la papelera?`)) return;
+
+        const realIds = Array.from(selectedIds).filter(id => !projects.find(p => p.id === id)?.isStatic);
+        const staticIds = Array.from(selectedIds).filter(id => projects.find(p => p.id === id)?.isStatic);
+
+        let success = true;
+
+        // Borrar proyectos reales via API
+        if (realIds.length > 0) {
+            try {
+                const token = localStorage.getItem('rotary_token');
+                const r = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/projects/bulk-delete`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: realIds })
+                });
+                if (!r.ok) { success = false; toast.error('Error al eliminar proyectos reales'); }
+                else { fetchProjects(); fetchTrash(); }
+            } catch { success = false; toast.error('Error al eliminar'); }
+        }
+
+        // Ocultar proyectos estáticos del estado local (solo en esta sesión)
+        if (staticIds.length > 0) {
+            setProjects(prev => prev.filter(p => !staticIds.includes(p.id)));
+        }
+
+        if (success) {
+            const msg = staticIds.length > 0
+                ? `${total} proyecto(s) eliminados (${staticIds.length} de ejemplo se ocultaron temporalmente)`
+                : `${total} proyecto(s) movidos a la papelera`;
+            toast.success(msg);
+        }
+        setSelectedIds(new Set());
+        setIsSelecting(false);
     };
 
     // Restaurar desde papelera
@@ -380,7 +400,7 @@ const ProjectsManagement: React.FC = () => {
         } catch { toast.error('Error al eliminar'); }
     };
 
-    // Toggle selección individual (solo proyectos no estáticos)
+    // Toggle selección individual — funciona para todos los proyectos
     const toggleSelect = (id: string) => {
         setSelectedIds(prev => {
             const next = new Set(prev);
@@ -389,17 +409,13 @@ const ProjectsManagement: React.FC = () => {
         });
     };
 
-    // Seleccionar / deseleccionar todos los proyectos no estáticos visibles
+    // Seleccionar / deseleccionar todos los proyectos visibles
     const toggleSelectAll = () => {
-        const nonStaticIds = filteredProjects.filter(p => !p.isStatic).map(p => p.id);
-        if (nonStaticIds.length === 0) {
-            toast.info('Los proyectos de ejemplo no se pueden seleccionar');
-            return;
-        }
-        if (nonStaticIds.every(id => selectedIds.has(id))) {
+        const allIds = filteredProjects.map(p => p.id);
+        if (allIds.every(id => selectedIds.has(id))) {
             setSelectedIds(new Set());
         } else {
-            setSelectedIds(new Set(nonStaticIds));
+            setSelectedIds(new Set(allIds));
         }
     };
 
@@ -667,14 +683,11 @@ const ProjectsManagement: React.FC = () => {
                     <div key={project.id} className={`bg-white rounded-2xl border shadow-sm overflow-hidden group hover:shadow-md transition-all relative ${
                         selectedIds.has(project.id) ? 'border-rotary-blue ring-2 ring-rotary-blue/20' : 'border-gray-100'
                     }`}>
-                        {/* Checkbox de selección — aparece en TODOS los proyectos */}
+                        {/* Checkbox de selección — funciona en TODOS los proyectos */}
                         {isSelecting && (
                             <button
-                                onClick={() => !project.isStatic && toggleSelect(project.id)}
-                                title={project.isStatic ? 'Los proyectos de ejemplo no se pueden eliminar' : ''}
-                                className={`absolute top-3 left-3 z-20 w-6 h-6 rounded-lg flex items-center justify-center transition-all shadow ${
-                                    project.isStatic ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
-                                }`}
+                                onClick={() => toggleSelect(project.id)}
+                                className="absolute top-3 left-3 z-20 w-6 h-6 rounded-lg flex items-center justify-center cursor-pointer transition-all shadow"
                             >
                                 {selectedIds.has(project.id)
                                     ? <CheckSquare className="w-5 h-5 text-rotary-blue drop-shadow" />
