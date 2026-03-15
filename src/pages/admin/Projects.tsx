@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import ProjectAIModal from '../../components/admin/ProjectAIModal';
 import {
-    Plus, Edit2, Trash2, Search, FolderKanban, X, Upload,
+    Edit2, Trash2, Search, FolderKanban, X, Upload,
     MapPin, Target, Info, Users, DollarSign, Image as ImageIcon,
     Video, MessageSquare, CalendarDays, Rocket, CheckCircle, ChevronRight,
     LayoutGrid, Sparkles
@@ -397,12 +397,9 @@ const ProjectsManagement: React.FC = () => {
                 <div className="flex items-center gap-3">
                     <button
                         onClick={() => setIsAIModalOpen(true)}
-                        className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-4 py-2 rounded-lg hover:from-indigo-700 hover:to-violet-700 transition-all font-bold shadow-lg shadow-violet-200/50"
+                        className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2 rounded-lg hover:bg-sky-800 transition-all font-bold shadow-lg shadow-rotary-blue/20"
                     >
-                        <Sparkles className="w-4 h-4" /> Crear con IA
-                    </button>
-                    <button onClick={() => handleOpenModal()} className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2 rounded-lg hover:bg-sky-800 transition-all font-bold shadow-lg shadow-rotary-blue/20">
-                        <Plus className="w-5 h-5" /> Nuevo Proyecto
+                        <Sparkles className="w-4 h-4" /> Nuevo Proyecto
                     </button>
                 </div>
             </div>
