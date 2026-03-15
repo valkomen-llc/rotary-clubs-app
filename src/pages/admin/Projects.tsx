@@ -12,6 +12,50 @@ import { useClub } from '../../contexts/ClubContext';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 
+// Proyectos de demo — se muestran SOLO cuando no hay proyectos reales en la BD
+// Son los mismos que aparecen en la página pública como fallback
+const DEMO_PROJECTS = [
+    {
+        id: 'demo-1', title: 'Origen H2O - Agua para Comunidades Rurales',
+        description: 'Instalación de sistemas de agua potable en 15 comunidades rurales de Cundinamarca y Boyacá.',
+        image: 'https://images.unsplash.com/photo-1593113598332-cd288d649433?w=800&h=500&fit=crop',
+        status: 'active', category: 'Agua y Saneamiento', meta: 150000000,
+        recaudado: 98500000, donantes: 342, beneficiarios: 8500,
+        ubicacion: 'Cundinamarca & Boyacá', createdAt: '2024-01-01', isStatic: true,
+    },
+    {
+        id: 'demo-2', title: 'Becas Educativas para Jóvenes Líderes 2026',
+        description: 'Programa de becas completas para 25 jóvenes destacados de comunidades vulnerables.',
+        image: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=800&h=500&fit=crop',
+        status: 'active', category: 'Educación', meta: 200000000,
+        recaudado: 156000000, donantes: 518, beneficiarios: 25,
+        ubicacion: 'Nacional', createdAt: '2024-01-01', isStatic: true,
+    },
+    {
+        id: 'demo-3', title: 'Reforestación de Cuencas Hídricas',
+        description: 'Plantación de 50,000 árboles nativos en cuencas hídricas degradadas.',
+        image: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=800&h=500&fit=crop',
+        status: 'active', category: 'Medio Ambiente', meta: 80000000,
+        recaudado: 42300000, donantes: 267, beneficiarios: 12000,
+        ubicacion: 'Santander', createdAt: '2024-01-01', isStatic: true,
+    },
+    {
+        id: 'demo-4', title: 'Viviendas Dignas para Familias Afectadas',
+        description: 'Construcción de 30 viviendas sismorresistentes para familias damnificadas.',
+        image: 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=800&h=500&fit=crop',
+        status: 'active', category: 'Vivienda', meta: 450000000,
+        recaudado: 289000000, donantes: 892, beneficiarios: 150,
+        ubicacion: 'Cauca & Huila', createdAt: '2024-01-01', isStatic: true,
+    },
+    {
+        id: 'demo-5', title: 'Campaña #TodoPorNuestrosHéroes',
+        description: 'Entrega de 50,000 equipos de protección a trabajadores de la salud.',
+        image: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800&h=500&fit=crop',
+        status: 'completed', category: 'Salud', meta: 250000000,
+        recaudado: 267000000, donantes: 1247, beneficiarios: 50000,
+        ubicacion: 'Nacional', createdAt: '2024-01-01', isStatic: true,
+    },
+] as const;
 
 
 interface Project {
@@ -119,9 +163,18 @@ const ProjectsManagement: React.FC = () => {
             });
             if (response.ok) {
                 const dbProjects = await response.json();
-                setProjects(dbProjects);
-            } else setProjects([]);
-        } catch { setProjects([]); }
+                // Si no hay proyectos reales, mostrar los de DEMO como referencia visual
+                if (dbProjects.length === 0) {
+                    setProjects(DEMO_PROJECTS as unknown as Project[]);
+                } else {
+                    setProjects(dbProjects);
+                }
+            } else {
+                setProjects(DEMO_PROJECTS as unknown as Project[]);
+            }
+        } catch {
+            setProjects(DEMO_PROJECTS as unknown as Project[]);
+        }
     };
 
     const fetchTrash = async () => {
@@ -579,6 +632,25 @@ const ProjectsManagement: React.FC = () => {
                     </p>
                 </div>
             </div>
+
+            {/* Banner demo: visible solo cuando todos los proyectos son de ejemplo */}
+            {projects.length > 0 && projects.every(p => p.isStatic) && !showTrash && (
+                <div className="mb-4 flex items-start gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-2xl">
+                    <span className="text-amber-500 text-lg">💡</span>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-amber-700 mb-0.5">Proyectos de ejemplo</p>
+                        <p className="text-xs text-amber-600">
+                            Estos proyectos son <strong>demostraciones visuales</strong> para mostrar a los clubes cómo pueden presentar sus campanAs de recaudación.
+                            Al crear tu primer proyecto real, estos ejemplos desaparecerán automáticamente.
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => setIsAIModalOpen(true)}
+                        className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-rotary-blue text-white text-xs font-bold rounded-lg hover:bg-sky-800 transition-all whitespace-nowrap">
+                        <Sparkles className="w-3 h-3" /> Crear con IA
+                    </button>
+                </div>
+            )}
 
             {/* ── Barra de selección masiva ── */}
             {isSelecting && (
