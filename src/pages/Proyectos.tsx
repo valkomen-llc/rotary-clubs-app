@@ -215,18 +215,26 @@ const Proyectos = () => {
         if (response.ok) {
           const data = await response.json();
           if (data.length > 0) {
-            const active = data.filter((p: any) => p.status !== 'completed').map((p: any) => ({
+            const mapProject = (p: any) => ({
               ...p,
-              recaudado: p.recaudado || 0, // Fallback if fields are missing in DB
-              meta: p.meta || 1000,
-              ubicacion: p.ubicacion || club.city,
-              categoria: p.categoria || 'Servicio',
-              icono: Heart // Default icon
-            }));
-            const completed = data.filter((p: any) => p.status === 'completed');
+              // La BD usa 'title/description/image/category', el componente espera 'titulo/descripcion/imagen/categoria'
+              titulo:      p.titulo      || p.title       || 'Sin título',
+              descripcion: p.descripcion || p.description || '',
+              imagen:      p.imagen      || p.image       || '',
+              categoria:   p.categoria   || p.category    || 'Servicio',
+              recaudado:   p.recaudado   || 0,
+              meta:        p.meta        || 1000,
+              ubicacion:   p.ubicacion   || club.city     || 'Colombia',
+              donantes:    p.donantes    || 0,
+              diasRestantes: p.diasRestantes || null,
+              icono:       Heart
+            });
 
-            if (active.length > 0) setActiveProjects(active);
-            if (completed.length > 0) setCompletedProjects(completed);
+            const active    = data.filter((p: any) => p.status !== 'completed').map(mapProject);
+            const completed = data.filter((p: any) => p.status === 'completed').map(mapProject);
+
+            setActiveProjects(active);
+            setCompletedProjects(completed);
           }
         }
       } catch (error) {
@@ -237,8 +245,11 @@ const Proyectos = () => {
     if (club?.id) fetchProjects();
   }, [club?.id]);
 
-  const displayActive = [...activeProjects, ...proyectosActivos];
-  const displayCompleted = [...completedProjects, ...proyectosCompletados];
+  // Si hay proyectos reales en la BD, los usamos exclusivamente.
+  // Solo hacemos fallback a los hardcodeados si la BD está completamente vacía.
+  const hasRealData = activeProjects.length > 0 || completedProjects.length > 0;
+  const displayActive = hasRealData ? activeProjects : proyectosActivos;
+  const displayCompleted = hasRealData ? completedProjects : proyectosCompletados;
 
   const scroll = (direction: 'left' | 'right') => {
     const container = scrollContainerRef.current;
@@ -383,7 +394,7 @@ const Proyectos = () => {
             >
               {displayActive.map((proyecto) => {
                 const porcentaje = Math.round((proyecto.recaudado / proyecto.meta) * 100);
-                const Icono = proyecto.icono;
+                const Icono = proyecto.icono || Heart;
 
                 return (
                   <div
@@ -427,7 +438,9 @@ const Proyectos = () => {
                           <div className="mb-4">
                             <div className="flex justify-between text-sm mb-2">
                               <span className="font-semibold text-rotary-blue">{porcentaje}% recaudado</span>
-                              <span className="text-gray-500">{proyecto.diasRestantes} d restantes</span>
+                              {proyecto.diasRestantes != null && (
+                                <span className="text-gray-500">{proyecto.diasRestantes} d restantes</span>
+                              )}
                             </div>
                             <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden">
                               <div
@@ -541,7 +554,7 @@ const Proyectos = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {displayCompleted.map((proyecto) => {
-              const Icono = proyecto.icono;
+              const Icono = proyecto.icono || Heart;
               const porcentaje = Math.round((proyecto.recaudado / proyecto.meta) * 100);
 
               return (
