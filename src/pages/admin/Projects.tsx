@@ -82,7 +82,8 @@ const ProjectsManagement: React.FC = () => {
     const fetchProjects = async () => {
         try {
             const token = localStorage.getItem('rotary_token');
-            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/projects`, {
+            const params = club?.id ? `?clubId=${club.id}` : '';
+            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/projects${params}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (response.ok) {
@@ -95,7 +96,8 @@ const ProjectsManagement: React.FC = () => {
     const fetchTrash = async () => {
         try {
             const token = localStorage.getItem('rotary_token');
-            const r = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/projects/trash`, {
+            const params = club?.id ? `?clubId=${club.id}` : '';
+            const r = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/projects/trash${params}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (r.ok) setTrashedProjects(await r.json());
