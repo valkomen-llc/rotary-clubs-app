@@ -5,7 +5,7 @@ import {
     Edit2, Trash2, Search, FolderKanban, X, Upload,
     MapPin, Target, Info, Users, DollarSign, Image as ImageIcon,
     Video, MessageSquare, CalendarDays, Rocket, CheckCircle, ChevronRight,
-    LayoutGrid, Sparkles, RotateCcw, CheckSquare, Square, Trash
+    LayoutGrid, Sparkles, RotateCcw, CheckSquare, Square, Trash, Quote
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useClub } from '../../contexts/ClubContext';
@@ -118,6 +118,19 @@ const ProjectsManagement: React.FC = () => {
     const [filterSort, setFilterSort] = useState('recent');
     const [activeTab, setActiveTab] = useState<'info' | 'crowd' | 'impact' | 'gallery'>('info');
 
+    // ── Estado de Testimonios ──
+    interface Testimonial { id: string; name: string; role: string; text: string; image?: string; isStatic?: boolean; }
+    const DEMO_TESTIMONIALS: Testimonial[] = [
+        { id: 'tdemo-1', name: 'María Elena Ríos', role: 'Beneficiaria, Vereda El Carmen', text: 'Gracias al proyecto Origen H2O, mi familia y yo tenemos agua limpia en nuestra casa. Antes caminábamos dos horas diarias para traer agua.', image: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop', isStatic: true },
+        { id: 'tdemo-2', name: 'Carlos Andrés Martínez', role: 'Becario 2023, Ingeniería', text: 'La beca del Rotary cambió mi vida. Hoy estoy en cuarto semestre de ingeniería y sueño con devolver a mi comunidad todo lo que he recibido.', image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop', isStatic: true },
+        { id: 'tdemo-3', name: 'Dra. Carmen Vargas', role: 'Hospital Universitario', text: 'Durante la pandemia, los equipos donados por Rotary nos salvaron la vida. No teníamos cómo protegernos hasta que llegaron.', image: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=200&h=200&fit=crop', isStatic: true },
+    ];
+    const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
+    const [showTestimonialsPanel, setShowTestimonialsPanel] = useState(false);
+    const [editingTestimonial, setEditingTestimonial] = useState<Testimonial | null>(null);
+    const [testimonialForm, setTestimonialForm] = useState({ name: '', role: '', text: '', image: '' });
+    const [savingTestimonial, setSavingTestimonial] = useState(false);
+
     const [formData, setFormData] = useState({
         title: '',
         description: '',
@@ -140,6 +153,7 @@ const ProjectsManagement: React.FC = () => {
         // Carga proyectos siempre (super admin sin club = todos; con club = del club)
         fetchProjects();
         fetchTrash();
+        fetchTestimonials();
     }, [clubIdForFetch, isSuperAdmin]);
 
     // Cargar clubes para el selector (solo super admin)
@@ -186,6 +200,56 @@ const ProjectsManagement: React.FC = () => {
             });
             if (r.ok) setTrashedProjects(await r.json());
         } catch {}
+    };
+
+    const fetchTestimonials = async () => {
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const params = clubIdForFetch ? `?clubId=${clubIdForFetch}` : '';
+            const r = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/testimonials${params}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (r.ok) {
+                const data = await r.json();
+                setTestimonials(data.length > 0 ? data : DEMO_TESTIMONIALS);
+            } else setTestimonials(DEMO_TESTIMONIALS);
+        } catch { setTestimonials(DEMO_TESTIMONIALS); }
+    };
+
+    const saveTestimonial = async () => {
+        if (!testimonialForm.name.trim() || !testimonialForm.text.trim()) {
+            toast.error('Nombre y testimonio son obligatorios'); return;
+        }
+        setSavingTestimonial(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const url = editingTestimonial && !editingTestimonial.isStatic
+                ? `${import.meta.env.VITE_API_URL || '/api'}/admin/testimonials/${editingTestimonial.id}`
+                : `${import.meta.env.VITE_API_URL || '/api'}/admin/testimonials`;
+            const method = editingTestimonial && !editingTestimonial.isStatic ? 'PUT' : 'POST';
+            const body: any = { ...testimonialForm };
+            if (clubIdForFetch) body.clubId = clubIdForFetch;
+            else if (club?.id && club.id !== 'loading') body.clubId = club.id;
+            const r = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            if (r.ok) {
+                toast.success(editingTestimonial ? 'Testimonio actualizado' : 'Testimonio creado');
+                setEditingTestimonial(null);
+                setTestimonialForm({ name: '', role: '', text: '', image: '' });
+                fetchTestimonials();
+            } else toast.error('Error al guardar el testimonio');
+        } catch { toast.error('Error al guardar el testimonio'); }
+        finally { setSavingTestimonial(false); }
+    };
+
+    const deleteTestimonialHandler = async (t: Testimonial) => {
+        if (t.isStatic) { toast.error('Los testimonios de ejemplo no se pueden eliminar'); return; }
+        if (!confirm(`¿Eliminar testimonio de "${t.name}"?`)) return;
+        const token = localStorage.getItem('rotary_token');
+        await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/testimonials/${t.id}`, {
+            method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
+        });
+        toast.success('Testimonio eliminado');
+        fetchTestimonials();
     };
 
     const handleOpenModal = (project?: Project) => {
@@ -516,6 +580,13 @@ const ProjectsManagement: React.FC = () => {
                                 {trashedProjects.length}
                             </span>
                         )}
+                    </button>
+                    {/* Botón Testimonios */}
+                    <button
+                        onClick={() => setShowTestimonialsPanel(true)}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 font-bold text-sm transition-all"
+                    >
+                        <Quote className="w-4 h-4" /> Testimonios
                     </button>
                     {/* Nuevo proyecto */}
                     <button
@@ -1180,6 +1251,138 @@ const ProjectsManagement: React.FC = () => {
                 onClose={() => setIsAIModalOpen(false)}
                 onApply={handleAIApply}
             />
+        )}
+
+        {/* ── Modal de Testimonios ────────────────────────────────── */}
+        {showTestimonialsPanel && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-rotary-blue/10 flex items-center justify-center">
+                                <Quote className="w-5 h-5 text-rotary-blue" />
+                            </div>
+                            <div>
+                                <h2 className="font-bold text-gray-800 text-lg">Gestión de Testimonios</h2>
+                                <p className="text-xs text-gray-400">Aparecen en la sección de Proyectos del club</p>
+                            </div>
+                        </div>
+                        <button onClick={() => { setShowTestimonialsPanel(false); setEditingTestimonial(null); setTestimonialForm({ name: '', role: '', text: '', image: '' }); }}
+                            className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                            <X className="w-4 h-4 text-gray-500" />
+                        </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                        {/* Banner demo */}
+                        {testimonials.every(t => t.isStatic) && (
+                            <div className="flex items-start gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-2xl text-xs">
+                                <span className="text-amber-500 text-base mt-0.5">💡</span>
+                                <p className="text-amber-700"><strong>Testimonios de ejemplo</strong> — Al crear tu primer testimonio real, estos desaparecerán automáticamente.</p>
+                            </div>
+                        )}
+
+                        {/* Lista de testimonios */}
+                        <div className="space-y-3">
+                            {testimonials.map(t => (
+                                <div key={t.id} className="flex items-start gap-4 p-4 rounded-2xl border border-gray-100 bg-gray-50 group">
+                                    <img
+                                        src={t.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.name)}&background=013388&color=fff&size=80`}
+                                        alt={t.name}
+                                        className="w-12 h-12 rounded-full object-cover flex-shrink-0 border-2 border-white shadow"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-0.5">
+                                            <span className="font-bold text-sm text-gray-800">{t.name}</span>
+                                            {t.isStatic
+                                                ? <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-100 text-amber-600">Demo</span>
+                                                : <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-green-100 text-green-600">Real</span>
+                                            }
+                                        </div>
+                                        <p className="text-xs text-rotary-blue font-medium mb-1">{t.role}</p>
+                                        <p className="text-xs text-gray-500 line-clamp-2">{t.text}</p>
+                                    </div>
+                                    <div className="flex gap-1.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                            onClick={() => { setEditingTestimonial(t); setTestimonialForm({ name: t.name, role: t.role, text: t.text, image: t.image || '' }); }}
+                                            className="w-7 h-7 rounded-lg bg-white border border-gray-200 flex items-center justify-center hover:border-rotary-blue hover:text-rotary-blue transition-colors">
+                                            <Edit2 className="w-3 h-3" />
+                                        </button>
+                                        <button
+                                            onClick={() => deleteTestimonialHandler(t)}
+                                            className="w-7 h-7 rounded-lg bg-white border border-gray-200 flex items-center justify-center hover:border-red-400 hover:text-red-500 transition-colors">
+                                            <Trash2 className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Formulario crear/editar */}
+                        <div className="border-t border-gray-100 pt-5">
+                            <h3 className="font-bold text-sm text-gray-700 mb-4 flex items-center gap-2">
+                                {editingTestimonial && !editingTestimonial.isStatic
+                                    ? <><Edit2 className="w-3.5 h-3.5" /> Editar testimonio</>
+                                    : <><Sparkles className="w-3.5 h-3.5 text-rotary-blue" /> {editingTestimonial?.isStatic ? 'Crear nuevo (basado en este)' : 'Nuevo testimonio'}</>}
+                            </h3>
+                            <div className="grid grid-cols-2 gap-3 mb-3">
+                                <div>
+                                    <label className="text-xs font-semibold text-gray-600 mb-1 block">Nombre *</label>
+                                    <input
+                                        type="text" placeholder="Ej: María García"
+                                        value={testimonialForm.name}
+                                        onChange={e => setTestimonialForm(f => ({ ...f, name: e.target.value }))}
+                                        className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-rotary-blue/20"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-gray-600 mb-1 block">Rol / Cargo</label>
+                                    <input
+                                        type="text" placeholder="Ej: Beneficiaria, Bogotá"
+                                        value={testimonialForm.role}
+                                        onChange={e => setTestimonialForm(f => ({ ...f, role: e.target.value }))}
+                                        className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-rotary-blue/20"
+                                    />
+                                </div>
+                            </div>
+                            <div className="mb-3">
+                                <label className="text-xs font-semibold text-gray-600 mb-1 block">URL de foto (opcional)</label>
+                                <input
+                                    type="url" placeholder="https://..."
+                                    value={testimonialForm.image}
+                                    onChange={e => setTestimonialForm(f => ({ ...f, image: e.target.value }))}
+                                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-rotary-blue/20"
+                                />
+                            </div>
+                            <div className="mb-4">
+                                <label className="text-xs font-semibold text-gray-600 mb-1 block">Testimonio *</label>
+                                <textarea
+                                    rows={3} placeholder="El testimonio del beneficiario..."
+                                    value={testimonialForm.text}
+                                    onChange={e => setTestimonialForm(f => ({ ...f, text: e.target.value }))}
+                                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-rotary-blue/20 resize-none"
+                                />
+                            </div>
+                            <div className="flex justify-between items-center">
+                                {(editingTestimonial) && (
+                                    <button
+                                        onClick={() => { setEditingTestimonial(null); setTestimonialForm({ name: '', role: '', text: '', image: '' }); }}
+                                        className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+                                        Cancelar edición
+                                    </button>
+                                )}
+                                <button
+                                    onClick={saveTestimonial}
+                                    disabled={savingTestimonial}
+                                    className="ml-auto flex items-center gap-2 px-5 py-2.5 bg-rotary-blue text-white text-sm font-bold rounded-xl hover:bg-sky-800 transition-all disabled:opacity-60">
+                                    {savingTestimonial ? 'Guardando...' : editingTestimonial && !editingTestimonial.isStatic ? 'Actualizar' : 'Crear Testimonio'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         )}
         </>
     );

@@ -311,9 +311,97 @@ export const getClubAgentContext = async (req, res) => {
     }
 };
 
+// ─── TESTIMONIOS ───────────────────────────────────────────────────────────
+
+export const getTestimonials = async (req, res) => {
+    try {
+        const clubId = req.user.role === 'administrator'
+            ? (req.query.clubId || null)
+            : req.user.clubId;
+        const where = clubId
+            ? { clubId, deletedAt: null }
+            : { deletedAt: null };
+        const testimonials = await prisma.testimonial.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            include: { club: { select: { id: true, name: true } } }
+        });
+        res.json(testimonials);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Error fetching testimonials' });
+    }
+};
+
+export const getPublicTestimonials = async (req, res) => {
+    try {
+        const { clubId } = req.params;
+        const testimonials = await prisma.testimonial.findMany({
+            where: { clubId, deletedAt: null },
+            orderBy: { createdAt: 'asc' }
+        });
+        res.json(testimonials);
+    } catch (e) {
+        res.status(500).json({ error: 'Error fetching testimonials' });
+    }
+};
+
+export const createTestimonial = async (req, res) => {
+    try {
+        const { name, role, text, image, clubId: bodyClubId } = req.body;
+        const clubId = req.user.role === 'administrator'
+            ? (bodyClubId || req.user.clubId)
+            : req.user.clubId;
+        if (!clubId || !name || !text) return res.status(400).json({ error: 'Faltan campos: clubId, name, text' });
+        const t = await prisma.testimonial.create({
+            data: { clubId, name, role: role || '', text, image: image || null }
+        });
+        res.status(201).json(t);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Error creating testimonial' });
+    }
+};
+
+export const updateTestimonial = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, role, text, image } = req.body;
+        const t = await prisma.testimonial.update({
+            where: { id },
+            data: { name, role, text, image: image || null, updatedAt: new Date() }
+        });
+        res.json(t);
+    } catch (e) {
+        res.status(500).json({ error: 'Error updating testimonial' });
+    }
+};
+
+export const deleteTestimonial = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await prisma.testimonial.update({ where: { id }, data: { deletedAt: new Date() } });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: 'Error deleting testimonial' });
+    }
+};
+
+export const permanentDeleteTestimonial = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await prisma.testimonial.delete({ where: { id } });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: 'Error permanent deleting testimonial' });
+    }
+};
+
 export default {
     getPublicPosts, getPublicProjects, getClubPosts, createPost, updatePost, deletePost,
     getClubProjects, getTrashedProjects, createProject, updateProject,
     deleteProject, bulkDeleteProjects, restoreProject, permanentDeleteProject,
+    getTestimonials, getPublicTestimonials, createTestimonial, updateTestimonial,
+    deleteTestimonial, permanentDeleteTestimonial,
     getClubAgentContext
 };

@@ -7,6 +7,7 @@ import {
     getClubPosts, createPost, updatePost, deletePost,
     getClubProjects, getTrashedProjects, createProject, updateProject, deleteProject,
     bulkDeleteProjects, restoreProject, permanentDeleteProject,
+    getTestimonials, createTestimonial, updateTestimonial, deleteTestimonial, permanentDeleteTestimonial,
     getClubAgentContext
 } from '../controllers/contentController.js';
 import {
@@ -117,6 +118,13 @@ router.put('/projects/:id', roleMiddleware(adminRoles), updateProject);
 router.delete('/projects/:id', roleMiddleware(adminRoles), deleteProject);          // soft-delete → papelera
 router.put('/projects/:id/restore', roleMiddleware(adminRoles), restoreProject);
 router.delete('/projects/:id/permanent', roleMiddleware(adminRoles), permanentDeleteProject); // borrado real
+
+// --- TESTIMONIOS ---
+router.get('/testimonials', roleMiddleware(adminRoles), getTestimonials);
+router.post('/testimonials', roleMiddleware(adminRoles), createTestimonial);
+router.put('/testimonials/:id', roleMiddleware(adminRoles), updateTestimonial);
+router.delete('/testimonials/:id', roleMiddleware(adminRoles), deleteTestimonial);         // soft-delete
+router.delete('/testimonials/:id/permanent', roleMiddleware(adminRoles), permanentDeleteTestimonial);
 
 // --- PUBLISH / UNPUBLISH CLUB SITE ---
 router.patch('/clubs/:id/publish', roleMiddleware(adminRoles), async (req, res) => {

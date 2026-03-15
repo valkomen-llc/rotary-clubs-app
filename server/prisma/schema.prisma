@@ -54,6 +54,7 @@ model Club {
   notificationConfigs NotificationConfig[]
   communicationTemplates CommunicationTemplate[]
   communicationLogs CommunicationLog[]
+  testimonials    Testimonial[]
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -411,4 +412,17 @@ model CommunicationLog {
   sentBy      User?    @relation(fields: [sentById], references: [id], onDelete: SetNull)
   
   createdAt   DateTime @default(now())
+}
+
+model Testimonial {
+  id          String    @id @default(uuid())
+  name        String
+  role        String
+  text        String    @db.Text
+  image       String?
+  clubId      String
+  club        Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
