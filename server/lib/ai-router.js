@@ -33,9 +33,10 @@ async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, maxTokens
         systemInstruction: { parts: [{ text: systemPrompt }] },
         contents: [{ role: 'user', parts: [{ text: truncatedUserPrompt }] }],
         generationConfig: {
-            maxOutputTokens: Math.min(maxTokens || 2000, 2000),
-            temperature: 0.4,
-            responseMimeType: 'application/json'
+            maxOutputTokens: Math.min(maxTokens || 8192, 8192),
+            temperature: 0.4
+            // NO usar responseMimeType: 'application/json' — causa MAX_TOKENS prematuro
+            // con prompts largos en gemini-2.5-flash
         },
         safetySettings: [
             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },

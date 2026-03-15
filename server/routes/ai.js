@@ -472,28 +472,9 @@ router.post('/models/:slug/test', authMiddleware, async (req, res) => {
 // ── PROJECT AI GENERATION ──────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
-const PROJECT_SYSTEM_PROMPT = `Responde SOLO con JSON. Sin texto adicional. Sin HTML. Sin markdown.
-{
-  "title": "Titulo emotivo max 60 chars",
-  "description": "Texto plano, 80 palabras maximo. Describe el proyecto.",
-  "category": "Area Rotary relevante",
-  "tags": ["tag1", "tag2", "tag3"],
-  "status": "planned",
-  "ubicacion": "Ciudad o region",
-  "meta": 5000000,
-  "beneficiarios": 100,
-  "fechaEstimada": "2025-12-31",
-  "impacto": "Texto plano, 30 palabras maximo. Impacto social.",
-  "actualizaciones": "Texto plano, 30 palabras maximo. Plan de hitos.",
-  "seoDescription": "Max 155 caracteres para SEO.",
-  "callToAction": "Dona ahora",
-  "fundraisingFormats": [
-    {"type":"donacion_unica","label":"Donacion unica","amounts":[25000,50000,100000,500000],"description":"Impacto de tu donacion"},
-    {"type":"socio_proyecto","label":"Socio mensual","amounts":[20000,50000,100000],"description":"Apoya mensualmente"}
-  ],
-  "suggestedImageKeywords": ["palabra1", "palabra2"]
-}
-Montos en COP. Datos realistas.`;
+const PROJECT_SYSTEM_PROMPT = `Genera un proyecto Rotary. Responde SOLO con este JSON sin texto adicional:
+{"title":"titulo impactante max 60 chars","description":"texto plano 50 palabras exactas","category":"area Rotary","tags":["tag1","tag2","tag3"],"ubicacion":"ciudad","meta":50000000,"beneficiarios":100,"seoDescription":"seo 155 chars","callToAction":"dona ahora max 35 chars","suggestedImageKeywords":["palabra1","palabra2"]}
+Montos en COP. Solo JSON.`;
 
 // POST /api/ai/projects/generate — Genera un proyecto completo desde un prompt
 router.post('/projects/generate', authMiddleware, upload.array('files', 15), async (req, res) => {
@@ -555,8 +536,21 @@ router.post('/projects/generate', authMiddleware, upload.array('files', 15), asy
             project = JSON.parse(sanitized);
         }
 
+        // Completar campos que la IA no genera (para reducir tokens de output)
+        const name = clubContext.match(/"([^"]+)"/)?.[1] || 'el Club Rotario';
+        const fullProject = {
+            status: 'planned',
+            impacto: `${project.description?.slice(0, 120) || 'Este proyecto generará un impacto significativo'} — alineado con los Objetivos de Desarrollo Sostenible y los valores Rotary de Servicio Sobre el Interés Propio.`,
+            actualizaciones: `El ${name} publicará informes trimestrales con avances, fotos y testimonios de los beneficiarios. La transparencia y rendición de cuentas son pilares fundamentales del proyecto.`,
+            fundraisingFormats: [
+                { type: 'donacion_unica', label: 'Donación única', amounts: [25000, 50000, 100000, 500000], description: 'Tu aporte directo apoya el proyecto inmediatamente.' },
+                { type: 'socio_proyecto', label: 'Socio del Proyecto (mensual)', amounts: [20000, 50000, 100000], description: 'Contribuye mensualmente y asegura la continuidad del proyecto.' }
+            ],
+            ...project  // Los campos generados por IA sobreescriben si los hay
+        };
+
         res.json({
-            project,
+            project: fullProject,
             modelUsed: slug,
             generatedAt: new Date().toISOString()
         });
