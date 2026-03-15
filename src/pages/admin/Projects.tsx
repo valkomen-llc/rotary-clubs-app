@@ -109,6 +109,7 @@ const ProjectsManagement: React.FC = () => {
     const [isSelecting, setIsSelecting] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+    const [showNewProjectStep1, setShowNewProjectStep1] = useState(false);
     const [editingProject, setEditingProject] = useState<Project | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -117,6 +118,12 @@ const ProjectsManagement: React.FC = () => {
     const [filterCategory, setFilterCategory] = useState('all');
     const [filterSort, setFilterSort] = useState('recent');
     const [activeTab, setActiveTab] = useState<'info' | 'crowd' | 'impact' | 'gallery'>('info');
+
+    // ── Agentes para el Paso 1 de nuevo proyecto ──
+    interface ProjectAgent { id: string; name: string; role: string; category: string; description: string; avatarSeed: string; avatarColor: string; greeting: string; capabilities: string[]; active: boolean; }
+    const PROJECT_AGENT_CAPS = ['manage_projects', 'edit_testimonials', 'create_news', 'edit_content', 'create_media', 'upload_media', 'generate_captions', 'create_posts', 'calendar', 'edit_pages', 'site_config'];
+    const [step1Agents, setStep1Agents] = useState<ProjectAgent[]>([]);
+    const avatar = (seed: string) => `https://api.dicebear.com/9.x/adventurer/svg?seed=${encodeURIComponent(seed)}&backgroundColor=transparent`;
 
     // ── Estado de Testimonios ──
     interface Testimonial { id: string; name: string; role: string; text: string; image?: string; isStatic?: boolean; }
@@ -154,7 +161,24 @@ const ProjectsManagement: React.FC = () => {
         fetchProjects();
         fetchTrash();
         fetchTestimonials();
+        fetchStep1Agents();
     }, [clubIdForFetch, isSuperAdmin]);
+
+    const fetchStep1Agents = async () => {
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const r = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/agents`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (r.ok) {
+                const data = await r.json();
+                const all: ProjectAgent[] = data.agents || [];
+                // Filtra solo agentes activos que tengan al menos una capability de proyectos
+                const filtered = all.filter(a => a.active && a.capabilities?.some(c => PROJECT_AGENT_CAPS.includes(c)));
+                setStep1Agents(filtered);
+            }
+        } catch {}
+    };
 
     // Cargar clubes para el selector (solo super admin)
     useEffect(() => {
@@ -590,7 +614,7 @@ const ProjectsManagement: React.FC = () => {
                     </button>
                     {/* Nuevo proyecto */}
                     <button
-                        onClick={() => setIsAIModalOpen(true)}
+                        onClick={() => setShowNewProjectStep1(true)}
                         className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2 rounded-lg hover:bg-sky-800 transition-all font-bold shadow-lg shadow-rotary-blue/20"
                     >
                         <Sparkles className="w-4 h-4" /> Nuevo Proyecto
@@ -1244,6 +1268,172 @@ const ProjectsManagement: React.FC = () => {
                 </div>
             )}
         </AdminLayout>
+
+        {/* ── Paso 1: Nuevo Proyecto — Guía e intervención de agentes ── */}
+        {showNewProjectStep1 && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden">
+
+                    {/* Header con paso */}
+                    <div className="flex items-center justify-between px-7 py-5 bg-gradient-to-r from-rotary-blue to-sky-700 text-white">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                                <Sparkles className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <p className="text-xs font-semibold text-white/70 uppercase tracking-widest">Paso 1 de 2</p>
+                                <h2 className="text-lg font-black">Crear Nuevo Proyecto</h2>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            {/* Indicador de pasos */}
+                            <div className="flex items-center gap-1.5">
+                                <div className="w-6 h-1.5 rounded-full bg-white" />
+                                <div className="w-6 h-1.5 rounded-full bg-white/30" />
+                            </div>
+                            <button onClick={() => setShowNewProjectStep1(false)}
+                                className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors">
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto">
+                        {/* Intro */}
+                        <div className="px-7 pt-6 pb-4">
+                            <h3 className="font-black text-gray-800 text-base mb-1">¿Cómo crear un proyecto exitoso?</h3>
+                            <p className="text-sm text-gray-500 leading-relaxed">
+                                Antes de llenar el formulario, ten en cuenta que cada proyecto involucra a cuatro agentes especializados que trabajarán contigo para publicarlo y difundirlo de manera profesional.
+                            </p>
+                        </div>
+
+                        {/* Flujo en 4 pasos */}
+                        <div className="px-7 pb-5">
+                            <div className="grid grid-cols-4 gap-2">
+                                {[
+                                    { num: '1', emoji: '✍️', label: 'Rafael redacta', desc: 'Título, descripción e historia de impacto', color: '#10B981' },
+                                    { num: '2', emoji: '📸', label: 'Camila define la imagen', desc: 'Portada, galería y video del proyecto', color: '#EC4899' },
+                                    { num: '3', emoji: '💻', label: 'Santiago publica', desc: 'Verificación web, SEO y estado en admin', color: '#0EA5E9' },
+                                    { num: '4', emoji: '📱', label: 'Andrés difunde', desc: 'Redes sociales y calendario de posts', color: '#F97316' },
+                                ].map((step) => (
+                                    <div key={step.num} className="relative bg-gray-50 rounded-2xl p-3 text-center border border-gray-100">
+                                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-black mx-auto mb-2"
+                                            style={{ backgroundColor: step.color }}>
+                                            {step.num}
+                                        </div>
+                                        <div className="text-xl mb-1">{step.emoji}</div>
+                                        <p className="text-[11px] font-bold text-gray-700 leading-snug mb-1">{step.label}</p>
+                                        <p className="text-[10px] text-gray-400 leading-snug">{step.desc}</p>
+
+                                        {/* Flecha entre pasos */}
+                                        {step.num !== '4' && (
+                                            <ChevronRight className="absolute -right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-300 z-10 bg-white rounded-full" />
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Separator */}
+                        <div className="mx-7 border-t border-gray-100 mb-5" />
+
+                        {/* Agentes disponibles */}
+                        <div className="px-7 pb-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="font-black text-gray-800 text-base">
+                                    Agentes disponibles para proyectos
+                                </h3>
+                                <span className="text-xs text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full font-medium">
+                                    {step1Agents.length > 0 ? `${step1Agents.length} agentes` : 'Cargando...'}
+                                </span>
+                            </div>
+
+                            {step1Agents.length === 0 ? (
+                                /* Fallback estático si los agentes aún no cargaron */
+                                <div className="grid grid-cols-2 gap-3">
+                                    {[
+                                        { name: 'Rafael', role: 'Copywriter / Storyteller Rotario', desc: 'Redacta descripciones, textos de recaudación y testimonios del proyecto.', color: '#10B981', emoji: '✍️', caps: ['Proyectos', 'Noticias', 'Blog'] },
+                                        { name: 'Camila', role: 'Creadora de Contenido Multimedia', desc: 'Define imágenes, videos y brief visual para el proyecto.', color: '#EC4899', emoji: '📸', caps: ['Multimedia', 'Captions', 'Proyectos'] },
+                                        { name: 'Santiago', role: 'Webmaster / Desarrollador Web', desc: 'Verifica publicación, SEO y configuración del proyecto en el sitio.', color: '#0EA5E9', emoji: '💻', caps: ['Web', 'SEO', 'Config'] },
+                                        { name: 'Andrés', role: 'Gestor de Redes Sociales', desc: 'Crea el plan de redes y calendario de difusión del proyecto.', color: '#F97316', emoji: '📱', caps: ['Redes', 'Calendario', 'Analytics'] },
+                                    ].map(a => (
+                                        <div key={a.name} className="flex items-start gap-3 p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                                            <div className="w-12 h-12 rounded-full flex items-center justify-center text-2xl flex-shrink-0 border-2 border-white shadow"
+                                                style={{ background: a.color + '15' }}>
+                                                {a.emoji}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-bold text-sm text-gray-800">{a.name}</p>
+                                                <p className="text-xs font-medium mb-1" style={{ color: a.color }}>{a.role}</p>
+                                                <p className="text-xs text-gray-400 leading-snug mb-2">{a.desc}</p>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {a.caps.map(c => (
+                                                        <span key={c} className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase"
+                                                            style={{ background: a.color + '15', color: a.color }}>{c}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 gap-3">
+                                    {step1Agents.map(a => {
+                                        const capLabels: Record<string, string> = {
+                                            manage_projects: 'Proyectos', edit_testimonials: 'Testimonios',
+                                            create_news: 'Noticias', edit_content: 'Contenido', create_blog: 'Blog',
+                                            create_media: 'Multimedia', upload_media: 'Subir archivos', generate_captions: 'Captions',
+                                            create_posts: 'Redes', calendar: 'Calendario', analytics: 'Analytics',
+                                            edit_pages: 'Páginas', site_config: 'Config web',
+                                        };
+                                        const relevantCaps = a.capabilities?.filter(c => PROJECT_AGENT_CAPS.includes(c)) || [];
+                                        return (
+                                            <div key={a.id} className="flex items-start gap-3 p-4 bg-gray-50 rounded-2xl border border-gray-100 hover:border-gray-200 transition-colors">
+                                                <div className="flex-shrink-0 relative">
+                                                    <img src={avatar(a.avatarSeed || a.name)} alt={a.name}
+                                                        className="w-12 h-12 rounded-full object-cover border-2 border-white shadow"
+                                                        style={{ background: (a.avatarColor || '#013388') + '20' }} />
+                                                    <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-white bg-emerald-400" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-bold text-sm text-gray-800">{a.name}</p>
+                                                    <p className="text-xs font-medium mb-1.5 truncate" style={{ color: a.avatarColor || '#013388' }}>{a.role}</p>
+                                                    <p className="text-xs text-gray-400 leading-snug mb-2 line-clamp-2">{a.description}</p>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {relevantCaps.slice(0, 3).map(c => (
+                                                            <span key={c} className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase"
+                                                                style={{ background: (a.avatarColor || '#013388') + '15', color: a.avatarColor || '#013388' }}>
+                                                                {capLabels[c] || c}
+                                                            </span>
+                                                        ))}
+                                                        {relevantCaps.length > 3 && (
+                                                            <span className="text-[9px] px-1.5 py-0.5 rounded font-bold text-gray-400 bg-gray-100">+{relevantCaps.length - 3}</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="px-7 py-5 border-t border-gray-100 flex items-center justify-between bg-gray-50/50">
+                        <p className="text-xs text-gray-400 max-w-xs leading-relaxed">
+                            En el siguiente paso encontrarás el formulario completo para registrar el proyecto con ayuda de IA ✨
+                        </p>
+                        <button
+                            onClick={() => { setShowNewProjectStep1(false); setIsAIModalOpen(true); }}
+                            className="flex items-center gap-2.5 px-6 py-3 bg-rotary-blue text-white rounded-xl font-black text-sm hover:bg-sky-800 transition-all shadow-lg shadow-rotary-blue/25"
+                        >
+                            Continuar al formulario <ChevronRight className="w-4 h-4" />
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
 
         {/* Modal IA */}
         {isAIModalOpen && (
