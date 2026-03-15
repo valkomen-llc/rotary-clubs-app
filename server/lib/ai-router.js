@@ -12,14 +12,13 @@ async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, maxTokens
     const key = apiKey || process.env.GEMINI_API_KEY;
     if (!key) throw new Error('Gemini API Key no configurada');
 
-    // Lista de modelos a intentar en orden (fallback automático)
-    // Cubre API keys antiguas (gemini-pro) y nuevas (1.5-flash-001)
+    // Cadena de modelos verificados disponibles para este API key (v1beta)
     const candidates = [
-        { version: 'v1beta', id: modelId },           // modelo solicitado
-        { version: 'v1',     id: 'gemini-1.5-flash-001' },
-        { version: 'v1',     id: 'gemini-1.5-flash-002' },
-        { version: 'v1beta', id: 'gemini-1.5-flash' },
-        { version: 'v1beta', id: 'gemini-pro' },       // modelo original, siempre disponible
+        { version: 'v1beta', id: modelId },           // modelo solicitado por el usuario
+        { version: 'v1beta', id: 'gemini-2.0-flash' }, // estable y disponible
+        { version: 'v1beta', id: 'gemini-2.0-flash-lite' },
+        { version: 'v1beta', id: 'gemini-flash-latest' },
+        { version: 'v1beta', id: 'gemini-pro-latest' }, // último fallback estable
     ];
 
     const body = {
@@ -29,21 +28,26 @@ async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, maxTokens
 
     let lastError = '';
     for (const { version, id } of candidates) {
+        // Evitar intentar el mismo modelo dos veces
+        const seen = new Set();
+        if (seen.has(id)) continue;
+        seen.add(id);
+
         const url = `https://generativelanguage.googleapis.com/${version}/models/${id}:generateContent?key=${key}`;
         try {
             const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
             const data = await res.json();
             if (res.ok) return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            // 404 = modelo no disponible → intentar el siguiente
-            if (res.status === 404) { lastError = data.error?.message || `${id} not found`; continue; }
-            // Otro error (auth, quota, etc.) → propagar inmediatamente
+            if (res.status === 404 || res.status === 400) { lastError = data.error?.message || `${id} not found`; continue; }
             throw new Error(data.error?.message || 'Error Gemini API');
         } catch (e) {
-            if (e.message.includes('not found') || e.message.includes('no longer')) { lastError = e.message; continue; }
+            if (e.message && (e.message.includes('not found') || e.message.includes('no longer') || e.message.includes('not supported'))) {
+                lastError = e.message; continue;
+            }
             throw e;
         }
     }
-    throw new Error(`Ningún modelo Gemini disponible para este API key. Último error: ${lastError}`);
+    throw new Error(`Error al conectar con Gemini. Último error: ${lastError}`);
 }
 
 async function callOpenAI({ modelId, apiKey, systemPrompt, userPrompt, maxTokens }) {
@@ -140,14 +144,15 @@ const HANDLERS = {
 
 // ── Modelos pre-registrados (fallback si la BD aún no tiene registros) ────────
 export const BUILTIN_MODELS = [
-    { slug: 'gemini-1.5-flash',      provider: 'google',    display_name: 'Gemini 1.5 Flash',      model_id: 'gemini-1.5-flash-latest',     is_default: true,  description: 'Estable y veloz — disponible para todas las cuentas',       speed: 'fast',   cost_tier: 1 },
-    { slug: 'gemini-1.5-pro',        provider: 'google',    display_name: 'Gemini 1.5 Pro',        model_id: 'gemini-1.5-pro-latest',       is_default: false, description: 'Mayor capacidad de razonamiento para proyectos complejos',  speed: 'medium', cost_tier: 2 },
-    { slug: 'gemini-2.0-flash-lite', provider: 'google',    display_name: 'Gemini 2.0 Flash Lite', model_id: 'gemini-2.0-flash-lite-001',   is_default: false, description: 'Modelo 2.0 de Google (requiere cuenta habilitada)',         speed: 'fast',   cost_tier: 1 },
-    { slug: 'gpt-4o',                provider: 'openai',    display_name: 'GPT-4o',                model_id: 'gpt-4o',                      is_default: false, description: 'Máxima calidad de texto — el más potente de OpenAI',        speed: 'medium', cost_tier: 3 },
-    { slug: 'gpt-4o-mini',           provider: 'openai',    display_name: 'GPT-4o Mini',           model_id: 'gpt-4o-mini',                 is_default: false, description: 'Económico y rápido — ideal para drafts y pruebas',          speed: 'fast',   cost_tier: 1 },
-    { slug: 'claude-3-5-sonnet',     provider: 'anthropic', display_name: 'Claude 3.5 Sonnet',     model_id: 'claude-3-5-sonnet-20241022',  is_default: false, description: 'Excelente narrativa y redacción — ideal para descripciones', speed: 'medium', cost_tier: 2 },
-    { slug: 'claude-3-haiku',        provider: 'anthropic', display_name: 'Claude 3 Haiku',        model_id: 'claude-3-haiku-20240307',     is_default: false, description: 'El más rápido de Anthropic — económico y eficiente',        speed: 'fast',   cost_tier: 1 },
-    { slug: 'mistral-large',         provider: 'mistral',   display_name: 'Mistral Large',         model_id: 'mistral-large-latest',        is_default: false, description: 'Alternativa europea con excelente calidad',                 speed: 'medium', cost_tier: 2 },
+    { slug: 'gemini-2.0-flash',      provider: 'google',    display_name: 'Gemini 2.0 Flash',      model_id: 'gemini-2.0-flash',           is_default: true,  description: 'Rápido y potente — modelo principal de Gemini',              speed: 'fast',   cost_tier: 1 },
+    { slug: 'gemini-2.5-flash',      provider: 'google',    display_name: 'Gemini 2.5 Flash',      model_id: 'gemini-2.5-flash',           is_default: false, description: 'El modelo más avanzado y rápido de Google (2025)',          speed: 'fast',   cost_tier: 2 },
+    { slug: 'gemini-2.5-pro',        provider: 'google',    display_name: 'Gemini 2.5 Pro',        model_id: 'gemini-2.5-pro',             is_default: false, description: 'Máxima capacidad de razonamiento de Google',               speed: 'medium', cost_tier: 3 },
+    { slug: 'gemini-2.0-flash-lite', provider: 'google',    display_name: 'Gemini 2.0 Flash Lite', model_id: 'gemini-2.0-flash-lite',      is_default: false, description: 'Versión ligera y económica de Gemini 2.0 Flash',           speed: 'fast',   cost_tier: 1 },
+    { slug: 'gpt-4o',                provider: 'openai',    display_name: 'GPT-4o',                model_id: 'gpt-4o',                     is_default: false, description: 'Máxima calidad de texto — el más potente de OpenAI',        speed: 'medium', cost_tier: 3 },
+    { slug: 'gpt-4o-mini',           provider: 'openai',    display_name: 'GPT-4o Mini',           model_id: 'gpt-4o-mini',                is_default: false, description: 'Económico y rápido — ideal para drafts y pruebas',          speed: 'fast',   cost_tier: 1 },
+    { slug: 'claude-3-5-sonnet',     provider: 'anthropic', display_name: 'Claude 3.5 Sonnet',     model_id: 'claude-3-5-sonnet-20241022', is_default: false, description: 'Excelente narrativa y redacción — ideal para descripciones', speed: 'medium', cost_tier: 2 },
+    { slug: 'claude-3-haiku',        provider: 'anthropic', display_name: 'Claude 3 Haiku',        model_id: 'claude-3-haiku-20240307',    is_default: false, description: 'El más rápido de Anthropic — económico y eficiente',        speed: 'fast',   cost_tier: 1 },
+    { slug: 'mistral-large',         provider: 'mistral',   display_name: 'Mistral Large',         model_id: 'mistral-large-latest',       is_default: false, description: 'Alternativa europea con excelente calidad',                 speed: 'medium', cost_tier: 2 },
 ];
 
 // ── Main router function ──────────────────────────────────────────────────────
@@ -207,7 +212,7 @@ export async function getDefaultModel() {
         if (result.rows.length > 0) return result.rows[0].slug;
     } catch (_) { }
     // Fallback: primer modelo builtin marcado como default
-    return BUILTIN_MODELS.find(m => m.is_default)?.slug || 'gemini-1.5-flash';
+    return BUILTIN_MODELS.find(m => m.is_default)?.slug || 'gemini-2.0-flash';
 }
 
 // ── Simple XOR encryption for API keys (upgrade to AES in production) ────────

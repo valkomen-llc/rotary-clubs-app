@@ -78,14 +78,15 @@ const EXAMPLE_PROMPTS = [
 
 // Catálogo estático — siempre visible en el selector
 const KNOWN_MODELS: AIModel[] = [
-    { slug: 'gemini-1.5-flash',      provider: 'google',    display_name: 'Gemini 1.5 Flash',      short_code: 'G1.5F',   is_active: false, is_default: true,  has_key: false, db_configured: false, description: 'Estable y veloz — disponible para todas las cuentas',           speed: 'fast'   },
-    { slug: 'gemini-1.5-pro',        provider: 'google',    display_name: 'Gemini 1.5 Pro',        short_code: 'G1.5P',   is_active: false, is_default: false, has_key: false, db_configured: false, description: 'Mayor capacidad de razonamiento y detalle',                  speed: 'medium' },
-    { slug: 'gemini-2.0-flash-lite', provider: 'google',    display_name: 'Gemini 2.0 Flash Lite', short_code: 'G2FL',    is_active: false, is_default: false, has_key: false, db_configured: false, description: 'Modelo 2.0 de Google (requiere cuenta habilitada)',          speed: 'fast'   },
-    { slug: 'gpt-4o',                provider: 'openai',    display_name: 'GPT-4o',                short_code: 'GPT4O',   is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'Modelo multimodal líder de OpenAI',                           speed: 'medium' },
-    { slug: 'gpt-4o-mini',           provider: 'openai',    display_name: 'GPT-4o Mini',           short_code: 'GPT4M',   is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'Rápido y económico, ideal para drafts',                       speed: 'fast'   },
-    { slug: 'claude-3-5-sonnet',     provider: 'anthropic', display_name: 'Claude 3.5 Sonnet',     short_code: 'CL3.5S',  is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'Redacción excepcional y análisis profundo',                    speed: 'medium' },
-    { slug: 'claude-3-haiku',        provider: 'anthropic', display_name: 'Claude 3 Haiku',        short_code: 'CL3H',    is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'El más veloz de Anthropic',                                   speed: 'fast'   },
-    { slug: 'mistral-large',         provider: 'mistral',   display_name: 'Mistral Large',         short_code: 'MST-L',   is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'Potente modelo europeo open-weight',                         speed: 'medium' },
+    { slug: 'gemini-2.0-flash',      provider: 'google',    display_name: 'Gemini 2.0 Flash',      short_code: 'G2.0F',   is_active: false, is_default: true,  has_key: false, db_configured: false, description: 'Rápido y potente — modelo principal de Gemini',           speed: 'fast'   },
+    { slug: 'gemini-2.5-flash',      provider: 'google',    display_name: 'Gemini 2.5 Flash',      short_code: 'G2.5F',   is_active: false, is_default: false, has_key: false, db_configured: false, description: 'El más avanzado y rápido de Google (2025)',               speed: 'fast'   },
+    { slug: 'gemini-2.5-pro',        provider: 'google',    display_name: 'Gemini 2.5 Pro',        short_code: 'G2.5P',   is_active: false, is_default: false, has_key: false, db_configured: false, description: 'Máxima capacidad de razonamiento de Google',              speed: 'medium' },
+    { slug: 'gemini-2.0-flash-lite', provider: 'google',    display_name: 'Gemini 2.0 Flash Lite', short_code: 'G2.0FL',  is_active: false, is_default: false, has_key: false, db_configured: false, description: 'Versión ligera y económica de Gemini 2.0',               speed: 'fast'   },
+    { slug: 'gpt-4o',                provider: 'openai',    display_name: 'GPT-4o',                short_code: 'GPT4O',   is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'Modelo multimodal líder de OpenAI',                      speed: 'medium' },
+    { slug: 'gpt-4o-mini',           provider: 'openai',    display_name: 'GPT-4o Mini',           short_code: 'GPT4M',   is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'Rápido y económico, ideal para drafts',                  speed: 'fast'   },
+    { slug: 'claude-3-5-sonnet',     provider: 'anthropic', display_name: 'Claude 3.5 Sonnet',     short_code: 'CL3.5S',  is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'Redacción excepcional y análisis profundo',               speed: 'medium' },
+    { slug: 'claude-3-haiku',        provider: 'anthropic', display_name: 'Claude 3 Haiku',        short_code: 'CL3H',    is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'El más veloz de Anthropic',                               speed: 'fast'   },
+    { slug: 'mistral-large',         provider: 'mistral',   display_name: 'Mistral Large',         short_code: 'MST-L',   is_active: false, is_default: false, has_key: false, db_configured: true,  description: 'Potente modelo europeo open-weight',                     speed: 'medium' },
 ];
 
 // Tipos de archivo permitidos
@@ -181,7 +182,7 @@ const ProjectAIModal: React.FC<Props> = ({ onClose, onApply }) => {
                     || merged[0];
                 if (def) setSelectedSlug(def.slug);
             })
-            .catch(() => { setModels(KNOWN_MODELS); setSelectedSlug('gemini-1.5-flash'); });
+            .catch(() => { setModels(KNOWN_MODELS); setSelectedSlug('gemini-2.0-flash'); });
     }, []);
 
     // Cargar clubs (solo superadmin)
