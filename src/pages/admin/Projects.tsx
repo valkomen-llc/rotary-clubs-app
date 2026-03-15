@@ -12,79 +12,7 @@ import { useClub } from '../../contexts/ClubContext';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 
-// Hardcoded data from the public page to merge
-const staticProjects = [
-    {
-        id: 'static-1',
-        title: 'Origen H2O - Agua para Comunidades Rurales',
-        description: 'Instalación de sistemas de agua potable en 15 comunidades rurales de Cundinamarca y Boyacá que actualmente no tienen acceso a agua limpia.',
-        image: 'https://images.unsplash.com/photo-1593113598332-cd288d649433?w=800&h=500&fit=crop',
-        status: 'active',
-        category: 'Agua y Saneamiento',
-        meta: 150000000,
-        recaudado: 98500000,
-        donantes: 342,
-        beneficiarios: 8500,
-        ubicacion: 'Cundinamarca & Boyacá',
-        isStatic: true
-    },
-    {
-        id: 'static-2',
-        title: 'Becas Educativas para Jóvenes Líderes 2026',
-        description: '<p>Programa de becas completas para 25 jóvenes destacados de comunidades vulnerables.</p>',
-        image: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=800&h=500&fit=crop',
-        status: 'active',
-        category: 'Educación',
-        meta: 200000000,
-        recaudado: 156000000,
-        donantes: 518,
-        beneficiarios: 25,
-        ubicacion: 'Nacional',
-        isStatic: true
-    },
-    {
-        id: 'static-3',
-        title: 'Reforestación de Cuencas Hídricas',
-        description: 'Plantación de 50,000 árboles nativos en cuencas hídricas degradadas.',
-        image: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=800&h=500&fit=crop',
-        status: 'active',
-        category: 'Medio Ambiente',
-        meta: 80000000,
-        recaudado: 42300000,
-        donantes: 267,
-        beneficiarios: 12000,
-        ubicacion: 'Santander',
-        isStatic: true
-    },
-    {
-        id: 'static-4',
-        title: 'Viviendas Dignas para Familias Afectadas',
-        description: 'Construcción de 30 viviendas sismorresistentes.',
-        image: 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=800&h=500&fit=crop',
-        status: 'active',
-        category: 'Vivienda',
-        meta: 450000000,
-        recaudado: 289000000,
-        donantes: 892,
-        beneficiarios: 150,
-        ubicacion: 'Cauca & Huila',
-        isStatic: true
-    },
-    {
-        id: 'static-5',
-        title: 'Campaña #TodoPorNuestrosHéroes',
-        description: 'Entrega de equipos de protección personal.',
-        image: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800&h=500&fit=crop',
-        status: 'completed',
-        category: 'Salud',
-        meta: 250000000,
-        recaudado: 267000000,
-        donantes: 1247,
-        beneficiarios: 50000,
-        ubicacion: 'Nacional',
-        isStatic: true
-    }
-];
+
 
 interface Project {
     id: string;
@@ -152,9 +80,6 @@ const ProjectsManagement: React.FC = () => {
     }, [club?.id]);
 
     const fetchProjects = async () => {
-        const mappedStatic: Project[] = staticProjects.map(p => ({
-            ...p, id: p.id, createdAt: '2024-01-01', isStatic: true
-        } as Project));
         try {
             const token = localStorage.getItem('rotary_token');
             const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/projects`, {
@@ -162,9 +87,9 @@ const ProjectsManagement: React.FC = () => {
             });
             if (response.ok) {
                 const dbProjects = await response.json();
-                setProjects([...dbProjects, ...mappedStatic]);
-            } else setProjects(mappedStatic);
-        } catch { setProjects(mappedStatic); }
+                setProjects(dbProjects);
+            } else setProjects([]);
+        } catch { setProjects([]); }
     };
 
     const fetchTrash = async () => {
@@ -675,6 +600,27 @@ const ProjectsManagement: React.FC = () => {
                         </div>
                     )}
                     <hr className="my-6 border-gray-100" />
+                </div>
+            )}
+
+            {filteredProjects.length === 0 && !showTrash && (
+                <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
+                    <FolderKanban className="w-14 h-14 text-gray-200 mx-auto mb-4" />
+                    <h3 className="font-bold text-gray-600 text-lg mb-2">
+                        {projects.length === 0 ? 'Aún no tienes proyectos' : 'Sin resultados para estos filtros'}
+                    </h3>
+                    <p className="text-gray-400 text-sm mb-6">
+                        {projects.length === 0
+                            ? 'Crea tu primer proyecto con la ayuda de la IA o manualmente.'
+                            : 'Prueba cambiando los filtros o la búsqueda.'}
+                    </p>
+                    {projects.length === 0 && (
+                        <button
+                            onClick={() => setIsAIModalOpen(true)}
+                            className="inline-flex items-center gap-2 bg-rotary-blue text-white px-6 py-3 rounded-xl font-bold hover:bg-sky-800 transition-all shadow-lg shadow-rotary-blue/20">
+                            <Sparkles className="w-4 h-4" /> Crear primer proyecto con IA
+                        </button>
+                    )}
                 </div>
             )}
 
