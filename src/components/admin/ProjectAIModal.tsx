@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles, X, Loader2, Bot, ChevronDown, Star, AlertCircle, CheckCircle2, Upload, FileText, ImageIcon, Film, Building2 } from 'lucide-react';
 import { useClub } from '../../contexts/ClubContext';
-import { useAuth } from '../../hooks/useAuth';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -111,8 +110,16 @@ function fileLabel(type: string) {
 
 const ProjectAIModal: React.FC<Props> = ({ onClose, onApply }) => {
     const { club }      = useClub();
-    const { user }      = useAuth();
-    const isSuperAdmin  = (user as any)?.role === 'administrator';
+
+    // Detectar rol directamente del JWT — no depende del ciclo async de useAuth
+    const isSuperAdmin = (() => {
+        try {
+            const t = localStorage.getItem('rotary_token');
+            if (!t) return false;
+            const payload = JSON.parse(atob(t.split('.')[1]));
+            return payload?.role === 'administrator';
+        } catch { return false; }
+    })();
 
     const [prompt, setPrompt]         = useState('');
     const [models, setModels]         = useState<AIModel[]>([]);
