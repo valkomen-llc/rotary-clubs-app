@@ -1274,40 +1274,37 @@ const ProjectsManagement: React.FC = () => {
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
                 <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden">
 
-                    {/* Header — estilo ProyectIA (idéntico al modal de IA) */}
-                    <div className="relative overflow-hidden flex-shrink-0">
-                        <div className="absolute inset-0"
-                            style={{
-                                backgroundColor: '#0c3c7c',
-                                backgroundImage: "url('/geo-darkblue.png')",
-                                backgroundPosition: '50% 0',
-                                backgroundRepeat: 'repeat',
-                                backgroundSize: '71px 85px',
-                            }} />
-                        <div className="relative px-8 py-6 flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center border border-white/30">
-                                    <Bot className="w-6 h-6 text-white" />
-                                </div>
-                                <div>
-                                    <h2 className="text-xl font-black text-white">ProyectIA</h2>
-                                    <p className="text-xs text-white/70 font-medium">Asistente de Proyectos de Crowdfunding</p>
-                                </div>
+                    {/* Header — estilo ProyectIA (fondo directo, sin capa absoluta) */}
+                    <div className="flex-shrink-0 px-8 py-6 flex items-center justify-between"
+                        style={{
+                            backgroundColor: '#0c3c7c',
+                            backgroundImage: "url('/geo-darkblue.png')",
+                            backgroundPosition: '50% 0',
+                            backgroundRepeat: 'repeat',
+                            backgroundSize: '71px 85px',
+                        }}>
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center border border-white/30">
+                                <Bot className="w-6 h-6 text-white" />
                             </div>
-                            {/* Indicador de paso + X */}
-                            <div className="flex items-center gap-3">
-                                <div className="flex items-center gap-2 bg-white/15 border border-white/20 rounded-xl px-3 py-1.5">
-                                    <div className="flex items-center gap-1">
-                                        <div className="w-5 h-1 rounded-full bg-white" />
-                                        <div className="w-5 h-1 rounded-full bg-white/30" />
-                                    </div>
-                                    <span className="text-white/80 text-[10px] font-black">Paso 1 de 2</span>
-                                </div>
-                                <button onClick={() => setShowNewProjectStep1(false)}
-                                    className="w-9 h-9 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white transition-colors">
-                                    <X className="w-4 h-4" />
-                                </button>
+                            <div>
+                                <h2 className="text-xl font-black text-white">ProyectIA</h2>
+                                <p className="text-xs text-white/70 font-medium">Asistente de Proyectos de Crowdfunding</p>
                             </div>
+                        </div>
+                        {/* Indicador de paso + X */}
+                        <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2 bg-white/15 border border-white/20 rounded-xl px-3 py-1.5">
+                                <div className="flex items-center gap-1">
+                                    <div className="w-5 h-1 rounded-full bg-white" />
+                                    <div className="w-5 h-1 rounded-full bg-white/30" />
+                                </div>
+                                <span className="text-white/80 text-[10px] font-black">Paso 1 de 2</span>
+                            </div>
+                            <button onClick={() => setShowNewProjectStep1(false)}
+                                className="w-9 h-9 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white transition-colors">
+                                <X className="w-4 h-4" />
+                            </button>
                         </div>
                     </div>
 
