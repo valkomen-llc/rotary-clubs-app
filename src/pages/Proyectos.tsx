@@ -7,7 +7,6 @@ import {
   GraduationCap,
   TreePine,
   Home,
-  HandHeart,
   ArrowRight,
   Target,
   TrendingUp,
@@ -102,54 +101,7 @@ const proyectosActivos = [
   }
 ];
 
-// Proyectos completados
-const proyectosCompletados = [
-  {
-    id: 5,
-    titulo: 'Campaña #TodoPorNuestrosHéroes',
-    descripcion: 'Entrega de 50,000 equipos de protección personal a trabajadores de la salud durante la pandemia.',
-    imagen: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800&h=500&fit=crop',
-    categoria: 'Salud',
-    icono: HandHeart,
-    meta: 250000000,
-    recaudado: 267000000,
-    donantes: 1247,
-    fechaCompletado: 'Diciembre 2020',
-    beneficiarios: 50000,
-    ubicacion: 'Nacional',
-    completado: true
-  },
-  {
-    id: 6,
-    titulo: 'Introcamp 2024 - Intercambio Juvenil',
-    descripcion: 'Programa de bienvenida para 63 estudiantes de intercambio internacional en Colombia.',
-    imagen: 'https://images.unsplash.com/photo-1531206715517-5c0ba140b2b8?w=800&h=500&fit=crop',
-    categoria: 'Intercambio',
-    icono: Users,
-    meta: 120000000,
-    recaudado: 135000000,
-    donantes: 89,
-    fechaCompletado: 'Enero 2024',
-    beneficiarios: 63,
-    ubicacion: 'Bogotá',
-    completado: true
-  },
-  {
-    id: 7,
-    titulo: 'Rotary Pinta Colombia - Fase 1',
-    descripcion: 'Embellecimiento de espacios públicos con murales en 10 ciudades colombianas.',
-    imagen: 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=800&h=500&fit=crop',
-    categoria: 'Comunidad',
-    icono: Heart,
-    meta: 45000000,
-    recaudado: 52000000,
-    donantes: 156,
-    fechaCompletado: 'Noviembre 2024',
-    beneficiarios: 25000,
-    ubicacion: '10 ciudades',
-    completado: true
-  }
-];
+
 
 // Impacto global
 const impactoStats = [
@@ -263,11 +215,10 @@ const Proyectos = () => {
     if (club?.id) fetchProjects();
   }, [club?.id]);
 
-  // Si hay proyectos reales en la BD, los usamos exclusivamente.
-  // Solo hacemos fallback a los hardcodeados si la BD está completamente vacía.
+  // Si hay proyectos reales activos en la BD, los mostramos; si no, fallback a demos.
+  // Los completados solo se muestran si hay datos reales (nunca demos para completados).
   const hasRealData = activeProjects.length > 0 || completedProjects.length > 0;
   const displayActive = hasRealData ? activeProjects : proyectosActivos;
-  const displayCompleted = hasRealData ? completedProjects : proyectosCompletados;
 
   const scroll = (direction: 'left' | 'right') => {
     const container = scrollContainerRef.current;
@@ -555,7 +506,8 @@ const Proyectos = () => {
         </div>
       </section>
 
-      {/* Proyectos Completados */}
+      {/* Proyectos Completados — solo visible cuando hay proyectos reales con status 'completed' */}
+      {completedProjects.length > 0 && (
       <section className="py-16 md:py-24 bg-rotary-concrete">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
@@ -571,7 +523,7 @@ const Proyectos = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {displayCompleted.map((proyecto) => {
+            {completedProjects.map((proyecto) => {
               const Icono = proyecto.icono || Heart;
               const porcentaje = Math.round((proyecto.recaudado / proyecto.meta) * 100);
 
@@ -614,6 +566,8 @@ const Proyectos = () => {
           </div>
         </div>
       </section>
+      )}
+
 
       {/* Testimonios */}
       <section
