@@ -121,6 +121,7 @@ export const getClubProjects = async (req, res) => {
             orderBy: { createdAt: 'desc' },
             include: { club: { select: { id: true, name: true, subdomain: true } } }
         });
+        res.set('Cache-Control', 'no-store');
         res.json(projects);
     } catch (error) {
         console.error(error);
@@ -169,6 +170,7 @@ export const createProject = async (req, res) => {
                 actualizaciones
             }
         });
+        res.set('Cache-Control', 'no-store');
         res.status(201).json(project);
     } catch (error) {
         console.error(error);

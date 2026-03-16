@@ -195,9 +195,16 @@ const ProjectsManagement: React.FC = () => {
         try {
             const token = localStorage.getItem('rotary_token');
             // Si hay un clubId válido lo enviamos; si no, el backend retorna todos (para super admin)
-            const params = clubIdForFetch ? `?clubId=${clubIdForFetch}` : '';
+            // _t= evita que la caché de Vercel Edge devuelva 304 con datos viejos
+            const params = clubIdForFetch
+                ? `?clubId=${clubIdForFetch}&_t=${Date.now()}`
+                : `?_t=${Date.now()}`;
             const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/projects${params}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                }
             });
             if (response.ok) {
                 const dbProjects = await response.json();
@@ -357,17 +364,31 @@ const ProjectsManagement: React.FC = () => {
         const files = e.target.files;
         if (!files || files.length === 0) return;
 
-        setUploading(true);
         const token = localStorage.getItem('rotary_token');
         const apiUrl = import.meta.env.VITE_API_URL || '/api';
 
+        // Obtener clubId — desde el contexto o desde el JWT como fallback
+        let uploadClubId = club?.id;
+        if (!uploadClubId) {
+            try {
+                const payload = JSON.parse(atob(token!.split('.')[1]));
+                uploadClubId = payload.clubId;
+            } catch { /* sin clubId */ }
+        }
+
+        if (!uploadClubId) {
+            toast.error('No se pudo determinar el club. Recarga la página e intenta de nuevo.');
+            return;
+        }
+
+        setUploading(true);
         try {
             for (let i = 0; i < files.length; i++) {
                 const uploadData = new FormData();
                 uploadData.append('file', files[i]);
                 uploadData.append('folder', 'projects');
 
-                const targetUrl = `${apiUrl}/media/upload?folder=projects&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
+                const targetUrl = `${apiUrl}/media/upload?folder=projects&clubId=${uploadClubId}`;
                 const response = await fetch(targetUrl, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}` },
@@ -381,13 +402,17 @@ const ProjectsManagement: React.FC = () => {
                     } else {
                         setFormData(prev => ({ ...prev, image: data.url }));
                     }
+                } else {
+                    const err = await response.json().catch(() => ({}));
+                    toast.error(`Error al subir imagen: ${err.error || response.statusText}`);
                 }
             }
             toast.success(isGallery ? 'Fotos añadidas a la galería' : 'Imagen principal actualizada');
-        } catch (error) {
-            toast.error('Error al subir imágenes');
+        } catch (error: any) {
+            toast.error('Error al subir imágenes: ' + (error.message || 'Error de red'));
         } finally {
             setUploading(false);
+            e.target.value = ''; // Reset input para permitir resubir el mismo archivo
         }
     };
 
