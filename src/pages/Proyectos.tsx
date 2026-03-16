@@ -211,7 +211,10 @@ const Proyectos = () => {
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/clubs/${club.id}/projects`);
+        const url = `${import.meta.env.VITE_API_URL || '/api'}/clubs/${club.id}/projects?_t=${Date.now()}`;
+        const response = await fetch(url, {
+          headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+        });
         if (response.ok) {
           const data = await response.json();
           if (data.length > 0) {

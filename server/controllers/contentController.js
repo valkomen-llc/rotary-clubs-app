@@ -30,6 +30,7 @@ export const getPublicProjects = async (req, res) => {
              ORDER BY "createdAt" DESC ${limitClause}`,
             [clubId]
         );
+        res.set('Cache-Control', 'no-store');
         res.json(result.rows);
     } catch (error) {
         res.status(500).json({ error: 'Error fetching projects' });
