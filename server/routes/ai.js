@@ -472,29 +472,30 @@ router.post('/models/:slug/test', authMiddleware, async (req, res) => {
 // ── PROJECT AI GENERATION ──────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
 
-const PROJECT_SYSTEM_PROMPT = `Eres ProyectIA, asistente experto en proyectos Rotary para Latinoamerica.
-Genera un proyecto de crowdfunding completo basado en la idea del administrador.
-Responde UNICAMENTE con un JSON valido. Sin texto adicional, sin markdown, sin HTML.
+const PROJECT_SYSTEM_PROMPT = `Eres ProyectIA, experto en redaccion de proyectos Rotary para plataformas de crowdfunding.
+Genera un proyecto completo basado en la idea del administrador.
+Responde UNICAMENTE con un JSON valido. Sin texto adicional, sin markdown, sin HTML en los campos.
 
-ESTRUCTURA REQUERIDA (todos los campos son obligatorios):
+ESTRUCTURA REQUERIDA:
 {
   "title": "Titulo memorable y emotivo, maximo 70 caracteres",
-  "subtitle": "Subtitulo motivador, maximo 120 caracteres, diferente al titulo",
-  "description": "Descripcion detallada del proyecto en 150 a 180 palabras en texto plano. Incluye: 1) Contexto y problema social, 2) Solucion propuesta y metodologia, 3) Poblacion beneficiaria especifica, 4) Por que es urgente actuar. Sin comillas dobles dentro del texto.",
+  "subtitle": "Subtitulo con promesa clara al donante, maximo 120 caracteres",
+  "description": "CRITICO: Exactamente 4 parrafos separados por \\n\\n. Total aproximado 280 palabras (1600 caracteres). Tono crowdfunding profesional y emotivo. PARRAFO 1 - EL PROBLEMA (70-80 palabras): Contexto social urgente con datos especificos del proyecto, dirigido al donante. PARRAFO 2 - QUIENES SON (60-70 palabras): Los beneficiarios especificos, cuantos son, sus situaciones concretas. Genera empatia sin sensacionalismo. PARRAFO 3 - TU DONACION HACE (70-80 palabras): Que se logra con el dinero: actividades concretas, resultados en 12 meses. Usa frases como Con tu apoyo y Cada peso que aportas. PARRAFO 4 - JUNTOS PODEMOS (40-50 palabras): Llamada a la accion final con urgencia y esperanza. Menciona al club Rotary como garantia de transparencia. REGLA: Sin comillas dobles dentro del texto.",
   "category": "Una de: Salud Materno-Infantil, Agua y Saneamiento, Educacion, Desarrollo Economico, Paz y Reconciliacion, Medio Ambiente, Prevencion de Enfermedades",
   "tags": ["etiqueta1", "etiqueta2", "etiqueta3", "etiqueta4"],
   "ubicacion": "Ciudad o municipio especifico donde se ejecuta el proyecto",
   "meta": 50000000,
   "beneficiarios": 100,
   "fechaEstimada": "2025-12-31",
-  "impacto": "Texto plano de 80 a 100 palabras describiendo: impacto social medible, ODS relacionados (maximo 2), cambio esperado en la comunidad a 1 ano. Sin comillas dobles.",
-  "actualizaciones": "Texto plano de 60 a 80 palabras con plan de hitos: hito mes 1 a 3, hito mes 4 a 6, hito mes 7 a 9, entrega final mes 10 a 12. Sin comillas dobles.",
-  "seoDescription": "Meta descripcion SEO entre 140 y 155 caracteres exactos. Usa palabras clave del proyecto.",
-  "callToAction": "Frase de llamada a donar, maximo 40 caracteres",
-  "fundraising": {"meta": 50000000, "montoMinimoUnico": 25000, "montosUnico": [25000, 50000, 100000, 250000, 500000], "montosMensual": [20000, 50000, 100000]},
+  "impacto": "50 palabras maximo. Impacto social con 1 ODS de la ONU. Sin comillas dobles.",
+  "actualizaciones": "40 palabras maximo. 4 fases: meses 1-3, 4-6, 7-9, 10-12. Sin comillas dobles.",
+  "seoDescription": "Entre 140 y 155 caracteres para SEO con llamada a la accion.",
+  "callToAction": "Maximo 40 caracteres. Frase imperativa y emotiva.",
+  "fundraising": {"meta": 50000000, "montosUnico": [25000, 50000, 100000, 250000, 500000], "montosMensual": [20000, 50000, 100000]},
   "suggestedImageKeywords": ["keyword1", "keyword2", "keyword3"]
 }
-IMPORTANTE: Los montos van en COP colombianos. Los numeros sin puntos ni comas. Datos realistas basados en el proyecto especifico. NO inventes nombres de personas reales.`;
+REGLAS: Montos en COP sin puntos ni comas. Datos realistas del proyecto. NO inventes nombres de personas reales.`;
+
 
 // POST /api/ai/projects/generate — Genera un proyecto completo desde un prompt
 router.post('/projects/generate', authMiddleware, upload.array('files', 15), async (req, res) => {
