@@ -1,6 +1,6 @@
 import express from 'express';
 import db from '../lib/db.js';
-import { getPublicPosts, getPublicProjects, getPublicTestimonials } from '../controllers/contentController.js';
+import { getPublicPosts, getPublicProjects, getPublicProjectById, getPublicTestimonials } from '../controllers/contentController.js';
 import { getPublicSections } from '../controllers/cmsController.js';
 
 const router = express.Router();
@@ -105,6 +105,7 @@ router.get('/by-domain', async (req, res) => {
 
 router.get('/:clubId/posts', getPublicPosts);
 router.get('/:clubId/projects', getPublicProjects);
+router.get('/:clubId/projects/:projectId', getPublicProjectById);
 router.get('/:clubId/testimonials', getPublicTestimonials);
 router.get('/:clubId/sections', getPublicSections);
 
