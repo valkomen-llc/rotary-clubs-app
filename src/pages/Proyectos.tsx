@@ -23,6 +23,21 @@ import Footer from '../sections/Footer';
 import { useClub } from '../contexts/ClubContext';
 import { useCMSContent } from '../hooks/useCMSContent';
 
+/** Limpia HTML y entidades HTML para mostrar texto plano en tarjetas */
+const stripHtml = (html: string): string => {
+  if (!html) return '';
+  return html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
 // Proyectos activos con fundraising
 const proyectosActivos = [
   {
@@ -222,7 +237,7 @@ const Proyectos = () => {
               ...p,
               // La BD usa 'title/description/image/category', el componente espera 'titulo/descripcion/imagen/categoria'
               titulo:      p.titulo      || p.title       || 'Sin título',
-              descripcion: p.descripcion || p.description || '',
+              descripcion: stripHtml(p.descripcion || p.description || ''),
               imagen:      p.imagen      || p.image       || '',
               categoria:   p.categoria   || p.category    || 'Servicio',
               recaudado:   p.recaudado   || 0,
