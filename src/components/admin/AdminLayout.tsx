@@ -28,6 +28,7 @@ import {
     Eye,
     Mail,
     Bot,
+    Network,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -115,6 +116,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
         if (isSuperAdmin) {
             items.push(
+                { icon: Network, label: 'Distritos', path: '/admin/distritos', category: 'Management' },
                 { icon: Building2, label: 'Clubes', path: '/admin/clubes', category: 'Management' },
                 { icon: Users, label: 'Super Users', path: '/admin/usuarios', category: 'Management' },
                 { icon: HeartHandshake, label: 'Donaciones Globales', path: '/admin/donaciones', category: 'Management' },

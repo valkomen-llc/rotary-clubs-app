@@ -40,6 +40,7 @@ import { LanguageProvider } from './contexts/LanguageContext';
 
 import Dashboard from './pages/admin/Dashboard';
 import ClubsManagement from './pages/admin/Clubs';
+import DistrictsManagement from './pages/admin/Districts';
 import ClubSettings from './pages/admin/ClubSettings';
 import NewsManagement from './pages/admin/News';
 import ProjectsManagement from './pages/admin/Projects';
@@ -213,6 +214,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <AnalyticsPage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/distritos"
+                  element={
+                    <PrivateRoute>
+                      <DistrictsManagement />
                     </PrivateRoute>
                   }
                 />
