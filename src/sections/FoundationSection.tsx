@@ -1,13 +1,19 @@
 import { Gift } from 'lucide-react';
+import { useSiteImages } from '../hooks/useSiteImages';
+
+const DEFAULT_FOUNDATION_IMG = 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=1600&h=800&fit=crop';
 
 const FoundationSection = () => {
+  const siteImages = useSiteImages();
+  const imgUrl = siteImages.foundation?.url || DEFAULT_FOUNDATION_IMG;
+  const imgAlt = siteImages.foundation?.alt || 'Fundación Rotary - Trabajo comunitario';
   return (
     <section className="relative w-full min-h-[500px] md:min-h-[600px] overflow-hidden">
       {/* Imagen de fondo */}
       <div className="absolute inset-0">
         <img
-          src="https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=1600&h=800&fit=crop"
-          alt="Fundación Rotary - Trabajo comunitario"
+          src={imgUrl}
+          alt={imgAlt}
           className="w-full h-full object-cover"
         />
         {/* Overlay sutil */}

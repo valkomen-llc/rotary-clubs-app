@@ -109,4 +109,22 @@ router.get('/:clubId/projects/:projectId', getPublicProjectById);
 router.get('/:clubId/testimonials', getPublicTestimonials);
 router.get('/:clubId/sections', getPublicSections);
 
+// Convenience: get site-images map for a club
+router.get('/:clubId/site-images', async (req, res) => {
+    try {
+        const result = await db.query(
+            `SELECT content FROM "ContentSection" WHERE page = 'home' AND section = 'images' AND "clubId" = $1`,
+            [req.params.clubId]
+        );
+        if (result.rows.length === 0) return res.json({});
+        const content = typeof result.rows[0].content === 'string'
+            ? JSON.parse(result.rows[0].content) : result.rows[0].content;
+        res.set('Cache-Control', 'public, max-age=300');
+        res.json(content);
+    } catch (error) {
+        console.error('Error fetching site-images:', error);
+        res.status(500).json({ error: 'Error fetching site images' });
+    }
+});
+
 export default router;

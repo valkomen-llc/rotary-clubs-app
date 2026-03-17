@@ -61,6 +61,7 @@ import SiteSetupPage from './pages/admin/SiteSetup';
 import LeadsManagement from './pages/admin/Leads';
 import FAQManagement from './pages/admin/FAQs';
 import AgentsManagement from './pages/admin/Agents';
+import ImageDistribution from './pages/admin/ImageDistribution';
 import ChatBot from './components/ChatBot';
 import LandingPage from './pages/LandingPage';
 import RegistroPage from './pages/RegistroPage';
@@ -374,6 +375,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <AgentsManagement />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/imagenes-sitio"
+                  element={
+                    <PrivateRoute>
+                      <ImageDistribution />
                     </PrivateRoute>
                   }
                 />

@@ -29,6 +29,7 @@ import {
     Mail,
     Bot,
     Network,
+    Palette,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -137,6 +138,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             { icon: FolderKanban, label: 'Proyectos', path: '/admin/proyectos', category: 'Content' },
             { icon: Calendar, label: 'Eventos', path: '/admin/calendario', category: 'Content' },
             { icon: ImageIcon, label: 'Multimedia', path: '/admin/media', category: 'Content' },
+            { icon: Palette, label: 'Imágenes del Sitio', path: '/admin/imagenes-sitio', category: 'Content' },
             { icon: HelpCircle, label: 'Preguntas Frecuentes', path: '/admin/faqs', category: 'Content' },
         );
         if (isSuperAdmin) {

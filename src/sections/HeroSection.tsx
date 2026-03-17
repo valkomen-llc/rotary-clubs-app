@@ -1,62 +1,42 @@
 import { useState, useEffect } from 'react';
+import { useSiteImages } from '../hooks/useSiteImages';
 
-const slides = [
-  {
-    id: 1,
-    image: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=700&fit=crop',
-    alt: 'Rotary - Trabajo en equipo'
-  },
-  {
-    id: 2,
-    image: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&h=700&fit=crop',
-    alt: 'Rotary - Promoción de la paz'
-  },
-  {
-    id: 3,
-    image: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=1600&h=700&fit=crop',
-    alt: 'Rotary - Lucha contra enfermedades'
-  },
-  {
-    id: 4,
-    image: 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=1600&h=700&fit=crop',
-    alt: 'Rotary - Educación'
-  },
-  {
-    id: 5,
-    image: 'https://images.unsplash.com/photo-1531206715517-5c0ba140b2b8?w=1600&h=700&fit=crop',
-    alt: 'Rotary - Desarrollo económico'
-  }
+const defaultSlides = [
+  { id: 1, image: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=700&fit=crop', alt: 'Rotary - Trabajo en equipo' },
+  { id: 2, image: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&h=700&fit=crop', alt: 'Rotary - Promoción de la paz' },
+  { id: 3, image: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=1600&h=700&fit=crop', alt: 'Rotary - Lucha contra enfermedades' },
+  { id: 4, image: 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=1600&h=700&fit=crop', alt: 'Rotary - Educación' },
+  { id: 5, image: 'https://images.unsplash.com/photo-1531206715517-5c0ba140b2b8?w=1600&h=700&fit=crop', alt: 'Rotary - Desarrollo económico' },
 ];
 
 const HeroSection = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const siteImages = useSiteImages();
 
-  // Auto-play slides every 5 seconds
+  // Build slides from siteImages or defaults
+  const slides = (siteImages.hero && siteImages.hero.length > 0)
+    ? siteImages.hero.map((img, i) => ({ id: i + 1, image: img.url, alt: img.alt }))
+    : defaultSlides;
+
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % slides.length);
     }, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [slides.length]);
 
   return (
     <>
       <style>{`
         @keyframes zoomIn {
-          0% {
-            transform: scale(1);
-          }
-          100% {
-            transform: scale(1.08);
-          }
+          0% { transform: scale(1); }
+          100% { transform: scale(1.08); }
         }
-        
         .hero-slide-image {
           animation: zoomIn 5s ease-out forwards;
         }
       `}</style>
       <section className="relative w-full h-[440px] md:h-[540px] overflow-hidden">
-        {/* Slides Container */}
         <div className="absolute inset-0">
           {slides.map((slide, index) => (
             <div
@@ -72,11 +52,9 @@ const HeroSection = () => {
               />
             </div>
           ))}
-          {/* Overlay */}
           <div className="absolute inset-0 bg-gradient-to-r from-black/40 to-transparent z-20" />
         </div>
         
-        {/* Slide Indicators */}
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex gap-2">
           {slides.map((_, index) => (
             <button

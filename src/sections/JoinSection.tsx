@@ -1,6 +1,12 @@
 import { Star } from 'lucide-react';
+import { useSiteImages } from '../hooks/useSiteImages';
+
+const DEFAULT_JOIN_IMG = 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=600&h=500&fit=crop';
 
 const JoinSection = () => {
+  const siteImages = useSiteImages();
+  const imgUrl = siteImages.join?.url || DEFAULT_JOIN_IMG;
+  const imgAlt = siteImages.join?.alt || 'Rotary Members';
   return (
     <section className="py-16 md:py-20" style={{ backgroundColor: '#0c3c7c' }}>
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -24,8 +30,8 @@ const JoinSection = () => {
           {/* Image */}
           <div className="relative">
             <img
-              src="https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=600&h=500&fit=crop"
-              alt="Rotary Members"
+              src={imgUrl}
+              alt={imgAlt}
               className="rounded-lg shadow-xl w-full h-auto object-cover"
             />
           </div>

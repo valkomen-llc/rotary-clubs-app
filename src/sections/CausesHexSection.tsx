@@ -13,6 +13,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Globe } from 'lucide-react';
 import { useClub } from '../contexts/ClubContext';
+import { useSiteImages } from '../hooks/useSiteImages';
 
 /* 
   ═══════════════════════════════════════════════════════════════════════════════
@@ -420,24 +421,30 @@ const areas = [
   }
 ];
 
-// Áreas organizadas por columnas para desktop
-const areasByColumn = {
-  left: [areas[0], areas[3]], // Promoción de la paz, Mejorando la salud materno-infantil
-  center: [areas[1], areas[4], areas[6]], // Lucha contra las enfermedades, Apoyo a la educación, Protección del medioambiente
-  right: [areas[2], areas[5]] // Suministro de agua salubre, Desarrollo de las economías locales
-};
-
 const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
   const { club } = useClub();
+  const siteImages = useSiteImages();
   const [currentSlide, setCurrentSlide] = useState(0);
   const carouselRef = useRef<HTMLDivElement>(null);
 
+  // Override images with custom ones from siteImages.causes
+  const finalAreas = areas.map((area, i) => {
+    const custom = siteImages.causes?.[i];
+    return custom?.url ? { ...area, image: custom.url, alt: custom.alt || area.alt } : area;
+  });
+
+  const areasByColumn = {
+    left: [finalAreas[0], finalAreas[3]],
+    center: [finalAreas[1], finalAreas[4], finalAreas[6]],
+    right: [finalAreas[2], finalAreas[5]],
+  };
+
   const nextSlide = () => {
-    setCurrentSlide((prev) => (prev + 1) % areas.length);
+    setCurrentSlide((prev) => (prev + 1) % finalAreas.length);
   };
 
   const prevSlide = () => {
-    setCurrentSlide((prev) => (prev - 1 + areas.length) % areas.length);
+    setCurrentSlide((prev) => (prev - 1 + finalAreas.length) % finalAreas.length);
   };
 
   const goToSlide = (index: number) => {
@@ -562,7 +569,7 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
               ref={carouselRef}
               style={{ transform: `translateX(-${currentSlide * 100}%)` }}
             >
-              {areas.map((area) => (
+              {finalAreas.map((area) => (
                 <div key={area.id} className="areas-carousel__slide">
                   <img
                     src={area.image}
@@ -586,14 +593,14 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
 
           {/* Indicadores de puntos */}
           <div className="areas-carousel__dots" role="tablist">
-            {areas.map((_, index) => (
+            {finalAreas.map((_, index) => (
               <button
                 key={index}
                 className={`areas-carousel__dot ${index === currentSlide ? 'areas-carousel__dot--active' : ''}`}
                 onClick={() => goToSlide(index)}
                 role="tab"
                 aria-selected={index === currentSlide}
-                aria-label={`Ir al área ${index + 1} de ${areas.length}`}
+                aria-label={`Ir al área ${index + 1} de ${finalAreas.length}`}
               />
             ))}
           </div>
