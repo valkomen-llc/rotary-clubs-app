@@ -278,7 +278,7 @@ const Proyectos = () => {
               {getC('header', 'title', "Transformando Vidas,")} {' '}
               <span className="text-rotary-gold">{getC('header', 'highlight', "Un Proyecto a la Vez")}</span>
             </h1>
-            <p className="text-white/80 text-lg md:text-xl max-w-2xl mx-auto mb-10">
+            <p className="text-white text-lg md:text-xl max-w-2xl mx-auto mb-10">
               {getC('header', 'description', "Cada proyecto que emprendemos es una oportunidad de crear cambios reales y duraderos.")}
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -288,7 +288,7 @@ const Proyectos = () => {
                   e.preventDefault();
                   document.getElementById('proyectos-activos')?.scrollIntoView({ behavior: 'smooth' });
                 }}
-                className="inline-flex items-center justify-center gap-2 bg-rotary-gold text-white px-8 py-4 rounded-full font-bold hover:bg-[#c9a020] transition-colors"
+                className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
               >
                 <Heart className="w-5 h-5" />
                 Donar Ahora
@@ -299,7 +299,7 @@ const Proyectos = () => {
                   e.preventDefault();
                   document.getElementById('como-ayudar')?.scrollIntoView({ behavior: 'smooth' });
                 }}
-                className="inline-flex items-center justify-center gap-2 bg-white text-rotary-blue px-8 py-4 rounded-full font-bold hover:bg-gray-100 transition-colors"
+                className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
               >
                 <PlayCircle className="w-5 h-5" />
                 Conoce Más
