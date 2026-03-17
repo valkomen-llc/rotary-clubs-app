@@ -46,6 +46,9 @@ const CAPABILITY_OPTIONS = [
     // Proyectos y Testimonios
     { value: 'manage_projects', label: '📁 Gestionar proyectos del club' },
     { value: 'edit_testimonials', label: '💬 Crear y editar testimonios' },
+    // Imágenes del Sitio
+    { value: 'distribute_site_images', label: '🖼️ Distribuir imágenes en secciones del sitio' },
+    { value: 'approve_site_images', label: '✅ Aprobar imágenes del sitio (identidad visual)' },
 ];
 
 interface Agent {
