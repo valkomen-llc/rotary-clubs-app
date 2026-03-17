@@ -276,7 +276,7 @@ const Proyectos = () => {
             </span>
             <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight">
               {getC('header', 'title', "Transformando Vidas,")} {' '}
-              <span className="text-rotary-gold">{getC('header', 'highlight', "Un Proyecto a la Vez")}</span>
+              <span className="text-white">{getC('header', 'highlight', "Un Proyecto a la Vez")}</span>
             </h1>
             <p className="text-white text-lg md:text-xl max-w-2xl mx-auto mb-10">
               {getC('header', 'description', "Cada proyecto que emprendemos es una oportunidad de crear cambios reales y duraderos.")}
