@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
-import { Users, Plus, Search, Upload, Download, Trash2, Edit3, X, Loader2 } from 'lucide-react';
+import { Users, Plus, Search, Upload, Download, Trash2, Edit3, X, Loader2, ChevronRight, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 
 const API = import.meta.env.VITE_API_URL || '/api';
+
+interface ParsedRow { [key: string]: string }
 
 const WhatsAppContacts: React.FC = () => {
     const { token } = useAuth();
@@ -17,13 +19,20 @@ const WhatsAppContacts: React.FC = () => {
     const [editId, setEditId] = useState<string | null>(null);
     const [form, setForm] = useState({ name: '', phone: '', email: '', tags: '' });
     const [importing, setImporting] = useState(false);
-    const [csvFile, setCsvFile] = useState<File | null>(null);
-    const [csvText, setCsvText] = useState('');
-    const [importMode, setImportMode] = useState<'file' | 'paste'>('file');
+
+    // Import wizard state
+    const [importStep, setImportStep] = useState<'select' | 'map' | 'confirm'>('select');
+    const [csvColumns, setCsvColumns] = useState<string[]>([]);
+    const [csvRows, setCsvRows] = useState<ParsedRow[]>([]);
+    const [colMap, setColMap] = useState<{ name: string; phone: string; email: string }>({ name: '', phone: '', email: '' });
+    const [importTags, setImportTags] = useState('');
+    const [lists, setLists] = useState<any[]>([]);
+    const [selectedListId, setSelectedListId] = useState('');
 
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
     useEffect(() => { fetchContacts(); }, [search, statusFilter]);
+    useEffect(() => { if (showImport) fetchLists(); }, [showImport]);
 
     const fetchContacts = async () => {
         setLoading(true);
@@ -36,6 +45,14 @@ const WhatsAppContacts: React.FC = () => {
             setContacts(data.contacts || []);
             setTotal(data.total || 0);
         } catch { } finally { setLoading(false); }
+    };
+
+    const fetchLists = async () => {
+        try {
+            const res = await fetch(`${API}/whatsapp/lists`, { headers: { Authorization: `Bearer ${token}` } });
+            const data = await res.json();
+            setLists(data.lists || []);
+        } catch { }
     };
 
     const handleSave = async (e: React.FormEvent) => {
@@ -56,94 +73,155 @@ const WhatsAppContacts: React.FC = () => {
         toast.success('Contacto eliminado'); fetchContacts();
     };
 
-    // ── CSV Parsing Helper ──
-    const parseCSV = (text: string): { name: string; phone: string; email: string }[] => {
-        // Strip BOM and normalize line endings
+    // ── CSV Parsing ──
+    const parseCSVData = (text: string): { columns: string[]; rows: ParsedRow[] } => {
         if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
         text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
         const lines = text.split('\n').filter(l => l.trim());
-        if (lines.length < 2) { toast.error('El archivo está vacío o solo tiene encabezados'); return []; }
+        if (lines.length < 2) return { columns: [], rows: [] };
 
-        // Auto-detect delimiter
         const headerLine = lines[0];
         let delimiter = ',';
-        if (headerLine.split(';').length > headerLine.split(',').length) delimiter = ';';
-        else if (headerLine.split('\t').length > headerLine.split(',').length) delimiter = '\t';
+        const semiCount = (headerLine.match(/;/g) || []).length;
+        const commaCount = (headerLine.match(/,/g) || []).length;
+        const tabCount = (headerLine.match(/\t/g) || []).length;
+        if (semiCount > commaCount && semiCount > tabCount) delimiter = ';';
+        else if (tabCount > commaCount && tabCount > semiCount) delimiter = '\t';
 
-        const splitLine = (line: string) => line.split(delimiter).map(v => v.trim().replace(/^"|"$/g, '').replace(/^'|'$/g, ''));
+        const split = (line: string) => line.split(delimiter).map(v => v.trim().replace(/^"|"$/g, '').replace(/^'|'$/g, ''));
 
-        const cols = splitLine(headerLine.toLowerCase());
-        const nameIdx = cols.findIndex(c => c.includes('nombre') || c.includes('name') || c === 'contacto');
-        const phoneIdx = cols.findIndex(c => c.includes('telefono') || c.includes('teléfono') || c.includes('phone') || c.includes('celular') || c.includes('whatsapp') || c.includes('movil') || c.includes('móvil') || c.includes('numero') || c.includes('número'));
-        const emailIdx = cols.findIndex(c => c.includes('email') || c.includes('correo') || c.includes('e-mail'));
+        const columns = split(headerLine);
+        const rows = lines.slice(1).map(line => {
+            const vals = split(line);
+            const row: ParsedRow = {};
+            columns.forEach((col, i) => { row[col] = vals[i] || ''; });
+            return row;
+        }).filter(r => Object.values(r).some(v => v.trim()));
 
-        if (nameIdx === -1 || phoneIdx === -1) {
-            toast.error(`Columnas detectadas: [${cols.join(', ')}]. Se requieren: "nombre" y "telefono".`);
-            return [];
-        }
-
-        const parsed = lines.slice(1).map(line => {
-            const vals = splitLine(line);
-            return { name: vals[nameIdx]?.trim() || '', phone: vals[phoneIdx]?.trim() || '', email: emailIdx >= 0 ? vals[emailIdx]?.trim() || '' : '' };
-        }).filter(c => c.name && c.phone);
-
-        if (!parsed.length) { toast.error('No se encontraron contactos válidos con nombre y teléfono'); return []; }
-        return parsed;
+        return { columns, rows };
     };
 
-    const sendContactsToAPI = async (parsed: { name: string; phone: string; email: string }[]) => {
-        setImporting(true);
-        toast.info(`Enviando ${parsed.length} contactos al servidor...`);
+    const autoDetectMapping = (cols: string[]) => {
+        const lower = cols.map(c => c.toLowerCase());
+        const nameIdx = lower.findIndex(c => c.includes('nombre') || c.includes('name') || c === 'contacto' || c.includes('socio'));
+        const phoneIdx = lower.findIndex(c => c.includes('telefono') || c.includes('teléfono') || c.includes('phone') || c.includes('celular') || c.includes('whatsapp') || c.includes('movil') || c.includes('móvil') || c.includes('numero') || c.includes('número'));
+        const emailIdx = lower.findIndex(c => c.includes('email') || c.includes('correo') || c.includes('e-mail'));
+        return {
+            name: nameIdx >= 0 ? cols[nameIdx] : '',
+            phone: phoneIdx >= 0 ? cols[phoneIdx] : '',
+            email: emailIdx >= 0 ? cols[emailIdx] : '',
+        };
+    };
+
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
         try {
-            const res = await fetch(`${API}/whatsapp/contacts/import`, { method: 'POST', headers, body: JSON.stringify({ contacts: parsed }) });
-            const data = await res.json();
-            if (res.ok) {
-                toast.success(`✅ Importados: ${data.imported}, Omitidos: ${data.skipped}`);
-                fetchContacts();
-                setShowImport(false);
-                setCsvFile(null);
-                setCsvText('');
-            } else {
-                toast.error(data.error || 'Error al importar');
+            toast.info(`Leyendo ${file.name}...`);
+            const text = await file.text();
+            const { columns, rows } = parseCSVData(text);
+            if (!columns.length || !rows.length) {
+                toast.error('No se encontraron datos en el archivo');
+                return;
             }
+            setCsvColumns(columns);
+            setCsvRows(rows);
+            const detected = autoDetectMapping(columns);
+            setColMap(detected);
+            setImportStep('map');
+            toast.success(`${rows.length} filas encontradas con ${columns.length} columnas`);
         } catch (err) {
-            console.error('Import API error:', err);
+            console.error('File read error:', err);
+            toast.error('Error al leer el archivo');
+        }
+        // Reset file input
+        e.target.value = '';
+    };
+
+    const handlePasteImport = () => {
+        const text = prompt('Pega tus datos CSV aquí (primera línea = encabezados):');
+        if (!text) return;
+        const { columns, rows } = parseCSVData(text);
+        if (!columns.length || !rows.length) { toast.error('No se encontraron datos'); return; }
+        setCsvColumns(columns);
+        setCsvRows(rows);
+        setColMap(autoDetectMapping(columns));
+        setImportStep('map');
+        toast.success(`${rows.length} filas encontradas`);
+    };
+
+    const getMappedContacts = () => {
+        if (!colMap.name || !colMap.phone) return [];
+        return csvRows.map(row => ({
+            name: row[colMap.name]?.trim() || '',
+            phone: row[colMap.phone]?.trim() || '',
+            email: colMap.email ? row[colMap.email]?.trim() || '' : '',
+        })).filter(c => c.name && c.phone);
+    };
+
+    const executeImport = async () => {
+        const mapped = getMappedContacts();
+        if (!mapped.length) { toast.error('No hay contactos válidos para importar'); return; }
+
+        setImporting(true);
+        try {
+            const tags = importTags ? importTags.split(',').map(t => t.trim()).filter(Boolean) : [];
+            const body: any = { contacts: mapped.map(c => ({ ...c, tags })) };
+
+            const res = await fetch(`${API}/whatsapp/contacts/import`, { method: 'POST', headers, body: JSON.stringify(body) });
+            const data = await res.json();
+            if (!res.ok) { toast.error(data.error || 'Error al importar'); return; }
+
+            // If a list was selected, add contacts to it
+            if (selectedListId && data.imported > 0) {
+                try {
+                    // Fetch recently imported contacts
+                    const cRes = await fetch(`${API}/whatsapp/contacts?limit=${data.imported}&offset=0`, { headers: { Authorization: `Bearer ${token}` } });
+                    const cData = await cRes.json();
+                    const contactIds = (cData.contacts || []).map((c: any) => c.id);
+                    if (contactIds.length) {
+                        await fetch(`${API}/whatsapp/lists/${selectedListId}/members`, {
+                            method: 'POST', headers, body: JSON.stringify({ contactIds }),
+                        });
+                    }
+                } catch { /* silent */ }
+            }
+
+            toast.success(`✅ Importados: ${data.imported}, Omitidos: ${data.skipped}`);
+            resetImport();
+            fetchContacts();
+        } catch (err) {
+            console.error('Import error:', err);
             toast.error('Error de conexión al importar');
         } finally {
             setImporting(false);
         }
     };
 
-    const processCSVFile = async () => {
-        if (!csvFile) return;
-        setImporting(true);
-        try {
-            const text = await csvFile.text();
-            const parsed = parseCSV(text);
-            if (parsed.length) await sendContactsToAPI(parsed);
-            else setImporting(false);
-        } catch (err) {
-            console.error('File read error:', err);
-            toast.error('Error al leer el archivo');
-            setImporting(false);
-        }
-    };
-
-    const processCSVText = async () => {
-        if (!csvText.trim()) return;
-        const parsed = parseCSV(csvText);
-        if (parsed.length) await sendContactsToAPI(parsed);
-    };
-
     const handleImportLeads = async () => {
+        setImporting(true);
         try {
             const res = await fetch(`${API}/whatsapp/contacts/import/leads`, {
                 method: 'POST', headers, body: JSON.stringify({ leadIds: 'all' }),
             });
             const data = await res.json();
-            toast.success(`Importados: ${data.imported}, Omitidos: ${data.skipped}`);
-            fetchContacts(); setShowImport(false);
+            if (res.ok) {
+                toast.success(`Importados: ${data.imported}, Omitidos: ${data.skipped}`);
+                resetImport();
+                fetchContacts();
+            } else toast.error(data.error || 'Error');
         } catch { toast.error('Error al importar'); }
+        finally { setImporting(false); }
+    };
+
+    const resetImport = () => {
+        setShowImport(false);
+        setImportStep('select');
+        setCsvColumns([]);
+        setCsvRows([]);
+        setColMap({ name: '', phone: '', email: '' });
+        setImportTags('');
+        setSelectedListId('');
     };
 
     const resetForm = () => { setForm({ name: '', phone: '', email: '', tags: '' }); setEditId(null); };
@@ -151,6 +229,8 @@ const WhatsAppContacts: React.FC = () => {
         setForm({ name: c.name, phone: c.phone, email: c.email || '', tags: (c.tags || []).join(', ') });
         setEditId(c.id); setShowForm(true);
     };
+
+    const mappedPreview = getMappedContacts();
 
     return (
         <div>
@@ -167,7 +247,7 @@ const WhatsAppContacts: React.FC = () => {
                     <option value="active">Activos</option>
                     <option value="opted_out">Opt-out</option>
                 </select>
-                <button onClick={() => setShowImport(!showImport)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-bold text-gray-700 hover:bg-gray-50">
+                <button onClick={() => { setShowImport(true); setImportStep('select'); }} className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-bold text-gray-700 hover:bg-gray-50">
                     <Upload className="w-4 h-4" /> Importar
                 </button>
                 <button onClick={() => { resetForm(); setShowForm(true); }}
@@ -176,76 +256,189 @@ const WhatsAppContacts: React.FC = () => {
                 </button>
             </div>
 
-            {/* Import Panel */}
+            {/* Import Wizard */}
             {showImport && (
-                <div className="bg-green-50 border border-green-200 rounded-2xl p-6 mb-6">
-                    <div className="flex justify-between items-center mb-4">
-                        <div>
-                            <p className="font-bold text-green-800 text-sm">Importar Contactos</p>
-                            <p className="text-xs text-green-600 mt-0.5">CSV o texto con columnas: nombre, telefono, email (opcional). Separador: coma, punto y coma o tab.</p>
+                <div className="bg-white border border-gray-200 rounded-2xl mb-6 shadow-sm overflow-hidden">
+                    {/* Header */}
+                    <div className="px-6 py-4 bg-gradient-to-r from-green-50 to-emerald-50 border-b border-green-100 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <Upload className="w-5 h-5 text-green-600" />
+                            <div>
+                                <h3 className="font-bold text-green-900 text-sm">Importar Contactos</h3>
+                                <div className="flex items-center gap-1 mt-1">
+                                    {(['select', 'map', 'confirm'] as const).map((step, i) => (
+                                        <React.Fragment key={step}>
+                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${importStep === step ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                                                {i === 0 ? '1. Archivo' : i === 1 ? '2. Mapear' : '3. Importar'}
+                                            </span>
+                                            {i < 2 && <ChevronRight className="w-3 h-3 text-gray-300" />}
+                                        </React.Fragment>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
-                        <button onClick={() => { setShowImport(false); setCsvFile(null); setCsvText(''); }} className="text-green-600 hover:text-green-800"><X className="w-5 h-5" /></button>
+                        <button onClick={resetImport} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
                     </div>
 
-                    {/* Tab selector: File or Paste */}
-                    <div className="flex gap-2 mb-4">
-                        <button onClick={() => setImportMode('file')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${importMode === 'file' ? 'bg-green-600 text-white' : 'bg-white border border-green-200 text-green-700'}`}>
-                            📁 Archivo CSV
-                        </button>
-                        <button onClick={() => setImportMode('paste')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${importMode === 'paste' ? 'bg-green-600 text-white' : 'bg-white border border-green-200 text-green-700'}`}>
-                            📋 Pegar datos
-                        </button>
-                        <button onClick={handleImportLeads}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white border border-green-200 text-green-700 hover:bg-green-100">
-                            <Download className="w-3 h-3 inline mr-1" /> Desde Leads
-                        </button>
-                    </div>
+                    <div className="p-6">
+                        {/* Step 1: Select source */}
+                        {importStep === 'select' && (
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    {/* CSV File */}
+                                    <label className="group relative flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-green-400 hover:bg-green-50/30 transition-all">
+                                        <input type="file" accept=".csv,.txt,.tsv" onChange={handleFileSelect} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                        <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-3 group-hover:bg-green-200 transition-colors">
+                                            <Upload className="w-6 h-6 text-green-600" />
+                                        </div>
+                                        <p className="font-bold text-sm text-gray-700">Subir CSV</p>
+                                        <p className="text-xs text-gray-400 mt-1 text-center">Arrastra o selecciona un archivo .csv</p>
+                                    </label>
 
-                    {importMode === 'file' ? (
-                        <div className="space-y-3">
-                            {/* Visible file input area */}
-                            <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-green-300 rounded-xl cursor-pointer bg-white hover:bg-green-50/50 transition-colors">
-                                <input
-                                    type="file"
-                                    accept=".csv,.txt,.tsv,.xls"
-                                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-green-600 file:text-white hover:file:bg-green-700 file:cursor-pointer cursor-pointer p-4"
-                                    onChange={(e) => {
-                                        const f = e.target.files?.[0];
-                                        if (f) { setCsvFile(f); toast.info(`Archivo seleccionado: ${f.name} (${(f.size / 1024).toFixed(1)} KB)`); }
-                                    }}
-                                />
-                                {csvFile && (
-                                    <p className="text-xs text-green-700 font-bold pb-2">✅ {csvFile.name} — {(csvFile.size / 1024).toFixed(1)} KB</p>
-                                )}
-                            </label>
-                            <button
-                                onClick={processCSVFile}
-                                disabled={!csvFile || importing}
-                                className="flex items-center gap-2 bg-green-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm w-full justify-center">
-                                {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                                {importing ? 'Importando...' : `Importar${csvFile ? ` desde ${csvFile.name}` : ''}`}
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="space-y-3">
-                            <textarea
-                                value={csvText}
-                                onChange={(e) => setCsvText(e.target.value)}
-                                placeholder={'nombre;telefono;email\nJuan Pérez;+573001234567;juan@email.com\nMaría López;+573009876543;maria@email.com'}
-                                rows={6}
-                                className="w-full px-4 py-3 rounded-xl border border-green-200 text-sm font-mono focus:ring-2 focus:ring-green-500/20 focus:border-green-500 outline-none resize-none bg-white"
-                            />
-                            <button
-                                onClick={processCSVText}
-                                disabled={!csvText.trim() || importing}
-                                className="flex items-center gap-2 bg-green-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm w-full justify-center">
-                                {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                                {importing ? 'Importando...' : 'Importar datos pegados'}
-                            </button>
-                        </div>
-                    )}
+                                    {/* Paste */}
+                                    <button onClick={handlePasteImport}
+                                        className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-all">
+                                        <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-3">
+                                            <Edit3 className="w-6 h-6 text-blue-600" />
+                                        </div>
+                                        <p className="font-bold text-sm text-gray-700">Pegar datos</p>
+                                        <p className="text-xs text-gray-400 mt-1 text-center">Pega contenido CSV directamente</p>
+                                    </button>
+
+                                    {/* From Leads */}
+                                    <button onClick={handleImportLeads} disabled={importing}
+                                        className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-purple-400 hover:bg-purple-50/30 transition-all disabled:opacity-50">
+                                        <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mb-3">
+                                            {importing ? <Loader2 className="w-6 h-6 text-purple-600 animate-spin" /> : <Download className="w-6 h-6 text-purple-600" />}
+                                        </div>
+                                        <p className="font-bold text-sm text-gray-700">Desde Leads</p>
+                                        <p className="text-xs text-gray-400 mt-1 text-center">Importa leads del sistema</p>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Step 2: Map columns */}
+                        {importStep === 'map' && (
+                            <div className="space-y-5">
+                                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                                    <p className="text-sm font-bold text-blue-800">Se encontraron {csvRows.length} filas y {csvColumns.length} columnas</p>
+                                    <p className="text-xs text-blue-600 mt-1">Columnas: {csvColumns.join(', ')}</p>
+                                </div>
+
+                                {/* Column mapping */}
+                                <div>
+                                    <p className="font-bold text-sm text-gray-700 mb-3">Mapear columnas del CSV</p>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Nombre *</label>
+                                            <select value={colMap.name} onChange={e => setColMap({ ...colMap, name: e.target.value })}
+                                                className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm bg-white outline-none focus:border-green-500">
+                                                <option value="">— Seleccionar columna —</option>
+                                                {csvColumns.map(c => <option key={c} value={c}>{c}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Teléfono *</label>
+                                            <select value={colMap.phone} onChange={e => setColMap({ ...colMap, phone: e.target.value })}
+                                                className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm bg-white outline-none focus:border-green-500">
+                                                <option value="">— Seleccionar columna —</option>
+                                                {csvColumns.map(c => <option key={c} value={c}>{c}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Email (opcional)</label>
+                                            <select value={colMap.email} onChange={e => setColMap({ ...colMap, email: e.target.value })}
+                                                className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm bg-white outline-none focus:border-green-500">
+                                                <option value="">— No mapear —</option>
+                                                {csvColumns.map(c => <option key={c} value={c}>{c}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Tags and list assignment */}
+                                <div>
+                                    <p className="font-bold text-sm text-gray-700 mb-3">Opciones de importación</p>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Etiquetas (tags)</label>
+                                            <input value={importTags} onChange={e => setImportTags(e.target.value)}
+                                                placeholder="ej: vip, socio, rotary"
+                                                className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-green-500" />
+                                            <p className="text-[10px] text-gray-400 mt-1">Separar con comas. Se asignan a todos los contactos.</p>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Agregar a lista</label>
+                                            <select value={selectedListId} onChange={e => setSelectedListId(e.target.value)}
+                                                className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm bg-white outline-none focus:border-green-500">
+                                                <option value="">— No agregar a lista —</option>
+                                                {lists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-3">
+                                    <button onClick={() => setImportStep('select')} className="px-4 py-2 rounded-lg border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50">
+                                        ← Atrás
+                                    </button>
+                                    <button onClick={() => setImportStep('confirm')} disabled={!colMap.name || !colMap.phone}
+                                        className="flex items-center gap-2 px-6 py-2 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 disabled:opacity-40">
+                                        <Eye className="w-4 h-4" /> Previsualizar ({mappedPreview.length} contactos)
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Step 3: Preview and confirm */}
+                        {importStep === 'confirm' && (
+                            <div className="space-y-4">
+                                <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center justify-between">
+                                    <div>
+                                        <p className="font-bold text-green-800 text-sm">{mappedPreview.length} contactos listos para importar</p>
+                                        {importTags && <p className="text-xs text-green-600 mt-0.5">Tags: {importTags}</p>}
+                                        {selectedListId && <p className="text-xs text-green-600">Lista: {lists.find(l => l.id === selectedListId)?.name}</p>}
+                                    </div>
+                                </div>
+
+                                {/* Preview table */}
+                                <div className="max-h-64 overflow-auto border border-gray-100 rounded-xl">
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="sticky top-0 bg-gray-50 border-b border-gray-100">
+                                            <tr className="text-xs font-bold text-gray-400 uppercase">
+                                                <th className="p-3">#</th><th className="p-3">Nombre</th><th className="p-3">Teléfono</th><th className="p-3">Email</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-50">
+                                            {mappedPreview.slice(0, 50).map((c, i) => (
+                                                <tr key={i} className="text-xs">
+                                                    <td className="p-3 text-gray-400">{i + 1}</td>
+                                                    <td className="p-3 font-medium text-gray-900">{c.name}</td>
+                                                    <td className="p-3 font-mono text-gray-600">{c.phone}</td>
+                                                    <td className="p-3 text-gray-500">{c.email || '—'}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                    {mappedPreview.length > 50 && (
+                                        <div className="p-3 text-center text-xs text-gray-400 bg-gray-50">...y {mappedPreview.length - 50} más</div>
+                                    )}
+                                </div>
+
+                                <div className="flex gap-3">
+                                    <button onClick={() => setImportStep('map')} className="px-4 py-2 rounded-lg border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50">
+                                        ← Ajustar mapeo
+                                    </button>
+                                    <button onClick={executeImport} disabled={importing || !mappedPreview.length}
+                                        className="flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-green-600 text-white text-sm font-bold hover:bg-green-700 disabled:opacity-40 shadow-sm">
+                                        {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                        {importing ? 'Importando...' : `Importar ${mappedPreview.length} contactos`}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 
