@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useSiteImages } from '../hooks/useSiteImages';
 
-const causes = [
+const defaultCauses = [
   {
     id: 1,
     image: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=400&h=250&fit=crop',
@@ -40,7 +41,14 @@ const causes = [
 ];
 
 const CausesCarousel = () => {
+  const siteImages = useSiteImages();
   const [currentIndex, setCurrentIndex] = useState(1);
+
+  // Override images with custom aboutCarousel images from admin
+  const causes = defaultCauses.map((cause, i) => ({
+    ...cause,
+    image: siteImages.aboutCarousel?.[i]?.url || cause.image,
+  }));
 
   const goToPrevious = () => {
     setCurrentIndex((prev) => (prev === 0 ? causes.length - 1 : prev - 1));

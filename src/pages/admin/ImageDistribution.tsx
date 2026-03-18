@@ -31,6 +31,13 @@ const DEFAULTS = {
     foundation: { url: 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=1600&h=800&fit=crop', alt: 'Fundación Rotaria' },
     join: { url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=600&h=500&fit=crop', alt: 'Únete a Rotary' },
     aboutHero: { url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1600&h=500&fit=crop', alt: 'Quiénes Somos' },
+    aboutCarousel: [
+        { url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=400&h=250&fit=crop', alt: 'Protegemos el medio ambiente' },
+        { url: 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=400&h=250&fit=crop', alt: 'Somos gente de acción' },
+        { url: 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=400&h=250&fit=crop', alt: 'Promovemos la paz' },
+        { url: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=400&h=250&fit=crop', alt: 'Combatimos enfermedades' },
+        { url: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=400&h=250&fit=crop', alt: 'Protegemos a madres e hijos' },
+    ],
 };
 
 interface ImgSlot { url: string; alt: string; }
@@ -40,6 +47,7 @@ interface SiteImages {
     foundation: ImgSlot;
     join: ImgSlot;
     aboutHero: ImgSlot;
+    aboutCarousel: ImgSlot[];
     [key: string]: ImgSlot | ImgSlot[];
 }
 
@@ -52,6 +60,7 @@ const CONTAINERS = [
     { key: 'foundation', label: 'Fundación Rotaria', desc: '1 imagen de fondo para la sección de la Fundación. Tamaño ideal: 1600×800px, panorámica.', count: 1, aspect: '16/8' },
     { key: 'join', label: 'Sección Únete', desc: '1 imagen motivacional para la sección de reclutamiento. Tamaño ideal: 600×500px.', count: 1, aspect: '6/5' },
     { key: 'aboutHero', label: 'Quiénes Somos — Hero', desc: '1 imagen de banner para la página Quiénes Somos. Tamaño ideal: 1600×500px, panorámica.', count: 1, aspect: '16/5' },
+    { key: 'aboutCarousel', label: 'Quiénes Somos — Carrusel', desc: '5 imágenes para el carrusel de causas en Quiénes Somos. Tamaño ideal: 400×250px.', count: 5, aspect: '8/5' },
 ];
 
 const ImageDistribution: React.FC = () => {
