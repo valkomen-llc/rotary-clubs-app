@@ -30,6 +30,7 @@ const DEFAULTS = {
     ],
     foundation: { url: 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=1600&h=800&fit=crop', alt: 'Fundación Rotaria' },
     join: { url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=600&h=500&fit=crop', alt: 'Únete a Rotary' },
+    aboutHero: { url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1600&h=500&fit=crop', alt: 'Quiénes Somos' },
 };
 
 interface ImgSlot { url: string; alt: string; }
@@ -38,6 +39,8 @@ interface SiteImages {
     causes: ImgSlot[];
     foundation: ImgSlot;
     join: ImgSlot;
+    aboutHero: ImgSlot;
+    [key: string]: ImgSlot | ImgSlot[];
 }
 
 interface MediaItem { id: string; url: string; filename: string; type: string; }
@@ -48,6 +51,7 @@ const CONTAINERS = [
     { key: 'causes', label: 'Áreas de Interés — Causas', desc: '7 imágenes para las tarjetas de causas Rotary. Tamaño ideal: 500×500px, cuadrado.', count: 7, aspect: '1/1' },
     { key: 'foundation', label: 'Fundación Rotaria', desc: '1 imagen de fondo para la sección de la Fundación. Tamaño ideal: 1600×800px, panorámica.', count: 1, aspect: '16/8' },
     { key: 'join', label: 'Sección Únete', desc: '1 imagen motivacional para la sección de reclutamiento. Tamaño ideal: 600×500px.', count: 1, aspect: '6/5' },
+    { key: 'aboutHero', label: 'Quiénes Somos — Hero', desc: '1 imagen de banner para la página Quiénes Somos. Tamaño ideal: 1600×500px, panorámica.', count: 1, aspect: '16/5' },
 ];
 
 const ImageDistribution: React.FC = () => {
@@ -76,13 +80,25 @@ const ImageDistribution: React.FC = () => {
             try {
                 const res = await fetch(`${API}/clubs/${clubId}/site-images?_t=${Date.now()}`);
                 const data = res.ok ? await res.json() : {};
-                setImages({
-                    hero: data.hero || DEFAULTS.hero.map(d => ({ ...d })),
-                    causes: data.causes || DEFAULTS.causes.map(d => ({ ...d })),
-                    foundation: data.foundation || { ...DEFAULTS.foundation },
-                    join: data.join || { ...DEFAULTS.join },
-                });
-            } catch { setImages({ hero: [...DEFAULTS.hero], causes: [...DEFAULTS.causes], foundation: { ...DEFAULTS.foundation }, join: { ...DEFAULTS.join } }); }
+                const buildImages = (src: any) => {
+                    const result: any = {};
+                    for (const c of CONTAINERS) {
+                        const def = (DEFAULTS as any)[c.key];
+                        if (Array.isArray(def)) result[c.key] = src[c.key] || def.map((d: any) => ({ ...d }));
+                        else result[c.key] = src[c.key] || { ...def };
+                    }
+                    return result as SiteImages;
+                };
+                setImages(buildImages(data));
+            } catch { 
+                const fallback: any = {};
+                for (const c of CONTAINERS) {
+                    const def = (DEFAULTS as any)[c.key];
+                    if (Array.isArray(def)) fallback[c.key] = def.map((d: any) => ({ ...d }));
+                    else fallback[c.key] = { ...def };
+                }
+                setImages(fallback as SiteImages);
+            }
             finally { setLoading(false); }
         })();
     }, [clubId]);
@@ -157,19 +173,16 @@ const ImageDistribution: React.FC = () => {
     const selectMedia = (url: string, filename: string) => {
         if (!images || !pickerTarget) return;
         const { key, index } = pickerTarget;
-        const newImages = { ...images };
-        if (key === 'hero') {
-            newImages.hero = [...newImages.hero];
-            newImages.hero[index] = { url, alt: filename.replace(/\.[^/.]+$/, '') };
-        } else if (key === 'causes') {
-            newImages.causes = [...newImages.causes];
-            newImages.causes[index] = { url, alt: filename.replace(/\.[^/.]+$/, '') };
-        } else if (key === 'foundation') {
-            newImages.foundation = { url, alt: filename.replace(/\.[^/.]+$/, '') };
-        } else if (key === 'join') {
-            newImages.join = { url, alt: filename.replace(/\.[^/.]+$/, '') };
+        const newImages: any = { ...images };
+        const def = (DEFAULTS as any)[key];
+        const alt = filename.replace(/\.[^/.]+$/, '');
+        if (Array.isArray(def)) {
+            newImages[key] = [...newImages[key]];
+            newImages[key][index] = { url, alt };
+        } else {
+            newImages[key] = { url, alt };
         }
-        setImages(newImages);
+        setImages(newImages as SiteImages);
         setDirty(true);
         setPickerOpen(false);
     };
@@ -177,43 +190,46 @@ const ImageDistribution: React.FC = () => {
     // Handle entering a custom URL
     const handleCustomUrl = (key: string, index: number, url: string) => {
         if (!images) return;
-        const newImages = { ...images };
-        if (key === 'hero') { newImages.hero = [...newImages.hero]; newImages.hero[index] = { ...newImages.hero[index], url }; }
-        else if (key === 'causes') { newImages.causes = [...newImages.causes]; newImages.causes[index] = { ...newImages.causes[index], url }; }
-        else if (key === 'foundation') newImages.foundation = { ...newImages.foundation, url };
-        else if (key === 'join') newImages.join = { ...newImages.join, url };
-        setImages(newImages);
+        const newImages: any = { ...images };
+        const def = (DEFAULTS as any)[key];
+        if (Array.isArray(def)) {
+            newImages[key] = [...newImages[key]];
+            newImages[key][index] = { ...newImages[key][index], url };
+        } else {
+            newImages[key] = { ...newImages[key], url };
+        }
+        setImages(newImages as SiteImages);
         setDirty(true);
     };
 
     // Reset a slot to default
     const resetSlot = (key: string, index: number) => {
         if (!images) return;
-        const newImages = { ...images };
-        if (key === 'hero') { newImages.hero = [...newImages.hero]; newImages.hero[index] = { ...DEFAULTS.hero[index] }; }
-        else if (key === 'causes') { newImages.causes = [...newImages.causes]; newImages.causes[index] = { ...DEFAULTS.causes[index] }; }
-        else if (key === 'foundation') newImages.foundation = { ...DEFAULTS.foundation };
-        else if (key === 'join') newImages.join = { ...DEFAULTS.join };
-        setImages(newImages);
+        const newImages: any = { ...images };
+        const def = (DEFAULTS as any)[key];
+        if (Array.isArray(def)) {
+            newImages[key] = [...newImages[key]];
+            newImages[key][index] = { ...def[index] };
+        } else {
+            newImages[key] = { ...def };
+        }
+        setImages(newImages as SiteImages);
         setDirty(true);
     };
 
     const isDefault = (key: string, index: number): boolean => {
         if (!images) return true;
-        if (key === 'hero') return images.hero[index]?.url === DEFAULTS.hero[index]?.url;
-        if (key === 'causes') return images.causes[index]?.url === DEFAULTS.causes[index]?.url;
-        if (key === 'foundation') return images.foundation.url === DEFAULTS.foundation.url;
-        if (key === 'join') return images.join.url === DEFAULTS.join.url;
-        return true;
+        const def = (DEFAULTS as any)[key];
+        const val = (images as any)[key];
+        if (Array.isArray(def)) return val?.[index]?.url === def[index]?.url;
+        return val?.url === def?.url;
     };
 
     const getSlots = (key: string): ImgSlot[] => {
         if (!images) return [];
-        if (key === 'hero') return images.hero;
-        if (key === 'causes') return images.causes;
-        if (key === 'foundation') return [images.foundation];
-        if (key === 'join') return [images.join];
-        return [];
+        const val = (images as any)[key];
+        if (Array.isArray(val)) return val;
+        return val ? [val] : [];
     };
 
     const filteredMedia = mediaItems.filter(m =>

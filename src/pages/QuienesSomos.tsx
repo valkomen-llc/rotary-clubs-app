@@ -5,15 +5,20 @@ import Footer from '../sections/Footer';
 import CausesCarousel from '../sections/CausesCarousel';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
+import { useSiteImages } from '../hooks/useSiteImages';
 
 const QuienesSomos = () => {
   const { club } = useClub();
   const { sections } = useCMSContent('quienes-somos', club.id);
+  const siteImages = useSiteImages();
 
   // Helper to get nested content or fallback
   const getC = (section: string, field: string, fallback: string) => {
     return sections[section]?.[field] || fallback;
   }
+
+  const heroImage = siteImages.aboutHero?.url
+    || getC('hero', 'image', "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1600&h=500&fit=crop");
 
   return (
     <div className="min-h-screen bg-white">
@@ -23,7 +28,7 @@ const QuienesSomos = () => {
       <section className="relative w-full h-[300px] md:h-[400px] overflow-hidden">
         <div className="absolute inset-0">
           <img
-            src={getC('hero', 'image', "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1600&h=500&fit=crop")}
+            src={heroImage}
             alt="Rotary Team"
             className="w-full h-full object-cover"
           />

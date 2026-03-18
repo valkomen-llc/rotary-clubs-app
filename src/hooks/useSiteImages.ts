@@ -7,6 +7,7 @@ export interface SiteImages {
     causes?: ImgSlot[];
     foundation?: ImgSlot;
     join?: ImgSlot;
+    aboutHero?: ImgSlot;
 }
 
 export function useSiteImages(): SiteImages {
