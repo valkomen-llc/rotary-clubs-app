@@ -227,13 +227,29 @@ export const importContacts = async (req, res) => {
     try {
         const clubId = await resolveClubId(req, true);
         if (!clubId) return res.status(400).json({ error: 'No se pudo determinar el club' });
-        const { contacts, source = 'csv_import' } = req.body;
+        const { contacts, source = 'csv_import', countryCode = '+57' } = req.body;
         if (!Array.isArray(contacts) || !contacts.length)
             return res.status(400).json({ error: 'Se requiere un array de contactos' });
+
+        // Phone normalization helper
+        const normalizePhone = (raw) => {
+            // Strip spaces, dashes, parentheses, dots
+            let p = raw.replace(/[\s\-().]/g, '');
+            // If already has +, keep it
+            if (p.startsWith('+')) return p;
+            // If starts with 00, replace with +
+            if (p.startsWith('00')) return '+' + p.slice(2);
+            // If starts with country code digits (e.g. 57), add +
+            const cc = countryCode.replace('+', '');
+            if (p.startsWith(cc) && p.length > cc.length + 7) return '+' + p;
+            // Otherwise prepend full country code
+            return countryCode + p;
+        };
+
         let imported = 0, skipped = 0;
         for (const c of contacts) {
             if (!c.name || !c.phone) { skipped++; continue; }
-            const phone = c.phone.startsWith('+') ? c.phone : `+${c.phone}`;
+            const phone = normalizePhone(c.phone.trim());
             const metadata = c.metadata || {};
             await db.query(
                 `INSERT INTO "WhatsAppContact" ("clubId",name,phone,email,tags,source,metadata)

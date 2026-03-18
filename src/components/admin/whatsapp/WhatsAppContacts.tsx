@@ -26,6 +26,7 @@ const WhatsAppContacts: React.FC = () => {
     const [csvRows, setCsvRows] = useState<ParsedRow[]>([]);
     const [colMap, setColMap] = useState<{ name: string; phone: string; email: string }>({ name: '', phone: '', email: '' });
     const [importTags, setImportTags] = useState('');
+    const [countryCode, setCountryCode] = useState('+57');
     const [lists, setLists] = useState<any[]>([]);
     const [selectedListId, setSelectedListId] = useState('');
     const [newListName, setNewListName] = useState('');
@@ -238,7 +239,7 @@ const WhatsAppContacts: React.FC = () => {
         setImporting(true);
         try {
             const tags = importTags ? importTags.split(',').map(t => t.trim()).filter(Boolean) : [];
-            const body: any = { contacts: mapped.map(c => ({ ...c, tags })) };
+            const body: any = { contacts: mapped.map(c => ({ ...c, tags })), countryCode };
 
             const res = await fetch(`${API}/whatsapp/contacts/import`, { method: 'POST', headers, body: JSON.stringify(body) });
             const data = await res.json();
@@ -294,6 +295,7 @@ const WhatsAppContacts: React.FC = () => {
         setColMap({ name: '', phone: '', email: '' });
         setCustomFieldMap({});
         setImportTags('');
+        setCountryCode('+57');
         setSelectedListId('');
     };
 
@@ -505,8 +507,27 @@ const WhatsAppContacts: React.FC = () => {
                                 )}
                                 <div>
                                     <p className="font-bold text-sm text-gray-700 mb-3">Opciones de importación</p>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <div>
+                                            <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Indicativo de país</label>
+                                            <select value={countryCode} onChange={e => setCountryCode(e.target.value)}
+                                                className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm bg-white outline-none focus:border-green-500">
+                                                <option value="+57">🇨🇴 +57 Colombia</option>
+                                                <option value="+1">🇺🇸 +1 Estados Unidos</option>
+                                                <option value="+52">🇲🇽 +52 México</option>
+                                                <option value="+34">🇪🇸 +34 España</option>
+                                                <option value="+54">🇦🇷 +54 Argentina</option>
+                                                <option value="+56">🇨🇱 +56 Chile</option>
+                                                <option value="+51">🇵🇪 +51 Perú</option>
+                                                <option value="+593">🇪🇨 +593 Ecuador</option>
+                                                <option value="+58">🇻🇪 +58 Venezuela</option>
+                                                <option value="+507">🇵🇦 +507 Panamá</option>
+                                                <option value="+502">🇬🇹 +502 Guatemala</option>
+                                                <option value="+506">🇨🇷 +506 Costa Rica</option>
+                                                <option value="+55">🇧🇷 +55 Brasil</option>
+                                            </select>
+                                            <p className="text-[10px] text-gray-400 mt-1">Se agrega a números sin indicativo</p>
+                                        </div>
                                             <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Etiquetas (tags)</label>
                                             <input value={importTags} onChange={e => setImportTags(e.target.value)}
                                                 placeholder="ej: vip, socio, rotary"
