@@ -55,6 +55,13 @@ model Club {
   communicationTemplates CommunicationTemplate[]
   communicationLogs CommunicationLog[]
   testimonials    Testimonial[]
+
+  // WhatsApp CRM
+  whatsAppConfig    WhatsAppConfig?
+  whatsAppContacts  WhatsAppContact[]
+  whatsAppLists     WhatsAppContactList[]
+  whatsAppTemplates WhatsAppTemplate[]
+  whatsAppCampaigns WhatsAppCampaign[]
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -425,4 +432,175 @@ model Testimonial {
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+}
+
+// ==========================================
+// MÓDULO CRM WHATSAPP — META CLOUD API
+// ==========================================
+
+// Configuración de la cuenta WhatsApp Business por club
+model WhatsAppConfig {
+  id             String   @id @default(uuid())
+  clubId         String   @unique
+  club           Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  phoneNumberId  String   // ID del número en Meta
+  wabaId         String   // WhatsApp Business Account ID
+  accessToken    String   @db.Text // System User Token permanente
+  verifyToken    String   // Token secreto para validar webhooks
+  appId          String?  // Meta App ID
+
+  enabled        Boolean  @default(true)
+  lastVerifiedAt DateTime?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// Contactos del CRM WhatsApp
+model WhatsAppContact {
+  id          String   @id @default(uuid())
+  clubId      String
+  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  name        String
+  phone       String   // E.164 format: +573001234567
+  email       String?
+  tags        String[]
+  source      String   @default("manual") // manual, csv_import, lead_sync
+  status      String   @default("active")  // active, blocked, opted_out
+  metadata    String?  @db.Text
+
+  totalSent       Int @default(0)
+  totalDelivered  Int @default(0)
+  totalRead       Int @default(0)
+  totalFailed     Int @default(0)
+
+  optedOutAt  DateTime?
+  leadId      String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  listMemberships ContactListMember[]
+  messageLogs     WhatsAppMessageLog[]
+
+  @@unique([phone, clubId])
+}
+
+// Listas / Segmentos de contactos
+model WhatsAppContactList {
+  id          String   @id @default(uuid())
+  clubId      String
+  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?  @db.Text
+  color       String   @default("#3B82F6")
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members     ContactListMember[]
+  campaigns   WhatsAppCampaign[]
+}
+
+// Relación N:M entre Contactos y Listas
+model ContactListMember {
+  id        String              @id @default(uuid())
+  listId    String
+  list      WhatsAppContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   WhatsAppContact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  addedAt   DateTime            @default(now())
+
+  @@unique([listId, contactId])
+}
+
+// Templates HSM (sincronizados con Meta)
+model WhatsAppTemplate {
+  id             String   @id @default(uuid())
+  clubId         String
+  club           Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  name           String   // snake_case, nombre en Meta
+  displayName    String
+  category       String   @default("MARKETING") // MARKETING, UTILITY, AUTHENTICATION
+  language       String   @default("es")
+  status         String   @default("pending")   // pending, approved, rejected, paused
+
+  headerType     String?  // TEXT, IMAGE, VIDEO, DOCUMENT
+  headerContent  String?  @db.Text
+  bodyText       String   @db.Text
+  footerText     String?
+  buttons        String?  @db.Text // JSON array
+
+  metaTemplateId String?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  campaigns      WhatsAppCampaign[]
+}
+
+// Campañas de Marketing WhatsApp
+model WhatsAppCampaign {
+  id          String   @id @default(uuid())
+  clubId      String
+  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?  @db.Text
+
+  listId      String?
+  list        WhatsAppContactList? @relation(fields: [listId], references: [id])
+  templateId  String?
+  template    WhatsAppTemplate?    @relation(fields: [templateId], references: [id])
+  templateVars String? @db.Text // JSON de variables {{1}}, {{2}}
+
+  status        String   @default("draft") // draft, scheduled, sending, sent, paused, failed
+  scheduledAt   DateTime?
+  sentAt        DateTime?
+
+  totalContacts Int @default(0)
+  sent          Int @default(0)
+  delivered     Int @default(0)
+  read          Int @default(0)
+  failed        Int @default(0)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  messageLogs WhatsAppMessageLog[]
+}
+
+// Log individual de cada mensaje enviado
+model WhatsAppMessageLog {
+  id         String   @id @default(uuid())
+  clubId     String
+
+  campaignId String?
+  campaign   WhatsAppCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  contactId  String?
+  contact    WhatsAppContact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  phone        String
+  messageId    String?  // wamid devuelto por Meta
+  templateName String?
+  bodyText     String?  @db.Text
+
+  status       String   @default("pending") // pending, sent, delivered, read, failed
+  errorCode    String?
+  errorMessage String?  @db.Text
+
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime?
+  failedAt    DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([messageId])
+  @@index([campaignId, status])
 }
