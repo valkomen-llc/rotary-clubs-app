@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
-import { Search, Send, Paperclip, Smile, Phone, MoreVertical, User, X, Tag, MessageCircle, ChevronLeft, Loader2 } from 'lucide-react';
+import { Search, Send, Paperclip, Phone, MoreVertical, User, X, Tag, MessageCircle, ChevronLeft, Loader2, FileText, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -28,9 +28,13 @@ const WhatsAppChat: React.FC = () => {
     const [newMessage, setNewMessage] = useState('');
     const [showContactInfo, setShowContactInfo] = useState(false);
     const [chatNote, setChatNote] = useState('');
+    const [templates, setTemplates] = useState<any[]>([]);
+    const [showTemplates, setShowTemplates] = useState(false);
+    const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
+    const [sending, setSending] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => { fetchContacts(); }, []);
+    useEffect(() => { fetchContacts(); fetchTemplates(); }, []);
     useEffect(() => {
         if (!searchQuery.trim()) { setFilteredContacts(contacts); return; }
         const q = searchQuery.toLowerCase();
@@ -96,10 +100,38 @@ const WhatsAppChat: React.FC = () => {
         return new Date(date).toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
     };
 
-    const handleSendMessage = async () => {
-        if (!newMessage.trim() || !selectedContact) return;
-        toast.info('Para enviar mensajes individuales se requiere un template aprobado. Usa la sección de Campañas.');
-        setNewMessage('');
+    const fetchTemplates = async () => {
+        try {
+            const res = await fetch(`${API}/whatsapp/templates`, { headers: { Authorization: `Bearer ${token}` } });
+            if (res.ok) {
+                const data = await res.json();
+                const tpls = Array.isArray(data) ? data : (data.templates || []);
+                setTemplates(tpls.filter((t: any) => t.status === 'approved'));
+            }
+        } catch { }
+    };
+
+    const handleSendTemplate = async (template: any) => {
+        if (!selectedContact || sending) return;
+        setSending(true);
+        try {
+            const res = await fetch(`${API}/whatsapp/contacts/${selectedContact.id}/send`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ templateId: template.id }),
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setMessages(prev => [...prev, data.message]);
+                setShowTemplates(false);
+                setSelectedTemplate(null);
+                toast.success(`Plantilla "${template.displayName || template.name}" enviada a ${selectedContact.name}`);
+            } else {
+                toast.error(data.error || 'Error al enviar');
+            }
+        } catch (err: any) {
+            toast.error('Error de conexión al enviar mensaje');
+        } finally { setSending(false); }
     };
 
     const tagColors: { [key: string]: string } = {
@@ -260,19 +292,80 @@ const WhatsAppChat: React.FC = () => {
                                 )}
                             </div>
 
-                            {/* Message Input */}
-                            <div className="px-4 py-3 border-t border-gray-100 bg-white">
-                                <div className="flex items-center gap-2">
-                                    <button className="p-2 rounded-full hover:bg-gray-100 text-gray-400"><Smile className="w-5 h-5" /></button>
-                                    <button className="p-2 rounded-full hover:bg-gray-100 text-gray-400"><Paperclip className="w-5 h-5" /></button>
-                                    <input value={newMessage} onChange={e => setNewMessage(e.target.value)}
-                                        onKeyDown={e => { if (e.key === 'Enter') handleSendMessage(); }}
-                                        placeholder="Escribe un mensaje..."
-                                        className="flex-1 px-4 py-2.5 rounded-full bg-gray-100 text-sm outline-none focus:bg-gray-50 focus:ring-2 focus:ring-green-500/20" />
-                                    <button onClick={handleSendMessage}
-                                        className="p-2.5 rounded-full bg-green-600 text-white hover:bg-green-700 transition-colors shadow-sm">
-                                        <Send className="w-5 h-5" />
-                                    </button>
+                            {/* Template Picker + Message Input */}
+                            <div className="border-t border-gray-100 bg-white">
+                                {/* Template picker panel */}
+                                {showTemplates && (
+                                    <div className="border-b border-gray-100 bg-gray-50/50 max-h-64 overflow-y-auto">
+                                        <div className="px-4 py-2 flex items-center justify-between border-b border-gray-100 sticky top-0 bg-gray-50">
+                                            <p className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1.5">
+                                                <FileText className="w-3.5 h-3.5" /> Plantillas aprobadas ({templates.length})
+                                            </p>
+                                            <button onClick={() => setShowTemplates(false)} className="text-gray-400 hover:text-gray-600">
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                        {templates.length === 0 ? (
+                                            <div className="p-6 text-center text-gray-400">
+                                                <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                                                <p className="text-sm font-bold">Sin plantillas aprobadas</p>
+                                                <p className="text-xs mt-1">Crea y aprueba plantillas en la sección Templates</p>
+                                            </div>
+                                        ) : templates.map(t => (
+                                            <button key={t.id} onClick={() => setSelectedTemplate(selectedTemplate?.id === t.id ? null : t)}
+                                                className={`w-full px-4 py-3 flex items-start gap-3 text-left hover:bg-white transition-colors border-b border-gray-100/50 ${
+                                                    selectedTemplate?.id === t.id ? 'bg-green-50 border-l-2 border-l-green-500' : ''}`}>
+                                                <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+                                                    <FileText className="w-4 h-4 text-green-600" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-bold text-sm text-gray-900">{t.displayName || t.name}</p>
+                                                    <p className="text-xs text-gray-500 truncate mt-0.5">{t.bodyText || `Categoría: ${t.category || 'N/A'}`}</p>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold">✓ Aprobado</span>
+                                                        <span className="text-[10px] text-gray-400">{t.language || 'es'}</span>
+                                                    </div>
+                                                </div>
+                                                {selectedTemplate?.id === t.id && (
+                                                    <button onClick={(e) => { e.stopPropagation(); handleSendTemplate(t); }}
+                                                        disabled={sending}
+                                                        className="px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-700 disabled:opacity-50 flex items-center gap-1 flex-shrink-0">
+                                                        {sending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                                                        Enviar
+                                                    </button>
+                                                )}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Input bar */}
+                                <div className="px-4 py-3">
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={() => setShowTemplates(!showTemplates)}
+                                            className={`p-2 rounded-full transition-colors ${showTemplates ? 'bg-green-100 text-green-600' : 'hover:bg-gray-100 text-gray-400'}`}
+                                            title="Enviar plantilla">
+                                            <FileText className="w-5 h-5" />
+                                        </button>
+                                        <button className="p-2 rounded-full hover:bg-gray-100 text-gray-400"><Paperclip className="w-5 h-5" /></button>
+                                        <div className="flex-1 relative">
+                                            <input value={newMessage} onChange={e => setNewMessage(e.target.value)}
+                                                onFocus={() => { if (!showTemplates && templates.length > 0) setShowTemplates(true); }}
+                                                placeholder={templates.length > 0 ? 'Selecciona una plantilla para enviar...' : 'Escribe un mensaje...'}
+                                                className="w-full px-4 py-2.5 rounded-full bg-gray-100 text-sm outline-none focus:bg-gray-50 focus:ring-2 focus:ring-green-500/20" />
+                                            {!showTemplates && templates.length > 0 && (
+                                                <button onClick={() => setShowTemplates(true)}
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-green-600">
+                                                    <ChevronUp className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </div>
+                                        <button onClick={() => { if (selectedTemplate) handleSendTemplate(selectedTemplate); else setShowTemplates(true); }}
+                                            disabled={sending}
+                                            className="p-2.5 rounded-full bg-green-600 text-white hover:bg-green-700 transition-colors shadow-sm disabled:opacity-50">
+                                            {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </>

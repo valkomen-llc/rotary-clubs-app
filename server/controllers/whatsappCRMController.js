@@ -252,6 +252,69 @@ export const getContactMessages = async (req, res) => {
     }
 };
 
+export const sendMessageToContact = async (req, res) => {
+    try {
+        const clubId = await resolveClubId(req);
+        const contactId = req.params.id;
+        const { templateId, vars = {} } = req.body;
+        if (!templateId) return res.status(400).json({ error: 'Se requiere un templateId' });
+
+        // Get contact
+        const contactR = await db.query(`SELECT * FROM "WhatsAppContact" WHERE id=$1 AND "clubId"=$2`, [contactId, clubId]);
+        if (!contactR.rows.length) return res.status(404).json({ error: 'Contacto no encontrado' });
+        const contact = contactR.rows[0];
+
+        // Get config
+        const config = await getClubConfig(clubId);
+        if (!config || !config.enabled) return res.status(400).json({ error: 'WhatsApp no está configurado o habilitado' });
+
+        // Get template
+        const tmplR = await db.query(`SELECT * FROM "WhatsAppTemplate" WHERE id=$1 AND "clubId"=$2`, [templateId, clubId]);
+        if (!tmplR.rows.length) return res.status(404).json({ error: 'Template no encontrado' });
+        const template = tmplR.rows[0];
+        if (template.status !== 'approved')
+            return res.status(400).json({ error: 'Solo se pueden enviar templates aprobados por Meta' });
+
+        // Send via Meta API
+        const apiRes = await metaApiCall({
+            method: 'POST',
+            path: `/${config.phoneNumberId}/messages`,
+            body: {
+                messaging_product: 'whatsapp',
+                to: contact.phone,
+                type: 'template',
+                template: { name: template.name, language: { code: template.language }, components: buildTemplateComponents(vars) },
+            },
+            token: config.accessToken,
+        });
+        const messageId = apiRes.messages?.[0]?.id;
+
+        // Log the message
+        await db.query(
+            `INSERT INTO "WhatsAppMessageLog" ("clubId","contactId",phone,"messageId","templateName","bodyText",status,"sentAt")
+             VALUES ($1,$2,$3,$4,$5,$6,'sent',NOW())`,
+            [clubId, contact.id, contact.phone, messageId || null, template.name, template.bodyText || `[Template: ${template.name}]`]
+        );
+        await db.query(`UPDATE "WhatsAppContact" SET "totalSent"="totalSent"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
+
+        res.json({
+            success: true,
+            message: {
+                id: messageId,
+                templateName: template.name,
+                bodyText: template.bodyText || `[Template: ${template.name}]`,
+                status: 'sent',
+                sentAt: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
+                direction: 'outgoing',
+            },
+        });
+    } catch (err) {
+        console.error('WA sendMessageToContact:', err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
 export const importContacts = async (req, res) => {
     try {
         const clubId = await resolveClubId(req, true);
