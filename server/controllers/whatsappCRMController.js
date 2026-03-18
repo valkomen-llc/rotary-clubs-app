@@ -438,29 +438,44 @@ export const deleteTemplate = async (req, res) => {
 
 export const syncTemplatesFromMeta = async (req, res) => {
     try {
-        const clubId = req.user.clubId;
+        const clubId = await resolveClubId(req);
+        if (!clubId) return res.status(400).json({ error: 'No se pudo determinar el club' });
         const config = await getClubConfig(clubId);
-        if (!config) return res.status(400).json({ error: 'WhatsApp no está configurado' });
+        if (!config) return res.status(400).json({ error: 'WhatsApp no está configurado. Guarda tus credenciales de API primero.' });
+        if (!config.accessToken || !config.wabaId) return res.status(400).json({ error: 'Faltan accessToken o wabaId en la configuración' });
+
         const data = await metaApiCall({
             path: `/${config.wabaId}/message_templates?fields=id,name,category,language,status,components`,
             token: config.accessToken,
         });
+
+        if (!data?.data) return res.status(400).json({ error: 'No se obtuvieron templates de Meta. Verifica tus credenciales.' });
+
         let synced = 0;
-        for (const t of (data.data || [])) {
+        for (const t of data.data) {
             const bodyComp = t.components?.find(c => c.type === 'BODY');
             const headerComp = t.components?.find(c => c.type === 'HEADER');
             const footerComp = t.components?.find(c => c.type === 'FOOTER');
             const buttonComp = t.components?.find(c => c.type === 'BUTTONS');
-            await db.query(
-                `INSERT INTO "WhatsAppTemplate" ("clubId",name,"displayName",category,language,status,"headerType","headerContent","bodyText","footerText",buttons,"metaTemplateId")
-                 VALUES ($1,$2,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-                 ON CONFLICT DO NOTHING`,
-                [clubId, t.name, t.category, t.language, t.status?.toLowerCase() || 'pending',
-                    headerComp?.format || null, headerComp?.text || null, bodyComp?.text || '',
-                    footerComp?.text || null, JSON.stringify(buttonComp?.buttons || []), t.id]
-            ).then(() => synced++).catch(() => {});
+            const displayName = t.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            try {
+                await db.query(
+                    `INSERT INTO "WhatsAppTemplate" ("clubId",name,"displayName",category,language,status,"headerType","headerContent","bodyText","footerText",buttons,"metaTemplateId")
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                     ON CONFLICT ("metaTemplateId") DO UPDATE SET
+                       status=EXCLUDED.status, "bodyText"=EXCLUDED."bodyText",
+                       "headerType"=EXCLUDED."headerType", "headerContent"=EXCLUDED."headerContent",
+                       "footerText"=EXCLUDED."footerText", buttons=EXCLUDED.buttons, "updatedAt"=NOW()`,
+                    [clubId, t.name, displayName, t.category, t.language, t.status?.toLowerCase() || 'pending',
+                        headerComp?.format || null, headerComp?.text || null, bodyComp?.text || '',
+                        footerComp?.text || null, JSON.stringify(buttonComp?.buttons || []), t.id]
+                );
+                synced++;
+            } catch (insertErr) {
+                console.error(`WA syncTemplate insert error for ${t.name}:`, insertErr.message);
+            }
         }
-        res.json({ success: true, synced });
+        res.json({ success: true, synced, total: data.data.length });
     } catch (err) {
         console.error('WA syncTemplates:', err);
         res.status(500).json({ error: err.message });
@@ -727,7 +742,12 @@ export const handleWebhook = async (req, res) => {
 export const ensureWATables = async () => {
     try {
         const r = await db.query(`SELECT to_regclass('"WhatsAppConfig"') as exists`);
-        if (r.rows[0].exists) { console.log('[WA-CRM] Tables already exist'); return; }
+        if (r.rows[0].exists) {
+            console.log('[WA-CRM] Tables already exist');
+            // Ensure indexes exist (idempotent)
+            await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_template_meta_id ON "WhatsAppTemplate" ("metaTemplateId") WHERE "metaTemplateId" IS NOT NULL`).catch(() => {});
+            return;
+        }
 
         console.log('[WA-CRM] Creating tables...');
         await db.query(`
@@ -817,6 +837,7 @@ export const ensureWATables = async () => {
             );
             CREATE INDEX IF NOT EXISTS idx_wa_msglog_messageid ON "WhatsAppMessageLog" ("messageId");
             CREATE INDEX IF NOT EXISTS idx_wa_msglog_campaign ON "WhatsAppMessageLog" ("campaignId", status);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_template_meta_id ON "WhatsAppTemplate" ("metaTemplateId") WHERE "metaTemplateId" IS NOT NULL;
         `);
         console.log('[WA-CRM] All tables created');
     } catch (err) {
