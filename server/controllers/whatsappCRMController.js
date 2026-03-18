@@ -288,7 +288,7 @@ export const getLists = async (req, res) => {
              WHERE l."clubId"=$1 GROUP BY l.id ORDER BY l."createdAt" DESC`,
             [clubId]
         );
-        res.json(r.rows);
+        res.json({ lists: r.rows });
     } catch (err) {
         console.error('WA getLists:', err);
         res.status(500).json({ error: err.message });

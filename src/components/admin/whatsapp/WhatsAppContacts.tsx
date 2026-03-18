@@ -28,6 +28,8 @@ const WhatsAppContacts: React.FC = () => {
     const [importTags, setImportTags] = useState('');
     const [lists, setLists] = useState<any[]>([]);
     const [selectedListId, setSelectedListId] = useState('');
+    const [newListName, setNewListName] = useState('');
+    const [creatingList, setCreatingList] = useState(false);
 
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
@@ -51,8 +53,31 @@ const WhatsAppContacts: React.FC = () => {
         try {
             const res = await fetch(`${API}/whatsapp/lists`, { headers: { Authorization: `Bearer ${token}` } });
             const data = await res.json();
-            setLists(data.lists || []);
+            // Support both { lists: [...] } and direct array response
+            const listArr = Array.isArray(data) ? data : (data.lists || []);
+            setLists(listArr);
         } catch { }
+    };
+
+    const createListInline = async () => {
+        if (!newListName.trim()) return;
+        setCreatingList(true);
+        try {
+            const res = await fetch(`${API}/whatsapp/lists`, {
+                method: 'POST', headers, body: JSON.stringify({ name: newListName.trim() }),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                toast.success(`Lista "${newListName}" creada`);
+                setNewListName('');
+                await fetchLists();
+                setSelectedListId(data.id);
+            } else {
+                const err = await res.json();
+                toast.error(err.error || 'Error al crear lista');
+            }
+        } catch { toast.error('Error de conexión'); }
+        finally { setCreatingList(false); }
     };
 
     const handleSave = async (e: React.FormEvent) => {
@@ -375,6 +400,17 @@ const WhatsAppContacts: React.FC = () => {
                                                 <option value="">— No agregar a lista —</option>
                                                 {lists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                                             </select>
+                                            {/* Create new list inline */}
+                                            <div className="flex gap-2 mt-2">
+                                                <input value={newListName} onChange={e => setNewListName(e.target.value)}
+                                                    placeholder="Nombre de nueva lista..."
+                                                    className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-green-500"
+                                                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); createListInline(); } }} />
+                                                <button type="button" onClick={createListInline} disabled={!newListName.trim() || creatingList}
+                                                    className="px-3 py-2 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-700 disabled:opacity-40 whitespace-nowrap">
+                                                    {creatingList ? '...' : '+ Crear'}
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
