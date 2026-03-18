@@ -111,7 +111,7 @@ const ImageDistribution: React.FC = () => {
         setPickerTarget({ key, index });
         setPickerOpen(true);
         setMediaSearch('');
-        if (mediaItems.length === 0) fetchMedia();
+        fetchMedia();
     };
 
     const fetchMedia = async () => {
@@ -137,19 +137,15 @@ const ImageDistribution: React.FC = () => {
         formData.append('file', file);
         formData.append('clubId', clubId || '');
         try {
-            const res = await fetch(`${API}/api/media/upload`, {
+            const res = await fetch(`${API}/media/upload`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token()}` },
                 body: formData,
             });
             if (res.ok) {
-                const uploaded = await res.json();
-                toast.success('Imagen subida exitosamente');
-                // Refresh gallery and auto-select the uploaded image
+                toast.success('✅ Imagen subida. Selecciónala de la galería.');
+                // Refresh gallery so the new image appears — modal stays open
                 await fetchMedia();
-                if (uploaded?.url && pickerTarget) {
-                    selectMedia(uploaded.url, uploaded.filename || file.name);
-                }
             } else {
                 const err = await res.json().catch(() => ({}));
                 toast.error(err.error || 'Error al subir imagen');
