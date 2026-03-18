@@ -312,9 +312,9 @@ const WhatsAppChat: React.FC = () => {
                                                 <p className="text-xs mt-1">Crea y aprueba plantillas en la sección Templates</p>
                                             </div>
                                         ) : templates.map(t => (
-                                            <button key={t.id} onClick={() => setSelectedTemplate(selectedTemplate?.id === t.id ? null : t)}
-                                                className={`w-full px-4 py-3 flex items-start gap-3 text-left hover:bg-white transition-colors border-b border-gray-100/50 ${
-                                                    selectedTemplate?.id === t.id ? 'bg-green-50 border-l-2 border-l-green-500' : ''}`}>
+                                            <div key={t.id}
+                                                className="w-full px-4 py-3 flex items-start gap-3 text-left hover:bg-white transition-colors border-b border-gray-100/50 cursor-pointer"
+                                                onClick={() => setSelectedTemplate(selectedTemplate?.id === t.id ? null : t)}>
                                                 <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
                                                     <FileText className="w-4 h-4 text-green-600" />
                                                 </div>
@@ -326,15 +326,14 @@ const WhatsAppChat: React.FC = () => {
                                                         <span className="text-[10px] text-gray-400">{t.language || 'es'}</span>
                                                     </div>
                                                 </div>
-                                                {selectedTemplate?.id === t.id && (
-                                                    <button onClick={(e) => { e.stopPropagation(); handleSendTemplate(t); }}
-                                                        disabled={sending}
-                                                        className="px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-700 disabled:opacity-50 flex items-center gap-1 flex-shrink-0">
-                                                        {sending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-                                                        Enviar
-                                                    </button>
-                                                )}
-                                            </button>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleSendTemplate(t); }}
+                                                    disabled={sending}
+                                                    className="px-4 py-2 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-700 disabled:opacity-50 flex items-center gap-1.5 flex-shrink-0 shadow-sm">
+                                                    {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                                                    Enviar
+                                                </button>
+                                            </div>
                                         ))}
                                     </div>
                                 )}
