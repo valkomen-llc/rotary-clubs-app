@@ -74,11 +74,14 @@ export const upsertConfig = async (req, res) => {
         const clubId = await resolveClubId(req, true);
         if (!clubId) return res.status(400).json({ error: 'No se pudo determinar el club' });
         const { phoneNumberId, wabaId, accessToken, verifyToken, appId, enabled } = req.body;
-        if (!phoneNumberId || !wabaId || !accessToken || !verifyToken)
-            return res.status(400).json({ error: 'phoneNumberId, wabaId, accessToken y verifyToken son requeridos' });
-
         const existing = await getClubConfig(clubId);
-        const newToken = (existing && accessToken.includes('...')) ? existing.accessToken : accessToken;
+        if (!phoneNumberId || !wabaId || !accessToken)
+            return res.status(400).json({ error: 'phoneNumberId, wabaId y accessToken son requeridos' });
+        if (!existing && !verifyToken)
+            return res.status(400).json({ error: 'verifyToken es requerido para la configuración inicial' });
+
+        const newAccessToken = (existing && accessToken.includes('...')) ? existing.accessToken : accessToken;
+        const newVerifyToken = verifyToken || (existing?.verifyToken || '');
         const isEnabled = enabled !== undefined ? enabled : true;
 
         let config;
@@ -87,7 +90,7 @@ export const upsertConfig = async (req, res) => {
                 `UPDATE "WhatsAppConfig"
                  SET "phoneNumberId"=$1,"wabaId"=$2,"accessToken"=$3,"verifyToken"=$4,"appId"=$5,enabled=$6,"updatedAt"=NOW()
                  WHERE "clubId"=$7 RETURNING id,"phoneNumberId","wabaId",enabled,"lastVerifiedAt"`,
-                [phoneNumberId, wabaId, newToken, verifyToken, appId || null, isEnabled, clubId]
+                [phoneNumberId, wabaId, newAccessToken, newVerifyToken, appId || null, isEnabled, clubId]
             );
             config = r.rows[0];
         } else {
@@ -95,7 +98,7 @@ export const upsertConfig = async (req, res) => {
                 `INSERT INTO "WhatsAppConfig" ("clubId","phoneNumberId","wabaId","accessToken","verifyToken","appId",enabled)
                  VALUES ($1,$2,$3,$4,$5,$6,$7)
                  RETURNING id,"phoneNumberId","wabaId",enabled,"lastVerifiedAt"`,
-                [clubId, phoneNumberId, wabaId, newToken, verifyToken, appId || null, isEnabled]
+                [clubId, phoneNumberId, wabaId, newAccessToken, newVerifyToken, appId || null, isEnabled]
             );
             config = r.rows[0];
         }
@@ -651,12 +654,18 @@ export const getAnalytics = async (req, res) => {
 
 // ── WEBHOOK ──────────────────────────────────────────────────────────────────
 
-export const verifyWebhook = (req, res) => {
+export const verifyWebhook = async (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
-    if (mode === 'subscribe' && token === process.env.WA_VERIFY_TOKEN)
-        return res.status(200).send(challenge);
+    if (mode !== 'subscribe' || !token) return res.sendStatus(403);
+    // Check env var first
+    if (token === process.env.WA_VERIFY_TOKEN) return res.status(200).send(challenge);
+    // Check stored configs in DB
+    try {
+        const r = await db.query(`SELECT id FROM "WhatsAppConfig" WHERE "verifyToken"=$1 LIMIT 1`, [token]);
+        if (r.rows.length) return res.status(200).send(challenge);
+    } catch (err) { console.error('Webhook verify DB check:', err.message); }
     res.sendStatus(403);
 };
 
