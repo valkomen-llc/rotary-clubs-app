@@ -276,6 +276,10 @@ export const sendMessageToContact = async (req, res) => {
             return res.status(400).json({ error: 'Solo se pueden enviar templates aprobados por Meta' });
 
         // Send via Meta API
+        const components = buildTemplateComponents(vars);
+        const templatePayload = { name: template.name, language: { code: template.language } };
+        if (components.length > 0) templatePayload.components = components;
+
         const apiRes = await metaApiCall({
             method: 'POST',
             path: `/${config.phoneNumberId}/messages`,
@@ -283,7 +287,7 @@ export const sendMessageToContact = async (req, res) => {
                 messaging_product: 'whatsapp',
                 to: contact.phone,
                 type: 'template',
-                template: { name: template.name, language: { code: template.language }, components: buildTemplateComponents(vars) },
+                template: templatePayload,
             },
             token: config.accessToken,
         });
