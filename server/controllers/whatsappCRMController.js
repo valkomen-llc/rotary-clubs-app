@@ -275,8 +275,40 @@ export const sendMessageToContact = async (req, res) => {
         if (template.status !== 'approved')
             return res.status(400).json({ error: 'Solo se pueden enviar templates aprobados por Meta' });
 
-        // Send via Meta API
-        const components = buildTemplateComponents(vars);
+        // Build components for send
+        const bodyComponents = buildTemplateComponents(vars);
+        const components = [];
+
+        // Handle templates with media headers (IMAGE, VIDEO, DOCUMENT)
+        if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
+            try {
+                // Fetch the template from Meta to get the header_handle
+                const metaTmpl = await metaApiCall({
+                    path: `/${config.wabaId}/message_templates?name=${template.name}&fields=components`,
+                    token: config.accessToken,
+                });
+                const metaTemplate = metaTmpl?.data?.[0];
+                if (metaTemplate) {
+                    const headerComp = metaTemplate.components?.find(c => c.type === 'HEADER');
+                    const headerHandle = headerComp?.example?.header_handle?.[0];
+                    if (headerHandle) {
+                        const mediaType = template.headerType === 'IMAGE' ? 'image'
+                            : template.headerType === 'VIDEO' ? 'video' : 'document';
+                        components.push({
+                            type: 'header',
+                            parameters: [{ type: mediaType, [mediaType]: { id: headerHandle } }],
+                        });
+                    }
+                }
+            } catch (metaErr) {
+                console.error('WA fetchMetaTemplate for header:', metaErr.message);
+                // Continue without header - may still work for some templates
+            }
+        }
+
+        // Add body components if we have vars
+        if (bodyComponents.length > 0) components.push(...bodyComponents);
+
         const templatePayload = { name: template.name, language: { code: template.language } };
         if (components.length > 0) templatePayload.components = components;
 
