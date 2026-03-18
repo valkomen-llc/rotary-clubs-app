@@ -54,13 +54,22 @@ interface SiteImages {
 interface MediaItem { id: string; url: string; filename: string; type: string; }
 
 // ── Container definitions ──────────────────────────────────────────────────
-const CONTAINERS = [
+// A container can have either a flat key/count or grouped sub-sections.
+interface SubGroup { key: string; subLabel: string; count: number; aspect: string; }
+interface Container { key: string; label: string; desc: string; count: number; aspect: string; groups?: SubGroup[]; }
+
+const CONTAINERS: Container[] = [
     { key: 'hero', label: 'Hero — Slider Principal', desc: '5 imágenes de slide con rotación automática. Tamaño ideal: 1600×700px, horizontal.', count: 5, aspect: '16/7' },
     { key: 'causes', label: 'Áreas de Interés — Causas', desc: '7 imágenes para las tarjetas de causas Rotary. Tamaño ideal: 500×500px, cuadrado.', count: 7, aspect: '1/1' },
     { key: 'foundation', label: 'Fundación Rotaria', desc: '1 imagen de fondo para la sección de la Fundación. Tamaño ideal: 1600×800px, panorámica.', count: 1, aspect: '16/8' },
     { key: 'join', label: 'Sección Únete', desc: '1 imagen motivacional para la sección de reclutamiento. Tamaño ideal: 600×500px.', count: 1, aspect: '6/5' },
-    { key: 'aboutHero', label: 'Quiénes Somos — Hero', desc: '1 imagen de banner para la página Quiénes Somos. Tamaño ideal: 1600×500px, panorámica.', count: 1, aspect: '16/5' },
-    { key: 'aboutCarousel', label: 'Quiénes Somos — Carrusel', desc: '5 imágenes para el carrusel de causas en Quiénes Somos. Tamaño ideal: 400×250px.', count: 5, aspect: '8/5' },
+    {
+        key: 'about', label: 'Quiénes Somos', desc: 'Imágenes de la página Quiénes Somos: banner hero y carrusel de causas.', count: 6, aspect: '16/5',
+        groups: [
+            { key: 'aboutHero', subLabel: 'Hero — Banner', count: 1, aspect: '16/5' },
+            { key: 'aboutCarousel', subLabel: 'Carrusel de Causas', count: 5, aspect: '8/5' },
+        ],
+    },
 ];
 
 const ImageDistribution: React.FC = () => {
@@ -277,9 +286,14 @@ const ImageDistribution: React.FC = () => {
 
                 {/* Containers */}
                 {CONTAINERS.map(container => {
-                    const slots = getSlots(container.key);
+                    // For grouped containers, calculate totals across groups
+                    const subGroups = container.groups || [{ key: container.key, subLabel: '', count: container.count, aspect: container.aspect }];
+                    const totalCount = subGroups.reduce((sum, g) => sum + g.count, 0);
+                    const totalCustom = subGroups.reduce((sum, g) => {
+                        const s = getSlots(g.key);
+                        return sum + s.filter((_, i) => !isDefault(g.key, i)).length;
+                    }, 0);
                     const isOpen = expanded[container.key];
-                    const customCount = slots.filter((_, i) => !isDefault(container.key, i)).length;
 
                     return (
                         <div key={container.key} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -291,11 +305,11 @@ const ImageDistribution: React.FC = () => {
                                     <div className="flex items-center gap-3">
                                         <h3 className="font-bold text-gray-900">{container.label}</h3>
                                         <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
-                                            {container.count} {container.count === 1 ? 'imagen' : 'imágenes'}
+                                            {totalCount} {totalCount === 1 ? 'imagen' : 'imágenes'}
                                         </span>
-                                        {customCount > 0 && (
+                                        {totalCustom > 0 && (
                                             <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex items-center gap-1">
-                                                <CheckCircle className="w-3 h-3" /> {customCount} personalizadas
+                                                <CheckCircle className="w-3 h-3" /> {totalCustom} personalizadas
                                             </span>
                                         )}
                                     </div>
@@ -304,63 +318,81 @@ const ImageDistribution: React.FC = () => {
                                 {isOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
                             </button>
 
-                            {/* Slots Grid */}
+                            {/* Slots Grid — with support for sub-groups */}
                             {isOpen && (
-                                <div className="px-6 pb-6 border-t border-gray-100 pt-4">
-                                    <div className={`grid gap-4 ${container.count === 1 ? 'grid-cols-1 max-w-lg' : container.count <= 4 ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-2 lg:grid-cols-5'}`}>
-                                        {slots.map((slot, idx) => {
-                                            const isDef = isDefault(container.key, idx);
-                                            return (
-                                                <div key={idx} className={`group relative rounded-xl overflow-hidden border-2 transition-all ${isDef ? 'border-gray-200 border-dashed' : 'border-emerald-300 shadow-md'}`}>
-                                                    {/* Image preview */}
-                                                    <div className="relative" style={{ aspectRatio: container.aspect }}>
-                                                        <img src={slot.url} alt={slot.alt}
-                                                            className="w-full h-full object-cover"
-                                                            onError={(e) => { (e.target as HTMLImageElement).src = DEFAULTS.hero[0].url; }} />
+                                <div className="px-6 pb-6 border-t border-gray-100 pt-4 space-y-6">
+                                    {subGroups.map(group => {
+                                        const slots = getSlots(group.key);
+                                        return (
+                                            <div key={group.key}>
+                                                {/* Sub-label only for grouped containers */}
+                                                {container.groups && (
+                                                    <div className="flex items-center gap-2 mb-3">
+                                                        <span className="text-xs font-bold text-violet-600 bg-violet-50 px-2.5 py-1 rounded-full">
+                                                            {group.subLabel}
+                                                        </span>
+                                                        <span className="text-[10px] text-gray-400 font-medium">
+                                                            {group.count} {group.count === 1 ? 'imagen' : 'imágenes'}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                                <div className={`grid gap-4 ${group.count === 1 ? 'grid-cols-1 max-w-lg' : group.count <= 4 ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-2 lg:grid-cols-5'}`}>
+                                                    {slots.map((slot, idx) => {
+                                                        const isDef = isDefault(group.key, idx);
+                                                        return (
+                                                            <div key={idx} className={`group relative rounded-xl overflow-hidden border-2 transition-all ${isDef ? 'border-gray-200 border-dashed' : 'border-emerald-300 shadow-md'}`}>
+                                                                {/* Image preview */}
+                                                                <div className="relative" style={{ aspectRatio: group.aspect }}>
+                                                                    <img src={slot.url} alt={slot.alt}
+                                                                        className="w-full h-full object-cover"
+                                                                        onError={(e) => { (e.target as HTMLImageElement).src = DEFAULTS.hero[0].url; }} />
 
-                                                        {/* Overlay on hover */}
-                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
-                                                            <button onClick={() => openPicker(container.key, idx)}
-                                                                className="px-3 py-2 bg-white rounded-lg text-xs font-bold text-gray-800 hover:bg-gray-100 transition-colors flex items-center gap-1.5 shadow-lg">
-                                                                <Upload className="w-3.5 h-3.5" /> Cambiar
-                                                            </button>
-                                                            {!isDef && (
-                                                                <button onClick={() => resetSlot(container.key, idx)}
-                                                                    className="px-3 py-2 bg-red-500 rounded-lg text-xs font-bold text-white hover:bg-red-600 transition-colors flex items-center gap-1.5 shadow-lg">
-                                                                    <Trash2 className="w-3.5 h-3.5" /> Reset
-                                                                </button>
-                                                            )}
-                                                        </div>
+                                                                    {/* Overlay on hover */}
+                                                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                                                                        <button onClick={() => openPicker(group.key, idx)}
+                                                                            className="px-3 py-2 bg-white rounded-lg text-xs font-bold text-gray-800 hover:bg-gray-100 transition-colors flex items-center gap-1.5 shadow-lg">
+                                                                            <Upload className="w-3.5 h-3.5" /> Cambiar
+                                                                        </button>
+                                                                        {!isDef && (
+                                                                            <button onClick={() => resetSlot(group.key, idx)}
+                                                                                className="px-3 py-2 bg-red-500 rounded-lg text-xs font-bold text-white hover:bg-red-600 transition-colors flex items-center gap-1.5 shadow-lg">
+                                                                                <Trash2 className="w-3.5 h-3.5" /> Reset
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
 
-                                                        {/* Status badge */}
-                                                        <div className="absolute top-2 left-2">
-                                                            {isDef ? (
-                                                                <span className="px-2 py-0.5 bg-gray-900/60 text-white text-[9px] font-bold rounded-full backdrop-blur-sm uppercase">
-                                                                    Por Defecto
-                                                                </span>
-                                                            ) : (
-                                                                <span className="px-2 py-0.5 bg-emerald-500 text-white text-[9px] font-bold rounded-full uppercase flex items-center gap-1">
-                                                                    <CheckCircle className="w-2.5 h-2.5" /> Personalizada
-                                                                </span>
-                                                            )}
-                                                        </div>
+                                                                    {/* Status badge */}
+                                                                    <div className="absolute top-2 left-2">
+                                                                        {isDef ? (
+                                                                            <span className="px-2 py-0.5 bg-gray-900/60 text-white text-[9px] font-bold rounded-full backdrop-blur-sm uppercase">
+                                                                                Por Defecto
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="px-2 py-0.5 bg-emerald-500 text-white text-[9px] font-bold rounded-full uppercase flex items-center gap-1">
+                                                                                <CheckCircle className="w-2.5 h-2.5" /> Personalizada
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
 
-                                                        {/* Slot number */}
-                                                        {container.count > 1 && (
-                                                            <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-white/90 text-gray-800 text-[10px] font-black flex items-center justify-center shadow">
-                                                                {idx + 1}
+                                                                    {/* Slot number */}
+                                                                    {group.count > 1 && (
+                                                                        <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-white/90 text-gray-800 text-[10px] font-black flex items-center justify-center shadow">
+                                                                            {idx + 1}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* Alt text / label */}
+                                                                <div className="p-2 bg-white">
+                                                                    <p className="text-[11px] text-gray-500 truncate font-medium">{slot.alt}</p>
+                                                                </div>
                                                             </div>
-                                                        )}
-                                                    </div>
-
-                                                    {/* Alt text / label */}
-                                                    <div className="p-2 bg-white">
-                                                        <p className="text-[11px] text-gray-500 truncate font-medium">{slot.alt}</p>
-                                                    </div>
+                                                        );
+                                                    })}
                                                 </div>
-                                            );
-                                        })}
-                                    </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
