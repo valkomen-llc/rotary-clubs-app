@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
-import { Mail, MessageCircle, Send, ClipboardList, CheckCircle2, XCircle, Search, Clock, Settings, Users, List, Megaphone, FileText, BarChart3 } from 'lucide-react';
+import { Mail, MessageCircle, Send, ClipboardList, CheckCircle2, XCircle, Search, Clock, Settings, Users, List, Megaphone, FileText, BarChart3, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
 
 // WhatsApp CRM Sub-components
@@ -10,10 +10,12 @@ import WhatsAppContacts from '../../components/admin/whatsapp/WhatsAppContacts';
 import WhatsAppLists from '../../components/admin/whatsapp/WhatsAppLists';
 import WhatsAppTemplates from '../../components/admin/whatsapp/WhatsAppTemplates';
 import WhatsAppCampaigns from '../../components/admin/whatsapp/WhatsAppCampaigns';
+import WhatsAppChat from '../../components/admin/whatsapp/WhatsAppChat';
+import WhatsAppDashboard from '../../components/admin/whatsapp/WhatsAppDashboard';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
-type TabKey = 'send' | 'templates' | 'logs' | 'wa-config' | 'wa-contacts' | 'wa-lists' | 'wa-templates' | 'wa-campaigns' | 'wa-analytics';
+type TabKey = 'send' | 'templates' | 'logs' | 'wa-config' | 'wa-contacts' | 'wa-lists' | 'wa-templates' | 'wa-campaigns' | 'wa-analytics' | 'wa-chat';
 
 /**
  * CRM Interfaz
@@ -28,12 +30,10 @@ const CRMManagement: React.FC = () => {
     // Mocks / States for basic UI iteration
     const [logs, setLogs] = useState<any[]>([]);
     const [emailTemplates, setEmailTemplates] = useState<any[]>([]);
-    const [waAnalytics, setWaAnalytics] = useState<any>(null);
 
     useEffect(() => {
         if (activeTab === 'logs') fetchLogs();
         if (activeTab === 'templates') fetchEmailTemplates();
-        if (activeTab === 'wa-analytics') fetchWaAnalytics();
     }, [activeTab]);
 
     const fetchLogs = async () => {
@@ -48,13 +48,6 @@ const CRMManagement: React.FC = () => {
             const res = await fetch(`${API}/communications/templates`, { headers: { 'Authorization': `Bearer ${token}` } });
             if (res.ok) setEmailTemplates(await res.json());
         } catch (error) { console.error('Error fetching templates', error); }
-    };
-
-    const fetchWaAnalytics = async () => {
-        try {
-            const res = await fetch(`${API}/whatsapp/analytics`, { headers: { 'Authorization': `Bearer ${token}` } });
-            if (res.ok) setWaAnalytics(await res.json());
-        } catch { }
     };
 
     // --- Send Form State ---
@@ -92,6 +85,7 @@ const CRMManagement: React.FC = () => {
         { key: 'wa-lists', label: 'Listas', icon: <List className="w-4 h-4" /> },
         { key: 'wa-templates', label: 'Templates', icon: <FileText className="w-4 h-4" /> },
         { key: 'wa-campaigns', label: 'Campañas', icon: <Megaphone className="w-4 h-4" /> },
+        { key: 'wa-chat', label: 'Chat', icon: <MessageSquare className="w-4 h-4" /> },
         { key: 'wa-analytics', label: 'Analytics', icon: <BarChart3 className="w-4 h-4" /> },
     ];
 
@@ -254,55 +248,8 @@ const CRMManagement: React.FC = () => {
             {activeTab === 'wa-lists' && <WhatsAppLists />}
             {activeTab === 'wa-templates' && <WhatsAppTemplates />}
             {activeTab === 'wa-campaigns' && <WhatsAppCampaigns />}
-
-            {activeTab === 'wa-analytics' && (
-                <div>
-                    {!waAnalytics ? (
-                        <div className="flex justify-center py-16"><div className="w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full animate-spin" /></div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            {/* Contacts Card */}
-                            <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600"><Users className="w-5 h-5" /></div>
-                                    <h3 className="font-bold text-gray-900">Contactos</h3>
-                                </div>
-                                <div className="space-y-3">
-                                    <div className="flex justify-between"><span className="text-sm text-gray-500">Total</span><span className="font-black text-gray-900">{waAnalytics.contacts?.total || 0}</span></div>
-                                    <div className="flex justify-between"><span className="text-sm text-gray-500">Activos</span><span className="font-black text-emerald-600">{waAnalytics.contacts?.active || 0}</span></div>
-                                    <div className="flex justify-between"><span className="text-sm text-gray-500">Opt-out</span><span className="font-black text-red-500">{waAnalytics.contacts?.optedOut || 0}</span></div>
-                                </div>
-                            </div>
-                            {/* Campaigns Card */}
-                            <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center text-green-600"><Megaphone className="w-5 h-5" /></div>
-                                    <h3 className="font-bold text-gray-900">Campañas</h3>
-                                </div>
-                                <div className="space-y-3">
-                                    <div className="flex justify-between"><span className="text-sm text-gray-500">Enviadas</span><span className="font-black text-gray-900">{waAnalytics.campaigns?.total || 0}</span></div>
-                                    <div className="flex justify-between"><span className="text-sm text-gray-500">Mensajes Enviados</span><span className="font-black text-blue-600">{waAnalytics.campaigns?.sent || 0}</span></div>
-                                    <div className="flex justify-between"><span className="text-sm text-gray-500">Entregados</span><span className="font-black text-emerald-600">{waAnalytics.campaigns?.delivered || 0}</span></div>
-                                    <div className="flex justify-between"><span className="text-sm text-gray-500">Leídos</span><span className="font-black text-purple-600">{waAnalytics.campaigns?.readCount || 0}</span></div>
-                                </div>
-                            </div>
-                            {/* Messages Card */}
-                            <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center text-purple-600"><BarChart3 className="w-5 h-5" /></div>
-                                    <h3 className="font-bold text-gray-900">Mensajes Globales</h3>
-                                </div>
-                                <div className="space-y-3">
-                                    <div className="flex justify-between"><span className="text-sm text-gray-500">Enviados</span><span className="font-black text-gray-900">{waAnalytics.messages?.sent || 0}</span></div>
-                                    <div className="flex justify-between"><span className="text-sm text-gray-500">Entregados</span><span className="font-black text-emerald-600">{waAnalytics.messages?.delivered || 0}</span></div>
-                                    <div className="flex justify-between"><span className="text-sm text-gray-500">Leídos</span><span className="font-black text-purple-600">{waAnalytics.messages?.readCount || 0}</span></div>
-                                    <div className="flex justify-between"><span className="text-sm text-gray-500">Fallidos</span><span className="font-black text-red-500">{waAnalytics.messages?.failed || 0}</span></div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
+            {activeTab === 'wa-chat' && <WhatsAppChat />}
+            {activeTab === 'wa-analytics' && <WhatsAppDashboard />}
         </AdminLayout>
     );
 };

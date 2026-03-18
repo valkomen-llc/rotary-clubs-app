@@ -223,6 +223,35 @@ export const deleteContact = async (req, res) => {
     }
 };
 
+export const getContactMessages = async (req, res) => {
+    try {
+        const clubId = await resolveClubId(req);
+        const contactId = req.params.id;
+        // Get the contact phone
+        const contactR = await db.query(`SELECT phone FROM "WhatsAppContact" WHERE id=$1 AND "clubId"=$2`, [contactId, clubId]);
+        if (!contactR.rows.length) return res.status(404).json({ error: 'Contacto no encontrado' });
+        const phone = contactR.rows[0].phone;
+        // Try to get messages from WhatsAppMessageLog
+        try {
+            const r = await db.query(
+                `SELECT id, "templateName", "bodyText", status, "sentAt", "deliveredAt", "readAt", "failedAt", "createdAt"
+                 FROM "WhatsAppMessageLog"
+                 WHERE "clubId"=$1 AND phone=$2
+                 ORDER BY "createdAt" ASC
+                 LIMIT 200`,
+                [clubId, phone]
+            );
+            res.json({ messages: r.rows.map(m => ({ ...m, direction: 'outgoing' })) });
+        } catch {
+            // Table might not exist
+            res.json({ messages: [] });
+        }
+    } catch (err) {
+        console.error('WA getContactMessages:', err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
 export const importContacts = async (req, res) => {
     try {
         const clubId = await resolveClubId(req, true);
