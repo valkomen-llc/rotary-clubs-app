@@ -659,13 +659,34 @@ export const verifyWebhook = async (req, res) => {
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
     if (mode !== 'subscribe' || !token) return res.sendStatus(403);
-    // Check env var first
-    if (token === process.env.WA_VERIFY_TOKEN) return res.status(200).send(challenge);
-    // Check stored configs in DB
+
+    // 1. Check env var
+    if (process.env.WA_VERIFY_TOKEN && token === process.env.WA_VERIFY_TOKEN)
+        return res.status(200).send(challenge);
+
+    // 2. Check stored configs in DB
     try {
         const r = await db.query(`SELECT id FROM "WhatsAppConfig" WHERE "verifyToken"=$1 LIMIT 1`, [token]);
         if (r.rows.length) return res.status(200).send(challenge);
-    } catch (err) { console.error('Webhook verify DB check:', err.message); }
+    } catch (err) {
+        // Table may not exist yet — try fallback
+        console.error('Webhook verify DB check:', err.message);
+    }
+
+    // 3. Fallback: accept any non-empty token if no config exists yet (first setup)
+    try {
+        const r = await db.query(`SELECT COUNT(*) as cnt FROM "WhatsAppConfig"`);
+        if (parseInt(r.rows[0]?.cnt || '0') === 0) {
+            // No configs yet — accept the token so Meta can verify during initial setup
+            console.log('[WA-CRM] No configs yet, accepting webhook verify token for initial setup');
+            return res.status(200).send(challenge);
+        }
+    } catch (err) {
+        // Table doesn't exist — also accept for initial setup
+        console.log('[WA-CRM] WhatsAppConfig table not ready, accepting webhook verify');
+        return res.status(200).send(challenge);
+    }
+
     res.sendStatus(403);
 };
 
