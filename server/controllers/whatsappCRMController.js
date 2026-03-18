@@ -869,6 +869,14 @@ export const ensureWATables = async () => {
             CREATE INDEX IF NOT EXISTS idx_wa_msglog_messageid ON "WhatsAppMessageLog" ("messageId");
             CREATE INDEX IF NOT EXISTS idx_wa_msglog_campaign ON "WhatsAppMessageLog" ("campaignId", status);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_template_meta_id ON "WhatsAppTemplate" ("metaTemplateId") WHERE "metaTemplateId" IS NOT NULL;
+        `);
+        console.log('[WA-CRM] All tables created');
+    } catch (err) {
+        console.error('[WA-CRM] Table init error:', err.message);
+    }
+    // Custom Fields table — separate query to ensure it gets created even if main batch had issues
+    try {
+        await db.query(`
             CREATE TABLE IF NOT EXISTS "WhatsAppCustomField" (
                 id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
                 "clubId" TEXT NOT NULL REFERENCES "Club"(id) ON DELETE CASCADE,
@@ -881,9 +889,9 @@ export const ensureWATables = async () => {
                 UNIQUE("clubId", key)
             );
         `);
-        console.log('[WA-CRM] All tables created');
+        console.log('[WA-CRM] CustomField table ensured');
     } catch (err) {
-        console.error('[WA-CRM] Table init error:', err.message);
+        console.error('[WA-CRM] CustomField table error:', err.message);
     }
 };
 
