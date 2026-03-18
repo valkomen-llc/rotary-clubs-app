@@ -16,6 +16,7 @@ import {
     updateContact,
     deleteContact,
     importContacts,
+    fixPhoneNumbers,
     importFromLeads,
     // Lists
     getLists,
@@ -69,6 +70,7 @@ router.put('/contacts/:id', updateContact);
 router.delete('/contacts/:id', deleteContact);
 router.post('/contacts/import', importContacts);           // Importar desde CSV (preprocesado)
 router.post('/contacts/import/leads', importFromLeads);   // Importar desde tabla Lead
+router.post('/contacts/fix-phones', fixPhoneNumbers);     // Corregir indicativos
 
 // ── Listas / Segmentos ───────────────────────────────────────────────────
 router.get('/lists', getLists);

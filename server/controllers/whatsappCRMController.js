@@ -265,6 +265,34 @@ export const importContacts = async (req, res) => {
     }
 };
 
+// Fix phone numbers that were imported without country code
+export const fixPhoneNumbers = async (req, res) => {
+    try {
+        const clubId = await resolveClubId(req, true);
+        if (!clubId) return res.status(400).json({ error: 'No se pudo determinar el club' });
+        const { countryCode = '+57' } = req.body;
+        const cc = countryCode.replace('+', '');
+
+        // Find contacts whose phone doesn't start with the full country code
+        // Colombian mobile numbers start with 3, landlines with other digits
+        // Pattern: +3XXXXXXXXX (10 digits after +) should be +573XXXXXXXXX
+        const r = await db.query(
+            `UPDATE "WhatsAppContact" 
+             SET phone = $2 || SUBSTRING(phone FROM 2)
+             WHERE "clubId" = $1
+             AND phone LIKE '+%'
+             AND phone NOT LIKE $3
+             AND LENGTH(phone) BETWEEN 8 AND 13
+             RETURNING id, phone`,
+            [clubId, countryCode, `${countryCode}%`]
+        );
+        res.json({ success: true, fixed: r.rowCount, sample: r.rows.slice(0, 5) });
+    } catch (err) {
+        console.error('WA fixPhoneNumbers:', err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
 export const importFromLeads = async (req, res) => {
     try {
         const clubId = await resolveClubId(req, true);
