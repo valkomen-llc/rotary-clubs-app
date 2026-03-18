@@ -1,9 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Image as ImageIcon, Save, Loader2, Trash2, Upload, Plus,
-    Monitor, ChevronDown, ChevronUp, CheckCircle, X, Search,
-    GripVertical, Eye
+    Monitor, ChevronDown, ChevronUp, CheckCircle, X, Search
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -67,7 +66,7 @@ const ImageDistribution: React.FC = () => {
     const [mediaSearch, setMediaSearch] = useState('');
 
     const token = () => localStorage.getItem('rotary_token');
-    const clubId = user?.role === 'administrator' ? club?.id : user?.clubId;
+    const clubId = user?.clubId || (club as any)?.id;
 
     // ── Load current site images ──────────────────────────────────────────
     useEffect(() => {
@@ -346,7 +345,7 @@ const ImageDistribution: React.FC = () => {
                                 <div className="text-center py-12 text-gray-400">
                                     <ImageIcon className="w-10 h-10 mx-auto mb-3 opacity-30" />
                                     <p className="font-medium">{mediaSearch ? 'No hay resultados.' : 'No hay imágenes en la Media Library.'}</p>
-                                    <p classtName="text-xs mt-1">Sube imágenes desde la sección Multimedia.</p>
+                                    <p className="text-xs mt-1">Sube imágenes desde la sección Multimedia.</p>
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
