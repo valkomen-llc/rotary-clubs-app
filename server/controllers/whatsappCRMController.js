@@ -166,7 +166,7 @@ export const getContacts = async (req, res) => {
 
 export const createContact = async (req, res) => {
     try {
-        const clubId = req.user.clubId;
+        const clubId = await resolveClubId(req, true);
         const { name, phone, email, tags = [], source = 'manual', metadata = {} } = req.body;
         if (!name || !phone) return res.status(400).json({ error: 'name y phone son requeridos' });
         const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`;
@@ -186,7 +186,7 @@ export const createContact = async (req, res) => {
 export const updateContact = async (req, res) => {
     try {
         const { id } = req.params;
-        const clubId = req.user.clubId;
+        const clubId = await resolveClubId(req);
         const { name, phone, email, tags, status, metadata } = req.body;
         const fields = [], params = []; let idx = 1;
         if (name !== undefined) { fields.push(`name=$${idx++}`); params.push(name); }
@@ -214,7 +214,8 @@ export const updateContact = async (req, res) => {
 
 export const deleteContact = async (req, res) => {
     try {
-        await db.query(`DELETE FROM "WhatsAppContact" WHERE id=$1 AND "clubId"=$2`, [req.params.id, req.user.clubId]);
+        const clubId = await resolveClubId(req);
+        await db.query(`DELETE FROM "WhatsAppContact" WHERE id=$1 AND "clubId"=$2`, [req.params.id, clubId]);
         res.json({ success: true });
     } catch (err) {
         console.error('WA deleteContact:', err);
@@ -224,7 +225,8 @@ export const deleteContact = async (req, res) => {
 
 export const importContacts = async (req, res) => {
     try {
-        const clubId = req.user.clubId;
+        const clubId = await resolveClubId(req, true);
+        if (!clubId) return res.status(400).json({ error: 'No se pudo determinar el club' });
         const { contacts, source = 'csv_import' } = req.body;
         if (!Array.isArray(contacts) || !contacts.length)
             return res.status(400).json({ error: 'Se requiere un array de contactos' });
@@ -247,7 +249,8 @@ export const importContacts = async (req, res) => {
 
 export const importFromLeads = async (req, res) => {
     try {
-        const clubId = req.user.clubId;
+        const clubId = await resolveClubId(req, true);
+        if (!clubId) return res.status(400).json({ error: 'No se pudo determinar el club' });
         const { leadIds } = req.body;
         let q, p = [clubId];
         if (leadIds === 'all') {
@@ -296,9 +299,10 @@ export const createList = async (req, res) => {
     try {
         const { name, description, color = '#3B82F6' } = req.body;
         if (!name) return res.status(400).json({ error: 'name es requerido' });
+        const clubId = await resolveClubId(req, true);
         const r = await db.query(
             `INSERT INTO "WhatsAppContactList" ("clubId",name,description,color) VALUES ($1,$2,$3,$4) RETURNING *`,
-            [req.user.clubId, name, description || null, color]
+            [clubId, name, description || null, color]
         );
         res.status(201).json(r.rows[0]);
     } catch (err) {
@@ -314,7 +318,7 @@ export const updateList = async (req, res) => {
             `UPDATE "WhatsAppContactList"
              SET name=COALESCE($1,name),description=COALESCE($2,description),color=COALESCE($3,color),"updatedAt"=NOW()
              WHERE id=$4 AND "clubId"=$5 RETURNING *`,
-            [name, description, color, req.params.id, req.user.clubId]
+            [name, description, color, req.params.id, await resolveClubId(req)]
         );
         if (!r.rows.length) return res.status(404).json({ error: 'Lista no encontrada' });
         res.json(r.rows[0]);
@@ -326,7 +330,7 @@ export const updateList = async (req, res) => {
 
 export const deleteList = async (req, res) => {
     try {
-        await db.query(`DELETE FROM "WhatsAppContactList" WHERE id=$1 AND "clubId"=$2`, [req.params.id, req.user.clubId]);
+        await db.query(`DELETE FROM "WhatsAppContactList" WHERE id=$1 AND "clubId"=$2`, [req.params.id, await resolveClubId(req)]);
         res.json({ success: true });
     } catch (err) {
         console.error('WA deleteList:', err);
@@ -387,7 +391,7 @@ export const getTemplates = async (req, res) => {
 
 export const createTemplate = async (req, res) => {
     try {
-        const clubId = req.user.clubId;
+        const clubId = await resolveClubId(req, true);
         const { name, displayName, category = 'MARKETING', language = 'es',
             headerType, headerContent, bodyText, footerText, buttons = [] } = req.body;
         if (!name || !displayName || !bodyText)
@@ -416,7 +420,7 @@ export const updateTemplate = async (req, res) => {
                  status=COALESCE($9,status),"updatedAt"=NOW()
              WHERE id=$10 AND "clubId"=$11 RETURNING *`,
             [displayName, category, language, headerType, headerContent, bodyText, footerText,
-                buttons ? JSON.stringify(buttons) : null, status, req.params.id, req.user.clubId]
+                buttons ? JSON.stringify(buttons) : null, status, req.params.id, await resolveClubId(req)]
         );
         if (!r.rows.length) return res.status(404).json({ error: 'Template no encontrado' });
         res.json(r.rows[0]);
@@ -428,7 +432,7 @@ export const updateTemplate = async (req, res) => {
 
 export const deleteTemplate = async (req, res) => {
     try {
-        await db.query(`DELETE FROM "WhatsAppTemplate" WHERE id=$1 AND "clubId"=$2`, [req.params.id, req.user.clubId]);
+        await db.query(`DELETE FROM "WhatsAppTemplate" WHERE id=$1 AND "clubId"=$2`, [req.params.id, await resolveClubId(req)]);
         res.json({ success: true });
     } catch (err) {
         console.error('WA deleteTemplate:', err);
@@ -520,10 +524,11 @@ export const createCampaign = async (req, res) => {
     try {
         const { name, description, listId, templateId, templateVars = {}, scheduledAt } = req.body;
         if (!name) return res.status(400).json({ error: 'name es requerido' });
+        const clubId = await resolveClubId(req, true);
         const r = await db.query(
             `INSERT INTO "WhatsAppCampaign" ("clubId",name,description,"listId","templateId","templateVars","scheduledAt")
              VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-            [req.user.clubId, name, description || null, listId || null, templateId || null, JSON.stringify(templateVars), scheduledAt || null]
+            [clubId, name, description || null, listId || null, templateId || null, JSON.stringify(templateVars), scheduledAt || null]
         );
         res.status(201).json(r.rows[0]);
     } catch (err) {
@@ -542,7 +547,7 @@ export const updateCampaign = async (req, res) => {
                  "scheduledAt"=COALESCE($6,"scheduledAt"),status=COALESCE($7,status),"updatedAt"=NOW()
              WHERE id=$8 AND "clubId"=$9 RETURNING *`,
             [name, description, listId, templateId, templateVars ? JSON.stringify(templateVars) : null,
-                scheduledAt, status, req.params.id, req.user.clubId]
+                scheduledAt, status, req.params.id, await resolveClubId(req)]
         );
         if (!r.rows.length) return res.status(404).json({ error: 'Campaña no encontrada' });
         res.json(r.rows[0]);
@@ -554,7 +559,7 @@ export const updateCampaign = async (req, res) => {
 
 export const deleteCampaign = async (req, res) => {
     try {
-        await db.query(`DELETE FROM "WhatsAppCampaign" WHERE id=$1 AND "clubId"=$2`, [req.params.id, req.user.clubId]);
+        await db.query(`DELETE FROM "WhatsAppCampaign" WHERE id=$1 AND "clubId"=$2`, [req.params.id, await resolveClubId(req)]);
         res.json({ success: true });
     } catch (err) {
         console.error('WA deleteCampaign:', err);
@@ -564,7 +569,7 @@ export const deleteCampaign = async (req, res) => {
 
 export const sendCampaign = async (req, res) => {
     const { id } = req.params;
-    const clubId = req.user.clubId;
+    const clubId = await resolveClubId(req);
     try {
         const campR = await db.query(`SELECT * FROM "WhatsAppCampaign" WHERE id=$1 AND "clubId"=$2`, [id, clubId]);
         if (!campR.rows.length) return res.status(404).json({ error: 'Campaña no encontrada' });
