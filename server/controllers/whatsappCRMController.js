@@ -459,20 +459,34 @@ export const syncTemplatesFromMeta = async (req, res) => {
             const buttonComp = t.components?.find(c => c.type === 'BUTTONS');
             const displayName = t.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
             try {
-                await db.query(
-                    `INSERT INTO "WhatsAppTemplate" ("clubId",name,"displayName",category,language,status,"headerType","headerContent","bodyText","footerText",buttons,"metaTemplateId")
-                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-                     ON CONFLICT ("metaTemplateId") DO UPDATE SET
-                       status=EXCLUDED.status, "bodyText"=EXCLUDED."bodyText",
-                       "headerType"=EXCLUDED."headerType", "headerContent"=EXCLUDED."headerContent",
-                       "footerText"=EXCLUDED."footerText", buttons=EXCLUDED.buttons, "updatedAt"=NOW()`,
-                    [clubId, t.name, displayName, t.category, t.language, t.status?.toLowerCase() || 'pending',
-                        headerComp?.format || null, headerComp?.text || null, bodyComp?.text || '',
-                        footerComp?.text || null, JSON.stringify(buttonComp?.buttons || []), t.id]
+                // Check if template already exists by metaTemplateId
+                const existing = await db.query(
+                    `SELECT id FROM "WhatsAppTemplate" WHERE "metaTemplateId"=$1 AND "clubId"=$2 LIMIT 1`,
+                    [t.id, clubId]
                 );
+                if (existing.rows.length) {
+                    // Update existing
+                    await db.query(
+                        `UPDATE "WhatsAppTemplate" SET status=$1,"bodyText"=$2,"headerType"=$3,"headerContent"=$4,
+                         "footerText"=$5,buttons=$6,category=$7,language=$8,"displayName"=$9,"updatedAt"=NOW()
+                         WHERE "metaTemplateId"=$10 AND "clubId"=$11`,
+                        [t.status?.toLowerCase() || 'pending', bodyComp?.text || '', headerComp?.format || null,
+                         headerComp?.text || null, footerComp?.text || null, JSON.stringify(buttonComp?.buttons || []),
+                         t.category, t.language, displayName, t.id, clubId]
+                    );
+                } else {
+                    // Insert new
+                    await db.query(
+                        `INSERT INTO "WhatsAppTemplate" ("clubId",name,"displayName",category,language,status,"headerType","headerContent","bodyText","footerText",buttons,"metaTemplateId")
+                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+                        [clubId, t.name, displayName, t.category, t.language, t.status?.toLowerCase() || 'pending',
+                         headerComp?.format || null, headerComp?.text || null, bodyComp?.text || '',
+                         footerComp?.text || null, JSON.stringify(buttonComp?.buttons || []), t.id]
+                    );
+                }
                 synced++;
             } catch (insertErr) {
-                console.error(`WA syncTemplate insert error for ${t.name}:`, insertErr.message);
+                console.error(`WA syncTemplate error for ${t.name}:`, insertErr.message);
             }
         }
         res.json({ success: true, synced, total: data.data.length });
