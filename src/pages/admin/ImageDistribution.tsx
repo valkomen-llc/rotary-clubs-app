@@ -64,6 +64,7 @@ const ImageDistribution: React.FC = () => {
     const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
     const [mediaLoading, setMediaLoading] = useState(false);
     const [mediaSearch, setMediaSearch] = useState('');
+    const [uploading, setUploading] = useState(false);
 
     const token = () => localStorage.getItem('rotary_token');
     const clubId = user?.clubId || (club as any)?.id;
@@ -125,6 +126,36 @@ const ImageDistribution: React.FC = () => {
             }
         } catch { }
         finally { setMediaLoading(false); }
+    };
+
+    // ── Upload image directly from picker ──────────────────────────────────
+    const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setUploading(true);
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('clubId', clubId || '');
+        try {
+            const res = await fetch(`${API}/api/media/upload`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token()}` },
+                body: formData,
+            });
+            if (res.ok) {
+                const uploaded = await res.json();
+                toast.success('Imagen subida exitosamente');
+                // Refresh gallery and auto-select the uploaded image
+                await fetchMedia();
+                if (uploaded?.url && pickerTarget) {
+                    selectMedia(uploaded.url, uploaded.filename || file.name);
+                }
+            } else {
+                const err = await res.json().catch(() => ({}));
+                toast.error(err.error || 'Error al subir imagen');
+            }
+        } catch { toast.error('Error de conexión'); }
+        finally { setUploading(false); e.target.value = ''; }
     };
 
     const selectMedia = (url: string, filename: string) => {
@@ -324,9 +355,16 @@ const ImageDistribution: React.FC = () => {
                             <h2 className="font-bold text-gray-800 flex items-center gap-2">
                                 <ImageIcon className="w-5 h-5 text-violet-500" /> Seleccionar Imagen
                             </h2>
-                            <button onClick={() => setPickerOpen(false)} className="text-gray-400 hover:text-gray-600">
-                                <X className="w-6 h-6" />
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <label className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold cursor-pointer transition-all ${uploading ? 'bg-gray-100 text-gray-400' : 'bg-violet-600 text-white hover:bg-violet-700 shadow-lg'}`}>
+                                    {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                    {uploading ? 'Subiendo...' : 'Subir imagen'}
+                                    <input type="file" accept="image/*" className="hidden" onChange={handleUpload} disabled={uploading} />
+                                </label>
+                                <button onClick={() => setPickerOpen(false)} className="text-gray-400 hover:text-gray-600 p-1">
+                                    <X className="w-6 h-6" />
+                                </button>
+                            </div>
                         </div>
 
                         <div className="px-6 py-3 border-b border-gray-100">
