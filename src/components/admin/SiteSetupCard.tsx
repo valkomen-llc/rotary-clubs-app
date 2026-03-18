@@ -3,6 +3,7 @@ import {
     CheckCircle2, Circle, ChevronRight, Sparkles, X, Bot,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -23,6 +24,8 @@ interface Props {
 
 const SiteSetupCard: React.FC<Props> = ({ stats, onOpenWizard }) => {
     const navigate = useNavigate();
+    const { user } = useAuth();
+    const isSuperAdmin = user?.role === 'administrator';
     const [dismissed, setDismissed] = useState(false);
     const [gaConfigured, setGaConfigured] = useState(false);
     const [expanded, setExpanded] = useState(true);
@@ -101,12 +104,17 @@ const SiteSetupCard: React.FC<Props> = ({ stats, onOpenWizard }) => {
     ];
 
 
-    const totalWeight = ITEMS.reduce((a, b) => a + b.weight, 0);
-    const doneWeight = ITEMS.filter(i => i.done).reduce((a, b) => a + b.weight, 0);
-    const pct = Math.round((doneWeight / totalWeight) * 100);
-    const remaining = ITEMS.filter(i => !i.done).length;
+    // Filter out Integraciones for club admins
+    const visibleItems = isSuperAdmin ? ITEMS : ITEMS.filter(i => i.category !== 'Integraciones');
 
-    const categories = ['Identidad', 'Contenido', 'Integraciones'] as const;
+    const totalWeight = visibleItems.reduce((a, b) => a + b.weight, 0);
+    const doneWeight = visibleItems.filter(i => i.done).reduce((a, b) => a + b.weight, 0);
+    const pct = Math.round((doneWeight / totalWeight) * 100);
+    const remaining = visibleItems.filter(i => !i.done).length;
+
+    const categories = isSuperAdmin
+        ? (['Identidad', 'Contenido', 'Integraciones'] as const)
+        : (['Identidad', 'Contenido'] as const);
     const catColor: Record<string, string> = {
         'Identidad': 'text-rotary-blue bg-rotary-blue/10',
         'Contenido': 'text-violet-600 bg-violet-50',
@@ -201,7 +209,7 @@ const SiteSetupCard: React.FC<Props> = ({ stats, onOpenWizard }) => {
             {expanded && (
                 <div className="border-t border-gray-50 px-6 py-4 space-y-8">
                     {categories.map(cat => {
-                        const catItems = ITEMS.filter(i => i.category === cat);
+                        const catItems = visibleItems.filter(i => i.category === cat);
                         const catDone = catItems.filter(i => i.done).length;
                         return (
                             <div key={cat}>
