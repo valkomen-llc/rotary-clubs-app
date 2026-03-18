@@ -281,13 +281,23 @@ export const importFromLeads = async (req, res) => {
 export const getLists = async (req, res) => {
     try {
         const clubId = await resolveClubId(req);
-        const r = await db.query(
-            `SELECT l.*, COUNT(m."contactId")::int as "memberCount"
-             FROM "WhatsAppContactList" l
-             LEFT JOIN "ContactListMember" m ON m."listId"=l.id
-             WHERE l."clubId"=$1 GROUP BY l.id ORDER BY l."createdAt" DESC`,
-            [clubId]
-        );
+        let r;
+        try {
+            r = await db.query(
+                `SELECT l.*, COUNT(m."contactId")::int as "memberCount"
+                 FROM "WhatsAppContactList" l
+                 LEFT JOIN "ContactListMember" m ON m."listId"=l.id
+                 WHERE l."clubId"=$1 GROUP BY l.id ORDER BY l."createdAt" DESC`,
+                [clubId]
+            );
+        } catch (joinErr) {
+            // Fallback: ContactListMember table may not exist yet
+            console.warn('getLists JOIN fallback:', joinErr.message);
+            r = await db.query(
+                `SELECT *, 0 as "memberCount" FROM "WhatsAppContactList" WHERE "clubId"=$1 ORDER BY "createdAt" DESC`,
+                [clubId]
+            );
+        }
         res.json({ lists: r.rows });
     } catch (err) {
         console.error('WA getLists:', err);

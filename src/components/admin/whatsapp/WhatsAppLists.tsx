@@ -20,8 +20,10 @@ const WhatsAppLists: React.FC = () => {
         setLoading(true);
         try {
             const res = await fetch(`${API}/whatsapp/lists`, { headers: { Authorization: `Bearer ${token}` } });
-            setLists(await res.json());
-        } catch { } finally { setLoading(false); }
+            const data = await res.json();
+            const listArr = Array.isArray(data) ? data : (data.lists || []);
+            setLists(listArr);
+        } catch (err) { console.error('fetchLists error:', err); } finally { setLoading(false); }
     };
 
     const handleSave = async (e: React.FormEvent) => {
