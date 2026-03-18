@@ -899,8 +899,32 @@ ensureWATables();
 
 // ── Custom Fields CRUD ──────────────────────────────────────────────────────
 
+let _cfTableReady = false;
+async function ensureCustomFieldTable() {
+    if (_cfTableReady) return;
+    try {
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS "WhatsAppCustomField" (
+                id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+                "clubId" TEXT NOT NULL REFERENCES "Club"(id) ON DELETE CASCADE,
+                label VARCHAR(100) NOT NULL,
+                key VARCHAR(100) NOT NULL,
+                type VARCHAR(30) NOT NULL DEFAULT 'text',
+                required BOOLEAN NOT NULL DEFAULT FALSE,
+                "sortOrder" INT NOT NULL DEFAULT 0,
+                "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE("clubId", key)
+            );
+        `);
+        _cfTableReady = true;
+    } catch (e) {
+        console.error('ensureCustomFieldTable:', e.message);
+    }
+}
+
 export const getCustomFields = async (req, res) => {
     try {
+        await ensureCustomFieldTable();
         const clubId = await resolveClubId(req);
         const r = await db.query(
             `SELECT * FROM "WhatsAppCustomField" WHERE "clubId"=$1 ORDER BY "sortOrder" ASC, "createdAt" ASC`,
@@ -915,6 +939,7 @@ export const getCustomFields = async (req, res) => {
 
 export const createCustomField = async (req, res) => {
     try {
+        await ensureCustomFieldTable();
         const clubId = await resolveClubId(req, true);
         const { label, type = 'text', required = false } = req.body;
         if (!label) return res.status(400).json({ error: 'label es requerido' });
@@ -938,6 +963,7 @@ export const createCustomField = async (req, res) => {
 
 export const deleteCustomField = async (req, res) => {
     try {
+        await ensureCustomFieldTable();
         const clubId = await resolveClubId(req);
         await db.query(`DELETE FROM "WhatsAppCustomField" WHERE id=$1 AND "clubId"=$2`, [req.params.id, clubId]);
         res.json({ success: true });
