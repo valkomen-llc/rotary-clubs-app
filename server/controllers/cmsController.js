@@ -71,7 +71,9 @@ export const getPublicSections = async (req, res) => {
 
 export const batchUpsertSections = async (req, res) => {
     const { sections } = req.body;
-    const clubId = req.user.role === 'administrator' ? req.body.clubId : req.user.clubId;
+    const clubId = req.user.role === 'administrator'
+        ? (req.body.clubId || req.user.clubId)
+        : (req.user.clubId || req.body.clubId);
     if (!Array.isArray(sections)) return res.status(400).json({ error: 'Sections must be an array' });
     try {
         const results = [];

@@ -9,8 +9,6 @@ export interface SiteImages {
     join?: ImgSlot;
 }
 
-const cache: Record<string, SiteImages> = {};
-
 export function useSiteImages(): SiteImages {
     const { club } = useClub();
     const [images, setImages] = useState<SiteImages>({});
@@ -18,11 +16,10 @@ export function useSiteImages(): SiteImages {
 
     useEffect(() => {
         if (!clubId) return;
-        if (cache[clubId]) { setImages(cache[clubId]); return; }
         const API = import.meta.env.VITE_API_URL || '/api';
-        fetch(`${API}/clubs/${clubId}/site-images`)
+        fetch(`${API}/clubs/${clubId}/site-images?_t=${Date.now()}`)
             .then(r => r.ok ? r.json() : {})
-            .then(data => { cache[clubId] = data; setImages(data); })
+            .then(data => setImages(data))
             .catch(() => {});
     }, [clubId]);
 
