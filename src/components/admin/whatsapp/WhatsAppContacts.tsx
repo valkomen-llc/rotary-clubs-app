@@ -528,6 +528,7 @@ const WhatsAppContacts: React.FC = () => {
                                             </select>
                                             <p className="text-[10px] text-gray-400 mt-1">Se agrega a números sin indicativo</p>
                                         </div>
+                                        <div>
                                             <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Etiquetas (tags)</label>
                                             <input value={importTags} onChange={e => setImportTags(e.target.value)}
                                                 placeholder="ej: vip, socio, rotary"
