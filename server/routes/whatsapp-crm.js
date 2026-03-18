@@ -42,6 +42,10 @@ import {
     // Webhook
     verifyWebhook,
     handleWebhook,
+    // Custom Fields
+    getCustomFields,
+    createCustomField,
+    deleteCustomField,
 } from '../controllers/whatsappCRMController.js';
 
 const router = express.Router();
@@ -91,5 +95,10 @@ router.get('/campaigns/:id/logs', getCampaignLogs);
 
 // ── Analytics ────────────────────────────────────────────────────────────
 router.get('/analytics', getAnalytics);
+
+// ── Campos Personalizados ────────────────────────────────────────────────
+router.get('/custom-fields', getCustomFields);
+router.post('/custom-fields', createCustomField);
+router.delete('/custom-fields/:id', deleteCustomField);
 
 export default router;

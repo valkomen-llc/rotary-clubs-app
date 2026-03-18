@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
-import { Users, Plus, Search, Upload, Download, Trash2, Edit3, X, Loader2, ChevronRight, Eye } from 'lucide-react';
+import { Users, Plus, Search, Upload, Download, Trash2, Edit3, X, Loader2, ChevronRight, Eye, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -31,10 +31,17 @@ const WhatsAppContacts: React.FC = () => {
     const [newListName, setNewListName] = useState('');
     const [creatingList, setCreatingList] = useState(false);
 
+    // Custom fields
+    const [customFields, setCustomFields] = useState<any[]>([]);
+    const [customFieldMap, setCustomFieldMap] = useState<{ [fieldKey: string]: string }>({});
+    const [showFieldManager, setShowFieldManager] = useState(false);
+    const [newFieldLabel, setNewFieldLabel] = useState('');
+    const [newFieldType, setNewFieldType] = useState('text');
+
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
-    useEffect(() => { fetchContacts(); }, [search, statusFilter]);
-    useEffect(() => { if (showImport) fetchLists(); }, [showImport]);
+    useEffect(() => { fetchContacts(); fetchCustomFields(); }, [search, statusFilter]);
+    useEffect(() => { if (showImport) { fetchLists(); fetchCustomFields(); } }, [showImport]);
 
     const fetchContacts = async () => {
         setLoading(true);
@@ -49,11 +56,43 @@ const WhatsAppContacts: React.FC = () => {
         } catch { } finally { setLoading(false); }
     };
 
+    const fetchCustomFields = async () => {
+        try {
+            const res = await fetch(`${API}/whatsapp/custom-fields`, { headers: { Authorization: `Bearer ${token}` } });
+            const data = await res.json();
+            setCustomFields(data.fields || []);
+        } catch { }
+    };
+
+    const createFieldInline = async () => {
+        if (!newFieldLabel.trim()) return;
+        try {
+            const res = await fetch(`${API}/whatsapp/custom-fields`, {
+                method: 'POST', headers, body: JSON.stringify({ label: newFieldLabel.trim(), type: newFieldType }),
+            });
+            if (res.ok) {
+                toast.success(`Campo "${newFieldLabel}" creado`);
+                setNewFieldLabel('');
+                setNewFieldType('text');
+                await fetchCustomFields();
+            } else {
+                const err = await res.json();
+                toast.error(err.error || 'Error al crear campo');
+            }
+        } catch { toast.error('Error de conexión'); }
+    };
+
+    const deleteField = async (id: string) => {
+        if (!confirm('¿Eliminar este campo personalizado?')) return;
+        await fetch(`${API}/whatsapp/custom-fields/${id}`, { method: 'DELETE', headers });
+        toast.success('Campo eliminado');
+        fetchCustomFields();
+    };
+
     const fetchLists = async () => {
         try {
             const res = await fetch(`${API}/whatsapp/lists`, { headers: { Authorization: `Bearer ${token}` } });
             const data = await res.json();
-            // Support both { lists: [...] } and direct array response
             const listArr = Array.isArray(data) ? data : (data.lists || []);
             setLists(listArr);
         } catch { }
@@ -177,11 +216,19 @@ const WhatsAppContacts: React.FC = () => {
 
     const getMappedContacts = () => {
         if (!colMap.name || !colMap.phone) return [];
-        return csvRows.map(row => ({
-            name: row[colMap.name]?.trim() || '',
-            phone: row[colMap.phone]?.trim() || '',
-            email: colMap.email ? row[colMap.email]?.trim() || '' : '',
-        })).filter(c => c.name && c.phone);
+        return csvRows.map(row => {
+            const metadata: any = {};
+            customFields.forEach(f => {
+                const csvCol = customFieldMap[f.key];
+                if (csvCol && row[csvCol]) metadata[f.key] = row[csvCol].trim();
+            });
+            return {
+                name: row[colMap.name]?.trim() || '',
+                phone: row[colMap.phone]?.trim() || '',
+                email: colMap.email ? row[colMap.email]?.trim() || '' : '',
+                metadata: Object.keys(metadata).length ? metadata : undefined,
+            };
+        }).filter(c => c.name && c.phone);
     };
 
     const executeImport = async () => {
@@ -245,6 +292,7 @@ const WhatsAppContacts: React.FC = () => {
         setCsvColumns([]);
         setCsvRows([]);
         setColMap({ name: '', phone: '', email: '' });
+        setCustomFieldMap({});
         setImportTags('');
         setSelectedListId('');
     };
@@ -275,11 +323,66 @@ const WhatsAppContacts: React.FC = () => {
                 <button onClick={() => { setShowImport(true); setImportStep('select'); }} className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-bold text-gray-700 hover:bg-gray-50">
                     <Upload className="w-4 h-4" /> Importar
                 </button>
+                <button onClick={() => setShowFieldManager(!showFieldManager)}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-bold transition-colors ${showFieldManager ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+                    <Settings2 className="w-4 h-4" /> Campos
+                </button>
                 <button onClick={() => { resetForm(); setShowForm(true); }}
                     className="flex items-center gap-2 bg-green-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-green-700 shadow-sm">
                     <Plus className="w-4 h-4" /> Nuevo Contacto
                 </button>
             </div>
+
+            {/* Field Manager Panel */}
+            {showFieldManager && (
+                <div className="bg-white border border-blue-200 rounded-2xl p-5 mb-6 shadow-sm">
+                    <div className="flex justify-between items-center mb-4">
+                        <div>
+                            <h3 className="font-bold text-gray-900 text-sm">Campos Personalizados</h3>
+                            <p className="text-xs text-gray-500 mt-0.5">Define campos extra que aparecerán como opciones de mapeo al importar CSV</p>
+                        </div>
+                        <button onClick={() => setShowFieldManager(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+                    </div>
+
+                    {/* Existing fields */}
+                    {customFields.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-4">
+                            {customFields.map(f => (
+                                <div key={f.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5">
+                                    <span className="text-sm font-bold text-blue-800">{f.label}</span>
+                                    <span className="text-[10px] text-blue-500 bg-blue-100 px-1.5 rounded">{f.type}</span>
+                                    <button onClick={() => deleteField(f.id)} className="text-blue-400 hover:text-red-500 ml-1"><X className="w-3 h-3" /></button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Create new field */}
+                    <div className="flex gap-2 items-end">
+                        <div className="flex-1">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Nombre del campo</label>
+                            <input value={newFieldLabel} onChange={e => setNewFieldLabel(e.target.value)}
+                                placeholder="ej: Ciudad, Profesión, Cargo..."
+                                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-500"
+                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); createFieldInline(); } }} />
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Tipo</label>
+                            <select value={newFieldType} onChange={e => setNewFieldType(e.target.value)}
+                                className="px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white outline-none focus:border-blue-500">
+                                <option value="text">Texto</option>
+                                <option value="number">Número</option>
+                                <option value="date">Fecha</option>
+                                <option value="url">URL</option>
+                            </select>
+                        </div>
+                        <button onClick={createFieldInline} disabled={!newFieldLabel.trim()}
+                            className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:opacity-40 whitespace-nowrap">
+                            + Añadir Campo
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Import Wizard */}
             {showImport && (
@@ -382,7 +485,24 @@ const WhatsAppContacts: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {/* Tags and list assignment */}
+                                {/* Custom fields mapping */}
+                                {customFields.length > 0 && (
+                                    <div>
+                                        <p className="font-bold text-sm text-gray-700 mb-3">Campos personalizados</p>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            {customFields.map(f => (
+                                                <div key={f.id}>
+                                                    <label className="text-xs font-bold text-blue-600 uppercase block mb-1">{f.label} <span className="text-gray-400 font-normal">({f.type})</span></label>
+                                                    <select value={customFieldMap[f.key] || ''} onChange={e => setCustomFieldMap({ ...customFieldMap, [f.key]: e.target.value })}
+                                                        className="w-full px-3 py-2.5 rounded-lg border border-blue-200 text-sm bg-white outline-none focus:border-blue-500">
+                                                        <option value="">— No mapear —</option>
+                                                        {csvColumns.map(c => <option key={c} value={c}>{c}</option>)}
+                                                    </select>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                                 <div>
                                     <p className="font-bold text-sm text-gray-700 mb-3">Opciones de importación</p>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

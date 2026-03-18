@@ -234,10 +234,12 @@ export const importContacts = async (req, res) => {
         for (const c of contacts) {
             if (!c.name || !c.phone) { skipped++; continue; }
             const phone = c.phone.startsWith('+') ? c.phone : `+${c.phone}`;
+            const metadata = c.metadata || {};
             await db.query(
-                `INSERT INTO "WhatsAppContact" ("clubId",name,phone,email,tags,source)
-                 VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (phone,"clubId") DO NOTHING`,
-                [clubId, c.name, phone, c.email || null, Array.isArray(c.tags) ? c.tags : [], source]
+                `INSERT INTO "WhatsAppContact" ("clubId",name,phone,email,tags,source,metadata)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (phone,"clubId") DO UPDATE SET
+                 metadata = "WhatsAppContact".metadata || $7`,
+                [clubId, c.name, phone, c.email || null, Array.isArray(c.tags) ? c.tags : [], source, JSON.stringify(metadata)]
             ).then(r => r.rowCount ? imported++ : skipped++).catch(() => skipped++);
         }
         res.json({ success: true, imported, skipped });
@@ -867,6 +869,17 @@ export const ensureWATables = async () => {
             CREATE INDEX IF NOT EXISTS idx_wa_msglog_messageid ON "WhatsAppMessageLog" ("messageId");
             CREATE INDEX IF NOT EXISTS idx_wa_msglog_campaign ON "WhatsAppMessageLog" ("campaignId", status);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_template_meta_id ON "WhatsAppTemplate" ("metaTemplateId") WHERE "metaTemplateId" IS NOT NULL;
+            CREATE TABLE IF NOT EXISTS "WhatsAppCustomField" (
+                id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+                "clubId" TEXT NOT NULL REFERENCES "Club"(id) ON DELETE CASCADE,
+                label VARCHAR(100) NOT NULL,
+                key VARCHAR(100) NOT NULL,
+                type VARCHAR(30) NOT NULL DEFAULT 'text',
+                required BOOLEAN NOT NULL DEFAULT FALSE,
+                "sortOrder" INT NOT NULL DEFAULT 0,
+                "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE("clubId", key)
+            );
         `);
         console.log('[WA-CRM] All tables created');
     } catch (err) {
@@ -875,3 +888,53 @@ export const ensureWATables = async () => {
 };
 
 ensureWATables();
+
+// ── Custom Fields CRUD ──────────────────────────────────────────────────────
+
+export const getCustomFields = async (req, res) => {
+    try {
+        const clubId = await resolveClubId(req);
+        const r = await db.query(
+            `SELECT * FROM "WhatsAppCustomField" WHERE "clubId"=$1 ORDER BY "sortOrder" ASC, "createdAt" ASC`,
+            [clubId]
+        );
+        res.json({ fields: r.rows });
+    } catch (err) {
+        console.error('WA getCustomFields:', err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
+export const createCustomField = async (req, res) => {
+    try {
+        const clubId = await resolveClubId(req, true);
+        const { label, type = 'text', required = false } = req.body;
+        if (!label) return res.status(400).json({ error: 'label es requerido' });
+        // Generate key from label
+        const key = label.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+        if (!key) return res.status(400).json({ error: 'El nombre del campo no es válido' });
+        // Get max sortOrder
+        const maxR = await db.query(`SELECT COALESCE(MAX("sortOrder"),0)+1 as next FROM "WhatsAppCustomField" WHERE "clubId"=$1`, [clubId]);
+        const r = await db.query(
+            `INSERT INTO "WhatsAppCustomField" ("clubId", label, key, type, required, "sortOrder")
+             VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+            [clubId, label, key, type, required, maxR.rows[0].next]
+        );
+        res.status(201).json(r.rows[0]);
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: 'Ya existe un campo con ese nombre' });
+        console.error('WA createCustomField:', err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
+export const deleteCustomField = async (req, res) => {
+    try {
+        const clubId = await resolveClubId(req);
+        await db.query(`DELETE FROM "WhatsAppCustomField" WHERE id=$1 AND "clubId"=$2`, [req.params.id, clubId]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('WA deleteCustomField:', err);
+        res.status(500).json({ error: err.message });
+    }
+};
