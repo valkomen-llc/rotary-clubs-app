@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
-import { Users, Plus, Search, Upload, Download, Trash2, Edit3, X, Loader2, Tag, Phone, Mail, Filter } from 'lucide-react';
+import { Users, Plus, Search, Upload, Download, Trash2, Edit3, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -53,28 +53,71 @@ const WhatsAppContacts: React.FC = () => {
         toast.success('Contacto eliminado'); fetchContacts();
     };
 
+    const [importing, setImporting] = useState(false);
+
     const handleCSVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const text = await file.text();
-        const lines = text.split('\n').filter(l => l.trim());
-        const headerLine = lines[0].toLowerCase();
-        const cols = headerLine.split(',').map(c => c.trim());
-        const nameIdx = cols.findIndex(c => c.includes('nombre') || c.includes('name'));
-        const phoneIdx = cols.findIndex(c => c.includes('telefono') || c.includes('phone') || c.includes('celular'));
-        const emailIdx = cols.findIndex(c => c.includes('email') || c.includes('correo'));
-        if (nameIdx === -1 || phoneIdx === -1) { toast.error('CSV debe tener columnas "nombre" y "telefono"'); return; }
-        const parsed = lines.slice(1).map(line => {
-            const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
-            return { name: vals[nameIdx], phone: vals[phoneIdx], email: emailIdx >= 0 ? vals[emailIdx] : '' };
-        }).filter(c => c.name && c.phone);
-        if (!parsed.length) { toast.error('No se encontraron contactos válidos'); return; }
+        setImporting(true);
         try {
+            let text = await file.text();
+            // Strip BOM
+            if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+            // Normalize line endings
+            text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            const lines = text.split('\n').filter(l => l.trim());
+            if (lines.length < 2) { toast.error('El CSV está vacío o solo tiene encabezados'); setImporting(false); return; }
+
+            // Auto-detect delimiter from header line
+            const headerLine = lines[0];
+            let delimiter = ',';
+            if (headerLine.includes(';')) delimiter = ';';
+            else if (headerLine.includes('\t')) delimiter = '\t';
+
+            const splitLine = (line: string) => line.split(delimiter).map(v => v.trim().replace(/^"|"$/g, '').replace(/^'|'$/g, ''));
+
+            const cols = splitLine(headerLine.toLowerCase());
+            const nameIdx = cols.findIndex(c => c.includes('nombre') || c.includes('name') || c === 'contacto');
+            const phoneIdx = cols.findIndex(c => c.includes('telefono') || c.includes('teléfono') || c.includes('phone') || c.includes('celular') || c.includes('whatsapp') || c.includes('movil') || c.includes('móvil'));
+            const emailIdx = cols.findIndex(c => c.includes('email') || c.includes('correo') || c.includes('e-mail'));
+
+            if (nameIdx === -1 || phoneIdx === -1) {
+                toast.error(`No se encontraron las columnas requeridas. Se detectaron: [${cols.join(', ')}]. Necesitan: "nombre" y "telefono".`);
+                setImporting(false);
+                if (fileRef.current) fileRef.current.value = '';
+                return;
+            }
+
+            const parsed = lines.slice(1).map(line => {
+                const vals = splitLine(line);
+                return { name: vals[nameIdx]?.trim(), phone: vals[phoneIdx]?.trim(), email: emailIdx >= 0 ? vals[emailIdx]?.trim() : '' };
+            }).filter(c => c.name && c.phone);
+
+            if (!parsed.length) {
+                toast.error('No se encontraron contactos válidos en el archivo');
+                setImporting(false);
+                if (fileRef.current) fileRef.current.value = '';
+                return;
+            }
+
+            toast.info(`Procesando ${parsed.length} contactos...`);
+
             const res = await fetch(`${API}/whatsapp/contacts/import`, { method: 'POST', headers, body: JSON.stringify({ contacts: parsed }) });
             const data = await res.json();
-            toast.success(`Importados: ${data.imported}, Omitidos: ${data.skipped}`);
-            fetchContacts(); setShowImport(false);
-        } catch { toast.error('Error al importar'); }
+            if (res.ok) {
+                toast.success(`✅ Importados: ${data.imported}, Omitidos: ${data.skipped}`);
+                fetchContacts();
+                setShowImport(false);
+            } else {
+                toast.error(data.error || 'Error al importar');
+            }
+        } catch (err) {
+            console.error('CSV import error:', err);
+            toast.error('Error al procesar el archivo CSV');
+        } finally {
+            setImporting(false);
+            if (fileRef.current) fileRef.current.value = '';
+        }
     };
 
     const handleImportLeads = async () => {
@@ -125,9 +168,11 @@ const WhatsAppContacts: React.FC = () => {
                         <p className="font-bold text-green-800 text-sm mb-1">Importar Contactos</p>
                         <p className="text-xs text-green-600">CSV con columnas: nombre, telefono, email (opcional)</p>
                     </div>
-                    <input ref={fileRef} type="file" accept=".csv" onChange={handleCSVImport} className="hidden" />
-                    <button onClick={() => fileRef.current?.click()} className="flex items-center gap-2 bg-white border border-green-300 text-green-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-100">
-                        <Upload className="w-4 h-4" /> Subir CSV
+                    <input ref={fileRef} type="file" accept=".csv,.txt,.tsv" onChange={handleCSVImport} className="hidden" />
+                    <button onClick={() => fileRef.current?.click()} disabled={importing}
+                        className="flex items-center gap-2 bg-white border border-green-300 text-green-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-100 disabled:opacity-50">
+                        {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                        {importing ? 'Importando...' : 'Subir CSV'}
                     </button>
                     <button onClick={handleImportLeads} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700">
                         <Download className="w-4 h-4" /> Desde Leads
