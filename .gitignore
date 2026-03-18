@@ -36,3 +36,4 @@ pnpm-debug.log*
 *.timestamp-*
 .vercel
 .env*.local
+.env.prod

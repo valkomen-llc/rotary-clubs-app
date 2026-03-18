@@ -10,6 +10,16 @@ const WA_API_BASE = `https://graph.facebook.com/${process.env.WA_API_VERSION || 
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Resolve clubId — super admins may not have clubId in JWT, fallback to first club */
+async function resolveClubId(req, fromBody = false) {
+    const src = fromBody ? req.body : req.query;
+    if (req.user.role === 'administrator' && src?.clubId) return src.clubId;
+    if (req.user.clubId) return req.user.clubId;
+    // Super admin without explicit clubId → use first club in system
+    const r = await db.query(`SELECT id FROM "Club" LIMIT 1`);
+    return r.rows[0]?.id || null;
+}
+
 async function getClubConfig(clubId) {
     const r = await db.query(`SELECT * FROM "WhatsAppConfig" WHERE "clubId"=$1`, [clubId]);
     return r.rows[0] || null;
@@ -38,8 +48,8 @@ function buildTemplateComponents(vars = {}) {
 
 export const getConfig = async (req, res) => {
     try {
-        const clubId = req.user.role === 'administrator' && req.query.clubId
-            ? req.query.clubId : req.user.clubId;
+        const clubId = await resolveClubId(req);
+        if (!clubId) return res.status(400).json({ error: 'No se pudo determinar el club' });
         const config = await getClubConfig(clubId);
         if (!config) return res.json({ configured: false });
         res.json({
@@ -61,8 +71,8 @@ export const getConfig = async (req, res) => {
 
 export const upsertConfig = async (req, res) => {
     try {
-        const clubId = req.user.role === 'administrator' && req.body.clubId
-            ? req.body.clubId : req.user.clubId;
+        const clubId = await resolveClubId(req, true);
+        if (!clubId) return res.status(400).json({ error: 'No se pudo determinar el club' });
         const { phoneNumberId, wabaId, accessToken, verifyToken, appId, enabled } = req.body;
         if (!phoneNumberId || !wabaId || !accessToken || !verifyToken)
             return res.status(400).json({ error: 'phoneNumberId, wabaId, accessToken y verifyToken son requeridos' });
@@ -98,8 +108,8 @@ export const upsertConfig = async (req, res) => {
 
 export const verifyConfig = async (req, res) => {
     try {
-        const clubId = req.user.role === 'administrator' && req.query.clubId
-            ? req.query.clubId : req.user.clubId;
+        const clubId = await resolveClubId(req);
+        if (!clubId) return res.status(400).json({ error: 'No se pudo determinar el club' });
         const config = await getClubConfig(clubId);
         if (!config) return res.status(404).json({ error: 'No hay configuración guardada' });
 
@@ -119,8 +129,7 @@ export const verifyConfig = async (req, res) => {
 
 export const getContacts = async (req, res) => {
     try {
-        const clubId = req.user.role === 'administrator' && req.query.clubId
-            ? req.query.clubId : req.user.clubId;
+        const clubId = await resolveClubId(req);
         const { search, status, listId, limit = 200, offset = 0 } = req.query;
 
         let where = [`c."clubId"=$1`], params = [clubId], idx = 2;
@@ -265,8 +274,7 @@ export const importFromLeads = async (req, res) => {
 
 export const getLists = async (req, res) => {
     try {
-        const clubId = req.user.role === 'administrator' && req.query.clubId
-            ? req.query.clubId : req.user.clubId;
+        const clubId = await resolveClubId(req);
         const r = await db.query(
             `SELECT l.*, COUNT(m."contactId")::int as "memberCount"
              FROM "WhatsAppContactList" l
@@ -363,8 +371,7 @@ export const removeListMembers = async (req, res) => {
 
 export const getTemplates = async (req, res) => {
     try {
-        const clubId = req.user.role === 'administrator' && req.query.clubId
-            ? req.query.clubId : req.user.clubId;
+        const clubId = await resolveClubId(req);
         const r = await db.query(
             `SELECT * FROM "WhatsAppTemplate" WHERE "clubId"=$1 ORDER BY "createdAt" DESC`, [clubId]
         );
@@ -461,8 +468,7 @@ export const syncTemplatesFromMeta = async (req, res) => {
 
 export const getCampaigns = async (req, res) => {
     try {
-        const clubId = req.user.role === 'administrator' && req.query.clubId
-            ? req.query.clubId : req.user.clubId;
+        const clubId = await resolveClubId(req);
         const r = await db.query(
             `SELECT c.*,l.name as "listName",t.name as "templateName",t."displayName" as "templateDisplayName"
              FROM "WhatsAppCampaign" c
@@ -630,8 +636,7 @@ export const getCampaignLogs = async (req, res) => {
 
 export const getAnalytics = async (req, res) => {
     try {
-        const clubId = req.user.role === 'administrator' && req.query.clubId
-            ? req.query.clubId : req.user.clubId;
+        const clubId = await resolveClubId(req);
         const [contacts, campaigns, messages] = await Promise.all([
             db.query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status='active') as active, COUNT(*) FILTER (WHERE status='opted_out') as "optedOut" FROM "WhatsAppContact" WHERE "clubId"=$1`, [clubId]),
             db.query(`SELECT COUNT(*) as total, SUM(sent)::int as sent, SUM(delivered)::int as delivered, SUM(read)::int as "readCount", SUM(failed)::int as failed FROM "WhatsAppCampaign" WHERE "clubId"=$1 AND status='sent'`, [clubId]),
@@ -687,17 +692,14 @@ export const handleWebhook = async (req, res) => {
     }
 };
 
-// ── AUTO-INIT (las tablas ya existen por el script de migración) ──────────────
+// ── AUTO-INIT — crea TODAS las tablas si no existen ──────────────────────────
 
 export const ensureWATables = async () => {
     try {
-        // Verificar si la tabla principal ya existe
         const r = await db.query(`SELECT to_regclass('"WhatsAppConfig"') as exists`);
-        if (r.rows[0].exists) {
-            console.log('[WA-CRM] Tables already exist, skipping init');
-            return;
-        }
-        // Si no existen, las crea (solo en cold starts sin migración previa)
+        if (r.rows[0].exists) { console.log('[WA-CRM] Tables already exist'); return; }
+
+        console.log('[WA-CRM] Creating tables...');
         await db.query(`
             CREATE TABLE IF NOT EXISTS "WhatsAppConfig" (
                 id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -710,9 +712,83 @@ export const ensureWATables = async () => {
                 "lastVerifiedAt" TIMESTAMPTZ,
                 "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
+            );
+            CREATE TABLE IF NOT EXISTS "WhatsAppContact" (
+                id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+                "clubId" TEXT NOT NULL REFERENCES "Club"(id) ON DELETE CASCADE,
+                name VARCHAR(255) NOT NULL, phone VARCHAR(30) NOT NULL,
+                email VARCHAR(255), tags TEXT[] DEFAULT '{}',
+                source VARCHAR(50) NOT NULL DEFAULT 'manual',
+                status VARCHAR(30) NOT NULL DEFAULT 'active',
+                metadata JSONB DEFAULT '{}',
+                "totalSent" INT NOT NULL DEFAULT 0, "totalDelivered" INT NOT NULL DEFAULT 0,
+                "totalRead" INT NOT NULL DEFAULT 0, "totalFailed" INT NOT NULL DEFAULT 0,
+                "optedOutAt" TIMESTAMPTZ, "leadId" TEXT,
+                "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE(phone,"clubId")
+            );
+            CREATE TABLE IF NOT EXISTS "WhatsAppContactList" (
+                id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+                "clubId" TEXT NOT NULL REFERENCES "Club"(id) ON DELETE CASCADE,
+                name VARCHAR(255) NOT NULL, description TEXT,
+                color VARCHAR(20) NOT NULL DEFAULT '#3B82F6',
+                "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS "ContactListMember" (
+                id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+                "listId" TEXT NOT NULL REFERENCES "WhatsAppContactList"(id) ON DELETE CASCADE,
+                "contactId" TEXT NOT NULL REFERENCES "WhatsAppContact"(id) ON DELETE CASCADE,
+                "addedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE("listId","contactId")
+            );
+            CREATE TABLE IF NOT EXISTS "WhatsAppTemplate" (
+                id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+                "clubId" TEXT NOT NULL REFERENCES "Club"(id) ON DELETE CASCADE,
+                name VARCHAR(255) NOT NULL, "displayName" VARCHAR(255) NOT NULL,
+                category VARCHAR(50) NOT NULL DEFAULT 'MARKETING',
+                language VARCHAR(10) NOT NULL DEFAULT 'es',
+                status VARCHAR(30) NOT NULL DEFAULT 'pending',
+                "headerType" VARCHAR(20), "headerContent" TEXT,
+                "bodyText" TEXT NOT NULL, "footerText" VARCHAR(255),
+                buttons JSONB DEFAULT '[]', "metaTemplateId" VARCHAR(100),
+                "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS "WhatsAppCampaign" (
+                id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+                "clubId" TEXT NOT NULL REFERENCES "Club"(id) ON DELETE CASCADE,
+                name VARCHAR(255) NOT NULL, description TEXT,
+                "listId" TEXT REFERENCES "WhatsAppContactList"(id),
+                "templateId" TEXT REFERENCES "WhatsAppTemplate"(id),
+                "templateVars" JSONB DEFAULT '{}',
+                status VARCHAR(30) NOT NULL DEFAULT 'draft',
+                "scheduledAt" TIMESTAMPTZ, "sentAt" TIMESTAMPTZ,
+                "totalContacts" INT NOT NULL DEFAULT 0,
+                sent INT NOT NULL DEFAULT 0, delivered INT NOT NULL DEFAULT 0,
+                "read" INT NOT NULL DEFAULT 0, failed INT NOT NULL DEFAULT 0,
+                "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS "WhatsAppMessageLog" (
+                id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+                "clubId" TEXT NOT NULL,
+                "campaignId" TEXT REFERENCES "WhatsAppCampaign"(id) ON DELETE SET NULL,
+                "contactId" TEXT REFERENCES "WhatsAppContact"(id) ON DELETE SET NULL,
+                phone VARCHAR(30) NOT NULL, "messageId" VARCHAR(255),
+                "templateName" VARCHAR(255), "bodyText" TEXT,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                "errorCode" VARCHAR(50), "errorMessage" TEXT,
+                "sentAt" TIMESTAMPTZ, "deliveredAt" TIMESTAMPTZ,
+                "readAt" TIMESTAMPTZ, "failedAt" TIMESTAMPTZ,
+                "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS idx_wa_msglog_messageid ON "WhatsAppMessageLog" ("messageId");
+            CREATE INDEX IF NOT EXISTS idx_wa_msglog_campaign ON "WhatsAppMessageLog" ("campaignId", status);
         `);
-        console.log('[WA-CRM] WhatsAppConfig created');
+        console.log('[WA-CRM] All tables created');
     } catch (err) {
         console.error('[WA-CRM] Table init error:', err.message);
     }
