@@ -30,6 +30,7 @@ const WhatsAppChat: React.FC = () => {
     const [templates, setTemplates] = useState<any[]>([]);
     const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
     const [sending, setSending] = useState(false);
+    const [mediaUrl, setMediaUrl] = useState('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => { fetchContacts(); fetchTemplates(); }, []);
@@ -111,17 +112,25 @@ const WhatsAppChat: React.FC = () => {
 
     const handleSendTemplate = async (template: any) => {
         if (!selectedContact || sending) return;
+        const needsMedia = ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType);
+        if (needsMedia && !mediaUrl.trim()) {
+            toast.error(`Esta plantilla requiere una URL de ${template.headerType === 'IMAGE' ? 'imagen' : template.headerType === 'VIDEO' ? 'video' : 'documento'}`);
+            return;
+        }
         setSending(true);
         try {
+            const vars: any = {};
+            if (mediaUrl.trim()) vars.mediaUrl = mediaUrl.trim();
             const res = await fetch(`${API}/whatsapp/contacts/${selectedContact.id}/send`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ templateId: template.id }),
+                body: JSON.stringify({ templateId: template.id, vars }),
             });
             const data = await res.json();
             if (res.ok && data.success) {
                 setMessages(prev => [...prev, data.message]);
                 setSelectedTemplate(null);
+                setMediaUrl('');
                 toast.success(`Plantilla "${template.displayName || template.name}" enviada a ${selectedContact.name}`);
             } else {
                 toast.error(data.error || 'Error al enviar');
@@ -302,13 +311,15 @@ const WhatsAppChat: React.FC = () => {
                                                 onChange={(e) => {
                                                     const t = templates.find((tpl: any) => tpl.id === e.target.value);
                                                     setSelectedTemplate(t || null);
+                                                    setMediaUrl('');
                                                 }}
                                                 className="flex-1 px-3 py-2.5 rounded-lg border border-gray-200 text-sm bg-white outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20"
                                             >
                                                 <option value="">— Seleccionar plantilla —</option>
                                                 {templates.map((t: any) => (
                                                     <option key={t.id} value={t.id}>
-                                                        {t.displayName || t.name} ({t.category || 'N/A'}) — {t.language || 'es'}
+                                                        {t.displayName || t.name}
+                                                        {t.headerType && ['IMAGE','VIDEO','DOCUMENT'].includes(t.headerType) ? ` 📎 ${t.headerType}` : ''}
                                                     </option>
                                                 ))}
                                             </select>
@@ -327,6 +338,20 @@ const WhatsAppChat: React.FC = () => {
                                                 Enviar
                                             </button>
                                         </div>
+                                        {selectedTemplate && ['IMAGE','VIDEO','DOCUMENT'].includes(selectedTemplate.headerType) && (
+                                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-1">
+                                                <p className="text-[11px] font-bold text-amber-700 mb-1.5">
+                                                    📎 URL del {selectedTemplate.headerType === 'IMAGE' ? 'imagen' : selectedTemplate.headerType === 'VIDEO' ? 'video' : 'documento'} (requerido)
+                                                </p>
+                                                <input
+                                                    value={mediaUrl}
+                                                    onChange={e => setMediaUrl(e.target.value)}
+                                                    placeholder={selectedTemplate.headerType === 'IMAGE' ? 'https://ejemplo.com/imagen.jpg' : selectedTemplate.headerType === 'VIDEO' ? 'https://ejemplo.com/video.mp4' : 'https://ejemplo.com/doc.pdf'}
+                                                    className="w-full px-3 py-2 rounded-lg border border-amber-300 text-sm outline-none focus:border-amber-500 bg-white"
+                                                />
+                                                <p className="text-[10px] text-amber-500 mt-1">La URL debe ser pública y accesible (Google Drive, Dropbox, servidor web)</p>
+                                            </div>
+                                        )}
                                         {selectedTemplate && (
                                             <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-1">
                                                 <p className="text-xs font-bold text-green-700 mb-1">📋 {selectedTemplate.displayName || selectedTemplate.name}</p>
