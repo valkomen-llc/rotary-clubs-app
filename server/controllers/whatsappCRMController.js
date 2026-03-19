@@ -38,6 +38,106 @@ async function metaApiCall({ method = 'GET', path, body, token }) {
     return data;
 }
 
+/**
+ * Upload media to Meta via the Media API.
+ * Downloads the file from the URL, then uploads it as form-data to Meta.
+ * Returns the media_id which can be used in template headers.
+ */
+async function uploadMediaToMeta({ url, type, phoneNumberId, token }) {
+    // Download the file
+    const fileRes = await fetch(url);
+    if (!fileRes.ok) throw new Error(`Failed to download media from ${url}: ${fileRes.status}`);
+    const buffer = Buffer.from(await fileRes.arrayBuffer());
+    const contentType = fileRes.headers.get('content-type') || (
+        type === 'image' ? 'image/jpeg' : type === 'video' ? 'video/mp4' : 'application/pdf'
+    );
+
+    // Build multipart form data manually (no external deps)
+    const boundary = '----MetaUpload' + Date.now();
+    const filename = url.split('/').pop()?.split('?')[0] || `file.${type === 'image' ? 'jpg' : type === 'video' ? 'mp4' : 'pdf'}`;
+
+    const header = [
+        `--${boundary}`,
+        `Content-Disposition: form-data; name="messaging_product"`,
+        '', 'whatsapp',
+        `--${boundary}`,
+        `Content-Disposition: form-data; name="type"`,
+        '', contentType,
+        `--${boundary}`,
+        `Content-Disposition: form-data; name="file"; filename="${filename}"`,
+        `Content-Type: ${contentType}`,
+        '',
+    ].join('\r\n');
+
+    const footer = `\r\n--${boundary}--\r\n`;
+    const headerBuf = Buffer.from(header + '\r\n');
+    const footerBuf = Buffer.from(footer);
+    const bodyBuf = Buffer.concat([headerBuf, buffer, footerBuf]);
+
+    const uploadRes = await fetch(`${WA_API_BASE}/${phoneNumberId}/media`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        },
+        body: bodyBuf,
+    });
+    const uploadData = await uploadRes.json();
+    if (uploadData.error) throw new Error(`Media upload error: ${uploadData.error.message}`);
+    console.log(`[WA] Uploaded media ${filename} -> ID: ${uploadData.id}`);
+    return uploadData.id; // media_id
+}
+
+/**
+ * Build the header component for a media template.
+ * Tries: 1) user-provided mediaUrl (upload to Meta first), 2) original template header_handle
+ */
+async function buildMediaHeader({ template, mediaUrl, config }) {
+    const mediaType = template.headerType === 'IMAGE' ? 'image'
+        : template.headerType === 'VIDEO' ? 'video' : 'document';
+
+    // Option 1: User provided a custom mediaUrl — upload it to Meta
+    if (mediaUrl) {
+        try {
+            const mediaId = await uploadMediaToMeta({
+                url: mediaUrl,
+                type: mediaType,
+                phoneNumberId: config.phoneNumberId,
+                token: config.accessToken,
+            });
+            return [{
+                type: 'header',
+                parameters: [{ type: mediaType, [mediaType]: { id: mediaId } }],
+            }];
+        } catch (err) {
+            console.error('[WA] Failed to upload user media, trying Meta handle fallback:', err.message);
+        }
+    }
+
+    // Option 2: Use the original header_handle from the Meta template
+    try {
+        const metaTmpl = await metaApiCall({
+            path: `/${config.wabaId}/message_templates?name=${template.name}&fields=components`,
+            token: config.accessToken,
+        });
+        const metaTemplate = metaTmpl?.data?.[0];
+        if (metaTemplate) {
+            const headerComp = metaTemplate.components?.find(c => c.type === 'HEADER');
+            const headerHandle = headerComp?.example?.header_handle?.[0];
+            if (headerHandle) {
+                return [{
+                    type: 'header',
+                    parameters: [{ type: mediaType, [mediaType]: { id: headerHandle } }],
+                }];
+            }
+        }
+    } catch (err) {
+        console.error('[WA] Failed to fetch Meta template header:', err.message);
+    }
+
+    return []; // No header component
+}
+
 function buildTemplateComponents(vars = {}) {
     const params = Object.values(vars).map(v => ({ type: 'text', text: String(v) }));
     if (!params.length) return [];
@@ -278,15 +378,10 @@ export const sendMessageToContact = async (req, res) => {
         // Build components for send
         const components = [];
 
-        // Handle templates with media headers — only add header component if user provides a mediaUrl
-        // If no mediaUrl, Meta uses the original media uploaded when the template was created
-        if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType) && vars.mediaUrl) {
-            const mediaType = template.headerType === 'IMAGE' ? 'image'
-                : template.headerType === 'VIDEO' ? 'video' : 'document';
-            components.push({
-                type: 'header',
-                parameters: [{ type: mediaType, [mediaType]: { link: vars.mediaUrl } }],
-            });
+        // Handle templates with media headers
+        if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
+            const headerComps = await buildMediaHeader({ template, mediaUrl: vars.mediaUrl, config });
+            components.push(...headerComps);
         }
 
         // Add body components if we have vars (exclude mediaUrl from body params)
@@ -794,16 +889,11 @@ export const sendCampaign = async (req, res) => {
         const vars = (() => { try { return JSON.parse(campaign.templateVars || '{}'); } catch { return {}; } })();
         let sent = 0, failed = 0;
 
-        // Build header component — only if user provides a mediaUrl
-        // If no mediaUrl, Meta uses the original media uploaded when the template was created
+        // Build header component (upload once, reuse for all contacts)
         const headerComponents = [];
-        if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType) && vars.mediaUrl) {
-            const mediaType = template.headerType === 'IMAGE' ? 'image'
-                : template.headerType === 'VIDEO' ? 'video' : 'document';
-            headerComponents.push({
-                type: 'header',
-                parameters: [{ type: mediaType, [mediaType]: { link: vars.mediaUrl } }],
-            });
+        if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
+            const hc = await buildMediaHeader({ template, mediaUrl: vars.mediaUrl, config });
+            headerComponents.push(...hc);
         }
         const bodyVars = { ...vars };
         delete bodyVars.mediaUrl;
