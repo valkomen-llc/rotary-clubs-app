@@ -234,14 +234,14 @@ export const getContactMessages = async (req, res) => {
         // Try to get messages from WhatsAppMessageLog
         try {
             const r = await db.query(
-                `SELECT id, "templateName", "bodyText", status, "sentAt", "deliveredAt", "readAt", "failedAt", "createdAt"
+                `SELECT id, "templateName", "bodyText", status, direction, "sentAt", "deliveredAt", "readAt", "failedAt", "createdAt"
                  FROM "WhatsAppMessageLog"
                  WHERE "clubId"=$1 AND phone=$2
                  ORDER BY "createdAt" ASC
                  LIMIT 200`,
                 [clubId, phone]
             );
-            res.json({ messages: r.rows.map(m => ({ ...m, direction: 'outgoing' })) });
+            res.json({ messages: r.rows.map(m => ({ ...m, direction: m.direction || 'outgoing' })) });
         } catch {
             // Table might not exist
             res.json({ messages: [] });
@@ -979,13 +979,89 @@ export const verifyWebhook = async (req, res) => {
 };
 
 export const handleWebhook = async (req, res) => {
-    res.sendStatus(200); // Respoder inmediato a Meta
+    res.sendStatus(200); // Respond immediately to Meta
     try {
         const body = req.body;
         if (body.object !== 'whatsapp_business_account') return;
         const changes = body.entry?.[0]?.changes?.[0]?.value;
         if (!changes) return;
 
+        // Resolve clubId from phoneNumberId in the webhook metadata
+        const phoneNumberId = changes.metadata?.phone_number_id;
+        let clubId = null;
+        if (phoneNumberId) {
+            const configR = await db.query(`SELECT "clubId" FROM "WhatsAppConfig" WHERE "phoneNumberId"=$1 LIMIT 1`, [phoneNumberId]);
+            if (configR.rows.length) clubId = configR.rows[0].clubId;
+        }
+
+        // Handle incoming messages
+        if (changes.messages && clubId) {
+            for (const msg of changes.messages) {
+                const from = msg.from; // sender phone number
+                const normalizedPhone = from.startsWith('+') ? from : `+${from}`;
+                const messageId = msg.id;
+                const timestamp = msg.timestamp ? new Date(parseInt(msg.timestamp) * 1000) : new Date();
+
+                // Extract message text based on type
+                let bodyText = '';
+                const msgType = msg.type || 'text';
+                if (msg.type === 'text') {
+                    bodyText = msg.text?.body || '';
+                } else if (msg.type === 'image') {
+                    bodyText = msg.image?.caption || '[Imagen]';
+                } else if (msg.type === 'video') {
+                    bodyText = msg.video?.caption || '[Video]';
+                } else if (msg.type === 'audio') {
+                    bodyText = '[Audio]';
+                } else if (msg.type === 'document') {
+                    bodyText = msg.document?.filename || '[Documento]';
+                } else if (msg.type === 'sticker') {
+                    bodyText = '[Sticker]';
+                } else if (msg.type === 'location') {
+                    bodyText = `[Ubicación: ${msg.location?.latitude}, ${msg.location?.longitude}]`;
+                } else if (msg.type === 'contacts') {
+                    bodyText = '[Contacto compartido]';
+                } else if (msg.type === 'reaction') {
+                    bodyText = `[Reacción: ${msg.reaction?.emoji || ''}]`;
+                } else if (msg.type === 'button') {
+                    bodyText = msg.button?.text || '[Botón]';
+                } else if (msg.type === 'interactive') {
+                    bodyText = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || '[Interactivo]';
+                } else {
+                    bodyText = `[${msgType}]`;
+                }
+
+                // Find or create contact
+                let contactId = null;
+                const contactR = await db.query(
+                    `SELECT id FROM "WhatsAppContact" WHERE "clubId"=$1 AND phone=$2 LIMIT 1`,
+                    [clubId, normalizedPhone]
+                );
+                if (contactR.rows.length) {
+                    contactId = contactR.rows[0].id;
+                } else {
+                    // Auto-create contact from incoming message
+                    const contactName = changes.contacts?.[0]?.profile?.name || normalizedPhone;
+                    try {
+                        const newContact = await db.query(
+                            `INSERT INTO "WhatsAppContact" ("clubId",name,phone,source) VALUES ($1,$2,$3,'whatsapp') RETURNING id`,
+                            [clubId, contactName, normalizedPhone]
+                        );
+                        contactId = newContact.rows[0]?.id || null;
+                    } catch { /* contact might already exist due to race condition */ }
+                }
+
+                // Save incoming message
+                await db.query(
+                    `INSERT INTO "WhatsAppMessageLog" ("clubId","contactId",phone,"messageId","bodyText",direction,status,"sentAt","createdAt")
+                     VALUES ($1,$2,$3,$4,$5,'incoming','received',$6,$6)
+                     ON CONFLICT DO NOTHING`,
+                    [clubId, contactId, normalizedPhone, messageId, bodyText, timestamp]
+                );
+            }
+        }
+
+        // Handle status updates
         if (changes.statuses) {
             for (const s of changes.statuses) {
                 const ts = s.timestamp ? new Date(parseInt(s.timestamp) * 1000) : new Date();
@@ -1112,6 +1188,8 @@ export const ensureWATables = async () => {
             CREATE INDEX IF NOT EXISTS idx_wa_msglog_campaign ON "WhatsAppMessageLog" ("campaignId", status);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_template_meta_id ON "WhatsAppTemplate" ("metaTemplateId") WHERE "metaTemplateId" IS NOT NULL;
         `);
+        // Add direction column if it doesn't exist (for existing installations)
+        await db.query(`ALTER TABLE "WhatsAppMessageLog" ADD COLUMN IF NOT EXISTS direction VARCHAR(20) DEFAULT 'outgoing'`).catch(() => {});
         console.log('[WA-CRM] All tables created');
     } catch (err) {
         console.error('[WA-CRM] Table init error:', err.message);
