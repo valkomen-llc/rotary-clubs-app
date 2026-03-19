@@ -19,6 +19,7 @@ const WhatsAppContacts: React.FC = () => {
     const [editId, setEditId] = useState<string | null>(null);
     const [form, setForm] = useState({ name: '', phone: '', email: '', tags: '' });
     const [importing, setImporting] = useState(false);
+    const [listMenuContact, setListMenuContact] = useState<string | null>(null);
 
     // Import wizard state
     const [importStep, setImportStep] = useState<'select' | 'map' | 'confirm'>('select');
@@ -41,7 +42,7 @@ const WhatsAppContacts: React.FC = () => {
 
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
-    useEffect(() => { fetchContacts(); fetchCustomFields(); }, [search, statusFilter]);
+    useEffect(() => { fetchContacts(); fetchCustomFields(); fetchLists(); }, [search, statusFilter]);
     useEffect(() => { if (showImport) { fetchLists(); fetchCustomFields(); } }, [showImport]);
 
     const fetchContacts = async () => {
@@ -136,6 +137,36 @@ const WhatsAppContacts: React.FC = () => {
         if (!confirm('¿Eliminar este contacto?')) return;
         await fetch(`${API}/whatsapp/contacts/${id}`, { method: 'DELETE', headers });
         toast.success('Contacto eliminado'); fetchContacts();
+    };
+
+    const addContactToList = async (contactId: string, listId: string) => {
+        try {
+            const res = await fetch(`${API}/whatsapp/lists/${listId}/members`, {
+                method: 'POST', headers, body: JSON.stringify({ contactIds: [contactId] }),
+            });
+            if (res.ok) {
+                toast.success('Contacto agregado a la lista');
+                fetchContacts();
+            } else {
+                const data = await res.json();
+                toast.error(data.error || 'Error al agregar');
+            }
+        } catch { toast.error('Error de conexión'); }
+    };
+
+    const removeContactFromList = async (contactId: string, listId: string) => {
+        try {
+            const res = await fetch(`${API}/whatsapp/lists/${listId}/members`, {
+                method: 'DELETE', headers, body: JSON.stringify({ contactIds: [contactId] }),
+            });
+            if (res.ok) {
+                toast.success('Contacto removido de la lista');
+                fetchContacts();
+            } else {
+                const data = await res.json();
+                toast.error(data.error || 'Error al remover');
+            }
+        } catch { toast.error('Error de conexión'); }
     };
 
     // ── CSV Parsing ──
@@ -659,10 +690,13 @@ const WhatsAppContacts: React.FC = () => {
                     <table className="w-full text-left">
                         <thead><tr className="border-b border-gray-100 text-xs font-bold text-gray-400 uppercase">
                             <th className="p-4">Nombre</th><th className="p-4">Teléfono</th><th className="p-4">Email</th>
-                            <th className="p-4">Tags</th><th className="p-4">Estado</th><th className="p-4">Métricas</th><th className="p-4 w-20"></th>
+                            <th className="p-4">Tags</th><th className="p-4">Listas</th><th className="p-4">Estado</th><th className="p-4">Métricas</th><th className="p-4 w-24"></th>
                         </tr></thead>
                         <tbody className="divide-y divide-gray-50 text-sm">
-                            {contacts.map(c => (
+                            {contacts.map(c => {
+                                const contactLists = Array.isArray(c.lists) ? c.lists : [];
+                                const availableLists = lists.filter(l => !contactLists.some((cl: any) => cl.id === l.id));
+                                return (
                                 <tr key={c.id} className="hover:bg-gray-50/50 transition-colors">
                                     <td className="p-4 font-medium text-gray-900">{c.name}</td>
                                     <td className="p-4 text-gray-600 font-mono text-xs">{c.phone}</td>
@@ -670,6 +704,42 @@ const WhatsAppContacts: React.FC = () => {
                                     <td className="p-4">{(c.tags || []).map((t: string) => (
                                         <span key={t} className="inline-block bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded-full mr-1">{t}</span>
                                     ))}</td>
+                                    <td className="p-4">
+                                        <div className="flex flex-wrap items-center gap-1 relative">
+                                            {contactLists.map((l: any) => (
+                                                <span key={l.id} className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border"
+                                                    style={{ backgroundColor: `${l.color || '#3B82F6'}15`, color: l.color || '#3B82F6', borderColor: `${l.color || '#3B82F6'}30` }}>
+                                                    {l.name}
+                                                    <button onClick={() => removeContactFromList(c.id, l.id)}
+                                                        className="hover:opacity-70 ml-0.5" title="Remover de lista">×</button>
+                                                </span>
+                                            ))}
+                                            {availableLists.length > 0 && (
+                                                <div className="relative">
+                                                    <button onClick={() => setListMenuContact(listMenuContact === c.id ? null : c.id)}
+                                                        className="w-5 h-5 rounded-full bg-gray-100 text-gray-400 hover:bg-green-100 hover:text-green-600 flex items-center justify-center text-xs font-bold transition-colors"
+                                                        title="Agregar a lista">+</button>
+                                                    {listMenuContact === c.id && (
+                                                        <div className="absolute z-50 top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl py-1 min-w-[180px] max-h-48 overflow-y-auto">
+                                                            <p className="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase">Agregar a lista</p>
+                                                            {availableLists.map(l => (
+                                                                <button key={l.id}
+                                                                    onClick={() => { addContactToList(c.id, l.id); setListMenuContact(null); }}
+                                                                    className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-2 transition-colors">
+                                                                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: l.color || '#3B82F6' }}></span>
+                                                                    {l.name}
+                                                                    <span className="text-gray-400 ml-auto">{l.memberCount} contactos</span>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {contactLists.length === 0 && availableLists.length === 0 && (
+                                                <span className="text-[10px] text-gray-300">—</span>
+                                            )}
+                                        </div>
+                                    </td>
                                     <td className="p-4">
                                         <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${c.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
                                             {c.status === 'active' ? 'Activo' : 'Opt-out'}
@@ -685,7 +755,8 @@ const WhatsAppContacts: React.FC = () => {
                                         <button onClick={() => handleDelete(c.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
                                     </td>
                                 </tr>
-                            ))}
+                                );
+                            })}
                         </tbody>
                     </table>
                 )}
