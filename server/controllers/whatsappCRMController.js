@@ -90,31 +90,23 @@ async function uploadMediaToMeta({ url, type, phoneNumberId, token }) {
 
 /**
  * Build the header component for a media template.
- * Tries: 1) user-provided mediaUrl (upload to Meta first), 2) original template header_handle
+ * Strategy: use 'link' for URLs, or fetch header_handle from Meta template.
+ * Note: header_handle from Meta templates should be sent as 'id' (string format)
  */
 async function buildMediaHeader({ template, mediaUrl, config }) {
     const mediaType = template.headerType === 'IMAGE' ? 'image'
         : template.headerType === 'VIDEO' ? 'video' : 'document';
 
-    // Option 1: User provided a custom mediaUrl — upload it to Meta
+    // Option 1: User provided a custom mediaUrl — send as link
     if (mediaUrl) {
-        try {
-            const mediaId = await uploadMediaToMeta({
-                url: mediaUrl,
-                type: mediaType,
-                phoneNumberId: config.phoneNumberId,
-                token: config.accessToken,
-            });
-            return [{
-                type: 'header',
-                parameters: [{ type: mediaType, [mediaType]: { id: mediaId } }],
-            }];
-        } catch (err) {
-            console.error('[WA] Failed to upload user media, trying Meta handle fallback:', err.message);
-        }
+        console.log(`[WA] Using user-provided mediaUrl as link: ${mediaUrl.substring(0, 60)}...`);
+        return [{
+            type: 'header',
+            parameters: [{ type: mediaType, [mediaType]: { link: mediaUrl } }],
+        }];
     }
 
-    // Option 2: Use the original header_handle from the Meta template
+    // Option 2: Fetch the original header_handle from the Meta template definition
     try {
         const metaTmpl = await metaApiCall({
             path: `/${config.wabaId}/message_templates?name=${template.name}&fields=components`,
@@ -123,8 +115,35 @@ async function buildMediaHeader({ template, mediaUrl, config }) {
         const metaTemplate = metaTmpl?.data?.[0];
         if (metaTemplate) {
             const headerComp = metaTemplate.components?.find(c => c.type === 'HEADER');
+            console.log('[WA] Meta template header component:', JSON.stringify(headerComp));
+
+            // Try header_handle first (this is the media reference from template creation)
             const headerHandle = headerComp?.example?.header_handle?.[0];
+            const headerUrl = headerComp?.example?.header_url?.[0];
+
+            if (headerUrl) {
+                // header_url is a direct URL — use as link
+                console.log(`[WA] Using header_url as link: ${headerUrl.substring(0, 60)}...`);
+                return [{
+                    type: 'header',
+                    parameters: [{ type: mediaType, [mediaType]: { link: headerUrl } }],
+                }];
+            }
+
             if (headerHandle) {
+                // header_handle format: could be a numeric ID or a handle string
+                // Try as link first if it starts with http, otherwise as id
+                if (headerHandle.startsWith('http')) {
+                    console.log(`[WA] Using header_handle as link: ${headerHandle.substring(0, 60)}...`);
+                    return [{
+                        type: 'header',
+                        parameters: [{ type: mediaType, [mediaType]: { link: headerHandle } }],
+                    }];
+                }
+                // For non-URL handles, try uploading via resumable upload or use directly
+                console.log(`[WA] header_handle (non-URL): ${headerHandle.substring(0, 40)}...`);
+                // Meta Cloud API expects the handle as-is for templates with static media
+                // The handle IS the media reference — we pass it as id  
                 return [{
                     type: 'header',
                     parameters: [{ type: mediaType, [mediaType]: { id: headerHandle } }],
@@ -135,7 +154,8 @@ async function buildMediaHeader({ template, mediaUrl, config }) {
         console.error('[WA] Failed to fetch Meta template header:', err.message);
     }
 
-    return []; // No header component
+    console.log('[WA] No header component built — template may fail if header is required');
+    return [];
 }
 
 function buildTemplateComponents(vars = {}) {
