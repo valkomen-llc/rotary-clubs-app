@@ -810,10 +810,7 @@ export const sendCampaign = async (req, res) => {
             [contacts.length, id]
         );
 
-        // Respuesta inmediata
-        res.json({ success: true, message: `Iniciando envío a ${contacts.length} contactos`, campaignId: id });
-
-        // Envío en background con throttling
+        // Process ALL sends BEFORE responding (Vercel freezes after res.json)
         const vars = (() => { try { return JSON.parse(campaign.templateVars || '{}'); } catch { return {}; } })();
         let sent = 0, failed = 0;
 
@@ -823,7 +820,6 @@ export const sendCampaign = async (req, res) => {
             const mediaType = template.headerType === 'IMAGE' ? 'image'
                 : template.headerType === 'VIDEO' ? 'video' : 'document';
 
-            // Priority: user-provided mediaUrl > Meta header_handle
             if (vars.mediaUrl) {
                 headerComponents.push({
                     type: 'header',
@@ -853,7 +849,6 @@ export const sendCampaign = async (req, res) => {
                 }
             }
         }
-        // Remove mediaUrl from body vars (it's for header, not body params)
         const bodyVars = { ...vars };
         delete bodyVars.mediaUrl;
         const bodyComponents = buildTemplateComponents(bodyVars);
@@ -862,7 +857,6 @@ export const sendCampaign = async (req, res) => {
         if (allComponents.length > 0) templatePayload.components = allComponents;
 
         for (const contact of contacts) {
-            await new Promise(r => setTimeout(r, 100));
             try {
                 const apiRes = await metaApiCall({
                     method: 'POST',
@@ -894,10 +888,18 @@ export const sendCampaign = async (req, res) => {
             }
         }
 
+        // Update campaign with final stats
+        const finalStatus = failed === contacts.length ? 'failed' : 'sent';
         await db.query(
-            `UPDATE "WhatsAppCampaign" SET status='sent',sent=$1,failed=$2,"updatedAt"=NOW() WHERE id=$3`,
-            [sent, failed, id]
+            `UPDATE "WhatsAppCampaign" SET status=$1,sent=$2,failed=$3,"updatedAt"=NOW() WHERE id=$4`,
+            [finalStatus, sent, failed, id]
         );
+
+        res.json({
+            success: true,
+            message: `Campaña enviada: ${sent} enviados, ${failed} fallidos de ${contacts.length} contactos`,
+            campaignId: id, sent, failed, total: contacts.length,
+        });
     } catch (err) {
         console.error('WA sendCampaign:', err);
         await db.query(`UPDATE "WhatsAppCampaign" SET status='failed',"updatedAt"=NOW() WHERE id=$1`, [id]).catch(() => {});

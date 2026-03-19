@@ -43,22 +43,25 @@ const WhatsAppCampaigns: React.FC = () => {
         e.preventDefault();
         const url = editId ? `${API}/whatsapp/campaigns/${editId}` : `${API}/whatsapp/campaigns`;
         const payload: any = { name: form.name, description: form.description, listId: form.listId, templateId: form.templateId };
-        if (form.mediaUrl) payload.templateVars = JSON.stringify({ mediaUrl: form.mediaUrl });
+        if (form.mediaUrl) payload.templateVars = { mediaUrl: form.mediaUrl };
         const res = await fetch(url, { method: editId ? 'PUT' : 'POST', headers, body: JSON.stringify(payload) });
         if (res.ok) { toast.success(editId ? 'Campaña actualizada' : 'Campaña creada'); setShowForm(false); resetForm(); fetchAll(); }
         else toast.error((await res.json()).error);
     };
 
     const handleSend = async (id: string) => {
-        if (!confirm('¿Enviar esta campaña ahora? Los mensajes se enviarán inmediatamente.')) return;
+        if (!confirm('¿Enviar esta campaña ahora? Los mensajes se enviarán inmediatamente.\n\nEsto puede tardar unos segundos dependiendo de la cantidad de contactos.')) return;
         setSending(id);
         try {
             const res = await fetch(`${API}/whatsapp/campaigns/${id}/send`, { method: 'POST', headers });
             const data = await res.json();
-            if (data.success) toast.success(data.message);
-            else toast.error(data.error);
-            setTimeout(fetchAll, 3000);
-        } catch { toast.error('Error al enviar'); } finally { setSending(null); }
+            if (data.success) {
+                toast.success(data.message);
+            } else {
+                toast.error(data.error || 'Error al enviar campaña');
+            }
+            fetchAll();
+        } catch { toast.error('Error al enviar — posible timeout. Recarga para ver el estado.'); } finally { setSending(null); }
     };
 
     const handleDelete = async (id: string) => {
