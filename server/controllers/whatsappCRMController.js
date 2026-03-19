@@ -358,7 +358,20 @@ export const sendMessageToContact = async (req, res) => {
         });
     } catch (err) {
         console.error('WA sendMessageToContact:', err);
-        res.status(500).json({ error: err.message });
+        const errorMsg = err.message || 'Error desconocido';
+        // Log failed attempt
+        try {
+            const clubId = await resolveClubId(req);
+            const contactR = await db.query(`SELECT phone FROM "WhatsAppContact" WHERE id=$1`, [req.params.id]);
+            if (contactR.rows.length) {
+                await db.query(
+                    `INSERT INTO "WhatsAppMessageLog" ("clubId","contactId",phone,"templateName",status,"errorMessage","failedAt")
+                     VALUES ($1,$2,$3,$4,'failed',$5,NOW())`,
+                    [clubId, req.params.id, contactR.rows[0].phone, req.body.templateId || 'unknown', errorMsg]
+                );
+            }
+        } catch { /* ignore logging error */ }
+        res.status(500).json({ error: `Error al enviar: ${errorMsg}` });
     }
 };
 
