@@ -1093,8 +1093,9 @@ export const ensureWATables = async () => {
         const r = await db.query(`SELECT to_regclass('"WhatsAppConfig"') as exists`);
         if (r.rows[0].exists) {
             console.log('[WA-CRM] Tables already exist');
-            // Ensure indexes exist (idempotent)
+            // Ensure indexes and new columns exist (idempotent migrations)
             await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_template_meta_id ON "WhatsAppTemplate" ("metaTemplateId") WHERE "metaTemplateId" IS NOT NULL`).catch(() => {});
+            await db.query(`ALTER TABLE "WhatsAppMessageLog" ADD COLUMN IF NOT EXISTS direction VARCHAR(20) DEFAULT 'outgoing'`).catch(() => {});
             return;
         }
 
