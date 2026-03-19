@@ -39,74 +39,64 @@ async function metaApiCall({ method = 'GET', path, body, token }) {
 }
 
 /**
- * Upload media to Meta via the Media API.
- * Downloads the file from the URL, then uploads it as form-data to Meta.
- * Returns the media_id which can be used in template headers.
+ * Upload media to Meta via the Media API using native FormData.
+ * Downloads the file from the URL, then uploads to Meta.
+ * Returns the media_id.
  */
 async function uploadMediaToMeta({ url, type, phoneNumberId, token }) {
-    // Download the file
+    console.log(`[WA] Downloading media from: ${url.substring(0, 80)}...`);
     const fileRes = await fetch(url);
-    if (!fileRes.ok) throw new Error(`Failed to download media from ${url}: ${fileRes.status}`);
-    const buffer = Buffer.from(await fileRes.arrayBuffer());
-    const contentType = fileRes.headers.get('content-type') || (
-        type === 'image' ? 'image/jpeg' : type === 'video' ? 'video/mp4' : 'application/pdf'
-    );
+    if (!fileRes.ok) throw new Error(`Failed to download media: ${fileRes.status}`);
+    
+    const arrayBuf = await fileRes.arrayBuffer();
+    const blob = new Blob([arrayBuf], { 
+        type: fileRes.headers.get('content-type') || (
+            type === 'image' ? 'image/jpeg' : type === 'video' ? 'video/mp4' : 'application/pdf'
+        )
+    });
+    
+    const filename = url.split('/').pop()?.split('?')[0] || `media.${type === 'image' ? 'jpg' : type === 'video' ? 'mp4' : 'pdf'}`;
+    console.log(`[WA] Uploading ${filename} (${(arrayBuf.byteLength / 1024 / 1024).toFixed(1)}MB) to Meta...`);
 
-    // Build multipart form data manually (no external deps)
-    const boundary = '----MetaUpload' + Date.now();
-    const filename = url.split('/').pop()?.split('?')[0] || `file.${type === 'image' ? 'jpg' : type === 'video' ? 'mp4' : 'pdf'}`;
-
-    const header = [
-        `--${boundary}`,
-        `Content-Disposition: form-data; name="messaging_product"`,
-        '', 'whatsapp',
-        `--${boundary}`,
-        `Content-Disposition: form-data; name="type"`,
-        '', contentType,
-        `--${boundary}`,
-        `Content-Disposition: form-data; name="file"; filename="${filename}"`,
-        `Content-Type: ${contentType}`,
-        '',
-    ].join('\r\n');
-
-    const footer = `\r\n--${boundary}--\r\n`;
-    const headerBuf = Buffer.from(header + '\r\n');
-    const footerBuf = Buffer.from(footer);
-    const bodyBuf = Buffer.concat([headerBuf, buffer, footerBuf]);
+    const formData = new FormData();
+    formData.append('messaging_product', 'whatsapp');
+    formData.append('type', blob.type);
+    formData.append('file', blob, filename);
 
     const uploadRes = await fetch(`${WA_API_BASE}/${phoneNumberId}/media`, {
         method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': `multipart/form-data; boundary=${boundary}`,
-        },
-        body: bodyBuf,
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
     });
     const uploadData = await uploadRes.json();
-    if (uploadData.error) throw new Error(`Media upload error: ${uploadData.error.message}`);
-    console.log(`[WA] Uploaded media ${filename} -> ID: ${uploadData.id}`);
-    return uploadData.id; // media_id
+    if (uploadData.error) throw new Error(`Media upload: ${uploadData.error.message}`);
+    console.log(`[WA] Media uploaded successfully -> ID: ${uploadData.id}`);
+    return uploadData.id;
 }
 
 /**
  * Build the header component for a media template.
- * Strategy: use 'link' for URLs, or fetch header_handle from Meta template.
- * Note: header_handle from Meta templates should be sent as 'id' (string format)
+ * Strategy: always upload media to Meta to get a valid media_id.
  */
 async function buildMediaHeader({ template, mediaUrl, config }) {
     const mediaType = template.headerType === 'IMAGE' ? 'image'
         : template.headerType === 'VIDEO' ? 'video' : 'document';
 
-    // Option 1: User provided a custom mediaUrl — send as link
+    // Option 1: User provided a mediaUrl — download and upload to Meta
     if (mediaUrl) {
-        console.log(`[WA] Using user-provided mediaUrl as link: ${mediaUrl.substring(0, 60)}...`);
-        return [{
-            type: 'header',
-            parameters: [{ type: mediaType, [mediaType]: { link: mediaUrl } }],
-        }];
+        try {
+            const mediaId = await uploadMediaToMeta({
+                url: mediaUrl, type: mediaType,
+                phoneNumberId: config.phoneNumberId, token: config.accessToken,
+            });
+            return [{ type: 'header', parameters: [{ type: mediaType, [mediaType]: { id: mediaId } }] }];
+        } catch (err) {
+            console.error('[WA] Upload user media failed:', err.message);
+            // Fall through to try header_url from Meta
+        }
     }
 
-    // Option 2: Fetch the original header_handle from the Meta template definition
+    // Option 2: Get header_url from Meta template, download it and re-upload
     try {
         const metaTmpl = await metaApiCall({
             path: `/${config.wabaId}/message_templates?name=${template.name}&fields=components`,
@@ -115,46 +105,34 @@ async function buildMediaHeader({ template, mediaUrl, config }) {
         const metaTemplate = metaTmpl?.data?.[0];
         if (metaTemplate) {
             const headerComp = metaTemplate.components?.find(c => c.type === 'HEADER');
-            console.log('[WA] Meta template header component:', JSON.stringify(headerComp));
-
-            // Try header_handle first (this is the media reference from template creation)
-            const headerHandle = headerComp?.example?.header_handle?.[0];
             const headerUrl = headerComp?.example?.header_url?.[0];
+            const headerHandle = headerComp?.example?.header_handle?.[0];
+            console.log('[WA] Template header — url:', headerUrl?.substring(0, 60), '| handle:', headerHandle?.substring(0, 40));
 
+            // If there's a header_url, download and re-upload to Meta
             if (headerUrl) {
-                // header_url is a direct URL — use as link
-                console.log(`[WA] Using header_url as link: ${headerUrl.substring(0, 60)}...`);
-                return [{
-                    type: 'header',
-                    parameters: [{ type: mediaType, [mediaType]: { link: headerUrl } }],
-                }];
+                try {
+                    const mediaId = await uploadMediaToMeta({
+                        url: headerUrl, type: mediaType,
+                        phoneNumberId: config.phoneNumberId, token: config.accessToken,
+                    });
+                    return [{ type: 'header', parameters: [{ type: mediaType, [mediaType]: { id: mediaId } }] }];
+                } catch (err) {
+                    console.error('[WA] Upload header_url failed:', err.message);
+                }
             }
 
+            // Last resort: try header_handle as-is (may or may not work)
             if (headerHandle) {
-                // header_handle format: could be a numeric ID or a handle string
-                // Try as link first if it starts with http, otherwise as id
-                if (headerHandle.startsWith('http')) {
-                    console.log(`[WA] Using header_handle as link: ${headerHandle.substring(0, 60)}...`);
-                    return [{
-                        type: 'header',
-                        parameters: [{ type: mediaType, [mediaType]: { link: headerHandle } }],
-                    }];
-                }
-                // For non-URL handles, try uploading via resumable upload or use directly
-                console.log(`[WA] header_handle (non-URL): ${headerHandle.substring(0, 40)}...`);
-                // Meta Cloud API expects the handle as-is for templates with static media
-                // The handle IS the media reference — we pass it as id  
-                return [{
-                    type: 'header',
-                    parameters: [{ type: mediaType, [mediaType]: { id: headerHandle } }],
-                }];
+                console.log('[WA] Trying header_handle as id (last resort)');
+                return [{ type: 'header', parameters: [{ type: mediaType, [mediaType]: { id: headerHandle } }] }];
             }
         }
     } catch (err) {
-        console.error('[WA] Failed to fetch Meta template header:', err.message);
+        console.error('[WA] Fetch template header failed:', err.message);
     }
 
-    console.log('[WA] No header component built — template may fail if header is required');
+    console.warn('[WA] Could not build header component — template will likely fail');
     return [];
 }
 
