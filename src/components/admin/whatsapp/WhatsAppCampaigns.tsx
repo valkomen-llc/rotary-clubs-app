@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
-import { Megaphone, Plus, Trash2, Edit3, Play, Loader2, X, Eye, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { Megaphone, Plus, Trash2, Edit3, Play, Loader2, X, Eye, CheckCircle2, XCircle, Clock, Image, Video, Link2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -16,8 +16,11 @@ const WhatsAppCampaigns: React.FC = () => {
     const [sending, setSending] = useState<string | null>(null);
     const [viewLogs, setViewLogs] = useState<string | null>(null);
     const [logs, setLogs] = useState<any[]>([]);
-    const [form, setForm] = useState({ name: '', description: '', listId: '', templateId: '' });
+    const [form, setForm] = useState({ name: '', description: '', listId: '', templateId: '', mediaUrl: '' });
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+
+    const selectedTemplate = templates.find((t: any) => t.id === form.templateId);
+    const needsMedia = selectedTemplate && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(selectedTemplate.headerType);
 
     useEffect(() => { fetchAll(); }, []);
 
@@ -39,7 +42,9 @@ const WhatsAppCampaigns: React.FC = () => {
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         const url = editId ? `${API}/whatsapp/campaigns/${editId}` : `${API}/whatsapp/campaigns`;
-        const res = await fetch(url, { method: editId ? 'PUT' : 'POST', headers, body: JSON.stringify(form) });
+        const payload: any = { name: form.name, description: form.description, listId: form.listId, templateId: form.templateId };
+        if (form.mediaUrl) payload.templateVars = JSON.stringify({ mediaUrl: form.mediaUrl });
+        const res = await fetch(url, { method: editId ? 'PUT' : 'POST', headers, body: JSON.stringify(payload) });
         if (res.ok) { toast.success(editId ? 'Campaña actualizada' : 'Campaña creada'); setShowForm(false); resetForm(); fetchAll(); }
         else toast.error((await res.json()).error);
     };
@@ -68,9 +73,10 @@ const WhatsAppCampaigns: React.FC = () => {
         setLogs(await res.json());
     };
 
-    const resetForm = () => { setForm({ name: '', description: '', listId: '', templateId: '' }); setEditId(null); };
+    const resetForm = () => { setForm({ name: '', description: '', listId: '', templateId: '', mediaUrl: '' }); setEditId(null); };
     const startEdit = (c: any) => {
-        setForm({ name: c.name, description: c.description || '', listId: c.listId || '', templateId: c.templateId || '' });
+        const vars = (() => { try { return typeof c.templateVars === 'string' ? JSON.parse(c.templateVars) : (c.templateVars || {}); } catch { return {}; } })();
+        setForm({ name: c.name, description: c.description || '', listId: c.listId || '', templateId: c.templateId || '', mediaUrl: vars.mediaUrl || '' });
         setEditId(c.id); setShowForm(true);
     };
 
@@ -113,12 +119,43 @@ const WhatsAppCampaigns: React.FC = () => {
                                 <option value="">— Seleccionar lista —</option>
                                 {lists.map(l => <option key={l.id} value={l.id}>{l.name} ({l.memberCount} contactos)</option>)}
                             </select>
-                            <select value={form.templateId} onChange={e => setForm({ ...form, templateId: e.target.value })}
+                            <select value={form.templateId} onChange={e => setForm({ ...form, templateId: e.target.value, mediaUrl: '' })}
                                 className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm bg-white outline-none focus:border-green-500">
                                 <option value="">— Seleccionar template —</option>
-                                {templates.map(t => <option key={t.id} value={t.id}>{t.displayName} ({t.status})</option>)}
+                                {templates.map(t => (
+                                    <option key={t.id} value={t.id}>
+                                        {t.displayName || t.name}
+                                        {t.headerType && ['IMAGE','VIDEO','DOCUMENT'].includes(t.headerType) ? ` 📎 ${t.headerType}` : ''}
+                                    </option>
+                                ))}
                             </select>
                         </div>
+                        {needsMedia && (
+                            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                                <div className="flex items-center gap-2 mb-2">
+                                    {selectedTemplate.headerType === 'IMAGE' ? <Image className="w-4 h-4 text-amber-600" /> 
+                                        : selectedTemplate.headerType === 'VIDEO' ? <Video className="w-4 h-4 text-amber-600" />
+                                        : <Link2 className="w-4 h-4 text-amber-600" />}
+                                    <p className="text-xs font-bold text-amber-700 uppercase">
+                                        URL del {selectedTemplate.headerType === 'IMAGE' ? 'imagen' : selectedTemplate.headerType === 'VIDEO' ? 'video' : 'documento'} del header
+                                    </p>
+                                </div>
+                                <input value={form.mediaUrl} onChange={e => setForm({ ...form, mediaUrl: e.target.value })}
+                                    placeholder={selectedTemplate.headerType === 'IMAGE' 
+                                        ? 'https://ejemplo.com/imagen.jpg' 
+                                        : selectedTemplate.headerType === 'VIDEO' 
+                                        ? 'https://ejemplo.com/video.mp4' 
+                                        : 'https://ejemplo.com/documento.pdf'}
+                                    className="w-full px-3 py-2.5 rounded-lg border border-amber-300 text-sm outline-none focus:border-amber-500 bg-white" />
+                                <p className="text-[10px] text-amber-500 mt-1.5">
+                                    {selectedTemplate.headerType === 'IMAGE' 
+                                        ? 'Pega la URL de la imagen (JPG, PNG). Si dejas vacío se usará la imagen registrada en Meta.' 
+                                        : selectedTemplate.headerType === 'VIDEO'
+                                        ? 'Pega la URL del video (MP4). Si dejas vacío se usará el video registrado en Meta.'
+                                        : 'Pega la URL del documento (PDF). Si dejas vacío se usará el documento registrado en Meta.'}
+                                </p>
+                            </div>
+                        )}
                         <div className="flex gap-2">
                             <button type="submit" className="bg-green-600 text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-green-700">
                                 {editId ? 'Actualizar' : 'Crear Campaña'}

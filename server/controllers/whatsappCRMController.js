@@ -276,43 +276,48 @@ export const sendMessageToContact = async (req, res) => {
             return res.status(400).json({ error: 'Solo se pueden enviar templates aprobados por Meta' });
 
         // Build components for send
-        const bodyComponents = buildTemplateComponents(vars);
         const components = [];
 
         // Handle templates with media headers (IMAGE, VIDEO, DOCUMENT)
         if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
-            try {
-                // Fetch the template from Meta to get the header_handle
-                const metaTmpl = await metaApiCall({
-                    path: `/${config.wabaId}/message_templates?name=${template.name}&fields=components`,
-                    token: config.accessToken,
+            const mediaType = template.headerType === 'IMAGE' ? 'image'
+                : template.headerType === 'VIDEO' ? 'video' : 'document';
+
+            // Priority: user-provided mediaUrl > Meta header_handle
+            if (vars.mediaUrl) {
+                components.push({
+                    type: 'header',
+                    parameters: [{ type: mediaType, [mediaType]: { link: vars.mediaUrl } }],
                 });
-                const metaTemplate = metaTmpl?.data?.[0];
-                if (metaTemplate) {
-                    const headerComp = metaTemplate.components?.find(c => c.type === 'HEADER');
-                    const headerHandle = headerComp?.example?.header_handle?.[0];
-                    const headerUrl = headerComp?.example?.header_url?.[0];
-                    const mediaRef = headerUrl || headerHandle;
-                    if (mediaRef) {
-                        const mediaType = template.headerType === 'IMAGE' ? 'image'
-                            : template.headerType === 'VIDEO' ? 'video' : 'document';
-                        // Use link for URLs, id for media attachment IDs
-                        const mediaParam = mediaRef.startsWith('http')
-                            ? { type: mediaType, [mediaType]: { link: mediaRef } }
-                            : { type: mediaType, [mediaType]: { id: mediaRef } };
-                        components.push({
-                            type: 'header',
-                            parameters: [mediaParam],
-                        });
+            } else {
+                try {
+                    const metaTmpl = await metaApiCall({
+                        path: `/${config.wabaId}/message_templates?name=${template.name}&fields=components`,
+                        token: config.accessToken,
+                    });
+                    const metaTemplate = metaTmpl?.data?.[0];
+                    if (metaTemplate) {
+                        const headerComp = metaTemplate.components?.find(c => c.type === 'HEADER');
+                        const headerUrl = headerComp?.example?.header_url?.[0];
+                        const headerHandle = headerComp?.example?.header_handle?.[0];
+                        const mediaRef = headerUrl || headerHandle;
+                        if (mediaRef) {
+                            const mediaParam = mediaRef.startsWith('http')
+                                ? { type: mediaType, [mediaType]: { link: mediaRef } }
+                                : { type: mediaType, [mediaType]: { id: mediaRef } };
+                            components.push({ type: 'header', parameters: [mediaParam] });
+                        }
                     }
+                } catch (metaErr) {
+                    console.error('WA fetchMetaTemplate for header:', metaErr.message);
                 }
-            } catch (metaErr) {
-                console.error('WA fetchMetaTemplate for header:', metaErr.message);
-                // Continue without header - may still work for some templates
             }
         }
 
-        // Add body components if we have vars
+        // Add body components if we have vars (exclude mediaUrl from body params)
+        const bodyVars = { ...vars };
+        delete bodyVars.mediaUrl;
+        const bodyComponents = buildTemplateComponents(bodyVars);
         if (bodyComponents.length > 0) components.push(...bodyComponents);
 
         const templatePayload = { name: template.name, language: { code: template.language } };
@@ -802,31 +807,43 @@ export const sendCampaign = async (req, res) => {
         // Build header component for media templates (once, reused for all contacts)
         const headerComponents = [];
         if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
-            try {
-                const metaTmpl = await metaApiCall({
-                    path: `/${config.wabaId}/message_templates?name=${template.name}&fields=components`,
-                    token: config.accessToken,
+            const mediaType = template.headerType === 'IMAGE' ? 'image'
+                : template.headerType === 'VIDEO' ? 'video' : 'document';
+
+            // Priority: user-provided mediaUrl > Meta header_handle
+            if (vars.mediaUrl) {
+                headerComponents.push({
+                    type: 'header',
+                    parameters: [{ type: mediaType, [mediaType]: { link: vars.mediaUrl } }],
                 });
-                const metaTemplate = metaTmpl?.data?.[0];
-                if (metaTemplate) {
-                    const headerComp = metaTemplate.components?.find(c => c.type === 'HEADER');
-                    const headerUrl = headerComp?.example?.header_url?.[0];
-                    const headerHandle = headerComp?.example?.header_handle?.[0];
-                    const mediaRef = headerUrl || headerHandle;
-                    if (mediaRef) {
-                        const mediaType = template.headerType === 'IMAGE' ? 'image'
-                            : template.headerType === 'VIDEO' ? 'video' : 'document';
-                        const mediaParam = mediaRef.startsWith('http')
-                            ? { type: mediaType, [mediaType]: { link: mediaRef } }
-                            : { type: mediaType, [mediaType]: { id: mediaRef } };
-                        headerComponents.push({ type: 'header', parameters: [mediaParam] });
+            } else {
+                try {
+                    const metaTmpl = await metaApiCall({
+                        path: `/${config.wabaId}/message_templates?name=${template.name}&fields=components`,
+                        token: config.accessToken,
+                    });
+                    const metaTemplate = metaTmpl?.data?.[0];
+                    if (metaTemplate) {
+                        const headerComp = metaTemplate.components?.find(c => c.type === 'HEADER');
+                        const headerUrl = headerComp?.example?.header_url?.[0];
+                        const headerHandle = headerComp?.example?.header_handle?.[0];
+                        const mediaRef = headerUrl || headerHandle;
+                        if (mediaRef) {
+                            const mediaParam = mediaRef.startsWith('http')
+                                ? { type: mediaType, [mediaType]: { link: mediaRef } }
+                                : { type: mediaType, [mediaType]: { id: mediaRef } };
+                            headerComponents.push({ type: 'header', parameters: [mediaParam] });
+                        }
                     }
+                } catch (metaErr) {
+                    console.error('WA sendCampaign fetchMetaTemplate header:', metaErr.message);
                 }
-            } catch (metaErr) {
-                console.error('WA sendCampaign fetchMetaTemplate header:', metaErr.message);
             }
         }
-        const bodyComponents = buildTemplateComponents(vars);
+        // Remove mediaUrl from body vars (it's for header, not body params)
+        const bodyVars = { ...vars };
+        delete bodyVars.mediaUrl;
+        const bodyComponents = buildTemplateComponents(bodyVars);
         const allComponents = [...headerComponents, ...bodyComponents];
         const templatePayload = { name: template.name, language: { code: template.language } };
         if (allComponents.length > 0) templatePayload.components = allComponents;
