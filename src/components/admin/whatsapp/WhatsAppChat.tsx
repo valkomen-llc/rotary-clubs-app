@@ -341,7 +341,7 @@ const WhatsAppChat: React.FC = () => {
                                         {selectedTemplate && ['IMAGE','VIDEO','DOCUMENT'].includes(selectedTemplate.headerType) && (
                                             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-1">
                                                 <p className="text-[11px] font-bold text-amber-700 mb-1.5">
-                                                    📎 URL del {selectedTemplate.headerType === 'IMAGE' ? 'imagen' : selectedTemplate.headerType === 'VIDEO' ? 'video' : 'documento'} (requerido)
+                                                    📎 URL del {selectedTemplate.headerType === 'IMAGE' ? 'imagen' : selectedTemplate.headerType === 'VIDEO' ? 'video' : 'documento'} (opcional)
                                                 </p>
                                                 <input
                                                     value={mediaUrl}
@@ -349,7 +349,7 @@ const WhatsAppChat: React.FC = () => {
                                                     placeholder={selectedTemplate.headerType === 'IMAGE' ? 'https://ejemplo.com/imagen.jpg' : selectedTemplate.headerType === 'VIDEO' ? 'https://ejemplo.com/video.mp4' : 'https://ejemplo.com/doc.pdf'}
                                                     className="w-full px-3 py-2 rounded-lg border border-amber-300 text-sm outline-none focus:border-amber-500 bg-white"
                                                 />
-                                                <p className="text-[10px] text-amber-500 mt-1">La URL debe ser pública y accesible (Google Drive, Dropbox, servidor web)</p>
+                                                <p className="text-[10px] text-amber-500 mt-1">Opcional: si dejas vacío se usa el archivo original del template. Si lo proporcionas, usa una URL pública accesible.</p>
                                             </div>
                                         )}
                                         {selectedTemplate && (
