@@ -291,12 +291,18 @@ export const sendMessageToContact = async (req, res) => {
                 if (metaTemplate) {
                     const headerComp = metaTemplate.components?.find(c => c.type === 'HEADER');
                     const headerHandle = headerComp?.example?.header_handle?.[0];
-                    if (headerHandle) {
+                    const headerUrl = headerComp?.example?.header_url?.[0];
+                    const mediaRef = headerUrl || headerHandle;
+                    if (mediaRef) {
                         const mediaType = template.headerType === 'IMAGE' ? 'image'
                             : template.headerType === 'VIDEO' ? 'video' : 'document';
+                        // Use link for URLs, id for media attachment IDs
+                        const mediaParam = mediaRef.startsWith('http')
+                            ? { type: mediaType, [mediaType]: { link: mediaRef } }
+                            : { type: mediaType, [mediaType]: { id: mediaRef } };
                         components.push({
                             type: 'header',
-                            parameters: [{ type: mediaType, [mediaType]: { id: headerHandle } }],
+                            parameters: [mediaParam],
                         });
                     }
                 }
