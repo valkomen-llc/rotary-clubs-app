@@ -29,7 +29,10 @@ const WhatsAppCampaigns: React.FC = () => {
                 fetch(`${API}/whatsapp/lists`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
                 fetch(`${API}/whatsapp/templates`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
             ]);
-            setCampaigns(c); setLists(l); setTemplates(t);
+            setCampaigns(Array.isArray(c) ? c : (c.campaigns || []));
+            setLists(Array.isArray(l) ? l : (l.lists || []));
+            const allTemplates = Array.isArray(t) ? t : (t.templates || []);
+            setTemplates(allTemplates.filter((tpl: any) => tpl.status === 'approved'));
         } catch { } finally { setLoading(false); }
     };
 

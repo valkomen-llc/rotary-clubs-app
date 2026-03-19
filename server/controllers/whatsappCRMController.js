@@ -799,6 +799,38 @@ export const sendCampaign = async (req, res) => {
         const vars = (() => { try { return JSON.parse(campaign.templateVars || '{}'); } catch { return {}; } })();
         let sent = 0, failed = 0;
 
+        // Build header component for media templates (once, reused for all contacts)
+        const headerComponents = [];
+        if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
+            try {
+                const metaTmpl = await metaApiCall({
+                    path: `/${config.wabaId}/message_templates?name=${template.name}&fields=components`,
+                    token: config.accessToken,
+                });
+                const metaTemplate = metaTmpl?.data?.[0];
+                if (metaTemplate) {
+                    const headerComp = metaTemplate.components?.find(c => c.type === 'HEADER');
+                    const headerUrl = headerComp?.example?.header_url?.[0];
+                    const headerHandle = headerComp?.example?.header_handle?.[0];
+                    const mediaRef = headerUrl || headerHandle;
+                    if (mediaRef) {
+                        const mediaType = template.headerType === 'IMAGE' ? 'image'
+                            : template.headerType === 'VIDEO' ? 'video' : 'document';
+                        const mediaParam = mediaRef.startsWith('http')
+                            ? { type: mediaType, [mediaType]: { link: mediaRef } }
+                            : { type: mediaType, [mediaType]: { id: mediaRef } };
+                        headerComponents.push({ type: 'header', parameters: [mediaParam] });
+                    }
+                }
+            } catch (metaErr) {
+                console.error('WA sendCampaign fetchMetaTemplate header:', metaErr.message);
+            }
+        }
+        const bodyComponents = buildTemplateComponents(vars);
+        const allComponents = [...headerComponents, ...bodyComponents];
+        const templatePayload = { name: template.name, language: { code: template.language } };
+        if (allComponents.length > 0) templatePayload.components = allComponents;
+
         for (const contact of contacts) {
             await new Promise(r => setTimeout(r, 100));
             try {
@@ -809,7 +841,7 @@ export const sendCampaign = async (req, res) => {
                         messaging_product: 'whatsapp',
                         to: contact.phone,
                         type: 'template',
-                        template: { name: template.name, language: { code: template.language }, components: buildTemplateComponents(vars) },
+                        template: templatePayload,
                     },
                     token: config.accessToken,
                 });
