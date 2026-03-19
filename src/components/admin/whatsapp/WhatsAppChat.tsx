@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
-import { Search, Send, Phone, MoreVertical, User, X, Tag, MessageCircle, ChevronLeft, Loader2, FileText } from 'lucide-react';
+import { Search, Send, Phone, MoreVertical, User, X, Tag, MessageCircle, ChevronLeft, Loader2, FileText, Archive, ArchiveRestore, Inbox, CheckCheck, Mail, MailOpen } from 'lucide-react';
 import { toast } from 'sonner';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -8,13 +8,17 @@ const API = import.meta.env.VITE_API_URL || '/api';
 interface Contact {
     id: string; name: string; phone: string; email?: string;
     tags?: string[]; status: string; lists?: any[];
-    metadata?: any; createdAt: string;
+    metadata?: any; createdAt: string; archivedAt?: string | null;
+    lastMessage?: { bodyText?: string; templateName?: string; direction: string; status: string; createdAt: string } | null;
+    unreadCount?: number;
 }
 interface Message {
     id: string; bodyText?: string; templateName?: string;
     status: string; sentAt?: string; deliveredAt?: string;
     readAt?: string; createdAt: string; direction?: string;
 }
+
+type ChatFilter = 'all' | 'unread' | 'archived';
 
 const WhatsAppChat: React.FC = () => {
     const { token } = useAuth();
@@ -31,9 +35,11 @@ const WhatsAppChat: React.FC = () => {
     const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
     const [sending, setSending] = useState(false);
     const [mediaUrl, setMediaUrl] = useState('');
+    const [activeFilter, setActiveFilter] = useState<ChatFilter>('all');
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => { fetchContacts(); fetchTemplates(); }, []);
+    useEffect(() => { fetchContacts(); }, [activeFilter]);
     useEffect(() => {
         if (!searchQuery.trim()) { setFilteredContacts(contacts); return; }
         const q = searchQuery.toLowerCase();
@@ -49,7 +55,8 @@ const WhatsAppChat: React.FC = () => {
     const fetchContacts = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${API}/whatsapp/contacts?limit=500`, { headers: { Authorization: `Bearer ${token}` } });
+            const filterParam = activeFilter === 'all' ? '' : `&filter=${activeFilter}`;
+            const res = await fetch(`${API}/whatsapp/contacts?limit=500${filterParam}`, { headers: { Authorization: `Bearer ${token}` } });
             const data = await res.json();
             setContacts(data.contacts || []);
         } catch { } finally { setLoading(false); }
@@ -69,9 +76,35 @@ const WhatsAppChat: React.FC = () => {
         finally { setLoadingMsgs(false); }
     };
 
-    const selectContact = (contact: Contact) => {
+    const selectContact = async (contact: Contact) => {
         setSelectedContact(contact);
         fetchMessages(contact.id);
+        // Mark as read if there are unread messages
+        if (contact.unreadCount && contact.unreadCount > 0) {
+            try {
+                await fetch(`${API}/whatsapp/contacts/${contact.id}/read`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                // Update local state
+                setContacts(prev => prev.map(c => c.id === contact.id ? { ...c, unreadCount: 0 } : c));
+            } catch { }
+        }
+    };
+
+    const handleArchive = async (contactId: string, archive: boolean) => {
+        try {
+            await fetch(`${API}/whatsapp/contacts/${contactId}/archive`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ archived: archive }),
+            });
+            toast.success(archive ? 'Conversación archivada' : 'Conversación desarchivada');
+            if (selectedContact?.id === contactId) setSelectedContact(null);
+            fetchContacts();
+        } catch {
+            toast.error('Error al archivar');
+        }
     };
 
     const getInitials = (name: string) => {
@@ -112,11 +145,6 @@ const WhatsAppChat: React.FC = () => {
 
     const handleSendTemplate = async (template: any) => {
         if (!selectedContact || sending) return;
-        const needsMedia = ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType);
-        if (needsMedia && !mediaUrl.trim()) {
-            toast.error(`Esta plantilla requiere una URL de ${template.headerType === 'IMAGE' ? 'imagen' : template.headerType === 'VIDEO' ? 'video' : 'documento'}`);
-            return;
-        }
         setSending(true);
         try {
             const vars: any = {};
@@ -148,6 +176,25 @@ const WhatsAppChat: React.FC = () => {
     };
     const getTagStyle = (tag: string) => tagColors[tag.toLowerCase()] || tagColors.default;
 
+    const getLastMessagePreview = (contact: Contact): string => {
+        if (!contact.lastMessage) return contact.phone;
+        const lm = contact.lastMessage;
+        if (lm.bodyText) {
+            const txt = lm.bodyText.length > 45 ? lm.bodyText.substring(0, 45) + '…' : lm.bodyText;
+            return lm.direction === 'outgoing' ? `Tú: ${txt}` : txt;
+        }
+        if (lm.templateName) return `📋 ${lm.templateName}`;
+        return contact.phone;
+    };
+
+    const filterTabs: { key: ChatFilter; label: string; icon: React.ReactNode }[] = [
+        { key: 'all', label: 'Todos', icon: <Inbox className="w-3.5 h-3.5" /> },
+        { key: 'unread', label: 'No leídos', icon: <Mail className="w-3.5 h-3.5" /> },
+        { key: 'archived', label: 'Archivados', icon: <Archive className="w-3.5 h-3.5" /> },
+    ];
+
+    const unreadTotal = contacts.filter(c => (c.unreadCount || 0) > 0).length;
+
     return (
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden" style={{ height: 'calc(100vh - 280px)', minHeight: '500px' }}>
             <div className="flex h-full">
@@ -164,6 +211,29 @@ const WhatsAppChat: React.FC = () => {
                         </div>
                     </div>
 
+                    {/* Filter Tabs */}
+                    <div className="flex border-b border-gray-100 bg-gray-50/50">
+                        {filterTabs.map(tab => (
+                            <button
+                                key={tab.key}
+                                onClick={() => setActiveFilter(tab.key)}
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold transition-all relative ${
+                                    activeFilter === tab.key
+                                        ? 'text-green-700 bg-white border-b-2 border-green-500'
+                                        : 'text-gray-400 hover:text-gray-600 hover:bg-white/50'
+                                }`}
+                            >
+                                {tab.icon}
+                                {tab.label}
+                                {tab.key === 'unread' && unreadTotal > 0 && activeFilter !== 'unread' && (
+                                    <span className="absolute -top-0.5 right-2 bg-green-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-sm">
+                                        {unreadTotal > 9 ? '9+' : unreadTotal}
+                                    </span>
+                                )}
+                            </button>
+                        ))}
+                    </div>
+
                     {/* Contact List */}
                     <div className="flex-1 overflow-y-auto">
                         {loading ? (
@@ -171,11 +241,19 @@ const WhatsAppChat: React.FC = () => {
                         ) : filteredContacts.length === 0 ? (
                             <div className="p-8 text-center text-gray-400">
                                 <MessageCircle className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                                <p className="text-sm font-bold">Sin conversaciones</p>
+                                <p className="text-sm font-bold">
+                                    {activeFilter === 'unread' ? 'Sin mensajes no leídos' :
+                                     activeFilter === 'archived' ? 'Sin conversaciones archivadas' :
+                                     'Sin conversaciones'}
+                                </p>
                             </div>
                         ) : filteredContacts.map(contact => (
-                            <button key={contact.id} onClick={() => selectContact(contact)}
-                                className={`w-full px-4 py-3 flex items-start gap-3 hover:bg-gray-50 transition-colors text-left border-b border-gray-50 ${selectedContact?.id === contact.id ? 'bg-green-50/60 border-l-2 border-l-green-500' : ''}`}>
+                            <div key={contact.id}
+                                className={`group relative flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer border-b border-gray-50 ${
+                                    selectedContact?.id === contact.id ? 'bg-green-50/60 border-l-2 border-l-green-500' : ''
+                                } ${(contact.unreadCount || 0) > 0 ? 'bg-green-50/30' : ''}`}
+                                onClick={() => selectContact(contact)}
+                            >
                                 {/* Avatar */}
                                 <div className="relative flex-shrink-0">
                                     <div className="w-11 h-11 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">
@@ -186,10 +264,30 @@ const WhatsAppChat: React.FC = () => {
                                 {/* Info */}
                                 <div className="flex-1 min-w-0">
                                     <div className="flex justify-between items-start">
-                                        <p className="font-bold text-gray-900 text-sm truncate">{contact.name}</p>
-                                        <span className="text-[10px] text-gray-400 flex-shrink-0 ml-2">{formatTime(contact.createdAt)}</span>
+                                        <p className={`text-sm truncate ${(contact.unreadCount || 0) > 0 ? 'font-black text-gray-900' : 'font-bold text-gray-900'}`}>
+                                            {contact.name}
+                                        </p>
+                                        <span className={`text-[10px] flex-shrink-0 ml-2 ${(contact.unreadCount || 0) > 0 ? 'text-green-600 font-bold' : 'text-gray-400'}`}>
+                                            {contact.lastMessage ? formatTime(contact.lastMessage.createdAt) : formatTime(contact.createdAt)}
+                                        </span>
                                     </div>
-                                    <p className="text-xs text-gray-500 truncate mt-0.5">{contact.phone}</p>
+                                    <div className="flex justify-between items-center mt-0.5">
+                                        <p className={`text-xs truncate ${(contact.unreadCount || 0) > 0 ? 'text-gray-700 font-semibold' : 'text-gray-500'}`}>
+                                            {contact.lastMessage?.direction === 'outgoing' && (
+                                                <span className="text-blue-400 mr-0.5">
+                                                    {contact.lastMessage.status === 'read' ? '✓✓ ' : 
+                                                     contact.lastMessage.status === 'delivered' ? '✓✓ ' : 
+                                                     contact.lastMessage.status === 'failed' ? '✗ ' : '✓ '}
+                                                </span>
+                                            )}
+                                            {getLastMessagePreview(contact)}
+                                        </p>
+                                        {(contact.unreadCount || 0) > 0 && (
+                                            <span className="bg-green-500 text-white text-[10px] font-black min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center shadow-sm ml-1.5 flex-shrink-0">
+                                                {contact.unreadCount}
+                                            </span>
+                                        )}
+                                    </div>
                                     {contact.tags && contact.tags.length > 0 && (
                                         <div className="flex gap-1 mt-1.5 flex-wrap">
                                             {contact.tags.slice(0, 2).map(tag => (
@@ -201,13 +299,24 @@ const WhatsAppChat: React.FC = () => {
                                         </div>
                                     )}
                                 </div>
-                            </button>
+                                {/* Archive button on hover */}
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleArchive(contact.id, !contact.archivedAt); }}
+                                    className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-gray-200 text-gray-400 hover:text-gray-600"
+                                    title={contact.archivedAt ? 'Desarchivar' : 'Archivar'}
+                                >
+                                    {contact.archivedAt ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
+                                </button>
+                            </div>
                         ))}
                     </div>
 
                     {/* Footer Stats */}
                     <div className="px-4 py-2 border-t border-gray-100 bg-gray-50/50 flex justify-between">
                         <span className="text-[10px] text-gray-400 font-bold uppercase">{filteredContacts.length} contactos</span>
+                        {unreadTotal > 0 && activeFilter !== 'unread' && (
+                            <span className="text-[10px] text-green-600 font-bold">{unreadTotal} no leídos</span>
+                        )}
                     </div>
                 </div>
 
@@ -230,8 +339,14 @@ const WhatsAppChat: React.FC = () => {
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={() => handleArchive(selectedContact.id, !selectedContact.archivedAt)}
+                                        className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+                                        title={selectedContact.archivedAt ? 'Desarchivar' : 'Archivar'}
+                                    >
+                                        {selectedContact.archivedAt ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
+                                    </button>
                                     <button className="p-2 rounded-lg hover:bg-gray-100 text-gray-400"><Phone className="w-4 h-4" /></button>
-                                    <button className="p-2 rounded-lg hover:bg-gray-100 text-gray-400"><Search className="w-4 h-4" /></button>
                                     <button onClick={() => setShowContactInfo(!showContactInfo)}
                                         className={`p-2 rounded-lg transition-colors ${showContactInfo ? 'bg-green-100 text-green-600' : 'hover:bg-gray-100 text-gray-400'}`}>
                                         <User className="w-4 h-4" />
@@ -462,6 +577,12 @@ const WhatsAppChat: React.FC = () => {
                                     <span className="text-xs text-gray-400">Registrado</span>
                                     <span className="text-xs text-gray-600">{formatFullDate(selectedContact.createdAt)}</span>
                                 </div>
+                                {selectedContact.archivedAt && (
+                                    <div className="flex justify-between">
+                                        <span className="text-xs text-gray-400">Archivado</span>
+                                        <span className="text-xs text-amber-600 font-bold">Sí</span>
+                                    </div>
+                                )}
                                 {selectedContact.metadata && Object.entries(selectedContact.metadata).map(([k, v]) => (
                                     <div key={k} className="flex justify-between">
                                         <span className="text-xs text-gray-400 capitalize">{k.replace(/_/g, ' ')}</span>

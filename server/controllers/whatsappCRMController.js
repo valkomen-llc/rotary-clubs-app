@@ -230,7 +230,7 @@ export const verifyConfig = async (req, res) => {
 export const getContacts = async (req, res) => {
     try {
         const clubId = await resolveClubId(req);
-        const { search, status, listId, limit = 200, offset = 0 } = req.query;
+        const { search, status, listId, filter, limit = 200, offset = 0 } = req.query;
 
         let where = [`c."clubId"=$1`], params = [clubId], idx = 2;
         if (status && status !== 'all') { where.push(`c.status=$${idx++}`); params.push(status); }
@@ -238,6 +238,17 @@ export const getContacts = async (req, res) => {
             where.push(`(c.name ILIKE $${idx} OR c.phone ILIKE $${idx} OR c.email ILIKE $${idx})`);
             params.push(`%${search}%`); idx++;
         }
+        // Chat filters
+        if (filter === 'archived') {
+            where.push(`c."archivedAt" IS NOT NULL`);
+        } else if (filter === 'unread') {
+            where.push(`c."archivedAt" IS NULL`);
+            where.push(`EXISTS (SELECT 1 FROM "WhatsAppMessageLog" ml WHERE ml."contactId"=c.id AND ml.direction='incoming' AND ml."readAt" IS NULL)`);
+        } else if (filter !== 'all') {
+            // Default: non-archived
+            where.push(`(c."archivedAt" IS NULL)`);
+        }
+
         let joinClause = '';
         if (listId) { joinClause = `JOIN "ContactListMember" m ON m."contactId"=c.id AND m."listId"=$${idx++}`; params.push(listId); }
 
@@ -248,10 +259,23 @@ export const getContacts = async (req, res) => {
             `SELECT c.*,
                 COALESCE((SELECT json_agg(json_build_object('id',l.id,'name',l.name,'color',l.color))
                           FROM "ContactListMember" m2 JOIN "WhatsAppContactList" l ON l.id=m2."listId"
-                          WHERE m2."contactId"=c.id),'[]') as lists
+                          WHERE m2."contactId"=c.id),'[]') as lists,
+                (SELECT json_build_object(
+                    'bodyText', lm."bodyText",
+                    'templateName', lm."templateName",
+                    'direction', lm.direction,
+                    'status', lm.status,
+                    'createdAt', lm."createdAt"
+                ) FROM "WhatsAppMessageLog" lm 
+                WHERE lm."contactId"=c.id 
+                ORDER BY lm."createdAt" DESC LIMIT 1) as "lastMessage",
+                (SELECT COUNT(*)::int FROM "WhatsAppMessageLog" ml 
+                WHERE ml."contactId"=c.id AND ml.direction='incoming' AND ml."readAt" IS NULL) as "unreadCount"
              FROM "WhatsAppContact" c ${joinClause}
              WHERE ${where.join(' AND ')}
-             ORDER BY c."createdAt" DESC LIMIT $${idx++} OFFSET $${idx++}`,
+             ORDER BY 
+                COALESCE((SELECT MAX(lm2."createdAt") FROM "WhatsAppMessageLog" lm2 WHERE lm2."contactId"=c.id), c."createdAt") DESC
+             LIMIT $${idx++} OFFSET $${idx++}`,
             [...params, parseInt(limit), parseInt(offset)]
         );
         res.json({ contacts: result.rows, total: parseInt(countR.rows[0].count) });
@@ -305,6 +329,39 @@ export const updateContact = async (req, res) => {
         res.json(r.rows[0]);
     } catch (err) {
         console.error('WA updateContact:', err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
+export const archiveContact = async (req, res) => {
+    try {
+        const clubId = await resolveClubId(req);
+        const { id } = req.params;
+        const { archived } = req.body;
+        const archivedAt = archived ? 'NOW()' : 'NULL';
+        const r = await db.query(
+            `UPDATE "WhatsAppContact" SET "archivedAt"=${archivedAt},"updatedAt"=NOW() WHERE id=$1 AND "clubId"=$2 RETURNING *`,
+            [id, clubId]
+        );
+        if (!r.rows.length) return res.status(404).json({ error: 'Contacto no encontrado' });
+        res.json(r.rows[0]);
+    } catch (err) {
+        console.error('WA archiveContact:', err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
+export const markMessagesRead = async (req, res) => {
+    try {
+        const clubId = await resolveClubId(req);
+        const { id } = req.params;
+        await db.query(
+            `UPDATE "WhatsAppMessageLog" SET "readAt"=NOW() WHERE "contactId"=$1 AND "clubId"=$2 AND direction='incoming' AND "readAt" IS NULL`,
+            [id, clubId]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.error('WA markMessagesRead:', err);
         res.status(500).json({ error: err.message });
     }
 };
@@ -1185,6 +1242,7 @@ export const ensureWATables = async () => {
             // Ensure indexes and new columns exist (idempotent migrations)
             await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_template_meta_id ON "WhatsAppTemplate" ("metaTemplateId") WHERE "metaTemplateId" IS NOT NULL`).catch(() => {});
             await db.query(`ALTER TABLE "WhatsAppMessageLog" ADD COLUMN IF NOT EXISTS direction VARCHAR(20) DEFAULT 'outgoing'`).catch(() => {});
+            await db.query(`ALTER TABLE "WhatsAppContact" ADD COLUMN IF NOT EXISTS "archivedAt" TIMESTAMPTZ DEFAULT NULL`).catch(() => {});
             return;
         }
 

@@ -14,6 +14,8 @@ import {
     getContacts,
     createContact,
     updateContact,
+    archiveContact,
+    markMessagesRead,
     deleteContact,
     getContactMessages,
     sendMessageToContact,
@@ -69,6 +71,8 @@ router.post('/config/verify', verifyConfig);
 router.get('/contacts', getContacts);
 router.post('/contacts', createContact);
 router.put('/contacts/:id', updateContact);
+router.post('/contacts/:id/archive', archiveContact);
+router.post('/contacts/:id/read', markMessagesRead);
 router.delete('/contacts/:id', deleteContact);
 router.get('/contacts/:id/messages', getContactMessages);
 router.post('/contacts/:id/send', sendMessageToContact);
