@@ -278,40 +278,15 @@ export const sendMessageToContact = async (req, res) => {
         // Build components for send
         const components = [];
 
-        // Handle templates with media headers (IMAGE, VIDEO, DOCUMENT)
-        if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
+        // Handle templates with media headers — only add header component if user provides a mediaUrl
+        // If no mediaUrl, Meta uses the original media uploaded when the template was created
+        if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType) && vars.mediaUrl) {
             const mediaType = template.headerType === 'IMAGE' ? 'image'
                 : template.headerType === 'VIDEO' ? 'video' : 'document';
-
-            // Priority: user-provided mediaUrl > Meta header_handle
-            if (vars.mediaUrl) {
-                components.push({
-                    type: 'header',
-                    parameters: [{ type: mediaType, [mediaType]: { link: vars.mediaUrl } }],
-                });
-            } else {
-                try {
-                    const metaTmpl = await metaApiCall({
-                        path: `/${config.wabaId}/message_templates?name=${template.name}&fields=components`,
-                        token: config.accessToken,
-                    });
-                    const metaTemplate = metaTmpl?.data?.[0];
-                    if (metaTemplate) {
-                        const headerComp = metaTemplate.components?.find(c => c.type === 'HEADER');
-                        const headerUrl = headerComp?.example?.header_url?.[0];
-                        const headerHandle = headerComp?.example?.header_handle?.[0];
-                        const mediaRef = headerUrl || headerHandle;
-                        if (mediaRef) {
-                            const mediaParam = mediaRef.startsWith('http')
-                                ? { type: mediaType, [mediaType]: { link: mediaRef } }
-                                : { type: mediaType, [mediaType]: { id: mediaRef } };
-                            components.push({ type: 'header', parameters: [mediaParam] });
-                        }
-                    }
-                } catch (metaErr) {
-                    console.error('WA fetchMetaTemplate for header:', metaErr.message);
-                }
-            }
+            components.push({
+                type: 'header',
+                parameters: [{ type: mediaType, [mediaType]: { link: vars.mediaUrl } }],
+            });
         }
 
         // Add body components if we have vars (exclude mediaUrl from body params)
@@ -819,40 +794,16 @@ export const sendCampaign = async (req, res) => {
         const vars = (() => { try { return JSON.parse(campaign.templateVars || '{}'); } catch { return {}; } })();
         let sent = 0, failed = 0;
 
-        // Build header component for media templates (once, reused for all contacts)
+        // Build header component — only if user provides a mediaUrl
+        // If no mediaUrl, Meta uses the original media uploaded when the template was created
         const headerComponents = [];
-        if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
+        if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType) && vars.mediaUrl) {
             const mediaType = template.headerType === 'IMAGE' ? 'image'
                 : template.headerType === 'VIDEO' ? 'video' : 'document';
-
-            if (vars.mediaUrl) {
-                headerComponents.push({
-                    type: 'header',
-                    parameters: [{ type: mediaType, [mediaType]: { link: vars.mediaUrl } }],
-                });
-            } else {
-                try {
-                    const metaTmpl = await metaApiCall({
-                        path: `/${config.wabaId}/message_templates?name=${template.name}&fields=components`,
-                        token: config.accessToken,
-                    });
-                    const metaTemplate = metaTmpl?.data?.[0];
-                    if (metaTemplate) {
-                        const headerComp = metaTemplate.components?.find(c => c.type === 'HEADER');
-                        const headerUrl = headerComp?.example?.header_url?.[0];
-                        const headerHandle = headerComp?.example?.header_handle?.[0];
-                        const mediaRef = headerUrl || headerHandle;
-                        if (mediaRef) {
-                            const mediaParam = mediaRef.startsWith('http')
-                                ? { type: mediaType, [mediaType]: { link: mediaRef } }
-                                : { type: mediaType, [mediaType]: { id: mediaRef } };
-                            headerComponents.push({ type: 'header', parameters: [mediaParam] });
-                        }
-                    }
-                } catch (metaErr) {
-                    console.error('WA sendCampaign fetchMetaTemplate header:', metaErr.message);
-                }
-            }
+            headerComponents.push({
+                type: 'header',
+                parameters: [{ type: mediaType, [mediaType]: { link: vars.mediaUrl } }],
+            });
         }
         const bodyVars = { ...vars };
         delete bodyVars.mediaUrl;
