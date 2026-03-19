@@ -1070,7 +1070,20 @@ export const handleWebhook = async (req, res) => {
                 if (!logR.rows.length) continue;
                 const log = logR.rows[0];
                 const tsField = `"${status}At"`;
-                await db.query(`UPDATE "WhatsAppMessageLog" SET status=$1,${tsField}=$2,"updatedAt"=NOW() WHERE "messageId"=$3`, [status, ts, s.id]);
+
+                // Capture error details if failed
+                const errorCode = s.errors?.[0]?.code || null;
+                const errorMsg = s.errors?.[0]?.title || s.errors?.[0]?.message || null;
+                if (status === 'failed' && (errorCode || errorMsg)) {
+                    await db.query(
+                        `UPDATE "WhatsAppMessageLog" SET status='failed',"failedAt"=$1,"errorCode"=$2,"errorMessage"=$3,"updatedAt"=NOW() WHERE "messageId"=$4`,
+                        [ts, String(errorCode), errorMsg, s.id]
+                    );
+                    console.error(`[WA Webhook] Message failed: ${s.id} - Code: ${errorCode} - ${errorMsg}`);
+                } else {
+                    await db.query(`UPDATE "WhatsAppMessageLog" SET status=$1,${tsField}=$2,"updatedAt"=NOW() WHERE "messageId"=$3`, [status, ts, s.id]);
+                }
+
                 if (log.campaignId && ['delivered', 'read', 'failed'].includes(status)) {
                     const cf = status === 'read' ? '"read"' : status;
                     await db.query(`UPDATE "WhatsAppCampaign" SET ${cf}=${cf}+1,"updatedAt"=NOW() WHERE id=$1`, [log.campaignId]).catch(() => {});
