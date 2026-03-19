@@ -77,26 +77,34 @@ async function uploadMediaToMeta({ url, type, phoneNumberId, token }) {
 /**
  * Build the header component for a media template.
  * Strategy: always upload media to Meta to get a valid media_id.
+ * Priority: user mediaUrl > saved headerContent > Meta API lookup
  */
 async function buildMediaHeader({ template, mediaUrl, config }) {
     const mediaType = template.headerType === 'IMAGE' ? 'image'
         : template.headerType === 'VIDEO' ? 'video' : 'document';
 
-    // Option 1: User provided a mediaUrl — download and upload to Meta
-    if (mediaUrl) {
+    // Collect candidate URLs (prioritized)
+    const candidates = [];
+    if (mediaUrl) candidates.push({ src: 'user', url: mediaUrl });
+    if (template.headerContent && template.headerContent.startsWith('http')) {
+        candidates.push({ src: 'saved', url: template.headerContent });
+    }
+
+    // Try each candidate URL — download and upload to Meta
+    for (const { src, url } of candidates) {
         try {
+            console.log(`[WA] Trying ${src} media: ${url.substring(0, 70)}...`);
             const mediaId = await uploadMediaToMeta({
-                url: mediaUrl, type: mediaType,
+                url, type: mediaType,
                 phoneNumberId: config.phoneNumberId, token: config.accessToken,
             });
             return [{ type: 'header', parameters: [{ type: mediaType, [mediaType]: { id: mediaId } }] }];
         } catch (err) {
-            console.error('[WA] Upload user media failed:', err.message);
-            // Fall through to try header_url from Meta
+            console.error(`[WA] ${src} media upload failed:`, err.message);
         }
     }
 
-    // Option 2: Get header_url from Meta template, download it and re-upload
+    // Fallback: fetch header_url from Meta template API
     try {
         const metaTmpl = await metaApiCall({
             path: `/${config.wabaId}/message_templates?name=${template.name}&fields=components`,
@@ -106,10 +114,7 @@ async function buildMediaHeader({ template, mediaUrl, config }) {
         if (metaTemplate) {
             const headerComp = metaTemplate.components?.find(c => c.type === 'HEADER');
             const headerUrl = headerComp?.example?.header_url?.[0];
-            const headerHandle = headerComp?.example?.header_handle?.[0];
-            console.log('[WA] Template header — url:', headerUrl?.substring(0, 60), '| handle:', headerHandle?.substring(0, 40));
-
-            // If there's a header_url, download and re-upload to Meta
+            console.log('[WA] Meta API header_url:', headerUrl?.substring(0, 60));
             if (headerUrl) {
                 try {
                     const mediaId = await uploadMediaToMeta({
@@ -118,14 +123,8 @@ async function buildMediaHeader({ template, mediaUrl, config }) {
                     });
                     return [{ type: 'header', parameters: [{ type: mediaType, [mediaType]: { id: mediaId } }] }];
                 } catch (err) {
-                    console.error('[WA] Upload header_url failed:', err.message);
+                    console.error('[WA] Meta header_url upload failed:', err.message);
                 }
-            }
-
-            // Last resort: try header_handle as-is (may or may not work)
-            if (headerHandle) {
-                console.log('[WA] Trying header_handle as id (last resort)');
-                return [{ type: 'header', parameters: [{ type: mediaType, [mediaType]: { id: headerHandle } }] }];
             }
         }
     } catch (err) {
@@ -738,6 +737,17 @@ export const syncTemplatesFromMeta = async (req, res) => {
             const footerComp = t.components?.find(c => c.type === 'FOOTER');
             const buttonComp = t.components?.find(c => c.type === 'BUTTONS');
             const displayName = t.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+            // Save media URL from header example (header_url or header_handle)
+            let headerContent = headerComp?.text || null;
+            if (headerComp?.format && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerComp.format)) {
+                const hUrl = headerComp.example?.header_url?.[0];
+                const hHandle = headerComp.example?.header_handle?.[0];
+                // Save the URL or handle for later use when sending
+                headerContent = hUrl || hHandle || null;
+                console.log(`[WA Sync] Template ${t.name}: header ${headerComp.format} -> ${(headerContent || 'none').substring(0, 60)}`);
+            }
+
             try {
                 // Check if template already exists by metaTemplateId
                 const existing = await db.query(
@@ -751,7 +761,7 @@ export const syncTemplatesFromMeta = async (req, res) => {
                          "footerText"=$5,buttons=$6,category=$7,language=$8,"displayName"=$9,"updatedAt"=NOW()
                          WHERE "metaTemplateId"=$10 AND "clubId"=$11`,
                         [t.status?.toLowerCase() || 'pending', bodyComp?.text || '', headerComp?.format || null,
-                         headerComp?.text || null, footerComp?.text || null, JSON.stringify(buttonComp?.buttons || []),
+                         headerContent, footerComp?.text || null, JSON.stringify(buttonComp?.buttons || []),
                          t.category, t.language, displayName, t.id, clubId]
                     );
                 } else {
@@ -760,7 +770,7 @@ export const syncTemplatesFromMeta = async (req, res) => {
                         `INSERT INTO "WhatsAppTemplate" ("clubId",name,"displayName",category,language,status,"headerType","headerContent","bodyText","footerText",buttons,"metaTemplateId")
                          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
                         [clubId, t.name, displayName, t.category, t.language, t.status?.toLowerCase() || 'pending',
-                         headerComp?.format || null, headerComp?.text || null, bodyComp?.text || '',
+                         headerComp?.format || null, headerContent, bodyComp?.text || '',
                          footerComp?.text || null, JSON.stringify(buttonComp?.buttons || []), t.id]
                     );
                 }
