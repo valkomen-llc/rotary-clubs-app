@@ -856,7 +856,17 @@ export const sendCampaign = async (req, res) => {
         const templatePayload = { name: template.name, language: { code: template.language } };
         if (allComponents.length > 0) templatePayload.components = allComponents;
 
-        for (const contact of contacts) {
+        // Check which contacts were already sent (in case of retry after timeout)
+        const alreadySentR = await db.query(
+            `SELECT "contactId" FROM "WhatsAppMessageLog" WHERE "campaignId"=$1 AND status IN ('sent','delivered','read')`,
+            [id]
+        );
+        const alreadySentIds = new Set(alreadySentR.rows.map(r => r.contactId));
+        const pendingContacts = contacts.filter(c => !alreadySentIds.has(c.id));
+
+        // Send in parallel batches (10 concurrent) to fit within Vercel timeout
+        const BATCH_SIZE = 10;
+        const sendOne = async (contact) => {
             try {
                 const apiRes = await metaApiCall({
                     method: 'POST',
@@ -876,17 +886,29 @@ export const sendCampaign = async (req, res) => {
                     [clubId, id, contact.id, contact.phone, messageId || null, template.name]
                 );
                 await db.query(`UPDATE "WhatsAppContact" SET "totalSent"="totalSent"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
-                sent++;
+                return { ok: true };
             } catch (err) {
-                failed++;
                 await db.query(
                     `INSERT INTO "WhatsAppMessageLog" ("clubId","campaignId","contactId",phone,"templateName",status,"errorMessage","failedAt")
                      VALUES ($1,$2,$3,$4,$5,'failed',$6,NOW())`,
                     [clubId, id, contact.id, contact.phone, template.name, err.message]
-                );
-                await db.query(`UPDATE "WhatsAppContact" SET "totalFailed"="totalFailed"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
+                ).catch(() => {});
+                await db.query(`UPDATE "WhatsAppContact" SET "totalFailed"="totalFailed"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]).catch(() => {});
+                return { ok: false };
+            }
+        };
+
+        for (let i = 0; i < pendingContacts.length; i += BATCH_SIZE) {
+            const batch = pendingContacts.slice(i, i + BATCH_SIZE);
+            const results = await Promise.allSettled(batch.map(c => sendOne(c)));
+            for (const r of results) {
+                if (r.status === 'fulfilled' && r.value.ok) sent++;
+                else failed++;
             }
         }
+
+        // Include previously sent contacts in totals
+        sent += alreadySentIds.size;
 
         // Update campaign with final stats
         const finalStatus = failed === contacts.length ? 'failed' : 'sent';
