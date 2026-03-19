@@ -758,6 +758,11 @@ export const updateCampaign = async (req, res) => {
                 scheduledAt, status, req.params.id, await resolveClubId(req)]
         );
         if (!r.rows.length) return res.status(404).json({ error: 'Campaña no encontrada' });
+        // If resetting to draft, clean up failed logs so campaign can be re-sent
+        if (status === 'draft') {
+            await db.query(`DELETE FROM "WhatsAppMessageLog" WHERE "campaignId"=$1 AND status='failed'`, [req.params.id]).catch(() => {});
+            await db.query(`UPDATE "WhatsAppCampaign" SET sent=0,failed=0,"totalContacts"=0,"sentAt"=NULL,"updatedAt"=NOW() WHERE id=$1`, [req.params.id]).catch(() => {});
+        }
         res.json(r.rows[0]);
     } catch (err) {
         console.error('WA updateCampaign:', err);
