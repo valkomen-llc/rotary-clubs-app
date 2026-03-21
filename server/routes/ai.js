@@ -192,6 +192,41 @@ function formatContextBlock(ctx) {
     return lines.join('\n');
 }
 
+// ── Debug: Test club resolution ──────────────────────────────────────────
+router.get('/debug-club', async (req, res) => {
+    const hostname = req.query.hostname || 'unknown';
+    const cleanHost = hostname.replace('www.', '').toLowerCase();
+    try {
+        const allClubs = await db.query('SELECT id, name, domain, subdomain FROM "Club" ORDER BY name');
+        const matchQuery = await db.query(
+            `SELECT id, name, domain, subdomain,
+                CASE 
+                    WHEN LOWER(domain) = $1 THEN 1
+                    WHEN LOWER(subdomain) = $1 THEN 2
+                    WHEN $1 LIKE '%' || LOWER(subdomain) || '%' THEN 3
+                    ELSE 4
+                END as priority
+             FROM "Club" 
+             WHERE LOWER(domain) = $1 
+                OR LOWER(subdomain) = $1
+                OR $1 LIKE '%' || LOWER(subdomain) || '%'
+             ORDER BY priority ASC, LENGTH(subdomain) DESC
+             LIMIT 1`,
+            [cleanHost]
+        ).catch(e => ({ rows: [], error: e.message }));
+
+        res.json({
+            hostname,
+            cleanHost,
+            allClubs: allClubs.rows,
+            resolved: matchQuery.rows[0] || null,
+            queryError: matchQuery.error || null,
+        });
+    } catch (e) {
+        res.json({ error: e.message, hostname });
+    }
+});
+
 // ── Agent Chat for Mission Control ─────────────────────────────────────────
 router.post('/agent-chat', authMiddleware, async (req, res) => {
     const { message, agentId, history, hostname } = req.body;
