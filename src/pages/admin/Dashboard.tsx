@@ -5,8 +5,11 @@ import { ExternalLink } from 'lucide-react';
 import MissionControl from '../../components/admin/MissionControl';
 import AgentProgressBar from '../../components/admin/AgentProgressBar';
 import AgentActivityDashboard from '../../components/admin/AgentActivityDashboard';
+import { useAuth } from '../../hooks/useAuth';
 
 const Dashboard: React.FC = () => {
+    const { user } = useAuth();
+    const isSuperAdmin = user?.role === 'administrator';
 
     return (
         <AdminLayout>
@@ -19,16 +22,17 @@ const Dashboard: React.FC = () => {
                 </div>
             </div>
 
-            {/* Mission Control — AI Agents Panel */}
-            <MissionControl />
-
-            {/* Agent Activity Dashboard */}
-            <div className="mt-8">
-                <AgentActivityDashboard />
-            </div>
+            {/* Mission Control — Only for Super Admins */}
+            {isSuperAdmin && (
+                <>
+                    <MissionControl />
+                    <div className="mt-8">
+                        <AgentActivityDashboard />
+                    </div>
+                </>
+            )}
         </AdminLayout>
     );
 };
 
 export default Dashboard;
-

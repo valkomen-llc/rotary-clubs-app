@@ -496,6 +496,184 @@ INSTRUCCIONES DE RESPUESTA:
     }
 });
 
+// ══════════════════════════════════════════════════════════════════════════
+// ── UNIFIED ASSISTANT CHAT for Club Admins  ───────────────────────────
+// ══════════════════════════════════════════════════════════════════════════
+router.post('/assistant-chat', authMiddleware, async (req, res) => {
+    const { message, history, hostname } = req.body;
+    if (!message) return res.status(400).json({ error: 'message is required' });
+
+    const agentName = 'ClubAssist';
+
+    try {
+        // ── Resolve clubId by hostname ──
+        let clubId = req.user.clubId;
+        if (!clubId && hostname) {
+            try {
+                const cleanHost = hostname.replace('www.', '').toLowerCase();
+                const clubR = await db.query(
+                    `SELECT id, name FROM "Club"
+                     WHERE LOWER(domain) = $1 OR LOWER(subdomain) = $1
+                        OR $1 LIKE '%' || LOWER(subdomain) || '%'
+                     ORDER BY CASE WHEN LOWER(domain) = $1 THEN 1 WHEN LOWER(subdomain) = $1 THEN 2 ELSE 3 END,
+                              LENGTH(subdomain) DESC
+                     LIMIT 1`,
+                    [cleanHost]
+                );
+                if (clubR.rows.length > 0) clubId = clubR.rows[0].id;
+            } catch (_) {}
+        }
+
+        // ── Build rich context ──
+        const clubContext = await buildClubContext(clubId);
+        const contextBlock = formatContextBlock(clubContext);
+
+        // ── Get ALL tools (unified assistant has all capabilities) ──
+        const allCapabilities = ['create_posts', 'create_projects', 'calendar', 'manage_projects',
+            'publish_content', 'brand_guidelines', 'design_assets', 'distribute_site_images',
+            'approve_site_images', 'manage_site_config', 'analytics'];
+        const agentTools = getToolsForAgent(allCapabilities);
+        const toolsSummary = getToolsSummary(allCapabilities);
+
+        // ── Club identity ──
+        const clubIdentity = clubContext.clubName && clubContext.clubName !== 'tu club'
+            ? `⚠️ IMPORTANTE: Trabajas para el club "${clubContext.clubName}". NUNCA menciones otro club ni inventes nombres. Usa SIEMPRE "${clubContext.clubName}" cuando te refieras al club.`
+            : '';
+
+        const systemPrompt = `${clubIdentity}
+
+Tu nombre es ClubAssist. Eres el asistente inteligente de gestión del club Rotario. Tu personalidad es profesional, eficiente y proactiva.
+
+Puedes realizar las siguientes acciones:
+- 📰 Crear y publicar noticias
+- 🚀 Crear proyectos de servicio
+- 📅 Programar eventos en el calendario
+- 📱 Crear publicaciones para redes sociales
+- ⚙️ Configurar ajustes del sitio web
+- 📊 Consultar analíticas y estadísticas del club
+
+${contextBlock}
+${toolsSummary}
+
+INSTRUCCIONES:
+- Responde SIEMPRE en español, de forma concisa y amigable (máximo 3 párrafos).
+- Usa emojis con moderación para dar calidez.
+- Cuando sea relevante, CITA datos reales del club (proyectos, noticias, eventos).
+- Cuando el usuario pida crear algo, EJECUTA la herramienta directamente sin pedir confirmación.
+- Si no puedes hacer algo, sugiere alternativas.
+- SIEMPRE que menciones el club, usa: "${clubContext.clubName}".
+- Fecha actual: ${new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}.`;
+
+        // ── Build messages ──
+        const messages = [{ role: 'system', content: systemPrompt }];
+        if (Array.isArray(history)) {
+            history.slice(-8).forEach(h => messages.push({
+                role: h.role === 'assistant' ? 'assistant' : 'user',
+                content: h.text,
+            }));
+        }
+        messages.push({ role: 'user', content: message });
+
+        // ── Try multi-model router (Gemini, etc.) ──
+        const defaultSlug = await getDefaultModel();
+        if (defaultSlug) {
+            try {
+                const reply = await routeToModel(defaultSlug, systemPrompt, message);
+                if (reply && reply.trim().length > 10) {
+                    return res.json({ reply, agentName, model: defaultSlug, contextInjected: true });
+                }
+            } catch (routerErr) {
+                console.log(`[assistant-chat] Router error: ${routerErr.message}`);
+            }
+        }
+
+        // ── OpenAI with function calling ──
+        if (process.env.OPENAI_API_KEY) {
+            const openaiPayload = { model: 'gpt-3.5-turbo', messages, max_tokens: 800, temperature: 0.7 };
+            if (agentTools.length > 0) {
+                openaiPayload.tools = agentTools;
+                openaiPayload.tool_choice = 'auto';
+            }
+
+            const oaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+                body: JSON.stringify(openaiPayload),
+            });
+            const oaiData = await oaiRes.json();
+            const choice = oaiData.choices?.[0];
+
+            // Handle tool call
+            if (choice?.finish_reason === 'tool_calls' || choice?.message?.tool_calls?.length > 0) {
+                const toolCall = choice.message.tool_calls[0];
+                const toolName = toolCall.function.name;
+                const toolArgs = JSON.parse(toolCall.function.arguments || '{}');
+                const toolResult = await executeTool(toolName, toolArgs, req.user.id, clubId);
+                const workflowSuggestions = getWorkflowSuggestions(toolName);
+
+                // Log activity
+                db.query(`
+                    INSERT INTO "AgentActivity" ("agentId", "agentName", "userId", "clubId", action, tool, details, success)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                    ['assistant', agentName, req.user.id, clubId, 'tool_execution', toolName, JSON.stringify(toolArgs), toolResult.success]
+                ).catch(() => {});
+
+                // Get natural language summary
+                messages.push(choice.message);
+                messages.push({ role: 'tool', tool_call_id: toolCall.id, content: JSON.stringify(toolResult) });
+                const sumRes = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+                    body: JSON.stringify({ model: 'gpt-3.5-turbo', messages, max_tokens: 400, temperature: 0.7 }),
+                });
+                const sumData = await sumRes.json();
+                const summary = sumData.choices?.[0]?.message?.content || (toolResult.success ? '✅ Acción completada.' : '❌ No se pudo completar.');
+
+                return res.json({
+                    reply: summary,
+                    agentName,
+                    toolExecuted: {
+                        name: toolName,
+                        success: toolResult.success,
+                        action: toolName.replace(/_/g, ' '),
+                        emoji: toolResult.success ? '✅' : '❌',
+                        label: toolName.replace(/_/g, ' ').toUpperCase(),
+                        message: toolResult.message || (toolResult.success ? 'Acción completada' : 'Error en la acción'),
+                        data: toolResult.data,
+                    },
+                    workflowSuggestions,
+                    contextInjected: true,
+                });
+            }
+
+            // Regular text response
+            return res.json({
+                reply: choice?.message?.content || 'No pude generar una respuesta.',
+                agentName,
+                contextInjected: true,
+            });
+        }
+
+        // ── Fallback (no AI configured) ──
+        let fallback = `¡Hola! Soy ${agentName} 🔧 `;
+        if (clubContext.projects.length > 0) {
+            fallback += `Tu club "${clubContext.clubName}" tiene ${clubContext.projects.length} proyecto(s). `;
+        }
+        if (clubContext.posts.length > 0) {
+            fallback += `Última noticia: "${clubContext.posts[0]?.title}". `;
+        }
+        fallback += `Para habilitar respuestas inteligentes, configura una API de IA en Integraciones.`;
+        res.json({ reply: fallback, agentName, contextInjected: true });
+
+    } catch (error) {
+        console.error('[assistant-chat] Error:', error);
+        res.json({
+            reply: `¡Hola! Soy ${agentName} 🔧 Estoy teniendo problemas técnicos. ¿Podrías intentar de nuevo?`,
+            agentName,
+            error: error.message,
+        });
+    }
+});
 
 router.post('/onboarding-chat', authMiddleware, async (req, res) => {
     const { message, step } = req.body;
