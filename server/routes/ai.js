@@ -74,20 +74,21 @@ async function buildClubContext(clubId) {
     if (!clubId) return ctx;
 
     try {
-        // All queries in parallel for speed
+        // All queries in parallel for speed — each has its own catch to prevent cascade failures
         const [clubR, projR, postsR, eventsR, knowledgeR, settingsR, membersR] = await Promise.all([
-            db.query('SELECT name, city, country, district, description, subdomain FROM "Club" WHERE id = $1', [clubId]),
+            db.query('SELECT name, city, country, district, description, subdomain FROM "Club" WHERE id = $1', [clubId])
+                .catch(() => ({ rows: [] })),
             db.query(
                 `SELECT title, category, status, ubicacion, beneficiarios, meta, recaudado,
                         COALESCE(impacto, '') as impacto
-                 FROM "Project" WHERE "clubId" = $1 AND "deletedAt" IS NULL
+                 FROM "Project" WHERE "clubId" = $1
                  ORDER BY "createdAt" DESC LIMIT 10`, [clubId]
-            ),
+            ).catch(() => ({ rows: [] })),
             db.query(
                 `SELECT title, category, published, "createdAt"
                  FROM "Post" WHERE ("clubId" = $1 OR "clubId" IS NULL) AND published = true
                  ORDER BY "createdAt" DESC LIMIT 8`, [clubId]
-            ),
+            ).catch(() => ({ rows: [] })),
             db.query(
                 `SELECT title, description, "startDate", "endDate"
                  FROM "CalendarEvent" WHERE "clubId" = $1 AND "startDate" >= NOW() - INTERVAL '7 days'
@@ -199,9 +200,9 @@ router.post('/agent-chat', authMiddleware, async (req, res) => {
     let agentName, agentPersona, aiModel = 'gpt-3.5-turbo';
     let agentCapabilities = [];
 
-    // Try to find agent in DB first
+    // Try to find agent in DB first (by UUID id)
     try {
-        const dbAgent = await db.query('SELECT * FROM "Agent" WHERE id = $1 OR LOWER(name) = $1', [agentId]);
+        const dbAgent = await db.query('SELECT * FROM "Agent" WHERE id::text = $1', [agentId]);
         if (dbAgent.rows.length > 0) {
             const a = dbAgent.rows[0];
             agentName = a.name;
@@ -209,14 +210,37 @@ router.post('/agent-chat', authMiddleware, async (req, res) => {
             agentCapabilities = a.capabilities || [];
             aiModel = a.aiModel === 'gpt-4' ? 'gpt-4' : a.aiModel === 'gpt-3.5' ? 'gpt-3.5-turbo' : a.aiModel || 'gpt-3.5-turbo';
         }
-    } catch (_) { }
+    } catch (dbErr) {
+        console.log('[agent-chat] DB lookup failed:', dbErr.message);
+    }
 
-    // Fallback to hardcoded agents
+    // Try by name if UUID lookup didn't work
+    if (!agentPersona) {
+        try {
+            const dbAgent = await db.query('SELECT * FROM "Agent" WHERE LOWER(name) = LOWER($1)', [agentId]);
+            if (dbAgent.rows.length > 0) {
+                const a = dbAgent.rows[0];
+                agentName = a.name;
+                agentPersona = a.systemPrompt;
+                agentCapabilities = a.capabilities || [];
+                aiModel = a.aiModel || 'gpt-3.5-turbo';
+            }
+        } catch (_) {}
+    }
+
+    // Fallback to hardcoded onboarding agents
     if (!agentPersona) {
         const agent = MISSION_AGENTS[agentId];
-        if (!agent) return res.status(404).json({ error: 'Agent not found' });
-        agentName = agent.name;
-        agentPersona = agent.persona;
+        if (agent) {
+            agentName = agent.name;
+            agentPersona = agent.persona;
+        }
+    }
+
+    // Last resort: generic assistant
+    if (!agentPersona) {
+        agentName = 'Asistente';
+        agentPersona = 'Eres un asistente amigable del club Rotario. Ayudas con preguntas generales sobre el club, sus proyectos y actividades. Responde siempre en español de forma concisa y profesional.';
     }
 
     // ── Build rich context from real club data ──
@@ -386,7 +410,12 @@ INSTRUCCIONES DE RESPUESTA:
         res.json({ reply: fallbackReply, agentName, contextInjected: true });
     } catch (error) {
         console.error('Agent chat error:', error);
-        res.status(500).json({ error: 'Error en el agente IA' });
+        res.json({
+            reply: `¡Hola! Soy ${agentName || 'tu asistente'} 👋 Estoy teniendo problemas técnicos en este momento. ¿Podrías intentar de nuevo en unos segundos?`,
+            agentName: agentName || 'Asistente',
+            contextInjected: false,
+            error: error.message,
+        });
     }
 });
 
