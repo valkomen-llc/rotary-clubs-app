@@ -335,7 +335,14 @@ router.post('/agent-chat', authMiddleware, async (req, res) => {
     const agentTools = getToolsForAgent(agentCapabilities);
     const toolsSummary = getToolsSummary(agentCapabilities);
 
-    const systemPrompt = `${agentPersona}
+    // Force the club name into the prompt to prevent AI hallucination
+    const clubIdentity = clubContext.clubName && clubContext.clubName !== 'tu club'
+        ? `⚠️ IMPORTANTE: PERTENECES AL CLUB "${clubContext.clubName}"${clubContext.location ? ` en ${clubContext.location}` : ''}. NUNCA menciones otro club ni inventes nombres de club. Siempre que te presentes o menciones el club, usa EXACTAMENTE el nombre "${clubContext.clubName}".`
+        : '';
+
+    const systemPrompt = `${clubIdentity}
+
+${agentPersona}
 ${contextBlock}
 ${capabilityHints}
 ${toolsSummary}
@@ -345,6 +352,7 @@ INSTRUCCIONES DE RESPUESTA:
 - Usa emojis con moderación para dar calidez.
 - Cuando sea relevante, CITA datos reales del club (proyectos, noticias, eventos).
 - Si el usuario pregunta algo que no está en el contexto, indica que puedes ayudar a crear ese contenido.
+- SIEMPRE que menciones el club, usa el nombre EXACTO: "${clubContext.clubName}". NUNCA digas un nombre de club diferente.
 - Fecha actual: ${new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}.`;
 
     const messages = [{ role: 'system', content: systemPrompt }];
