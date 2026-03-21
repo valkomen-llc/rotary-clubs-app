@@ -329,6 +329,7 @@ const MissionControl: React.FC = () => {
                     message: userMsg + (currentAttachment ? ` [Archivo adjunto: ${currentAttachment.name}]` : ''),
                     agentId: chatAgent.id,
                     history: messages.map(m => ({ role: m.role, text: m.text })),
+                    hostname: window.location.hostname,
                 }),
             });
             const data = await res.json();

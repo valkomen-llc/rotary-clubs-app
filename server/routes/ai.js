@@ -194,11 +194,30 @@ function formatContextBlock(ctx) {
 
 // ── Agent Chat for Mission Control ─────────────────────────────────────────
 router.post('/agent-chat', authMiddleware, async (req, res) => {
-    const { message, agentId, history } = req.body;
+    const { message, agentId, history, hostname } = req.body;
     if (!message || !agentId) return res.status(400).json({ error: 'message and agentId are required' });
 
     let agentName, agentPersona, aiModel = 'gpt-3.5-turbo';
     let agentCapabilities = [];
+
+    // ── Resolve clubId: from JWT first, then by hostname ──
+    let clubId = req.user.clubId;
+    if (!clubId && hostname) {
+        try {
+            const clubR = await db.query(
+                `SELECT id FROM "Club" WHERE domain = $1 OR subdomain = $1 
+                 OR domain = $2 OR $1 LIKE '%' || subdomain || '%'
+                 LIMIT 1`,
+                [hostname, hostname.replace('www.', '')]
+            );
+            if (clubR.rows.length > 0) {
+                clubId = clubR.rows[0].id;
+                console.log(`[agent-chat] Resolved club by hostname "${hostname}" → ${clubId}`);
+            }
+        } catch (e) {
+            console.log('[agent-chat] Club hostname resolution failed:', e.message);
+        }
+    }
 
     // Try to find agent in DB first (by UUID id)
     try {
@@ -209,6 +228,8 @@ router.post('/agent-chat', authMiddleware, async (req, res) => {
             agentPersona = a.systemPrompt;
             agentCapabilities = a.capabilities || [];
             aiModel = a.aiModel === 'gpt-4' ? 'gpt-4' : a.aiModel === 'gpt-3.5' ? 'gpt-3.5-turbo' : a.aiModel || 'gpt-3.5-turbo';
+            // If agent has a clubId and user doesn't, use agent's clubId
+            if (!clubId && a.clubId) clubId = a.clubId;
         }
     } catch (dbErr) {
         console.log('[agent-chat] DB lookup failed:', dbErr.message);
@@ -224,6 +245,7 @@ router.post('/agent-chat', authMiddleware, async (req, res) => {
                 agentPersona = a.systemPrompt;
                 agentCapabilities = a.capabilities || [];
                 aiModel = a.aiModel || 'gpt-3.5-turbo';
+                if (!clubId && a.clubId) clubId = a.clubId;
             }
         } catch (_) {}
     }
@@ -244,7 +266,7 @@ router.post('/agent-chat', authMiddleware, async (req, res) => {
     }
 
     // ── Build rich context from real club data ──
-    const clubContext = await buildClubContext(req.user.clubId);
+    const clubContext = await buildClubContext(clubId);
     const contextBlock = formatContextBlock(clubContext);
 
     // ── Capability-specific instructions ──
@@ -338,7 +360,7 @@ INSTRUCCIONES DE RESPUESTA:
                 console.log(`[agent-chat] Tool call: ${toolName}`, toolArgs);
 
                 // Execute the tool
-                const toolResult = await executeTool(toolName, toolArgs, req.user.id, req.user.clubId);
+                const toolResult = await executeTool(toolName, toolArgs, req.user.id, clubId);
 
                 // Log activity (fire-and-forget, don't block response)
                 db.query(`
@@ -352,7 +374,7 @@ INSTRUCCIONES DE RESPUESTA:
                 `).then(() => db.query(
                     `INSERT INTO "AgentActivity" ("agentId", "agentName", "userId", "clubId", action, tool, details, success)
                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                    [agentId, agentName, req.user.id, req.user.clubId, 'tool_execution', toolName, JSON.stringify(toolArgs), toolResult.success]
+                    [agentId, agentName, req.user.id, clubId, 'tool_execution', toolName, JSON.stringify(toolArgs), toolResult.success]
                 )).catch(err => console.error('Activity log failed:', err.message));
 
                 // Send tool result back to OpenAI for a natural language summary
