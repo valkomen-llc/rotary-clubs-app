@@ -204,15 +204,27 @@ router.post('/agent-chat', authMiddleware, async (req, res) => {
     let clubId = req.user.clubId;
     if (!clubId && hostname) {
         try {
+            const cleanHost = hostname.replace('www.', '').toLowerCase();
+            // Priority: exact domain → exact subdomain → hostname contains subdomain
             const clubR = await db.query(
-                `SELECT id FROM "Club" WHERE domain = $1 OR subdomain = $1 
-                 OR domain = $2 OR $1 LIKE '%' || subdomain || '%'
+                `SELECT id, domain, subdomain,
+                    CASE 
+                        WHEN LOWER(domain) = $1 THEN 1
+                        WHEN LOWER(subdomain) = $1 THEN 2
+                        WHEN $1 LIKE '%' || LOWER(subdomain) || '%' THEN 3
+                        ELSE 4
+                    END as priority
+                 FROM "Club" 
+                 WHERE LOWER(domain) = $1 
+                    OR LOWER(subdomain) = $1
+                    OR $1 LIKE '%' || LOWER(subdomain) || '%'
+                 ORDER BY priority ASC, LENGTH(subdomain) DESC
                  LIMIT 1`,
-                [hostname, hostname.replace('www.', '')]
+                [cleanHost]
             );
             if (clubR.rows.length > 0) {
                 clubId = clubR.rows[0].id;
-                console.log(`[agent-chat] Resolved club by hostname "${hostname}" → ${clubId}`);
+                console.log(`[agent-chat] Resolved club by hostname "${hostname}" → ${clubId} (subdomain: ${clubR.rows[0].subdomain})`);
             }
         } catch (e) {
             console.log('[agent-chat] Club hostname resolution failed:', e.message);

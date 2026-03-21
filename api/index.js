@@ -14,7 +14,7 @@ app.use(express.json());
 
 // ── Static endpoints ─────────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'ok', version: '2.3.2' });
+    res.json({ status: 'ok', version: '3.0.0' });
 });
 
 app.get('/api/health', async (req, res) => {
