@@ -1,5 +1,6 @@
 import db from '../lib/db.js';
 import { routeToModel, getDefaultModel, BUILTIN_MODELS, encryptKey, decryptKey } from '../lib/ai-router.js';
+import { getToolsForAgent, getToolsSummary, executeTool, getWorkflowSuggestions } from '../lib/agent-tools.js';
 
 // Generate social media suggestions based on month and knowledge base
 import express from 'express';
@@ -67,12 +68,136 @@ const MISSION_AGENTS = {
     'nova': { name: 'Nova', persona: `Tu nombre es Nova. Eres la agente de publicación y lanzamiento de ClubPlatform. Tu personalidad es entusiasta, motivadora y celebradora. Ayudas a los clubes en los pasos finales antes de publicar su sitio web, revisando que todo esté configurado correctamente y celebrando cada logro.` },
 };
 
+// ── Build rich club context for agent prompts ──────────────────────────────
+async function buildClubContext(clubId) {
+    const ctx = { clubName: 'tu club', location: '', district: '', description: '', projects: [], posts: [], events: [], knowledge: [], settings: {}, memberCount: 0 };
+    if (!clubId) return ctx;
+
+    try {
+        // All queries in parallel for speed
+        const [clubR, projR, postsR, eventsR, knowledgeR, settingsR, membersR] = await Promise.all([
+            db.query('SELECT name, city, country, district, description, subdomain FROM "Club" WHERE id = $1', [clubId]),
+            db.query(
+                `SELECT title, category, status, ubicacion, beneficiarios, meta, recaudado,
+                        COALESCE(impacto, '') as impacto
+                 FROM "Project" WHERE "clubId" = $1 AND "deletedAt" IS NULL
+                 ORDER BY "createdAt" DESC LIMIT 10`, [clubId]
+            ),
+            db.query(
+                `SELECT title, category, published, "createdAt"
+                 FROM "Post" WHERE ("clubId" = $1 OR "clubId" IS NULL) AND published = true
+                 ORDER BY "createdAt" DESC LIMIT 8`, [clubId]
+            ),
+            db.query(
+                `SELECT title, description, "startDate", "endDate"
+                 FROM "CalendarEvent" WHERE "clubId" = $1 AND "startDate" >= NOW() - INTERVAL '7 days'
+                 ORDER BY "startDate" ASC LIMIT 6`, [clubId]
+            ).catch(() => ({ rows: [] })),
+            db.query(
+                `SELECT title, type, content FROM "KnowledgeSource"
+                 WHERE "clubId" = $1 OR "clubId" IS NULL
+                 ORDER BY "createdAt" DESC LIMIT 5`, [clubId]
+            ).catch(() => ({ rows: [] })),
+            db.query(
+                `SELECT key, value FROM "Setting" WHERE "clubId" = $1
+                 AND key IN ('contact_email','contact_phone','contact_address',
+                             'social_links','color_primary','color_secondary',
+                             'hero_title','hero_subtitle','seo_description')`, [clubId]
+            ).catch(() => ({ rows: [] })),
+            db.query('SELECT COUNT(*) FROM "User" WHERE "clubId" = $1', [clubId]).catch(() => ({ rows: [{ count: 0 }] })),
+        ]);
+
+        const club = clubR.rows[0];
+        if (club) {
+            ctx.clubName = club.name;
+            ctx.location = [club.city, club.country].filter(Boolean).join(', ');
+            ctx.district = club.district || '';
+            ctx.description = club.description || '';
+        }
+        ctx.projects = projR.rows;
+        ctx.posts = postsR.rows;
+        ctx.events = eventsR.rows;
+        ctx.knowledge = knowledgeR.rows;
+        ctx.memberCount = parseInt(membersR.rows[0]?.count) || 0;
+        settingsR.rows.forEach(s => { ctx.settings[s.key] = s.value; });
+    } catch (err) {
+        console.error('buildClubContext error:', err.message);
+    }
+    return ctx;
+}
+
+function formatContextBlock(ctx) {
+    const lines = [];
+    lines.push(`\n═══ CONTEXTO REAL DEL CLUB ═══`);
+    lines.push(`📍 Club: "${ctx.clubName}" — ${ctx.location || 'Colombia'}${ctx.district ? ` — Distrito ${ctx.district}` : ''}`);
+    if (ctx.description) lines.push(`📝 Descripción: ${ctx.description.slice(0, 300)}`);
+    lines.push(`👥 Miembros registrados: ${ctx.memberCount}`);
+
+    // Settings
+    const s = ctx.settings;
+    if (s.contact_email) lines.push(`📧 Email: ${s.contact_email}`);
+    if (s.contact_phone) lines.push(`📞 Teléfono: ${s.contact_phone}`);
+    if (s.contact_address) lines.push(`📫 Dirección: ${s.contact_address}`);
+    if (s.social_links) {
+        try {
+            const socials = typeof s.social_links === 'string' ? JSON.parse(s.social_links) : s.social_links;
+            const socialStr = Object.entries(socials).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(' | ');
+            if (socialStr) lines.push(`🌐 Redes: ${socialStr}`);
+        } catch (_) { }
+    }
+    if (s.color_primary) lines.push(`🎨 Color primario: ${s.color_primary}${s.color_secondary ? `, secundario: ${s.color_secondary}` : ''}`);
+
+    // Projects
+    if (ctx.projects.length > 0) {
+        lines.push(`\n📁 PROYECTOS DEL CLUB (${ctx.projects.length}):`);
+        ctx.projects.forEach((p, i) => {
+            const status = { active: '🟢 Activo', planned: '📋 Planificado', completed: '✅ Completado' }[p.status] || p.status;
+            const meta = p.meta ? ` — Meta: $${Number(p.meta).toLocaleString('es-CO')} COP` : '';
+            const recaudado = p.recaudado ? ` — Recaudado: $${Number(p.recaudado).toLocaleString('es-CO')}` : '';
+            lines.push(`  ${i + 1}. "${p.title}" [${p.category || 'General'}] ${status}${meta}${recaudado}${p.ubicacion ? ` — ${p.ubicacion}` : ''}${p.beneficiarios ? ` — ${p.beneficiarios} beneficiarios` : ''}`);
+            if (p.impacto) lines.push(`     Impacto: ${p.impacto.slice(0, 150)}`);
+        });
+    } else {
+        lines.push(`\n📁 PROYECTOS: El club aún no tiene proyectos registrados.`);
+    }
+
+    // Posts / News
+    if (ctx.posts.length > 0) {
+        lines.push(`\n📰 NOTICIAS RECIENTES (${ctx.posts.length}):`);
+        ctx.posts.forEach((p, i) => {
+            const date = p.createdAt ? new Date(p.createdAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+            lines.push(`  ${i + 1}. "${p.title}" [${p.category || 'General'}] — ${date}`);
+        });
+    }
+
+    // Events
+    if (ctx.events.length > 0) {
+        lines.push(`\n📅 PRÓXIMOS EVENTOS:`);
+        ctx.events.forEach((e, i) => {
+            const start = e.startDate ? new Date(e.startDate).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' }) : '';
+            lines.push(`  ${i + 1}. "${e.title}" — ${start}${e.description ? `: ${e.description.slice(0, 80)}` : ''}`);
+        });
+    }
+
+    // Knowledge Base
+    if (ctx.knowledge.length > 0) {
+        lines.push(`\n📚 BASE DE CONOCIMIENTO:`);
+        ctx.knowledge.forEach((k, i) => {
+            lines.push(`  ${i + 1}. [${k.type}] "${k.title}"${k.content ? `: ${k.content.slice(0, 120)}...` : ''}`);
+        });
+    }
+
+    lines.push(`═══ FIN DEL CONTEXTO ═══`);
+    return lines.join('\n');
+}
+
 // ── Agent Chat for Mission Control ─────────────────────────────────────────
 router.post('/agent-chat', authMiddleware, async (req, res) => {
     const { message, agentId, history } = req.body;
     if (!message || !agentId) return res.status(400).json({ error: 'message and agentId are required' });
 
     let agentName, agentPersona, aiModel = 'gpt-3.5-turbo';
+    let agentCapabilities = [];
 
     // Try to find agent in DB first
     try {
@@ -81,6 +206,7 @@ router.post('/agent-chat', authMiddleware, async (req, res) => {
             const a = dbAgent.rows[0];
             agentName = a.name;
             agentPersona = a.systemPrompt;
+            agentCapabilities = a.capabilities || [];
             aiModel = a.aiModel === 'gpt-4' ? 'gpt-4' : a.aiModel === 'gpt-3.5' ? 'gpt-3.5-turbo' : a.aiModel || 'gpt-3.5-turbo';
         }
     } catch (_) { }
@@ -93,32 +219,173 @@ router.post('/agent-chat', authMiddleware, async (req, res) => {
         agentPersona = agent.persona;
     }
 
-    let clubName = 'tu club';
-    try {
-        const clubResult = await db.query('SELECT name FROM "Club" WHERE id = $1', [req.user.clubId]);
-        if (clubResult.rows[0]) clubName = clubResult.rows[0].name;
-    } catch (_) { }
+    // ── Build rich context from real club data ──
+    const clubContext = await buildClubContext(req.user.clubId);
+    const contextBlock = formatContextBlock(clubContext);
 
-    const systemPrompt = `${agentPersona}\nEl nombre del club del usuario es: "${clubName}". Responde SIEMPRE en español, de forma concisa y amigable (máximo 3 párrafos cortos). Usa emojis con moderación para dar calidez.`;
+    // ── Capability-specific instructions ──
+    let capabilityHints = '';
+    if (agentCapabilities.includes('manage_projects')) {
+        capabilityHints += '\nCuando el usuario pregunte sobre proyectos, usa los datos REALES del club listados arriba. Cita títulos, montos y estados reales.';
+    }
+    if (agentCapabilities.includes('calendar') || agentCapabilities.includes('create_posts')) {
+        capabilityHints += '\nCuando sugiera publicaciones o calendario editorial, basa tus sugerencias en los proyectos y noticias REALES del club.';
+    }
+    if (agentCapabilities.includes('brand_guidelines') || agentCapabilities.includes('design_assets')) {
+        capabilityHints += '\nUsa los colores reales del club cuando hables de diseño (los colores están en el contexto). Complementa con azul Rotary #013388 y oro #E29C00.';
+    }
+    if (agentCapabilities.includes('distribute_site_images') || agentCapabilities.includes('approve_site_images')) {
+        capabilityHints += '\nCuando hables de imágenes del sitio, menciona las secciones reales: Hero Slider (5 imágenes), Áreas de Interés (7), Fundación Rotaria (1), Únete (1).';
+    }
+
+    // ── Build agent tools based on capabilities ──
+    const agentTools = getToolsForAgent(agentCapabilities);
+    const toolsSummary = getToolsSummary(agentCapabilities);
+
+    const systemPrompt = `${agentPersona}
+${contextBlock}
+${capabilityHints}
+${toolsSummary}
+
+INSTRUCCIONES DE RESPUESTA:
+- Responde SIEMPRE en español, de forma concisa y amigable (máximo 3 párrafos cortos).
+- Usa emojis con moderación para dar calidez.
+- Cuando sea relevante, CITA datos reales del club (proyectos, noticias, eventos).
+- Si el usuario pregunta algo que no está en el contexto, indica que puedes ayudar a crear ese contenido.
+- Fecha actual: ${new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}.`;
 
     const messages = [{ role: 'system', content: systemPrompt }];
     if (Array.isArray(history)) {
-        history.slice(-6).forEach(h => messages.push({ role: h.role, content: h.text }));
+        history.slice(-8).forEach(h => messages.push({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.text }));
     }
     messages.push({ role: 'user', content: message });
 
     try {
+        // Try multi-model router first (Gemini, etc.) – no tool support fallback
+        const defaultSlug = await getDefaultModel();
+        if (defaultSlug) {
+            try {
+                const reply = await routeToModel(defaultSlug, systemPrompt, message);
+                if (reply && reply.trim().length > 10) {
+                    return res.json({ reply, agentName, model: defaultSlug, contextInjected: true });
+                }
+            } catch (routerErr) {
+                console.log(`[agent-chat] Router fallback for ${defaultSlug}: ${routerErr.message}`);
+            }
+        }
+
+        // OpenAI with function calling support
         if (process.env.OPENAI_API_KEY) {
+            const openaiPayload = {
+                model: aiModel,
+                messages,
+                max_tokens: 800,
+                temperature: 0.7,
+            };
+
+            // Add tools if agent has capabilities
+            if (agentTools.length > 0) {
+                openaiPayload.tools = agentTools;
+                openaiPayload.tool_choice = 'auto';
+            }
+
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
-                body: JSON.stringify({ model: aiModel, messages, max_tokens: 400, temperature: 0.7 })
+                body: JSON.stringify(openaiPayload)
             });
             const data = await response.json();
-            return res.json({ reply: data.choices?.[0]?.message?.content || 'No pude generar una respuesta.', agentName });
+            const choice = data.choices?.[0];
+
+            // ── Handle function call (tool use) ──
+            if (choice?.message?.tool_calls && choice.message.tool_calls.length > 0) {
+                const toolCall = choice.message.tool_calls[0];
+                const toolName = toolCall.function.name;
+                let toolArgs;
+                try {
+                    toolArgs = JSON.parse(toolCall.function.arguments);
+                } catch (parseErr) {
+                    return res.json({
+                        reply: `Quise ejecutar una acción pero hubo un error al procesar los parámetros. ¿Podrías reformular tu solicitud?`,
+                        agentName, model: aiModel, contextInjected: true,
+                    });
+                }
+
+                console.log(`[agent-chat] Tool call: ${toolName}`, toolArgs);
+
+                // Execute the tool
+                const toolResult = await executeTool(toolName, toolArgs, req.user.id, req.user.clubId);
+
+                // Log activity (fire-and-forget, don't block response)
+                db.query(`
+                    CREATE TABLE IF NOT EXISTS "AgentActivity" (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        "agentId" UUID NOT NULL, "agentName" VARCHAR(100), "userId" UUID NOT NULL,
+                        "clubId" UUID, action VARCHAR(80) NOT NULL, tool VARCHAR(80),
+                        details JSONB DEFAULT '{}'::JSONB, success BOOLEAN DEFAULT true,
+                        "createdAt" TIMESTAMPTZ DEFAULT NOW()
+                    )
+                `).then(() => db.query(
+                    `INSERT INTO "AgentActivity" ("agentId", "agentName", "userId", "clubId", action, tool, details, success)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                    [agentId, agentName, req.user.id, req.user.clubId, 'tool_execution', toolName, JSON.stringify(toolArgs), toolResult.success]
+                )).catch(err => console.error('Activity log failed:', err.message));
+
+                // Send tool result back to OpenAI for a natural language summary
+                messages.push(choice.message); // assistant msg with tool_call
+                messages.push({
+                    role: 'tool',
+                    tool_call_id: toolCall.id,
+                    content: JSON.stringify(toolResult),
+                });
+
+                const followUpResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
+                    body: JSON.stringify({ model: aiModel, messages, max_tokens: 400, temperature: 0.7 })
+                });
+                const followUpData = await followUpResponse.json();
+                const followUpReply = followUpData.choices?.[0]?.message?.content || toolResult.message;
+
+                return res.json({
+                    reply: followUpReply,
+                    agentName,
+                    model: aiModel,
+                    contextInjected: true,
+                    toolExecuted: {
+                        name: toolName,
+                        success: toolResult.success,
+                        action: toolResult.action,
+                        emoji: toolResult.emoji,
+                        label: toolResult.label,
+                        data: toolResult.data,
+                        message: toolResult.message,
+                    },
+                    workflowSuggestions: getWorkflowSuggestions(toolName, toolArgs),
+                });
+            }
+
+            // No tool call — regular text response
+            return res.json({
+                reply: choice?.message?.content || 'No pude generar una respuesta.',
+                agentName,
+                model: aiModel,
+                contextInjected: true,
+            });
         }
-        res.json({ reply: `¡Hola! Soy ${agentName} 👋 En este momento necesito que se configure la API de OpenAI para poder ayudarte. ¡Pronto estaré disponible!`, agentName });
+
+        // No AI configured — smart fallback with real data
+        let fallbackReply = `¡Hola! Soy ${agentName} 👋 `;
+        if (clubContext.projects.length > 0) {
+            fallbackReply += `Tu club "${clubContext.clubName}" tiene ${clubContext.projects.length} proyecto(s) registrado(s). `;
+        }
+        if (clubContext.posts.length > 0) {
+            fallbackReply += `La última noticia publicada fue "${clubContext.posts[0]?.title}". `;
+        }
+        fallbackReply += `Para respuestas más detalladas, configura una API de IA en Integraciones → Modelos IA.`;
+        res.json({ reply: fallbackReply, agentName, contextInjected: true });
     } catch (error) {
+        console.error('Agent chat error:', error);
         res.status(500).json({ error: 'Error en el agente IA' });
     }
 });
@@ -237,23 +504,36 @@ router.post('/chat', async (req, res) => {
     if (!message) return res.status(400).json({ error: 'Message is required' });
 
     try {
-        // Fetch club info for context
-        let clubContext = '';
-        if (clubId) {
-            const clubResult = await db.query(
-                'SELECT name, city, country, district, description FROM "Club" WHERE id = $1',
-                [clubId]
-            );
-            const club = clubResult.rows[0];
-            if (club) {
-                clubContext = `El club se llama "${club.name}", se encuentra en ${club.city}, ${club.country}, pertenece al distrito ${club.district}. ${club.description || ''}`;
+        // Build rich context using shared function
+        const ctx = await buildClubContext(clubId);
+        const contextBlock = formatContextBlock(ctx);
+
+        const systemPrompt = `Eres el asistente virtual del club Rotario "${ctx.clubName}".
+${contextBlock}
+
+REGLAS:
+- Responde de forma amable, concisa y profesional en español (máximo 2 párrafos cortos).
+- Usa emojis con moderación.
+- Cuando el visitante pregunte sobre proyectos, CITA los proyectos REALES del club por nombre.
+- Cuando pregunte por contacto, da los datos REALES del club si están disponibles.
+- Si no sabes algo específico, invita al visitante a usar la sección de Contacto del sitio.
+- NO inventes información que no esté en el contexto.
+- Rotary es una organización mundial de líderes cívicos y profesionales que brindan servicio humanitario.`;
+
+        // Try multi-model router first (Gemini, etc.)
+        try {
+            const defaultSlug = await getDefaultModel();
+            if (defaultSlug) {
+                const reply = await routeToModel(defaultSlug, systemPrompt, message);
+                if (reply && reply.trim().length > 10) {
+                    return res.json({ reply });
+                }
             }
+        } catch (routerErr) {
+            console.log(`[public-chat] Router fallback: ${routerErr.message}`);
         }
 
-        const systemPrompt = `Eres el asistente virtual de un Club Rotario. ${clubContext}
-Rotary es una organización mundial de líderes cívicos y profesionales que se reúnen para brindar servicio humanitario, fomentar principios éticos en todos los oficios y profesiones, y contribuir a establecer la buena voluntad y la paz en el mundo.
-Responde de forma amable, concisa y profesional en español. Si no sabes algo específico del club, invita al visitante a contactar directamente. No inventes información.`;
-
+        // Fallback to direct OpenAI
         if (process.env.OPENAI_API_KEY) {
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
@@ -277,28 +557,57 @@ Responde de forma amable, concisa y profesional en español. Si no sabes algo es
             return res.json({ reply });
         }
 
-        // Smart fallback responses when no OpenAI key
+        // Smart fallback responses with REAL data when no AI key
         const msgLower = message.toLowerCase();
+        const clubLabel = ctx.clubName !== 'tu club' ? ctx.clubName : 'Rotary';
         let reply = '';
 
-        if (msgLower.match(/hola|buenos|buenas|hi/)) {
-            reply = `¡Hola! 👋 Bienvenido al asistente virtual de Rotary. ¿En qué puedo ayudarte hoy?`;
+        if (msgLower.match(/hola|buenos|buenas|hi|hey/)) {
+            reply = `¡Hola! 👋 Bienvenido al asistente virtual de ${clubLabel}. ¿En qué puedo ayudarte hoy? Puedo contarte sobre nuestros proyectos, cómo unirte o cómo donar.`;
         } else if (msgLower.match(/proyecto|proyectos/)) {
-            reply = `Nuestro club realiza proyectos de servicio en áreas como salud, educación, agua potable, medio ambiente y paz. 🌍 Visita nuestra sección de Proyectos para conocer más.`;
+            if (ctx.projects.length > 0) {
+                const projectList = ctx.projects.slice(0, 3).map(p => `• "${p.title}" (${p.category || 'General'} — ${({ active: 'Activo', planned: 'Planificado', completed: 'Completado' })[p.status] || p.status})`).join('\n');
+                reply = `Nuestro club tiene ${ctx.projects.length} proyecto(s) registrado(s) 🌍:\n${projectList}\n\nVisita la sección de Proyectos en el sitio para conocer más detalles y cómo apoyar.`;
+            } else {
+                reply = `Nuestro club realiza proyectos de servicio en áreas como salud, educación, agua potable, medio ambiente y paz. 🌍 Visita nuestra sección de Proyectos para conocer más.`;
+            }
         } else if (msgLower.match(/socio|unirse|miembro|pertenecer|ingresar/)) {
-            reply = `¡Nos alegra tu interés en unirte a Rotary! 🤝 Para convertirte en socio, contáctanos a través del formulario de Contacto o visítanos en una de nuestras reuniones.`;
-        } else if (msgLower.match(/reunión|reuni|cuándo|cuando/)) {
-            reply = `Para conocer los horarios de nuestras reuniones, te invitamos a comunicarte directamente con el club a través de la sección de Contacto.`;
-        } else if (msgLower.match(/donar|donación|contribuir|apoyo/)) {
-            reply = `Puedes contribuir con Rotary a través de La Fundación Rotaria. Tu donación apoya proyectos de paz, salud y educación en todo el mundo. 💙`;
+            const contactInfo = ctx.settings.contact_email ? ` Escríbenos a ${ctx.settings.contact_email}.` : ' Visita la sección de Contacto.';
+            reply = `¡Nos alegra tu interés en unirte a ${clubLabel}! 🤝 Tenemos ${ctx.memberCount || 'varios'} miembros activos.${contactInfo}`;
+        } else if (msgLower.match(/reunión|reuni|cuándo|cuando|evento/)) {
+            if (ctx.events.length > 0) {
+                const eventList = ctx.events.slice(0, 2).map(e => {
+                    const d = e.startDate ? new Date(e.startDate).toLocaleDateString('es-CO', { day: 'numeric', month: 'long' }) : '';
+                    return `• "${e.title}" — ${d}`;
+                }).join('\n');
+                reply = `📅 Próximos eventos de ${clubLabel}:\n${eventList}\n\nPara más detalles, visita nuestra sección de Contacto.`;
+            } else {
+                reply = `Para conocer los horarios de nuestras reuniones, te invitamos a comunicarte con el club a través de la sección de Contacto.`;
+            }
+        } else if (msgLower.match(/donar|donación|contribuir|apoyo|ayudar/)) {
+            if (ctx.projects.length > 0) {
+                const activeProject = ctx.projects.find(p => p.status === 'active');
+                const projectMention = activeProject ? ` Actualmente puedes apoyar el proyecto "${activeProject.title}".` : '';
+                reply = `Puedes contribuir con ${clubLabel} a través de La Fundación Rotaria o apoyando nuestros proyectos directamente. 💙${projectMention}`;
+            } else {
+                reply = `Puedes contribuir con Rotary a través de La Fundación Rotaria. Tu donación apoya proyectos de paz, salud y educación en todo el mundo. 💙`;
+            }
         } else if (msgLower.match(/rotaract/)) {
-            reply = `Rotaract es el programa de Rotary para jóvenes de 18 años en adelante. ¡Es una forma excelente de servir y desarrollar habilidades de liderazgo!`;
+            reply = `Rotaract es el programa de Rotary para jóvenes de 18 años en adelante. ¡Es una forma excelente de servir y desarrollar habilidades de liderazgo! 🚀`;
         } else if (msgLower.match(/interact/)) {
-            reply = `Interact es el programa de Rotary para jóvenes de 12 a 18 años. ¡Una gran oportunidad para los estudiantes de secundaria!`;
-        } else if (msgLower.match(/contact|correo|email|teléfono|telefono/)) {
-            reply = `Puedes contactarnos a través de nuestra sección de Contacto en el sitio web. ¡Con gusto te atenderemos!`;
+            reply = `Interact es el programa de Rotary para jóvenes de 12 a 18 años. ¡Una gran oportunidad para estudiantes de secundaria! 🎓`;
+        } else if (msgLower.match(/contact|correo|email|teléfono|telefono|dirección|direccion/)) {
+            const parts = [];
+            if (ctx.settings.contact_email) parts.push(`📧 ${ctx.settings.contact_email}`);
+            if (ctx.settings.contact_phone) parts.push(`📞 ${ctx.settings.contact_phone}`);
+            if (ctx.settings.contact_address) parts.push(`📫 ${ctx.settings.contact_address}`);
+            if (parts.length > 0) {
+                reply = `Datos de contacto de ${clubLabel}:\n${parts.join('\n')}\n\nTambién puedes usar el formulario en la sección de Contacto. 😊`;
+            } else {
+                reply = `Puedes contactarnos a través de la sección de Contacto en el sitio web. ¡Con gusto te atenderemos! 😊`;
+            }
         } else {
-            reply = `Gracias por tu mensaje. 😊 Para obtener información más específica, te invitamos a visitar nuestras secciones de Proyectos, Noticias o Contacto. También puedes comunicarte directamente con el club. ¡Estamos para servirte!`;
+            reply = `Gracias por tu mensaje. 😊 Puedo ayudarte con información sobre nuestros proyectos, cómo unirte al club, eventos, donaciones o datos de contacto. ¿Qué te interesa saber?`;
         }
 
         res.json({ reply });

@@ -1,14 +1,26 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     Radio, X, Send, Loader2, Paperclip, Mic, MicOff, FileText, Volume2, VolumeX,
+    History, Plus, Trash2, CheckCircle2, AlertCircle,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const avatarUrl = (seed: string) => `https://api.dicebear.com/9.x/adventurer/svg?seed=${seed}&backgroundColor=transparent`;
 
+interface ToolExecuted {
+    name: string; success: boolean; action: string;
+    emoji: string; label: string; message: string;
+    data?: any;
+}
+interface WorkflowSuggestion {
+    agent: string; emoji: string; action: string;
+}
 interface ChatAttachment { name: string; type: string; size: number; url: string; }
-interface ChatMessage { role: 'user' | 'assistant'; text: string; attachment?: ChatAttachment; }
+interface ChatMessage {
+    role: 'user' | 'assistant'; text: string; attachment?: ChatAttachment;
+    toolExecuted?: ToolExecuted; workflowSuggestions?: WorkflowSuggestion[];
+}
 
 interface Agent {
     id: string; name: string; role: string; category: string;
@@ -72,6 +84,12 @@ const VLine: React.FC<{ h?: string }> = ({ h = '28px' }) => (
     </div>
 );
 
+interface SavedConversation {
+    id: string; agentId: string; title: string; messageCount: number;
+    lastMessage: string; createdAt: string; updatedAt: string;
+    agentName: string; avatarSeed: string; avatarColor: string; agentRole: string;
+}
+
 const MissionControl: React.FC = () => {
     const { token } = useAuth();
     const [agents, setAgents] = useState<Agent[]>([]);
@@ -89,10 +107,78 @@ const MissionControl: React.FC = () => {
     const [voiceMode, setVoiceMode] = useState(false);
     const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
 
+    // ── Conversation History ──
+    const [conversationId, setConversationId] = useState<string | null>(null);
+    const [savedConversations, setSavedConversations] = useState<SavedConversation[]>([]);
+    const [showHistory, setShowHistory] = useState(false);
+
     const getHeaders = () => ({
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token || localStorage.getItem('rotary_token')}`,
     });
+
+    // ── Fetch saved conversations for an agent ──
+    const fetchConversations = useCallback(async (agentId: string) => {
+        try {
+            const res = await fetch(`${API_URL}/agents/conversations?agentId=${agentId}&limit=15`, { headers: getHeaders() });
+            if (res.ok) {
+                const data = await res.json();
+                setSavedConversations(data.conversations || []);
+            }
+        } catch (e) { console.error('Failed to load conversations:', e); }
+    }, [token]);
+
+    // ── Save conversation to server ──
+    const saveConversation = useCallback(async (agentId: string, msgs: ChatMessage[], convId: string | null) => {
+        if (msgs.length < 2) return convId; // Don't save if only greeting
+        try {
+            const res = await fetch(`${API_URL}/agents/conversations`, {
+                method: 'POST', headers: getHeaders(),
+                body: JSON.stringify({
+                    conversationId: convId,
+                    agentId,
+                    messages: msgs.map(m => ({ role: m.role, text: m.text })),
+                }),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                const newId = data.conversation?.id || convId;
+                fetchConversations(agentId); // Refresh sidebar
+                return newId;
+            }
+        } catch (e) { console.error('Save conversation error:', e); }
+        return convId;
+    }, [token]);
+
+    // ── Resume a saved conversation ──
+    const resumeConversation = useCallback(async (conv: SavedConversation) => {
+        const agent = agents.find(a => a.id === conv.agentId);
+        if (!agent) return;
+        try {
+            const res = await fetch(`${API_URL}/agents/conversations/${conv.id}`, { headers: getHeaders() });
+            if (res.ok) {
+                const data = await res.json();
+                const savedMsgs = (data.messages || []) as ChatMessage[];
+                setChatAgent(agent);
+                setMessages(savedMsgs);
+                setConversationId(conv.id);
+                setShowHistory(false);
+                setInput('');
+                setAttachment(null);
+            }
+        } catch (e) { console.error('Resume conversation error:', e); }
+    }, [agents, token]);
+
+    // ── Delete a saved conversation ──
+    const deleteConversation = useCallback(async (convId: string, agentId: string) => {
+        try {
+            await fetch(`${API_URL}/agents/conversations/${convId}`, {
+                method: 'DELETE', headers: getHeaders(),
+            });
+            if (conversationId === convId) setConversationId(null);
+            fetchConversations(agentId);
+        } catch (e) { console.error('Delete conversation error:', e); }
+    }, [token, conversationId]);
 
     // Fetch agents from API
     useEffect(() => {
@@ -207,9 +293,20 @@ const MissionControl: React.FC = () => {
         setMessages([{ role: 'assistant', text: agent.greeting || `¡Hola! Soy ${agent.name} 👋` }]);
         setInput('');
         setAttachment(null);
+        setConversationId(null);
+        setShowHistory(false);
+        fetchConversations(agent.id);
+    };
+    const startNewChat = () => {
+        if (!chatAgent) return;
+        setMessages([{ role: 'assistant', text: chatAgent.greeting || `¡Hola! Soy ${chatAgent.name} 👋` }]);
+        setConversationId(null);
+        setInput('');
+        setShowHistory(false);
     };
     const closeChat = () => {
         setChatAgent(null); setMessages([]); setAttachment(null);
+        setConversationId(null); setShowHistory(false);
         stopRecording();
         window.speechSynthesis?.cancel();
         setSpeakingIdx(null);
@@ -222,7 +319,8 @@ const MissionControl: React.FC = () => {
         setInput('');
         setAttachment(null);
         if (isRecording) stopRecording();
-        setMessages(prev => [...prev, { role: 'user', text: userMsg || (currentAttachment ? `📎 ${currentAttachment.name}` : ''), attachment: currentAttachment || undefined }]);
+        const newUserMsg: ChatMessage = { role: 'user', text: userMsg || (currentAttachment ? `📎 ${currentAttachment.name}` : ''), attachment: currentAttachment || undefined };
+        setMessages(prev => [...prev, newUserMsg]);
         setLoading(true);
         try {
             const res = await fetch(`${API_URL}/ai/agent-chat`, {
@@ -235,7 +333,20 @@ const MissionControl: React.FC = () => {
             });
             const data = await res.json();
             const reply = data.reply || 'No pude responder.';
-            setMessages(prev => [...prev, { role: 'assistant', text: reply }]);
+            const botMsg: ChatMessage = {
+                role: 'assistant',
+                text: reply,
+                toolExecuted: data.toolExecuted || undefined,
+                workflowSuggestions: data.workflowSuggestions || undefined,
+            };
+            setMessages(prev => {
+                const updated = [...prev, botMsg];
+                // Auto-save conversation after AI response
+                saveConversation(chatAgent.id, updated, conversationId).then(newId => {
+                    if (newId && newId !== conversationId) setConversationId(newId);
+                });
+                return updated;
+            });
             if (voiceMode) speakText(reply);
         } catch {
             setMessages(prev => [...prev, { role: 'assistant', text: 'Error al conectar. Intenta de nuevo.' }]);
@@ -360,6 +471,7 @@ const MissionControl: React.FC = () => {
                         className="w-[45%] rounded-r-2xl border border-l-0 border-gray-200 bg-white flex flex-col overflow-hidden"
                         style={{ height: 'calc(100vh - 320px)', minHeight: '450px', animation: 'slideInRight 0.3s ease-out' }}
                     >
+                        {/* Chat Header */}
                         <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
                             <div className="w-9 h-9 rounded-full overflow-hidden border-2 flex-shrink-0"
                                 style={{ borderColor: chatAgent.avatarColor, background: chatAgent.avatarColor + '20' }}>
@@ -372,6 +484,64 @@ const MissionControl: React.FC = () => {
                             <div className="flex items-center gap-1.5 mr-1">
                                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                                 <span className="text-[9px] font-bold text-emerald-600">Online</span>
+                            </div>
+                            {/* New chat button */}
+                            <button onClick={startNewChat} className="p-1.5 text-gray-300 hover:text-gray-500 hover:bg-gray-100 rounded-lg transition-colors" title="Nueva conversación">
+                                <Plus className="w-4 h-4" />
+                            </button>
+                            {/* History button */}
+                            <div className="relative">
+                                <button
+                                    onClick={() => { setShowHistory(!showHistory); if (!showHistory) fetchConversations(chatAgent.id); }}
+                                    className={`p-1.5 rounded-lg transition-colors relative ${showHistory ? 'text-[#0067C8] bg-blue-50' : 'text-gray-300 hover:text-gray-500 hover:bg-gray-100'}`}
+                                    title="Historial de conversaciones"
+                                >
+                                    <History className="w-4 h-4" />
+                                    {savedConversations.length > 0 && (
+                                        <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-blue-500 text-white text-[7px] font-black rounded-full flex items-center justify-center">
+                                            {savedConversations.length}
+                                        </span>
+                                    )}
+                                </button>
+                                {/* History dropdown */}
+                                {showHistory && (
+                                    <div className="absolute top-full right-0 mt-1 w-72 bg-white rounded-2xl border border-gray-200 shadow-xl z-50 overflow-hidden" style={{ animation: 'slideInRight 0.2s ease-out' }}>
+                                        <div className="px-3 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                                            <span className="text-[10px] font-black text-gray-500 uppercase">Conversaciones guardadas</span>
+                                            <button onClick={() => setShowHistory(false)} className="p-0.5 hover:bg-gray-200 rounded">
+                                                <X className="w-3 h-3 text-gray-400" />
+                                            </button>
+                                        </div>
+                                        <div className="max-h-64 overflow-y-auto">
+                                            {savedConversations.length === 0 ? (
+                                                <p className="text-xs text-gray-400 text-center py-6">No hay conversaciones guardadas</p>
+                                            ) : (
+                                                savedConversations.map(conv => (
+                                                    <div
+                                                        key={conv.id}
+                                                        className={`flex items-center gap-2 px-3 py-2.5 hover:bg-gray-50 cursor-pointer border-b border-gray-50 group ${conversationId === conv.id ? 'bg-blue-50/50' : ''}`}
+                                                    >
+                                                        <div className="flex-1 min-w-0" onClick={() => resumeConversation(conv)}>
+                                                            <p className="text-[11px] font-bold text-gray-700 truncate">{conv.title}</p>
+                                                            <p className="text-[9px] text-gray-400 truncate">{conv.lastMessage}</p>
+                                                            <p className="text-[8px] text-gray-300 mt-0.5">
+                                                                {new Date(conv.updatedAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                                                {' · '}{conv.messageCount} msgs
+                                                            </p>
+                                                        </div>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); deleteConversation(conv.id, conv.agentId); }}
+                                                            className="p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 transition-all"
+                                                            title="Eliminar"
+                                                        >
+                                                            <Trash2 className="w-3 h-3 text-gray-300 hover:text-red-400" />
+                                                        </button>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                             <button
                                 onClick={() => { setVoiceMode(!voiceMode); if (voiceMode) window.speechSynthesis?.cancel(); }}
@@ -413,6 +583,64 @@ const MissionControl: React.FC = () => {
                                             </div>
                                         )}
                                         {msg.text && <div className="px-3.5 py-2.5">{msg.text}</div>}
+                                        {/* Action card when tool was executed */}
+                                        {msg.toolExecuted && (
+                                            <div className={`mx-2.5 mb-2 rounded-xl border px-3 py-2.5 ${msg.toolExecuted.success
+                                                ? 'bg-gradient-to-r from-emerald-50 to-green-50 border-emerald-200'
+                                                : 'bg-gradient-to-r from-red-50 to-orange-50 border-red-200'
+                                                }`}
+                                                style={{ animation: 'slideInRight 0.3s ease-out' }}
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-lg">{msg.toolExecuted.emoji}</span>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-[10px] font-black uppercase text-gray-500 tracking-wide">{msg.toolExecuted.label}</p>
+                                                        <p className="text-[11px] font-bold text-gray-700 mt-0.5">{msg.toolExecuted.message}</p>
+                                                    </div>
+                                                    {msg.toolExecuted.success
+                                                        ? <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                                                        : <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+                                                    }
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* Workflow suggestions — next steps for other agents */}
+                                        {msg.workflowSuggestions && msg.workflowSuggestions.length > 0 && (
+                                            <div className="mx-2.5 mb-2">
+                                                <p className="text-[8px] font-black text-gray-400 uppercase tracking-wider mb-1.5 px-1">
+                                                    ⚡ Siguientes pasos sugeridos
+                                                </p>
+                                                <div className="space-y-1">
+                                                    {msg.workflowSuggestions.map((sug, si) => {
+                                                        const sugAgent = agents.find(a => a.name === sug.agent);
+                                                        return (
+                                                            <button
+                                                                key={si}
+                                                                onClick={() => {
+                                                                    if (sugAgent) {
+                                                                        openChat(sugAgent);
+                                                                        setTimeout(() => setInput(sug.action), 100);
+                                                                    }
+                                                                }}
+                                                                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-white border border-gray-100 hover:border-blue-200 hover:bg-blue-50/30 transition-all text-left group"
+                                                            >
+                                                                {sugAgent && (
+                                                                    <div className="w-5 h-5 rounded-full overflow-hidden border flex-shrink-0"
+                                                                        style={{ borderColor: sugAgent.avatarColor + '60', background: sugAgent.avatarColor + '15' }}>
+                                                                        <img src={avatarUrl(sugAgent.avatarSeed)} alt="" className="w-full h-full" />
+                                                                    </div>
+                                                                )}
+                                                                <span className="text-[10px]">{sug.emoji}</span>
+                                                                <span className="text-[10px] font-bold text-gray-500 group-hover:text-blue-600 flex-1 truncate">
+                                                                    <span className="font-black text-gray-700">{sug.agent}</span> — {sug.action}
+                                                                </span>
+                                                                <span className="text-[9px] text-gray-300 group-hover:text-blue-400">→</span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
                                         {msg.role === 'assistant' && msg.text && (
                                             <div className="px-3.5 pb-1.5 flex justify-end">
                                                 <button

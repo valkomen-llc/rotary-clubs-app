@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { ExternalLink } from 'lucide-react';
 import MissionControl from '../../components/admin/MissionControl';
 import AgentProgressBar from '../../components/admin/AgentProgressBar';
+import AgentActivityDashboard from '../../components/admin/AgentActivityDashboard';
 
 const Dashboard: React.FC = () => {
 
@@ -20,8 +21,14 @@ const Dashboard: React.FC = () => {
 
             {/* Mission Control — AI Agents Panel */}
             <MissionControl />
+
+            {/* Agent Activity Dashboard */}
+            <div className="mt-8">
+                <AgentActivityDashboard />
+            </div>
         </AdminLayout>
     );
 };
 
 export default Dashboard;
+

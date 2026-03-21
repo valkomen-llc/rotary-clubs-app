@@ -478,4 +478,295 @@ router.post('/deploy-all', authMiddleware, async (req, res) => {
     }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ── CONVERSATION HISTORY ────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+
+let convTableReady = false;
+const ensureConversationTable = async () => {
+    if (convTableReady) return;
+    try {
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS "AgentConversation" (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                "agentId" UUID NOT NULL,
+                "userId" UUID NOT NULL,
+                "clubId" UUID,
+                title VARCHAR(200),
+                messages JSONB DEFAULT '[]'::JSONB,
+                "messageCount" INT DEFAULT 0,
+                "lastMessage" TEXT,
+                "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+                "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+            )
+        `);
+        await db.query(`CREATE INDEX IF NOT EXISTS idx_conv_user_agent ON "AgentConversation" ("userId", "agentId", "updatedAt" DESC)`).catch(() => {});
+        await db.query(`CREATE INDEX IF NOT EXISTS idx_conv_club ON "AgentConversation" ("clubId", "updatedAt" DESC)`).catch(() => {});
+        convTableReady = true;
+        console.log('AgentConversation table ensured');
+    } catch (err) {
+        console.error('AgentConversation table init:', err.message);
+        try { await db.query('SELECT 1 FROM "AgentConversation" LIMIT 0'); convTableReady = true; } catch (_) {}
+    }
+};
+
+// GET /agents/conversations — List recent conversations for the user
+router.get('/conversations', authMiddleware, async (req, res) => {
+    try {
+        await ensureConversationTable();
+        const userId = req.user.id;
+        const { agentId, limit } = req.query;
+
+        let query = `
+            SELECT c.id, c."agentId", c.title, c."messageCount", c."lastMessage",
+                   c."createdAt", c."updatedAt",
+                   a.name as "agentName", a."avatarSeed", a."avatarColor", a.role as "agentRole"
+            FROM "AgentConversation" c
+            LEFT JOIN "Agent" a ON a.id = c."agentId"
+            WHERE c."userId" = $1
+        `;
+        const params = [userId];
+
+        if (agentId) {
+            params.push(agentId);
+            query += ` AND c."agentId" = $${params.length}`;
+        }
+
+        query += ` ORDER BY c."updatedAt" DESC LIMIT ${parseInt(limit) || 20}`;
+
+        const result = await db.query(query, params);
+        res.json({ conversations: result.rows });
+    } catch (error) {
+        console.error('List conversations error:', error);
+        res.json({ conversations: [] });
+    }
+});
+
+// GET /agents/conversations/:id — Get a specific conversation with full messages
+router.get('/conversations/:id', authMiddleware, async (req, res) => {
+    try {
+        await ensureConversationTable();
+        const result = await db.query(
+            `SELECT c.*, a.name as "agentName", a."avatarSeed", a."avatarColor", a.role as "agentRole",
+                    a.greeting as "agentGreeting"
+             FROM "AgentConversation" c
+             LEFT JOIN "Agent" a ON a.id = c."agentId"
+             WHERE c.id = $1 AND c."userId" = $2`,
+            [req.params.id, req.user.id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Conversation not found' });
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Get conversation error:', error);
+        res.status(500).json({ error: 'Error fetching conversation' });
+    }
+});
+
+// POST /agents/conversations — Create or update a conversation
+router.post('/conversations', authMiddleware, async (req, res) => {
+    try {
+        await ensureConversationTable();
+        const { conversationId, agentId, messages, title } = req.body;
+        const userId = req.user.id;
+        const clubId = req.user.clubId;
+
+        if (!agentId || !messages || !Array.isArray(messages)) {
+            return res.status(400).json({ error: 'agentId and messages[] are required' });
+        }
+
+        const messageCount = messages.length;
+        const lastMessage = messages.length > 0 ? (messages[messages.length - 1].text || '').slice(0, 200) : '';
+        // Auto-generate title from first user message
+        const autoTitle = title || messages.find(m => m.role === 'user')?.text?.slice(0, 80) || 'Nueva conversación';
+
+        if (conversationId) {
+            // Update existing conversation
+            const result = await db.query(
+                `UPDATE "AgentConversation"
+                 SET messages = $1, "messageCount" = $2, "lastMessage" = $3,
+                     title = COALESCE($4, title), "updatedAt" = NOW()
+                 WHERE id = $5 AND "userId" = $6
+                 RETURNING id, "messageCount", "updatedAt"`,
+                [JSON.stringify(messages), messageCount, lastMessage, autoTitle, conversationId, userId]
+            );
+            if (result.rows.length === 0) return res.status(404).json({ error: 'Conversation not found' });
+            res.json({ conversation: result.rows[0], updated: true });
+        } else {
+            // Create new conversation
+            const result = await db.query(
+                `INSERT INTO "AgentConversation" ("agentId", "userId", "clubId", title, messages, "messageCount", "lastMessage")
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)
+                 RETURNING id, "messageCount", "createdAt"`,
+                [agentId, userId, clubId, autoTitle, JSON.stringify(messages), messageCount, lastMessage]
+            );
+            res.status(201).json({ conversation: result.rows[0], created: true });
+        }
+    } catch (error) {
+        console.error('Save conversation error:', error);
+        res.status(500).json({ error: 'Error saving conversation' });
+    }
+});
+
+// DELETE /agents/conversations/:id — Delete a conversation
+router.delete('/conversations/:id', authMiddleware, async (req, res) => {
+    try {
+        await db.query(
+            'DELETE FROM "AgentConversation" WHERE id = $1 AND "userId" = $2',
+            [req.params.id, req.user.id]
+        );
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Delete conversation error:', error);
+        res.status(500).json({ error: 'Error deleting conversation' });
+    }
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── AGENT ACTIVITY LOG & STATS ─────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+
+let activityTableReady = false;
+const ensureActivityTable = async () => {
+    if (activityTableReady) return;
+    try {
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS "AgentActivity" (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                "agentId" UUID NOT NULL,
+                "agentName" VARCHAR(100),
+                "userId" UUID NOT NULL,
+                "clubId" UUID,
+                action VARCHAR(80) NOT NULL,
+                tool VARCHAR(80),
+                details JSONB DEFAULT '{}'::JSONB,
+                success BOOLEAN DEFAULT true,
+                "createdAt" TIMESTAMPTZ DEFAULT NOW()
+            )
+        `);
+        await db.query(`CREATE INDEX IF NOT EXISTS idx_activity_club ON "AgentActivity" ("clubId", "createdAt" DESC)`).catch(() => {});
+        await db.query(`CREATE INDEX IF NOT EXISTS idx_activity_agent ON "AgentActivity" ("agentId", "createdAt" DESC)`).catch(() => {});
+        activityTableReady = true;
+    } catch (err) {
+        console.error('AgentActivity table init:', err.message);
+        try { await db.query('SELECT 1 FROM "AgentActivity" LIMIT 0'); activityTableReady = true; } catch (_) {}
+    }
+};
+
+// POST /agents/activity/log — Log an agent action (called from ai.js after tool execution)
+router.post('/activity/log', authMiddleware, async (req, res) => {
+    try {
+        await ensureActivityTable();
+        const { agentId, agentName, action, tool, details, success } = req.body;
+        await db.query(
+            `INSERT INTO "AgentActivity" ("agentId", "agentName", "userId", "clubId", action, tool, details, success)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [agentId, agentName, req.user.id, req.user.clubId, action, tool || null, JSON.stringify(details || {}), success !== false]
+        );
+        res.json({ logged: true });
+    } catch (error) {
+        console.error('Activity log error:', error);
+        res.json({ logged: false });
+    }
+});
+
+// GET /agents/activity/stats — Dashboard stats for agents
+router.get('/activity/stats', authMiddleware, async (req, res) => {
+    try {
+        await ensureActivityTable();
+        await ensureConversationTable();
+        const clubId = req.user.clubId;
+
+        // All queries in parallel
+        const [
+            agentStatsR,
+            recentActivityR,
+            weeklyR,
+            conversationStatsR,
+            totalToolsR,
+        ] = await Promise.all([
+            // Per-agent tool usage stats
+            db.query(`
+                SELECT a."agentName", a."agentId",
+                       COUNT(*) as "totalActions",
+                       COUNT(CASE WHEN a.success THEN 1 END) as "successCount",
+                       COUNT(DISTINCT a.tool) FILTER (WHERE a.tool IS NOT NULL) as "uniqueTools",
+                       MAX(a."createdAt") as "lastActive",
+                       ARRAY_AGG(DISTINCT a.tool) FILTER (WHERE a.tool IS NOT NULL) as tools
+                FROM "AgentActivity" a
+                WHERE a."clubId" = $1
+                GROUP BY a."agentName", a."agentId"
+                ORDER BY "totalActions" DESC
+            `, [clubId]).catch(() => ({ rows: [] })),
+
+            // Recent activity feed (last 20)
+            db.query(`
+                SELECT a.id, a."agentName", a.action, a.tool, a.details, a.success, a."createdAt"
+                FROM "AgentActivity" a
+                WHERE a."clubId" = $1
+                ORDER BY a."createdAt" DESC LIMIT 20
+            `, [clubId]).catch(() => ({ rows: [] })),
+
+            // Weekly timeline (last 7 days)
+            db.query(`
+                SELECT DATE(a."createdAt") as day,
+                       COUNT(*) as actions,
+                       COUNT(DISTINCT a."agentId") as "activeAgents"
+                FROM "AgentActivity" a
+                WHERE a."clubId" = $1 AND a."createdAt" >= NOW() - INTERVAL '7 days'
+                GROUP BY DATE(a."createdAt")
+                ORDER BY day ASC
+            `, [clubId]).catch(() => ({ rows: [] })),
+
+            // Conversation stats per agent
+            db.query(`
+                SELECT c."agentId",
+                       COUNT(*) as conversations,
+                       SUM(c."messageCount") as "totalMessages"
+                FROM "AgentConversation" c
+                WHERE c."clubId" = $1
+                GROUP BY c."agentId"
+            `, [clubId]).catch(() => ({ rows: [] })),
+
+            // Total tools executed
+            db.query(`
+                SELECT COUNT(*) as total,
+                       COUNT(CASE WHEN success THEN 1 END) as successful
+                FROM "AgentActivity"
+                WHERE "clubId" = $1 AND tool IS NOT NULL
+            `, [clubId]).catch(() => ({ rows: [{ total: 0, successful: 0 }] })),
+        ]);
+
+        // Merge conversation stats into agent stats
+        const convMap = {};
+        conversationStatsR.rows.forEach(c => {
+            convMap[c.agentId] = { conversations: parseInt(c.conversations), totalMessages: parseInt(c.totalMessages) };
+        });
+
+        const agentStats = agentStatsR.rows.map(a => ({
+            ...a,
+            totalActions: parseInt(a.totalActions),
+            successCount: parseInt(a.successCount),
+            conversations: convMap[a.agentId]?.conversations || 0,
+            totalMessages: convMap[a.agentId]?.totalMessages || 0,
+        }));
+
+        res.json({
+            agentStats,
+            recentActivity: recentActivityR.rows,
+            weeklyTimeline: weeklyR.rows,
+            totals: {
+                toolsExecuted: parseInt(totalToolsR.rows[0]?.total) || 0,
+                toolsSuccessful: parseInt(totalToolsR.rows[0]?.successful) || 0,
+                totalConversations: conversationStatsR.rows.reduce((sum, c) => sum + parseInt(c.conversations), 0),
+                totalMessages: conversationStatsR.rows.reduce((sum, c) => sum + parseInt(c.totalMessages), 0),
+                activeAgents: agentStatsR.rows.length,
+            },
+        });
+    } catch (error) {
+        console.error('Activity stats error:', error);
+        res.json({ agentStats: [], recentActivity: [], weeklyTimeline: [], totals: {} });
+    }
+});
+
 export default router;
