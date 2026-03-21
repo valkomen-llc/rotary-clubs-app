@@ -30,9 +30,11 @@ import {
     Bot,
     Network,
     Palette,
+    Lock,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
+import { useSetupProgress, SETUP_ALLOWED_PATHS } from '../../hooks/useSetupProgress';
 import OnboardingWizard from './OnboardingWizard';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -44,6 +46,10 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const navigate = useNavigate();
     const location = useLocation();
     const [searchQuery, setSearchQuery] = useState('');
+    const [lockedToast, setLockedToast] = useState<string | null>(null);
+
+    // ── Setup Progress (for gating) ──
+    const { pct: setupPctHook, isComplete: setupComplete } = useSetupProgress();
 
     // ── Header KPIs ──
     const [stats, setStats] = useState<any>(null);
@@ -52,6 +58,21 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [unreadLeads, setUnreadLeads] = useState(0);
 
     const isSuperAdmin = user?.role === 'administrator';
+
+    // Redirect to dashboard if trying to access locked route
+    useEffect(() => {
+        if (!isSuperAdmin && !setupComplete && !SETUP_ALLOWED_PATHS.includes(location.pathname)) {
+            navigate('/admin/dashboard');
+        }
+    }, [location.pathname, setupComplete, isSuperAdmin]);
+
+    // Auto-dismiss locked toast
+    useEffect(() => {
+        if (lockedToast) {
+            const t = setTimeout(() => setLockedToast(null), 3000);
+            return () => clearTimeout(t);
+        }
+    }, [lockedToast]);
     const clubHostname: string | null = (() => {
         try {
             const s = localStorage.getItem('rotary_club');
@@ -232,27 +253,40 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                 .map((item: any) => {
                                     const isActive = location.pathname === item.path;
                                     const isSetup = item.badge === 'pendiente';
+                                    const isLocked = !isSuperAdmin && !setupComplete && !SETUP_ALLOWED_PATHS.includes(item.path);
                                     return (
-                                        <Link
-                                            key={item.path}
-                                            to={item.path}
-                                            className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all text-sm group ${isActive
-                                                ? isSetup ? 'bg-amber-50 text-amber-800 font-bold' : 'bg-gray-50 text-gray-900 font-bold'
-                                                : isSetup
-                                                    ? 'text-amber-700 bg-amber-50/60 hover:bg-amber-50 font-semibold border border-amber-100'
-                                                    : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-900'
-                                                }`}
-                                        >
-                                            <item.icon className={`w-5 h-5 transition-colors ${isActive
-                                                ? isSetup ? 'text-amber-600' : 'text-rotary-blue'
-                                                : isSetup ? 'text-amber-500' : 'text-gray-400 group-hover:text-gray-600'
-                                                }`} />
-                                            <span className="flex-1">{item.label}</span>
-                                            {isSetup && (
-                                                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+                                        <div key={item.path}>
+                                            {isLocked ? (
+                                                <button
+                                                    onClick={() => setLockedToast('Completa la configuración del sitio para desbloquear esta sección')}
+                                                    className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm text-gray-300 cursor-not-allowed opacity-60"
+                                                >
+                                                    <item.icon className="w-5 h-5 text-gray-300" />
+                                                    <span className="flex-1 text-left">{item.label}</span>
+                                                    <Lock className="w-3.5 h-3.5 text-gray-300" />
+                                                </button>
+                                            ) : (
+                                                <Link
+                                                    to={item.path}
+                                                    className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all text-sm group ${isActive
+                                                        ? isSetup ? 'bg-amber-50 text-amber-800 font-bold' : 'bg-gray-50 text-gray-900 font-bold'
+                                                        : isSetup
+                                                            ? 'text-amber-700 bg-amber-50/60 hover:bg-amber-50 font-semibold border border-amber-100'
+                                                            : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-900'
+                                                        }`}
+                                                >
+                                                    <item.icon className={`w-5 h-5 transition-colors ${isActive
+                                                        ? isSetup ? 'text-amber-600' : 'text-rotary-blue'
+                                                        : isSetup ? 'text-amber-500' : 'text-gray-400 group-hover:text-gray-600'
+                                                        }`} />
+                                                    <span className="flex-1">{item.label}</span>
+                                                    {isSetup && (
+                                                        <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+                                                    )}
+                                                    {item.expandable && <ChevronDown className="w-3.5 h-3.5 text-gray-300" />}
+                                                </Link>
                                             )}
-                                            {item.expandable && <ChevronDown className="w-3.5 h-3.5 text-gray-300" />}
-                                        </Link>
+                                        </div>
                                     );
                                 })}
                         </div>
@@ -303,7 +337,9 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     <div className="flex items-center gap-4">
                         <h2 className="text-sm font-bold text-gray-900">Dashboard</h2>
                         <div className="h-4 w-[1px] bg-gray-200" />
-                        <p className="text-xs text-gray-400 font-medium">{user?.role === 'administrator' ? 'Sistema Central' : 'Gestión de Club'}</p>
+                        <p className="text-xs text-gray-400 font-medium">
+                            {user?.role === 'administrator' ? 'Sistema Central' : setupComplete ? 'Gestión de Club' : `Configuración · ${setupPctHook}% completado`}
+                        </p>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -400,6 +436,16 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                         {children}
                     </div>
                 </div>
+
+                {/* Locked Toast Notification */}
+                {lockedToast && (
+                    <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-fade-in">
+                        <div className="flex items-center gap-3 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-2xl">
+                            <Lock className="w-4 h-4 text-amber-400" />
+                            <p className="text-sm font-bold">{lockedToast}</p>
+                        </div>
+                    </div>
+                )}
             </main>
         </div >
     );

@@ -3,7 +3,7 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import { Link, useNavigate } from 'react-router-dom';
 import {
     ExternalLink, Newspaper, FolderKanban, CalendarDays, Image,
-    Globe, Lock, Rocket, CheckCircle2, Circle, ChevronRight,
+    Globe, Lock, Rocket, CheckCircle2, ChevronRight,
     Sparkles, Users, BarChart3, Settings, ArrowRight,
 } from 'lucide-react';
 import MissionControl from '../../components/admin/MissionControl';
@@ -11,6 +11,7 @@ import AgentProgressBar from '../../components/admin/AgentProgressBar';
 import AgentActivityDashboard from '../../components/admin/AgentActivityDashboard';
 import OnboardingWizard from '../../components/admin/OnboardingWizard';
 import { useAuth } from '../../hooks/useAuth';
+import { useSetupProgress } from '../../hooks/useSetupProgress';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
