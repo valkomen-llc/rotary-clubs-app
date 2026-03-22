@@ -2,9 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     ArrowRight, ArrowLeft, Building2, Palette, Share2, ImageIcon,
-    Camera, Rocket, CheckCircle2, Upload, X, Loader2,
+    Camera, Rocket, CheckCircle2, Upload, X, Loader2, ShieldCheck, AlertTriangle,
 } from 'lucide-react';
-import { useClub } from '../../contexts/ClubContext';
 import { useAuth } from '../../hooks/useAuth';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -45,16 +44,20 @@ const StepWelcome: React.FC<{ onNext: () => void; clubName: string }> = ({ onNex
     </div>
 );
 
-// ── Step 1: Club Info ────────────────────────────────────────────
+// ── Step 1: Club Info ── name is read-only (comes from registration)
 const StepClubInfo: React.FC<{ data: any; onChange: (d: any) => void }> = ({ data, onChange }) => (
     <div className="max-w-xl mx-auto">
         <h2 className="text-2xl font-black text-gray-900 mb-2">📋 Cuéntanos sobre tu club</h2>
         <p className="text-sm text-gray-400 mb-8">Esta información aparecerá en tu sitio web público.</p>
         <div className="space-y-5">
             <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Nombre del club *</label>
-                <input value={data.name || ''} onChange={e => onChange({ ...data, name: e.target.value })}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" placeholder="Rotary Club de tu ciudad" />
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Nombre del club</label>
+                <div className="flex items-center gap-2">
+                    <input value={data.name || ''} readOnly
+                        className="w-full bg-gray-100 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-600 cursor-not-allowed" />
+                    <ShieldCheck className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1">Verificado desde tu registro en ClubPlatform</p>
             </div>
             <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Descripción del club *</label>
@@ -278,33 +281,74 @@ const StepComplete: React.FC<{ clubName: string; onFinish: () => void; saving: b
 // ══════════════════════════════════════════════════════════════════
 const OnboardingFlow: React.FC = () => {
     const navigate = useNavigate();
-    const { club } = useClub();
     const { user, token } = useAuth();
     const [step, setStep] = useState(0);
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [loadingClub, setLoadingClub] = useState(true);
+    const [userClub, setUserClub] = useState<any>(null);
 
-    // Form data
+    // ── Fetch the user's ACTUAL assigned club (not from domain) ──
+    useEffect(() => {
+        if (!token || !user) return;
+        // Super admins don't need onboarding
+        if (user.role === 'administrator') { navigate('/admin/dashboard'); return; }
+
+        const fetchUserClub = async () => {
+            try {
+                // Get user details to find their clubId
+                const userClubId = user.clubId;
+                if (!userClubId) { setLoadingClub(false); return; }
+
+                // Fetch the club data
+                const res = await fetch(`${API}/admin/clubs`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (res.ok) {
+                    const clubs = await res.json();
+                    const myClub = clubs.find((c: any) => c.id === userClubId);
+                    if (myClub) {
+                        setUserClub(myClub);
+                        // Also store in localStorage for other components
+                        localStorage.setItem('rotary_club', JSON.stringify(myClub));
+                    }
+                }
+            } catch (err) { console.error('Error fetching user club:', err); }
+            setLoadingClub(false);
+        };
+        fetchUserClub();
+    }, [token, user]);
+
+    // Form data — initialized from the user's club
     const [info, setInfo] = useState({
-        name: club?.name || '', description: (club as any)?.description || '',
-        city: (club as any)?.city || '', country: (club as any)?.country || 'Colombia',
-        phone: (club as any)?.contact?.phone || '', email: (club as any)?.contact?.email || '',
+        name: '', description: '', city: '', country: 'Colombia', phone: '', email: '',
     });
     const [branding, setBranding] = useState({
-        logo: club?.logo || '',
-        colorPrimary: (club as any)?.colors?.primary || '#013388',
-        colorSecondary: (club as any)?.colors?.secondary || '#E29C00',
+        logo: '', colorPrimary: '#013388', colorSecondary: '#E29C00',
     });
     const [social, setSocial] = useState<any>({ social: {} });
     const [siteImages, setSiteImages] = useState<any>({});
     const [galleryImages, setGalleryImages] = useState<string[]>([]);
 
-    // Redirect super admins — they don't need onboarding
+    // Update form when club data loads
     useEffect(() => {
-        if (user?.role === 'administrator') navigate('/admin/dashboard');
-    }, [user]);
+        if (!userClub) return;
+        setInfo({
+            name: userClub.name || '',
+            description: userClub.description || '',
+            city: userClub.city || '',
+            country: userClub.country || 'Colombia',
+            phone: userClub.contact?.phone || '',
+            email: userClub.contact?.email || '',
+        });
+        setBranding({
+            logo: userClub.logo || '',
+            colorPrimary: userClub.colors?.primary || '#013388',
+            colorSecondary: userClub.colors?.secondary || '#E29C00',
+        });
+    }, [userClub]);
 
-    const clubId = (club as any)?.id || user?.clubId;
+    const clubId = userClub?.id || user?.clubId;
 
     // ── Upload helper ──
     const uploadFile = async (file: File): Promise<string> => {
@@ -455,13 +499,41 @@ const OnboardingFlow: React.FC = () => {
             {/* Step Content */}
             <main className="flex-1 flex items-center justify-center px-6 py-12">
                 <div className="w-full max-w-3xl">
-                    {step === 0 && <StepWelcome onNext={() => setStep(1)} clubName={info.name || 'tu club'} />}
-                    {step === 1 && <StepClubInfo data={info} onChange={setInfo} />}
-                    {step === 2 && <StepBranding data={branding} onChange={setBranding} onLogoUpload={handleLogoUpload} />}
-                    {step === 3 && <StepSocial data={social} onChange={setSocial} />}
-                    {step === 4 && <StepSiteImages data={siteImages} onChange={setSiteImages} onImageUpload={handleSiteImageUpload} />}
-                    {step === 5 && <StepGallery images={galleryImages} onUpload={handleGalleryUpload} onRemove={i => setGalleryImages(prev => prev.filter((_, idx) => idx !== i))} />}
-                    {step === 6 && <StepComplete clubName={info.name || 'tu club'} onFinish={handleFinish} saving={saving} />}
+                    {/* Loading state */}
+                    {loadingClub && (
+                        <div className="flex flex-col items-center justify-center min-h-[60vh]">
+                            <Loader2 className="w-10 h-10 animate-spin text-blue-500 mb-4" />
+                            <p className="text-sm text-gray-400 font-bold">Cargando información del club...</p>
+                        </div>
+                    )}
+                    {/* No club assigned error */}
+                    {!loadingClub && !userClub && (
+                        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-6">
+                            <div className="w-20 h-20 rounded-3xl bg-amber-100 flex items-center justify-center mb-6">
+                                <AlertTriangle className="w-10 h-10 text-amber-500" />
+                            </div>
+                            <h2 className="text-2xl font-black text-gray-900 mb-3">Club no asignado</h2>
+                            <p className="text-sm text-gray-500 max-w-md mb-6">
+                                Tu cuenta no tiene un club rotario asignado. Al crear tu cuenta en ClubPlatform,
+                                debes indicar a qué club perteneces para poder configurar el sitio web.
+                            </p>
+                            <p className="text-xs text-gray-400 max-w-md">
+                                Contacta al administrador de la plataforma para que te asigne un club.
+                            </p>
+                        </div>
+                    )}
+                    {/* Normal wizard steps */}
+                    {!loadingClub && userClub && (
+                        <>
+                            {step === 0 && <StepWelcome onNext={() => setStep(1)} clubName={info.name || 'tu club'} />}
+                            {step === 1 && <StepClubInfo data={info} onChange={setInfo} />}
+                            {step === 2 && <StepBranding data={branding} onChange={setBranding} onLogoUpload={handleLogoUpload} />}
+                            {step === 3 && <StepSocial data={social} onChange={setSocial} />}
+                            {step === 4 && <StepSiteImages data={siteImages} onChange={setSiteImages} onImageUpload={handleSiteImageUpload} />}
+                            {step === 5 && <StepGallery images={galleryImages} onUpload={handleGalleryUpload} onRemove={i => setGalleryImages(prev => prev.filter((_, idx) => idx !== i))} />}
+                            {step === 6 && <StepComplete clubName={info.name || 'tu club'} onFinish={handleFinish} saving={saving} />}
+                        </>
+                    )}
                 </div>
             </main>
 
