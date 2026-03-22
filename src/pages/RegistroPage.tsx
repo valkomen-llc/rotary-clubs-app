@@ -171,7 +171,7 @@ export default function RegistroPage() {
        ═══════════════════════════════════════════════════════════ */
     if (success) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-6">
+            <div className="min-h-screen bg-rotary-concrete bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-6">
                 <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-10 max-w-md w-full text-center">
                     <div className="w-20 h-20 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-6 animate-bounce">
                         <CheckCircle className="w-10 h-10 text-emerald-500" />
