@@ -30,11 +30,6 @@ const COUNTRIES = [
     { name: 'España', code: 'ES', flag: '🇪🇸', dial: '+34' },
 ];
 
-const DISTRICTS_BY_COUNTRY: Record<string, string[]> = {
-    Colombia: ['4270', '4271', '4272', 'Distrito Desconocido'],
-    México: ['4170', '4175', '4180', '4185', '4190', '4195', '4200'],
-    Argentina: ['4890', '4895', '4900', '4905', '4910', '4915', '4920', '4925', '4930', '4935'],
-};
 
 function slugify(text: string) {
     return text.toLowerCase()
@@ -287,27 +282,13 @@ export default function RegistroPage() {
                                     </div>
                                     <div>
                                         <label className="block text-sm font-bold text-gray-700 mb-2">Distrito Rotario</label>
-                                        {DISTRICTS_BY_COUNTRY[form.country] ? (
-                                            <div className="relative">
-                                                <select
-                                                    value={form.district}
-                                                    onChange={e => updateField('district', e.target.value)}
-                                                    className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all bg-white appearance-none pr-10"
-                                                >
-                                                    <option value="">Selecciona</option>
-                                                    {DISTRICTS_BY_COUNTRY[form.country].map(d => <option key={d} value={d}>{d}</option>)}
-                                                </select>
-                                                <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                                            </div>
-                                        ) : (
-                                            <input
-                                                type="text"
-                                                value={form.district}
-                                                onChange={e => updateField('district', e.target.value)}
-                                                className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all"
-                                                placeholder="Ej: 4281"
-                                            />
-                                        )}
+                                        <input
+                                            type="text"
+                                            value={form.district}
+                                            onChange={e => updateField('district', e.target.value)}
+                                            className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all"
+                                            placeholder="Ej: 4281"
+                                        />
                                     </div>
                                 </div>
                             </div>
