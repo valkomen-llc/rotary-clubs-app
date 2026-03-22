@@ -183,7 +183,7 @@ export default function RegistroPage() {
                     <p className="text-gray-500 mb-4">
                         Redirigiendo al asistente de configuración...
                     </p>
-                    <p className="text-sm text-gray-400">Tu sitio provisional será <strong className="text-[#013388]">{form.subdomain}.clubplatform.org</strong></p>
+                    <p className="text-sm text-gray-400">Tu vista previa: <strong className="text-[#013388]">app.clubplatform.org/#/preview/{form.subdomain}</strong></p>
                     <div className="mt-6 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                         <div className="h-full bg-[#013388] rounded-full" style={{ width: '100%', animation: 'progress 2.5s linear forwards' }} />
                     </div>
@@ -323,7 +323,7 @@ export default function RegistroPage() {
                                     {form.subdomain && (
                                         <div className="mt-3 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
                                             <p className="text-xs text-[#013388] font-medium">
-                                                ✓ Vista previa: <strong>{form.subdomain}.clubplatform.org</strong>
+                                                ✓ Vista previa: <strong>app.clubplatform.org/#/preview/{form.subdomain}</strong>
                                             </p>
                                             <p className="text-[10px] text-gray-400 mt-1">
                                                 Después podrás conectar tu dominio propio (ej: rotary{form.subdomain}.org)
