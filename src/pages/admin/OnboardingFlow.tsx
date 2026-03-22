@@ -738,7 +738,13 @@ const StepMembers: React.FC<{
 
             <div className="space-y-6">
                 {members.slice(0, count).map((m, i) => (
-                    <div key={m.id || i} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col md:flex-row gap-5">
+                    <div key={m.id || i} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col md:flex-row gap-5 relative group">
+                        
+                        {/* Indicador de Número */}
+                        <div className="absolute top-4 right-4 bg-gray-100 text-gray-500 text-xs font-black px-2 py-1 rounded-lg">
+                            Socio #{i + 1}
+                        </div>
+
                         {/* Foto */}
                         <div className="flex-shrink-0 flex flex-col items-center gap-2">
                             <div 
