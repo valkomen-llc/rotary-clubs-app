@@ -297,7 +297,7 @@ const OnboardingFlow: React.FC = () => {
         const fetchUserClub = async () => {
             try {
                 // Get user details to find their clubId
-                const userClubId = user.clubId;
+                const userClubId = user.clubId || user.club?.id;
                 if (!userClubId) { setLoadingClub(false); return; }
 
                 // Fetch the club data
@@ -348,7 +348,7 @@ const OnboardingFlow: React.FC = () => {
         });
     }, [userClub]);
 
-    const clubId = userClub?.id || user?.clubId;
+    const clubId = userClub?.id || user?.clubId || user?.club?.id;
 
     // ── Upload helper ──
     const uploadFile = async (file: File): Promise<string> => {
