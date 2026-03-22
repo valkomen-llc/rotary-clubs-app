@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Sparkles, Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
@@ -38,29 +38,30 @@ export default function AppLogin() {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-[#013388] via-blue-900 to-[#011f5b] flex items-center justify-center p-6">
-            {/* Background pattern */}
-            <div className="absolute inset-0 opacity-10"
-                style={{ backgroundImage: 'radial-gradient(circle at 25px 25px, white 2px, transparent 0)', backgroundSize: '50px 50px' }} />
-
-            <div className="w-full max-w-md relative">
-                {/* Logo */}
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-6">
+            <div className="w-full max-w-md">
+                {/* Header */}
                 <div className="text-center mb-8">
-                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20 mb-4">
-                        <Sparkles className="w-8 h-8 text-white" />
+                    <div className="flex items-center justify-center gap-2.5 mb-4">
+                        <div className="w-10 h-10 rounded-2xl bg-[#013388] flex items-center justify-center shadow-lg shadow-blue-200">
+                            <Sparkles className="w-5 h-5 text-white" />
+                        </div>
+                        <span className="font-black text-gray-900 text-xl">ClubPlatform</span>
                     </div>
-                    <h1 className="text-2xl font-black text-white">ClubPlatform</h1>
-                    <p className="text-blue-200 text-sm mt-1">Panel de Administración</p>
+                    <h1 className="text-3xl font-black text-gray-900 mb-2">Panel de Administración</h1>
+                    <p className="text-gray-500">Accede al panel de tu club</p>
                 </div>
 
                 {/* Card */}
-                <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-3xl p-8 shadow-2xl">
-                    <h2 className="text-xl font-black text-white mb-1">Iniciar Sesión</h2>
-                    <p className="text-blue-200 text-sm mb-6">Accede al panel de tu club</p>
+                <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden">
+                    <div className="bg-gradient-to-r from-gray-50 to-gray-50/50 px-8 py-5 border-b border-gray-100">
+                        <h2 className="text-lg font-black text-gray-900">Iniciar Sesión</h2>
+                        <p className="text-xs text-gray-400 mt-0.5">Ingresa tus credenciales para continuar</p>
+                    </div>
 
-                    <form onSubmit={handleSubmit} className="space-y-4">
+                    <form onSubmit={handleSubmit} className="p-8 space-y-5">
                         <div>
-                            <label className="block text-xs font-bold text-blue-200 mb-1.5 uppercase tracking-wide">
+                            <label className="block text-sm font-bold text-gray-700 mb-2">
                                 Correo Electrónico
                             </label>
                             <input
@@ -68,12 +69,12 @@ export default function AppLogin() {
                                 value={email}
                                 onChange={e => setEmail(e.target.value)}
                                 required
-                                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-300 text-sm focus:outline-none focus:ring-2 focus:ring-white/30 focus:border-white/40 transition-all"
+                                className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all"
                                 placeholder="admin@tuclub.org"
                             />
                         </div>
                         <div>
-                            <label className="block text-xs font-bold text-blue-200 mb-1.5 uppercase tracking-wide">
+                            <label className="block text-sm font-bold text-gray-700 mb-2">
                                 Contraseña
                             </label>
                             <div className="relative">
@@ -82,18 +83,18 @@ export default function AppLogin() {
                                     value={password}
                                     onChange={e => setPassword(e.target.value)}
                                     required
-                                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-300 text-sm focus:outline-none focus:ring-2 focus:ring-white/30 focus:border-white/40 transition-all pr-12"
+                                    className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all pr-12"
                                     placeholder="••••••••"
                                 />
                                 <button type="button" onClick={() => setShowPassword(v => !v)}
-                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-blue-300 hover:text-white transition-colors">
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
                                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                 </button>
                             </div>
                         </div>
 
                         {error && (
-                            <div className="bg-red-500/20 border border-red-400/30 text-red-200 text-sm px-4 py-3 rounded-xl">
+                            <div className="bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3 rounded-xl">
                                 {error}
                             </div>
                         )}
@@ -101,28 +102,27 @@ export default function AppLogin() {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full flex items-center justify-center gap-2 bg-white text-[#013388] font-black py-3.5 rounded-xl hover:bg-blue-50 transition-all shadow-lg disabled:opacity-60 text-sm mt-2"
+                            className="w-full flex items-center justify-center gap-2 bg-[#013388] text-white font-bold py-3.5 rounded-xl hover:bg-[#012266] transition-all shadow-lg shadow-blue-900/20 disabled:opacity-60 text-sm"
                         >
                             {loading
                                 ? <><Loader2 className="w-4 h-4 animate-spin" /> Ingresando...</>
                                 : <>Ingresar al Panel <ArrowRight className="w-4 h-4" /></>
                             }
                         </button>
-                    </form>
 
-                    <div className="mt-6 pt-6 border-t border-white/10 text-center">
-                        <p className="text-blue-300 text-xs">
-                            ¿Aún no tienes cuenta?{' '}
-                            <a href="#/registro"
-                                className="text-white font-bold hover:underline">
-                                Crear mi sitio gratis
-                            </a>
-                        </p>
-                    </div>
+                        <div className="text-center pt-2">
+                            <p className="text-gray-400 text-xs">
+                                ¿Aún no tienes cuenta?{' '}
+                                <Link to="/registro" className="text-[#013388] font-bold hover:underline">
+                                    Crear mi sitio gratis
+                                </Link>
+                            </p>
+                        </div>
+                    </form>
                 </div>
 
-                <p className="text-center text-blue-400 text-xs mt-6">
-                    © 2025 ClubPlatform — Plataforma digital para Rotary
+                <p className="text-center text-gray-400 text-xs mt-6">
+                    © {new Date().getFullYear()} ClubPlatform — Plataforma digital para Rotary
                 </p>
             </div>
         </div>
