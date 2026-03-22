@@ -63,6 +63,7 @@ import FAQManagement from './pages/admin/FAQs';
 import AgentsManagement from './pages/admin/Agents';
 import ImageDistribution from './pages/admin/ImageDistribution';
 import OnboardingFlow from './pages/admin/OnboardingFlow';
+import ClubPreview from './pages/ClubPreview';
 import ChatBot from './components/ChatBot';
 import LandingPage from './pages/LandingPage';
 import RegistroPage from './pages/RegistroPage';
@@ -210,6 +211,9 @@ function App() {
                 <Route path="/order/success" element={<OrderSuccess />} />
                 <Route path="/shop" element={<Shop />} />
                 <Route path="/shop/product/:slug" element={<ProductDetail />} />
+
+                {/* Club preview (provisional URL) */}
+                <Route path="/preview/:subdomain" element={<ClubPreview />} />
 
                 {/* Onboarding (full-screen, no AdminLayout) */}
                 <Route

@@ -16,7 +16,7 @@ interface ClubContextType {
     isDraft: boolean;
 }
 
-const ClubContext = createContext<ClubContextType | undefined>(undefined);
+export const ClubContext = createContext<ClubContextType | undefined>(undefined);
 
 export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [club, setClub] = useState<ClubConfig | null>(null);

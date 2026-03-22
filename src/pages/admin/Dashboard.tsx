@@ -227,7 +227,7 @@ const ClubAdminDashboard: React.FC = () => {
                             </div>
                         )}
                         <Link
-                            to="/" target="_blank"
+                            to={`/preview/${club?.subdomain || ''}`} target="_blank"
                             className="text-[11px] font-bold text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors"
                         >
                             Vista previa <ExternalLink className="w-3 h-3" />
