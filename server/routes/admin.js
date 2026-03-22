@@ -2,7 +2,7 @@ import express from 'express';
 import db from '../lib/db.js';
 import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
 import { getSections, updateSection, createSection, batchUpsertSections } from '../controllers/cmsController.js';
-import { getAllClubs, getClubById, createClub, updateClub, deleteClub } from '../controllers/clubController.js';
+import { getAllClubs, getClubById, createClub, updateClub, deleteClub, batchUpsertMembers } from '../controllers/clubController.js';
 import {
     getClubPosts, createPost, updatePost, deletePost,
     getClubProjects, getTrashedProjects, createProject, updateProject, deleteProject,
@@ -90,6 +90,7 @@ const adminRoles = ['administrator', 'club_admin'];
 
 router.get('/clubs/:id', roleMiddleware(adminRoles), getClubById);
 router.put('/clubs/:id', roleMiddleware(adminRoles), updateClub);
+router.post('/clubs/:id/members/batch', roleMiddleware(adminRoles), batchUpsertMembers);
 
 router.get('/users', roleMiddleware(adminRoles), getUsers);
 router.post('/users', roleMiddleware(adminRoles), createUser);

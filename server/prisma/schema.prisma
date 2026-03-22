@@ -63,6 +63,8 @@ model Club {
   whatsAppTemplates WhatsAppTemplate[]
   whatsAppCampaigns WhatsAppCampaign[]
   
+  members     ClubMember[]
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -203,6 +205,21 @@ model KnowledgeSource {
   clubId    String?  // Null for global Rotary documents
   club      Club?    @relation(fields: [clubId], references: [id])
   createdAt DateTime @default(now())
+}
+
+model ClubMember {
+  id          String   @id @default(uuid())
+  name        String
+  image       String?
+  description String?  @db.Text
+  isBoard     Boolean  @default(false)
+  boardRole   String?
+  
+  clubId      String
+  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 // --- E-COMMERCE MODELS ---

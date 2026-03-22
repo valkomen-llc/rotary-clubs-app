@@ -69,7 +69,8 @@ export const updateClub = async (req, res) => {
         primaryColor, secondaryColor, logo, footerLogo, endPolioLogo, favicon, status,
         stripePublicKey, stripeSecretKey, useStripe,
         usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
-        storeActive, logoHeaderSize
+        storeActive, logoHeaderSize,
+        memberCount, moduleProjects, moduleEvents, moduleRotaract, moduleInteract, moduleEcommerce, moduleDian
     } = req.body;
 
     try {
@@ -197,5 +198,38 @@ export const deleteClub = async (req, res) => {
         res.json({ message: 'Club deleted' });
     } catch (error) {
         res.status(500).json({ error: 'Error deleting club' });
+    }
+};
+
+export const batchUpsertMembers = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { members } = req.body;
+        
+        if (req.user.role !== 'administrator' && req.user.clubId !== id) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+        
+        // Delete old members and insert new ones
+        await prisma.$transaction([
+            prisma.clubMember.deleteMany({ where: { clubId: id } }),
+            ...(members && members.length > 0 ? [
+                prisma.clubMember.createMany({
+                    data: members.map(m => ({
+                        clubId: id,
+                        name: m.name || 'Sin nombre',
+                        image: m.image || null,
+                        description: m.description || null,
+                        isBoard: !!m.isBoard,
+                        boardRole: m.boardRole || null
+                    }))
+                })
+            ] : [])
+        ]);
+        
+        res.json({ ok: true });
+    } catch (error) {
+        console.error('Error in batchUpsertMembers:', error);
+        res.status(500).json({ error: 'Error agregando socios' });
     }
 };

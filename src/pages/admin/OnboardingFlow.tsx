@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     ArrowRight, ArrowLeft, Building2, Palette, Share2, ImageIcon,
     Camera, Rocket, CheckCircle2, Upload, X, Loader2, ShieldCheck, AlertTriangle, ExternalLink,
-    Plus, Globe,
+    Plus, Globe, Users,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -20,6 +20,7 @@ const STEPS = [
     { id: 'social', title: 'Redes', icon: Share2 },
     { id: 'images', title: 'Imágenes', icon: ImageIcon },
     { id: 'modules', title: 'Módulos', icon: Globe },
+    { id: 'members', title: 'Socios', icon: Users },
     { id: 'gallery', title: 'Galería', icon: Camera },
     { id: 'complete', title: '¡Listo!', icon: CheckCircle2 },
 ];
@@ -607,20 +608,16 @@ const StepModules: React.FC<{ data: any; onChange: (d: any) => void }> = ({ data
                 {/* Member Count */}
                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
                     <h3 className="text-sm font-bold text-gray-900 mb-4">Cantidad de Socios</h3>
-                    <div className="grid grid-cols-3 gap-4">
-                        {['Menos de 20', '20 a 50', 'Más de 50'].map(opt => (
-                            <button
-                                key={opt}
-                                onClick={() => onChange({ ...data, memberCount: opt })}
-                                className={`py-3 px-4 rounded-xl border-2 text-sm font-bold transition-all ${data.memberCount === opt
-                                        ? 'border-blue-600 bg-blue-50 text-blue-700'
-                                        : 'border-gray-200 text-gray-600 hover:border-blue-300'
-                                    }`}
-                            >
-                                {opt}
-                            </button>
-                        ))}
-                    </div>
+                    <input
+                        type="number"
+                        min="1"
+                        max="200"
+                        value={data.memberCount || ''}
+                        onChange={(e) => onChange({ ...data, memberCount: parseInt(e.target.value) || 0 })}
+                        className="w-full max-w-xs bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-bold text-gray-700"
+                        placeholder="Ej: 30"
+                    />
+                    <p className="text-[11px] text-gray-400 mt-2">En el siguiente paso podrás diligenciar la información general de ellos de forma opcional.</p>
                 </div>
 
                 {/* Toggles */}
@@ -686,7 +683,119 @@ const ToggleRow: React.FC<{ title: string; description: string; active: boolean;
     </div>
 );
 
-// ── Step 6: Gallery ──────────────────────────────────────────────
+// ── Step 6: Members ──────────────────────────────────────────────
+const StepMembers: React.FC<{
+    count: number;
+    members: any[];
+    onChange: (members: any[]) => void;
+    onImageUpload: (file: File, index: number) => Promise<void>;
+}> = ({ count, members, onChange, onImageUpload }) => {
+    
+    // Ensure the array matches the count
+    useEffect(() => {
+        if (members.length < count) {
+            const newArray = [...members];
+            for (let i = members.length; i < count; i++) {
+                newArray.push({ id: Date.now().toString() + i, name: '', description: '', image: '', isBoard: false, boardRole: '' });
+            }
+            onChange(newArray);
+        } else if (members.length > count) {
+            onChange(members.slice(0, count));
+        }
+    }, [count]);
+
+    const fileRef = useRef<HTMLInputElement>(null);
+    const [uploadIdx, setUploadIdx] = useState<number | null>(null);
+
+    const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file && uploadIdx !== null) await onImageUpload(file, uploadIdx);
+        e.target.value = '';
+    };
+
+    const updateMember = (index: number, field: string, value: any) => {
+        const newArray = [...members];
+        newArray[index] = { ...newArray[index], [field]: value };
+        onChange(newArray);
+    };
+
+    if (count <= 0) {
+        return (
+            <div className="max-w-3xl mx-auto text-center py-10">
+                <p className="text-gray-500 font-bold">Ingresaste 0 en la cantidad de socios en el paso anterior. Puedes avanzar y agregarlos en el panel cuando quieras.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="max-w-3xl mx-auto">
+            <h2 className="text-2xl font-black text-gray-900 mb-2">👥 Directorio de Socios</h2>
+            <p className="text-sm text-gray-400 mb-8">
+                Completa la información de los {count} socios. Estos campos son <strong>opcionales</strong>, puedes completarlos más tarde desde el panel administrativo.
+            </p>
+
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+
+            <div className="space-y-6">
+                {members.slice(0, count).map((m, i) => (
+                    <div key={m.id || i} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col md:flex-row gap-5">
+                        {/* Foto */}
+                        <div className="flex-shrink-0 flex flex-col items-center gap-2">
+                            <div 
+                                onClick={() => { setUploadIdx(i); fileRef.current?.click(); }}
+                                className="w-24 h-24 rounded-full border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center cursor-pointer hover:border-blue-400 overflow-hidden relative group transition-all"
+                            >
+                                {m.image ? (
+                                    <>
+                                        <img src={m.image} alt="" className="w-full h-full object-cover" />
+                                        <div className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center">
+                                            <Upload className="w-5 h-5 text-white" />
+                                        </div>
+                                    </>
+                                ) : (
+                                    <Camera className="w-6 h-6 text-gray-300" />
+                                )}
+                            </div>
+                            <span className="text-[10px] text-gray-400 font-bold uppercase">Foto</span>
+                        </div>
+                        
+                        {/* Info */}
+                        <div className="flex-1 space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Nombre Completo</label>
+                                <input value={m.name} onChange={e => updateMember(i, 'name', e.target.value)} placeholder="Nombre del socio"
+                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Descripción corta (opcional)</label>
+                                <textarea value={m.description} onChange={e => updateMember(i, 'description', e.target.value)} rows={2} placeholder="Breve descripción o profesión..."
+                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none" />
+                            </div>
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-4 pt-2 border-t border-gray-50">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <div className={`w-10 h-5 flex items-center rounded-full p-1 transition-colors ${m.isBoard ? 'bg-blue-600' : 'bg-gray-200'}`}
+                                         onClick={() => updateMember(i, 'isBoard', !m.isBoard)}>
+                                        <div className={`bg-white w-3 h-3 rounded-full shadow-md transform transition-transform ${m.isBoard ? 'translate-x-5' : 'translate-x-0'}`} />
+                                    </div>
+                                    <span className="text-xs font-bold text-gray-600">¿Pertenece a la Junta Directiva?</span>
+                                </label>
+                                
+                                {m.isBoard && (
+                                    <div className="flex-1">
+                                        <input value={m.boardRole} onChange={e => updateMember(i, 'boardRole', e.target.value)} placeholder="Cargo (Ej: Presidente)"
+                                            className="w-full bg-blue-50 border border-blue-200 text-blue-800 rounded-xl px-4 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 font-bold placeholder-blue-300" />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// ── Step 7: Gallery ──────────────────────────────────────────────
 const StepGallery: React.FC<{ images: string[]; onUpload: (files: FileList) => void; onRemove: (i: number) => void }> = ({ images, onUpload, onRemove }) => {
     const ref = useRef<HTMLInputElement>(null);
     return (
@@ -715,7 +824,7 @@ const StepGallery: React.FC<{ images: string[]; onUpload: (files: FileList) => v
     );
 };
 
-// ── Step 6: Complete ─────────────────────────────────────────────
+// ── Step 8: Complete ─────────────────────────────────────────────
 const StepComplete: React.FC<{ clubName: string; onFinish: () => void; saving: boolean }> = ({ clubName, onFinish, saving }) => (
     <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-6">
         <div className="w-24 h-24 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center mb-8 shadow-2xl shadow-emerald-500/30">
@@ -786,7 +895,7 @@ const OnboardingFlow: React.FC = () => {
     const [social, setSocial] = useState<any>({ social: {} });
     const [siteImages, setSiteImages] = useState<any>({});
     const [modules, setModules] = useState({
-        memberCount: '20 a 50',
+        memberCount: 20,
         hasProjects: true,
         hasEvents: true,
         hasRotaract: false,
@@ -794,6 +903,7 @@ const OnboardingFlow: React.FC = () => {
         hasEcommerce: false,
         hasDian: false
     });
+    const [members, setMembers] = useState<any[]>([]);
     const [galleryImages, setGalleryImages] = useState<string[]>([]);
 
     // Update form when club data loads
@@ -847,7 +957,7 @@ const OnboardingFlow: React.FC = () => {
 
         // Load modules
         setModules({
-            memberCount: settingsMap['member_count'] || '20 a 50',
+            memberCount: parseInt(settingsMap['member_count']) || 20,
             hasProjects: settingsMap['module_projects'] !== 'false',
             hasEvents: settingsMap['module_events'] !== 'false',
             hasRotaract: settingsMap['module_rotaract'] === 'true',
@@ -913,6 +1023,21 @@ const OnboardingFlow: React.FC = () => {
                         newData[key] = [{ url, alt: file.name.replace(/\.[^/.]+$/, '') }];
                     }
                     return newData;
+                });
+            }
+        } catch { /* ignore */ }
+        setUploading(false);
+    };
+
+    const handleMemberImageUpload = async (file: File, index: number) => {
+        setUploading(true);
+        try {
+            const url = await uploadFile(file);
+            if (url) {
+                setMembers(prev => {
+                    const next = [...prev];
+                    if (next[index]) next[index].image = url;
+                    return next;
                 });
             }
         } catch { /* ignore */ }
@@ -1034,9 +1159,20 @@ const OnboardingFlow: React.FC = () => {
                 });
             }
 
-            // ── Step 6: Gallery Images ────────────────────────────────
+            // ── Step 6: Members ───────────────────────────────────────
+            if (step === 6 && members.length > 0) {
+                const validMembers = members.filter(m => m.name || m.image || m.description);
+                if (validMembers.length > 0) {
+                    await fetch(`${API}/admin/clubs/${clubId}/members/batch`, {
+                        method: 'POST', headers,
+                        body: JSON.stringify({ members: validMembers }),
+                    }).catch(() => {});
+                }
+            }
+
+            // ── Step 7: Gallery Images ────────────────────────────────
             // Saves: gallery image URLs as Settings
-            if (step === 6 && galleryImages.length > 0) {
+            if (step === 7 && galleryImages.length > 0) {
                 await fetch(`${API}/admin/clubs/${clubId}`, {
                     method: 'PUT', headers,
                     body: JSON.stringify({
@@ -1151,8 +1287,9 @@ const OnboardingFlow: React.FC = () => {
                             {step === 3 && <StepSocial data={social} onChange={setSocial} />}
                             {step === 4 && <StepSiteImages data={siteImages} onChange={setSiteImages} onImageUpload={handleSiteImageUpload} />}
                             {step === 5 && <StepModules data={modules} onChange={setModules} />}
-                            {step === 6 && <StepGallery images={galleryImages} onUpload={handleGalleryUpload} onRemove={i => setGalleryImages(prev => prev.filter((_, idx) => idx !== i))} />}
-                            {step === 7 && <StepComplete clubName={info.name || 'tu club'} onFinish={handleFinish} saving={saving} />}
+                            {step === 6 && <StepMembers count={modules.memberCount} members={members} onChange={setMembers} onImageUpload={handleMemberImageUpload} />}
+                            {step === 7 && <StepGallery images={galleryImages} onUpload={handleGalleryUpload} onRemove={i => setGalleryImages(prev => prev.filter((_, idx) => idx !== i))} />}
+                            {step === 8 && <StepComplete clubName={info.name || 'tu club'} onFinish={handleFinish} saving={saving} />}
                         </>
                     )}
                 </div>
