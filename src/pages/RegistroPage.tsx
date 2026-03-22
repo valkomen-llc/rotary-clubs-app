@@ -1,8 +1,35 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Sparkles, Eye, EyeOff, Loader2, CheckCircle, ArrowLeft } from 'lucide-react';
+import { Sparkles, Eye, EyeOff, Loader2, CheckCircle, ArrowLeft, ArrowRight, Building2, User, ChevronDown } from 'lucide-react';
 
-const COUNTRIES = ['Colombia', 'México', 'Argentina', 'Venezuela', 'Ecuador', 'Perú', 'Chile', 'Bolivia', 'Paraguay', 'Uruguay', 'Brasil', 'Costa Rica', 'Panamá', 'Guatemala', 'Honduras', 'El Salvador', 'Nicaragua', 'República Dominicana', 'Cuba', 'Puerto Rico'];
+/* ═══════════════════════════════════════════════════════════
+   Country & District data
+   ═══════════════════════════════════════════════════════════ */
+const COUNTRIES = [
+    { name: 'Colombia', code: 'CO', flag: '🇨🇴', dial: '+57' },
+    { name: 'México', code: 'MX', flag: '🇲🇽', dial: '+52' },
+    { name: 'Argentina', code: 'AR', flag: '🇦🇷', dial: '+54' },
+    { name: 'Venezuela', code: 'VE', flag: '🇻🇪', dial: '+58' },
+    { name: 'Ecuador', code: 'EC', flag: '🇪🇨', dial: '+593' },
+    { name: 'Perú', code: 'PE', flag: '🇵🇪', dial: '+51' },
+    { name: 'Chile', code: 'CL', flag: '🇨🇱', dial: '+56' },
+    { name: 'Bolivia', code: 'BO', flag: '🇧🇴', dial: '+591' },
+    { name: 'Paraguay', code: 'PY', flag: '🇵🇾', dial: '+595' },
+    { name: 'Uruguay', code: 'UY', flag: '🇺🇾', dial: '+598' },
+    { name: 'Brasil', code: 'BR', flag: '🇧🇷', dial: '+55' },
+    { name: 'Costa Rica', code: 'CR', flag: '🇨🇷', dial: '+506' },
+    { name: 'Panamá', code: 'PA', flag: '🇵🇦', dial: '+507' },
+    { name: 'Guatemala', code: 'GT', flag: '🇬🇹', dial: '+502' },
+    { name: 'Honduras', code: 'HN', flag: '🇭🇳', dial: '+504' },
+    { name: 'El Salvador', code: 'SV', flag: '🇸🇻', dial: '+503' },
+    { name: 'Nicaragua', code: 'NI', flag: '🇳🇮', dial: '+505' },
+    { name: 'República Dominicana', code: 'DO', flag: '🇩🇴', dial: '+1' },
+    { name: 'Cuba', code: 'CU', flag: '🇨🇺', dial: '+53' },
+    { name: 'Puerto Rico', code: 'PR', flag: '🇵🇷', dial: '+1' },
+    { name: 'Estados Unidos', code: 'US', flag: '🇺🇸', dial: '+1' },
+    { name: 'España', code: 'ES', flag: '🇪🇸', dial: '+34' },
+];
+
 const DISTRICTS_BY_COUNTRY: Record<string, string[]> = {
     Colombia: ['4270', '4271', '4272', 'Distrito Desconocido'],
     México: ['4170', '4175', '4180', '4185', '4190', '4195', '4200'],
@@ -17,6 +44,9 @@ function slugify(text: string) {
         .substring(0, 40);
 }
 
+/* ═══════════════════════════════════════════════════════════
+   Main Component
+   ═══════════════════════════════════════════════════════════ */
 export default function RegistroPage() {
     const navigate = useNavigate();
     const [showPassword, setShowPassword] = useState(false);
@@ -24,6 +54,8 @@ export default function RegistroPage() {
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState('');
     const [subdomainEdited, setSubdomainEdited] = useState(false);
+    const [currentStep, setCurrentStep] = useState(1);
+    const totalSteps = 3;
 
     const [form, setForm] = useState({
         clubName: '',
@@ -33,32 +65,65 @@ export default function RegistroPage() {
         adminEmail: '',
         adminPassword: '',
         subdomain: '',
+        phone: '',
+        phoneCountry: 'CO',
     });
+
+    // Find country data by code
+    const getCountryByCode = (code: string) => COUNTRIES.find(c => c.code === code) || COUNTRIES[0];
+    const selectedPhoneCountry = getCountryByCode(form.phoneCountry);
 
     const updateField = (field: string, value: string) => {
         setForm(prev => {
             const updated = { ...prev, [field]: value };
-            // Auto-fill subdomain from club name unless manually edited
             if (field === 'clubName' && !subdomainEdited) {
                 updated.subdomain = slugify(value);
+            }
+            // Auto-sync phone country when country changes
+            if (field === 'country') {
+                const match = COUNTRIES.find(c => c.name === value);
+                if (match) updated.phoneCountry = match.code;
             }
             return updated;
         });
     };
 
+    const validateStep = (step: number) => {
+        if (step === 1) {
+            if (!form.clubName) { setError('Ingresa el nombre del club.'); return false; }
+            if (!form.country) { setError('Selecciona un país.'); return false; }
+        }
+        if (step === 2) {
+            if (!form.subdomain) { setError('El subdominio es obligatorio.'); return false; }
+        }
+        if (step === 3) {
+            if (!form.adminName) { setError('Ingresa tu nombre completo.'); return false; }
+            if (!form.adminEmail) { setError('Ingresa tu correo electrónico.'); return false; }
+            if (!form.adminPassword || form.adminPassword.length < 6) { setError('La contraseña debe tener al menos 6 caracteres.'); return false; }
+        }
+        setError('');
+        return true;
+    };
+
+    const handleNext = () => {
+        if (validateStep(currentStep)) {
+            setCurrentStep(s => Math.min(s + 1, totalSteps));
+        }
+    };
+
+    const handleBack = () => {
+        setError('');
+        setCurrentStep(s => Math.max(s - 1, 1));
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setError('');
-        if (!form.clubName || !form.country || !form.adminName || !form.adminEmail || !form.adminPassword || !form.subdomain) {
-            setError('Por favor completa todos los campos obligatorios.');
-            return;
-        }
-        if (form.adminPassword.length < 8) {
-            setError('La contraseña debe tener al menos 8 caracteres.');
-            return;
-        }
+        if (!validateStep(currentStep)) return;
         setLoading(true);
+        setError('');
+
         try {
+            const fullPhone = form.phone ? `${selectedPhoneCountry.dial} ${form.phone}` : '';
             const apiUrl = import.meta.env.VITE_API_URL || '/api';
             const resp = await fetch(`${apiUrl}/public/register-club`.replace(/\/+/g, '/').replace(':/', '://'), {
                 method: 'POST',
@@ -71,15 +136,17 @@ export default function RegistroPage() {
                     adminEmail: form.adminEmail,
                     adminPassword: form.adminPassword,
                     subdomain: form.subdomain,
+                    phone: fullPhone,
                 })
             });
             const data = await resp.json();
             if (!resp.ok) {
                 setError(data.error || 'Error al crear el club. Intenta de nuevo.');
+                setLoading(false);
                 return;
             }
 
-            // Auto-login with the new credentials
+            // Auto-login
             const loginResp = await fetch(`${apiUrl}/auth/login`.replace(/\/+/g, '/').replace(':/', '://'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -92,14 +159,12 @@ export default function RegistroPage() {
 
             setSuccess(true);
 
-            // Redirect to the club's subdomain after 2.5s
             setTimeout(() => {
-                const subdomain = form.subdomain.toLowerCase();
                 const isProd = window.location.hostname !== 'localhost';
                 if (isProd) {
-                    window.location.href = `https://${subdomain}.clubplatform.org/#/admin/dashboard`;
+                    window.location.href = `https://app.clubplatform.org/#/admin/onboarding`;
                 } else {
-                    navigate('/admin/dashboard');
+                    navigate('/admin/onboarding');
                 }
             }, 2500);
         } catch {
@@ -109,6 +174,9 @@ export default function RegistroPage() {
         }
     };
 
+    /* ═══════════════════════════════════════════════════════════
+       Success Screen
+       ═══════════════════════════════════════════════════════════ */
     if (success) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-6">
@@ -118,16 +186,22 @@ export default function RegistroPage() {
                     </div>
                     <h2 className="text-2xl font-black text-gray-900 mb-2">¡Club creado con éxito!</h2>
                     <p className="text-gray-500 mb-4">
-                        Redirigiendo a <span className="font-bold text-[#013388]">{form.subdomain}.clubplatform.org</span>...
+                        Redirigiendo al asistente de configuración...
                     </p>
-                    <p className="text-sm text-gray-400">Tu asistente IA está listo para guiarte en la configuración.</p>
+                    <p className="text-sm text-gray-400">Tu sitio provisional será <strong className="text-[#013388]">{form.subdomain}.clubplatform.org</strong></p>
                     <div className="mt-6 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-[#013388] rounded-full animate-[progress_2.5s_linear_forwards]" style={{ width: '100%', animationFillMode: 'forwards' }} />
+                        <div className="h-full bg-[#013388] rounded-full" style={{ width: '100%', animation: 'progress 2.5s linear forwards' }} />
                     </div>
                 </div>
+                <style>{`@keyframes progress { from { width: 0%; } to { width: 100%; } }`}</style>
             </div>
         );
     }
+
+    /* ═══════════════════════════════════════════════════════════
+       Step indicators
+       ═══════════════════════════════════════════════════════════ */
+    const stepLabels = ['Datos del Club', 'Subdominio', 'Cuenta Admin'];
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-6">
@@ -135,7 +209,7 @@ export default function RegistroPage() {
                 {/* Header */}
                 <div className="text-center mb-8">
                     <Link to="/" className="inline-flex items-center gap-2 text-gray-400 hover:text-gray-600 transition-colors text-sm mb-6">
-                        <ArrowLeft className="w-4 h-4" /> Volver
+                        <ArrowLeft className="w-4 h-4" /> Volver al Inicio
                     </Link>
                     <div className="flex items-center justify-center gap-2.5 mb-4">
                         <div className="w-10 h-10 rounded-2xl bg-[#013388] flex items-center justify-center shadow-lg shadow-blue-200">
@@ -147,116 +221,218 @@ export default function RegistroPage() {
                     <p className="text-gray-500">Gratis para comenzar. Listo en 5 minutos.</p>
                 </div>
 
-                {/* Form */}
-                <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-8">
-                    <form onSubmit={handleSubmit} className="space-y-5">
-
-                        {/* Club Name */}
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">Nombre del Club *</label>
-                            <input
-                                type="text"
-                                value={form.clubName}
-                                onChange={e => updateField('clubName', e.target.value)}
-                                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all"
-                                placeholder="Ej: Rotary Club Bogotá Norte"
-                                required
-                            />
+                {/* Card */}
+                <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden">
+                    {/* Step progress header */}
+                    <div className="bg-gradient-to-r from-gray-50 to-gray-50/50 px-8 py-5 border-b border-gray-100">
+                        <div className="flex items-center justify-between mb-3">
+                            <span className="text-xs font-bold text-[#013388]">Paso {currentStep} de {totalSteps}</span>
+                            <span className="text-xs text-gray-400 font-medium">{stepLabels[currentStep - 1]}</span>
                         </div>
-
-                        {/* Subdomain */}
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">Subdominio *</label>
-                            <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-[#013388]/20 focus-within:border-[#013388] transition-all">
-                                <input
-                                    type="text"
-                                    value={form.subdomain}
-                                    onChange={e => { setSubdomainEdited(true); updateField('subdomain', slugify(e.target.value)); }}
-                                    className="flex-1 px-4 py-3 text-sm focus:outline-none"
-                                    placeholder="miclub"
-                                    required
+                        <div className="flex gap-2">
+                            {Array.from({ length: totalSteps }).map((_, i) => (
+                                <div
+                                    key={i}
+                                    className={`h-1.5 rounded-full flex-1 transition-all duration-500 ${
+                                        i < currentStep ? 'bg-[#013388]' : 'bg-gray-200'
+                                    }`}
                                 />
-                                <span className="px-4 py-3 bg-gray-50 text-xs font-mono text-gray-400 border-l border-gray-200 whitespace-nowrap">.clubplatform.org</span>
-                            </div>
-                            {form.subdomain && (
-                                <p className="mt-1.5 text-xs text-[#013388] font-medium">
-                                    ✓ Tu sitio: <strong>{form.subdomain}.clubplatform.org</strong>
-                                </p>
-                            )}
+                            ))}
                         </div>
+                    </div>
 
-                        <div className="grid grid-cols-2 gap-4">
-                            {/* Country */}
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">País *</label>
-                                <select
-                                    value={form.country}
-                                    onChange={e => updateField('country', e.target.value)}
-                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all bg-white"
-                                >
-                                    {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
-                                </select>
-                            </div>
-                            {/* District */}
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">Distrito Rotario</label>
-                                {DISTRICTS_BY_COUNTRY[form.country] ? (
-                                    <select
-                                        value={form.district}
-                                        onChange={e => updateField('district', e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all bg-white"
-                                    >
-                                        <option value="">Selecciona</option>
-                                        {DISTRICTS_BY_COUNTRY[form.country].map(d => <option key={d} value={d}>{d}</option>)}
-                                    </select>
-                                ) : (
+                    {/* Form content */}
+                    <form onSubmit={handleSubmit} className="p-8">
+                        {/* ── STEP 1: Club Data ── */}
+                        {currentStep === 1 && (
+                            <div className="space-y-5 animate-[fadeIn_.3s_ease]">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
+                                        <Building2 className="w-5 h-5 text-[#013388]" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-black text-gray-900">Datos del Club</h3>
+                                        <p className="text-xs text-gray-400">Información básica del club rotario</p>
+                                    </div>
+                                </div>
+
+                                {/* Club Name */}
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-2">Nombre del Club Rotario</label>
                                     <input
                                         type="text"
-                                        value={form.district}
-                                        onChange={e => updateField('district', e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all"
-                                        placeholder="Ej: 4270"
+                                        value={form.clubName}
+                                        onChange={e => updateField('clubName', e.target.value)}
+                                        className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all"
+                                        placeholder="Ej: Rotary Club Valle del Cauca"
                                     />
-                                )}
+                                </div>
+
+                                {/* Country & District */}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-700 mb-2">País</label>
+                                        <div className="relative">
+                                            <select
+                                                value={form.country}
+                                                onChange={e => updateField('country', e.target.value)}
+                                                className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all bg-white appearance-none pr-10"
+                                            >
+                                                {COUNTRIES.map(c => (
+                                                    <option key={c.code} value={c.name}>{c.flag} {c.name}</option>
+                                                ))}
+                                            </select>
+                                            <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-700 mb-2">Distrito Rotario</label>
+                                        {DISTRICTS_BY_COUNTRY[form.country] ? (
+                                            <div className="relative">
+                                                <select
+                                                    value={form.district}
+                                                    onChange={e => updateField('district', e.target.value)}
+                                                    className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all bg-white appearance-none pr-10"
+                                                >
+                                                    <option value="">Selecciona</option>
+                                                    {DISTRICTS_BY_COUNTRY[form.country].map(d => <option key={d} value={d}>{d}</option>)}
+                                                </select>
+                                                <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                            </div>
+                                        ) : (
+                                            <input
+                                                type="text"
+                                                value={form.district}
+                                                onChange={e => updateField('district', e.target.value)}
+                                                className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all"
+                                                placeholder="Ej: 4281"
+                                            />
+                                        )}
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+                        )}
 
-                        <div className="border-t border-gray-100 pt-5">
-                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-4">Cuenta de Administrador</p>
+                        {/* ── STEP 2: Subdomain ── */}
+                        {currentStep === 2 && (
+                            <div className="space-y-5 animate-[fadeIn_.3s_ease]">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center">
+                                        <Sparkles className="w-5 h-5 text-violet-600" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-black text-gray-900">Subdominio del Club</h3>
+                                        <p className="text-xs text-gray-400">La dirección web provisional de tu club</p>
+                                    </div>
+                                </div>
 
-                            <div className="space-y-4">
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">Nombre Completo *</label>
+                                    <label className="block text-sm font-bold text-gray-700 mb-2">Subdominio *</label>
+                                    <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-[#013388]/20 focus-within:border-[#013388] transition-all">
+                                        <input
+                                            type="text"
+                                            value={form.subdomain}
+                                            onChange={e => { setSubdomainEdited(true); updateField('subdomain', slugify(e.target.value)); }}
+                                            className="flex-1 px-4 py-3.5 text-sm focus:outline-none"
+                                            placeholder="miclub"
+                                            required
+                                        />
+                                        <span className="px-4 py-3.5 bg-gray-50 text-xs font-mono text-gray-400 border-l border-gray-200 whitespace-nowrap">.clubplatform.org</span>
+                                    </div>
+                                    {form.subdomain && (
+                                        <div className="mt-3 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+                                            <p className="text-xs text-[#013388] font-medium">
+                                                ✓ Vista previa: <strong>{form.subdomain}.clubplatform.org</strong>
+                                            </p>
+                                            <p className="text-[10px] text-gray-400 mt-1">
+                                                Después podrás conectar tu dominio propio (ej: rotary{form.subdomain}.org)
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── STEP 3: Admin Account ── */}
+                        {currentStep === 3 && (
+                            <div className="space-y-5 animate-[fadeIn_.3s_ease]">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
+                                        <User className="w-5 h-5 text-emerald-600" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-black text-gray-900">Cuenta de Administrador</h3>
+                                        <p className="text-xs text-gray-400">Datos de quien administrará el sitio</p>
+                                    </div>
+                                </div>
+
+                                {/* Full Name */}
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-2">Tu Nombre Completo</label>
                                     <input
                                         type="text"
                                         value={form.adminName}
                                         onChange={e => updateField('adminName', e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all"
-                                        placeholder="Tu nombre y apellido"
-                                        required
+                                        className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all"
+                                        placeholder="Juan Pérez"
                                     />
                                 </div>
+
+                                {/* Email */}
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">Correo Electrónico *</label>
+                                    <label className="block text-sm font-bold text-gray-700 mb-2">Correo Electrónico (Login)</label>
                                     <input
                                         type="email"
                                         value={form.adminEmail}
                                         onChange={e => updateField('adminEmail', e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all"
-                                        placeholder="admin@tuclub.org"
-                                        required
+                                        className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all"
+                                        placeholder="admin@club.com"
                                     />
                                 </div>
+
+                                {/* Phone with country flag */}
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wide">Contraseña *</label>
+                                    <label className="block text-sm font-bold text-gray-700 mb-2">WhatsApp / Teléfono de Contacto</label>
+                                    <div className="flex border border-gray-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-[#013388]/20 focus-within:border-[#013388] transition-all">
+                                        {/* Country dial selector */}
+                                        <div className="relative flex-shrink-0">
+                                            <select
+                                                value={form.phoneCountry}
+                                                onChange={e => updateField('phoneCountry', e.target.value)}
+                                                className="h-full pl-3 pr-8 bg-gray-50 border-r border-gray-200 text-sm focus:outline-none appearance-none cursor-pointer font-medium"
+                                            >
+                                                {COUNTRIES.map(c => (
+                                                    <option key={c.code} value={c.code}>
+                                                        {c.flag} {c.dial}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <ChevronDown className="w-3 h-3 text-gray-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                        </div>
+                                        {/* Phone number input */}
+                                        <input
+                                            type="tel"
+                                            value={form.phone}
+                                            onChange={e => updateField('phone', e.target.value.replace(/[^0-9\s]/g, ''))}
+                                            className="flex-1 px-4 py-3.5 text-sm focus:outline-none"
+                                            placeholder="300 123 4567"
+                                        />
+                                    </div>
+                                    <p className="text-[10px] text-gray-400 mt-1.5 flex items-center gap-1">
+                                        📱 Número para contacto y soporte del club
+                                    </p>
+                                </div>
+
+                                {/* Password */}
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-2">Contraseña Segura</label>
                                     <div className="relative">
                                         <input
                                             type={showPassword ? 'text' : 'password'}
                                             value={form.adminPassword}
                                             onChange={e => updateField('adminPassword', e.target.value)}
-                                            className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all pr-12"
-                                            placeholder="Mínimo 8 caracteres"
-                                            required
+                                            className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all pr-12"
+                                            placeholder="Mínimo 6 caracteres"
                                         />
                                         <button type="button" onClick={() => setShowPassword(v => !v)}
                                             className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
@@ -265,29 +441,56 @@ export default function RegistroPage() {
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        )}
 
+                        {/* Error */}
                         {error && (
-                            <div className="bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3 rounded-xl">
+                            <div className="mt-5 bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3 rounded-xl">
                                 {error}
                             </div>
                         )}
 
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="w-full flex items-center justify-center gap-2 bg-[#013388] text-white font-black py-4 rounded-xl hover:bg-[#013388]/90 transition-all shadow-lg shadow-blue-200 disabled:opacity-60 text-sm"
-                        >
-                            {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Creando tu club...</> : '🚀 Crear mi sitio gratis'}
-                        </button>
+                        {/* Navigation Buttons */}
+                        <div className="flex items-center justify-between mt-8">
+                            {currentStep > 1 ? (
+                                <button type="button" onClick={handleBack}
+                                    className="flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-gray-700 transition-colors">
+                                    <ArrowLeft className="w-4 h-4" /> Atrás
+                                </button>
+                            ) : (
+                                <div />
+                            )}
 
-                        <p className="text-center text-xs text-gray-400">
-                            Al registrarte aceptas los <span className="underline cursor-pointer">Términos de Servicio</span>.<br />
-                            ¿Ya tienes cuenta? <Link to="/" className="text-[#013388] font-bold hover:underline">Inicia sesión desde tu subdominio</Link>
-                        </p>
+                            {currentStep < totalSteps ? (
+                                <button type="button" onClick={handleNext}
+                                    className="flex items-center gap-2 bg-[#013388] text-white font-bold px-6 py-3 rounded-xl hover:bg-[#012266] transition-all shadow-lg shadow-blue-900/20 text-sm">
+                                    Siguiente <ArrowRight className="w-4 h-4" />
+                                </button>
+                            ) : (
+                                <button type="submit" disabled={loading}
+                                    className="flex items-center gap-2 bg-[#013388] text-white font-bold px-6 py-3 rounded-xl hover:bg-[#012266] transition-all shadow-lg shadow-blue-900/20 text-sm disabled:opacity-60">
+                                    {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Creando...</> : '🚀 Crear mi sitio gratis'}
+                                </button>
+                            )}
+                        </div>
+
+                        {currentStep === totalSteps && (
+                            <p className="text-center text-xs text-gray-400 mt-6">
+                                Al registrarte aceptas los <span className="underline cursor-pointer">Términos de Servicio</span>.<br />
+                                ¿Ya tienes cuenta? <Link to="/" className="text-[#013388] font-bold hover:underline">Inicia sesión</Link>
+                            </p>
+                        )}
                     </form>
                 </div>
             </div>
+
+            {/* Animations */}
+            <style>{`
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(8px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+            `}</style>
         </div>
     );
 }
