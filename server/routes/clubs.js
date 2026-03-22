@@ -83,7 +83,11 @@ router.get('/by-domain', async (req, res) => {
                 phone: settings['contact_phone'] || '',
                 address: settings['contact_address'] || '',
             },
+            state: settings['club_state'] || '',
             social: settings['social_links'] ? JSON.parse(settings['social_links']) : [],
+            customSocial: settings['custom_social_links'] ? JSON.parse(settings['custom_social_links']) : [],
+            siteImages: settings['site_images'] ? JSON.parse(settings['site_images']) : {},
+            galleryImages: settings['gallery_images'] ? JSON.parse(settings['gallery_images']) : [],
             colors: {
                 primary: settings['color_primary'] || '#013388',
                 secondary: settings['color_secondary'] || '#E29C00',

@@ -65,7 +65,7 @@ export const updateClub = async (req, res) => {
     const { id } = req.params;
     const {
         name, description, city, country, district, domain, subdomain,
-        email, phone, address, socialLinks,
+        email, phone, address, state, socialLinks, customSocialLinks, siteImages, galleryImages,
         primaryColor, secondaryColor, logo, footerLogo, endPolioLogo, favicon, status,
         stripePublicKey, stripeSecretKey, useStripe,
         usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
@@ -110,11 +110,19 @@ export const updateClub = async (req, res) => {
             await VercelService.addDomain(domain);
         }
 
+        // Build settings map — all key-value pairs that go to the Settings table
         const settingsToUpdate = {
-            'contact_email': email, 'contact_phone': phone, 'contact_address': address,
+            'contact_email': email,
+            'contact_phone': phone,
+            'contact_address': address,
+            'club_state': state,
             'social_links': socialLinks ? JSON.stringify(socialLinks) : undefined,
-            'color_primary': primaryColor, 'color_secondary': secondaryColor,
-            'store_active': storeActive !== undefined ? String(storeActive) : 'true',
+            'custom_social_links': customSocialLinks ? JSON.stringify(customSocialLinks) : undefined,
+            'site_images': siteImages ? JSON.stringify(siteImages) : undefined,
+            'gallery_images': galleryImages ? JSON.stringify(galleryImages) : undefined,
+            'color_primary': primaryColor,
+            'color_secondary': secondaryColor,
+            'store_active': storeActive !== undefined ? String(storeActive) : undefined,
             'logo_header_size': logoHeaderSize !== undefined ? String(logoHeaderSize) : undefined,
         };
 

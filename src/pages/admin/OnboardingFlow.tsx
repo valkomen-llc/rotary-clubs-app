@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     ArrowRight, ArrowLeft, Building2, Palette, Share2, ImageIcon,
     Camera, Rocket, CheckCircle2, Upload, X, Loader2, ShieldCheck, AlertTriangle, ExternalLink,
+    Plus, Globe,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -215,28 +216,152 @@ const SOCIAL_PLATFORMS = [
     { key: 'tiktok', label: 'TikTok', icon: '🎵', placeholder: 'https://tiktok.com/@tuclub' },
 ];
 
-const StepSocial: React.FC<{ data: any; onChange: (d: any) => void }> = ({ data, onChange }) => (
-    <div className="max-w-xl mx-auto">
-        <h2 className="text-2xl font-black text-gray-900 mb-2">📱 Redes Sociales</h2>
-        <p className="text-sm text-gray-400 mb-8">Conecta las redes sociales de tu club. Puedes dejar en blanco las que no tengas.</p>
-        <div className="space-y-4">
-            {SOCIAL_PLATFORMS.map(p => (
-                <div key={p.key} className="flex items-center gap-3">
-                    <span className="text-xl w-8 text-center">{p.icon}</span>
-                    <div className="flex-1">
-                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">{p.label}</label>
-                        <input
-                            value={(data.social || {})[p.key] || ''}
-                            onChange={e => onChange({ ...data, social: { ...(data.social || {}), [p.key]: e.target.value } })}
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                            placeholder={p.placeholder}
-                        />
+// Suggested custom social platforms for the emoji picker hint
+const SUGGESTED_CUSTOM = [
+    { label: 'WhatsApp', icon: '💬' },
+    { label: 'Telegram', icon: '✈️' },
+    { label: 'Pinterest', icon: '📌' },
+    { label: 'Threads', icon: '🧵' },
+    { label: 'Snapchat', icon: '👻' },
+    { label: 'Otro', icon: '🔗' },
+];
+
+interface CustomSocial {
+    id: string;
+    label: string;
+    icon: string;
+    url: string;
+}
+
+const StepSocial: React.FC<{ data: any; onChange: (d: any) => void }> = ({ data, onChange }) => {
+    // custom networks stored in data.customSocial = CustomSocial[]
+    const customs: CustomSocial[] = data.customSocial || [];
+    const [showSuggestions, setShowSuggestions] = useState(false);
+
+    const addCustom = (label = '', icon = '🔗') => {
+        const newItem: CustomSocial = { id: Date.now().toString(), label, icon, url: '' };
+        onChange({ ...data, customSocial: [...customs, newItem] });
+        setShowSuggestions(false);
+    };
+
+    const updateCustom = (id: string, field: keyof CustomSocial, value: string) => {
+        onChange({
+            ...data,
+            customSocial: customs.map(c => c.id === id ? { ...c, [field]: value } : c),
+        });
+    };
+
+    const removeCustom = (id: string) => {
+        onChange({ ...data, customSocial: customs.filter(c => c.id !== id) });
+    };
+
+    return (
+        <div className="max-w-xl mx-auto">
+            <h2 className="text-2xl font-black text-gray-900 mb-2">📱 Redes Sociales</h2>
+            <p className="text-sm text-gray-400 mb-8">Conecta las redes sociales de tu club. Puedes dejar en blanco las que no tengas.</p>
+
+            {/* ── Default platforms ── */}
+            <div className="space-y-4">
+                {SOCIAL_PLATFORMS.map(p => (
+                    <div key={p.key} className="flex items-center gap-3">
+                        <span className="text-xl w-8 text-center flex-shrink-0">{p.icon}</span>
+                        <div className="flex-1">
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">{p.label}</label>
+                            <input
+                                value={(data.social || {})[p.key] || ''}
+                                onChange={e => onChange({ ...data, social: { ...(data.social || {}), [p.key]: e.target.value } })}
+                                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                placeholder={p.placeholder}
+                            />
+                        </div>
                     </div>
+                ))}
+            </div>
+
+            {/* ── Divider ── */}
+            <div className="flex items-center gap-3 my-6">
+                <div className="flex-1 h-px bg-gray-100" />
+                <span className="text-[11px] font-bold text-gray-300 uppercase tracking-widest">Otras redes</span>
+                <div className="flex-1 h-px bg-gray-100" />
+            </div>
+
+            {/* ── Custom platforms list ── */}
+            {customs.length > 0 && (
+                <div className="space-y-3 mb-4">
+                    {customs.map(c => (
+                        <div key={c.id} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-2xl p-3">
+                            {/* Emoji picker (inline input) */}
+                            <input
+                                value={c.icon}
+                                onChange={e => updateCustom(c.id, 'icon', e.target.value)}
+                                className="w-10 h-10 text-center text-xl bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 flex-shrink-0 cursor-pointer"
+                                maxLength={4}
+                                title="Escribe o pega un emoji"
+                            />
+                            <div className="flex-1 flex flex-col gap-1.5">
+                                <input
+                                    value={c.label}
+                                    onChange={e => updateCustom(c.id, 'label', e.target.value)}
+                                    placeholder="Nombre de la red (ej: WhatsApp)"
+                                    className="w-full bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                />
+                                <input
+                                    value={c.url}
+                                    onChange={e => updateCustom(c.id, 'url', e.target.value)}
+                                    placeholder="https://..."
+                                    className="w-full bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                />
+                            </div>
+                            <button
+                                onClick={() => removeCustom(c.id)}
+                                className="w-8 h-8 flex items-center justify-center rounded-xl text-gray-300 hover:text-red-400 hover:bg-red-50 transition-all flex-shrink-0"
+                                title="Eliminar"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                    ))}
                 </div>
-            ))}
+            )}
+
+            {/* ── Add custom button + quick suggestions ── */}
+            <div className="relative">
+                <button
+                    onClick={() => setShowSuggestions(s => !s)}
+                    className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-200 rounded-2xl py-3 text-sm font-bold text-gray-400 hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50/50 transition-all"
+                >
+                    <Plus className="w-4 h-4" />
+                    Agregar otra red social
+                </button>
+
+                {/* Quick-pick suggestions dropdown */}
+                {showSuggestions && (
+                    <div className="absolute bottom-full left-0 right-0 mb-2 bg-white border border-gray-200 rounded-2xl shadow-xl p-3 z-10">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 px-1">Selección rápida</p>
+                        <div className="grid grid-cols-3 gap-2 mb-2">
+                            {SUGGESTED_CUSTOM.map(s => (
+                                <button
+                                    key={s.label}
+                                    onClick={() => addCustom(s.label, s.icon)}
+                                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-all border border-gray-100 hover:border-blue-200"
+                                >
+                                    <span className="text-base">{s.icon}</span>
+                                    {s.label}
+                                </button>
+                            ))}
+                        </div>
+                        <button
+                            onClick={() => addCustom()}
+                            className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold text-gray-400 hover:bg-gray-50 transition-all border border-dashed border-gray-200"
+                        >
+                            <Globe className="w-3.5 h-3.5" /> Agregar en blanco
+                        </button>
+                    </div>
+                )}
+            </div>
         </div>
-    </div>
-);
+    );
+};
 
 // ── Step 4: Site Images ──────────────────────────────────────────
 const ImageUploadBox: React.FC<{ label: string; value: string; onUpload: (f: File) => void; onClear: () => void }> = ({ label, value, onUpload, onClear }) => {
@@ -384,22 +509,59 @@ const OnboardingFlow: React.FC = () => {
     // Update form when club data loads
     useEffect(() => {
         if (!userClub) return;
+
+        // Parse settings array into a map for easy access
+        const settingsMap: Record<string, string> = {};
+        if (userClub.settings && Array.isArray(userClub.settings)) {
+            userClub.settings.forEach((s: any) => {
+                if (s.key) settingsMap[s.key] = s.value;
+            });
+        }
+
         setInfo({
             name: userClub.name || '',
             description: userClub.description || '',
             district: userClub.district || '',
-            state: userClub.state || '',
+            state: settingsMap['club_state'] || userClub.state || '',
             city: userClub.city || '',
             country: userClub.country || 'Colombia',
-            address: userClub.contact?.address || '',
-            phone: userClub.contact?.phone || '',
-            email: userClub.contact?.email || '',
+            address: settingsMap['contact_address'] || userClub.contact?.address || '',
+            phone: settingsMap['contact_phone'] || userClub.contact?.phone || '',
+            email: settingsMap['contact_email'] || userClub.contact?.email || '',
         });
+
         setBranding({
             logo: userClub.logo || '',
-            colorPrimary: userClub.colors?.primary || '#013388',
-            colorSecondary: userClub.colors?.secondary || '#E29C00',
+            colorPrimary: settingsMap['color_primary'] || userClub.colors?.primary || '#013388',
+            colorSecondary: settingsMap['color_secondary'] || userClub.colors?.secondary || '#E29C00',
         });
+
+        // Load social links
+        const savedSocial = settingsMap['social_links']
+            ? JSON.parse(settingsMap['social_links'])
+            : (userClub.social || {});
+        const savedCustomSocial = settingsMap['custom_social_links']
+            ? JSON.parse(settingsMap['custom_social_links']).map((c: any) => ({ ...c, id: c.id || Date.now().toString() + Math.random() }))
+            : (userClub.customSocial || []);
+        setSocial({ social: savedSocial, customSocial: savedCustomSocial });
+
+        // Load site images
+        const savedSiteImages = settingsMap['site_images']
+            ? JSON.parse(settingsMap['site_images'])
+            : (userClub.siteImages || {});
+        setSiteImages(savedSiteImages);
+
+        // Load gallery images
+        const savedGallery = settingsMap['gallery_images']
+            ? JSON.parse(settingsMap['gallery_images'])
+            : [];
+        if (savedGallery.length > 0) setGalleryImages(savedGallery);
+
+        // Resume to saved onboarding step
+        const savedStep = parseInt(settingsMap['onboarding_step'] || '0');
+        if (savedStep > 0 && savedStep < STEPS.length - 1) {
+            setStep(savedStep);
+        }
     }, [userClub]);
 
     const clubId = userClub?.id || user?.clubId || user?.club?.id;
@@ -452,34 +614,83 @@ const OnboardingFlow: React.FC = () => {
         const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 
         try {
-            // Save club info
+            // ── Step 1: Club Info ──────────────────────────────────────
+            // Saves: name, description, district, city, country (Club table)
+            //        state, address, phone, email (Settings table)
+            if (step === 1) {
+                await fetch(`${API}/admin/clubs/${clubId}`, {
+                    method: 'PUT', headers,
+                    body: JSON.stringify({
+                        name: info.name,
+                        description: info.description,
+                        district: info.district,
+                        city: info.city,
+                        country: info.country,
+                        // These go to Settings via the controller
+                        email: info.email,
+                        phone: info.phone,
+                        address: info.address,
+                        state: info.state,
+                    }),
+                });
+            }
+
+            // ── Step 2: Branding ──────────────────────────────────────
+            // Saves: logo (Club table), colorPrimary, colorSecondary (Settings)
             if (step === 2) {
                 await fetch(`${API}/admin/clubs/${clubId}`, {
                     method: 'PUT', headers,
                     body: JSON.stringify({
-                        name: info.name, description: info.description,
-                        city: info.city, country: info.country,
+                        logo: branding.logo,
+                        primaryColor: branding.colorPrimary,
+                        secondaryColor: branding.colorSecondary,
                     }),
                 });
-                // Save contact settings
-                const saveContact = async (key: string, val: string) => {
-                    if (!val) return;
-                    await fetch(`${API}/admin/clubs/${clubId}`, {
-                        method: 'PUT', headers,
-                        body: JSON.stringify({ [`contact_${key}`]: val }),
-                    }).catch(() => {});
-                };
-                await saveContact('email', info.email);
-                await saveContact('phone', info.phone);
             }
-            // Save branding
+
+            // ── Step 3: Social Networks ───────────────────────────────
+            // Saves: socialLinks (Settings), customSocialLinks (Settings)
             if (step === 3) {
+                const socialPayload: Record<string, string> = { ...(social.social || {}) };
+                const customs = social.customSocial || [];
                 await fetch(`${API}/admin/clubs/${clubId}`, {
                     method: 'PUT', headers,
-                    body: JSON.stringify({ logo: branding.logo }),
+                    body: JSON.stringify({
+                        socialLinks: socialPayload,
+                        ...(customs.length > 0 ? {
+                            customSocialLinks: customs.map((c: any) => ({
+                                label: c.label,
+                                icon: c.icon,
+                                url: c.url,
+                            })),
+                        } : {}),
+                    }),
                 });
             }
-            // Save onboarding step progress
+
+            // ── Step 4: Site Images ───────────────────────────────────
+            // Saves: site image URLs as Settings
+            if (step === 4) {
+                await fetch(`${API}/admin/clubs/${clubId}`, {
+                    method: 'PUT', headers,
+                    body: JSON.stringify({
+                        siteImages: siteImages,
+                    }),
+                });
+            }
+
+            // ── Step 5: Gallery Images ────────────────────────────────
+            // Saves: gallery image URLs as Settings
+            if (step === 5 && galleryImages.length > 0) {
+                await fetch(`${API}/admin/clubs/${clubId}`, {
+                    method: 'PUT', headers,
+                    body: JSON.stringify({
+                        galleryImages: galleryImages,
+                    }),
+                });
+            }
+
+            // Always save step progress
             await fetch(`${API}/admin/clubs/${clubId}/onboarding-step`, {
                 method: 'PATCH', headers,
                 body: JSON.stringify({ step }),
