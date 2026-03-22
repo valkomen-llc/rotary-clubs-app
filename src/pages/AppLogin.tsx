@@ -113,7 +113,7 @@ export default function AppLogin() {
                     <div className="mt-6 pt-6 border-t border-white/10 text-center">
                         <p className="text-blue-300 text-xs">
                             ¿Aún no tienes cuenta?{' '}
-                            <a href="https://www.clubplatform.org/#/registro"
+                            <a href="#/registro"
                                 className="text-white font-bold hover:underline">
                                 Crear mi sitio gratis
                             </a>

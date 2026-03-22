@@ -102,7 +102,7 @@ export default function LandingPage() {
         return () => clearInterval(timer);
     }, []);
 
-    const goRegister = () => navigate('/#/registro');
+    const goRegister = () => navigate('/registro');
 
     return (
         <div className="min-h-screen bg-white font-sans overflow-x-hidden">
