@@ -61,32 +61,47 @@ const StepClubInfo: React.FC<{ data: any; onChange: (d: any) => void }> = ({ dat
             </div>
             <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Descripción del club *</label>
-                <textarea value={data.description || ''} onChange={e => onChange({ ...data, description: e.target.value })} rows={4}
+                <textarea value={data.description || ''} onChange={e => onChange({ ...data, description: e.target.value })} rows={3}
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none" placeholder="Describe la misión y actividades de tu club..." />
             </div>
+            <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Distrito Rotario *</label>
+                <input value={data.district || ''} onChange={e => onChange({ ...data, district: e.target.value })}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" placeholder="Ej: Distrito 4281" />
+            </div>
             <div className="grid grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Departamento / Provincia *</label>
+                    <input value={data.state || ''} onChange={e => onChange({ ...data, state: e.target.value })}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" placeholder="Valle del Cauca" />
+                </div>
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Ciudad *</label>
                     <input value={data.city || ''} onChange={e => onChange({ ...data, city: e.target.value })}
                         className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" placeholder="Tu ciudad" />
                 </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">País *</label>
                     <input value={data.country || ''} onChange={e => onChange({ ...data, country: e.target.value })}
                         className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" placeholder="Colombia" />
                 </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Teléfono</label>
                     <input value={data.phone || ''} onChange={e => onChange({ ...data, phone: e.target.value })}
                         className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" placeholder="+57 300 000 0000" />
                 </div>
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Email de contacto</label>
-                    <input value={data.email || ''} onChange={e => onChange({ ...data, email: e.target.value })}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" placeholder="contacto@tuclub.org" />
-                </div>
+            </div>
+            <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Dirección</label>
+                <input value={data.address || ''} onChange={e => onChange({ ...data, address: e.target.value })}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" placeholder="Calle 10 #5-23, Centro" />
+            </div>
+            <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Email de contacto</label>
+                <input value={data.email || ''} onChange={e => onChange({ ...data, email: e.target.value })}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" placeholder="contacto@tuclub.org" />
             </div>
         </div>
     </div>
@@ -315,9 +330,9 @@ const OnboardingFlow: React.FC = () => {
         fetchUserClub();
     }, [token, user]);
 
-    // Form data — initialized from the user's club
     const [info, setInfo] = useState({
-        name: '', description: '', city: '', country: 'Colombia', phone: '', email: '',
+        name: '', description: '', district: '', state: '', city: '', country: 'Colombia',
+        address: '', phone: '', email: '',
     });
     const [branding, setBranding] = useState({
         logo: '', colorPrimary: '#013388', colorSecondary: '#E29C00',
@@ -332,8 +347,11 @@ const OnboardingFlow: React.FC = () => {
         setInfo({
             name: userClub.name || '',
             description: userClub.description || '',
+            district: userClub.district || '',
+            state: userClub.state || '',
             city: userClub.city || '',
             country: userClub.country || 'Colombia',
+            address: userClub.contact?.address || '',
             phone: userClub.contact?.phone || '',
             email: userClub.contact?.email || '',
         });
