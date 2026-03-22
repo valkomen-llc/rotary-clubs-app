@@ -48,9 +48,8 @@ export default function RegistroPage() {
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState('');
-    const [subdomainEdited, setSubdomainEdited] = useState(false);
     const [currentStep, setCurrentStep] = useState(1);
-    const totalSteps = 3;
+    const totalSteps = 2;
 
     const [form, setForm] = useState({
         clubName: '',
@@ -62,6 +61,7 @@ export default function RegistroPage() {
         subdomain: '',
         phone: '',
         phoneCountry: 'CO',
+        role: '',
     });
 
     // Find country data by code
@@ -71,7 +71,7 @@ export default function RegistroPage() {
     const updateField = (field: string, value: string) => {
         setForm(prev => {
             const updated = { ...prev, [field]: value };
-            if (field === 'clubName' && !subdomainEdited) {
+            if (field === 'clubName') {
                 updated.subdomain = slugify(value);
             }
             // Auto-sync phone country when country changes
@@ -89,9 +89,6 @@ export default function RegistroPage() {
             if (!form.country) { setError('Selecciona un país.'); return false; }
         }
         if (step === 2) {
-            if (!form.subdomain) { setError('El subdominio es obligatorio.'); return false; }
-        }
-        if (step === 3) {
             if (!form.adminName) { setError('Ingresa tu nombre completo.'); return false; }
             if (!form.adminEmail) { setError('Ingresa tu correo electrónico.'); return false; }
             if (!form.adminPassword || form.adminPassword.length < 6) { setError('La contraseña debe tener al menos 6 caracteres.'); return false; }
@@ -196,7 +193,7 @@ export default function RegistroPage() {
     /* ═══════════════════════════════════════════════════════════
        Step indicators
        ═══════════════════════════════════════════════════════════ */
-    const stepLabels = ['Datos del Club', 'Subdominio', 'Cuenta Admin'];
+    const stepLabels = ['Datos del Club', 'Cuenta Admin'];
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-6">
@@ -294,48 +291,8 @@ export default function RegistroPage() {
                             </div>
                         )}
 
-                        {/* ── STEP 2: Subdomain ── */}
+                        {/* ── STEP 2: Admin Account ── */}
                         {currentStep === 2 && (
-                            <div className="space-y-5 animate-[fadeIn_.3s_ease]">
-                                <div className="flex items-center gap-3 mb-6">
-                                    <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center">
-                                        <Sparkles className="w-5 h-5 text-violet-600" />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-black text-gray-900">Subdominio del Club</h3>
-                                        <p className="text-xs text-gray-400">La dirección web provisional de tu club</p>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-2">Subdominio *</label>
-                                    <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-[#013388]/20 focus-within:border-[#013388] transition-all">
-                                        <input
-                                            type="text"
-                                            value={form.subdomain}
-                                            onChange={e => { setSubdomainEdited(true); updateField('subdomain', slugify(e.target.value)); }}
-                                            className="flex-1 px-4 py-3.5 text-sm focus:outline-none"
-                                            placeholder="miclub"
-                                            required
-                                        />
-                                        <span className="px-4 py-3.5 bg-gray-50 text-xs font-mono text-gray-400 border-l border-gray-200 whitespace-nowrap">.clubplatform.org</span>
-                                    </div>
-                                    {form.subdomain && (
-                                        <div className="mt-3 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
-                                            <p className="text-xs text-[#013388] font-medium">
-                                                ✓ Vista previa: <strong>app.clubplatform.org/#/preview/{form.subdomain}</strong>
-                                            </p>
-                                            <p className="text-[10px] text-gray-400 mt-1">
-                                                Después podrás conectar tu dominio propio (ej: rotary{form.subdomain}.org)
-                                            </p>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* ── STEP 3: Admin Account ── */}
-                        {currentStep === 3 && (
                             <div className="space-y-5 animate-[fadeIn_.3s_ease]">
                                 <div className="flex items-center gap-3 mb-6">
                                     <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
@@ -357,6 +314,31 @@ export default function RegistroPage() {
                                         className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all"
                                         placeholder="Juan Pérez"
                                     />
+                                </div>
+
+                                {/* Role */}
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-2">Rol que asume en el Club</label>
+                                    <div className="relative">
+                                        <select
+                                            value={form.role}
+                                            onChange={e => updateField('role', e.target.value)}
+                                            className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all bg-white appearance-none pr-10"
+                                        >
+                                            <option value="">Selecciona tu rol</option>
+                                            <option value="Presidente">Presidente</option>
+                                            <option value="Vicepresidente">Vicepresidente</option>
+                                            <option value="Secretario">Secretario</option>
+                                            <option value="Tesorero">Tesorero</option>
+                                            <option value="Director de Imagen Pública">Director de Imagen Pública</option>
+                                            <option value="Director de Proyectos">Director de Proyectos</option>
+                                            <option value="Junta Directiva">Junta Directiva</option>
+                                            <option value="Equipo Distrital">Equipo Distrital</option>
+                                            <option value="Socio Activo">Socio Activo</option>
+                                            <option value="Otro">Otro</option>
+                                        </select>
+                                        <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                    </div>
                                 </div>
 
                                 {/* Email */}
@@ -421,6 +403,18 @@ export default function RegistroPage() {
                                         </button>
                                     </div>
                                 </div>
+
+                                {/* Preview URL box */}
+                                {form.subdomain && (
+                                    <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+                                        <p className="text-xs text-[#013388] font-medium">
+                                            ✓ Vista previa: <strong>app.clubplatform.org/#/preview/{form.subdomain}</strong>
+                                        </p>
+                                        <p className="text-[10px] text-gray-400 mt-1">
+                                            Después podrás conectar tu dominio propio (ej: rotary{form.subdomain}.org)
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                         )}
 
