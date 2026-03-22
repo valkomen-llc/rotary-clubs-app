@@ -363,47 +363,233 @@ const StepSocial: React.FC<{ data: any; onChange: (d: any) => void }> = ({ data,
     );
 };
 
-// ── Step 4: Site Images ──────────────────────────────────────────
-const ImageUploadBox: React.FC<{ label: string; value: string; onUpload: (f: File) => void; onClear: () => void }> = ({ label, value, onUpload, onClear }) => {
-    const ref = useRef<HTMLInputElement>(null);
+// ── Step 4: Site Images (matches admin ImageDistribution) ────────
+const SITE_IMG_DEFAULTS = {
+    hero: [
+        { url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=700&fit=crop', alt: 'Trabajo en equipo' },
+        { url: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&h=700&fit=crop', alt: 'Promoción de la paz' },
+        { url: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=1600&h=700&fit=crop', alt: 'Lucha contra enfermedades' },
+        { url: 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=1600&h=700&fit=crop', alt: 'Educación' },
+        { url: 'https://images.unsplash.com/photo-1531206715517-5c0ba140b2b8?w=1600&h=700&fit=crop', alt: 'Desarrollo económico' },
+    ],
+    causes: [
+        { url: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=500&h=500&fit=crop', alt: 'Promoción de la paz' },
+        { url: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=500&h=500&fit=crop', alt: 'Lucha contra enfermedades' },
+        { url: 'https://images.unsplash.com/photo-1593113598332-cd288d649433?w=500&h=500&fit=crop', alt: 'Agua y saneamiento' },
+        { url: 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=500&h=500&fit=crop', alt: 'Salud materno-infantil' },
+        { url: 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=500&h=500&fit=crop', alt: 'Educación básica' },
+        { url: 'https://images.unsplash.com/photo-1531206715517-5c0ba140b2b8?w=500&h=500&fit=crop', alt: 'Desarrollo económico' },
+        { url: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=500&h=500&fit=crop', alt: 'Medio ambiente' },
+    ],
+    foundation: [{ url: 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=1600&h=800&fit=crop', alt: 'Fundación Rotaria' }],
+    join: [{ url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=600&h=500&fit=crop', alt: 'Únete a Rotary' }],
+    aboutHero: [{ url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1600&h=500&fit=crop', alt: 'Quiénes Somos' }],
+    aboutCarousel: [
+        { url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=400&h=250&fit=crop', alt: 'Protegemos el medio ambiente' },
+        { url: 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=400&h=250&fit=crop', alt: 'Somos gente de acción' },
+        { url: 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=400&h=250&fit=crop', alt: 'Promovemos la paz' },
+        { url: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=400&h=250&fit=crop', alt: 'Combatimos enfermedades' },
+        { url: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=400&h=250&fit=crop', alt: 'Protegemos a madres e hijos' },
+    ],
+};
+
+interface SiteImgSubGroup { key: string; subLabel: string; count: number; aspect: string; }
+interface SiteImgContainer { key: string; label: string; desc: string; count: number; aspect: string; groups?: SiteImgSubGroup[]; }
+
+const SITE_CONTAINERS: SiteImgContainer[] = [
+    { key: 'hero', label: 'Hero — Slider Principal', desc: '5 imágenes de slide con rotación automática. Tamaño ideal: 1600×700px.', count: 5, aspect: '16/7' },
+    { key: 'causes', label: 'Áreas de Interés — Causas', desc: '7 imágenes para las tarjetas de causas Rotary. Tamaño ideal: 500×500px.', count: 7, aspect: '1/1' },
+    { key: 'foundation', label: 'Fundación Rotaria', desc: '1 imagen de fondo para la sección de la Fundación.', count: 1, aspect: '16/8' },
+    { key: 'join', label: 'Sección Únete', desc: '1 imagen motivacional para la sección de reclutamiento.', count: 1, aspect: '6/5' },
+    {
+        key: 'about', label: 'Quiénes Somos', desc: 'Imágenes de la página Quiénes Somos: banner hero y carrusel de causas.', count: 6, aspect: '16/5',
+        groups: [
+            { key: 'aboutHero', subLabel: 'Hero — Banner', count: 1, aspect: '16/5' },
+            { key: 'aboutCarousel', subLabel: 'Carrusel de Causas', count: 5, aspect: '8/5' },
+        ],
+    },
+];
+
+const StepSiteImages: React.FC<{
+    data: any;
+    onChange: (d: any) => void;
+    onImageUpload: (key: string, f: File, index: number) => void;
+}> = ({ data, onChange, onImageUpload }) => {
+    const [expanded, setExpanded] = useState<Record<string, boolean>>({ hero: true });
+
+    // Get slots for a given key, ensuring they always have the right length
+    const getSlots = (key: string): { url: string; alt: string }[] => {
+        const defaults = (SITE_IMG_DEFAULTS as any)[key] || [];
+        const saved = data[key];
+        if (Array.isArray(defaults)) {
+            if (Array.isArray(saved) && saved.length === defaults.length) return saved;
+            // Merge saved over defaults
+            return defaults.map((d: any, i: number) => (saved?.[i] ? saved[i] : { ...d }));
+        }
+        return saved ? [saved] : [{ ...defaults }];
+    };
+
+    const isDefault = (key: string, index: number): boolean => {
+        const defaults = (SITE_IMG_DEFAULTS as any)[key];
+        const slots = getSlots(key);
+        if (Array.isArray(defaults)) return slots[index]?.url === defaults[index]?.url;
+        return slots[0]?.url === defaults?.url;
+    };
+
+    const fileRef = useRef<HTMLInputElement>(null);
+    const [activeUpload, setActiveUpload] = useState<{ key: string; index: number } | null>(null);
+
+    const triggerUpload = (key: string, index: number) => {
+        setActiveUpload({ key, index });
+        fileRef.current?.click();
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file && activeUpload) {
+            onImageUpload(activeUpload.key, file, activeUpload.index);
+        }
+        e.target.value = '';
+    };
+
+    const resetSlot = (key: string, index: number) => {
+        const defaults = (SITE_IMG_DEFAULTS as any)[key];
+        const newData = { ...data };
+        if (Array.isArray(defaults)) {
+            const slots = [...getSlots(key)];
+            slots[index] = { ...defaults[index] };
+            newData[key] = slots;
+        } else {
+            newData[key] = [{ ...defaults }];
+        }
+        onChange(newData);
+    };
+
     return (
-        <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">{label}</label>
-            <div className="relative rounded-xl border-2 border-dashed border-gray-200 overflow-hidden hover:border-blue-400 transition-colors cursor-pointer"
-                onClick={() => !value && ref.current?.click()}>
-                {value ? (
-                    <div className="relative">
-                        <img src={value} alt={label} className="w-full h-40 object-cover" />
-                        <button onClick={e => { e.stopPropagation(); onClear(); }}
-                            className="absolute top-2 right-2 bg-black/60 text-white p-1 rounded-lg hover:bg-black/80">
-                            <X className="w-4 h-4" />
-                        </button>
-                    </div>
-                ) : (
-                    <div className="flex flex-col items-center justify-center py-10 text-gray-300">
-                        <Upload className="w-8 h-8 mb-2" />
-                        <span className="text-xs font-bold">Click para subir</span>
-                        <span className="text-[10px] text-gray-300">JPG, PNG — Máx 5MB</span>
-                    </div>
-                )}
+        <div className="max-w-3xl mx-auto">
+            <h2 className="text-2xl font-black text-gray-900 mb-2">🖼️ Imágenes del Sitio Web</h2>
+            <p className="text-sm text-gray-400 mb-6">
+                Personaliza las imágenes de cada sección de tu sitio. Haz clic en cualquier imagen para reemplazarla.
+            </p>
+
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+
+            <div className="space-y-3">
+                {SITE_CONTAINERS.map(container => {
+                    const subGroups = container.groups || [{ key: container.key, subLabel: '', count: container.count, aspect: container.aspect }];
+                    const totalCount = subGroups.reduce((sum, g) => sum + g.count, 0);
+                    const totalCustom = subGroups.reduce((sum, g) => {
+                        return sum + getSlots(g.key).filter((_, i) => !isDefault(g.key, i)).length;
+                    }, 0);
+                    const isOpen = expanded[container.key];
+
+                    return (
+                        <div key={container.key} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                            {/* Accordion Header */}
+                            <button
+                                onClick={() => setExpanded(prev => ({ ...prev, [container.key]: !prev[container.key] }))}
+                                className="w-full px-5 py-4 flex items-center gap-3 hover:bg-gray-50/50 transition-colors text-left"
+                            >
+                                <ImageIcon className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <h3 className="font-bold text-gray-900 text-sm">{container.label}</h3>
+                                        <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                                            {totalCount} {totalCount === 1 ? 'imagen' : 'imágenes'}
+                                        </span>
+                                        {totalCustom > 0 && (
+                                            <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex items-center gap-0.5">
+                                                <CheckCircle2 className="w-2.5 h-2.5" /> {totalCustom} personalizadas
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-[11px] text-gray-400 mt-0.5">{container.desc}</p>
+                                </div>
+                                <ArrowRight className={`w-4 h-4 text-gray-300 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                            </button>
+
+                            {/* Slots Grid */}
+                            {isOpen && (
+                                <div className="px-5 pb-5 border-t border-gray-100 pt-4 space-y-5">
+                                    {subGroups.map(group => {
+                                        const slots = getSlots(group.key);
+                                        return (
+                                            <div key={group.key}>
+                                                {container.groups && (
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                                                            {group.subLabel}
+                                                        </span>
+                                                        <span className="text-[9px] text-gray-400">{group.count} {group.count === 1 ? 'imagen' : 'imágenes'}</span>
+                                                    </div>
+                                                )}
+                                                <div className={`grid gap-3 ${group.count === 1 ? 'grid-cols-1 max-w-sm' : group.count <= 4 ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-2 lg:grid-cols-5'}`}>
+                                                    {slots.map((slot, idx) => {
+                                                        const isDef = isDefault(group.key, idx);
+                                                        return (
+                                                            <div key={idx} className={`group relative rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${isDef ? 'border-gray-200 border-dashed' : 'border-emerald-300 shadow-md'}`}>
+                                                                <div className="relative" style={{ aspectRatio: group.aspect }}>
+                                                                    <img
+                                                                        src={slot.url} alt={slot.alt}
+                                                                        className="w-full h-full object-cover"
+                                                                        onError={(e) => { (e.target as HTMLImageElement).src = SITE_IMG_DEFAULTS.hero[0].url; }}
+                                                                    />
+                                                                    {/* Hover overlay */}
+                                                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100">
+                                                                        <button
+                                                                            onClick={() => triggerUpload(group.key, idx)}
+                                                                            className="px-2.5 py-1.5 bg-white rounded-lg text-[10px] font-bold text-gray-800 hover:bg-gray-100 transition-colors flex items-center gap-1 shadow-lg"
+                                                                        >
+                                                                            <Upload className="w-3 h-3" /> Cambiar
+                                                                        </button>
+                                                                        {!isDef && (
+                                                                            <button
+                                                                                onClick={(e) => { e.stopPropagation(); resetSlot(group.key, idx); }}
+                                                                                className="px-2.5 py-1.5 bg-red-500 rounded-lg text-[10px] font-bold text-white hover:bg-red-600 transition-colors flex items-center gap-1 shadow-lg"
+                                                                            >
+                                                                                <X className="w-3 h-3" /> Reset
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                    {/* Status badge */}
+                                                                    <div className="absolute top-1.5 left-1.5">
+                                                                        {isDef ? (
+                                                                            <span className="px-1.5 py-0.5 bg-gray-900/60 text-white text-[8px] font-bold rounded-full backdrop-blur-sm uppercase">
+                                                                                Por Defecto
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="px-1.5 py-0.5 bg-emerald-500 text-white text-[8px] font-bold rounded-full uppercase flex items-center gap-0.5">
+                                                                                <CheckCircle2 className="w-2 h-2" /> Personalizada
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    {/* Slot number */}
+                                                                    {group.count > 1 && (
+                                                                        <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-white/90 text-gray-800 text-[9px] font-black flex items-center justify-center shadow">
+                                                                            {idx + 1}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                {/* Alt text */}
+                                                                <div className="p-1.5 bg-white">
+                                                                    <p className="text-[10px] text-gray-500 truncate font-medium">{slot.alt}</p>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
             </div>
-            <input ref={ref} type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && onUpload(e.target.files[0])} />
         </div>
     );
 };
-
-const StepSiteImages: React.FC<{ data: any; onChange: (d: any) => void; onImageUpload: (key: string, f: File) => void }> = ({ data, onChange, onImageUpload }) => (
-    <div className="max-w-2xl mx-auto">
-        <h2 className="text-2xl font-black text-gray-900 mb-2">🖼️ Imágenes del Sitio Web</h2>
-        <p className="text-sm text-gray-400 mb-8">Estas imágenes aparecerán en las secciones principales de tu sitio.</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <ImageUploadBox label="Imagen Hero Principal" value={data.heroImage || ''} onUpload={f => onImageUpload('heroImage', f)} onClear={() => onChange({ ...data, heroImage: '' })} />
-            <ImageUploadBox label="Quiénes Somos" value={data.aboutImage || ''} onUpload={f => onImageUpload('aboutImage', f)} onClear={() => onChange({ ...data, aboutImage: '' })} />
-            <ImageUploadBox label="Nuestros Proyectos" value={data.projectsImage || ''} onUpload={f => onImageUpload('projectsImage', f)} onClear={() => onChange({ ...data, projectsImage: '' })} />
-            <ImageUploadBox label="Contacto" value={data.contactImage || ''} onUpload={f => onImageUpload('contactImage', f)} onClear={() => onChange({ ...data, contactImage: '' })} />
-        </div>
-    </div>
-);
 
 // ── Step 5: Gallery ──────────────────────────────────────────────
 const StepGallery: React.FC<{ images: string[]; onUpload: (files: FileList) => void; onRemove: (i: number) => void }> = ({ images, onUpload, onRemove }) => {
@@ -545,11 +731,15 @@ const OnboardingFlow: React.FC = () => {
             : (userClub.customSocial || []);
         setSocial({ social: savedSocial, customSocial: savedCustomSocial });
 
-        // Load site images
-        const savedSiteImages = settingsMap['site_images']
-            ? JSON.parse(settingsMap['site_images'])
-            : (userClub.siteImages || {});
-        setSiteImages(savedSiteImages);
+        // Load site images from ContentSection (same source as admin ImageDistribution)
+        if (userClub.id) {
+            fetch(`${API}/clubs/${userClub.id}/site-images?_t=${Date.now()}`)
+                .then(r => r.ok ? r.json() : {})
+                .then(data => {
+                    if (data && Object.keys(data).length > 0) setSiteImages(data);
+                })
+                .catch(() => {});
+        }
 
         // Load gallery images
         const savedGallery = settingsMap['gallery_images']
@@ -588,11 +778,28 @@ const OnboardingFlow: React.FC = () => {
         setUploading(false);
     };
 
-    const handleSiteImageUpload = async (key: string, file: File) => {
+    const handleSiteImageUpload = async (key: string, file: File, index: number) => {
         setUploading(true);
         try {
             const url = await uploadFile(file);
-            if (url) setSiteImages((s: any) => ({ ...s, [key]: url }));
+            if (url) {
+                setSiteImages((prev: any) => {
+                    const newData = { ...prev };
+                    const defaults = (SITE_IMG_DEFAULTS as any)[key] || [];
+                    if (Array.isArray(defaults)) {
+                        // Ensure we have a full array
+                        const slots = Array.isArray(prev[key]) && prev[key].length === defaults.length
+                            ? [...prev[key]]
+                            : defaults.map((d: any, i: number) => (prev[key]?.[i] ? prev[key][i] : { ...d }));
+                        const alt = file.name.replace(/\.[^/.]+$/, '');
+                        slots[index] = { url, alt };
+                        newData[key] = slots;
+                    } else {
+                        newData[key] = [{ url, alt: file.name.replace(/\.[^/.]+$/, '') }];
+                    }
+                    return newData;
+                });
+            }
         } catch { /* ignore */ }
         setUploading(false);
     };
@@ -669,14 +876,31 @@ const OnboardingFlow: React.FC = () => {
             }
 
             // ── Step 4: Site Images ───────────────────────────────────
-            // Saves: site image URLs as Settings
+            // Saves to ContentSection (same as admin ImageDistribution)
             if (step === 4) {
-                await fetch(`${API}/admin/clubs/${clubId}`, {
-                    method: 'PUT', headers,
+                // Build normalized image data matching what the live site expects
+                const imgPayload: any = {};
+                for (const container of SITE_CONTAINERS) {
+                    const subGroups = container.groups || [{ key: container.key, subLabel: '', count: container.count, aspect: container.aspect }];
+                    for (const group of subGroups) {
+                        const defaults = (SITE_IMG_DEFAULTS as any)[group.key] || [];
+                        const saved = siteImages[group.key];
+                        if (Array.isArray(defaults)) {
+                            imgPayload[group.key] = Array.isArray(saved) && saved.length === defaults.length
+                                ? saved
+                                : defaults.map((d: any, i: number) => (saved?.[i] ? saved[i] : { ...d }));
+                        } else {
+                            imgPayload[group.key] = saved?.[0] || saved || { ...defaults };
+                        }
+                    }
+                }
+                await fetch(`${API}/admin/sections/batch-upsert`, {
+                    method: 'POST', headers,
                     body: JSON.stringify({
-                        siteImages: siteImages,
+                        clubId,
+                        sections: [{ page: 'home', section: 'images', content: imgPayload }],
                     }),
-                });
+                }).catch(() => {});
             }
 
             // ── Step 5: Gallery Images ────────────────────────────────
