@@ -21,7 +21,6 @@ const STEPS = [
     { id: 'images', title: 'Imágenes', icon: ImageIcon },
     { id: 'modules', title: 'Módulos', icon: Globe },
     { id: 'members', title: 'Socios', icon: Users },
-    { id: 'gallery', title: 'Galería', icon: Camera },
     { id: 'complete', title: '¡Listo!', icon: CheckCircle2 },
 ];
 
@@ -801,36 +800,8 @@ const StepMembers: React.FC<{
     );
 };
 
-// ── Step 7: Gallery ──────────────────────────────────────────────
-const StepGallery: React.FC<{ images: string[]; onUpload: (files: FileList) => void; onRemove: (i: number) => void }> = ({ images, onUpload, onRemove }) => {
-    const ref = useRef<HTMLInputElement>(null);
-    return (
-        <div className="max-w-2xl mx-auto">
-            <h2 className="text-2xl font-black text-gray-900 mb-2">📸 Galería del Club</h2>
-            <p className="text-sm text-gray-400 mb-8">Sube fotos de eventos, reuniones y proyectos de tu club.</p>
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                {images.map((img, i) => (
-                    <div key={i} className="relative rounded-xl overflow-hidden aspect-square group">
-                        <img src={img} alt="" className="w-full h-full object-cover" />
-                        <button onClick={() => onRemove(i)}
-                            className="absolute top-1 right-1 bg-black/60 text-white p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
-                            <X className="w-3 h-3" />
-                        </button>
-                    </div>
-                ))}
-                <div onClick={() => ref.current?.click()}
-                    className="rounded-xl border-2 border-dashed border-gray-200 aspect-square flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-all">
-                    <Camera className="w-6 h-6 text-gray-300 mb-1" />
-                    <span className="text-[10px] font-bold text-gray-400">Agregar</span>
-                </div>
-            </div>
-            <input ref={ref} type="file" accept="image/*" multiple className="hidden" onChange={e => e.target.files && onUpload(e.target.files)} />
-            <p className="text-[11px] text-gray-400 mt-4 text-center">Puedes subir varias imágenes a la vez. Se recomienda fotos de alta resolución.</p>
-        </div>
-    );
-};
 
-// ── Step 8: Complete ─────────────────────────────────────────────
+// ── Step 7: Complete ─────────────────────────────────────────────
 const StepComplete: React.FC<{ clubName: string; onFinish: () => void; saving: boolean }> = ({ clubName, onFinish, saving }) => (
     <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-6">
         <div className="w-24 h-24 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center mb-8 shadow-2xl shadow-emerald-500/30">
@@ -910,7 +881,6 @@ const OnboardingFlow: React.FC = () => {
         hasDian: false
     });
     const [members, setMembers] = useState<any[]>([]);
-    const [galleryImages, setGalleryImages] = useState<string[]>([]);
 
     // Update form when club data loads
     useEffect(() => {
@@ -971,12 +941,6 @@ const OnboardingFlow: React.FC = () => {
             hasEcommerce: settingsMap['module_ecommerce'] === 'true',
             hasDian: settingsMap['module_dian'] === 'true'
         });
-
-        // Load gallery images
-        const savedGallery = settingsMap['gallery_images']
-            ? JSON.parse(settingsMap['gallery_images'])
-            : [];
-        if (savedGallery.length > 0) setGalleryImages(savedGallery);
 
         // Resume to saved onboarding step
         const savedStep = parseInt(settingsMap['onboarding_step'] || '0');
@@ -1045,17 +1009,6 @@ const OnboardingFlow: React.FC = () => {
                     if (next[index]) next[index].image = url;
                     return next;
                 });
-            }
-        } catch { /* ignore */ }
-        setUploading(false);
-    };
-
-    const handleGalleryUpload = async (files: FileList) => {
-        setUploading(true);
-        try {
-            for (const file of Array.from(files)) {
-                const url = await uploadFile(file);
-                if (url) setGalleryImages(prev => [...prev, url]);
             }
         } catch { /* ignore */ }
         setUploading(false);
@@ -1176,17 +1129,6 @@ const OnboardingFlow: React.FC = () => {
                 }
             }
 
-            // ── Step 7: Gallery Images ────────────────────────────────
-            // Saves: gallery image URLs as Settings
-            if (step === 7 && galleryImages.length > 0) {
-                await fetch(`${API}/admin/clubs/${clubId}`, {
-                    method: 'PUT', headers,
-                    body: JSON.stringify({
-                        galleryImages: galleryImages,
-                    }),
-                });
-            }
-
             // Always save step progress
             await fetch(`${API}/admin/clubs/${clubId}/onboarding-step`, {
                 method: 'PATCH', headers,
@@ -1294,8 +1236,7 @@ const OnboardingFlow: React.FC = () => {
                             {step === 4 && <StepSiteImages data={siteImages} onChange={setSiteImages} onImageUpload={handleSiteImageUpload} />}
                             {step === 5 && <StepModules data={modules} onChange={setModules} />}
                             {step === 6 && <StepMembers count={modules.memberCount} members={members} onChange={setMembers} onImageUpload={handleMemberImageUpload} />}
-                            {step === 7 && <StepGallery images={galleryImages} onUpload={handleGalleryUpload} onRemove={i => setGalleryImages(prev => prev.filter((_, idx) => idx !== i))} />}
-                            {step === 8 && <StepComplete clubName={info.name || 'tu club'} onFinish={handleFinish} saving={saving} />}
+                            {step === 7 && <StepComplete clubName={info.name || 'tu club'} onFinish={handleFinish} saving={saving} />}
                         </>
                     )}
                 </div>

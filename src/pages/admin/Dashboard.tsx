@@ -5,6 +5,7 @@ import {
     ExternalLink, Newspaper, FolderKanban, CalendarDays, Image,
     Globe, Lock, Rocket, CheckCircle2, ChevronRight,
     Sparkles, Users, BarChart3, Settings, ArrowRight,
+    ShoppingBag, FileText, Shield,
 } from 'lucide-react';
 import MissionControl from '../../components/admin/MissionControl';
 import AgentProgressBar from '../../components/admin/AgentProgressBar';
@@ -347,6 +348,107 @@ const ClubAdminDashboard: React.FC = () => {
                     ))}
                 </div>
             </div>
+
+            {/* ── Completa tu plataforma: Module Cards ── */}
+            {(() => {
+                const modules = club?.modules || {};
+                const MODULE_DEFS = [
+                    { key: 'projects', enabled: modules.projects !== false, label: 'Proyectos y Causas', icon: <FolderKanban className="w-5 h-5" />, href: '/admin/proyectos', color: 'from-violet-500 to-violet-600', bg: 'bg-violet-50', text: 'text-violet-600',
+                      calc: () => {
+                        let p = 0; if ((stats?.projects || 0) > 0) p += 50; if ((stats?.projects || 0) >= 3) p += 50; return p;
+                      },
+                      tip: 'Crea al menos 3 proyectos para completar' },
+                    { key: 'events', enabled: modules.events !== false, label: 'Eventos y Calendario', icon: <CalendarDays className="w-5 h-5" />, href: '/admin/calendario', color: 'from-amber-500 to-amber-600', bg: 'bg-amber-50', text: 'text-amber-600',
+                      calc: () => 0,
+                      tip: 'Crea tu primer evento' },
+                    { key: 'rotaract', enabled: !!modules.rotaract, label: 'Club Rotaract', icon: <Shield className="w-5 h-5" />, href: '/admin/configuracion', color: 'from-pink-500 to-pink-600', bg: 'bg-pink-50', text: 'text-pink-600',
+                      calc: () => 0,
+                      tip: 'Configura la información de Rotaract' },
+                    { key: 'interact', enabled: !!modules.interact, label: 'Club Interact', icon: <Users className="w-5 h-5" />, href: '/admin/configuracion', color: 'from-sky-500 to-sky-600', bg: 'bg-sky-50', text: 'text-sky-600',
+                      calc: () => 0,
+                      tip: 'Configura la información de Interact' },
+                    { key: 'ecommerce', enabled: !!modules.ecommerce, label: 'Tienda Virtual', icon: <ShoppingBag className="w-5 h-5" />, href: '/admin/tienda', color: 'from-emerald-500 to-emerald-600', bg: 'bg-emerald-50', text: 'text-emerald-600',
+                      calc: () => {
+                        let p = 0; if ((stats?.products || 0) > 0) p += 50; if ((stats?.products || 0) >= 3) p += 50; return p;
+                      },
+                      tip: 'Agrega productos a tu tienda' },
+                    { key: 'dian', enabled: !!modules.dian, label: 'Estados Financieros (DIAN)', icon: <FileText className="w-5 h-5" />, href: '/admin/configuracion', color: 'from-gray-500 to-gray-600', bg: 'bg-gray-100', text: 'text-gray-600',
+                      calc: () => 0,
+                      tip: 'Sube los estados financieros' },
+                    { key: 'gallery', enabled: true, label: 'Galería Multimedia', icon: <Image className="w-5 h-5" />, href: '/admin/media', color: 'from-teal-500 to-teal-600', bg: 'bg-teal-50', text: 'text-teal-600',
+                      calc: () => {
+                        let p = 0; if ((stats?.media || 0) > 0) p += 50; if ((stats?.media || 0) >= 5) p += 50; return p;
+                      },
+                      tip: 'Sube fotos y videos del club' },
+                ];
+
+                const activeModules = MODULE_DEFS.filter(m => m.enabled);
+                if (activeModules.length === 0) return null;
+
+                const totalPct = Math.round(activeModules.reduce((a, m) => a + m.calc(), 0) / activeModules.length);
+
+                return (
+                    <div className="bg-white border border-gray-100 rounded-2xl shadow-sm mb-6 overflow-hidden">
+                        <div className="px-6 py-5 border-b border-gray-50">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                                        <Rocket className="w-4 h-4 text-white" />
+                                    </div>
+                                    <div>
+                                        <h2 className="font-black text-gray-900 text-sm">🚀 Completa tu plataforma</h2>
+                                        <p className="text-[11px] text-gray-400 mt-0.5">
+                                            Configura los módulos que activaste · Progreso general: <span className="font-bold text-gray-600">{totalPct}%</span>
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {activeModules.map(mod => {
+                                const pctVal = mod.calc();
+                                const ringSize = 44;
+                                const sw = 4;
+                                const r = (ringSize - sw) / 2;
+                                const circ = 2 * Math.PI * r;
+                                const offset = circ - (pctVal / 100) * circ;
+                                const ringCol = pctVal >= 100 ? '#10b981' : pctVal >= 50 ? '#f59e0b' : '#6366f1';
+                                return (
+                                    <div
+                                        key={mod.key}
+                                        onClick={() => navigate(mod.href)}
+                                        className="bg-gray-50/60 hover:bg-white border border-gray-100 hover:border-gray-200 rounded-2xl p-4 cursor-pointer hover:shadow-md transition-all group"
+                                    >
+                                        <div className="flex items-start justify-between mb-3">
+                                            <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${mod.color} flex items-center justify-center text-white group-hover:scale-110 transition-transform`}>
+                                                {mod.icon}
+                                            </div>
+                                            <div className="relative flex-shrink-0">
+                                                <svg width={ringSize} height={ringSize} className="-rotate-90">
+                                                    <circle cx={ringSize/2} cy={ringSize/2} r={r} fill="none" stroke="#f3f4f6" strokeWidth={sw} />
+                                                    <circle cx={ringSize/2} cy={ringSize/2} r={r} fill="none" stroke={ringCol} strokeWidth={sw} strokeLinecap="round"
+                                                        strokeDasharray={circ} strokeDashoffset={offset}
+                                                        style={{ transition: 'stroke-dashoffset .8s ease-out' }} />
+                                                </svg>
+                                                <div className="absolute inset-0 flex items-center justify-center">
+                                                    <span className="text-[10px] font-black text-gray-700">{pctVal}%</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <p className="text-xs font-bold text-gray-800 mb-0.5">{mod.label}</p>
+                                        <p className="text-[10px] text-gray-400 leading-tight">{mod.tip}</p>
+                                        <div className="flex items-center gap-1 mt-2">
+                                            <span className="text-[10px] font-bold text-gray-400 group-hover:text-indigo-500 transition-colors">Configurar</span>
+                                            <ArrowRight className="w-3 h-3 text-gray-300 group-hover:text-indigo-400 group-hover:translate-x-0.5 transition-all" />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* ── Stats Summary ── */}
             {stats && (
