@@ -296,22 +296,18 @@ const OnboardingFlow: React.FC = () => {
 
         const fetchUserClub = async () => {
             try {
-                // Get user details to find their clubId
+                // Get user's club ID from login response
                 const userClubId = user.clubId || user.club?.id;
                 if (!userClubId) { setLoadingClub(false); return; }
 
-                // Fetch the club data
-                const res = await fetch(`${API}/admin/clubs`, {
+                // Fetch THIS specific club (club_admin has access to /clubs/:id)
+                const res = await fetch(`${API}/admin/clubs/${userClubId}`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
                 if (res.ok) {
-                    const clubs = await res.json();
-                    const myClub = clubs.find((c: any) => c.id === userClubId);
-                    if (myClub) {
-                        setUserClub(myClub);
-                        // Also store in localStorage for other components
-                        localStorage.setItem('rotary_club', JSON.stringify(myClub));
-                    }
+                    const myClub = await res.json();
+                    setUserClub(myClub);
+                    localStorage.setItem('rotary_club', JSON.stringify(myClub));
                 }
             } catch (err) { console.error('Error fetching user club:', err); }
             setLoadingClub(false);
