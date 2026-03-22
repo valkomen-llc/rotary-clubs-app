@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     ArrowRight, ArrowLeft, Building2, Palette, Share2, ImageIcon,
-    Camera, Rocket, CheckCircle2, Upload, X, Loader2, ShieldCheck, AlertTriangle,
+    Camera, Rocket, CheckCircle2, Upload, X, Loader2, ShieldCheck, AlertTriangle, ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -113,8 +113,48 @@ const StepBranding: React.FC<{ data: any; onChange: (d: any) => void; onLogoUplo
     return (
         <div className="max-w-xl mx-auto">
             <h2 className="text-2xl font-black text-gray-900 mb-2">🎨 Identidad Visual</h2>
-            <p className="text-sm text-gray-400 mb-8">El logo y colores que representan a tu club.</p>
+            <p className="text-sm text-gray-400 mb-6">El logo y colores que representan a tu club.</p>
             <div className="space-y-6">
+                {/* Brand Center Guide */}
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200/60 rounded-2xl p-5">
+                    <div className="flex items-start gap-3 mb-3">
+                        <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <Palette className="w-4 h-4 text-white" />
+                        </div>
+                        <div>
+                            <h4 className="text-sm font-black text-gray-900">Crea el logo oficial de tu club</h4>
+                            <p className="text-xs text-gray-500 mt-0.5">Usa el Rotary Brand Center para generar tu marca oficial</p>
+                        </div>
+                    </div>
+                    <div className="ml-11 space-y-2 text-xs text-gray-600 mb-4">
+                        <div className="flex items-start gap-2">
+                            <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">1</span>
+                            <span>Selecciona la <strong>marca simplificada</strong> (Simplified)</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                            <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">2</span>
+                            <span>Escribe el <strong>nombre de tu club rotario</strong></span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                            <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">3</span>
+                            <span>Elige el esquema de color <strong>Azul Rotary con Dorado</strong></span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                            <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">4</span>
+                            <span>Descarga en formato <strong>PNG</strong> y súbelo aquí abajo</span>
+                        </div>
+                    </div>
+                    <a
+                        href="https://brandcenter.rotary.org/es-xl/rotary-template?id=f368e943-4d64-4635-899f-4b2302380a21"
+                        target="_blank" rel="noopener noreferrer"
+                        className="ml-11 inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm"
+                    >
+                        Abrir Rotary Brand Center
+                        <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                </div>
+
+                {/* Logo upload */}
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Logo del club</label>
                     <div className="flex items-center gap-6">
@@ -133,10 +173,10 @@ const StepBranding: React.FC<{ data: any; onChange: (d: any) => void; onLogoUplo
                         </div>
                         <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && onLogoUpload(e.target.files[0])} />
                         <div className="text-xs text-gray-400">
-                            <p className="font-bold text-gray-500 mb-1">Recomendaciones:</p>
-                            <p>• Formato PNG o SVG</p>
-                            <p>• Fondo transparente</p>
-                            <p>• Mínimo 200x200px</p>
+                            <p className="font-bold text-gray-500 mb-1">Formato aceptado:</p>
+                            <p>• PNG con fondo transparente</p>
+                            <p>• Mínimo 200×200px</p>
+                            <p>• Descargado del Brand Center</p>
                         </div>
                     </div>
                 </div>
