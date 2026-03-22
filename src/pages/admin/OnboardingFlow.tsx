@@ -68,8 +68,12 @@ const StepClubInfo: React.FC<{ data: any; onChange: (d: any) => void }> = ({ dat
             </div>
             <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Distrito Rotario *</label>
-                <input value={data.district || ''} onChange={e => onChange({ ...data, district: e.target.value })}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" placeholder="Ej: Distrito 4281" />
+                <div className="flex items-center gap-2">
+                    <input value={data.district || ''} readOnly
+                        className="w-full bg-gray-100 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-600 cursor-not-allowed" />
+                    {data.district && <ShieldCheck className="w-5 h-5 text-emerald-500 flex-shrink-0" />}
+                </div>
+                {data.district && <p className="text-[10px] text-gray-400 mt-1">Verificado desde tu registro en ClubPlatform</p>}
             </div>
             <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -86,8 +90,12 @@ const StepClubInfo: React.FC<{ data: any; onChange: (d: any) => void }> = ({ dat
             <div className="grid grid-cols-2 gap-4">
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">País *</label>
-                    <input value={data.country || ''} onChange={e => onChange({ ...data, country: e.target.value })}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" placeholder="Colombia" />
+                    <div className="flex items-center gap-2">
+                        <input value={data.country || ''} readOnly
+                            className="w-full bg-gray-100 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-600 cursor-not-allowed" />
+                        {data.country && <ShieldCheck className="w-5 h-5 text-emerald-500 flex-shrink-0" />}
+                    </div>
+                    {data.country && <p className="text-[10px] text-gray-400 mt-1">Verificado desde tu registro</p>}
                 </div>
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Teléfono</label>
