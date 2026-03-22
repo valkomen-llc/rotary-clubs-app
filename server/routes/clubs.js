@@ -88,6 +88,15 @@ router.get('/by-domain', async (req, res) => {
             customSocial: settings['custom_social_links'] ? JSON.parse(settings['custom_social_links']) : [],
             siteImages: settings['site_images'] ? JSON.parse(settings['site_images']) : {},
             galleryImages: settings['gallery_images'] ? JSON.parse(settings['gallery_images']) : [],
+            modules: {
+                memberCount: settings['member_count'] || '20 a 50',
+                projects: settings['module_projects'] !== 'false',
+                events: settings['module_events'] !== 'false',
+                rotaract: settings['module_rotaract'] === 'true',
+                interact: settings['module_interact'] === 'true',
+                ecommerce: settings['module_ecommerce'] === 'true',
+                dian: settings['module_dian'] === 'true',
+            },
             colors: {
                 primary: settings['color_primary'] || '#013388',
                 secondary: settings['color_secondary'] || '#E29C00',

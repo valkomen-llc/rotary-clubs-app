@@ -124,6 +124,13 @@ export const updateClub = async (req, res) => {
             'color_secondary': secondaryColor,
             'store_active': storeActive !== undefined ? String(storeActive) : undefined,
             'logo_header_size': logoHeaderSize !== undefined ? String(logoHeaderSize) : undefined,
+            'member_count': memberCount,
+            'module_projects': moduleProjects !== undefined ? String(moduleProjects) : undefined,
+            'module_events': moduleEvents !== undefined ? String(moduleEvents) : undefined,
+            'module_rotaract': moduleRotaract !== undefined ? String(moduleRotaract) : undefined,
+            'module_interact': moduleInteract !== undefined ? String(moduleInteract) : undefined,
+            'module_ecommerce': moduleEcommerce !== undefined ? String(moduleEcommerce) : undefined,
+            'module_dian': moduleDian !== undefined ? String(moduleDian) : undefined,
         };
 
         for (const [key, value] of Object.entries(settingsToUpdate)) {

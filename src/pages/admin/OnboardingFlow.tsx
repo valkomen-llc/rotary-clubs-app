@@ -19,6 +19,7 @@ const STEPS = [
     { id: 'branding', title: 'Identidad', icon: Palette },
     { id: 'social', title: 'Redes', icon: Share2 },
     { id: 'images', title: 'Imágenes', icon: ImageIcon },
+    { id: 'modules', title: 'Módulos', icon: Globe },
     { id: 'gallery', title: 'Galería', icon: Camera },
     { id: 'complete', title: '¡Listo!', icon: CheckCircle2 },
 ];
@@ -591,7 +592,101 @@ const StepSiteImages: React.FC<{
     );
 };
 
-// ── Step 5: Gallery ──────────────────────────────────────────────
+// ── Step 5: Modules and Members ────────────────────────────────────
+const StepModules: React.FC<{ data: any; onChange: (d: any) => void }> = ({ data, onChange }) => {
+    const handleToggle = (key: string) => onChange({ ...data, [key]: !data[key] });
+
+    return (
+        <div className="max-w-3xl mx-auto">
+            <h2 className="text-2xl font-black text-gray-900 mb-2">⚙️ Módulos y Funciones</h2>
+            <p className="text-sm text-gray-400 mb-8">
+                Configura cuántos socios tiene tu club y activa las funciones que necesites en la plataforma.
+            </p>
+
+            <div className="space-y-8">
+                {/* Member Count */}
+                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                    <h3 className="text-sm font-bold text-gray-900 mb-4">Cantidad de Socios</h3>
+                    <div className="grid grid-cols-3 gap-4">
+                        {['Menos de 20', '20 a 50', 'Más de 50'].map(opt => (
+                            <button
+                                key={opt}
+                                onClick={() => onChange({ ...data, memberCount: opt })}
+                                className={`py-3 px-4 rounded-xl border-2 text-sm font-bold transition-all ${data.memberCount === opt
+                                        ? 'border-blue-600 bg-blue-50 text-blue-700'
+                                        : 'border-gray-200 text-gray-600 hover:border-blue-300'
+                                    }`}
+                            >
+                                {opt}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Toggles */}
+                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-6">
+                    <h3 className="text-sm font-bold text-gray-900 mb-2">Módulos de la Plataforma</h3>
+
+                    <ToggleRow
+                        title="Proyectos y Causas"
+                        description="Habilita la sección para publicar los proyectos de servicio del club."
+                        active={data.hasProjects}
+                        onToggle={() => handleToggle('hasProjects')}
+                    />
+                    <ToggleRow
+                        title="Eventos y Calendario"
+                        description="Habilita el calendario para reuniones y eventos del club."
+                        active={data.hasEvents}
+                        onToggle={() => handleToggle('hasEvents')}
+                    />
+                    <ToggleRow
+                        title="Club Rotaract"
+                        description="Mostrar un módulo dedicado al club Rotaract patrocinado."
+                        active={data.hasRotaract}
+                        onToggle={() => handleToggle('hasRotaract')}
+                    />
+                    <ToggleRow
+                        title="Club Interact"
+                        description="Mostrar un módulo dedicado estático al club Interact patrocinado."
+                        active={data.hasInteract}
+                        onToggle={() => handleToggle('hasInteract')}
+                    />
+                    <ToggleRow
+                        title="Tienda Virtual (E-commerce)"
+                        description="Habilita la tienda para recaudación de fondos y venta de artículos."
+                        active={data.hasEcommerce}
+                        onToggle={() => handleToggle('hasEcommerce')}
+                    />
+                    <ToggleRow
+                        title="Estados Financieros (DIAN)"
+                        description="Publicación obligatoria de status ESAL para transparencia en Colombia."
+                        active={data.hasDian}
+                        onToggle={() => handleToggle('hasDian')}
+                    />
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const ToggleRow: React.FC<{ title: string; description: string; active: boolean; onToggle: () => void }> = ({ title, description, active, onToggle }) => (
+    <div className="flex items-center justify-between pb-4 border-b border-gray-50 last:border-0 last:pb-0">
+        <div className="pr-4">
+            <h4 className="text-sm font-bold text-gray-900">{title}</h4>
+            <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">{description}</p>
+        </div>
+        <button
+            onClick={onToggle}
+            className={`relative flex-shrink-0 w-12 h-6 rounded-full transition-colors duration-200 ease-in-out ${active ? 'bg-blue-600' : 'bg-gray-200'}`}
+        >
+            <span
+                className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform duration-200 ease-in-out shadow-sm ${active ? 'translate-x-6' : 'translate-x-0'}`}
+            />
+        </button>
+    </div>
+);
+
+// ── Step 6: Gallery ──────────────────────────────────────────────
 const StepGallery: React.FC<{ images: string[]; onUpload: (files: FileList) => void; onRemove: (i: number) => void }> = ({ images, onUpload, onRemove }) => {
     const ref = useRef<HTMLInputElement>(null);
     return (
@@ -690,6 +785,15 @@ const OnboardingFlow: React.FC = () => {
     });
     const [social, setSocial] = useState<any>({ social: {} });
     const [siteImages, setSiteImages] = useState<any>({});
+    const [modules, setModules] = useState({
+        memberCount: '20 a 50',
+        hasProjects: true,
+        hasEvents: true,
+        hasRotaract: false,
+        hasInteract: false,
+        hasEcommerce: false,
+        hasDian: false
+    });
     const [galleryImages, setGalleryImages] = useState<string[]>([]);
 
     // Update form when club data loads
@@ -740,6 +844,17 @@ const OnboardingFlow: React.FC = () => {
                 })
                 .catch(() => {});
         }
+
+        // Load modules
+        setModules({
+            memberCount: settingsMap['member_count'] || '20 a 50',
+            hasProjects: settingsMap['module_projects'] !== 'false',
+            hasEvents: settingsMap['module_events'] !== 'false',
+            hasRotaract: settingsMap['module_rotaract'] === 'true',
+            hasInteract: settingsMap['module_interact'] === 'true',
+            hasEcommerce: settingsMap['module_ecommerce'] === 'true',
+            hasDian: settingsMap['module_dian'] === 'true'
+        });
 
         // Load gallery images
         const savedGallery = settingsMap['gallery_images']
@@ -903,9 +1018,25 @@ const OnboardingFlow: React.FC = () => {
                 }).catch(() => {});
             }
 
-            // ── Step 5: Gallery Images ────────────────────────────────
+            // ── Step 5: Modules ───────────────────────────────────────
+            if (step === 5) {
+                await fetch(`${API}/admin/clubs/${clubId}`, {
+                    method: 'PUT', headers,
+                    body: JSON.stringify({
+                        memberCount: modules.memberCount,
+                        moduleProjects: modules.hasProjects,
+                        moduleEvents: modules.hasEvents,
+                        moduleRotaract: modules.hasRotaract,
+                        moduleInteract: modules.hasInteract,
+                        moduleEcommerce: modules.hasEcommerce,
+                        moduleDian: modules.hasDian
+                    }),
+                });
+            }
+
+            // ── Step 6: Gallery Images ────────────────────────────────
             // Saves: gallery image URLs as Settings
-            if (step === 5 && galleryImages.length > 0) {
+            if (step === 6 && galleryImages.length > 0) {
                 await fetch(`${API}/admin/clubs/${clubId}`, {
                     method: 'PUT', headers,
                     body: JSON.stringify({
@@ -1019,8 +1150,9 @@ const OnboardingFlow: React.FC = () => {
                             {step === 2 && <StepBranding data={branding} onChange={setBranding} onLogoUpload={handleLogoUpload} />}
                             {step === 3 && <StepSocial data={social} onChange={setSocial} />}
                             {step === 4 && <StepSiteImages data={siteImages} onChange={setSiteImages} onImageUpload={handleSiteImageUpload} />}
-                            {step === 5 && <StepGallery images={galleryImages} onUpload={handleGalleryUpload} onRemove={i => setGalleryImages(prev => prev.filter((_, idx) => idx !== i))} />}
-                            {step === 6 && <StepComplete clubName={info.name || 'tu club'} onFinish={handleFinish} saving={saving} />}
+                            {step === 5 && <StepModules data={modules} onChange={setModules} />}
+                            {step === 6 && <StepGallery images={galleryImages} onUpload={handleGalleryUpload} onRemove={i => setGalleryImages(prev => prev.filter((_, idx) => idx !== i))} />}
+                            {step === 7 && <StepComplete clubName={info.name || 'tu club'} onFinish={handleFinish} saving={saving} />}
                         </>
                     )}
                 </div>
