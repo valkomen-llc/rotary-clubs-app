@@ -62,6 +62,7 @@ import LeadsManagement from './pages/admin/Leads';
 import FAQManagement from './pages/admin/FAQs';
 import AgentsManagement from './pages/admin/Agents';
 import ImageDistribution from './pages/admin/ImageDistribution';
+import OnboardingFlow from './pages/admin/OnboardingFlow';
 import ChatBot from './components/ChatBot';
 import LandingPage from './pages/LandingPage';
 import RegistroPage from './pages/RegistroPage';
@@ -94,19 +95,36 @@ function injectGA4Tag(gaId: string) {
 }
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
+  const { isAuthenticated, user } = useAuth();
+  const { club } = useClub();
+  if (!isAuthenticated) return <Navigate to="/" />;
+  // Gate: club admins must complete onboarding first
+  if (user?.role !== 'administrator' && !(club as any)?.onboardingCompleted) {
+    return <Navigate to="/admin/onboarding" />;
+  }
+  return <>{children}</>;
+};
+
+const OnboardingGate = () => {
   const { isAuthenticated } = useAuth();
-  return isAuthenticated ? <>{children}</> : <Navigate to="/" />;
+  if (!isAuthenticated) return <Navigate to="/" />;
+  return <OnboardingFlow />;
 };
 
 // Smart Home: shows LandingPage on www.clubplatform.org,
 // AppLogin on app.clubplatform.org, ComingSoon for draft clubs, club site otherwise
 function SmartHome() {
   const { isMainPlatform, isAppPortal, isDraft, club } = useClub();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   if (isAppPortal) {
-    // Already authenticated → go straight to dashboard
-    if (isAuthenticated) return <Navigate to="/admin/dashboard" />;
+    if (isAuthenticated) {
+      // If club admin hasn't completed onboarding, send to wizard
+      if (user?.role !== 'administrator' && !(club as any)?.onboardingCompleted) {
+        return <Navigate to="/admin/onboarding" />;
+      }
+      return <Navigate to="/admin/dashboard" />;
+    }
     return <AppLogin />;
   }
   if (isMainPlatform) return <LandingPage />;
@@ -192,6 +210,12 @@ function App() {
                 <Route path="/order/success" element={<OrderSuccess />} />
                 <Route path="/shop" element={<Shop />} />
                 <Route path="/shop/product/:slug" element={<ProductDetail />} />
+
+                {/* Onboarding (full-screen, no AdminLayout) */}
+                <Route
+                  path="/admin/onboarding"
+                  element={<OnboardingGate />}
+                />
 
                 {/* Admin Routes */}
                 <Route

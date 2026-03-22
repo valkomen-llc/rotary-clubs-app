@@ -154,16 +154,48 @@ router.patch('/clubs/:id/unpublish', roleMiddleware(adminRoles), async (req, res
     }
 });
 
-// AI processing (mocked)
-router.post('/ai/process-document', roleMiddleware(adminRoles), async (req, res) => {
-    res.json({
-        sections: [
-            { page: 'quienes-somos', section: 'intro', content: { quote: "Desde nuestra fundación, hemos creído que el servicio es el puente que une a las personas y transforma comunidades." } },
-            { page: 'quienes-somos', section: 'main', content: { description: "Nuestro club se distingue por proyectos educativos.", highlight: "Construyendo esperanza.", items: ["Becas escolares", "Dotación de bibliotecas"] } },
-            { page: 'nuestra-historia', section: 'header', content: { title: "Décadas de Servicio Local", subtitle: "Un legado que comenzó en el corazón de nuestra ciudad." } },
-            { page: 'interact', section: 'intro', content: { text: "En nuestro club Interact, los jóvenes no solo aprenden a servir, aprenden a liderar." } }
-        ]
-    });
+// ── ONBOARDING: Save step progress ──
+router.patch('/clubs/:id/onboarding-step', roleMiddleware(adminRoles), async (req, res) => {
+    try {
+        const clubId = req.params.id;
+        if (req.user.role !== 'administrator' && req.user.clubId !== clubId) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+        const { step } = req.body;
+        await db.query(
+            `INSERT INTO "Setting" ("clubId", key, value) VALUES ($1, 'onboarding_step', $2)
+             ON CONFLICT ("clubId", key) DO UPDATE SET value = $2`,
+            [clubId, String(step)]
+        );
+        res.json({ ok: true, step });
+    } catch (error) {
+        res.status(500).json({ error: 'Error saving step' });
+    }
+});
+
+// ── ONBOARDING: Complete ──
+router.patch('/clubs/:id/complete-onboarding', roleMiddleware(adminRoles), async (req, res) => {
+    try {
+        const clubId = req.params.id;
+        if (req.user.role !== 'administrator' && req.user.clubId !== clubId) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+        // Mark onboarding as completed
+        await db.query(
+            `INSERT INTO "Setting" ("clubId", key, value) VALUES ($1, 'onboarding_completed', 'true')
+             ON CONFLICT ("clubId", key) DO UPDATE SET value = 'true'`,
+            [clubId]
+        );
+        // Activate the club site
+        await db.query(
+            `UPDATE "Club" SET status = 'active', "updatedAt" = NOW() WHERE id = $1`,
+            [clubId]
+        );
+        res.json({ ok: true, onboardingCompleted: true, status: 'active' });
+    } catch (error) {
+        console.error('Complete onboarding error:', error);
+        res.status(500).json({ error: 'Error completing onboarding' });
+    }
 });
 
 export default router;

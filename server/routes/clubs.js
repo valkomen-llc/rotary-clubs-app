@@ -92,8 +92,8 @@ router.get('/by-domain', async (req, res) => {
             productsCount: parseInt(clubDataRaw.productsCount) || 0,
             eventsCount: parseInt(clubDataRaw.eventsCount) || 0,
             logoHeaderSize: parseInt(settings['logo_header_size']) || 150,
-            onboardingCompleted: settings['onboarding_completed'] !== 'false',
-            onboardingStep: parseInt(settings['onboarding_step']) || 1,
+            onboardingCompleted: settings['onboarding_completed'] === 'true',
+            onboardingStep: parseInt(settings['onboarding_step']) || 0,
         };
 
         res.json(mappedClub);
