@@ -48,45 +48,46 @@ const StepWelcome: React.FC<{ onNext: () => void; clubName: string }> = ({ onNex
 
 // ── Step 1: Club Info ── name is read-only (comes from registration)
 const StepClubInfo: React.FC<{ data: any; onChange: (d: any) => void }> = ({ data, onChange }) => (
-    <div className="max-w-xl mx-auto">
+    <div className="max-w-2xl mx-auto">
         <h2 className="text-2xl font-black text-gray-900 mb-2">📋 Cuéntanos sobre tu club</h2>
         <p className="text-sm text-gray-400 mb-8">Esta información aparecerá en tu sitio web público.</p>
         <div className="space-y-5">
-            <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Nombre del club</label>
-                <div className="flex items-center gap-2">
-                    <input value={data.name || ''} readOnly
-                        className="w-full bg-gray-100 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-600 cursor-not-allowed" />
-                    <ShieldCheck className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+            {/* Row 1: Nombre | Distrito | Fecha constitutiva */}
+            <div className="grid grid-cols-3 gap-4">
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Nombre del club</label>
+                    <div className="flex items-center gap-2">
+                        <input value={data.name || ''} readOnly
+                            className="w-full bg-gray-100 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-600 cursor-not-allowed" />
+                        <ShieldCheck className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-1">Verificado desde tu registro</p>
                 </div>
-                <p className="text-[10px] text-gray-400 mt-1">Verificado desde tu registro en ClubPlatform</p>
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Distrito Rotario *</label>
+                    <div className="flex items-center gap-2">
+                        <input value={data.district || ''} readOnly
+                            className="w-full bg-gray-100 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-600 cursor-not-allowed" />
+                        {data.district && <ShieldCheck className="w-5 h-5 text-emerald-500 flex-shrink-0" />}
+                    </div>
+                    {data.district && <p className="text-[10px] text-gray-400 mt-1">Verificado desde tu registro</p>}
+                </div>
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Fecha acta constitutiva</label>
+                    <input type="date" value={data.foundedDate || ''} onChange={e => onChange({ ...data, foundedDate: e.target.value })}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" />
+                    <p className="text-[10px] text-gray-400 mt-1">Fecha de fundación del club</p>
+                </div>
             </div>
+
+            {/* Descripción */}
             <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Descripción del club *</label>
                 <textarea value={data.description || ''} onChange={e => onChange({ ...data, description: e.target.value })} rows={3}
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all resize-none" placeholder="Describe la misión y actividades de tu club..." />
             </div>
-            <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Distrito Rotario *</label>
-                <div className="flex items-center gap-2">
-                    <input value={data.district || ''} readOnly
-                        className="w-full bg-gray-100 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-600 cursor-not-allowed" />
-                    {data.district && <ShieldCheck className="w-5 h-5 text-emerald-500 flex-shrink-0" />}
-                </div>
-                {data.district && <p className="text-[10px] text-gray-400 mt-1">Verificado desde tu registro en ClubPlatform</p>}
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Departamento / Provincia *</label>
-                    <input value={data.state || ''} onChange={e => onChange({ ...data, state: e.target.value })}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="Valle del Cauca" />
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Ciudad *</label>
-                    <input value={data.city || ''} onChange={e => onChange({ ...data, city: e.target.value })}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="Tu ciudad" />
-                </div>
-            </div>
+
+            {/* Row: País | Departamento / Provincia */}
             <div className="grid grid-cols-2 gap-4">
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">País *</label>
@@ -98,16 +99,34 @@ const StepClubInfo: React.FC<{ data: any; onChange: (d: any) => void }> = ({ dat
                     {data.country && <p className="text-[10px] text-gray-400 mt-1">Verificado desde tu registro</p>}
                 </div>
                 <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Departamento / Provincia *</label>
+                    <input value={data.state || ''} onChange={e => onChange({ ...data, state: e.target.value })}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="Valle del Cauca" />
+                </div>
+            </div>
+
+            {/* Row: Ciudad | Teléfono */}
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Ciudad *</label>
+                    <input value={data.city || ''} onChange={e => onChange({ ...data, city: e.target.value })}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="Tu ciudad" />
+                </div>
+                <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Teléfono</label>
                     <input value={data.phone || ''} onChange={e => onChange({ ...data, phone: e.target.value })}
                         className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="+57 300 000 0000" />
                 </div>
             </div>
+
+            {/* Dirección */}
             <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Dirección</label>
                 <input value={data.address || ''} onChange={e => onChange({ ...data, address: e.target.value })}
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="Calle 10 #5-23, Centro" />
             </div>
+
+            {/* Email de contacto */}
             <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Email de contacto</label>
                 <input value={data.email || ''} onChange={e => onChange({ ...data, email: e.target.value })}
