@@ -207,8 +207,8 @@ export default function RegistroPage() {
                         </div>
                         <span className="font-black text-gray-900 text-xl">ClubPlatform</span>
                     </div>
-                    <h1 className="text-3xl font-black text-gray-900 mb-2">Crea el sitio web de tu club rotario</h1>
-                    <p className="text-gray-500 text-sm leading-relaxed max-w-md">Presencia en línea 24/7, alcance nacional e internacional, posicionamiento de marca y herramientas de crowdfunding y fundraising para tu club.</p>
+                    <h1 className="text-3xl font-black text-gray-900 mb-3">Crea el sitio web de tu club rotario</h1>
+                    <p className="text-gray-500 text-sm leading-relaxed max-w-lg mx-auto">Tu activo digital para imagen pública y comunicaciones, con presencia en línea 24/7, alcance nacional e internacional, posicionamiento de marca, monetización, crowdfunding y fundraising.</p>
                 </div>
 
                 {/* Card */}
