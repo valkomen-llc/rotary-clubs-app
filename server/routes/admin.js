@@ -183,8 +183,8 @@ router.patch('/clubs/:id/complete-onboarding', roleMiddleware(adminRoles), async
         }
         // Mark onboarding as completed
         await db.query(
-            `INSERT INTO "Setting" ("clubId", key, value) VALUES ($1, 'onboarding_completed', 'true')
-             ON CONFLICT ("clubId", key) DO UPDATE SET value = 'true'`,
+            `INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt") VALUES (gen_random_uuid(), 'onboarding_completed', 'true', $1, NOW())
+             ON CONFLICT ("clubId", key) DO UPDATE SET value = 'true', "updatedAt" = NOW()`,
             [clubId]
         );
         // Activate the club site

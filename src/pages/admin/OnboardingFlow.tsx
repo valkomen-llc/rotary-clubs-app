@@ -1287,10 +1287,11 @@ const OnboardingFlow: React.FC = () => {
         if (!clubId || !token) return;
         setSaving(true);
         try {
-            await fetch(`${API}/admin/clubs/${clubId}/complete-onboarding`, {
+            const res = await fetch(`${API}/admin/clubs/${clubId}/complete-onboarding`, {
                 method: 'PATCH',
                 headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
             });
+            if (!res.ok) throw new Error('Failed');
             // Update localStorage club data
             const stored = localStorage.getItem('rotary_club');
             if (stored) {
@@ -1299,6 +1300,8 @@ const OnboardingFlow: React.FC = () => {
                 parsed.status = 'active';
                 localStorage.setItem('rotary_club', JSON.stringify(parsed));
             }
+            // Small delay to ensure DB commit before reload
+            await new Promise(r => setTimeout(r, 500));
             window.location.href = '/#/admin/dashboard';
             window.location.reload();
         } catch (err) {
