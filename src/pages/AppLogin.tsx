@@ -49,7 +49,7 @@ export default function AppLogin() {
                         <span className="font-black text-gray-900 text-xl">ClubPlatform</span>
                     </div>
                     <h1 className="text-3xl font-black text-gray-900 mb-2">Panel de Administración</h1>
-                    <p className="text-gray-500">Accede al panel de tu club</p>
+                    <p className="text-gray-500">Accede al panel de tu club rotario</p>
                 </div>
 
                 {/* Card */}
@@ -122,7 +122,7 @@ export default function AppLogin() {
                 </div>
 
                 <p className="text-center text-gray-400 text-[11px] mt-6">
-                    © {new Date().getFullYear()} ClubPlatform — Plataforma digital para Rotary · Por <a href="https://valkomen.com" target="_blank" rel="noopener noreferrer" className="font-bold hover:text-gray-600 transition-colors">Valkomen LLC</a>
+                    © {new Date().getFullYear()} ClubPlatform — Plataforma digital para Clubes Rotarios · Por <a href="https://valkomen.com" target="_blank" rel="noopener noreferrer" className="font-bold hover:text-gray-600 transition-colors">Valkomen LLC</a>
                 </p>
             </div>
         </div>
