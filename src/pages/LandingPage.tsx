@@ -210,7 +210,7 @@ export default function LandingPage() {
                                         </div>
                                         <div>
                                             <div className="text-sm font-black text-gray-900">Rotary Club Ejemplo</div>
-                                            <div className="text-[10px] text-gray-400 font-medium">Distrito 4271 · Colombia</div>
+                                            <div className="text-[11px] text-gray-400 font-medium">Distrito 4271 · Colombia</div>
                                         </div>
                                         <div className="ml-auto flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
                                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -225,7 +225,7 @@ export default function LandingPage() {
                                         ].map(s => (
                                             <div key={s.label} className="rounded-xl border border-gray-100 p-3 bg-gray-50/50">
                                                 <div className="text-xl font-black" style={{ color: s.color }}>{s.value}</div>
-                                                <div className="text-[10px] text-gray-400 font-medium mt-0.5">{s.label}</div>
+                                                <div className="text-[11px] text-gray-400 font-medium mt-0.5">{s.label}</div>
                                             </div>
                                         ))}
                                     </div>
@@ -453,7 +453,7 @@ export default function LandingPage() {
                         </div>
                         <span className="font-black text-gray-900 text-sm">ClubPlatform</span>
                     </div>
-                    <p className="text-[10px] text-gray-400">© {new Date().getFullYear()} ClubPlatform — Plataforma digital para clubes Rotary · Por <strong>Valkomen LLC</strong></p>
+                    <p className="text-[11px] text-gray-400">© {new Date().getFullYear()} ClubPlatform — Plataforma digital para clubes Rotary · Por <strong>Valkomen LLC</strong></p>
                     <div className="flex items-center gap-5">
                         <a href="mailto:soporte@clubplatform.org" className="text-xs text-gray-400 hover:text-gray-600 transition-colors font-medium">Soporte</a>
                         <a href="#" className="text-xs text-gray-400 hover:text-gray-600 transition-colors font-medium">Términos</a>
