@@ -103,45 +103,6 @@ const StepClubInfo: React.FC<{
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all resize-none" placeholder="Describe la misión y actividades de tu club..." />
             </div>
 
-            {/* Row: País | Departamento / Provincia */}
-            <div className="grid grid-cols-2 gap-4">
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">País *</label>
-                    <div className="flex items-center gap-2">
-                        <input value={data.country || ''} readOnly
-                            className="w-full bg-gray-100 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-600 cursor-not-allowed" />
-                        {data.country && <ShieldCheck className="w-5 h-5 text-emerald-500 flex-shrink-0" />}
-                    </div>
-                    {data.country && <p className="text-[10px] text-gray-400 mt-1">Verificado desde tu registro</p>}
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Departamento / Provincia *</label>
-                    <input value={data.state || ''} onChange={e => onChange({ ...data, state: e.target.value })}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="Valle del Cauca" />
-                </div>
-            </div>
-
-            {/* Row: Ciudad | Teléfono */}
-            <div className="grid grid-cols-2 gap-4">
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Ciudad *</label>
-                    <input value={data.city || ''} onChange={e => onChange({ ...data, city: e.target.value })}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="Tu ciudad" />
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Teléfono</label>
-                    <input value={data.phone || ''} onChange={e => onChange({ ...data, phone: e.target.value })}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="+57 300 000 0000" />
-                </div>
-            </div>
-
-            {/* Dirección */}
-            <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Dirección</label>
-                <input value={data.address || ''} onChange={e => onChange({ ...data, address: e.target.value })}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="Calle 10 #5-23, Centro" />
-            </div>
-
             {/* ── Documentos del club ── */}
             <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">📎 Documentos del club</label>
@@ -186,6 +147,46 @@ const StepClubInfo: React.FC<{
                     </div>
                 )}
             </div>
+
+            {/* Row: País | Departamento / Provincia */}
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">País *</label>
+                    <div className="flex items-center gap-2">
+                        <input value={data.country || ''} readOnly
+                            className="w-full bg-gray-100 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-600 cursor-not-allowed" />
+                        {data.country && <ShieldCheck className="w-5 h-5 text-emerald-500 flex-shrink-0" />}
+                    </div>
+                    {data.country && <p className="text-[10px] text-gray-400 mt-1">Verificado desde tu registro</p>}
+                </div>
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Departamento / Provincia *</label>
+                    <input value={data.state || ''} onChange={e => onChange({ ...data, state: e.target.value })}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="Valle del Cauca" />
+                </div>
+            </div>
+
+            {/* Row: Ciudad | Teléfono */}
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Ciudad *</label>
+                    <input value={data.city || ''} onChange={e => onChange({ ...data, city: e.target.value })}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="Tu ciudad" />
+                </div>
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Teléfono</label>
+                    <input value={data.phone || ''} onChange={e => onChange({ ...data, phone: e.target.value })}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="+57 300 000 0000" />
+                </div>
+            </div>
+
+            {/* Dirección */}
+            <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Dirección</label>
+                <input value={data.address || ''} onChange={e => onChange({ ...data, address: e.target.value })}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="Calle 10 #5-23, Centro" />
+            </div>
+
 
             {/* Email de contacto */}
             <div>
