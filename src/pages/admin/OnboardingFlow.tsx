@@ -166,7 +166,7 @@ const StepClubInfo: React.FC<{
                 </div>
             </div>
 
-            {/* Row: Ciudad | Teléfono */}
+            {/* Row: Ciudad | Dirección */}
             <div className="grid grid-cols-2 gap-4">
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Ciudad *</label>
@@ -174,25 +174,24 @@ const StepClubInfo: React.FC<{
                         className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="Tu ciudad" />
                 </div>
                 <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Dirección</label>
+                    <input value={data.address || ''} onChange={e => onChange({ ...data, address: e.target.value })}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="Calle 10 #5-23, Centro" />
+                </div>
+            </div>
+
+            {/* Row: Teléfono | Email de contacto */}
+            <div className="grid grid-cols-2 gap-4">
+                <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Teléfono</label>
                     <input value={data.phone || ''} onChange={e => onChange({ ...data, phone: e.target.value })}
                         className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="+57 300 000 0000" />
                 </div>
-            </div>
-
-            {/* Dirección */}
-            <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Dirección</label>
-                <input value={data.address || ''} onChange={e => onChange({ ...data, address: e.target.value })}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="Calle 10 #5-23, Centro" />
-            </div>
-
-
-            {/* Email de contacto */}
-            <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Email de contacto</label>
-                <input value={data.email || ''} onChange={e => onChange({ ...data, email: e.target.value })}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="contacto@tuclub.org" />
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Email de contacto</label>
+                    <input value={data.email || ''} onChange={e => onChange({ ...data, email: e.target.value })}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="contacto@tuclub.org" />
+                </div>
             </div>
         </div>
     </div>
