@@ -10,7 +10,7 @@ import {
 import MissionControl from '../../components/admin/MissionControl';
 import AgentProgressBar from '../../components/admin/AgentProgressBar';
 import AgentActivityDashboard from '../../components/admin/AgentActivityDashboard';
-import OnboardingWizard from '../../components/admin/OnboardingWizard';
+
 import { useAuth } from '../../hooks/useAuth';
 import { useSetupProgress } from '../../hooks/useSetupProgress';
 
@@ -46,7 +46,7 @@ const ClubAdminDashboard: React.FC = () => {
     const { token } = useAuth();
     const [stats, setStats] = useState<any>(null);
     const [gaConfigured, setGaConfigured] = useState(false);
-    const [showWizard, setShowWizard] = useState(false);
+
     const [publishing, setPublishing] = useState(false);
 
     const club = (() => {
@@ -156,7 +156,6 @@ const ClubAdminDashboard: React.FC = () => {
 
     return (
         <>
-            {showWizard && <OnboardingWizard onDismiss={() => setShowWizard(false)} />}
 
             {/* ── Welcome Header ── */}
             <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-6 mb-6">
@@ -251,13 +250,13 @@ const ClubAdminDashboard: React.FC = () => {
                                 </p>
                             </div>
                         </div>
-                        <button
-                            onClick={() => setShowWizard(true)}
+                        <Link
+                            to="/admin/configuracion-sitio"
                             className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-blue-700 transition-all shadow-sm"
                         >
                             <Sparkles className="w-3.5 h-3.5" />
-                            Configurar con IA
-                        </button>
+                            Configurar Sitio
+                        </Link>
                     </div>
 
                     {/* Progress bar */}

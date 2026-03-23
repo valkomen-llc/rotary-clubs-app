@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import SiteSetupCard from '../../components/admin/SiteSetupCard';
-import OnboardingWizard from '../../components/admin/OnboardingWizard';
+
 import { useAuth } from '../../hooks/useAuth';
 import { Sparkles, CheckCircle2 } from 'lucide-react';
 
@@ -10,7 +10,7 @@ const API = import.meta.env.VITE_API_URL || '/api';
 const SiteSetupPage: React.FC = () => {
     const { user } = useAuth();
     const isSuperAdmin = (user as any)?.role === 'administrator';
-    const [showWizard, setShowWizard] = useState(false);
+
 
     // Stats needed for SiteSetupCard checklist
     const [stats, setStats] = React.useState<any>(null);
@@ -24,9 +24,6 @@ const SiteSetupPage: React.FC = () => {
 
     return (
         <AdminLayout>
-            {showWizard && (
-                <OnboardingWizard onDismiss={() => setShowWizard(false)} />
-            )}
 
             {/* Page header */}
             <div className="flex items-start justify-between mb-8">
@@ -61,7 +58,7 @@ const SiteSetupPage: React.FC = () => {
                     </p>
                 </div>
             ) : (
-                <SiteSetupCard stats={stats} onOpenWizard={() => setShowWizard(true)} />
+                <SiteSetupCard stats={stats} onOpenWizard={() => {}} />
             )}
         </AdminLayout>
     );

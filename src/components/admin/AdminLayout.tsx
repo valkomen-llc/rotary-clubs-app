@@ -39,7 +39,7 @@ import {
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import { useSetupProgress, SETUP_ALLOWED_PATHS } from '../../hooks/useSetupProgress';
-import OnboardingWizard from './OnboardingWizard';
+
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const fmtN = (n: number) => n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
@@ -137,10 +137,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             })
             .catch(() => {});
     }, [club, user, isSuperAdmin]);
-    // Local control for wizard visibility — dismissable without context refresh
-    const [showWizard, setShowWizard] = useState<boolean>(
-        () => club?.onboardingCompleted === false
-    );
+
 
     // Compute setup completion % from club data (no extra API call needed)
     const setupPct = React.useMemo(() => {
@@ -261,10 +258,6 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
     return (
         <div className="flex h-screen bg-gray-50 overflow-hidden font-sans">
-            {/* Onboarding Wizard — shown only to new club admins */}
-            {user?.role !== 'administrator' && club && showWizard && (
-                <OnboardingWizard onDismiss={() => setShowWizard(false)} />
-            )}
             {/* Sidebar */}
             <aside className="w-72 bg-white border-r border-gray-200 flex flex-col flex-shrink-0 z-20">
                 {/* Brand Header */}
