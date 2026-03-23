@@ -52,8 +52,8 @@ export class EmailService {
             where: { key: 'email_from' }
         }).catch(() => null);
 
-        // Use Resend sandbox if domain not yet verified
-        const from = fromConfig?.value || 'ClubPlatform <onboarding@resend.dev>';
+        // Use verified domain for production emails
+        const from = fromConfig?.value || 'ClubPlatform <noreply@clubplatform.org>';
 
         const resp = await fetch('https://api.resend.com/emails', {
             method: 'POST',
