@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer';
+// nodemailer is lazy-loaded only when SMTP is needed (not installed by default)
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -90,6 +90,7 @@ export class EmailService {
             return { success: false, error: 'SMTP credentials not configured in PlatformConfig' };
         }
 
+        const { default: nodemailer } = await import('nodemailer');
         const transporter = nodemailer.createTransport({
             host: cfg.smtp_host,
             port: parseInt(cfg.smtp_port || '587'),
@@ -125,6 +126,7 @@ export class EmailService {
             return null;
         }
 
+        const { default: nodemailer } = await import('nodemailer');
         return nodemailer.createTransport({
             host: config.host,
             port: config.port,
