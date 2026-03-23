@@ -121,7 +121,7 @@ export default function AppLogin() {
                     </form>
                 </div>
 
-                <p className="text-center text-gray-400 text-xs mt-6">
+                <p className="text-center text-gray-400 text-[10px] mt-6">
                     © {new Date().getFullYear()} ClubPlatform — Plataforma digital para Rotary · Por <a href="https://valkomen.com" target="_blank" rel="noopener noreferrer" className="font-bold hover:text-gray-600 transition-colors">Valkomen LLC</a>
                 </p>
             </div>

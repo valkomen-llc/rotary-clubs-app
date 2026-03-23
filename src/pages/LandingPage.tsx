@@ -453,7 +453,7 @@ export default function LandingPage() {
                         </div>
                         <span className="font-black text-gray-900 text-sm">ClubPlatform</span>
                     </div>
-                    <p className="text-xs text-gray-400">© {new Date().getFullYear()} ClubPlatform — Plataforma digital para clubes Rotary · Por <strong>Valkomen LLC</strong></p>
+                    <p className="text-[10px] text-gray-400">© {new Date().getFullYear()} ClubPlatform — Plataforma digital para clubes Rotary · Por <strong>Valkomen LLC</strong></p>
                     <div className="flex items-center gap-5">
                         <a href="mailto:soporte@clubplatform.org" className="text-xs text-gray-400 hover:text-gray-600 transition-colors font-medium">Soporte</a>
                         <a href="#" className="text-xs text-gray-400 hover:text-gray-600 transition-colors font-medium">Términos</a>
