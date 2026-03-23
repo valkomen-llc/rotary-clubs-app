@@ -224,7 +224,7 @@ export default function RegistroPage() {
                                 <div
                                     key={i}
                                     className={`h-1.5 rounded-full flex-1 transition-all duration-500 ${
-                                        i < currentStep ? 'bg-[#019fcb]' : 'bg-gray-200'
+                                        i < currentStep ? 'bg-[#0c3c7c]' : 'bg-gray-200'
                                     }`}
                                 />
                             ))}

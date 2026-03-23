@@ -1191,7 +1191,7 @@ const OnboardingFlow: React.FC = () => {
                         <div className="flex items-center gap-3">
                             <span className="text-xs font-bold text-gray-400">Paso {step} de {STEPS.length - 2}</span>
                             <div className="w-32 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                <div className="h-full bg-[#019fcb] rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
+                                <div className="h-full bg-[#0c3c7c] rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
                             </div>
                         </div>
                     </div>
@@ -1260,7 +1260,7 @@ const OnboardingFlow: React.FC = () => {
                         <div className="flex items-center gap-3">
                             {/* Step indicator dots */}
                             {STEPS.slice(1, -1).map((s, i) => (
-                                <div key={s.id} className={`w-2 h-2 rounded-full transition-all ${i + 1 <= step ? 'bg-[#019fcb]' : 'bg-gray-200'}`} />
+                                <div key={s.id} className={`w-2 h-2 rounded-full transition-all ${i + 1 <= step ? 'bg-[#0c3c7c]' : 'bg-gray-200'}`} />
                             ))}
                         </div>
                         <button onClick={handleNext}
