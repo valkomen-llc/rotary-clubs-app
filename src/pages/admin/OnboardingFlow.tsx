@@ -251,7 +251,7 @@ const StepBranding: React.FC<{ data: any; onChange: (d: any) => void; onLogoUplo
                     <div className="flex items-center gap-6">
                         <div
                             onClick={() => fileRef.current?.click()}
-                            className="w-28 h-28 rounded-2xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-all overflow-hidden"
+                            className="w-28 h-28 rounded-2xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-all overflow-hidden bg-white"
                         >
                             {data.logo ? (
                                 <img src={data.logo} alt="Logo" className="w-full h-full object-contain p-2" />
@@ -1098,7 +1098,15 @@ const OnboardingFlow: React.FC = () => {
     const handleLogoUpload = async (file: File) => {
         setUploading(true);
         try {
-            const url = await uploadFile(file);
+            const formData = new FormData();
+            formData.append('file', file);
+            const res = await fetch(`${API}/media/upload-logo?folder=logos`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: formData,
+            });
+            const data = await res.json();
+            const url = data.url || data.secure_url || '';
             if (url) setBranding(b => ({ ...b, logo: url }));
         } catch { /* ignore */ }
         setUploading(false);
