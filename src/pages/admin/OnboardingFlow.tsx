@@ -27,7 +27,7 @@ const STEPS = [
 // ── Step 0: Welcome ──────────────────────────────────────────────
 const StepWelcome: React.FC<{ onNext: () => void; clubName: string }> = ({ onNext, clubName }) => (
     <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-6">
-        <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center mb-8 shadow-2xl shadow-blue-500/30">
+        <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#013388] to-[#012266] flex items-center justify-center mb-8 shadow-2xl shadow-blue-900/30">
             <Rocket className="w-10 h-10 text-white" />
         </div>
         <h1 className="text-4xl font-black text-gray-900 mb-4 tracking-tight">
@@ -39,7 +39,7 @@ const StepWelcome: React.FC<{ onNext: () => void; clubName: string }> = ({ onNex
         <p className="text-sm text-gray-400 max-w-md mb-10">
             Al terminar, tu club tendrá presencia digital profesional con dominio .org y todas las herramientas de gestión.
         </p>
-        <button onClick={onNext} className="flex items-center gap-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-8 py-4 rounded-2xl font-bold text-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-xl shadow-blue-600/20 group">
+        <button onClick={onNext} className="flex items-center gap-3 bg-gradient-to-r from-[#013388] to-[#012266] text-white px-8 py-4 rounded-2xl font-bold text-lg hover:from-[#012266] hover:to-[#011144] transition-all shadow-xl shadow-blue-900/20 group">
             Comenzar configuración
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
         </button>
@@ -64,7 +64,7 @@ const StepClubInfo: React.FC<{ data: any; onChange: (d: any) => void }> = ({ dat
             <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Descripción del club *</label>
                 <textarea value={data.description || ''} onChange={e => onChange({ ...data, description: e.target.value })} rows={3}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none" placeholder="Describe la misión y actividades de tu club..." />
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all resize-none" placeholder="Describe la misión y actividades de tu club..." />
             </div>
             <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Distrito Rotario *</label>
@@ -79,12 +79,12 @@ const StepClubInfo: React.FC<{ data: any; onChange: (d: any) => void }> = ({ dat
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Departamento / Provincia *</label>
                     <input value={data.state || ''} onChange={e => onChange({ ...data, state: e.target.value })}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" placeholder="Valle del Cauca" />
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all" placeholder="Valle del Cauca" />
                 </div>
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Ciudad *</label>
                     <input value={data.city || ''} onChange={e => onChange({ ...data, city: e.target.value })}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" placeholder="Tu ciudad" />
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all" placeholder="Tu ciudad" />
                 </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -100,18 +100,18 @@ const StepClubInfo: React.FC<{ data: any; onChange: (d: any) => void }> = ({ dat
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Teléfono</label>
                     <input value={data.phone || ''} onChange={e => onChange({ ...data, phone: e.target.value })}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" placeholder="+57 300 000 0000" />
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all" placeholder="+57 300 000 0000" />
                 </div>
             </div>
             <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Dirección</label>
                 <input value={data.address || ''} onChange={e => onChange({ ...data, address: e.target.value })}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" placeholder="Calle 10 #5-23, Centro" />
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all" placeholder="Calle 10 #5-23, Centro" />
             </div>
             <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Email de contacto</label>
                 <input value={data.email || ''} onChange={e => onChange({ ...data, email: e.target.value })}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" placeholder="contacto@tuclub.org" />
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all" placeholder="contacto@tuclub.org" />
             </div>
         </div>
     </div>
@@ -128,7 +128,7 @@ const StepBranding: React.FC<{ data: any; onChange: (d: any) => void; onLogoUplo
                 {/* Brand Center Guide */}
                 <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200/60 rounded-2xl p-5">
                     <div className="flex items-start gap-3 mb-3">
-                        <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <div className="w-8 h-8 rounded-lg bg-[#013388] flex items-center justify-center flex-shrink-0 mt-0.5">
                             <Palette className="w-4 h-4 text-white" />
                         </div>
                         <div>
@@ -138,26 +138,26 @@ const StepBranding: React.FC<{ data: any; onChange: (d: any) => void; onLogoUplo
                     </div>
                     <div className="ml-11 space-y-2 text-xs text-gray-600 mb-4">
                         <div className="flex items-start gap-2">
-                            <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">1</span>
+                            <span className="w-5 h-5 rounded-full bg-[#013388] text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">1</span>
                             <span>Selecciona la <strong>marca simplificada</strong> (Simplified)</span>
                         </div>
                         <div className="flex items-start gap-2">
-                            <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">2</span>
+                            <span className="w-5 h-5 rounded-full bg-[#013388] text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">2</span>
                             <span>Escribe el <strong>nombre de tu club rotario</strong></span>
                         </div>
                         <div className="flex items-start gap-2">
-                            <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">3</span>
+                            <span className="w-5 h-5 rounded-full bg-[#013388] text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">3</span>
                             <span>Elige el esquema de color <strong>Azul Rotary con Dorado</strong></span>
                         </div>
                         <div className="flex items-start gap-2">
-                            <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">4</span>
+                            <span className="w-5 h-5 rounded-full bg-[#013388] text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">4</span>
                             <span>Descarga en formato <strong>PNG</strong> y súbelo aquí abajo</span>
                         </div>
                     </div>
                     <a
                         href="https://brandcenter.rotary.org/es-xl/rotary-template?id=f368e943-4d64-4635-899f-4b2302380a21"
                         target="_blank" rel="noopener noreferrer"
-                        className="ml-11 inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm"
+                        className="ml-11 inline-flex items-center gap-2 bg-[#013388] text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-[#012266] transition-colors shadow-sm"
                     >
                         Abrir Rotary Brand Center
                         <ExternalLink className="w-3.5 h-3.5" />
@@ -279,7 +279,7 @@ const StepSocial: React.FC<{ data: any; onChange: (d: any) => void }> = ({ data,
                             <input
                                 value={(data.social || {})[p.key] || ''}
                                 onChange={e => onChange({ ...data, social: { ...(data.social || {}), [p.key]: e.target.value } })}
-                                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all"
                                 placeholder={p.placeholder}
                             />
                         </div>
@@ -303,7 +303,7 @@ const StepSocial: React.FC<{ data: any; onChange: (d: any) => void }> = ({ data,
                             <input
                                 value={c.icon}
                                 onChange={e => updateCustom(c.id, 'icon', e.target.value)}
-                                className="w-10 h-10 text-center text-xl bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 flex-shrink-0 cursor-pointer"
+                                className="w-10 h-10 text-center text-xl bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#013388]/20 flex-shrink-0 cursor-pointer"
                                 maxLength={4}
                                 title="Escribe o pega un emoji"
                             />
@@ -312,13 +312,13 @@ const StepSocial: React.FC<{ data: any; onChange: (d: any) => void }> = ({ data,
                                     value={c.label}
                                     onChange={e => updateCustom(c.id, 'label', e.target.value)}
                                     placeholder="Nombre de la red (ej: WhatsApp)"
-                                    className="w-full bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                    className="w-full bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all"
                                 />
                                 <input
                                     value={c.url}
                                     onChange={e => updateCustom(c.id, 'url', e.target.value)}
                                     placeholder="https://..."
-                                    className="w-full bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                    className="w-full bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all"
                                 />
                             </div>
                             <button
@@ -337,7 +337,7 @@ const StepSocial: React.FC<{ data: any; onChange: (d: any) => void }> = ({ data,
             <div className="relative">
                 <button
                     onClick={() => setShowSuggestions(s => !s)}
-                    className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-200 rounded-2xl py-3 text-sm font-bold text-gray-400 hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50/50 transition-all"
+                    className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-200 rounded-2xl py-3 text-sm font-bold text-gray-400 hover:border-blue-400 hover:text-[#013388] hover:bg-blue-50/50 transition-all"
                 >
                     <Plus className="w-4 h-4" />
                     Agregar otra red social
@@ -499,7 +499,7 @@ const StepSiteImages: React.FC<{
                                 onClick={() => setExpanded(prev => ({ ...prev, [container.key]: !prev[container.key] }))}
                                 className="w-full px-5 py-4 flex items-center gap-3 hover:bg-gray-50/50 transition-colors text-left"
                             >
-                                <ImageIcon className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                                <ImageIcon className="w-4 h-4 text-[#013388] flex-shrink-0" />
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 flex-wrap">
                                         <h3 className="font-bold text-gray-900 text-sm">{container.label}</h3>
@@ -621,7 +621,7 @@ const StepModules: React.FC<{ data: any; onChange: (d: any) => void }> = ({ data
                         max="200"
                         value={data.memberCount || ''}
                         onChange={(e) => onChange({ ...data, memberCount: parseInt(e.target.value) || 0 })}
-                        className="w-full max-w-xs bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-bold text-gray-700"
+                        className="w-full max-w-xs bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all font-bold text-gray-700"
                         placeholder="Ej: 30"
                     />
                     <p className="text-[11px] text-gray-400 mt-2">En el siguiente paso podrás diligenciar la información general de ellos de forma opcional.</p>
@@ -681,7 +681,7 @@ const ToggleRow: React.FC<{ title: string; description: string; active: boolean;
         </div>
         <button
             onClick={onToggle}
-            className={`relative flex-shrink-0 w-12 h-6 rounded-full transition-colors duration-200 ease-in-out ${active ? 'bg-blue-600' : 'bg-gray-200'}`}
+            className={`relative flex-shrink-0 w-12 h-6 rounded-full transition-colors duration-200 ease-in-out ${active ? 'bg-[#013388]' : 'bg-gray-200'}`}
         >
             <span
                 className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform duration-200 ease-in-out shadow-sm ${active ? 'translate-x-6' : 'translate-x-0'}`}
@@ -777,16 +777,16 @@ const StepMembers: React.FC<{
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Nombre Completo</label>
                                 <input value={m.name} onChange={e => updateMember(i, 'name', e.target.value)} placeholder="Nombre del socio"
-                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" />
+                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all" />
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Descripción corta (opcional)</label>
                                 <textarea value={m.description} onChange={e => updateMember(i, 'description', e.target.value)} rows={2} placeholder="Breve descripción o profesión..."
-                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none" />
+                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all resize-none" />
                             </div>
                             <div className="flex flex-col sm:flex-row sm:items-center gap-4 pt-2 border-t border-gray-50">
                                 <label className="flex items-center gap-2 cursor-pointer">
-                                    <div className={`w-10 h-5 flex items-center rounded-full p-1 transition-colors ${m.isBoard ? 'bg-blue-600' : 'bg-gray-200'}`}
+                                    <div className={`w-10 h-5 flex items-center rounded-full p-1 transition-colors ${m.isBoard ? 'bg-[#013388]' : 'bg-gray-200'}`}
                                          onClick={() => updateMember(i, 'isBoard', !m.isBoard)}>
                                         <div className={`bg-white w-3 h-3 rounded-full shadow-md transform transition-transform ${m.isBoard ? 'translate-x-5' : 'translate-x-0'}`} />
                                     </div>
@@ -796,7 +796,7 @@ const StepMembers: React.FC<{
                                 {m.isBoard && (
                                     <div className="flex-1">
                                         <input value={m.boardRole} onChange={e => updateMember(i, 'boardRole', e.target.value)} placeholder="Cargo (Ej: Presidente)"
-                                            className="w-full bg-blue-50 border border-blue-200 text-blue-800 rounded-xl px-4 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 font-bold placeholder-blue-300" />
+                                            className="w-full bg-blue-50 border border-blue-200 text-blue-800 rounded-xl px-4 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#013388]/30 font-bold placeholder-blue-300" />
                                     </div>
                                 )}
                             </div>
@@ -1180,10 +1180,10 @@ const OnboardingFlow: React.FC = () => {
     const progress = Math.round((step / (STEPS.length - 1)) * 100);
 
     return (
-        <div className="min-h-screen bg-white flex flex-col">
+        <div className="min-h-screen bg-rotary-concrete bg-gradient-to-br from-blue-50 to-white flex flex-col">
             {/* Top Bar */}
             {step > 0 && step < STEPS.length - 1 && (
-                <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-lg border-b border-gray-100">
+                <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-lg border-b border-gray-200/60 shadow-sm">
                     <div className="max-w-3xl mx-auto flex items-center justify-between px-6 py-4">
                         <button onClick={handleBack} className="flex items-center gap-2 text-gray-400 hover:text-gray-700 text-sm font-bold transition-colors">
                             <ArrowLeft className="w-4 h-4" /> Atrás
@@ -1191,7 +1191,7 @@ const OnboardingFlow: React.FC = () => {
                         <div className="flex items-center gap-3">
                             <span className="text-xs font-bold text-gray-400">Paso {step} de {STEPS.length - 2}</span>
                             <div className="w-32 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
+                                <div className="h-full bg-[#013388] rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
                             </div>
                         </div>
                     </div>
@@ -1202,7 +1202,7 @@ const OnboardingFlow: React.FC = () => {
             {uploading && (
                 <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center">
                     <div className="bg-white rounded-2xl p-6 shadow-2xl flex items-center gap-4">
-                        <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+                        <Loader2 className="w-6 h-6 animate-spin text-[#013388]" />
                         <span className="text-sm font-bold text-gray-700">Subiendo archivo...</span>
                     </div>
                 </div>
@@ -1214,7 +1214,7 @@ const OnboardingFlow: React.FC = () => {
                     {/* Loading state */}
                     {loadingClub && (
                         <div className="flex flex-col items-center justify-center min-h-[60vh]">
-                            <Loader2 className="w-10 h-10 animate-spin text-blue-500 mb-4" />
+                            <Loader2 className="w-10 h-10 animate-spin text-[#013388] mb-4" />
                             <p className="text-sm text-gray-400 font-bold">Cargando información del club...</p>
                         </div>
                     )}
@@ -1252,7 +1252,7 @@ const OnboardingFlow: React.FC = () => {
 
             {/* Bottom Navigation (not on welcome or complete) */}
             {step > 0 && step < STEPS.length - 1 && (
-                <footer className="sticky bottom-0 bg-white/80 backdrop-blur-lg border-t border-gray-100">
+                <footer className="sticky bottom-0 bg-white/90 backdrop-blur-lg border-t border-gray-200/60 shadow-[0_-4px_12px_rgba(0,0,0,0.04)]">
                     <div className="max-w-3xl mx-auto flex items-center justify-between px-6 py-4">
                         <button onClick={handleBack} className="flex items-center gap-2 text-gray-400 hover:text-gray-700 text-sm font-bold transition-colors">
                             <ArrowLeft className="w-4 h-4" /> Atrás
@@ -1260,11 +1260,11 @@ const OnboardingFlow: React.FC = () => {
                         <div className="flex items-center gap-3">
                             {/* Step indicator dots */}
                             {STEPS.slice(1, -1).map((s, i) => (
-                                <div key={s.id} className={`w-2 h-2 rounded-full transition-all ${i + 1 <= step ? 'bg-blue-500' : 'bg-gray-200'}`} />
+                                <div key={s.id} className={`w-2 h-2 rounded-full transition-all ${i + 1 <= step ? 'bg-[#013388]' : 'bg-gray-200'}`} />
                             ))}
                         </div>
                         <button onClick={handleNext}
-                            className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20">
+                            className="flex items-center gap-2 bg-[#013388] text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-[#012266] transition-all shadow-lg shadow-blue-900/20">
                             Siguiente <ArrowRight className="w-4 h-4" />
                         </button>
                     </div>
