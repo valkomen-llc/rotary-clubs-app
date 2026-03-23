@@ -1,7 +1,16 @@
 import { PrismaClient } from '@prisma/client';
-import EmailService from '../services/EmailService.js';
 
 const prisma = new PrismaClient();
+
+// Lazy load EmailService to avoid loading nodemailer on cold start
+let _emailService = null;
+const getEmailService = async () => {
+    if (!_emailService) {
+        const mod = await import('../services/EmailService.js');
+        _emailService = mod.default;
+    }
+    return _emailService;
+};
 
 /**
  * Generates a random 6-digit verification code
@@ -164,7 +173,8 @@ export const resendCode = async (req, res) => {
                     clubName = club?.name;
                 }
 
-                await EmailService.sendPlatformEmail({
+                const EmailSvc = await getEmailService();
+                await EmailSvc.sendPlatformEmail({
                     to: email.toLowerCase(),
                     subject: `${code} — Código de verificación | ClubPlatform`,
                     html: buildVerificationEmail(code, clubName),
@@ -194,7 +204,8 @@ export const sendVerificationEmail = async (userId) => {
         include: { club: { select: { name: true } } }
     });
 
-    const result = await EmailService.sendPlatformEmail({
+    const EmailSvc = await getEmailService();
+    const result = await EmailSvc.sendPlatformEmail({
         to: user.email,
         subject: `${code} — Código de verificación | ClubPlatform`,
         html: buildVerificationEmail(code, user.club?.name),
@@ -264,7 +275,8 @@ export const sendTestEmail = async (req, res) => {
     }
 
     try {
-        const result = await EmailService.sendPlatformEmail({
+        const EmailSvc = await getEmailService();
+        const result = await EmailSvc.sendPlatformEmail({
             to,
             subject: '✅ Email de prueba — ClubPlatform',
             html: `
