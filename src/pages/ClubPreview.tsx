@@ -16,6 +16,20 @@ import Footer from '../sections/Footer';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
+// Error boundary to catch section render errors
+class SectionErrorBoundary extends React.Component<
+    { name: string; children: React.ReactNode },
+    { hasError: boolean }
+> {
+    state = { hasError: false };
+    static getDerivedStateFromError() { return { hasError: true }; }
+    componentDidCatch(err: any) { console.error(`Section [${this.props.name}] crashed:`, err); }
+    render() {
+        if (this.state.hasError) return null; // silently skip broken sections
+        return this.props.children;
+    }
+}
+
 /**
  * ClubPreview – renders the public site of a club resolved by subdomain param.
  * URL: app.clubplatform.org/#/preview/:subdomain
@@ -102,17 +116,17 @@ const ClubPreview: React.FC = () => {
 
             {/* Public site */}
             <div className="min-h-screen bg-white">
-                <Navbar />
+                <SectionErrorBoundary name="Navbar"><Navbar /></SectionErrorBoundary>
                 <main>
-                    <HeroSection />
-                    <ActionSection />
-                    <StatsSection />
-                    <JoinSection />
-                    <FoundationSection />
-                    <CausesHexSection />
-                    <NewsSection />
+                    <SectionErrorBoundary name="Hero"><HeroSection /></SectionErrorBoundary>
+                    <SectionErrorBoundary name="Action"><ActionSection /></SectionErrorBoundary>
+                    <SectionErrorBoundary name="Stats"><StatsSection /></SectionErrorBoundary>
+                    <SectionErrorBoundary name="Join"><JoinSection /></SectionErrorBoundary>
+                    <SectionErrorBoundary name="Foundation"><FoundationSection /></SectionErrorBoundary>
+                    <SectionErrorBoundary name="Causes"><CausesHexSection /></SectionErrorBoundary>
+                    <SectionErrorBoundary name="News"><NewsSection /></SectionErrorBoundary>
                 </main>
-                <Footer />
+                <SectionErrorBoundary name="Footer"><Footer /></SectionErrorBoundary>
             </div>
         </ClubContext.Provider>
     );
