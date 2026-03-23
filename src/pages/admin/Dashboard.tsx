@@ -3,9 +3,8 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import { Link, useNavigate } from 'react-router-dom';
 import {
     ExternalLink, Newspaper, FolderKanban, CalendarDays, Image,
-    Globe, Lock, Rocket, CheckCircle2, ChevronRight,
-    Sparkles, Users, BarChart3, Settings, ArrowRight,
-    ShoppingBag, FileText, Shield,
+    Lock, Rocket, CheckCircle2, ChevronRight,
+    Sparkles, Users, BarChart3, Settings,
 } from 'lucide-react';
 import MissionControl from '../../components/admin/MissionControl';
 import AgentProgressBar from '../../components/admin/AgentProgressBar';
@@ -30,13 +29,7 @@ const CATEGORY_META = {
     integrations: { label: 'Integraciones', color: 'text-emerald-700 bg-emerald-50 border-emerald-100', ring: '#10b981' },
 };
 
-// ── Quick action cards ────────────────────────────────────────────────
-const QUICK_ACTIONS = [
-    { label: 'Crear Noticia', icon: <Newspaper className="w-5 h-5" />, href: '/admin/noticias', color: 'from-blue-500 to-blue-600' },
-    { label: 'Nuevo Proyecto', icon: <FolderKanban className="w-5 h-5" />, href: '/admin/proyectos', color: 'from-violet-500 to-violet-600' },
-    { label: 'Nuevo Evento', icon: <CalendarDays className="w-5 h-5" />, href: '/admin/eventos', color: 'from-amber-500 to-amber-600' },
-    { label: 'Subir Imágenes', icon: <Image className="w-5 h-5" />, href: '/admin/media', color: 'from-emerald-500 to-emerald-600' },
-];
+
 
 // ══════════════════════════════════════════════════════════════════════════
 // ── Club Admin Dashboard ─────────────────────────────────────────────
@@ -61,6 +54,8 @@ const ClubAdminDashboard: React.FC = () => {
             .then(d => setGaConfigured(!!(d?.gaId && d.gaId.startsWith('G-')))).catch(() => {});
     }, [token]);
 
+    const modules = club?.modules || {};
+
     // ── Build checklist ──
     const items: CheckItem[] = [
         {
@@ -73,17 +68,18 @@ const ClubAdminDashboard: React.FC = () => {
         {
             id: 'hero', label: 'Imágenes principales',
             desc: 'Configura las imágenes del hero y secciones del sitio',
-            done: false, // will need to check from settings
+            done: false,
             href: '/admin/imagenes-sitio', category: 'identity', weight: 10,
             icon: <Image className="w-4 h-4" />,
         },
-        {
+        // Conditional modules based on onboarding step 5 selections
+        ...(modules.projects !== false ? [{
             id: 'project', label: 'Primer proyecto',
             desc: 'Documenta al menos un proyecto activo del club',
             done: (stats?.projects || 0) > 0,
-            href: '/admin/proyectos', category: 'content', weight: 15,
+            href: '/admin/proyectos', category: 'content' as const, weight: 15,
             icon: <FolderKanban className="w-4 h-4" />,
-        },
+        }] : []),
         {
             id: 'news', label: 'Primera noticia',
             desc: 'Publica una noticia o artículo sobre el club',
@@ -91,11 +87,18 @@ const ClubAdminDashboard: React.FC = () => {
             href: '/admin/noticias', category: 'content', weight: 15,
             icon: <Newspaper className="w-4 h-4" />,
         },
+        ...(modules.events !== false ? [{
+            id: 'events', label: 'Primer evento',
+            desc: 'Crea tu primer evento en el calendario',
+            done: (club?.eventsCount || 0) > 0,
+            href: '/admin/calendario', category: 'content' as const, weight: 10,
+            icon: <CalendarDays className="w-4 h-4" />,
+        }] : []),
         {
             id: 'members', label: 'Directorio de socios',
             desc: 'Agrega al menos un socio al directorio',
             done: (stats?.users || 0) > 1,
-            href: '/admin/usuarios', category: 'content', weight: 15,
+            href: '/admin/miembros', category: 'content', weight: 15,
             icon: <Users className="w-4 h-4" />,
         },
         {
