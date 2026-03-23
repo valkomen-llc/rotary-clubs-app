@@ -325,25 +325,6 @@ const ClubAdminDashboard: React.FC = () => {
                 </div>
             </div>
 
-            {/* ── Stats Summary ── */}
-            {stats && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {[
-                        { label: 'Noticias', value: stats.posts || 0, icon: <Newspaper className="w-4 h-4" />, color: 'text-blue-600 bg-blue-50' },
-                        { label: 'Proyectos', value: stats.projects || 0, icon: <FolderKanban className="w-4 h-4" />, color: 'text-violet-600 bg-violet-50' },
-                        { label: 'Socios', value: stats.users || 0, icon: <Users className="w-4 h-4" />, color: 'text-amber-600 bg-amber-50' },
-                        { label: 'Media', value: stats.media || 0, icon: <Image className="w-4 h-4" />, color: 'text-emerald-600 bg-emerald-50' },
-                    ].map(s => (
-                        <div key={s.label} className="bg-white border border-gray-100 rounded-xl p-4 flex items-center gap-3">
-                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${s.color}`}>{s.icon}</div>
-                            <div>
-                                <p className="text-xl font-black text-gray-900">{s.value}</p>
-                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{s.label}</p>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
         </>
     );
 };
