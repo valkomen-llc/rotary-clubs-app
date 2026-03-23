@@ -190,7 +190,7 @@ export const resendCode = async (req, res) => {
 
     } catch (error) {
         console.error('[Verify] Resend error:', error);
-        res.status(500).json({ error: 'Error del servidor' });
+        res.status(500).json({ error: 'Error del servidor', detail: error.message });
     }
 };
 
