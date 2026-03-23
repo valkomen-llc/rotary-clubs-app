@@ -129,6 +129,8 @@ export default function RegistroPage() {
                     adminPassword: form.adminPassword,
                     subdomain: form.subdomain,
                     phone: fullPhone,
+                    phoneCountry: form.phoneCountry,
+                    role: form.role,
                 })
             });
             const data = await resp.json();
@@ -138,27 +140,23 @@ export default function RegistroPage() {
                 return;
             }
 
-            // Auto-login
-            const loginResp = await fetch(`${apiUrl}/auth/login`.replace(/\/+/g, '/').replace(':/', '://'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: form.adminEmail, password: form.adminPassword })
-            });
-            const loginData = await loginResp.json();
-            if (loginResp.ok && loginData.token) {
-                localStorage.setItem('rotary_token', loginData.token);
-            }
-
-            setSuccess(true);
-
-            setTimeout(() => {
-                const isProd = window.location.hostname !== 'localhost';
-                if (isProd) {
-                    window.location.href = `https://app.clubplatform.org/#/admin/onboarding`;
-                } else {
-                    navigate('/admin/onboarding');
+            // Redirect to email verification
+            if (data.requiresVerification) {
+                navigate(`/verify-email?email=${encodeURIComponent(form.adminEmail)}`);
+            } else {
+                // Fallback: auto-login if verification not required
+                const loginResp = await fetch(`${apiUrl}/auth/login`.replace(/\/+/g, '/').replace(':/', '://'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: form.adminEmail, password: form.adminPassword })
+                });
+                const loginData = await loginResp.json();
+                if (loginResp.ok && loginData.token) {
+                    localStorage.setItem('rotary_token', loginData.token);
                 }
-            }, 2500);
+                setSuccess(true);
+                setTimeout(() => navigate('/admin/onboarding'), 2500);
+            }
         } catch {
             setError('Error de conexión. Por favor intenta de nuevo.');
         } finally {

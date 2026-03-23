@@ -12,6 +12,13 @@ model User {
   id        String   @id @default(uuid())
   email     String   @unique
   password  String
+  name      String?
+  phone     String?
+  phoneCountry String?
+  clubRole  String?
+  emailVerified    Boolean  @default(false)
+  verificationCode String?
+  verificationExpiry DateTime?
   role      String   // administrator (super_admin), club_admin, member
   clubId    String?
   club      Club?    @relation(fields: [clubId], references: [id])
@@ -620,4 +627,15 @@ model WhatsAppMessageLog {
 
   @@index([messageId])
   @@index([campaignId, status])
+}
+
+// ==========================================
+// CONFIGURACIÓN GLOBAL DE PLATAFORMA
+// ==========================================
+
+model PlatformConfig {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
 }

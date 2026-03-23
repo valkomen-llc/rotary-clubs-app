@@ -67,6 +67,7 @@ import ClubPreview from './pages/ClubPreview';
 import ChatBot from './components/ChatBot';
 import LandingPage from './pages/LandingPage';
 import RegistroPage from './pages/RegistroPage';
+import VerifyEmail from './pages/VerifyEmail';
 import AppLogin from './pages/AppLogin';
 import ComingSoon from './pages/ComingSoon';
 
@@ -188,6 +189,7 @@ function App() {
                 <Route path="/" element={<SmartHome />} />
                 <Route path="/login" element={<AppLogin />} />
                 <Route path="/registro" element={<RegistroPage />} />
+                <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/quienes-somos" element={<QuienesSomos />} />
                 <Route path="/nuestras-causas" element={<NuestrasCausas />} />
                 <Route path="/maneras-de-contribuir" element={<ManerasDeContribuir />} />

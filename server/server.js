@@ -44,6 +44,7 @@ import publicRoutes from './routes/public.js';
 import aiRoutes from './routes/ai.js';
 import translateRoutes from './routes/translate.js';
 import analyticsRoutes from './routes/analytics.js';
+import platformConfigRoutes from './routes/platform-config.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -57,6 +58,7 @@ app.use('/api/public', publicRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/translate', translateRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/platform-config', platformConfigRoutes);
 
 export default app;
 

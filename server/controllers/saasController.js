@@ -1,11 +1,12 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import VercelService from '../services/VercelService.js';
+import { sendVerificationEmail } from './verificationController.js';
 
 const prisma = new PrismaClient();
 
 export const autoRegisterClub = async (req, res) => {
-    const { clubName, country, district, adminName, adminEmail, adminPassword, subdomain } = req.body;
+    const { clubName, country, district, adminName, adminEmail, adminPassword, subdomain, phone, phoneCountry, role: clubRole } = req.body;
 
     try {
         // Validate required fields
@@ -32,7 +33,6 @@ export const autoRegisterClub = async (req, res) => {
         }
 
         const hashedPassword = await bcrypt.hash(adminPassword, 10);
-        // 1. Validaciones
         const cleanSubdomain = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, '');
         const fullDomain = `${cleanSubdomain}.clubplatform.org`;
 
@@ -45,19 +45,23 @@ export const autoRegisterClub = async (req, res) => {
                     country,
                     district,
                     domain: fullDomain,
-                    subdomain: subdomain.toLowerCase(),
+                    subdomain: cleanSubdomain,
                     description: `Página oficial del club rotario ${clubName}`,
-                    status: 'draft'       // Private until admin publishes
+                    status: 'draft'
                 }
             });
 
-            // 2. Create Admin User connected to this club
+            // 2. Create Admin User with new fields
             const newAdmin = await tx.user.create({
                 data: {
                     name: adminName,
                     email: adminEmail.toLowerCase(),
                     password: hashedPassword,
-                    role: 'administrator',
+                    phone: phone || null,
+                    phoneCountry: phoneCountry || null,
+                    clubRole: clubRole || null,
+                    emailVerified: false,
+                    role: 'club_admin',
                     clubId: newClub.id
                 }
             });
@@ -71,9 +75,7 @@ export const autoRegisterClub = async (req, res) => {
                 { key: 'onboarding_step', value: '1', clubId: newClub.id },
             ];
 
-            await tx.setting.createMany({
-                data: defaultSettings
-            });
+            await tx.setting.createMany({ data: defaultSettings });
 
             return { club: newClub, admin: newAdmin };
         });
@@ -82,16 +84,23 @@ export const autoRegisterClub = async (req, res) => {
         try {
             if (!fullDomain.includes('clubplatform.org')) {
                 await VercelService.addDomain(fullDomain);
-            } else {
-                console.log('Skipping Vercel provisioning for production domain:', fullDomain);
             }
         } catch (vercelError) {
-            console.error('Initial Vercel Domain Setup Failed (Soft Warning):', vercelError);
+            console.error('Vercel Domain Setup Warning:', vercelError);
+        }
+
+        // Send verification email (non-blocking)
+        try {
+            await sendVerificationEmail(result.admin.id);
+        } catch (emailError) {
+            console.error('Verification email error (non-blocking):', emailError);
         }
 
         res.status(201).json({
             message: 'Club creado exitosamente',
-            club: result.club
+            club: result.club,
+            requiresVerification: true,
+            email: adminEmail.toLowerCase(),
         });
 
     } catch (error) {
