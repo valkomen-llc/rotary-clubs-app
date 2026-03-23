@@ -63,6 +63,7 @@ import FAQManagement from './pages/admin/FAQs';
 import AgentsManagement from './pages/admin/Agents';
 import ImageDistribution from './pages/admin/ImageDistribution';
 import OnboardingFlow from './pages/admin/OnboardingFlow';
+import MembersPage from './pages/admin/MembersPage';
 import ClubPreview from './pages/ClubPreview';
 import ChatBot from './components/ChatBot';
 import LandingPage from './pages/LandingPage';
@@ -349,6 +350,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <MediaLibrary />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/miembros"
+                  element={
+                    <PrivateRoute>
+                      <MembersPage />
                     </PrivateRoute>
                   }
                 />

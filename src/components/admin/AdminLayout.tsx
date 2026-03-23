@@ -148,7 +148,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         } else {
             items.push(
                 { icon: Building2, label: 'Mi Club', path: '/admin/mi-club', category: 'Club' },
-                { icon: Users, label: 'Socios', path: '/admin/usuarios', category: 'Club' },
+                { icon: Users, label: 'Miembros del Club', path: '/admin/miembros', category: 'Club' },
                 { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: 'Club' },
             );
         }

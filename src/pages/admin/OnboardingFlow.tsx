@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     ArrowRight, ArrowLeft, Building2, Palette, Share2, ImageIcon,
     Camera, Rocket, CheckCircle2, Upload, X, Loader2, ShieldCheck, AlertTriangle, ExternalLink,
-    Plus, Globe, Users,
+    Plus, Globe,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -20,7 +20,6 @@ const STEPS = [
     { id: 'social', title: 'Redes', icon: Share2 },
     { id: 'images', title: 'Imágenes', icon: ImageIcon },
     { id: 'modules', title: 'Módulos', icon: Globe },
-    { id: 'members', title: 'Socios', icon: Users },
     { id: 'complete', title: '¡Listo!', icon: CheckCircle2 },
 ];
 
@@ -990,7 +989,6 @@ const OnboardingFlow: React.FC = () => {
         hasNGSE: false,
         hasRotex: false
     });
-    const [members, setMembers] = useState<any[]>([]);
     const [clubDocuments, setClubDocuments] = useState<any[]>([]);
     const [uploadingDoc, setUploadingDoc] = useState(false);
 
@@ -1162,21 +1160,6 @@ const OnboardingFlow: React.FC = () => {
         setUploading(false);
     };
 
-    const handleMemberImageUpload = async (file: File, index: number) => {
-        setUploading(true);
-        try {
-            const url = await uploadFile(file);
-            if (url) {
-                setMembers(prev => {
-                    const next = [...prev];
-                    if (next[index]) next[index].image = url;
-                    return next;
-                });
-            }
-        } catch { /* ignore */ }
-        setUploading(false);
-    };
-
     // ── Save progress per step ──
     const saveStepData = async () => {
         if (!clubId || !token) return;
@@ -1282,17 +1265,6 @@ const OnboardingFlow: React.FC = () => {
                         moduleRotex: modules.hasRotex
                     }),
                 });
-            }
-
-            // ── Step 6: Members ───────────────────────────────────────
-            if (step === 6 && members.length > 0) {
-                const validMembers = members.filter(m => m.name || m.image || m.description);
-                if (validMembers.length > 0) {
-                    await fetch(`${API}/admin/clubs/${clubId}/members/batch`, {
-                        method: 'POST', headers,
-                        body: JSON.stringify({ members: validMembers }),
-                    }).catch(() => {});
-                }
             }
 
             // Always save step progress
@@ -1401,8 +1373,7 @@ const OnboardingFlow: React.FC = () => {
                             {step === 3 && <StepSocial data={social} onChange={setSocial} />}
                             {step === 4 && <StepSiteImages data={siteImages} onChange={setSiteImages} onImageUpload={handleSiteImageUpload} />}
                             {step === 5 && <StepModules data={modules} onChange={setModules} />}
-                            {step === 6 && <StepMembers count={modules.memberCount} members={members} onChange={setMembers} onImageUpload={handleMemberImageUpload} />}
-                            {step === 7 && <StepComplete clubName={info.name || 'tu club'} onFinish={handleFinish} saving={saving} />}
+                            {step === 6 && <StepComplete clubName={info.name || 'tu club'} onFinish={handleFinish} saving={saving} />}
                         </>
                     )}
                 </div>
