@@ -114,7 +114,7 @@ export default function AppLogin() {
                             <p className="text-gray-400 text-xs">
                                 ¿Aún no tienes cuenta?{' '}
                                 <Link to="/registro" className="text-[#019fcb] font-bold hover:underline">
-                                    Crear mi sitio gratis
+                                    Crear website para mi club
                                 </Link>
                             </p>
                         </div>
