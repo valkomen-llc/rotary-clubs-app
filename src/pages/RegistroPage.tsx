@@ -431,7 +431,7 @@ export default function RegistroPage() {
                             ) : (
                                 <button type="submit" disabled={loading}
                                     className="flex items-center gap-2 bg-[#019fcb] text-white font-bold px-6 py-3 rounded-xl hover:bg-[#017da3] transition-all shadow-lg shadow-blue-900/20 text-sm disabled:opacity-60">
-                                    {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Creando...</> : '🚀 Crear mi sitio gratis'}
+                                    {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Creando...</> : '🚀 Crear website para mi club'}
                                 </button>
                             )}
                         </div>
