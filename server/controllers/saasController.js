@@ -89,12 +89,10 @@ export const autoRegisterClub = async (req, res) => {
             console.error('Vercel Domain Setup Warning:', vercelError);
         }
 
-        // Send verification email (non-blocking)
-        try {
-            await sendVerificationEmail(result.admin.id);
-        } catch (emailError) {
-            console.error('Verification email error (non-blocking):', emailError);
-        }
+        // Send verification email in background (fire-and-forget to avoid Vercel timeout)
+        sendVerificationEmail(result.admin.id).catch(err => {
+            console.error('Verification email error (non-blocking):', err);
+        });
 
         res.status(201).json({
             message: 'Club creado exitosamente',

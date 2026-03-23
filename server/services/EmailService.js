@@ -47,12 +47,13 @@ export class EmailService {
             return { success: false, error: 'RESEND_API_KEY not configured' };
         }
 
-        // Get configured "from" address or use default
+        // Get configured "from" address or use Resend sandbox default
         const fromConfig = await prisma.platformConfig.findUnique({
             where: { key: 'email_from' }
         }).catch(() => null);
 
-        const from = fromConfig?.value || 'ClubPlatform <noreply@clubplatform.org>';
+        // Use Resend sandbox if domain not yet verified
+        const from = fromConfig?.value || 'ClubPlatform <onboarding@resend.dev>';
 
         const resp = await fetch('https://api.resend.com/emails', {
             method: 'POST',
