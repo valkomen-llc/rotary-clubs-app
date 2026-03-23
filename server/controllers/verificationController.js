@@ -152,26 +152,27 @@ export const resendCode = async (req, res) => {
             data: { verificationCode: code, verificationExpiry: expiry }
         });
 
-        // Get club name for email template
-        let clubName = null;
-        if (user.clubId) {
-            const club = await prisma.club.findUnique({ where: { id: user.clubId }, select: { name: true } });
-            clubName = club?.name;
-        }
-
-        // Send email
-        const result = await EmailService.sendPlatformEmail({
-            to: email.toLowerCase(),
-            subject: `${code} — Código de verificación | ClubPlatform`,
-            html: buildVerificationEmail(code, clubName),
-        });
-
-        if (!result.success) {
-            console.error('[Verify] Email send failed:', result.error);
-            return res.status(500).json({ error: 'No se pudo enviar el correo. Intenta de nuevo.' });
-        }
-
+        // Respond first, then send email in background
         res.json({ message: 'Código reenviado exitosamente' });
+
+        // Get club name and send email (fire-and-forget)
+        (async () => {
+            try {
+                let clubName = null;
+                if (user.clubId) {
+                    const club = await prisma.club.findUnique({ where: { id: user.clubId }, select: { name: true } });
+                    clubName = club?.name;
+                }
+
+                await EmailService.sendPlatformEmail({
+                    to: email.toLowerCase(),
+                    subject: `${code} — Código de verificación | ClubPlatform`,
+                    html: buildVerificationEmail(code, clubName),
+                });
+            } catch (e) {
+                console.error('[Verify] Background email send failed:', e);
+            }
+        })();
 
     } catch (error) {
         console.error('[Verify] Resend error:', error);
