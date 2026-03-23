@@ -64,6 +64,12 @@ import AgentsManagement from './pages/admin/Agents';
 import ImageDistribution from './pages/admin/ImageDistribution';
 import OnboardingFlow from './pages/admin/OnboardingFlow';
 import MembersPage from './pages/admin/MembersPage';
+import RotaractPage from './pages/admin/RotaractPage';
+import InteractPage from './pages/admin/InteractPage';
+import DianPage from './pages/admin/DianPage';
+import YouthExchangePage from './pages/admin/YouthExchangePage';
+import NGSEPage from './pages/admin/NGSEPage';
+import RotexPage from './pages/admin/RotexPage';
 import ClubPreview from './pages/ClubPreview';
 import ChatBot from './components/ChatBot';
 import LandingPage from './pages/LandingPage';
@@ -358,6 +364,54 @@ function App() {
                   element={
                     <PrivateRoute>
                       <MembersPage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/rotaract"
+                  element={
+                    <PrivateRoute>
+                      <RotaractPage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/interact"
+                  element={
+                    <PrivateRoute>
+                      <InteractPage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/estados-financieros"
+                  element={
+                    <PrivateRoute>
+                      <DianPage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/intercambios-jovenes"
+                  element={
+                    <PrivateRoute>
+                      <YouthExchangePage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/ngse"
+                  element={
+                    <PrivateRoute>
+                      <NGSEPage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/rotex"
+                  element={
+                    <PrivateRoute>
+                      <RotexPage />
                     </PrivateRoute>
                   }
                 />

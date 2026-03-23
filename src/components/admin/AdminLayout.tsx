@@ -31,6 +31,10 @@ import {
     Network,
     Palette,
     Lock,
+    FileText,
+    Globe,
+    Briefcase,
+    Award,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -56,6 +60,10 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [gaTotals, setGaTotals] = useState<{ users: number; pageViews: number }>({ users: 0, pageViews: 0 });
     const [gaMock, setGaMock] = useState(false);
     const [unreadLeads, setUnreadLeads] = useState(0);
+    const [mod, setMod] = useState<Record<string, boolean>>({
+        projects: true, events: true, rotaract: false, interact: false,
+        ecommerce: false, dian: false, youth_exchange: false, ngse: false, rotex: false
+    });
 
     const isSuperAdmin = user?.role === 'administrator';
 
@@ -103,6 +111,32 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         const interval = setInterval(fetchUnread, 60000); // poll every 60s
         return () => clearInterval(interval);
     }, []);
+
+    // Fetch module settings for club users
+    useEffect(() => {
+        if (isSuperAdmin) return;
+        const token = localStorage.getItem('rotary_token');
+        const cid = club?.id || user?.clubId;
+        if (!cid || !token) return;
+        fetch(`${API}/admin/clubs/${cid}/settings`, { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.ok ? r.json() : [])
+            .then((settings: any[]) => {
+                const map: Record<string, string> = {};
+                settings.forEach((s: any) => { map[s.key] = s.value; });
+                setMod({
+                    projects: map['module_projects'] !== 'false',
+                    events: map['module_events'] !== 'false',
+                    rotaract: map['module_rotaract'] === 'true',
+                    interact: map['module_interact'] === 'true',
+                    ecommerce: map['module_ecommerce'] === 'true',
+                    dian: map['module_dian'] === 'true',
+                    youth_exchange: map['module_youth_exchange'] === 'true',
+                    ngse: map['module_ngse'] === 'true',
+                    rotex: map['module_rotex'] === 'true',
+                });
+            })
+            .catch(() => {});
+    }, [club, user, isSuperAdmin]);
     // Local control for wizard visibility — dismissable without context refresh
     const [showWizard, setShowWizard] = useState<boolean>(
         () => club?.onboardingCompleted === false
@@ -153,11 +187,17 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             );
         }
 
-        // Content — Base IA only for super admin
+        // Content — conditionally show based on module settings
+        if (isSuperAdmin || mod.projects) {
+            items.push({ icon: FolderKanban, label: 'Proyectos', path: '/admin/proyectos', category: 'Content' });
+        }
         items.push(
             { icon: Newspaper, label: 'Noticias', path: '/admin/noticias', category: 'Content' },
-            { icon: FolderKanban, label: 'Proyectos', path: '/admin/proyectos', category: 'Content' },
-            { icon: Calendar, label: 'Eventos', path: '/admin/calendario', category: 'Content' },
+        );
+        if (isSuperAdmin || mod.events) {
+            items.push({ icon: Calendar, label: 'Eventos', path: '/admin/calendario', category: 'Content' });
+        }
+        items.push(
             { icon: ImageIcon, label: 'Multimedia', path: '/admin/media', category: 'Content' },
             { icon: Palette, label: 'Imágenes del Sitio', path: '/admin/imagenes-sitio', category: 'Content' },
             { icon: HelpCircle, label: 'Preguntas Frecuentes', path: '/admin/faqs', category: 'Content' },
@@ -166,11 +206,36 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             items.push({ icon: BookOpen, label: 'Base IA', path: '/admin/conocimiento', category: 'Content' });
         }
 
-        items.push(
-            { icon: Store, label: 'Tienda', path: '/admin/tienda', category: 'E-commerce' },
-            { icon: Receipt, label: 'Órdenes y Pagos', path: '/admin/ordenes', category: 'E-commerce' },
-            { icon: Wallet, label: 'Bóveda de Fondos', path: '/admin/boveda', category: 'E-commerce' }
-        );
+        // Module-dependent sections
+        if (isSuperAdmin || mod.rotaract) {
+            items.push({ icon: Users, label: 'Club Rotaract', path: '/admin/rotaract', category: 'Programas' });
+        }
+        if (isSuperAdmin || mod.interact) {
+            items.push({ icon: Users, label: 'Club Interact', path: '/admin/interact', category: 'Programas' });
+        }
+        if (isSuperAdmin || mod.youth_exchange) {
+            items.push({ icon: Globe, label: 'Intercambios Jóvenes', path: '/admin/intercambios-jovenes', category: 'Programas' });
+        }
+        if (isSuperAdmin || mod.ngse) {
+            items.push({ icon: Briefcase, label: 'Intercambios NGSE', path: '/admin/ngse', category: 'Programas' });
+        }
+        if (isSuperAdmin || mod.rotex) {
+            items.push({ icon: Award, label: 'ROTEX', path: '/admin/rotex', category: 'Programas' });
+        }
+
+        // E-commerce — conditionally show
+        if (isSuperAdmin || mod.ecommerce) {
+            items.push(
+                { icon: Store, label: 'Tienda', path: '/admin/tienda', category: 'E-commerce' },
+                { icon: Receipt, label: 'Órdenes y Pagos', path: '/admin/ordenes', category: 'E-commerce' },
+                { icon: Wallet, label: 'Bóveda de Fondos', path: '/admin/boveda', category: 'E-commerce' }
+            );
+        }
+
+        // DIAN — conditionally show
+        if (isSuperAdmin || mod.dian) {
+            items.push({ icon: FileText, label: 'Estados Financieros', path: '/admin/estados-financieros', category: 'Compliance' });
+        }
 
         // System — Integraciones + Notificaciones only for super admin
         // Settings: super admin in nav + footer; club users only in footer (not nav)

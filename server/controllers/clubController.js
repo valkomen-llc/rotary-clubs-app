@@ -70,7 +70,8 @@ export const updateClub = async (req, res) => {
         stripePublicKey, stripeSecretKey, useStripe,
         usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
         storeActive, logoHeaderSize,
-        memberCount, moduleProjects, moduleEvents, moduleRotaract, moduleInteract, moduleEcommerce, moduleDian
+        memberCount, moduleProjects, moduleEvents, moduleRotaract, moduleInteract, moduleEcommerce, moduleDian,
+        moduleYouthExchange, moduleNgse, moduleRotex
     } = req.body;
 
     try {
@@ -132,6 +133,9 @@ export const updateClub = async (req, res) => {
             'module_interact': moduleInteract !== undefined ? String(moduleInteract) : undefined,
             'module_ecommerce': moduleEcommerce !== undefined ? String(moduleEcommerce) : undefined,
             'module_dian': moduleDian !== undefined ? String(moduleDian) : undefined,
+            'module_youth_exchange': moduleYouthExchange !== undefined ? String(moduleYouthExchange) : undefined,
+            'module_ngse': moduleNgse !== undefined ? String(moduleNgse) : undefined,
+            'module_rotex': moduleRotex !== undefined ? String(moduleRotex) : undefined,
         };
 
         for (const [key, value] of Object.entries(settingsToUpdate)) {
