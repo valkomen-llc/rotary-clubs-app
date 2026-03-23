@@ -216,7 +216,7 @@ export default function RegistroPage() {
                     {/* Step progress header */}
                     <div className="bg-gradient-to-r from-gray-50 to-gray-50/50 px-8 py-5 border-b border-gray-100">
                         <div className="flex items-center justify-between mb-3">
-                            <span className="text-xs font-bold text-[#019fcb]">Paso {currentStep} de {totalSteps}</span>
+                            <span className="text-xs font-bold text-[#0c3c7c]">Paso {currentStep} de {totalSteps}</span>
                             <span className="text-xs text-gray-400 font-medium">{stepLabels[currentStep - 1]}</span>
                         </div>
                         <div className="flex gap-2">

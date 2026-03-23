@@ -1189,7 +1189,7 @@ const OnboardingFlow: React.FC = () => {
                             <ArrowLeft className="w-4 h-4" /> Atrás
                         </button>
                         <div className="flex items-center gap-3">
-                            <span className="text-xs font-bold text-gray-400">Paso {step} de {STEPS.length - 2}</span>
+                            <span className="text-xs font-bold text-[#0c3c7c]">Paso {step} de {STEPS.length - 2}</span>
                             <div className="w-32 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                                 <div className="h-full bg-[#0c3c7c] rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
                             </div>
