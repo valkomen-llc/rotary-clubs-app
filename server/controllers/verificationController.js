@@ -162,27 +162,31 @@ export const resendCode = async (req, res) => {
         });
 
         // Respond first, then send email in background
+        // NOTE: On Vercel, we must send the email BEFORE responding,
+        // because Vercel kills the function after res.json() is sent.
+        // This endpoint is fast enough (no bcrypt) to await the full flow.
+
+        // Get club name for email template
+        let clubName = null;
+        if (user.clubId) {
+            const club = await prisma.club.findUnique({ where: { id: user.clubId }, select: { name: true } });
+            clubName = club?.name;
+        }
+
+        // Send email (awaited — this is fast, ~1-2s max)
+        const EmailSvc = await getEmailService();
+        const result = await EmailSvc.sendPlatformEmail({
+            to: email.toLowerCase(),
+            subject: `${code} — Código de verificación | ClubPlatform`,
+            html: buildVerificationEmail(code, clubName),
+        });
+
+        if (!result.success) {
+            console.error('[Verify] Email send failed:', result.error);
+            return res.status(500).json({ error: 'No se pudo enviar el correo. Intenta de nuevo.' });
+        }
+
         res.json({ message: 'Código reenviado exitosamente' });
-
-        // Get club name and send email (fire-and-forget)
-        (async () => {
-            try {
-                let clubName = null;
-                if (user.clubId) {
-                    const club = await prisma.club.findUnique({ where: { id: user.clubId }, select: { name: true } });
-                    clubName = club?.name;
-                }
-
-                const EmailSvc = await getEmailService();
-                await EmailSvc.sendPlatformEmail({
-                    to: email.toLowerCase(),
-                    subject: `${code} — Código de verificación | ClubPlatform`,
-                    html: buildVerificationEmail(code, clubName),
-                });
-            } catch (e) {
-                console.error('[Verify] Background email send failed:', e);
-            }
-        })();
 
     } catch (error) {
         console.error('[Verify] Resend error:', error);
