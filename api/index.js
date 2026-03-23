@@ -55,6 +55,9 @@ const getDistricts = async () => _districts || (({ default: _districts } = await
 const getWhatsAppCRM = async () => _whatsappCRM || (({ default: _whatsappCRM } = await import('../server/routes/whatsapp-crm.js')), _whatsappCRM);
 const getPlatformConfig = async () => _platformConfig || (({ default: _platformConfig } = await import('../server/routes/platform-config.js')), _platformConfig);
 
+let _documents;
+const getDocuments = async () => _documents || (({ default: _documents } = await import('../server/routes/documents.js')), _documents);
+
 // ── Route handlers ────────────────────────────────────────────────────────────
 app.use('/api/auth', async (req, res, next) => (await getAuth())(req, res, next));
 app.use('/api/admin', async (req, res, next) => (await getAdmin())(req, res, next));
@@ -77,5 +80,6 @@ app.use('/api/site-progress', async (req, res, next) => (await getSiteProgress()
 app.use('/api/admin/districts', async (req, res, next) => (await getDistricts())(req, res, next));
 app.use('/api/whatsapp', async (req, res, next) => (await getWhatsAppCRM())(req, res, next));
 app.use('/api/platform-config', async (req, res, next) => (await getPlatformConfig())(req, res, next));
+app.use('/api/documents', async (req, res, next) => (await getDocuments())(req, res, next));
 
 export default app;

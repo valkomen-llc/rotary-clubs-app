@@ -46,8 +46,24 @@ const StepWelcome: React.FC<{ onNext: () => void; clubName: string }> = ({ onNex
     </div>
 );
 
+// File type helpers
+const DOC_ICONS: Record<string, string> = {
+    'application/pdf': '📄', 'application/msword': '📝', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '📝',
+    'text/plain': '📃', 'text/csv': '📊', 'text/markdown': '📃', 'application/rtf': '📃',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '📊', 'application/vnd.ms-excel': '📊',
+};
+const getDocIcon = (type: string) => DOC_ICONS[type] || '📎';
+const formatSize = (bytes: number) => bytes < 1024 ? bytes + ' B' : bytes < 1048576 ? (bytes / 1024).toFixed(1) + ' KB' : (bytes / 1048576).toFixed(1) + ' MB';
+
 // ── Step 1: Club Info ── name is read-only (comes from registration)
-const StepClubInfo: React.FC<{ data: any; onChange: (d: any) => void }> = ({ data, onChange }) => (
+const StepClubInfo: React.FC<{
+    data: any; onChange: (d: any) => void;
+    documents: any[]; onDocUpload: (files: FileList) => void; onDocDelete: (id: string) => void; uploadingDoc: boolean;
+}> = ({ data, onChange, documents, onDocUpload, onDocDelete, uploadingDoc }) => {
+    const [dragOver, setDragOver] = useState(false);
+    const fileRef = useRef<HTMLInputElement>(null);
+
+    return (
     <div className="max-w-2xl mx-auto">
         <h2 className="text-2xl font-black text-gray-900 mb-2">📋 Cuéntanos sobre tu club</h2>
         <p className="text-sm text-gray-400 mb-8">Esta información aparecerá en tu sitio web público.</p>
@@ -126,6 +142,51 @@ const StepClubInfo: React.FC<{ data: any; onChange: (d: any) => void }> = ({ dat
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" placeholder="Calle 10 #5-23, Centro" />
             </div>
 
+            {/* ── Documentos del club ── */}
+            <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">📎 Documentos del club</label>
+                <p className="text-[11px] text-gray-400 mb-3">Sube documentos institucionales para construir la base de conocimiento de tu club (actas, reglamentos, historia, etc.)</p>
+                <div
+                    onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={e => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length) onDocUpload(e.dataTransfer.files); }}
+                    onClick={() => fileRef.current?.click()}
+                    className={"border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all " + (dragOver ? 'border-[#019fcb] bg-[#019fcb]/5' : 'border-gray-200 hover:border-gray-300 bg-gray-50/50')}
+                >
+                    <input ref={fileRef} type="file" className="hidden" multiple
+                        accept=".pdf,.doc,.docx,.txt,.rtf,.md,.csv,.xlsx,.xls"
+                        onChange={e => { if (e.target.files?.length) onDocUpload(e.target.files); e.target.value = ''; }} />
+                    {uploadingDoc ? (
+                        <div className="flex items-center justify-center gap-3">
+                            <Loader2 className="w-5 h-5 animate-spin text-[#019fcb]" />
+                            <span className="text-sm text-gray-500 font-medium">Subiendo documento...</span>
+                        </div>
+                    ) : (
+                        <>
+                            <Upload className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                            <p className="text-sm text-gray-500 font-medium">Arrastra archivos aquí o <span className="text-[#019fcb] font-bold">selecciona</span></p>
+                            <p className="text-[10px] text-gray-400 mt-1">PDF, Word, TXT, CSV, Excel — Máx. 10MB</p>
+                        </>
+                    )}
+                </div>
+                {documents.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                        {documents.map((doc: any) => (
+                            <div key={doc.id} className="flex items-center gap-3 bg-white border border-gray-100 rounded-xl px-4 py-3 group hover:border-gray-200 transition-all">
+                                <span className="text-lg">{getDocIcon(doc.fileType)}</span>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-gray-700 truncate">{doc.fileName}</p>
+                                    <p className="text-[10px] text-gray-400">{formatSize(doc.fileSize)}</p>
+                                </div>
+                                <button onClick={() => onDocDelete(doc.id)} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition-all">
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
             {/* Email de contacto */}
             <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Email de contacto</label>
@@ -134,7 +195,8 @@ const StepClubInfo: React.FC<{ data: any; onChange: (d: any) => void }> = ({ dat
             </div>
         </div>
     </div>
-);
+    );
+};
 
 // ── Step 2: Branding ─────────────────────────────────────────────
 const StepBranding: React.FC<{ data: any; onChange: (d: any) => void; onLogoUpload: (f: File) => void }> = ({ data, onChange, onLogoUpload }) => {
@@ -908,6 +970,8 @@ const OnboardingFlow: React.FC = () => {
         hasDian: false
     });
     const [members, setMembers] = useState<any[]>([]);
+    const [clubDocuments, setClubDocuments] = useState<any[]>([]);
+    const [uploadingDoc, setUploadingDoc] = useState(false);
 
     // Update form when club data loads
     useEffect(() => {
@@ -989,6 +1053,46 @@ const OnboardingFlow: React.FC = () => {
         });
         const data = await res.json();
         return data.url || data.secure_url || '';
+    };
+
+    // ── Club Documents (Knowledge Base) ──────────────────────
+    const fetchDocuments = async () => {
+        try {
+            const res = await fetch(`${API}/documents`, { headers: { Authorization: `Bearer ${token}` } });
+            if (res.ok) setClubDocuments(await res.json());
+        } catch { /* silent */ }
+    };
+
+    useEffect(() => { if (token && userClub) fetchDocuments(); }, [token, userClub]);
+
+    const handleDocUpload = async (files: FileList) => {
+        setUploadingDoc(true);
+        try {
+            for (let i = 0; i < files.length; i++) {
+                const fd = new FormData();
+                fd.append('file', files[i]);
+                const res = await fetch(`${API}/documents/upload`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` },
+                    body: fd
+                });
+                if (res.ok) {
+                    const doc = await res.json();
+                    setClubDocuments(prev => [doc, ...prev]);
+                }
+            }
+        } catch (err) { console.error('Doc upload error:', err); }
+        setUploadingDoc(false);
+    };
+
+    const handleDocDelete = async (id: string) => {
+        try {
+            const res = await fetch(`${API}/documents/${id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) setClubDocuments(prev => prev.filter(d => d.id !== id));
+        } catch (err) { console.error('Doc delete error:', err); }
     };
 
     const handleLogoUpload = async (file: File) => {
@@ -1257,7 +1361,7 @@ const OnboardingFlow: React.FC = () => {
                     {!loadingClub && userClub && (
                         <>
                             {step === 0 && <StepWelcome onNext={() => setStep(1)} clubName={info.name || 'tu club'} />}
-                            {step === 1 && <StepClubInfo data={info} onChange={setInfo} />}
+                            {step === 1 && <StepClubInfo data={info} onChange={setInfo} documents={clubDocuments} onDocUpload={handleDocUpload} onDocDelete={handleDocDelete} uploadingDoc={uploadingDoc} />}
                             {step === 2 && <StepBranding data={branding} onChange={setBranding} onLogoUpload={handleLogoUpload} />}
                             {step === 3 && <StepSocial data={social} onChange={setSocial} />}
                             {step === 4 && <StepSiteImages data={siteImages} onChange={setSiteImages} onImageUpload={handleSiteImageUpload} />}

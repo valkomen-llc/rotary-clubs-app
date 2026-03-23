@@ -60,4 +60,30 @@ export const uploadMemory = multer({
     limits: { fileSize: 5 * 1024 * 1024 }
 });
 
-export default { s3, upload, uploadMemory };
+// Document uploads for Club Knowledge Base
+export const uploadDocuments = multer({
+    storage: multerS3({
+        s3: s3,
+        bucket: process.env.AWS_BUCKET_NAME || 'rotary-platform-assets',
+        contentType: multerS3.AUTO_CONTENT_TYPE,
+        metadata: function (req, file, cb) {
+            cb(null, { fieldName: file.fieldname });
+        },
+        key: function (req, file, cb) {
+            const clubId = req.query.clubId || req.body.clubId || req.user?.clubId || 'global';
+            const fileName = `${Date.now()}-${file.originalname.replace(/\s+/g, '_')}`;
+            cb(null, `clubs/${clubId}/documents/${fileName}`);
+        }
+    }),
+    fileFilter: (req, file, cb) => {
+        const filetypes = /pdf|doc|docx|txt|rtf|md|csv|xlsx|xls/;
+        const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+        const mimetypes = /application\/pdf|application\/msword|application\/vnd|text\/|application\/rtf/;
+        const mimetype = mimetypes.test(file.mimetype);
+        if (mimetype || extname) return cb(null, true);
+        cb(new Error("Error: Formato no admitido. Acepta PDF, Word, TXT, CSV, Excel."));
+    },
+    limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+});
+
+export default { s3, upload, uploadMemory, uploadDocuments };
