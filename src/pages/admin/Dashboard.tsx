@@ -183,7 +183,6 @@ const ClubAdminDashboard: React.FC = () => {
                         </h1>
                         <p className="text-sm text-gray-500 font-medium mt-1">
                             <span className="font-bold text-gray-700">{club?.name || 'Tu Club'}</span>
-                            {club?.domain && <span className="text-gray-400"> · {club.domain}</span>}
                         </p>
                         {isComplete ? (
                             <p className="text-sm text-emerald-600 font-bold mt-2 flex items-center gap-1.5">
@@ -199,15 +198,7 @@ const ClubAdminDashboard: React.FC = () => {
 
                     {/* Status Badge + Action */}
                     <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                        {siteStatus === 'live' ? (
-                            <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-xl">
-                                <Globe className="w-4 h-4 text-emerald-600" />
-                                <div>
-                                    <p className="text-[10px] font-black text-emerald-700 uppercase tracking-wider">En producción</p>
-                                    <p className="text-[11px] text-emerald-600 font-medium">{club?.domain || 'sitio activo'}</p>
-                                </div>
-                            </div>
-                        ) : canPublish ? (
+                        {canPublish ? (
                             <button
                                 onClick={handlePublish}
                                 disabled={publishing}
