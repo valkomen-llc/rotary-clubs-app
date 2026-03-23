@@ -404,17 +404,6 @@ export default function RegistroPage() {
                                     </div>
                                 </div>
 
-                                {/* Preview URL box */}
-                                {form.subdomain && (
-                                    <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
-                                        <p className="text-xs text-[#013388] font-medium">
-                                            ✓ Vista previa: <strong>app.clubplatform.org/#/preview/{form.subdomain}</strong>
-                                        </p>
-                                        <p className="text-[10px] text-gray-400 mt-1">
-                                            Después podrás conectar tu dominio propio (ej: rotary{form.subdomain}.org)
-                                        </p>
-                                    </div>
-                                )}
                             </div>
                         )}
 
