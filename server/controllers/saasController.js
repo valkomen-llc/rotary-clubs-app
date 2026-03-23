@@ -1,7 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import VercelService from '../services/VercelService.js';
-import { sendVerificationEmail } from './verificationController.js';
 
 const prisma = new PrismaClient();
 
@@ -80,26 +79,26 @@ export const autoRegisterClub = async (req, res) => {
             return { club: newClub, admin: newAdmin };
         });
 
-        // Try Vercel auto-provision in the background (non-blocking)
-        try {
-            if (!fullDomain.includes('clubplatform.org')) {
-                await VercelService.addDomain(fullDomain);
-            }
-        } catch (vercelError) {
-            console.error('Vercel Domain Setup Warning:', vercelError);
-        }
-
-        // Send verification email in background (fire-and-forget to avoid Vercel timeout)
-        sendVerificationEmail(result.admin.id).catch(err => {
-            console.error('Verification email error (non-blocking):', err);
-        });
-
+        // RESPOND FIRST — then do background work
         res.status(201).json({
             message: 'Club creado exitosamente',
             club: result.club,
             requiresVerification: true,
             email: adminEmail.toLowerCase(),
         });
+
+        // Background tasks (after response is sent)
+        // Vercel domain provisioning
+        try {
+            if (!fullDomain.includes('clubplatform.org')) {
+                VercelService.addDomain(fullDomain).catch(e => console.error('Vercel domain error:', e));
+            }
+        } catch (e) { console.error('Vercel error:', e); }
+
+        // Send verification email (lazy import to avoid loading nodemailer at init)
+        import('./verificationController.js').then(({ sendVerificationEmail }) => {
+            sendVerificationEmail(result.admin.id).catch(e => console.error('Verification email error:', e));
+        }).catch(e => console.error('Import error:', e));
 
     } catch (error) {
         console.error('Error auto-registering club:', error);
