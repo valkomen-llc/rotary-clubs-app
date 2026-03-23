@@ -748,6 +748,24 @@ const StepModules: React.FC<{ data: any; onChange: (d: any) => void }> = ({ data
                         active={data.hasDian}
                         onToggle={() => handleToggle('hasDian')}
                     />
+                    <ToggleRow
+                        title="Intercambios de Jóvenes de Rotary"
+                        description="Módulo para gestionar y publicar programas de intercambio juvenil del club."
+                        active={data.hasYouthExchange}
+                        onToggle={() => handleToggle('hasYouthExchange')}
+                    />
+                    <ToggleRow
+                        title="Intercambios NGSE"
+                        description="Módulo para gestionar intercambios profesionales del New Generations Service Exchange."
+                        active={data.hasNGSE}
+                        onToggle={() => handleToggle('hasNGSE')}
+                    />
+                    <ToggleRow
+                        title="ROTEX"
+                        description="Módulo dedicado a la comunidad de ex-intercambistas Rotary (ROTEX)."
+                        active={data.hasRotex}
+                        onToggle={() => handleToggle('hasRotex')}
+                    />
                 </div>
             </div>
         </div>
@@ -967,7 +985,10 @@ const OnboardingFlow: React.FC = () => {
         hasRotaract: false,
         hasInteract: false,
         hasEcommerce: false,
-        hasDian: false
+        hasDian: false,
+        hasYouthExchange: false,
+        hasNGSE: false,
+        hasRotex: false
     });
     const [members, setMembers] = useState<any[]>([]);
     const [clubDocuments, setClubDocuments] = useState<any[]>([]);
@@ -1030,7 +1051,10 @@ const OnboardingFlow: React.FC = () => {
             hasRotaract: settingsMap['module_rotaract'] === 'true',
             hasInteract: settingsMap['module_interact'] === 'true',
             hasEcommerce: settingsMap['module_ecommerce'] === 'true',
-            hasDian: settingsMap['module_dian'] === 'true'
+            hasDian: settingsMap['module_dian'] === 'true',
+            hasYouthExchange: settingsMap['module_youth_exchange'] === 'true',
+            hasNGSE: settingsMap['module_ngse'] === 'true',
+            hasRotex: settingsMap['module_rotex'] === 'true'
         });
 
         // Resume to saved onboarding step
@@ -1252,7 +1276,10 @@ const OnboardingFlow: React.FC = () => {
                         moduleRotaract: modules.hasRotaract,
                         moduleInteract: modules.hasInteract,
                         moduleEcommerce: modules.hasEcommerce,
-                        moduleDian: modules.hasDian
+                        moduleDian: modules.hasDian,
+                        moduleYouthExchange: modules.hasYouthExchange,
+                        moduleNgse: modules.hasNGSE,
+                        moduleRotex: modules.hasRotex
                     }),
                 });
             }
