@@ -693,24 +693,24 @@ const StepModules: React.FC<{ data: any; onChange: (d: any) => void }> = ({ data
             </p>
 
             <div className="space-y-8">
-                {/* Member Count */}
-                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-                    <h3 className="text-sm font-bold text-gray-900 mb-4">Cantidad de Socios</h3>
-                    <input
-                        type="number"
-                        min="1"
-                        max="200"
-                        value={data.memberCount || ''}
-                        onChange={(e) => onChange({ ...data, memberCount: parseInt(e.target.value) || 0 })}
-                        className="w-full max-w-xs bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all font-bold text-gray-700"
-                        placeholder="Ej: 30"
-                    />
-                    <p className="text-[11px] text-gray-400 mt-2">En el siguiente paso podrás diligenciar la información general de ellos de forma opcional.</p>
-                </div>
-
                 {/* Toggles */}
                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-6">
                     <h3 className="text-sm font-bold text-gray-900 mb-2">Módulos de la Plataforma</h3>
+
+                    {/* Cantidad de Socios — inline number input */}
+                    <div className="flex items-center justify-between pb-4 border-b border-gray-50">
+                        <div className="pr-4">
+                            <h4 className="text-sm font-bold text-gray-900">Cantidad de Socios</h4>
+                            <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">Número de socios que conforman el club. En el siguiente paso podrás registrar su información.</p>
+                        </div>
+                        <input
+                            type="number" min="1" max="200"
+                            value={data.memberCount || ''}
+                            onChange={(e) => onChange({ ...data, memberCount: parseInt(e.target.value) || 0 })}
+                            className="w-24 flex-shrink-0 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all font-bold text-gray-700"
+                            placeholder="20"
+                        />
+                    </div>
 
                     <ToggleRow
                         title="Proyectos y Causas"
