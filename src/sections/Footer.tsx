@@ -114,7 +114,7 @@ const Footer = () => {
               <a href="https://my.rotary.org/terms-of-use" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Condiciones de uso</a>
             </div>
             <div className="flex items-center gap-4">
-              {club.social.map((link, idx) => {
+              {(Array.isArray(club.social) ? club.social : []).map((link, idx) => {
                 let Icon = null;
                 const platform = link.platform.toLowerCase();
 
