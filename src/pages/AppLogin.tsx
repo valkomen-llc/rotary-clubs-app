@@ -43,7 +43,7 @@ export default function AppLogin() {
                 {/* Header */}
                 <div className="text-center mb-8">
                     <div className="flex items-center justify-center gap-2.5 mb-4">
-                        <div className="w-10 h-10 rounded-2xl bg-[#013388] flex items-center justify-center shadow-lg shadow-blue-200">
+                        <div className="w-10 h-10 rounded-2xl bg-[#019fcb] flex items-center justify-center shadow-lg shadow-blue-200">
                             <Sparkles className="w-5 h-5 text-white" />
                         </div>
                         <span className="font-black text-gray-900 text-xl">ClubPlatform</span>
@@ -102,7 +102,7 @@ export default function AppLogin() {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full flex items-center justify-center gap-2 bg-[#013388] text-white font-bold py-3.5 rounded-xl hover:bg-[#012266] transition-all shadow-lg shadow-blue-900/20 disabled:opacity-60 text-sm"
+                            className="w-full flex items-center justify-center gap-2 bg-[#019fcb] text-white font-bold py-3.5 rounded-xl hover:bg-[#017da3] transition-all shadow-lg shadow-blue-900/20 disabled:opacity-60 text-sm"
                         >
                             {loading
                                 ? <><Loader2 className="w-4 h-4 animate-spin" /> Ingresando...</>
@@ -113,7 +113,7 @@ export default function AppLogin() {
                         <div className="text-center pt-2">
                             <p className="text-gray-400 text-xs">
                                 ¿Aún no tienes cuenta?{' '}
-                                <Link to="/registro" className="text-[#013388] font-bold hover:underline">
+                                <Link to="/registro" className="text-[#019fcb] font-bold hover:underline">
                                     Crear mi sitio gratis
                                 </Link>
                             </p>

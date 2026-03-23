@@ -178,9 +178,9 @@ export default function RegistroPage() {
                     <p className="text-gray-500 mb-4">
                         Redirigiendo al asistente de configuración...
                     </p>
-                    <p className="text-sm text-gray-400">Tu vista previa: <strong className="text-[#013388]">app.clubplatform.org/#/preview/{form.subdomain}</strong></p>
+                    <p className="text-sm text-gray-400">Tu vista previa: <strong className="text-[#019fcb]">app.clubplatform.org/#/preview/{form.subdomain}</strong></p>
                     <div className="mt-6 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-[#013388] rounded-full" style={{ width: '100%', animation: 'progress 2.5s linear forwards' }} />
+                        <div className="h-full bg-[#019fcb] rounded-full" style={{ width: '100%', animation: 'progress 2.5s linear forwards' }} />
                     </div>
                 </div>
                 <style>{`@keyframes progress { from { width: 0%; } to { width: 100%; } }`}</style>
@@ -202,7 +202,7 @@ export default function RegistroPage() {
                         <ArrowLeft className="w-4 h-4" /> Volver al Inicio
                     </Link>
                     <div className="flex items-center justify-center gap-2.5 mb-4">
-                        <div className="w-10 h-10 rounded-2xl bg-[#013388] flex items-center justify-center shadow-lg shadow-blue-200">
+                        <div className="w-10 h-10 rounded-2xl bg-[#019fcb] flex items-center justify-center shadow-lg shadow-blue-200">
                             <Sparkles className="w-5 h-5 text-white" />
                         </div>
                         <span className="font-black text-gray-900 text-xl">ClubPlatform</span>
@@ -216,7 +216,7 @@ export default function RegistroPage() {
                     {/* Step progress header */}
                     <div className="bg-gradient-to-r from-gray-50 to-gray-50/50 px-8 py-5 border-b border-gray-100">
                         <div className="flex items-center justify-between mb-3">
-                            <span className="text-xs font-bold text-[#013388]">Paso {currentStep} de {totalSteps}</span>
+                            <span className="text-xs font-bold text-[#019fcb]">Paso {currentStep} de {totalSteps}</span>
                             <span className="text-xs text-gray-400 font-medium">{stepLabels[currentStep - 1]}</span>
                         </div>
                         <div className="flex gap-2">
@@ -224,7 +224,7 @@ export default function RegistroPage() {
                                 <div
                                     key={i}
                                     className={`h-1.5 rounded-full flex-1 transition-all duration-500 ${
-                                        i < currentStep ? 'bg-[#013388]' : 'bg-gray-200'
+                                        i < currentStep ? 'bg-[#019fcb]' : 'bg-gray-200'
                                     }`}
                                 />
                             ))}
@@ -238,7 +238,7 @@ export default function RegistroPage() {
                             <div className="space-y-5 animate-[fadeIn_.3s_ease]">
                                 <div className="flex items-center gap-3 mb-6">
                                     <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
-                                        <Building2 className="w-5 h-5 text-[#013388]" />
+                                        <Building2 className="w-5 h-5 text-[#019fcb]" />
                                     </div>
                                     <div>
                                         <h3 className="font-black text-gray-900">Datos del Club</h3>
@@ -253,7 +253,7 @@ export default function RegistroPage() {
                                         type="text"
                                         value={form.clubName}
                                         onChange={e => updateField('clubName', e.target.value)}
-                                        className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all"
+                                        className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all"
                                         placeholder="Ej: Rotary Club Valle del Cauca"
                                     />
                                 </div>
@@ -266,7 +266,7 @@ export default function RegistroPage() {
                                             <select
                                                 value={form.country}
                                                 onChange={e => updateField('country', e.target.value)}
-                                                className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all bg-white appearance-none pr-10"
+                                                className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all bg-white appearance-none pr-10"
                                             >
                                                 {COUNTRIES.map(c => (
                                                     <option key={c.code} value={c.name}>{c.flag} {c.name}</option>
@@ -281,7 +281,7 @@ export default function RegistroPage() {
                                             type="text"
                                             value={form.district}
                                             onChange={e => updateField('district', e.target.value)}
-                                            className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all"
+                                            className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all"
                                             placeholder="Ej: 4281"
                                         />
                                     </div>
@@ -309,7 +309,7 @@ export default function RegistroPage() {
                                         type="text"
                                         value={form.adminName}
                                         onChange={e => updateField('adminName', e.target.value)}
-                                        className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all"
+                                        className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all"
                                         placeholder="Juan Pérez"
                                     />
                                 </div>
@@ -321,7 +321,7 @@ export default function RegistroPage() {
                                         <select
                                             value={form.role}
                                             onChange={e => updateField('role', e.target.value)}
-                                            className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all bg-white appearance-none pr-10"
+                                            className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all bg-white appearance-none pr-10"
                                         >
                                             <option value="">Selecciona tu rol</option>
                                             <option value="Presidente">Presidente</option>
@@ -346,7 +346,7 @@ export default function RegistroPage() {
                                         type="email"
                                         value={form.adminEmail}
                                         onChange={e => updateField('adminEmail', e.target.value)}
-                                        className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all"
+                                        className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all"
                                         placeholder="admin@club.com"
                                     />
                                 </div>
@@ -354,7 +354,7 @@ export default function RegistroPage() {
                                 {/* Phone with country flag */}
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 mb-2">WhatsApp / Teléfono de Contacto</label>
-                                    <div className="flex border border-gray-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-[#013388]/20 focus-within:border-[#013388] transition-all">
+                                    <div className="flex border border-gray-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-[#019fcb]/20 focus-within:border-[#019fcb] transition-all">
                                         {/* Country dial selector */}
                                         <div className="relative flex-shrink-0">
                                             <select
@@ -392,7 +392,7 @@ export default function RegistroPage() {
                                             type={showPassword ? 'text' : 'password'}
                                             value={form.adminPassword}
                                             onChange={e => updateField('adminPassword', e.target.value)}
-                                            className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all pr-12"
+                                            className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all pr-12"
                                             placeholder="Mínimo 6 caracteres"
                                         />
                                         <button type="button" onClick={() => setShowPassword(v => !v)}
@@ -425,12 +425,12 @@ export default function RegistroPage() {
 
                             {currentStep < totalSteps ? (
                                 <button type="button" onClick={handleNext}
-                                    className="flex items-center gap-2 bg-[#013388] text-white font-bold px-6 py-3 rounded-xl hover:bg-[#012266] transition-all shadow-lg shadow-blue-900/20 text-sm">
+                                    className="flex items-center gap-2 bg-[#019fcb] text-white font-bold px-6 py-3 rounded-xl hover:bg-[#017da3] transition-all shadow-lg shadow-blue-900/20 text-sm">
                                     Siguiente <ArrowRight className="w-4 h-4" />
                                 </button>
                             ) : (
                                 <button type="submit" disabled={loading}
-                                    className="flex items-center gap-2 bg-[#013388] text-white font-bold px-6 py-3 rounded-xl hover:bg-[#012266] transition-all shadow-lg shadow-blue-900/20 text-sm disabled:opacity-60">
+                                    className="flex items-center gap-2 bg-[#019fcb] text-white font-bold px-6 py-3 rounded-xl hover:bg-[#017da3] transition-all shadow-lg shadow-blue-900/20 text-sm disabled:opacity-60">
                                     {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Creando...</> : '🚀 Crear mi sitio gratis'}
                                 </button>
                             )}
@@ -439,7 +439,7 @@ export default function RegistroPage() {
                         {currentStep === totalSteps && (
                             <p className="text-center text-xs text-gray-400 mt-6">
                                 Al registrarte aceptas los <span className="underline cursor-pointer">Términos de Servicio</span>.<br />
-                                ¿Ya tienes cuenta? <Link to="/" className="text-[#013388] font-bold hover:underline">Inicia sesión</Link>
+                                ¿Ya tienes cuenta? <Link to="/" className="text-[#019fcb] font-bold hover:underline">Inicia sesión</Link>
                             </p>
                         )}
                     </form>

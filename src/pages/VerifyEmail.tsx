@@ -149,7 +149,7 @@ export default function VerifyEmail() {
             <div className="min-h-screen bg-rotary-concrete bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-6">
                 <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-10 max-w-md w-full text-center">
                     <p className="text-gray-500 mb-4">No se encontró el correo electrónico.</p>
-                    <Link to="/registro" className="text-[#013388] font-bold hover:underline">Volver al registro</Link>
+                    <Link to="/registro" className="text-[#019fcb] font-bold hover:underline">Volver al registro</Link>
                 </div>
             </div>
         );
@@ -165,7 +165,7 @@ export default function VerifyEmail() {
                     <h2 className="text-2xl font-black text-gray-900 mb-2">¡Correo verificado!</h2>
                     <p className="text-gray-500 mb-4">Redirigiendo al asistente de configuración...</p>
                     <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-[#013388] rounded-full" style={{ width: '100%', animation: 'progress 2s linear forwards' }} />
+                        <div className="h-full bg-[#019fcb] rounded-full" style={{ width: '100%', animation: 'progress 2s linear forwards' }} />
                     </div>
                 </div>
                 <style>{`
@@ -188,7 +188,7 @@ export default function VerifyEmail() {
                 {/* Header */}
                 <div className="text-center mb-8">
                     <div className="flex items-center justify-center gap-2.5 mb-4">
-                        <div className="w-10 h-10 rounded-2xl bg-[#013388] flex items-center justify-center shadow-lg shadow-blue-200">
+                        <div className="w-10 h-10 rounded-2xl bg-[#019fcb] flex items-center justify-center shadow-lg shadow-blue-200">
                             <Sparkles className="w-5 h-5 text-white" />
                         </div>
                         <span className="font-black text-gray-900 text-xl">ClubPlatform</span>
@@ -215,8 +215,8 @@ export default function VerifyEmail() {
                                     value={digit}
                                     onChange={e => handleChange(i, e.target.value)}
                                     onKeyDown={e => handleKeyDown(i, e)}
-                                    className={`w-12 h-14 text-center text-xl font-black border-2 rounded-xl transition-all focus:outline-none focus:ring-2 focus:ring-[#013388]/20
-                                        ${digit ? 'border-[#013388] text-[#013388] bg-blue-50/50' : 'border-gray-200 text-gray-900'}
+                                    className={`w-12 h-14 text-center text-xl font-black border-2 rounded-xl transition-all focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20
+                                        ${digit ? 'border-[#019fcb] text-[#019fcb] bg-blue-50/50' : 'border-gray-200 text-gray-900'}
                                         ${error ? 'border-red-300 animate-shake' : ''}
                                     `}
                                 />
@@ -234,7 +234,7 @@ export default function VerifyEmail() {
                         <button
                             onClick={() => handleVerify()}
                             disabled={loading || code.some(d => !d)}
-                            className="w-full flex items-center justify-center gap-2 bg-[#013388] text-white font-bold py-3.5 rounded-xl hover:bg-[#012266] transition-all shadow-lg shadow-blue-900/20 disabled:opacity-60 text-sm"
+                            className="w-full flex items-center justify-center gap-2 bg-[#019fcb] text-white font-bold py-3.5 rounded-xl hover:bg-[#017da3] transition-all shadow-lg shadow-blue-900/20 disabled:opacity-60 text-sm"
                         >
                             {loading
                                 ? <><Loader2 className="w-4 h-4 animate-spin" /> Verificando...</>
@@ -252,7 +252,7 @@ export default function VerifyEmail() {
                                 <button
                                     onClick={handleResend}
                                     disabled={resending}
-                                    className="inline-flex items-center gap-1.5 text-[#013388] font-bold text-sm hover:underline disabled:opacity-50"
+                                    className="inline-flex items-center gap-1.5 text-[#019fcb] font-bold text-sm hover:underline disabled:opacity-50"
                                 >
                                     {resending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                                     Reenviar código
