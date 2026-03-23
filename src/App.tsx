@@ -108,7 +108,10 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { club } = useClub();
   if (!isAuthenticated) return <Navigate to="/" />;
   // Gate: club admins must complete onboarding first
-  if (user?.role !== 'administrator' && !(club as any)?.onboardingCompleted) {
+  // Check both context and localStorage to avoid race conditions after reload
+  const lsClub = (() => { try { return JSON.parse(localStorage.getItem('rotary_club') || '{}'); } catch { return {}; } })();
+  const onboardingDone = (club as any)?.onboardingCompleted || lsClub?.onboardingCompleted;
+  if (user?.role !== 'administrator' && !onboardingDone) {
     return <Navigate to="/admin/onboarding" />;
   }
   return <>{children}</>;
@@ -129,7 +132,9 @@ function SmartHome() {
   if (isAppPortal) {
     if (isAuthenticated) {
       // If club admin hasn't completed onboarding, send to wizard
-      if (user?.role !== 'administrator' && !(club as any)?.onboardingCompleted) {
+      const lsClub = (() => { try { return JSON.parse(localStorage.getItem('rotary_club') || '{}'); } catch { return {}; } })();
+      const onboardingDone = (club as any)?.onboardingCompleted || lsClub?.onboardingCompleted;
+      if (user?.role !== 'administrator' && !onboardingDone) {
         return <Navigate to="/admin/onboarding" />;
       }
       return <Navigate to="/admin/dashboard" />;
