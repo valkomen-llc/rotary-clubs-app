@@ -33,7 +33,7 @@ const ClubPreview: React.FC = () => {
         if (!subdomain) return;
         setLoading(true);
         setError('');
-        fetch(`${API}/clubs/by-domain?domain=${subdomain}`)
+        fetch(`${API}/clubs/by-domain?domain=${subdomain}&preview=true`)
             .then(r => {
                 if (!r.ok) throw new Error('Club no encontrado');
                 return r.json();

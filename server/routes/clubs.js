@@ -7,7 +7,7 @@ const router = express.Router();
 
 // Get club by domain or subdomain
 router.get('/by-domain', async (req, res) => {
-    const { domain } = req.query;
+    const { domain, preview } = req.query;
     if (!domain) {
         return res.status(400).json({ error: 'Domain is required' });
     }
@@ -22,6 +22,8 @@ router.get('/by-domain', async (req, res) => {
         const masterLogos = masterResult.rows[0] || {};
 
         // 2. Fetch Current Club
+        // When preview=true, allow loading draft clubs too
+        const statusFilter = preview === 'true' ? '' : "AND c.status = 'active'";
         let result = await db.query(
             `SELECT c.id, c.name, c.logo, c."footerLogo", c."endPolioLogo", c.favicon, c.domain, c.subdomain, c.status,
              s.key, s.value,
@@ -29,7 +31,7 @@ router.get('/by-domain', async (req, res) => {
              (SELECT COUNT(*) FROM "CalendarEvent" ce WHERE ce."clubId" = c.id) as "eventsCount"
              FROM "Club" c 
              LEFT JOIN "Setting" s ON s."clubId" = c.id
-             WHERE (c.domain = $1 OR c.subdomain = $2) AND c.status = 'active'`,
+             WHERE (c.domain = $1 OR c.subdomain = $2) ${statusFilter}`,
             [domain, domain.split('.')[0]]
         );
 
