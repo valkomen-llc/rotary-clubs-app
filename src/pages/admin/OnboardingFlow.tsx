@@ -1394,7 +1394,7 @@ const OnboardingFlow: React.FC = () => {
                         </div>
                         <button onClick={handleNext}
                             className="flex items-center gap-2 bg-[#019fcb] text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-[#017da3] transition-all shadow-lg shadow-blue-900/20">
-                            Siguiente <ArrowRight className="w-4 h-4" />
+                            {step === STEPS.length - 2 ? <>Activar Club 🚀</> : <>Siguiente <ArrowRight className="w-4 h-4" /></>}
                         </button>
                     </div>
                 </footer>
