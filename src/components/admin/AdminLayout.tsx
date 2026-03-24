@@ -113,12 +113,22 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         const token = localStorage.getItem('rotary_token');
         fetch(`${API}/admin/stats`, { headers: { Authorization: `Bearer ${token}` } })
             .then(r => r.ok ? r.json() : null).then(d => d && setStats(d)).catch(() => { });
-        // Fetch GA4 totals
-        const hp = isSuperAdmin ? '' : (clubHostname ? `&hostname=${encodeURIComponent(clubHostname)}` : '');
-        fetch(`${API}/analytics/traffic?days=30${hp}`)
-            .then(r => r.json())
-            .then(d => { setGaMock(!!d.mock); if (d.totals) setGaTotals(d.totals); })
-            .catch(() => setGaMock(true));
+        // Fetch GA4 totals — only if super admin (global) or club has a hostname
+        if (isSuperAdmin) {
+            fetch(`${API}/analytics/traffic?days=30`)
+                .then(r => r.json())
+                .then(d => { setGaMock(!!d.mock); if (d.totals) setGaTotals(d.totals); })
+                .catch(() => setGaMock(true));
+        } else if (clubHostname) {
+            fetch(`${API}/analytics/traffic?days=30&hostname=${encodeURIComponent(clubHostname)}`)
+                .then(r => r.json())
+                .then(d => { setGaMock(!!d.mock); if (d.totals) setGaTotals(d.totals); })
+                .catch(() => setGaMock(true));
+        } else {
+            // No hostname available — show zeros, don't fetch global data
+            setGaMock(true);
+            setGaTotals({ users: 0, pageViews: 0 });
+        }
         // Fetch unread leads count
         const fetchUnread = () => {
             fetch(`${API}/leads?status=new`, { headers: { Authorization: `Bearer ${token}` } })
