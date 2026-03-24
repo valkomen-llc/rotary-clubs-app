@@ -116,7 +116,9 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     useEffect(() => {
         if (isSuperAdmin) return;
         const token = localStorage.getItem('rotary_token');
-        const cid = club?.id || user?.clubId;
+        // For club admins, user.clubId is their actual club. club?.id from context
+        // is the platform club (origen), NOT the user's club.
+        const cid = user?.clubId || club?.id;
         if (!cid || !token) return;
         fetch(`${API}/admin/clubs/${cid}/settings`, { headers: { Authorization: `Bearer ${token}` } })
             .then(r => r.ok ? r.json() : [])
