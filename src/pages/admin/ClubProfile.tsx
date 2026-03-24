@@ -36,7 +36,7 @@ const ClubProfile: React.FC = () => {
         if (user?.role === 'administrator') {
             // Super admins can't edit "Mi Club" because they aren't tied to one.
             setIsLoading(false);
-        } else if (user?.clubId) {
+        } else if (user?.clubId || (user as any)?.club?.id) {
             fetchClubInfo();
         } else {
             setIsLoading(false);
@@ -46,7 +46,7 @@ const ClubProfile: React.FC = () => {
     const fetchClubInfo = async () => {
         try {
             const token = localStorage.getItem('rotary_token');
-            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs/${user?.clubId}`, {
+            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs/${user?.clubId || (user as any)?.club?.id}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 
@@ -115,7 +115,7 @@ const ClubProfile: React.FC = () => {
 
         try {
             const token = localStorage.getItem('rotary_token');
-            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs/${user?.clubId}`, {
+            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs/${user?.clubId || (user as any)?.club?.id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -148,7 +148,7 @@ const ClubProfile: React.FC = () => {
         );
     }
 
-    if (!user?.clubId && user?.role === 'administrator') {
+    if (!(user?.clubId || (user as any)?.club?.id) && user?.role === 'administrator') {
         return (
             <AdminLayout>
                 <div className="bg-white p-12 rounded-3xl border border-gray-100 shadow-sm text-center">

@@ -40,6 +40,7 @@ export const login = async (req, res) => {
                 id: user.id,
                 email: user.email,
                 role: user.role,
+                clubId: user.clubId || null,
                 club: user.clubId ? { id: user.clubId, name: user.clubName, subdomain: user.clubSubdomain } : null
             }
         });
