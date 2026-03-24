@@ -90,6 +90,16 @@ const adminRoles = ['administrator', 'club_admin'];
 
 router.get('/clubs/:id', roleMiddleware(adminRoles), getClubById);
 router.put('/clubs/:id', roleMiddleware(adminRoles), updateClub);
+router.get('/clubs/:id/settings', roleMiddleware(adminRoles), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await db.query('SELECT key, value FROM "Setting" WHERE "clubId" = $1', [id]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Get club settings error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 router.post('/clubs/:id/members/batch', roleMiddleware(adminRoles), batchUpsertMembers);
 
 router.get('/users', roleMiddleware(adminRoles), getUsers);
