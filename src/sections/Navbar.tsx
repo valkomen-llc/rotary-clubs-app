@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Search, ShoppingCart, ChevronDown, Menu, X, LogIn } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -28,6 +28,13 @@ const Navbar = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Search state
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{posts: any[], projects: any[], events: any[]}>({ posts: [], projects: [], events: [] });
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   const sobreNosotrosRef = useRef<HTMLDivElement>(null);
   const languageRef = useRef<HTMLDivElement>(null);
 
@@ -44,6 +51,38 @@ const Navbar = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Focus search input when overlay opens
+  useEffect(() => {
+    if (searchOpen) {
+      setTimeout(() => searchInputRef.current?.focus(), 100);
+    } else {
+      setSearchQuery('');
+      setSearchResults({ posts: [], projects: [], events: [] });
+    }
+  }, [searchOpen]);
+
+  // Debounced search
+  useEffect(() => {
+    if (!searchQuery.trim() || searchQuery.trim().length < 2) {
+      setSearchResults({ posts: [], projects: [], events: [] });
+      return;
+    }
+    setSearchLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const API = import.meta.env.VITE_API_URL || '/api';
+        const res = await fetch(`${API}/clubs/${club.id}/search?q=${encodeURIComponent(searchQuery.trim())}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSearchResults(data);
+        }
+      } catch {} finally {
+        setSearchLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery, club.id]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -159,7 +198,10 @@ const Navbar = () => {
 
           {/* Right Side Icons */}
           <div className="flex items-center space-x-4">
-            <button className="text-gray-600 hover:text-rotary-blue transition-colors">
+            <button
+              onClick={() => setSearchOpen(true)}
+              className="text-gray-600 hover:text-rotary-blue transition-colors"
+            >
               <Search className="w-5 h-5" />
             </button>
             {club.storeActive && (
@@ -387,6 +429,135 @@ const Navbar = () => {
                   Google
                 </button>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Search Overlay */}
+      {searchOpen && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[10vh]" onClick={() => setSearchOpen(false)}>
+          <div
+            className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Search Input */}
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
+              <Search className="w-5 h-5 text-gray-400 flex-shrink-0" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Buscar noticias, proyectos, eventos..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Escape') setSearchOpen(false); }}
+                className="flex-1 text-lg outline-none placeholder-gray-300"
+                autoFocus
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+              <kbd className="hidden sm:inline-block text-[10px] text-gray-300 border border-gray-200 rounded px-1.5 py-0.5 font-mono">ESC</kbd>
+            </div>
+
+            {/* Results */}
+            <div className="max-h-[60vh] overflow-y-auto">
+              {searchLoading && (
+                <div className="flex items-center justify-center py-8">
+                  <div className="w-5 h-5 border-2 border-gray-200 border-t-rotary-blue rounded-full animate-spin" />
+                </div>
+              )}
+
+              {!searchLoading && searchQuery.trim().length >= 2 && (
+                <>
+                  {searchResults.posts.length === 0 && searchResults.projects.length === 0 && searchResults.events.length === 0 ? (
+                    <div className="py-12 text-center">
+                      <Search className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+                      <p className="text-gray-400">No se encontraron resultados para "<strong>{searchQuery}</strong>"</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-50">
+                      {/* Posts */}
+                      {searchResults.posts.length > 0 && (
+                        <div className="px-5 py-3">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Noticias</p>
+                          {searchResults.posts.map((post: any) => (
+                            <Link
+                              key={post.id}
+                              to={`/noticias/${post.id}`}
+                              onClick={() => setSearchOpen(false)}
+                              className="flex items-center gap-3 py-2.5 px-3 -mx-3 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                              {post.coverImage && (
+                                <img src={post.coverImage} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-gray-800 truncate">{post.title}</p>
+                                {post.excerpt && <p className="text-xs text-gray-400 truncate">{post.excerpt}</p>}
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                      {/* Projects */}
+                      {searchResults.projects.length > 0 && (
+                        <div className="px-5 py-3">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Proyectos</p>
+                          {searchResults.projects.map((proj: any) => (
+                            <Link
+                              key={proj.id}
+                              to={`/proyectos/${proj.id}`}
+                              onClick={() => setSearchOpen(false)}
+                              className="flex items-center gap-3 py-2.5 px-3 -mx-3 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                              {proj.coverImage && (
+                                <img src={proj.coverImage} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-gray-800 truncate">{proj.title}</p>
+                                {proj.description && <p className="text-xs text-gray-400 truncate">{proj.description}</p>}
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                      {/* Events */}
+                      {searchResults.events.length > 0 && (
+                        <div className="px-5 py-3">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Eventos</p>
+                          {searchResults.events.map((ev: any) => (
+                            <Link
+                              key={ev.id}
+                              to={`/calendario`}
+                              onClick={() => setSearchOpen(false)}
+                              className="flex items-center gap-3 py-2.5 px-3 -mx-3 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                              <div className="w-10 h-10 rounded-lg bg-rotary-blue/10 flex items-center justify-center flex-shrink-0">
+                                <span className="text-xs font-bold text-rotary-blue">
+                                  {ev.startDate ? new Date(ev.startDate).getDate() : '?'}
+                                </span>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-gray-800 truncate">{ev.title}</p>
+                                {ev.location && <p className="text-xs text-gray-400 truncate">{ev.location}</p>}
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {!searchLoading && searchQuery.trim().length < 2 && (
+                <div className="py-10 text-center">
+                  <Search className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+                  <p className="text-sm text-gray-300">Escribe al menos 2 caracteres para buscar</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

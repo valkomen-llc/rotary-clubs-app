@@ -118,6 +118,49 @@ router.get('/by-domain', async (req, res) => {
     }
 });
 
+// Public search endpoint — searches posts, projects, events for a club
+router.get('/:clubId/search', async (req, res) => {
+    const { clubId } = req.params;
+    const { q } = req.query;
+    if (!q || typeof q !== 'string' || q.trim().length < 2) {
+        return res.json({ posts: [], projects: [], events: [] });
+    }
+    const query = `%${q.trim().toLowerCase()}%`;
+    try {
+        const [posts, projects, events] = await Promise.all([
+            db.query(
+                `SELECT id, title, excerpt, "coverImage", "createdAt" FROM "Post"
+                 WHERE "clubId" = $1 AND status = 'published'
+                 AND (LOWER(title) LIKE $2 OR LOWER(excerpt) LIKE $2 OR LOWER(content) LIKE $2)
+                 ORDER BY "createdAt" DESC LIMIT 5`,
+                [clubId, query]
+            ),
+            db.query(
+                `SELECT id, title, description, "coverImage", "createdAt" FROM "Project"
+                 WHERE "clubId" = $1
+                 AND (LOWER(title) LIKE $2 OR LOWER(description) LIKE $2)
+                 ORDER BY "createdAt" DESC LIMIT 5`,
+                [clubId, query]
+            ),
+            db.query(
+                `SELECT id, title, description, location, "startDate" FROM "Event"
+                 WHERE "clubId" = $1
+                 AND (LOWER(title) LIKE $2 OR LOWER(description) LIKE $2)
+                 ORDER BY "startDate" DESC LIMIT 5`,
+                [clubId, query]
+            ).catch(() => ({ rows: [] })), // Event table may not exist
+        ]);
+        res.json({
+            posts: posts.rows,
+            projects: projects.rows,
+            events: events.rows,
+        });
+    } catch (error) {
+        console.error('Search error:', error.message);
+        res.json({ posts: [], projects: [], events: [] });
+    }
+});
+
 router.get('/:clubId/posts', getPublicPosts);
 router.get('/:clubId/projects', getPublicProjects);
 router.get('/:clubId/projects/:projectId', getPublicProjectById);
