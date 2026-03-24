@@ -134,14 +134,16 @@ const ImageDistribution: React.FC = () => {
 
     // ── Save ──────────────────────────────────────────────────────────────
     const handleSave = async () => {
-        if (!images || !clubId) return;
+        if (!images) return;
+        // Super admin: clubId is null (global); club admin: clubId is their club
+        if (!isSuperAdmin && !clubId) return;
         setSaving(true);
         try {
             const res = await fetch(`${API}/admin/sections/batch-upsert`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
                 body: JSON.stringify({
-                    clubId,
+                    clubId: clubId,  // null for super admin = global
                     sections: [{ page: 'home', section: 'images', content: images }]
                 })
             });
