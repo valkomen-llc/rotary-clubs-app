@@ -43,6 +43,7 @@ model Club {
   favicon       String?
   description   String?
   status      String   @default("active") // active, inactive
+  type        String   @default("club")   // club, district, foundation
   users       User[]
   projects    Project[]
   posts       Post[]

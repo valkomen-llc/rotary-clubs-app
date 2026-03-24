@@ -13,6 +13,9 @@ import FoundationSection from '../sections/FoundationSection';
 import CausesHexSection from '../sections/CausesHexSection';
 import NewsSection from '../sections/NewsSection';
 import Footer from '../sections/Footer';
+import ServiciosSection from '../sections/ServiciosSection';
+import DistritosSection from '../sections/DistritosSection';
+import SubvencionesSection from '../sections/SubvencionesSection';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -119,12 +122,26 @@ const ClubPreview: React.FC = () => {
                 <SectionErrorBoundary name="Navbar"><Navbar /></SectionErrorBoundary>
                 <main>
                     <SectionErrorBoundary name="Hero"><HeroSection /></SectionErrorBoundary>
-                    <SectionErrorBoundary name="Action"><ActionSection /></SectionErrorBoundary>
-                    <SectionErrorBoundary name="Stats"><StatsSection /></SectionErrorBoundary>
-                    <SectionErrorBoundary name="Join"><JoinSection /></SectionErrorBoundary>
-                    <SectionErrorBoundary name="Foundation"><FoundationSection /></SectionErrorBoundary>
-                    <SectionErrorBoundary name="Causes"><CausesHexSection /></SectionErrorBoundary>
-                    <SectionErrorBoundary name="News"><NewsSection /></SectionErrorBoundary>
+                    {club.type === 'foundation' ? (
+                        <>
+                            <SectionErrorBoundary name="Stats"><StatsSection /></SectionErrorBoundary>
+                            <SectionErrorBoundary name="Servicios"><ServiciosSection /></SectionErrorBoundary>
+                            <SectionErrorBoundary name="Distritos"><DistritosSection /></SectionErrorBoundary>
+                            <SectionErrorBoundary name="Subvenciones"><SubvencionesSection /></SectionErrorBoundary>
+                            <SectionErrorBoundary name="News"><NewsSection /></SectionErrorBoundary>
+                            <SectionErrorBoundary name="Join"><JoinSection /></SectionErrorBoundary>
+                            <SectionErrorBoundary name="Causes"><CausesHexSection /></SectionErrorBoundary>
+                        </>
+                    ) : (
+                        <>
+                            <SectionErrorBoundary name="Action"><ActionSection /></SectionErrorBoundary>
+                            <SectionErrorBoundary name="Stats"><StatsSection /></SectionErrorBoundary>
+                            <SectionErrorBoundary name="Join"><JoinSection /></SectionErrorBoundary>
+                            <SectionErrorBoundary name="Foundation"><FoundationSection /></SectionErrorBoundary>
+                            <SectionErrorBoundary name="Causes"><CausesHexSection /></SectionErrorBoundary>
+                            <SectionErrorBoundary name="News"><NewsSection /></SectionErrorBoundary>
+                        </>
+                    )}
                 </main>
                 <SectionErrorBoundary name="Footer"><Footer /></SectionErrorBoundary>
             </div>

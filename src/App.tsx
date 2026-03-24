@@ -9,6 +9,9 @@ import FoundationSection from './sections/FoundationSection';
 import CausesHexSection from './sections/CausesHexSection';
 import NewsSection from './sections/NewsSection';
 import Footer from './sections/Footer';
+import ServiciosSection from './sections/ServiciosSection';
+import DistritosSection from './sections/DistritosSection';
+import SubvencionesSection from './sections/SubvencionesSection';
 import QuienesSomos from './pages/QuienesSomos';
 import NuestraHistoria from './pages/NuestraHistoria';
 import NuestrosSocios from './pages/NuestrosSocios';
@@ -144,6 +147,27 @@ function SmartHome() {
   if (isMainPlatform) return <LandingPage />;
   if (isDraft) return <ComingSoon clubName={club?.name} logo={club?.logo} primaryColor={club?.colors?.primary} />;
 
+  // Foundation site (COLROTARIOS) — reuses shell, different middle content
+  if ((club as any)?.type === 'foundation') {
+    return (
+      <div className="min-h-screen bg-white">
+        <Navbar />
+        <main>
+          <HeroSection />
+          <StatsSection />
+          <ServiciosSection />
+          <DistritosSection />
+          <SubvencionesSection />
+          <NewsSection />
+          <JoinSection />
+          <CausesHexSection />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  // Default: Club site
   return (
     <div className="min-h-screen bg-white">
       <Navbar />

@@ -25,7 +25,7 @@ router.get('/by-domain', async (req, res) => {
         // When preview=true, allow loading draft clubs too
         const statusFilter = preview === 'true' ? '' : "AND c.status = 'active'";
         let result = await db.query(
-            `SELECT c.id, c.name, c.logo, c."footerLogo", c."endPolioLogo", c.favicon, c.domain, c.subdomain, c.status,
+            `SELECT c.id, c.name, c.logo, c."footerLogo", c."endPolioLogo", c.favicon, c.domain, c.subdomain, c.status, c.type,
              s.key, s.value,
              (SELECT COUNT(*) FROM "Product" p WHERE p."clubId" = c.id AND p.status = 'active') as "productsCount",
              (SELECT COUNT(*) FROM "CalendarEvent" ce WHERE ce."clubId" = c.id) as "eventsCount"
@@ -39,7 +39,7 @@ router.get('/by-domain', async (req, res) => {
 
         if (!rows.length) {
             result = await db.query(
-                `SELECT c.id, c.name, c.logo, c."footerLogo", c."endPolioLogo", c.favicon, c.domain, c.subdomain, c.status,
+                `SELECT c.id, c.name, c.logo, c."footerLogo", c."endPolioLogo", c.favicon, c.domain, c.subdomain, c.status, c.type,
                  s.key, s.value,
                  (SELECT COUNT(*) FROM "Product" p WHERE p."clubId" = c.id AND p.status = 'active') as "productsCount",
                  (SELECT COUNT(*) FROM "CalendarEvent" ce WHERE ce."clubId" = c.id) as "eventsCount"
