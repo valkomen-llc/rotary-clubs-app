@@ -220,9 +220,10 @@ const Navbar = () => {
             ) : (
               <button
                 onClick={() => setLoginModalOpen(true)}
-                className="hidden sm:block text-rotary-blue font-bold text-sm hover:text-rotary-gold transition-colors"
+                className="hidden sm:flex items-center justify-center w-9 h-9 rounded-full bg-gray-100 text-rotary-blue hover:bg-rotary-blue hover:text-white transition-all"
+                title="Iniciar sesión"
               >
-                Ingresar
+                <LogIn className="w-4.5 h-4.5" />
               </button>
             )}
 
@@ -308,9 +309,9 @@ const Navbar = () => {
                     setMobileMenuOpen(false);
                     setLoginModalOpen(true);
                   }}
-                  className="text-rotary-blue text-left"
+                  className="flex items-center gap-2 text-rotary-blue text-left"
                 >
-                  Ingresar
+                  <LogIn className="w-4.5 h-4.5" /> Ingresar
                 </button>
               )}
             </div>
