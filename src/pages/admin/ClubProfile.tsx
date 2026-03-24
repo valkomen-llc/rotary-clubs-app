@@ -13,6 +13,7 @@ const ClubProfile: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
 
+    const [clubType, setClubType] = useState('');
     const [formData, setFormData] = useState({
         name: '',
         description: '',
@@ -30,6 +31,7 @@ const ClubProfile: React.FC = () => {
         twitter: '',
         youtube: '',
         storeActive: true,
+        logoHeaderSize: 150,
     });
 
     useEffect(() => {
@@ -52,6 +54,7 @@ const ClubProfile: React.FC = () => {
 
             if (response.ok) {
                 const data = await response.json();
+                setClubType(data.type || 'club');
 
                 // Map settings array to form fields
                 const settingsMap: any = {};
@@ -75,6 +78,7 @@ const ClubProfile: React.FC = () => {
                     twitter: settingsMap['social_twitter'] || '',
                     youtube: settingsMap['social_youtube'] || '',
                     storeActive: settingsMap['store_active'] !== 'false', // Default true
+                    logoHeaderSize: parseInt(settingsMap['logo_header_size']) || 150,
                 });
             }
         } catch (error) {
@@ -218,6 +222,42 @@ const ClubProfile: React.FC = () => {
                                 )}
                             </div>
                             <p className="text-[10px] text-gray-400 text-center font-medium">Recomendado: PNG fondo transparente, min 400x400px.</p>
+
+                            {/* Logo Size Slider — Foundation type only */}
+                            {clubType === 'foundation' && (
+                                <div className="mt-4 pt-4 border-t border-gray-100">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <label className="text-xs font-bold text-gray-500 uppercase">Tamaño del Logo</label>
+                                        <span className="text-xs font-mono font-bold text-[#0c3c7c] bg-blue-50 px-2 py-0.5 rounded-full">
+                                            {formData.logoHeaderSize}px
+                                        </span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min={60}
+                                        max={300}
+                                        step={5}
+                                        value={formData.logoHeaderSize}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, logoHeaderSize: Number(e.target.value) }))}
+                                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#0c3c7c]"
+                                    />
+                                    <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+                                        <span>60px</span>
+                                        <span>300px</span>
+                                    </div>
+                                    {formData.logo && (
+                                        <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-100 flex items-center gap-3">
+                                            <span className="text-xs text-gray-400 flex-shrink-0">Vista previa:</span>
+                                            <img
+                                                src={formData.logo}
+                                                alt="Logo preview"
+                                                style={{ width: `${formData.logoHeaderSize}px`, maxWidth: '100%' }}
+                                                className="h-auto object-contain"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* General Info */}
