@@ -168,8 +168,22 @@ router.get('/:clubId/testimonials', getPublicTestimonials);
 router.get('/:clubId/sections', getPublicSections);
 
 // Convenience: get site-images map for a club (merges global defaults + club overrides)
+// Special: /_global/site-images returns only global images (clubId IS NULL)
 router.get('/:clubId/site-images', async (req, res) => {
     try {
+        const { clubId } = req.params;
+        const isGlobal = clubId === '_global';
+
+        if (isGlobal) {
+            // Return only global images (super admin view)
+            const result = await db.query(
+                `SELECT content FROM "ContentSection" WHERE page = 'home' AND section = 'images' AND "clubId" IS NULL`
+            );
+            if (result.rows.length === 0) return res.json({});
+            const content = typeof result.rows[0].content === 'string'
+                ? JSON.parse(result.rows[0].content) : result.rows[0].content;
+            return res.json(content || {});
+        }
         // Fetch both global (super admin, clubId IS NULL) and club-specific images
         const [globalResult, clubResult] = await Promise.all([
             db.query(

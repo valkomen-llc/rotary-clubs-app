@@ -72,7 +72,7 @@ export const getPublicSections = async (req, res) => {
 export const batchUpsertSections = async (req, res) => {
     const { sections } = req.body;
     const clubId = req.user.role === 'administrator'
-        ? (req.body.clubId || req.user.clubId)
+        ? (req.body.clubId || null)   // super admin: explicit null for global, or specific clubId
         : (req.user.clubId || req.body.clubId);
     if (!Array.isArray(sections)) return res.status(400).json({ error: 'Sections must be an array' });
     try {
@@ -80,14 +80,30 @@ export const batchUpsertSections = async (req, res) => {
         for (const item of sections) {
             const { page, section, content } = item;
             const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
-            const result = await db.query(
-                `INSERT INTO "ContentSection" (id, page, section, content, "clubId", "updatedAt")
-                 VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())
-                 ON CONFLICT (page, section, "clubId") DO UPDATE SET content = $3, "updatedAt" = NOW()
-                 RETURNING *`,
-                [page, section, contentStr, clubId || null]
-            );
-            results.push(result.rows[0]);
+
+            if (clubId === null || clubId === undefined) {
+                // NULL-safe upsert: ON CONFLICT doesn't fire when clubId IS NULL
+                // (NULL != NULL in unique index semantics). Use DELETE + INSERT instead.
+                await db.query(
+                    `DELETE FROM "ContentSection" WHERE page = $1 AND section = $2 AND "clubId" IS NULL`,
+                    [page, section]
+                );
+                const result = await db.query(
+                    `INSERT INTO "ContentSection" (id, page, section, content, "clubId", "updatedAt")
+                     VALUES (gen_random_uuid(), $1, $2, $3, NULL, NOW()) RETURNING *`,
+                    [page, section, contentStr]
+                );
+                results.push(result.rows[0]);
+            } else {
+                const result = await db.query(
+                    `INSERT INTO "ContentSection" (id, page, section, content, "clubId", "updatedAt")
+                     VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())
+                     ON CONFLICT (page, section, "clubId") DO UPDATE SET content = $3, "updatedAt" = NOW()
+                     RETURNING *`,
+                    [page, section, contentStr, clubId]
+                );
+                results.push(result.rows[0]);
+            }
         }
         res.json(results);
     } catch (err) {

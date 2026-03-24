@@ -89,15 +89,26 @@ const ImageDistribution: React.FC = () => {
     const [uploading, setUploading] = useState(false);
 
     const token = () => localStorage.getItem('rotary_token');
-    const clubId = user?.clubId || (club as any)?.id;
+    const isSuperAdmin = user?.role === 'administrator';
+    // Super admin saves globally (clubId=null); club admin saves to their club
+    const clubId = isSuperAdmin ? null : (user?.clubId || (club as any)?.id);
+    const viewClubId = (club as any)?.id; // for loading images (always need a club context)
 
     // ── Load current site images ──────────────────────────────────────────
     useEffect(() => {
-        if (!clubId) { setLoading(false); return; }
+        if (!viewClubId && !isSuperAdmin) { setLoading(false); return; }
         (async () => {
             try {
-                const res = await fetch(`${API}/clubs/${clubId}/site-images?_t=${Date.now()}`);
-                const data = res.ok ? await res.json() : {};
+                // Super admin: load global images (clubId=NULL) directly from DB
+                // Club admin: load merged (global + club) from site-images endpoint
+                let data: any = {};
+                if (isSuperAdmin) {
+                    const res = await fetch(`${API}/clubs/_global/site-images?_t=${Date.now()}`);
+                    data = res.ok ? await res.json() : {};
+                } else {
+                    const res = await fetch(`${API}/clubs/${viewClubId}/site-images?_t=${Date.now()}`);
+                    data = res.ok ? await res.json() : {};
+                }
                 const buildImages = (src: any) => {
                     const result: any = {};
                     for (const c of CONTAINERS) {
@@ -119,7 +130,7 @@ const ImageDistribution: React.FC = () => {
             }
             finally { setLoading(false); }
         })();
-    }, [clubId]);
+    }, [viewClubId, isSuperAdmin]);
 
     // ── Save ──────────────────────────────────────────────────────────────
     const handleSave = async () => {
