@@ -60,9 +60,28 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [gaTotals, setGaTotals] = useState<{ users: number; pageViews: number }>({ users: 0, pageViews: 0 });
     const [gaMock, setGaMock] = useState(false);
     const [unreadLeads, setUnreadLeads] = useState(0);
-    const [mod, setMod] = useState<Record<string, boolean>>({
-        projects: true, events: true, rotaract: false, interact: false,
-        ecommerce: false, dian: false, youth_exchange: false, ngse: false, rotex: false
+    const [mod, setMod] = useState<Record<string, boolean>>(() => {
+        // Read modules from localStorage for immediate sidebar rendering
+        try {
+            const stored = JSON.parse(localStorage.getItem('rotary_club') || '{}');
+            const m = stored.modules || {};
+            return {
+                projects: m.projects !== false,
+                events: m.events !== false,
+                rotaract: !!m.rotaract,
+                interact: !!m.interact,
+                ecommerce: !!m.ecommerce,
+                dian: !!m.dian,
+                youth_exchange: !!m.youth_exchange,
+                ngse: !!m.ngse,
+                rotex: !!m.rotex,
+            };
+        } catch {
+            return {
+                projects: true, events: true, rotaract: false, interact: false,
+                ecommerce: false, dian: false, youth_exchange: false, ngse: false, rotex: false
+            };
+        }
     });
 
     const isSuperAdmin = user?.role === 'administrator';
@@ -118,11 +137,13 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         const token = localStorage.getItem('rotary_token');
         // For club admins, user.clubId is their actual club. club?.id from context
         // is the platform club (origen), NOT the user's club.
-        const cid = user?.clubId || club?.id;
+        const storedClub = (() => { try { return JSON.parse(localStorage.getItem('rotary_club') || '{}'); } catch { return {}; } })();
+        const cid = user?.clubId || user?.club?.id || storedClub?.id || club?.id;
         if (!cid || !token) return;
         fetch(`${API}/admin/clubs/${cid}/settings`, { headers: { Authorization: `Bearer ${token}` } })
             .then(r => r.ok ? r.json() : [])
             .then((settings: any[]) => {
+                if (!Array.isArray(settings) || settings.length === 0) return;
                 const map: Record<string, string> = {};
                 settings.forEach((s: any) => { map[s.key] = s.value; });
                 setMod({

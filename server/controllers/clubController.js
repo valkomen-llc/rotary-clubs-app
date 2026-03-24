@@ -35,6 +35,23 @@ export const getClubById = async (req, res) => {
 
         club.settings = settingsResult.rows;
         club.paymentConfigs = paymentConfigs;
+
+        // Build modules map from settings for frontend convenience
+        const settingsMap = {};
+        settingsResult.rows.forEach(s => { settingsMap[s.key] = s.value; });
+        club.modules = {
+            memberCount: settingsMap['member_count'] || '20',
+            projects: settingsMap['module_projects'] !== 'false',
+            events: settingsMap['module_events'] !== 'false',
+            rotaract: settingsMap['module_rotaract'] === 'true',
+            interact: settingsMap['module_interact'] === 'true',
+            ecommerce: settingsMap['module_ecommerce'] === 'true',
+            dian: settingsMap['module_dian'] === 'true',
+            youth_exchange: settingsMap['module_youth_exchange'] === 'true',
+            ngse: settingsMap['module_ngse'] === 'true',
+            rotex: settingsMap['module_rotex'] === 'true',
+        };
+
         res.json(club);
     } catch (error) {
         res.status(500).json({ error: 'Error fetching club' });
