@@ -204,29 +204,46 @@ router.get('/:clubId/site-images', async (req, res) => {
         const globalImages = globalResult.rows.length > 0 ? parse(globalResult.rows[0]) : {};
         const clubImages = clubResult.rows.length > 0 ? parse(clubResult.rows[0]) : {};
 
+        // Helper: detect if a URL is an Unsplash default (not a real custom upload)
+        const isDefault = (url) => !url || url.includes('images.unsplash.com');
+
         // Merge: start with global defaults, then overlay club-specific images
-        const merged = { ...globalImages, ...clubImages };
+        const merged = { ...globalImages };
+
+        // For single-value keys (foundation, join, aboutHero), overlay if club has custom
+        for (const key of Object.keys(clubImages)) {
+            if (['causes', 'hero', 'aboutCarousel'].includes(key)) continue; // handled below
+            const clubVal = clubImages[key];
+            if (clubVal && !isDefault(clubVal.url)) {
+                merged[key] = clubVal;
+            } else if (!merged[key]) {
+                merged[key] = clubVal;
+            }
+        }
 
         // For array slots (causes, hero, aboutCarousel) — merge per-slot:
-        // If the club has a custom image at slot N, use it; otherwise use the global one
+        // Only use club slot if it's a real custom upload (not Unsplash default)
         const arrayKeys = ['causes', 'hero', 'aboutCarousel'];
         for (const key of arrayKeys) {
-            if (globalImages[key] && Array.isArray(globalImages[key])) {
-                const globalArr = globalImages[key];
-                const clubArr = (clubImages[key] && Array.isArray(clubImages[key])) ? clubImages[key] : [];
-                // Merge: for each slot, use club image if it has a url, else global
+            const globalArr = (globalImages[key] && Array.isArray(globalImages[key])) ? globalImages[key] : [];
+            const clubArr = (clubImages[key] && Array.isArray(clubImages[key])) ? clubImages[key] : [];
+            
+            if (globalArr.length > 0) {
                 merged[key] = globalArr.map((globalSlot, i) => {
                     const clubSlot = clubArr[i];
-                    return (clubSlot && clubSlot.url) ? clubSlot : globalSlot;
+                    // Use club slot ONLY if it has a real custom URL (not Unsplash)
+                    return (clubSlot && clubSlot.url && !isDefault(clubSlot.url)) ? clubSlot : globalSlot;
                 });
-                // If club has more slots than global, append them
+                // If club has more slots than global, append custom ones
                 if (clubArr.length > globalArr.length) {
                     for (let i = globalArr.length; i < clubArr.length; i++) {
-                        merged[key].push(clubArr[i]);
+                        if (clubArr[i] && !isDefault(clubArr[i].url)) {
+                            merged[key].push(clubArr[i]);
+                        }
                     }
                 }
-            } else if (clubImages[key]) {
-                merged[key] = clubImages[key];
+            } else if (clubArr.length > 0) {
+                merged[key] = clubArr;
             }
         }
 
