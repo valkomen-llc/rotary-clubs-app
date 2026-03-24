@@ -167,17 +167,56 @@ router.get('/:clubId/projects/:projectId', getPublicProjectById);
 router.get('/:clubId/testimonials', getPublicTestimonials);
 router.get('/:clubId/sections', getPublicSections);
 
-// Convenience: get site-images map for a club
+// Convenience: get site-images map for a club (merges global defaults + club overrides)
 router.get('/:clubId/site-images', async (req, res) => {
     try {
-        const result = await db.query(
-            `SELECT content FROM "ContentSection" WHERE page = 'home' AND section = 'images' AND "clubId" = $1`,
-            [req.params.clubId]
-        );
-        if (result.rows.length === 0) return res.json({});
-        const content = typeof result.rows[0].content === 'string'
-            ? JSON.parse(result.rows[0].content) : result.rows[0].content;
-        res.json(content);
+        // Fetch both global (super admin, clubId IS NULL) and club-specific images
+        const [globalResult, clubResult] = await Promise.all([
+            db.query(
+                `SELECT content FROM "ContentSection" WHERE page = 'home' AND section = 'images' AND "clubId" IS NULL`
+            ),
+            db.query(
+                `SELECT content FROM "ContentSection" WHERE page = 'home' AND section = 'images' AND "clubId" = $1`,
+                [req.params.clubId]
+            ),
+        ]);
+
+        const parse = (row) => {
+            if (!row) return {};
+            const c = row.content;
+            return typeof c === 'string' ? JSON.parse(c) : (c || {});
+        };
+
+        const globalImages = globalResult.rows.length > 0 ? parse(globalResult.rows[0]) : {};
+        const clubImages = clubResult.rows.length > 0 ? parse(clubResult.rows[0]) : {};
+
+        // Merge: start with global defaults, then overlay club-specific images
+        const merged = { ...globalImages, ...clubImages };
+
+        // For array slots (causes, hero, aboutCarousel) — merge per-slot:
+        // If the club has a custom image at slot N, use it; otherwise use the global one
+        const arrayKeys = ['causes', 'hero', 'aboutCarousel'];
+        for (const key of arrayKeys) {
+            if (globalImages[key] && Array.isArray(globalImages[key])) {
+                const globalArr = globalImages[key];
+                const clubArr = (clubImages[key] && Array.isArray(clubImages[key])) ? clubImages[key] : [];
+                // Merge: for each slot, use club image if it has a url, else global
+                merged[key] = globalArr.map((globalSlot, i) => {
+                    const clubSlot = clubArr[i];
+                    return (clubSlot && clubSlot.url) ? clubSlot : globalSlot;
+                });
+                // If club has more slots than global, append them
+                if (clubArr.length > globalArr.length) {
+                    for (let i = globalArr.length; i < clubArr.length; i++) {
+                        merged[key].push(clubArr[i]);
+                    }
+                }
+            } else if (clubImages[key]) {
+                merged[key] = clubImages[key];
+            }
+        }
+
+        res.json(merged);
     } catch (error) {
         console.error('Error fetching site-images:', error);
         res.status(500).json({ error: 'Error fetching site images' });
