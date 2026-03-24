@@ -158,9 +158,9 @@ function SmartHome() {
           <ServiciosSection />
           <DistritosSection />
           <SubvencionesSection />
-          <NewsSection />
           <JoinSection />
           <CausesHexSection />
+          <NewsSection />
         </main>
         <Footer />
       </div>
