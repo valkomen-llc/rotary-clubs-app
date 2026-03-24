@@ -1287,6 +1287,9 @@ const OnboardingFlow: React.FC = () => {
         if (!clubId || !token) return;
         setSaving(true);
         try {
+            // Save current step data (especially step 5 modules) before completing
+            await saveStepData();
+
             const res = await fetch(`${API}/admin/clubs/${clubId}/complete-onboarding`, {
                 method: 'PATCH',
                 headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -1298,6 +1301,19 @@ const OnboardingFlow: React.FC = () => {
                 const parsed = JSON.parse(stored);
                 parsed.onboardingCompleted = true;
                 parsed.status = 'active';
+                // Also save modules to localStorage so sidebar picks them up immediately
+                parsed.modules = {
+                    ...parsed.modules,
+                    projects: modules.hasProjects,
+                    events: modules.hasEvents,
+                    rotaract: modules.hasRotaract,
+                    interact: modules.hasInteract,
+                    ecommerce: modules.hasEcommerce,
+                    dian: modules.hasDian,
+                    youth_exchange: modules.hasYouthExchange,
+                    ngse: modules.hasNGSE,
+                    rotex: modules.hasRotex,
+                };
                 localStorage.setItem('rotary_club', JSON.stringify(parsed));
             }
             // Small delay to ensure DB commit before reload
