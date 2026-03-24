@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
     LayoutDashboard,
@@ -31,6 +31,7 @@ import {
     Network,
     Palette,
     Lock,
+    X,
     FileText,
     Globe,
     Briefcase,
@@ -50,6 +51,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const navigate = useNavigate();
     const location = useLocation();
     const [searchQuery, setSearchQuery] = useState('');
+    const [searchFocused, setSearchFocused] = useState(false);
+    const searchInputRef = useRef<HTMLInputElement>(null);
     const [lockedToast, setLockedToast] = useState<string | null>(null);
 
     // ── Setup Progress (for gating) ──
@@ -141,6 +144,18 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         return () => clearInterval(interval);
     }, []);
 
+    // ⌘K / Ctrl+K keyboard shortcut for search
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                searchInputRef.current?.focus();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
+
     // Fetch module settings for club users
     useEffect(() => {
         if (isSuperAdmin) return;
@@ -196,41 +211,41 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         const items: any[] = [];
 
         items.push(
-            { icon: LayoutDashboard, label: 'Overview', path: '/admin/dashboard', category: 'General' },
-            { icon: PieChart, label: 'Analytics', path: '/admin/analytics', category: 'General' },
+            { icon: LayoutDashboard, label: 'Overview', path: '/admin/dashboard', category: 'General', keywords: ['inicio', 'panel', 'dashboard', 'resumen'] },
+            { icon: PieChart, label: 'Analytics', path: '/admin/analytics', category: 'General', keywords: ['estadisticas', 'visitas', 'trafico', 'ga4'] },
         );
 
         if (isSuperAdmin) {
             items.push(
-                { icon: Network, label: 'Distritos', path: '/admin/distritos', category: 'Management' },
-                { icon: Building2, label: 'Clubes', path: '/admin/clubes', category: 'Management' },
-                { icon: Users, label: 'Super Users', path: '/admin/usuarios', category: 'Management' },
-                { icon: HeartHandshake, label: 'Donaciones Globales', path: '/admin/donaciones', category: 'Management' },
-                { icon: Bell, label: 'CRM y Envíos Centrales', path: '/admin/crm', category: 'Management' },
-                { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: 'Management' },
+                { icon: Network, label: 'Distritos', path: '/admin/distritos', category: 'Management', keywords: ['distrito', '4271', '4281'] },
+                { icon: Building2, label: 'Clubes', path: '/admin/clubes', category: 'Management', keywords: ['club', 'gestionar'] },
+                { icon: Users, label: 'Super Users', path: '/admin/usuarios', category: 'Management', keywords: ['usuario', 'admin'] },
+                { icon: HeartHandshake, label: 'Donaciones Globales', path: '/admin/donaciones', category: 'Management', keywords: ['donacion', 'aportes'] },
+                { icon: Bell, label: 'CRM y Envíos Centrales', path: '/admin/crm', category: 'Management', keywords: ['crm', 'email', 'campana', 'whatsapp'] },
+                { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: 'Management', keywords: ['contacto', 'lead', 'formulario'] },
             );
         } else {
             items.push(
-                { icon: Building2, label: 'Mi Club', path: '/admin/mi-club', category: 'Club' },
-                { icon: Users, label: 'Miembros del Club', path: '/admin/miembros', category: 'Club' },
-                { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: 'Club' },
+                { icon: Building2, label: 'Mi Club', path: '/admin/mi-club', category: 'Club', keywords: ['logo', 'nombre', 'perfil', 'identidad', 'contacto', 'redes'] },
+                { icon: Users, label: 'Miembros del Club', path: '/admin/miembros', category: 'Club', keywords: ['socio', 'miembro', 'directorio'] },
+                { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: 'Club', keywords: ['contacto', 'lead', 'formulario'] },
             );
         }
 
         // Content — conditionally show based on module settings
         if (isSuperAdmin || mod.projects) {
-            items.push({ icon: FolderKanban, label: 'Proyectos', path: '/admin/proyectos', category: 'Content' });
+            items.push({ icon: FolderKanban, label: 'Proyectos', path: '/admin/proyectos', category: 'Content', keywords: ['proyecto', 'obra', 'servicio'] });
         }
         items.push(
-            { icon: Newspaper, label: 'Noticias', path: '/admin/noticias', category: 'Content' },
+            { icon: Newspaper, label: 'Noticias', path: '/admin/noticias', category: 'Content', keywords: ['noticia', 'articulo', 'blog', 'publicacion'] },
         );
         if (isSuperAdmin || mod.events) {
-            items.push({ icon: Calendar, label: 'Eventos', path: '/admin/calendario', category: 'Content' });
+            items.push({ icon: Calendar, label: 'Eventos', path: '/admin/calendario', category: 'Content', keywords: ['evento', 'calendario', 'reunion', 'fecha'] });
         }
         items.push(
-            { icon: ImageIcon, label: 'Multimedia', path: '/admin/media', category: 'Content' },
-            { icon: Palette, label: 'Imágenes del Sitio', path: '/admin/imagenes-sitio', category: 'Content' },
-            { icon: HelpCircle, label: 'Preguntas Frecuentes', path: '/admin/faqs', category: 'Content' },
+            { icon: ImageIcon, label: 'Multimedia', path: '/admin/media', category: 'Content', keywords: ['foto', 'video', 'imagen', 'galeria', 'archivo'] },
+            { icon: Palette, label: 'Imágenes del Sitio', path: '/admin/imagenes-sitio', category: 'Content', keywords: ['hero', 'banner', 'portada', 'diseno'] },
+            { icon: HelpCircle, label: 'Preguntas Frecuentes', path: '/admin/faqs', category: 'Content', keywords: ['faq', 'pregunta', 'ayuda'] },
         );
         if (isSuperAdmin) {
             items.push({ icon: BookOpen, label: 'Base IA', path: '/admin/conocimiento', category: 'Content' });
@@ -325,12 +340,74 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     <div className="relative group">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-rotary-blue transition-colors" />
                         <input
+                            ref={searchInputRef}
                             type="text"
-                            placeholder="Search..."
+                            placeholder="Buscar sección..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2 pl-10 pr-4 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-rotary-blue/10 focus:border-rotary-blue transition-all"
+                            onFocus={() => setSearchFocused(true)}
+                            onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && searchQuery.trim()) {
+                                    const q = searchQuery.toLowerCase();
+                                    const match = menuItems.find(item =>
+                                        item.label.toLowerCase().includes(q) ||
+                                        (item.keywords && item.keywords.some((k: string) => k.includes(q)))
+                                    );
+                                    if (match) {
+                                        navigate(match.path);
+                                        setSearchQuery('');
+                                        searchInputRef.current?.blur();
+                                    }
+                                }
+                                if (e.key === 'Escape') {
+                                    setSearchQuery('');
+                                    searchInputRef.current?.blur();
+                                }
+                            }}
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2 pl-10 pr-8 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-rotary-blue/10 focus:border-rotary-blue transition-all"
                         />
+                        {searchQuery && (
+                            <button
+                                onClick={() => { setSearchQuery(''); searchInputRef.current?.focus(); }}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                            >
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        )}
+                        {!searchQuery && !searchFocused && (
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-300 font-mono">⌘K</span>
+                        )}
+
+                        {/* Search Results Dropdown */}
+                        {searchQuery.trim() && searchFocused && (() => {
+                            const q = searchQuery.toLowerCase();
+                            const results = menuItems.filter(item =>
+                                item.label.toLowerCase().includes(q) ||
+                                item.category.toLowerCase().includes(q) ||
+                                (item.keywords && item.keywords.some((k: string) => k.includes(q)))
+                            );
+                            return results.length > 0 ? (
+                                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 py-1 max-h-64 overflow-y-auto">
+                                    {results.map((item: any) => (
+                                        <Link
+                                            key={item.path}
+                                            to={item.path}
+                                            onClick={() => { setSearchQuery(''); setSearchFocused(false); }}
+                                            className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                                        >
+                                            <item.icon className="w-4 h-4 text-gray-400" />
+                                            <span className="flex-1">{item.label}</span>
+                                            <span className="text-[10px] text-gray-300 uppercase">{item.category}</span>
+                                        </Link>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 p-4 text-center">
+                                    <p className="text-sm text-gray-400">Sin resultados para "{searchQuery}"</p>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
 
