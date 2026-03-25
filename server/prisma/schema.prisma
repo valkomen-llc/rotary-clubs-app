@@ -70,7 +70,7 @@ model Club {
   ngseParticipants NgseParticipant[]
   ngseHostFamilies NgseHostFamily[]
   rotexMembers     RotexMember[]
-
+  financialReports FinancialReport[]
   // WhatsApp CRM
   whatsAppConfig    WhatsAppConfig?
   whatsAppContacts  WhatsAppContact[]
@@ -859,6 +859,25 @@ model RotexMember {
   role            String   @default("member") // president, mentor, member
   status          String   @default("active") // active, inactive
   image           String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ==========================================
+// MÓDULO TRANSPARENCIA FINANCIERA Y DIAN
+// ==========================================
+
+model FinancialReport {
+  id              String   @id @default(uuid())
+  clubId          String
+  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  
+  year            String   // Ej: "2023"
+  title           String   // Ej: "Estados Financieros Anuales", "Régimen Tributario"
+  documentUrl     String   // Link al PDF alojado
+  category        String   // dian, financial, management, other
+  status          String   @default("public") // public, private
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
