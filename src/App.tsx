@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense } from 'react';
 import { HashRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import Navbar from './sections/Navbar';
 import HeroSection from './sections/HeroSection';
@@ -41,38 +41,42 @@ import { ClubProvider, useClub } from './contexts/ClubContext';
 import { CartProvider } from './contexts/CartContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 
-import Dashboard from './pages/admin/Dashboard';
-import ClubsManagement from './pages/admin/Clubs';
-import DistrictsManagement from './pages/admin/Districts';
-import ClubSettings from './pages/admin/ClubSettings';
-import NewsManagement from './pages/admin/News';
-import ProjectsManagement from './pages/admin/Projects';
-import UsersManagement from './pages/admin/Users';
-import StoreManagement from './pages/admin/StoreManagement';
-import OrdersManagement from './pages/admin/OrdersManagement';
-import WalletManagement from './pages/admin/WalletManagement';
-import NotificationSettings from './pages/admin/NotificationSettings';
-import CRMManagement from './pages/admin/CRM';
-import ClubProfile from './pages/admin/ClubProfile';
-import AIAssistant from './pages/admin/AIAssistant';
-import MediaLibrary from './pages/admin/MediaLibrary';
-import ContentCalendar from './pages/admin/ContentCalendar';
-import KnowledgeBase from './pages/admin/KnowledgeBase';
-import Integrations from './pages/admin/Integrations';
-import AnalyticsPage from './pages/admin/Analytics';
-import SiteSetupPage from './pages/admin/SiteSetup';
-import LeadsManagement from './pages/admin/Leads';
-import FAQManagement from './pages/admin/FAQs';
-import AgentsManagement from './pages/admin/Agents';
-import ImageDistribution from './pages/admin/ImageDistribution';
-import OnboardingFlow from './pages/admin/OnboardingFlow';
-import MembersPage from './pages/admin/MembersPage';
-import RotaractPage from './pages/admin/RotaractPage';
-import InteractPage from './pages/admin/InteractPage';
-import FinancialPage from './pages/admin/FinancialPage';
-import YouthExchangePage from './pages/admin/YouthExchangePage';
-import NGSEPage from './pages/admin/NGSEPage';
-import RotexPage from './pages/admin/RotexPage';
+// ═══════════════════════════════════════════════════════════════
+// LAZY-LOADED ADMIN ROUTES — Web Performance Optimization Agent
+// Only downloaded when the user navigates to /admin/*
+// ═══════════════════════════════════════════════════════════════
+const Dashboard = React.lazy(() => import('./pages/admin/Dashboard'));
+const ClubsManagement = React.lazy(() => import('./pages/admin/Clubs'));
+const DistrictsManagement = React.lazy(() => import('./pages/admin/Districts'));
+const ClubSettings = React.lazy(() => import('./pages/admin/ClubSettings'));
+const NewsManagement = React.lazy(() => import('./pages/admin/News'));
+const ProjectsManagement = React.lazy(() => import('./pages/admin/Projects'));
+const UsersManagement = React.lazy(() => import('./pages/admin/Users'));
+const StoreManagement = React.lazy(() => import('./pages/admin/StoreManagement'));
+const OrdersManagement = React.lazy(() => import('./pages/admin/OrdersManagement'));
+const WalletManagement = React.lazy(() => import('./pages/admin/WalletManagement'));
+const NotificationSettings = React.lazy(() => import('./pages/admin/NotificationSettings'));
+const CRMManagement = React.lazy(() => import('./pages/admin/CRM'));
+const ClubProfile = React.lazy(() => import('./pages/admin/ClubProfile'));
+const AIAssistant = React.lazy(() => import('./pages/admin/AIAssistant'));
+const MediaLibrary = React.lazy(() => import('./pages/admin/MediaLibrary'));
+const ContentCalendar = React.lazy(() => import('./pages/admin/ContentCalendar'));
+const KnowledgeBase = React.lazy(() => import('./pages/admin/KnowledgeBase'));
+const Integrations = React.lazy(() => import('./pages/admin/Integrations'));
+const AnalyticsPage = React.lazy(() => import('./pages/admin/Analytics'));
+const SiteSetupPage = React.lazy(() => import('./pages/admin/SiteSetup'));
+const LeadsManagement = React.lazy(() => import('./pages/admin/Leads'));
+const FAQManagement = React.lazy(() => import('./pages/admin/FAQs'));
+const AgentsManagement = React.lazy(() => import('./pages/admin/Agents'));
+const ImageDistribution = React.lazy(() => import('./pages/admin/ImageDistribution'));
+const OnboardingFlow = React.lazy(() => import('./pages/admin/OnboardingFlow'));
+const MembersPage = React.lazy(() => import('./pages/admin/MembersPage'));
+const RotaractPage = React.lazy(() => import('./pages/admin/RotaractPage'));
+const InteractPage = React.lazy(() => import('./pages/admin/InteractPage'));
+const FinancialPage = React.lazy(() => import('./pages/admin/FinancialPage'));
+const YouthExchangePage = React.lazy(() => import('./pages/admin/YouthExchangePage'));
+const NGSEPage = React.lazy(() => import('./pages/admin/NGSEPage'));
+const RotexPage = React.lazy(() => import('./pages/admin/RotexPage'));
 import ClubPreview from './pages/ClubPreview';
 import ChatBot from './components/ChatBot';
 import LandingPage from './pages/LandingPage';
@@ -80,6 +84,7 @@ import RegistroPage from './pages/RegistroPage';
 import VerifyEmail from './pages/VerifyEmail';
 import AppLogin from './pages/AppLogin';
 import ComingSoon from './pages/ComingSoon';
+
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -221,6 +226,15 @@ function App() {
           <CartProvider>
             <Router>
               <AnalyticsTracker />
+              <Suspense fallback={
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#0B1120' }}>
+                  <div style={{ textAlign: 'center', color: '#94a3b8' }}>
+                    <div style={{ width: 40, height: 40, border: '3px solid #1e293b', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
+                    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+                    <p style={{ fontSize: 14 }}>Cargando módulo...</p>
+                  </div>
+                </div>
+              }>
               <Routes>
                 <Route path="/" element={<SmartHome />} />
                 <Route path="/login" element={<AppLogin />} />
@@ -509,6 +523,7 @@ function App() {
                   }
                 />
               </Routes>
+              </Suspense>
             </Router>
             <ChatBot />
           </CartProvider>

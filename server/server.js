@@ -50,6 +50,7 @@ import youthExchangeRoutes from './routes/youth-exchange.js';
 import ngseRoutes from './routes/ngse.js';
 import rotexRoutes from './routes/rotex.js';
 import financialRoutes from './routes/financial.js';
+import seoRoutes from './routes/seo.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -69,6 +70,7 @@ app.use('/api/youth-exchange', youthExchangeRoutes);
 app.use('/api/ngse', ngseRoutes);
 app.use('/api/rotex', rotexRoutes);
 app.use('/api/financial', financialRoutes);
+app.use('/api/seo', seoRoutes);
 
 export default app;
 
