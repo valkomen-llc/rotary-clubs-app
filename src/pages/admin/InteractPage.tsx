@@ -1,13 +1,14 @@
 import React from 'react';
 import { Users } from 'lucide-react';
-import ModulePlaceholder from '../../components/admin/ModulePlaceholder';
+import SponsoredClubAdmin from '../../components/admin/sponsored-clubs/SponsoredClubAdmin';
 
 const InteractPage: React.FC = () => (
-    <ModulePlaceholder
-        icon={Users}
+    <SponsoredClubAdmin
+        type="interact"
         title="Club Interact"
-        description="Gestiona el contenido del Club Interact patrocinado: miembros, actividades y programas juveniles."
-        color="#26a9e0"
+        description="Gestiona el contenido del Club Interact patrocinado: miembros, proyectos y actividades juveniles (adolescentes de 12 a 18 años)."
+        brandColor="#009fe3"
+        icon={Users}
     />
 );
 

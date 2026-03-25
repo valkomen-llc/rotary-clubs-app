@@ -64,6 +64,11 @@ model Club {
   communicationTemplates CommunicationTemplate[]
   communicationLogs CommunicationLog[]
   testimonials    Testimonial[]
+  sponsoredClubs  SponsoredClub[]
+  exchangeStudents ExchangeStudent[]
+  exchangeHostFamilies ExchangeHostFamily[]
+  ngseParticipants NgseParticipant[]
+  ngseHostFamilies NgseHostFamily[]
 
   // WhatsApp CRM
   whatsAppConfig    WhatsAppConfig?
@@ -630,6 +635,7 @@ model WhatsAppMessageLog {
   messageId    String?  // wamid devuelto por Meta
   templateName String?
   bodyText     String?  @db.Text
+  direction    String   @default("outgoing") // incoming, outgoing
 
   status       String   @default("pending") // pending, sent, delivered, read, failed
   errorCode    String?
@@ -656,4 +662,181 @@ model PlatformConfig {
   key       String   @unique
   value     String   @db.Text
   updatedAt DateTime @updatedAt
+}
+
+// ==========================================
+// MÓDULO AGENTES IA (N8N)
+// ==========================================
+
+model Agent {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clubId       String?  @db.Uuid
+  name         String   @db.VarChar(100)
+  role         String   @db.VarChar(200)
+  category     String?  @db.VarChar(50)
+  description  String?  @db.Text
+  systemPrompt String?  @db.Text
+  aiModel      String?  @default("gpt-4") @db.VarChar(50)
+  avatarSeed   String?  @db.VarChar(50)
+  avatarColor  String?  @db.VarChar(20)
+  capabilities String[]
+  active       Boolean? @default(true)
+  order        Int?     @default(0)
+  greeting     String?  @db.Text
+  createdAt    DateTime? @default(now()) @db.Timestamptz
+  updatedAt    DateTime? @default(now()) @db.Timestamptz
+
+  @@index([clubId, order])
+}
+// ==========================================
+// MÓDULO CLUBES PATROCINADOS (ROTARACT / INTERACT)
+// ==========================================
+
+model SponsoredClub {
+  id              String   @id @default(uuid())
+  clubId          String
+  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  
+  type            String   // "rotaract", "interact", etc.
+  name            String
+  foundationDate  DateTime?
+  meetingInfo     String?  @db.Text
+  description     String?  @db.Text
+  logo            String?
+  facebookUrl     String?
+  instagramUrl    String?
+  
+  members         SponsoredClubMember[]
+  projects        SponsoredClubProject[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([clubId, type])
+}
+
+model SponsoredClubMember {
+  id              String   @id @default(uuid())
+  sponsoredClubId String
+  sponsoredClub   SponsoredClub @relation(fields: [sponsoredClubId], references: [id], onDelete: Cascade)
+  
+  name            String
+  role            String?  // Presidente, Secretario, Socio, etc.
+  email           String?
+  phone           String?
+  birthDate       DateTime? // Crítico para asegurar límites de edad Rotaract (18-30) / Interact (12-18)
+  image           String?
+  isBoard         Boolean  @default(false)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model SponsoredClubProject {
+  id              String   @id @default(uuid())
+  sponsoredClubId String
+  sponsoredClub   SponsoredClub @relation(fields: [sponsoredClubId], references: [id], onDelete: Cascade)
+  
+  title           String
+  description     String   @db.Text
+  date            DateTime?
+  image           String?
+  images          String[]
+  status          String   @default("completed") // planned, active, completed
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ==========================================
+// MÓDULO INTERCAMBIOS DE JÓVENES (YOUTH EXCHANGE)
+// ==========================================
+
+model ExchangeStudent {
+  id              String   @id @default(uuid())
+  clubId          String
+  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  
+  type            String   // "inbound" o "outbound"
+  name            String
+  email           String?
+  phone           String?
+  country         String?  // País de origen (inbound) o destino (outbound)
+  sponsorClubName String?  // Nombre del club rotario en el extranjero
+  academicYear    String?  // ej. "2024-2025"
+  status          String   @default("active") // active, returned, planned
+  image           String?
+  
+  counselorName   String?  // Consejero Rotario asignado
+  
+  hostFamilies    ExchangeHostFamily[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ExchangeHostFamily {
+  id              String   @id @default(uuid())
+  clubId          String
+  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  
+  familyName      String   // Ej. "Familia Pérez"
+  address         String?
+  phone           String?
+  email           String?
+  
+  studentId       String?
+  student         ExchangeStudent? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  
+  startDate       DateTime?
+  endDate         DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ==========================================
+// MÓDULO INTERCAMBIOS NGSE (NUEVAS GENERACIONES)
+// ==========================================
+
+model NgseParticipant {
+  id              String   @id @default(uuid())
+  clubId          String
+  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  
+  type            String   // "inbound" o "outbound"
+  name            String
+  email           String?
+  phone           String?
+  country         String?  // País de origen (inbound) o destino (outbound)
+  sponsorClubName String?  // Nombre del club rotario en el extranjero
+  profession      String?  // Carrera o vocación
+  serviceArea     String?  // Área de servicio
+  status          String   @default("active") // active, returned, planned
+  image           String?
+  
+  hostFamilies    NgseHostFamily[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model NgseHostFamily {
+  id              String   @id @default(uuid())
+  clubId          String
+  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  
+  familyName      String   // Ej. "Familia Pérez"
+  address         String?
+  phone           String?
+  email           String?
+  
+  participantId   String?
+  participant     NgseParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  
+  startDate       DateTime?
+  endDate         DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }

@@ -45,6 +45,9 @@ import aiRoutes from './routes/ai.js';
 import translateRoutes from './routes/translate.js';
 import analyticsRoutes from './routes/analytics.js';
 import platformConfigRoutes from './routes/platform-config.js';
+import sponsoredClubsRoutes from './routes/sponsored-clubs.js';
+import youthExchangeRoutes from './routes/youth-exchange.js';
+import ngseRoutes from './routes/ngse.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -59,6 +62,9 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/translate', translateRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/platform-config', platformConfigRoutes);
+app.use('/api/sponsored-clubs', sponsoredClubsRoutes);
+app.use('/api/youth-exchange', youthExchangeRoutes);
+app.use('/api/ngse', ngseRoutes);
 
 export default app;
 
