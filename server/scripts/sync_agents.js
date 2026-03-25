@@ -37,6 +37,7 @@ async function syncSkills() {
         
         let name = folder;
         let description = 'Especialista IA';
+        let capabilities = [];
         let systemPrompt = content;
         
         const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
@@ -47,6 +48,14 @@ async function syncSkills() {
             
             const descMatch = yaml.match(/description:\s*"?([^"\n]+)"?/);
             if (descMatch) description = descMatch[1];
+            
+            const capsMatch = yaml.match(/capabilities:\s*\[(.*?)\]/);
+            if (capsMatch && capsMatch[1]) {
+                const rawCaps = capsMatch[1].replace(/['"]/g, '');
+                if (rawCaps.trim()) {
+                    capabilities = rawCaps.split(',').map(c => c.trim()).filter(Boolean);
+                }
+            }
             
             systemPrompt = content.substring(frontmatterMatch[0].length).trim();
         }
@@ -71,15 +80,15 @@ async function syncSkills() {
                      SET role = $1, description = $2, "systemPrompt" = $3,
                          greeting = $4, "updatedAt" = NOW(), active = true,
                          "avatarColor" = $5, "avatarSeed" = $6, category = $7,
-                         "aiModel" = 'gemini-2.5-flash'
-                     WHERE name = $8 AND "clubId" IS NULL`,
-                    [role, description, systemPrompt, greeting, avatarColor, avatarSeed, category, finalName]
+                         capabilities = $8, "aiModel" = 'gemini-2.5-flash'
+                     WHERE name = $9 AND "clubId" IS NULL`,
+                    [role, description, systemPrompt, greeting, avatarColor, avatarSeed, category, capabilities, finalName]
                 );
             } else {
                 await db.query(
-                    `INSERT INTO "Agent" (name, role, category, description, "systemPrompt", "aiModel", "avatarSeed", "avatarColor", active, greeting, "clubId")
-                     VALUES ($1, $2, $3, $4, $5, 'gemini-2.5-flash', $6, $7, true, $8, NULL)`,
-                    [finalName, role, category, description, systemPrompt, avatarSeed, avatarColor, greeting]
+                    `INSERT INTO "Agent" (name, role, category, description, "systemPrompt", "aiModel", "avatarSeed", "avatarColor", active, greeting, capabilities, "clubId")
+                     VALUES ($1, $2, $3, $4, $5, 'gemini-2.5-flash', $6, $7, true, $8, $9, NULL)`,
+                    [finalName, role, category, description, systemPrompt, avatarSeed, avatarColor, greeting, capabilities]
                 );
             }
             successCount++;

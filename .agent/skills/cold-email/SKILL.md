@@ -1,6 +1,8 @@
 ---
 name: "Cold Email"
 description: "Especialistas en alcance directo en frío (Cold Outreach) respetando normativas anti-spam."
+capabilities: ["trigger_n8n"]
+
 ---
 
 # Cold Email

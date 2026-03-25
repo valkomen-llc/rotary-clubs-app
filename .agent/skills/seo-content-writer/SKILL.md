@@ -1,6 +1,8 @@
 ---
 name: "SEO Content Writer"
 description: "Equipo dedicado al posicionamiento web mediante contenidos e intent matching."
+capabilities: ["create_news", "create_blog", "create_posts", "edit_content", "trigger_n8n"]
+
 ---
 
 # SEO Content Writer

@@ -1,6 +1,8 @@
 ---
 name: "Site Architecture"
 description: "Webmaster técnico enfocado en la arquitectura y estructura robusta del sitio web."
+capabilities: ["site_config", "edit_pages"]
+
 ---
 
 # Site Architecture

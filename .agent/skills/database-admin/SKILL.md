@@ -1,6 +1,8 @@
 ---
 name: "Database Admin"
 description: "Administrador de base de datos para asegurar la integridad, performance y backups."
+capabilities: ["trigger_n8n"]
+
 ---
 
 # Database Admin

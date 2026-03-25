@@ -1,6 +1,8 @@
 ---
 name: "Social Orchestrator"
 description: "Coordinador experto en orquestar el flujo de publicaciones omnicanal."
+capabilities: ["create_posts", "calendar", "trigger_n8n"]
+
 ---
 
 # Social Orchestrator

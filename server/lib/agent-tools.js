@@ -106,6 +106,22 @@ export const AGENT_TOOLS = [
         },
         requiredCapabilities: ['site_config', 'edit_pages'],
     },
+    {
+        type: 'function',
+        function: {
+            name: 'trigger_n8n_webhook',
+            description: 'Dispara un flujo de trabajo (workflow) en n8n mediante un webhook. Usa esta herramienta cuando necesites iniciar una campaña, automatización, análisis masivo o secuencia de correos en n8n.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    workflowName: { type: 'string', description: 'Nombre del workflow a disparar (ej: cold_email_sequence, seo_report, social_publish)' },
+                    payload:      { type: 'string', description: 'Objeto JSON en formato string con los datos y parámetros que necesita el workflow para funcionar' },
+                },
+                required: ['workflowName', 'payload'],
+            },
+        },
+        requiredCapabilities: ['trigger_n8n'],
+    },
 ];
 
 
@@ -219,6 +235,48 @@ const toolExecutors = {
             data: { key, value },
             message: `✅ ${labels[key] || key} actualizado a "${value}".`,
         };
+    },
+
+    async trigger_n8n_webhook(args, userId, clubId) {
+        const { workflowName, payload } = args;
+        const webhookUrl = process.env.N8N_WEBHOOK_URL;
+        
+        if (!webhookUrl) {
+            return {
+                success: false,
+                action: 'trigger_n8n_webhook',
+                message: `❌ N8N_WEBHOOK_URL no está configurado en las variables de entorno.`
+            };
+        }
+
+        try {
+            let parsedPayload = payload;
+            try { parsedPayload = JSON.parse(payload); } catch(e) {}
+
+            const res = await fetch(webhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workflowName, clubId, userId, payload: parsedPayload })
+            });
+            const data = await res.text();
+            
+            return {
+                success: res.ok,
+                action: 'trigger_n8n_webhook',
+                emoji: '⚡',
+                label: 'N8N Webhook',
+                data,
+                message: res.ok 
+                    ? `✅ Workflow "${workflowName}" disparado exitosamente en n8n.` 
+                    : `❌ Fallo al disparar el workflow en n8n: ${res.statusText}`,
+            };
+        } catch (error) {
+            return {
+                success: false,
+                action: 'trigger_n8n_webhook',
+                message: `❌ Error de red al disparar n8n: ${error.message}`
+            };
+        }
     },
 };
 

@@ -1,6 +1,8 @@
 ---
 name: "Paid Ads"
 description: "Trafficker digital dedicado a la configuración, segmentación y rentabilidad de campañas de publicidad."
+capabilities: ["trigger_n8n"]
+
 ---
 
 # Paid Ads

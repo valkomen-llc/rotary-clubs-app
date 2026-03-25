@@ -1,6 +1,8 @@
 ---
 name: "Email Sequence"
 description: "Automatización y planificación de secuencias para enganchar base de datos masiva."
+capabilities: ["trigger_n8n"]
+
 ---
 
 # Email Sequence
