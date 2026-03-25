@@ -52,6 +52,14 @@ import rotexRoutes from './routes/rotex.js';
 import financialRoutes from './routes/financial.js';
 import seoRoutes from './routes/seo.js';
 import whatsappCrmRoutes from './routes/whatsapp-crm.js';
+import agentsRoutes from './routes/agents.js';
+import calendarRoutes from './routes/calendar.js';
+import districtsRoutes from './routes/districts.js';
+import documentsRoutes from './routes/documents.js';
+import faqsRoutes from './routes/faqs.js';
+import leadsRoutes from './routes/leads.js';
+import payoutsRoutes from './routes/payouts.js';
+import siteProgressRoutes from './routes/site-progress.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -73,6 +81,14 @@ app.use('/api/rotex', rotexRoutes);
 app.use('/api/financial', financialRoutes);
 app.use('/api/seo', seoRoutes);
 app.use('/api/whatsapp-crm', whatsappCrmRoutes);
+app.use('/api/agents', agentsRoutes);
+app.use('/api/calendar', calendarRoutes);
+app.use('/api/districts', districtsRoutes);
+app.use('/api/documents', documentsRoutes);
+app.use('/api/faqs', faqsRoutes);
+app.use('/api/leads', leadsRoutes);
+app.use('/api/payouts', payoutsRoutes);
+app.use('/api/site-progress', siteProgressRoutes);
 
 export default app;
 
