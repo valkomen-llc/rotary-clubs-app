@@ -1,14 +1,13 @@
 import React from 'react';
-import { Award } from 'lucide-react';
-import ModulePlaceholder from '../../components/admin/ModulePlaceholder';
+import AdminLayout from '../../components/admin/AdminLayout';
+import RotexAdmin from '../../components/admin/rotex/RotexAdmin';
 
-const RotexPage: React.FC = () => (
-    <ModulePlaceholder
-        icon={Award}
-        title="ROTEX"
-        description="Gestiona la comunidad de ex-intercambistas Rotary (ROTEX): directorio, eventos y red de alumni."
-        color="#8b5cf6"
-    />
-);
+const RotexPage: React.FC = () => {
+    return (
+        <AdminLayout>
+            <RotexAdmin />
+        </AdminLayout>
+    );
+};
 
 export default RotexPage;

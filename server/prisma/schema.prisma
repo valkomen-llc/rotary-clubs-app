@@ -69,6 +69,7 @@ model Club {
   exchangeHostFamilies ExchangeHostFamily[]
   ngseParticipants NgseParticipant[]
   ngseHostFamilies NgseHostFamily[]
+  rotexMembers     RotexMember[]
 
   // WhatsApp CRM
   whatsAppConfig    WhatsAppConfig?
@@ -836,6 +837,28 @@ model NgseHostFamily {
   
   startDate       DateTime?
   endDate         DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ==========================================
+// MÓDULO ROTEX (EX-INTERCAMBISTAS ALUMNI)
+// ==========================================
+
+model RotexMember {
+  id              String   @id @default(uuid())
+  clubId          String
+  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  
+  name            String
+  email           String?
+  phone           String?
+  exchangeYear    String?  // Ej: "2018-2019"
+  exchangeCountry String?  // País de destino o de origen
+  role            String   @default("member") // president, mentor, member
+  status          String   @default("active") // active, inactive
+  image           String?
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

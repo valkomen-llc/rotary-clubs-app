@@ -48,6 +48,7 @@ import platformConfigRoutes from './routes/platform-config.js';
 import sponsoredClubsRoutes from './routes/sponsored-clubs.js';
 import youthExchangeRoutes from './routes/youth-exchange.js';
 import ngseRoutes from './routes/ngse.js';
+import rotexRoutes from './routes/rotex.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -65,6 +66,7 @@ app.use('/api/platform-config', platformConfigRoutes);
 app.use('/api/sponsored-clubs', sponsoredClubsRoutes);
 app.use('/api/youth-exchange', youthExchangeRoutes);
 app.use('/api/ngse', ngseRoutes);
+app.use('/api/rotex', rotexRoutes);
 
 export default app;
 
