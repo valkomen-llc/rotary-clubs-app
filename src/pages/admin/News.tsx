@@ -7,6 +7,7 @@ import {
 import { toast } from 'sonner';
 import { useClub } from '../../contexts/ClubContext';
 import { articulosDestacados, articulos as articulosEstaticos } from '../../data/news';
+import SEOPreview from '../../components/admin/SEOPreview';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 
@@ -548,7 +549,15 @@ const NewsManagement: React.FC = () => {
                                                 </div>
                                             </div>
 
-                                            <div className="space-y-6">
+                                            <SEOPreview
+                                                title={formData.seoTitle || formData.title}
+                                                description={formData.seoDescription}
+                                                url={`https://${(club as any)?.domain || 'tusitio.org'}/#/blog/${editingPost?.id || 'nuevo'}`}
+                                                image={formData.image}
+                                            />
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
                                                 <div>
                                                     <label className="block text-sm font-bold text-gray-700 mb-2">Palabras Clave (Keywords)</label>
                                                     <input
@@ -584,7 +593,6 @@ const NewsManagement: React.FC = () => {
                                                         </div>
                                                     </div>
                                                 </div>
-                                            </div>
                                         </div>
                                     </div>
                                 )}
