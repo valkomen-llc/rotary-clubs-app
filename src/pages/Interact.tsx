@@ -23,6 +23,7 @@ const Interact = () => {
                         src={getC('hero', 'image', "https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1600&h=600&fit=crop")}
                         alt="Interact banner"
                         className="w-full h-full object-cover scale-105 animate-subtle-zoom"
+                        loading="lazy"
                     />
                     <div className="absolute inset-0 bg-gradient-to-tr from-interact-blue/60 via-transparent to-black/40" />
                 </div>
@@ -94,6 +95,7 @@ const Interact = () => {
                                         src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=800"
                                         alt="Youth group"
                                         className="w-full h-full object-cover"
+                                        loading="lazy"
                                     />
                                 </div>
                             </div>

@@ -23,6 +23,7 @@ const FundacionRotaria = () => {
                         src={getC('hero', 'image', "https://images.unsplash.com/photo-1532629345422-7515f3d16bb6?w=1600&h=600&fit=crop")}
                         alt="La Fundación Rotaria"
                         className="w-full h-full object-cover animate-subtle-zoom"
+                        loading="lazy"
                     />
                     <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" />
                 </div>
@@ -142,6 +143,7 @@ const FundacionRotaria = () => {
                             src="https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=1000"
                             alt="Humanitarian project"
                             className="w-full h-full object-cover opacity-60 group-hover:scale-110 group-hover:opacity-40 transition-all duration-1000"
+                            loading="lazy"
                         />
                         <div className="absolute inset-0 p-12 flex flex-col justify-end">
                             <h4 className="text-2xl font-black text-white mb-4">Salud y Prevención</h4>
@@ -154,6 +156,7 @@ const FundacionRotaria = () => {
                             src="https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=1000"
                             alt="Education project"
                             className="w-full h-full object-cover opacity-60 group-hover:scale-110 group-hover:opacity-40 transition-all duration-1000"
+                            loading="lazy"
                         />
                         <div className="absolute inset-0 p-12 flex flex-col justify-end text-right items-end">
                             <h4 className="text-2xl font-black text-white mb-4 text-right">Educación y Alfabetización</h4>

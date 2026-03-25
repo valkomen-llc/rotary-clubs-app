@@ -23,6 +23,7 @@ const Rotaract = () => {
                         src={getC('hero', 'image', "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&h=600&fit=crop")}
                         alt="Rotaract banner"
                         className="w-full h-full object-cover scale-105 animate-subtle-zoom"
+                        loading="lazy"
                     />
                     <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/20 to-black/60" />
                 </div>
@@ -91,6 +92,7 @@ const Rotaract = () => {
                                     src="https://images.unsplash.com/photo-1511632765486-a01980e01a18?w=800&h=800&fit=crop"
                                     alt="Community action"
                                     className="w-full grayscale-[50%] hover:grayscale-0 transition-all duration-1000"
+                                    loading="lazy"
                                 />
                             </div>
                         </div>
@@ -123,6 +125,7 @@ const Rotaract = () => {
                                     src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&h=800&fit=crop"
                                     alt="Leaders collaborate"
                                     className="w-full grayscale-[50%] hover:grayscale-0 transition-all duration-1000"
+                                    loading="lazy"
                                 />
                             </div>
                         </div>

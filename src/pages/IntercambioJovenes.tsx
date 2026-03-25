@@ -53,6 +53,7 @@ const IntercambioJovenes = () => {
             src={getC('hero', 'image', "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&h=800&fit=crop")}
             alt="Intercambio de Jóvenes Rotary"
             className="w-full h-full object-cover"
+            loading="lazy"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-rotary-navy/90 via-rotary-navy/70 to-transparent" />
         </div>
@@ -93,6 +94,7 @@ const IntercambioJovenes = () => {
                 src={getC('experience', 'image', "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=600&h=500&fit=crop")}
                 alt="Jóvenes en intercambio"
                 className="rounded-2xl shadow-xl w-full h-auto object-cover"
+                loading="lazy"
               />
             </div>
           </div>
@@ -135,6 +137,7 @@ const IntercambioJovenes = () => {
                 src={getC('documents', 'image', "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=600&h=700&fit=crop")}
                 alt="Estudiantes"
                 className="rounded-2xl shadow-xl w-full h-auto object-cover"
+                loading="lazy"
               />
             </div>
           </div>
@@ -155,6 +158,7 @@ const IntercambioJovenes = () => {
                 src={getC('banner', 'image', "https://images.unsplash.com/photo-1552664730-d307ca884978?w=600&h=500&fit=crop")}
                 alt="Conectando"
                 className="rounded-2xl shadow-xl w-full h-auto object-cover"
+                loading="lazy"
               />
             </div>
           </div>
