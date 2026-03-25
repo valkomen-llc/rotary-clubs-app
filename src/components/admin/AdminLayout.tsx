@@ -32,6 +32,7 @@ import {
     Palette,
     Lock,
     X,
+    Menu,
     FileText,
     Globe,
     Briefcase,
@@ -54,6 +55,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [searchFocused, setSearchFocused] = useState(false);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const [lockedToast, setLockedToast] = useState<string | null>(null);
+    const [sidebarOpen, setSidebarOpen] = useState(false);
 
     // ── Setup Progress (for gating) ──
     const { pct: setupPctHook, isComplete: setupComplete } = useSetupProgress();
@@ -304,10 +306,23 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const menuItems = getMenuItems();
     const categories = Array.from(new Set(menuItems.map(item => item.category)));
 
+    // Dynamic page title from current route
+    const currentPageTitle = React.useMemo(() => {
+        const match = menuItems.find(item => item.path === location.pathname);
+        return match?.label || 'Dashboard';
+    }, [location.pathname, menuItems]);
+
     return (
         <div className="flex h-screen bg-gray-50 overflow-hidden font-sans">
+            {/* Mobile Overlay */}
+            {sidebarOpen && (
+                <div
+                    className="fixed inset-0 bg-black/40 z-30 lg:hidden backdrop-blur-sm"
+                    onClick={() => setSidebarOpen(false)}
+                />
+            )}
             {/* Sidebar */}
-            <aside className="w-72 bg-white border-r border-gray-200 flex flex-col flex-shrink-0 z-20">
+            <aside className={`fixed lg:static inset-y-0 left-0 w-72 bg-white border-r border-gray-200 flex flex-col flex-shrink-0 z-40 transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
                 {/* Brand Header */}
                 <div className="p-6 pb-4">
                     <div className="flex items-center justify-between mb-6">
@@ -501,11 +516,18 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             {/* Main Content Area */}
             <main className="flex-1 flex flex-col min-w-0 bg-white overflow-hidden relative">
                 {/* Global Topbar */}
-                <header className="h-16 flex items-center justify-between px-10 border-b border-gray-100 flex-shrink-0 z-10">
-                    <div className="flex items-center gap-4">
-                        <h2 className="text-sm font-bold text-gray-900">Dashboard</h2>
-                        <div className="h-4 w-[1px] bg-gray-200" />
-                        <p className="text-xs text-gray-400 font-medium">
+                <header className="h-16 flex items-center justify-between px-4 lg:px-10 border-b border-gray-100 flex-shrink-0 z-10">
+                    <div className="flex items-center gap-3">
+                        {/* Hamburger button — mobile only */}
+                        <button
+                            onClick={() => setSidebarOpen(true)}
+                            className="lg:hidden p-2 -ml-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                        >
+                            <Menu className="w-5 h-5" />
+                        </button>
+                        <h2 className="text-sm font-bold text-gray-900">{currentPageTitle}</h2>
+                        <div className="h-4 w-[1px] bg-gray-200 hidden sm:block" />
+                        <p className="text-xs text-gray-400 font-medium hidden sm:block">
                             {user?.role === 'administrator' ? 'Sistema Central' : setupComplete ? 'Gestión de Club' : `Configuración · ${setupPctHook}% completado`}
                         </p>
                     </div>
@@ -591,10 +613,24 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                         <div className="h-8 w-[1px] bg-gray-100 mx-1" />
 
                         <div className="flex items-center gap-3 pl-1">
-                            <div className="text-right hidden sm:block">
-                                <p className="text-[10px] font-black text-gray-900 leading-none">Status</p>
-                                <p className="text-[9px] text-emerald-500 font-bold uppercase tracking-widest mt-1">Live Online</p>
-                            </div>
+                            {clubHostname && (
+                                <a
+                                    href={`https://${clubHostname}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg transition-all border border-emerald-200 group"
+                                >
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                    <span className="text-[11px] font-bold">Ver mi Sitio</span>
+                                    <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                                </a>
+                            )}
+                            {!clubHostname && (
+                                <div className="text-right hidden sm:block">
+                                    <p className="text-[10px] font-black text-gray-900 leading-none">Status</p>
+                                    <p className="text-[9px] text-emerald-500 font-bold uppercase tracking-widest mt-1">Live Online</p>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </header>
