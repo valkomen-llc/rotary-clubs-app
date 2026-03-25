@@ -8,7 +8,7 @@ import db from './db.js';
 
 // ── Providers ────────────────────────────────────────────────────────────────
 
-async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, maxTokens }) {
+async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, history, maxTokens }) {
     const key = apiKey || process.env.GEMINI_API_KEY;
     if (!key) throw new Error('Gemini API Key no configurada');
 
@@ -31,11 +31,17 @@ async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, maxTokens
         ? userPrompt.slice(0, MAX_INPUT_CHARS) + '\n[Resumen del resto: ' + userPrompt.slice(MAX_INPUT_CHARS, MAX_INPUT_CHARS + 200).trim() + '...]'
         : userPrompt;
 
+    const mappedHistory = (history || []).map(h => ({
+        role: h.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: h.text || h.content || '' }]
+    }));
+    mappedHistory.push({ role: 'user', parts: [{ text: truncatedUserPrompt }] });
+
     const body = {
         // systemInstruction: campo nativo de Gemini para instrucciones del sistema
         // Más efectivo que concatenar con el user prompt
         systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ role: 'user', parts: [{ text: truncatedUserPrompt }] }],
+        contents: mappedHistory,
         generationConfig: {
             maxOutputTokens: Math.min(maxTokens || 8192, 8192),
             temperature: 0.4
@@ -79,16 +85,20 @@ async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, maxTokens
     throw new Error(`Error al conectar con Gemini. Último error: ${lastError}`);
 }
 
-async function callOpenAI({ modelId, apiKey, systemPrompt, userPrompt, maxTokens }) {
+async function callOpenAI({ modelId, apiKey, systemPrompt, userPrompt, history, maxTokens }) {
     const key = apiKey || process.env.OPENAI_API_KEY;
     if (!key) throw new Error('OpenAI API Key no configurada');
+
+    const messages = [{ role: 'system', content: systemPrompt }];
+    (history || []).forEach(h => messages.push({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.text || h.content || '' }));
+    messages.push({ role: 'user', content: userPrompt });
 
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
         body: JSON.stringify({
             model: modelId,
-            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+            messages,
             max_tokens: maxTokens || 4096,
             temperature: 0.7,
             response_format: { type: 'json_object' }
@@ -99,9 +109,13 @@ async function callOpenAI({ modelId, apiKey, systemPrompt, userPrompt, maxTokens
     return data.choices?.[0]?.message?.content || '';
 }
 
-async function callAnthropic({ modelId, apiKey, systemPrompt, userPrompt, maxTokens }) {
+async function callAnthropic({ modelId, apiKey, systemPrompt, userPrompt, history, maxTokens }) {
     const key = apiKey || process.env.ANTHROPIC_API_KEY;
     if (!key) throw new Error('Anthropic API Key no configurada');
+
+    const messages = [];
+    (history || []).forEach(h => messages.push({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.text || h.content || '' }));
+    messages.push({ role: 'user', content: userPrompt });
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -114,7 +128,7 @@ async function callAnthropic({ modelId, apiKey, systemPrompt, userPrompt, maxTok
             model: modelId,
             max_tokens: maxTokens || 4096,
             system: systemPrompt,
-            messages: [{ role: 'user', content: userPrompt }]
+            messages
         })
     });
     const data = await res.json();
@@ -122,16 +136,20 @@ async function callAnthropic({ modelId, apiKey, systemPrompt, userPrompt, maxTok
     return data.content?.[0]?.text || '';
 }
 
-async function callMistral({ modelId, apiKey, systemPrompt, userPrompt, maxTokens }) {
+async function callMistral({ modelId, apiKey, systemPrompt, userPrompt, history, maxTokens }) {
     const key = apiKey || process.env.MISTRAL_API_KEY;
     if (!key) throw new Error('Mistral API Key no configurada');
+
+    const messages = [{ role: 'system', content: systemPrompt }];
+    (history || []).forEach(h => messages.push({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.text || h.content || '' }));
+    messages.push({ role: 'user', content: userPrompt });
 
     const res = await fetch('https://api.mistral.ai/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
         body: JSON.stringify({
             model: modelId,
-            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+            messages,
             max_tokens: maxTokens || 4096,
             temperature: 0.7
         })
@@ -141,19 +159,22 @@ async function callMistral({ modelId, apiKey, systemPrompt, userPrompt, maxToken
     return data.choices?.[0]?.message?.content || '';
 }
 
-// Compatible con cualquier API con interfaz OpenAI (Ollama, Groq, etc.)
-async function callCustom({ modelId, apiKey, baseUrl, systemPrompt, userPrompt, maxTokens }) {
+async function callCustom({ modelId, apiKey, baseUrl, systemPrompt, userPrompt, history, maxTokens }) {
     if (!baseUrl) throw new Error('baseUrl requerida para modelos custom');
 
     const headers = { 'Content-Type': 'application/json' };
     if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+    const messages = [{ role: 'system', content: systemPrompt }];
+    (history || []).forEach(h => messages.push({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.text || h.content || '' }));
+    messages.push({ role: 'user', content: userPrompt });
 
     const res = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
             model: modelId,
-            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+            messages,
             max_tokens: maxTokens || 4096
         })
     });
@@ -217,7 +238,7 @@ Montos en COP. Datos realistas y conservadores.`;
  * @param {string} userPrompt - Mensaje del usuario
  * @returns {Promise<string>} - Texto de salida del modelo
  */
-export async function routeToModel(slug, systemPrompt, userPrompt) {
+export async function routeToModel(slug, systemPrompt, userPrompt, history = []) {
     let config = null;
 
     // 1. Buscar en BD (configuración con API key personalizada)
@@ -250,6 +271,7 @@ export async function routeToModel(slug, systemPrompt, userPrompt) {
         baseUrl: config.base_url,
         systemPrompt,
         userPrompt,
+        history,
         maxTokens: config.max_tokens || 4096,
     });
 }

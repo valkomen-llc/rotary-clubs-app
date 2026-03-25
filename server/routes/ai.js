@@ -366,7 +366,8 @@ INSTRUCCIONES DE RESPUESTA:
         const defaultSlug = await getDefaultModel();
         if (defaultSlug) {
             try {
-                const reply = await routeToModel(defaultSlug, systemPrompt, message);
+                const recentHistory = Array.isArray(history) ? history.slice(-8) : [];
+                const reply = await routeToModel(defaultSlug, systemPrompt, message, recentHistory);
                 if (reply && reply.trim().length > 10) {
                     return res.json({ reply, agentName, model: defaultSlug, contextInjected: true });
                 }
@@ -578,7 +579,8 @@ INSTRUCCIONES:
         const defaultSlug = await getDefaultModel();
         if (defaultSlug) {
             try {
-                const reply = await routeToModel(defaultSlug, systemPrompt, message);
+                const recentHistory = Array.isArray(history) ? history.slice(-8) : [];
+                const reply = await routeToModel(defaultSlug, systemPrompt, message, recentHistory);
                 if (reply && reply.trim().length > 10) {
                     return res.json({ reply, agentName, model: defaultSlug, contextInjected: true });
                 }
