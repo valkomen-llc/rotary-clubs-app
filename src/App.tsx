@@ -69,7 +69,7 @@ import OnboardingFlow from './pages/admin/OnboardingFlow';
 import MembersPage from './pages/admin/MembersPage';
 import RotaractPage from './pages/admin/RotaractPage';
 import InteractPage from './pages/admin/InteractPage';
-import DianPage from './pages/admin/DianPage';
+import FinancialPage from './pages/admin/FinancialPage';
 import YouthExchangePage from './pages/admin/YouthExchangePage';
 import NGSEPage from './pages/admin/NGSEPage';
 import RotexPage from './pages/admin/RotexPage';
@@ -416,7 +416,7 @@ function App() {
                   path="/admin/estados-financieros"
                   element={
                     <PrivateRoute>
-                      <DianPage />
+                      <FinancialPage />
                     </PrivateRoute>
                   }
                 />
