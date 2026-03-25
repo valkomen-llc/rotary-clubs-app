@@ -18,12 +18,25 @@ import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
 import { useSearchParams } from 'react-router-dom';
+import { useSEO } from '../hooks/useSEO';
 
 
 const Contacto = () => {
   const { club } = useClub();
   const { sections } = useCMSContent('contacto', club.id);
   const [searchParams] = useSearchParams();
+
+  useSEO({
+    title: 'Contáctanos',
+    description: `Comunícate con ${(club as any)?.name || 'nuestro club Rotary'}. Formulario de contacto, membresía y donaciones.`,
+    path: '/contacto',
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'ContactPage',
+      name: `Contacto — ${(club as any)?.name}`,
+      url: `https://${(club as any)?.domain || 'clubplatform.org'}/#/contacto`,
+    },
+  });
 
   const [formData, setFormData] = useState({
     nombre: '',

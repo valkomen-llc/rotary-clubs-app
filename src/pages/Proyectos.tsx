@@ -21,6 +21,7 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useClub } from '../contexts/ClubContext';
 import { useCMSContent } from '../hooks/useCMSContent';
+import { useSEO } from '../hooks/useSEO';
 
 /** Limpia HTML y entidades HTML para mostrar texto plano en tarjetas */
 const stripHtml = (html: string): string => {
@@ -166,6 +167,13 @@ const formatShort = (value: number) => {
 const Proyectos = () => {
   const { club } = useClub();
   const { sections } = useCMSContent('proyectos', club.id);
+
+  useSEO({
+    title: 'Proyectos de Impacto Social',
+    description: `Proyectos de servicio comunitario de ${(club as any)?.name || 'nuestro club Rotary'}. Agua potable, educación, medio ambiente y más.`,
+    path: '/proyectos',
+  });
+
   const [scrollPosition, setScrollPosition] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [activeProjects, setActiveProjects] = useState<any[]>([]);

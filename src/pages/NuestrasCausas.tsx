@@ -2,10 +2,17 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
+import { useSEO } from '../hooks/useSEO';
 
 const NuestrasCausas = () => {
     const { club } = useClub();
     const { sections } = useCMSContent('nuestras-causas', club.id);
+
+    useSEO({
+        title: 'Nuestras Causas',
+        description: 'Las 7 áreas de interés de Rotary: paz, enfermedades, agua potable, salud materno-infantil, educación, economía local y medio ambiente.',
+        path: '/nuestras-causas',
+    });
 
     const getC = (section: string, field: string, fallback: string) => {
         return sections[section]?.[field] || fallback;

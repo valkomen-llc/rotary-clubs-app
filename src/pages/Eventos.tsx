@@ -4,6 +4,7 @@ import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
 import { Calendar, MapPin, Clock, ChevronRight } from 'lucide-react';
+import { useSEO } from '../hooks/useSEO';
 
 // Fallback mock events when no real data exists
 const mockEvents = [
@@ -52,6 +53,12 @@ const defaultImage = 'https://images.unsplash.com/photo-1517457373958-b7bdd45872
 const Eventos = () => {
     const { club } = useClub();
     useCMSContent('eventos', club.id);
+
+    useSEO({
+        title: 'Eventos',
+        description: `Calendario de eventos y actividades de ${(club as any)?.name || 'nuestro club Rotary'}. Reuniones, proyectos de servicio y recaudación.`,
+        path: '/eventos',
+    });
 
     const [events, setEvents] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);

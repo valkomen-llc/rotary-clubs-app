@@ -5,6 +5,7 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useClub } from '../contexts/ClubContext';
 import { useCMSContent } from '../hooks/useCMSContent';
+import { useSEO } from '../hooks/useSEO';
 
 const categorias = [
   'Todas',
@@ -20,6 +21,13 @@ import { articulosDestacados, articulos } from '../data/news';
 const Blog = () => {
   const { club } = useClub();
   const { sections } = useCMSContent('blog', club.id);
+
+  useSEO({
+    title: 'Noticias y Blog',
+    description: `Últimas noticias, eventos y actividades de ${(club as any)?.name || 'nuestro club Rotary'}.`,
+    path: '/blog',
+  });
+
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [categoriaActiva, setCategoriaActiva] = useState('Todas');

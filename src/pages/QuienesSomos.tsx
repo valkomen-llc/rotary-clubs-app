@@ -6,11 +6,27 @@ import CausesCarousel from '../sections/CausesCarousel';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
 import { useSiteImages } from '../hooks/useSiteImages';
+import { useSEO } from '../hooks/useSEO';
 
 const QuienesSomos = () => {
   const { club } = useClub();
   const { sections } = useCMSContent('quienes-somos', club.id);
   const siteImages = useSiteImages();
+
+  useSEO({
+    title: 'Quiénes Somos',
+    description: `Conoce a ${(club as any)?.name || 'nuestro club Rotary'}: misión, visión y valores. Más de 110 años de servicio comunitario.`,
+    path: '/quienes-somos',
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'Organization',
+      name: (club as any)?.name,
+      description: `Club miembro de Rotary International dedicado al servicio comunitario.`,
+      url: `https://${(club as any)?.domain || 'clubplatform.org'}`,
+      logo: (club as any)?.logo,
+      sameAs: ['https://www.rotary.org'],
+    },
+  });
 
   // Helper to get nested content or fallback
   const getC = (section: string, field: string, fallback: string) => {
