@@ -1,7 +1,10 @@
 import express from 'express';
 import db from '../lib/db.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { PrismaClient } from '@prisma/client';
+import EmailService from '../services/EmailService.js';
 
+const prisma = new PrismaClient();
 const router = express.Router();
 
 // ── Auto-create Lead table if it doesn't exist ────────────────────────────
@@ -42,6 +45,73 @@ router.post('/submit', async (req, res) => {
              RETURNING id, name, email, "createdAt"`,
             [name, email, phone || null, subject || null, message || null, clubId || null, source || 'contact_form', JSON.stringify(metadata || {})]
         );
+
+        // --- TRANSACTIONS EMAIL HOOK --- //
+        if (clubId) {
+            try {
+                // Get Club Data for branding
+                const club = await prisma.club.findUnique({ where: { id: clubId } });
+                if (club) {
+                    const primaryColor = club.colors?.primary || '#0B223F';
+                    
+                    // 1. Email to the Citizen/Lead
+                    const leadHtml = `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background-color: #ffffff; border: 1px solid #eaeaea; border-radius: 12px;">
+                        ${club.logo ? `<img src="${club.logo}" alt="${club.name}" style="height: 50px; margin-bottom: 20px;" />` : ''}
+                        <h2 style="color: ${primaryColor}; margin-top: 0;">¡Hola ${name}!</h2>
+                        <p style="color: #444; font-size: 16px; line-height: 1.5;">Gracias por ponerte en contacto con <strong>${club.name}</strong>.</p>
+                        <p style="color: #444; font-size: 16px; line-height: 1.5;">Hemos registrado tu solicitud de soporte o voluntariado de forma exitosa. Nuestro equipo ejecutivo y la presidencia del club revisarán tus datos y se pondrán en contacto contigo a la brevedad posible.</p>
+                        <hr style="border: none; border-top: 1px solid #eaeaea; margin: 30px 0;" />
+                        <p style="font-size: 12px; color: #888; text-align: center;">Este es un mensaje automático de Rotary ClubPlatform. Por favor no respondas directamente a este correo.</p>
+                    </div>`;
+
+                    await EmailService.sendEmail({
+                        clubId,
+                        to: email,
+                        subject: `Hemos recibido tu solicitud | ${club.name}`,
+                        html: leadHtml
+                    });
+
+                    // 2. Email Alert to the Club Administrators
+                    const adminEmails = await prisma.user.findMany({ 
+                        where: { clubId, role: 'administrator' },
+                        select: { email: true, id: true }
+                    });
+
+                    if (adminEmails.length > 0) {
+                        const adminHtml = `
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px;">
+                            <h2 style="color: #0B223F; margin-top: 0;">🚨 Nuevo Lead / Formulario Web</h2>
+                            <p style="color: #444; font-size: 15px;">Se acaba de registrar un nuevo Lead en tu portal de ClubPlatform a través del formulario de <strong>${source}</strong>.</p>
+                            
+                            <div style="background-color: #fff; padding: 20px; border-radius: 8px; border: 1px solid #eee; margin: 20px 0;">
+                                <p style="margin: 0 0 10px 0; color: #222;"><strong>Nombre:</strong> ${name}</p>
+                                <p style="margin: 0 0 10px 0; color: #222;"><strong>Email:</strong> ${email}</p>
+                                <p style="margin: 0 0 10px 0; color: #222;"><strong>Teléfono:</strong> ${phone || 'N/A'}</p>
+                                <p style="margin: 0 0 10px 0; color: #222;"><strong>Asunto:</strong> ${subject || 'N/A'}</p>
+                                <p style="margin: 15px 0 0 0; color: #555; font-style: italic;">"${message || 'Sin mensaje adicional'}"</p>
+                            </div>
+                            
+                            <a href="https://app.clubplatform.org/#/admin/leads" style="display:inline-block; padding: 12px 24px; background-color: ${primaryColor}; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; margin-top: 10px;">Gestionar en el CRM de Leads</a>
+                        </div>`;
+
+                        for (const admin of adminEmails) {
+                            await EmailService.sendEmail({
+                                clubId,
+                                to: admin.email,
+                                subject: `🔔 Nuevo Lead Web: ${name}`,
+                                html: adminHtml,
+                                userId: admin.id
+                            });
+                        }
+                    }
+                }
+            } catch (emailError) {
+                console.error('[Leads] Error dispatching transactional emails:', emailError);
+                // Proceder sin fallar la petición HTTP, ya que el lead sí se guardó en BD.
+            }
+        }
+        // --- END TRANSACTIONS EMAIL HOOK --- //
 
         res.status(201).json({ success: true, lead: result.rows[0] });
     } catch (error) {

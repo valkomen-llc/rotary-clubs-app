@@ -175,47 +175,55 @@ async function handleSuccessfulPayment(paymentIntent) {
         try {
             const club = await prisma.club.findUnique({ where: { id: clubId } });
             if (club) {
+                const primaryColor = club.colors?.primary || '#0B223F';
+                
                 let itemsHtml = order.items.map(i => `
-    < tr >
-                        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${i.title}</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${i.quantity}</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${(i.total).toFixed(2)} ${order.currency.toUpperCase()}</td>
-                    </tr >
-    `).join('');
+                    <tr>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;">${i.title}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">${i.qty}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">$${Number(i.total).toFixed(2)} ${order.currency.toUpperCase()}</td>
+                    </tr>
+                `).join('');
 
                 const htmlBody = `
-    < div style = "font-family: Arial, sans-serif; color: #333; max-w-width: 600px; margin: 0 auto; border: 1px solid #eaeaea; border-radius: 10px; overflow: hidden;" >
-                        <div style="background-color: #013388; color: #fff; padding: 20px; text-align: center;">
-                            <h2 style="margin: 0;">¡Gracias por tu apoyo, ${customerName}!</h2>
-                        </div>
-                        <div style="padding: 20px;">
-                            <p>Hemos procesado tu pago exitosamente y tus aportes marcan una gran diferencia.</p>
-                            <h3 style="border-bottom: 2px solid #013388; padding-bottom: 5px;">Detalle del Recibo #${order.id.slice(-6).toUpperCase()}</h3>
-                            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-                                <thead>
-                                    <tr style="background-color: #f9f9f9; text-align: left;">
-                                        <th style="padding: 8px;">Concepto</th>
-                                        <th style="padding: 8px; text-align: center;">Cant.</th>
-                                        <th style="padding: 8px; text-align: right;">Subtotal</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${itemsHtml}
-                                </tbody>
-                                <tfoot>
-                                    <tr>
-                                        <td colspan="2" style="padding: 8px; font-weight: bold; text-align: right;">Total General:</td>
-                                        <td style="padding: 8px; font-weight: bold; text-align: right;">$${order.totalAmount.toFixed(2)} ${order.currency.toUpperCase()}</td>
-                                    </tr>
-                                </tfoot>
-                            </table>
-                            <p style="font-size: 13px; color: #777;">Si tienes alguna duda sobre esta transacción, ponte en contacto con <strong>${club.name}</strong> respondiendo este correo.</p>
-                        </div>
-                        <div style="background-color: #f5f5f5; padding: 15px; text-align: center; font-size: 11px; color: #888;">
-                            Este es un recibo automático emitido por nuestra plataforma.
-                        </div>
-                    </div >
-    `;
+                <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eaeaea; border-radius: 10px; overflow: hidden; background-color: #ffffff;">
+                    <div style="background-color: ${primaryColor}; color: #ffffff; padding: 30px; text-align: center;">
+                        ${club.logo ? `<img src="${club.logo}" alt="${club.name}" style="height: 60px; margin-bottom: 15px;" />` : ''}
+                        <h2 style="margin: 0; color: #ffffff;">¡Gracias por tu apoyo, ${customerName}!</h2>
+                    </div>
+                    
+                    <div style="padding: 30px;">
+                        <p style="font-size: 16px; line-height: 1.5;">Hemos procesado tu pago exitosamente y tus aportes marcan una gran diferencia.</p>
+                        
+                        <h3 style="border-bottom: 2px solid ${primaryColor}; padding-bottom: 8px; margin-top: 30px; color: ${primaryColor};">Detalle del Recibo #${order.id.slice(-6).toUpperCase()}</h3>
+                        
+                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 15px;">
+                            <thead>
+                                <tr style="background-color: #f9fafb; text-align: left;">
+                                    <th style="padding: 10px; border-bottom: 2px solid #eaeaea;">Concepto</th>
+                                    <th style="padding: 10px; border-bottom: 2px solid #eaeaea; text-align: center;">Cant.</th>
+                                    <th style="padding: 10px; border-bottom: 2px solid #eaeaea; text-align: right;">Subtotal</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${itemsHtml}
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td colspan="2" style="padding: 15px 10px; font-weight: bold; text-align: right; border-top: 2px solid #eaeaea;">Total General:</td>
+                                    <td style="padding: 15px 10px; font-weight: bold; text-align: right; border-top: 2px solid #eaeaea; color: ${primaryColor}; font-size: 18px;">$${Number(order.total).toFixed(2)} ${order.currency.toUpperCase()}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                        
+                        <p style="font-size: 14px; color: #666; text-align: center; margin-top: 40px;">Si tienes alguna duda sobre esta transacción, ponte en contacto con <strong>${club.name}</strong> respondiendo directamente a este correo.</p>
+                    </div>
+                    
+                    <div style="background-color: #f5f5f5; padding: 20px; text-align: center; font-size: 12px; color: #888; border-top: 1px solid #eaeaea;">
+                        Este es un recibo automático emitido por Rotary ClubPlatform.
+                    </div>
+                </div>
+                `;
 
                 await EmailService.sendEmail({
                     clubId: clubId,
