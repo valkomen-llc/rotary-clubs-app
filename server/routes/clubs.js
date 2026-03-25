@@ -167,6 +167,24 @@ router.get('/:clubId/projects/:projectId', getPublicProjectById);
 router.get('/:clubId/testimonials', getPublicTestimonials);
 router.get('/:clubId/sections', getPublicSections);
 
+// Public events endpoint — returns CalendarEvent records for public pages
+router.get('/:clubId/events', async (req, res) => {
+    try {
+        const { clubId } = req.params;
+        const result = await db.query(
+            `SELECT id, title, description, "startDate", "endDate", location, type, "createdAt"
+             FROM "CalendarEvent"
+             WHERE "clubId" = $1
+             ORDER BY "startDate" ASC`,
+            [clubId]
+        );
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Public events error:', error.message);
+        res.json([]);
+    }
+});
+
 // Convenience: get site-images map for a club (merges global defaults + club overrides)
 // Special: /_global/site-images returns only global images (clubId IS NULL)
 router.get('/:clubId/site-images', async (req, res) => {

@@ -376,6 +376,7 @@ const Proyectos = () => {
                           src={proyecto.imagen}
                           alt={proyecto.titulo}
                           className="w-full h-full object-cover"
+                          loading="lazy"
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                         <div className="absolute top-4 left-4 flex items-center gap-2">
@@ -534,6 +535,7 @@ const Proyectos = () => {
                       src={proyecto.imagen}
                       alt={proyecto.titulo}
                       className="w-full h-full object-cover"
+                      loading="lazy"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                     <div className="absolute top-3 left-3">
@@ -598,6 +600,7 @@ const Proyectos = () => {
                     src={testimonio.imagen}
                     alt={testimonio.nombre}
                     className="w-16 h-16 rounded-full object-cover border-2 border-rotary-gold"
+                    loading="lazy"
                   />
                   <div>
                     <h4 className="font-bold text-white">{testimonio.nombre}</h4>
