@@ -16,35 +16,31 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           // ── Vendor splitting for optimal caching ──
+          // IMPORTANT: Do NOT add a catch-all for all node_modules
+          // — that creates circular chunk dependencies.
 
-          // React core (rarely changes → long cache)
-          if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/') || id.includes('node_modules/react-router')) {
+          // React core (changes rarely → long cache)
+          if (id.includes('node_modules/react-dom/')) {
             return 'vendor-react';
           }
 
-          // Lucide icons (44MB source → tree-shake into own chunk)
-          if (id.includes('node_modules/lucide-react')) {
-            return 'vendor-icons';
-          }
-
-          // Recharts (heavy charting lib, only used in Analytics)
+          // Recharts + D3 (heavy charting lib, only used in Analytics)
           if (id.includes('node_modules/recharts') || id.includes('node_modules/d3-')) {
             return 'vendor-charts';
           }
 
-          // Rich text editor (only used in a few admin pages)
+          // Rich text editor (only used in admin)
           if (id.includes('node_modules/react-quill') || id.includes('node_modules/quill')) {
             return 'vendor-editor';
           }
 
-          // Remaining node_modules
-          if (id.includes('node_modules/')) {
-            return 'vendor-misc';
+          // Lucide icons (large source → tree-shaken chunk)
+          if (id.includes('node_modules/lucide-react')) {
+            return 'vendor-icons';
           }
         },
       },
     },
-    // Raise the warning limit since we're now splitting properly
-    chunkSizeWarningLimit: 300,
+    chunkSizeWarningLimit: 500,
   },
 });
