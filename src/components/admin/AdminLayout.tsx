@@ -90,13 +90,15 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     });
 
     const isSuperAdmin = user?.role === 'administrator';
+    // Skip setup gating if the club already has a published custom domain
+    const hasPublishedDomain = (club as any)?.domain && !(club as any).domain.includes('clubplatform.org');
 
     // Redirect to dashboard if trying to access locked route
     useEffect(() => {
-        if (!isSuperAdmin && !setupComplete && !SETUP_ALLOWED_PATHS.includes(location.pathname)) {
+        if (!isSuperAdmin && !setupComplete && !hasPublishedDomain && !SETUP_ALLOWED_PATHS.includes(location.pathname)) {
             navigate('/admin/dashboard');
         }
-    }, [location.pathname, setupComplete, isSuperAdmin]);
+    }, [location.pathname, setupComplete, isSuperAdmin, hasPublishedDomain]);
 
     // Auto-dismiss locked toast
     useEffect(() => {
@@ -436,7 +438,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                 .map((item: any) => {
                                     const isActive = location.pathname === item.path;
                                     const isSetup = item.badge === 'pendiente';
-                                    const isLocked = !isSuperAdmin && !setupComplete && !SETUP_ALLOWED_PATHS.includes(item.path);
+                                    const isLocked = !isSuperAdmin && !setupComplete && !hasPublishedDomain && !SETUP_ALLOWED_PATHS.includes(item.path);
                                     return (
                                         <div key={item.path}>
                                             {isLocked ? (
@@ -528,7 +530,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                         <h2 className="text-sm font-bold text-gray-900">{currentPageTitle}</h2>
                         <div className="h-4 w-[1px] bg-gray-200 hidden sm:block" />
                         <p className="text-xs text-gray-400 font-medium hidden sm:block">
-                            {user?.role === 'administrator' ? 'Sistema Central' : setupComplete ? 'Gestión de Club' : `Configuración · ${setupPctHook}% completado`}
+                            {user?.role === 'administrator' ? 'Sistema Central' : (setupComplete || hasPublishedDomain) ? 'Gestión de Club' : `Configuración · ${setupPctHook}% completado`}
                         </p>
                     </div>
 

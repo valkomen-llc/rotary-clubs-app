@@ -119,7 +119,9 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   // Check both context and localStorage to avoid race conditions after reload
   const lsClub = (() => { try { return JSON.parse(localStorage.getItem('rotary_club') || '{}'); } catch { return {}; } })();
   const onboardingDone = (club as any)?.onboardingCompleted || lsClub?.onboardingCompleted;
-  if (user?.role !== 'administrator' && !onboardingDone) {
+  // Skip onboarding if the club already has a published custom domain
+  const hasPublishedDomain = (club as any)?.domain && !(club as any).domain.includes('clubplatform.org');
+  if (user?.role !== 'administrator' && !onboardingDone && !hasPublishedDomain) {
     return <Navigate to="/admin/onboarding" />;
   }
   return <>{children}</>;
@@ -142,7 +144,9 @@ function SmartHome() {
       // If club admin hasn't completed onboarding, send to wizard
       const lsClub = (() => { try { return JSON.parse(localStorage.getItem('rotary_club') || '{}'); } catch { return {}; } })();
       const onboardingDone = (club as any)?.onboardingCompleted || lsClub?.onboardingCompleted;
-      if (user?.role !== 'administrator' && !onboardingDone) {
+      // Skip onboarding if the club already has a published custom domain
+      const hasPublishedDomain = (club as any)?.domain && !(club as any).domain.includes('clubplatform.org');
+      if (user?.role !== 'administrator' && !onboardingDone && !hasPublishedDomain) {
         return <Navigate to="/admin/onboarding" />;
       }
       return <Navigate to="/admin/dashboard" />;
