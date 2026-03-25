@@ -106,7 +106,7 @@ router.get('/by-domain', async (req, res) => {
             logoText: clubDataRaw.name?.split(' ').pop(),
             productsCount: parseInt(clubDataRaw.productsCount) || 0,
             eventsCount: parseInt(clubDataRaw.eventsCount) || 0,
-            logoHeaderSize: parseInt(settings['logo_header_size']) || 150,
+            logoHeaderSize: parseInt(settings['logo_header_size']) || 200,
             onboardingCompleted: settings['onboarding_completed'] === 'true',
             onboardingStep: parseInt(settings['onboarding_step']) || 0,
         };

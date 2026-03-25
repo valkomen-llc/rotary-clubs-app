@@ -31,7 +31,7 @@ const ClubProfile: React.FC = () => {
         twitter: '',
         youtube: '',
         storeActive: true,
-        logoHeaderSize: 150,
+        logoHeaderSize: 200,
     });
 
     useEffect(() => {

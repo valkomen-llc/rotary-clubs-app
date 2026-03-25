@@ -27,7 +27,7 @@ const ClubSettings: React.FC = () => {
         footerLogo: '',
         endPolioLogo: '',
         favicon: '',
-        logoHeaderSize: 150,
+        logoHeaderSize: 200,
     });
     const [uploading, setUploading] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -61,7 +61,7 @@ const ClubSettings: React.FC = () => {
                 footerLogo: club.footerLogo || '',
                 endPolioLogo: club.endPolioLogo || '',
                 favicon: club.favicon || '',
-                logoHeaderSize: club.logoHeaderSize ?? 150,
+                logoHeaderSize: club.logoHeaderSize ?? 200,
             });
 
             // If platform supports paymentConfigs from populated backend

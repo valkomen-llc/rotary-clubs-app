@@ -131,7 +131,7 @@ const Navbar = () => {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center">
-            <div className="relative" style={{ width: `${club.logoHeaderSize ?? 150}px` }}>
+            <div className="relative" style={{ width: `${club.logoHeaderSize ?? 200}px` }}>
               {club.logo ? (
                 <img src={club.logo} alt={club.name} className="w-full h-auto object-contain" />
               ) : (
