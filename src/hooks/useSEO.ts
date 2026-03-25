@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useClub } from '../contexts/ClubContext';
 
 interface SEOProps {
@@ -25,6 +25,13 @@ export function useSEO({ title, description, path, image, type = 'website', json
     const desc = description || `${clubName} — Club miembro de Rotary International. Servicio por encima del interés propio.`;
     const url = path ? `${baseUrl}/#${path}` : baseUrl;
     const ogImage = image || (club as any)?.logo || '';
+
+    // Stabilize jsonLd reference to prevent infinite re-render loops
+    const jsonLdStr = jsonLd ? JSON.stringify(jsonLd) : '';
+    const prevJsonLdStr = useRef(jsonLdStr);
+    if (jsonLdStr !== prevJsonLdStr.current) {
+        prevJsonLdStr.current = jsonLdStr;
+    }
 
     useEffect(() => {
         // Title
@@ -69,14 +76,14 @@ export function useSEO({ title, description, path, image, type = 'website', json
         // JSON-LD
         const ldId = 'seo-jsonld';
         let ldScript = document.getElementById(ldId) as HTMLScriptElement;
-        if (jsonLd) {
+        if (prevJsonLdStr.current) {
             if (!ldScript) {
                 ldScript = document.createElement('script');
                 ldScript.id = ldId;
                 ldScript.type = 'application/ld+json';
                 document.head.appendChild(ldScript);
             }
-            ldScript.textContent = JSON.stringify(jsonLd);
+            ldScript.textContent = prevJsonLdStr.current;
         } else if (ldScript) {
             ldScript.remove();
         }
@@ -85,7 +92,8 @@ export function useSEO({ title, description, path, image, type = 'website', json
             // Cleanup JSON-LD on unmount
             document.getElementById(ldId)?.remove();
         };
-    }, [fullTitle, desc, url, type, ogImage, clubName, jsonLd]);
+    }, [fullTitle, desc, url, type, ogImage, clubName, prevJsonLdStr.current]);
 }
 
 export default useSEO;
+
