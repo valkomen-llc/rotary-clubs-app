@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
-    Radio, X, Send, Loader2, Paperclip, Mic, MicOff, FileText, Volume2, VolumeX,
-    History, Plus, Trash2, CheckCircle2, AlertCircle, Activity, Zap, BarChart3, Database, Terminal
+    Activity, ArrowRight, Bot, CheckCircle2, ChevronRight, FileText, History, Mic, MicOff,
+    Paperclip, Send, Terminal, Trash2, X, Users, Sparkles, MessageSquare
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -37,50 +37,57 @@ const CATEGORY_LABELS: Record<string, string> = {
     'difusión': 'Difusión y Comunidad',
 };
 
-/* ─── Cyber Node Agent Card ─── */
+/* ─── Minimalist Agent Card ─── */
 const AgentCard: React.FC<{
     agent: Agent;
-    tier: 'top' | 'mid' | 'base';
     isChatting: boolean;
     onClick: () => void;
-}> = ({ agent, tier, isChatting, onClick }) => (
-    <div
-        onClick={onClick}
-        className={`
-            relative group flex flex-col items-center justify-center p-2 rounded-full cursor-pointer transition-all duration-300
-            ${isChatting ? 'scale-110 z-10' : 'hover:scale-105 opacity-80 hover:opacity-100'}
-        `}
-    >
-        {isChatting && (
-            <div className="absolute inset-0 rounded-full animate-pulse opacity-20" style={{ background: agent.avatarColor }} />
-        )}
-        <div 
-            className={`
-                relative flex items-center justify-center rounded-full border transition-all duration-300
-                ${tier === 'top' ? 'w-20 h-20' : tier === 'mid' ? 'w-16 h-16' : 'w-14 h-14'}
-            `}
-            style={{ 
-                background: `linear-gradient(135deg, ${agent.avatarColor}15, ${agent.avatarColor}05)`,
-                borderColor: isChatting ? agent.avatarColor : 'rgba(255,255,255,0.1)',
-                boxShadow: isChatting ? `0 0 30px ${agent.avatarColor}30, inset 0 0 20px ${agent.avatarColor}20` : 'none'
-            }}
-        >
-            <img src={avatarUrl(agent.avatarSeed)} alt={agent.name} className="w-[60%] h-[60%] object-contain drop-shadow-2xl" loading="lazy" />
-            <div className={`absolute bottom-[-2px] right-[-2px] w-4 h-4 rounded-full border-2 border-[#0A0F1C] ${isChatting ? 'bg-[#00A2E0] animate-pulse' : agent.active ? 'bg-emerald-500' : 'bg-gray-600'}`} />
-        </div>
-        <div className="mt-3 text-center">
-            <h4 className="font-bold text-white tracking-widest text-[11px] uppercase">{agent.name}</h4>
-            <p className="text-[9px] font-mono text-white/30 mt-0.5 truncate max-w-[100px]">{agent.role.split('/')[0]}</p>
-        </div>
-    </div>
-);
+}> = ({ agent, isChatting, onClick }) => {
+    // Extract pseudo-features from the description to show exactly what they do
+    const features = agent.description.split(/(?:,|\by\b|\.)/).map(s => s.trim()).filter(s => s.length > 3);
 
-/* ─── Connector Line ─── */
-const VLine: React.FC<{ h?: string }> = ({ h = '24px' }) => (
-    <div className="flex justify-center">
-        <div style={{ width: '1px', height: h, background: 'linear-gradient(180deg, rgba(0,162,224,0.3), rgba(0,162,224,0))' }} />
-    </div>
-);
+    return (
+        <div
+            onClick={onClick}
+            className={`
+                bg-white border rounded-2xl p-5 cursor-pointer transition-all duration-200 group flex flex-col h-full
+                ${isChatting ? 'border-[#0082c3] shadow-md ring-2 ring-[#0082c3]/10' : 'border-gray-200 hover:border-[#0082c3]/50 hover:shadow-sm'}
+            `}
+        >
+            <div className="flex items-start gap-4 mb-4">
+                {/* Avatar */}
+                <div className="w-12 h-12 flex-shrink-0 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center p-1.5 group-hover:bg-blue-50 transition-colors">
+                    <img src={avatarUrl(agent.avatarSeed)} alt={agent.name} className="w-full h-full object-contain" />
+                </div>
+                {/* Headers */}
+                <div className="flex-1 min-w-0 pt-0.5">
+                    <h4 className="font-black text-gray-900 text-[15px] truncate">{agent.name}</h4>
+                    <p className="text-[11px] font-bold text-[#0082c3] mt-0.5 truncate">{agent.role}</p>
+                </div>
+                {/* Status Dot */}
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-2 ${agent.active ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+            </div>
+
+            {/* Capabilities List */}
+            <div className="mt-auto pt-4 border-t border-gray-50">
+                <p className="text-[9px] font-black uppercase tracking-wider text-gray-400 mb-2">Capabilities</p>
+                <div className="space-y-2">
+                    {features.slice(0, 3).map((feat, i) => (
+                        <div key={i} className="flex items-start gap-2 text-[12px] text-gray-600 leading-snug">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                            <span className="font-medium">{feat.charAt(0).toUpperCase() + feat.slice(1)}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+            
+            {/* Enter Button (Visible on Hover) */}
+            <div className={`mt-4 w-full py-2 rounded-lg text-center text-xs font-bold transition-all ${isChatting ? 'bg-[#0082c3] text-white' : 'bg-gray-50 text-gray-500 group-hover:bg-[#0082c3]/10 group-hover:text-[#0082c3]'}`}>
+                {isChatting ? 'Active Session' : 'Delegate Task'}
+            </div>
+        </div>
+    );
+};
 
 interface SavedConversation {
     id: string; agentId: string; title: string; messageCount: number;
@@ -102,34 +109,16 @@ const MissionControl: React.FC = () => {
     const [attachment, setAttachment] = useState<ChatAttachment | null>(null);
     const [isRecording, setIsRecording] = useState(false);
     const recognitionRef = useRef<any>(null);
-    const [voiceMode, setVoiceMode] = useState(false);
-    const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
 
     // ── Conversation History ──
     const [conversationId, setConversationId] = useState<string | null>(null);
     const [savedConversations, setSavedConversations] = useState<SavedConversation[]>([]);
     const [showHistory, setShowHistory] = useState(false);
 
-    // ── Live Operations Stats ──
-    const [stats, setStats] = useState<any>(null);
-
     const getHeaders = () => ({
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token || localStorage.getItem('rotary_token')}`,
     });
-
-    const fetchStats = useCallback(async () => {
-        try {
-            const res = await fetch(`${API_URL}/agents/activity/stats`, { headers: getHeaders() });
-            if (res.ok) setStats(await res.json());
-        } catch { }
-    }, [token]);
-
-    useEffect(() => {
-        fetchStats();
-        const interval = setInterval(fetchStats, 15000);
-        return () => clearInterval(interval);
-    }, [fetchStats]);
 
     const fetchConversations = useCallback(async (agentId: string) => {
         try {
@@ -205,18 +194,6 @@ const MissionControl: React.FC = () => {
     useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
     useEffect(() => { if (chatAgent) setTimeout(() => inputRef.current?.focus(), 200); }, [chatAgent]);
 
-    useEffect(() => {
-        const handler = (e: Event) => {
-            const name = (e as CustomEvent).detail?.agentName;
-            if (name) {
-                const agent = agents.find(a => a.name === name);
-                if (agent) openChat(agent);
-            }
-        };
-        window.addEventListener('openAgentChat', handler);
-        return () => window.removeEventListener('openAgentChat', handler);
-    }, [agents]);
-
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -224,10 +201,12 @@ const MissionControl: React.FC = () => {
         setAttachment({ name: file.name, type: file.type, size: file.size, url });
         e.target.value = '';
     };
+
     const removeAttachment = () => {
         if (attachment) URL.revokeObjectURL(attachment.url);
         setAttachment(null);
     };
+
     const formatFileSize = (bytes: number) => {
         if (bytes < 1024) return bytes + ' B';
         if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
@@ -271,24 +250,6 @@ const MissionControl: React.FC = () => {
         else startRecording();
     };
 
-    const speakText = useCallback((text: string, msgIdx?: number) => {
-        if (!window.speechSynthesis) return;
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'es-ES';
-        utterance.rate = 1.05;
-        utterance.pitch = 1.0;
-        const voices = window.speechSynthesis.getVoices();
-        const esVoice = voices.find(v => v.lang.startsWith('es'));
-        if (esVoice) utterance.voice = esVoice;
-        if (msgIdx !== undefined) {
-            setSpeakingIdx(msgIdx);
-            utterance.onend = () => setSpeakingIdx(null);
-            utterance.onerror = () => setSpeakingIdx(null);
-        }
-        window.speechSynthesis.speak(utterance);
-    }, []);
-
     const openChat = (agent: Agent) => {
         setChatAgent(agent);
         setMessages([{ role: 'assistant', text: agent.greeting || `¡Hola! Soy ${agent.name} 👋` }]);
@@ -298,6 +259,7 @@ const MissionControl: React.FC = () => {
         setShowHistory(false);
         fetchConversations(agent.id);
     };
+
     const startNewChat = () => {
         if (!chatAgent) return;
         setMessages([{ role: 'assistant', text: chatAgent.greeting || `¡Hola! Soy ${chatAgent.name} 👋` }]);
@@ -305,12 +267,11 @@ const MissionControl: React.FC = () => {
         setInput('');
         setShowHistory(false);
     };
+
     const closeChat = () => {
         setChatAgent(null); setMessages([]); setAttachment(null);
         setConversationId(null); setShowHistory(false);
         stopRecording();
-        window.speechSynthesis?.cancel();
-        setSpeakingIdx(null);
     };
 
     const sendMessage = async () => {
@@ -348,7 +309,6 @@ const MissionControl: React.FC = () => {
                 });
                 return updated;
             });
-            if (voiceMode) speakText(reply);
         } catch {
             setMessages(prev => [...prev, { role: 'assistant', text: 'Error al conectar. Intenta de nuevo.' }]);
         } finally { setLoading(false); }
@@ -366,222 +326,127 @@ const MissionControl: React.FC = () => {
     const activeCount = agents.length;
 
     return (
-        <div data-mission-control className="flex flex-col h-full bg-[#030712] text-white font-sans relative">
+        <div data-mission-control className="flex flex-col h-full bg-gray-50 text-gray-800 font-sans p-6 md:p-10 relative">
             
-            {/* Main Layout */}
-            <div className="flex flex-1 gap-6 p-6 relative z-10">
-                {/* ── ORG CHART (Neural Network View) ── */}
-                <div className={`relative rounded-2xl flex flex-col transition-all duration-500 border border-white/5 bg-[#0A0F1C] overflow-hidden shadow-2xl ${chatAgent ? 'w-1/2' : 'w-[45%]'}`}>
-                    {/* Header */}
-                    <div className="h-14 border-b border-white/5 flex items-center justify-between px-6 flex-shrink-0 bg-white/[0.02]">
-                        <div className="flex items-center gap-3">
-                            <Database className="w-4 h-4 text-[#00A2E0]" />
-                            <h3 className="text-xs font-mono tracking-widest text-white/70 uppercase">Agent Topology</h3>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                            <span className="text-[9px] font-mono text-emerald-400">{activeCount} / {activeCount} ONLINE</span>
-                        </div>
-                    </div>
-
-                    {/* Node Canvas */}
-                    <div className="flex-1 relative overflow-y-auto p-8 flex flex-col items-center">
-                        <div className="absolute inset-0 pointer-events-none opacity-20" style={{
-                            backgroundImage: `linear-gradient(rgba(0,162,224,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(0,162,224,0.1) 1px, transparent 1px)`,
-                            backgroundSize: '30px 30px',
-                        }} />
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#00A2E0]/5 rounded-full blur-[100px] pointer-events-none" />
-                        
-                        {loadingAgents ? (
-                            <div className="flex items-center justify-center h-full">
-                                <Activity className="w-6 h-6 text-[#00A2E0] animate-pulse" />
-                            </div>
-                        ) : (
-                            <div className="relative z-10 w-full max-w-lg">
-                                {/* Level 1 — Directors */}
-                                {directors.length > 0 && (
-                                    <>
-                                        <div className={`grid gap-8 justify-center ${directors.length === 1 ? 'grid-cols-1' : `grid-cols-2`}`}>
-                                            {directors.map(agent => (
-                                                <AgentCard key={agent.id} agent={agent} tier="top" isChatting={chatAgent?.id === agent.id} onClick={() => openChat(agent)} />
-                                            ))}
-                                        </div>
-                                        <VLine />
-                                        <div className="flex justify-center">
-                                            <div className="w-[80%] h-[1px] bg-gradient-to-r from-transparent via-[#00A2E0]/30 to-transparent" />
-                                        </div>
-                                    </>
-                                )}
-
-                                {/* Other categories as rows */}
-                                {midCategories.map(catKey => {
-                                    const catAgents = grouped[catKey];
-                                    if (!catAgents || catAgents.length === 0) return null;
-                                    return (
-                                        <div key={catKey} className="mt-6">
-                                            <p className="text-center text-[9px] font-mono uppercase tracking-[0.2em] text-[#00A2E0]/60 mb-4">
-                                                {CATEGORY_LABELS[catKey]}
-                                            </p>
-                                            <div className={`grid gap-4 justify-center`}
-                                                style={{ gridTemplateColumns: `repeat(${Math.min(catAgents.length, 4)}, minmax(0, 1fr))` }}>
-                                                {catAgents.map(agent => (
-                                                    <div key={agent.id} className="flex flex-col items-center">
-                                                        <VLine h="20px" />
-                                                        <AgentCard agent={agent} tier="base" isChatting={chatAgent?.id === agent.id} onClick={() => openChat(agent)} />
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
+            {/* Header */}
+            <div className="flex items-center justify-between mb-8">
+                <div>
+                   <h2 className="text-3xl font-black text-gray-900 tracking-tight flex items-center gap-3">
+                       Expert Agents
+                       <div className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold flex items-center gap-2 tracking-wide">
+                           <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                           {activeCount} ONLINE
+                       </div>
+                   </h2>
+                   <p className="text-sm text-gray-500 font-medium mt-1">Select an agent to delegate tasks or discover their capabilities.</p>
                 </div>
+            </div>
 
-                {/* ── LIVE OPERATIONS DASHBOARD (When no agent selected) ── */}
-                {!chatAgent && (
-                    <div className="w-[55%] rounded-2xl border border-white/5 flex flex-col overflow-hidden relative bg-[#0A0F1C] shadow-2xl"
-                        style={{ animation: 'fadeIn 0.4s ease-out' }}
-                    >
-                        {/* Header */}
-                        <div className="px-6 py-5 border-b border-white/5 bg-white/[0.02] flex-shrink-0 relative overflow-hidden">
-                            <div className="absolute top-0 right-10 w-32 h-32 bg-[#F7A81B]/10 blur-[40px] rounded-full pointer-events-none" />
-                            <div className="flex items-center justify-between relative z-10">
-                                <div>
-                                    <h4 className="font-mono text-white tracking-widest text-sm flex items-center gap-2">
-                                        <BarChart3 className="w-4 h-4 text-[#F7A81B]" /> SESSION ROUTER
-                                    </h4>
-                                    <p className="text-[10px] font-mono text-white/40 mt-1">Live metrics from Gateway Control Plane</p>
-                                </div>
-                            </div>
-                            
-                            {/* KPI Metrics */}
-                            <div className="grid grid-cols-3 gap-4 mt-6">
-                                <div className="bg-[#030712] rounded-xl border border-white/5 px-5 py-4 relative group">
-                                    <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    <p className="text-[9px] font-mono text-white/40 uppercase tracking-widest mb-2 flex items-center gap-2">
-                                        Tasks Running
-                                    </p>
-                                    <p className="text-3xl font-mono text-emerald-400">{stats?.totals?.toolsExecuted || 0}</p>
-                                </div>
-                                <div className="bg-[#030712] rounded-xl border border-white/5 px-5 py-4">
-                                    <p className="text-[9px] font-mono text-white/40 uppercase tracking-widest mb-2 flex items-center gap-2">
-                                        Success Rate
-                                    </p>
-                                    <p className="text-3xl font-mono text-white">
-                                        {stats?.totals?.toolsExecuted 
-                                            ? Math.round((stats.totals.toolsSuccessful / stats.totals.toolsExecuted) * 100) 
-                                            : 100}%
-                                    </p>
-                                </div>
-                                <div className="bg-[#030712] rounded-xl border border-white/5 px-5 py-4">
-                                    <p className="text-[9px] font-mono text-white/40 uppercase tracking-widest mb-2 flex items-center gap-2">
-                                        Total Sessions
-                                    </p>
-                                    <p className="text-3xl font-mono text-[#00A2E0]">{stats?.totals?.totalConversations || 0}</p>
-                                </div>
-                            </div>
+            {/* Main Layout */}
+            <div className={`flex flex-1 gap-8 relative z-10 transition-all duration-300`}>
+                
+                {/* ── GRID OF CARDS ── */}
+                <div className={`flex flex-col gap-10 overflow-y-auto pr-4 pb-12 transition-all duration-500 custom-scrollbar ${chatAgent ? 'w-[45%]' : 'w-full'}`}>
+                    
+                    {loadingAgents ? (
+                        <div className="flex flex-col items-center justify-center p-20 text-gray-400">
+                            <Activity className="w-8 h-8 animate-spin mb-4 text-[#0082c3]" />
+                            <p className="font-medium text-sm">Cargando módulos expertos...</p>
                         </div>
-
-                        {/* Activity Stream */}
-                        <div className="flex-1 overflow-y-auto px-6 py-6">
-                            <div className="flex items-center justify-between mb-4">
-                                <p className="text-[10px] font-mono text-white/30 uppercase tracking-[0.2em]">INCIDENT STREAM</p>
-                                <span className="text-[9px] font-mono text-white/20">{(stats?.recentActivity || []).length} events</span>
-                            </div>
-                            
-                            {(!stats?.recentActivity || stats.recentActivity.length === 0) ? (
-                                <div className="flex flex-col items-center justify-center h-40 text-center opacity-50">
-                                    <p className="text-[11px] font-mono text-white/40">No logs yet</p>
-                                    <p className="text-[9px] font-mono text-white/30 mt-1">Gateway Incidents and warnings stream here.</p>
-                                </div>
-                            ) : (
-                                <div className="space-y-1">
-                                    {stats.recentActivity.map((act: any, i: number) => {
-                                        return (
-                                            <div key={i} className="flex items-start gap-4 p-3 rounded hover:bg-white/[0.02] transition-colors border-l-2 border-transparent hover:border-white/20">
-                                                <div className={`mt-1.5 w-1.5 h-1.5 rounded-full ${act.success ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500'}`} />
-                                                <div className="flex-1">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-[11px] font-mono text-white font-bold">
-                                                            agent:{act.agentName ? act.agentName.toLowerCase() : 'system'}:run
-                                                        </span>
-                                                        <span className="text-[10px] font-mono text-white/30">
-                                                            {new Date(act.createdAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute:'2-digit' })}
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-[10px] font-mono text-white/50 mt-1">{act.action}</p>
-                                                    {act.tool && (
-                                                        <span className="inline-block mt-2 text-[9px] font-mono text-[#00A2E0] bg-[#00A2E0]/10 px-1.5 py-0.5 rounded">
-                                                            {act.tool}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
+                    ) : (
+                        <>
+                            {/* Directors Section */}
+                            {directors.length > 0 && (
+                                <div>
+                                    <h3 className="text-xs font-black uppercase tracking-widest text-[#0082c3] mb-4 flex items-center gap-2">
+                                        <Users className="w-4 h-4" /> Dirección y Orquestación
+                                    </h3>
+                                    <div className={`grid gap-4 ${chatAgent ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
+                                        {directors.map(agent => (
+                                            <AgentCard key={agent.id} agent={agent} isChatting={chatAgent?.id === agent.id} onClick={() => openChat(agent)} />
+                                        ))}
+                                    </div>
                                 </div>
                             )}
-                        </div>
-                    </div>
-                )}
 
-                {/* ── CHAT PANEL (Terminal view) ── */}
-                {chatAgent && (
-                    <div className="w-1/2 rounded-2xl border border-white/5 flex flex-col overflow-hidden bg-[#0A0F1C] relative shadow-2xl" style={{ animation: 'slideInRight 0.3s ease-out' }}>
-                        {/* Header */}
-                        <div className="h-14 border-b border-white/5 flex items-center justify-between px-4 bg-white/[0.02] flex-shrink-0">
-                            <div className="flex items-center gap-3">
-                                <div className="relative">
-                                    <div className="w-8 h-8 rounded-full overflow-hidden border border-white/10" style={{ background: chatAgent.avatarColor + '20' }}>
-                                        <img src={avatarUrl(chatAgent.avatarSeed)} alt="" className="w-full h-full" />
+                            {/* Other Categories */}
+                            {midCategories.map(catKey => {
+                                const catAgents = grouped[catKey];
+                                if (!catAgents || catAgents.length === 0) return null;
+                                return (
+                                    <div key={catKey}>
+                                        <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-4 flex items-center gap-2">
+                                            <Sparkles className="w-4 h-4" /> {CATEGORY_LABELS[catKey]}
+                                        </h3>
+                                        <div className={`grid gap-4 ${chatAgent ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-4'}`}>
+                                            {catAgents.map(agent => (
+                                                <AgentCard key={agent.id} agent={agent} isChatting={chatAgent?.id === agent.id} onClick={() => openChat(agent)} />
+                                            ))}
+                                        </div>
                                     </div>
-                                    <div className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-400 border border-[#0A0F1C]" />
+                                );
+                            })}
+                        </>
+                    )}
+                </div>
+
+                {/* ── CHAT PANEL (Clean Linear/Notion Style) ── */}
+                {chatAgent && (
+                    <div className="w-[55%] rounded-2xl border border-gray-200 bg-white shadow-xl flex flex-col overflow-hidden relative" style={{ animation: 'slideInRight 0.3s ease-out' }}>
+                        
+                        {/* Header Details */}
+                        <div className="h-20 border-b border-gray-100 flex items-center justify-between px-6 bg-white flex-shrink-0 z-10">
+                            <div className="flex items-center gap-4">
+                                <div className="relative">
+                                    <div className="w-12 h-12 rounded-xl border border-gray-100 bg-gray-50 flex flex-col justify-end overflow-hidden pb-1">
+                                        <img src={avatarUrl(chatAgent.avatarSeed)} alt="" className="w-10 h-10 mx-auto" />
+                                    </div>
+                                    <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white" />
                                 </div>
                                 <div>
-                                    <h4 className="text-[11px] font-mono font-bold text-white tracking-wider">{chatAgent.name}</h4>
-                                    <p className="text-[9px] font-mono text-white/40">{chatAgent.role}</p>
+                                    <h4 className="text-[16px] font-black text-gray-900 tracking-tight leading-none">{chatAgent.name}</h4>
+                                    <p className="text-[12px] font-semibold text-[#0082c3] mt-1">{chatAgent.role}</p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-1">
-                                <button onClick={startNewChat} className="p-2 text-white/40 hover:text-white hover:bg-white/5 rounded transition-colors" title="Clear View">
-                                    <Trash2 className="w-3.5 h-3.5" />
+                            <div className="flex items-center gap-2">
+                                <button onClick={startNewChat} className="p-2.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors font-bold text-xs flex items-center gap-2 border border-transparent hover:border-blue-100" title="Nueva sesión">
+                                    <Plus className="w-4 h-4" /> Nuevo
                                 </button>
-                                <button onClick={() => { setShowHistory(!showHistory); if (!showHistory) fetchConversations(chatAgent.id); }} className={`p-2 rounded transition-colors ${showHistory ? 'text-[#00A2E0] bg-[#00A2E0]/10' : 'text-white/40 hover:text-white hover:bg-white/5'}`} title="Sessions">
-                                    <History className="w-3.5 h-3.5" />
+                                <button onClick={() => { setShowHistory(!showHistory); if (!showHistory) fetchConversations(chatAgent.id); }} className={`p-2.5 rounded-xl transition-colors font-bold text-xs flex items-center gap-2 border ${showHistory ? 'text-blue-600 bg-blue-50 border-blue-100' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-50 border-transparent hover:border-gray-200'}`} title="Sesiones Anteriores">
+                                    <History className="w-4 h-4" /> Historial
                                 </button>
-                                <button onClick={closeChat} className="p-2 text-white/40 hover:text-white hover:bg-white/5 rounded transition-colors ml-1" title="Close">
-                                    <X className="w-4 h-4" />
+                                <div className="w-px h-6 bg-gray-200 mx-2" />
+                                <button onClick={closeChat} className="p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors" title="Cerrar Panel">
+                                    <X className="w-5 h-5" />
                                 </button>
                             </div>
                         </div>
 
                         {/* History Overlay */}
                         {showHistory && (
-                            <div className="absolute top-14 left-0 right-0 bottom-16 bg-[#030712]/95 backdrop-blur-md z-20 border-b border-white/5 flex flex-col overflow-hidden animate-fadeIn">
-                                <div className="p-4 border-b border-white/5">
-                                    <h4 className="text-[11px] font-mono text-white/50 tracking-widest uppercase">Past Sessions</h4>
+                            <div className="absolute top-20 left-0 right-0 bottom-24 bg-white/95 backdrop-blur-md z-20 border-b border-gray-100 flex flex-col overflow-hidden animate-fadeIn">
+                                <div className="p-5 border-b border-gray-100 bg-gray-50/50">
+                                    <h4 className="text-xs font-black text-gray-900 tracking-wider uppercase">Sesiones Guardadas</h4>
                                 </div>
-                                <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                                <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
                                     {savedConversations.length === 0 ? (
-                                        <p className="text-[10px] font-mono text-white/30 text-center py-6">No sessions found</p>
+                                        <p className="text-sm font-medium text-gray-400 text-center py-10">No hay sesiones guardadas</p>
                                     ) : (
                                         savedConversations.map(conv => (
-                                            <div key={conv.id} className="group relative flex flex-col p-3 rounded border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] cursor-pointer" onClick={() => resumeConversation(conv)}>
+                                            <div key={conv.id} className="group relative flex flex-col p-4 rounded-2xl border border-gray-100 bg-white hover:border-blue-200 hover:shadow-md cursor-pointer transition-all" onClick={() => resumeConversation(conv)}>
                                                 <div className="flex items-center justify-between mb-1">
-                                                    <h5 className="text-[11px] font-bold text-white/90 truncate mr-6">{conv.title || 'Session'}</h5>
-                                                    <span className="text-[9px] font-mono text-white/30">{new Date(conv.updatedAt).toLocaleDateString()}</span>
+                                                    <h5 className="text-sm font-bold text-gray-900 truncate mr-6">{conv.title || 'Sesión Activa'}</h5>
+                                                    <span className="text-xs font-medium text-gray-400">{new Date(conv.updatedAt).toLocaleDateString()}</span>
                                                 </div>
-                                                <p className="text-[10px] text-white/50 truncate mb-2">{conv.lastMessage}</p>
-                                                <div className="flex items-center gap-2 text-[9px] font-mono text-white/30">
-                                                    <span className="bg-white/5 px-1.5 py-0.5 rounded">{conv.messageCount} ops</span>
+                                                <p className="text-xs text-gray-500 truncate mb-3">{conv.lastMessage}</p>
+                                                <div className="flex items-center gap-2 text-[10px] font-bold text-gray-500 tracking-wide uppercase">
+                                                    <span className="bg-gray-100 px-2 flex-shrink-0 py-1 rounded-lg border border-gray-200">{conv.messageCount} ops</span>
                                                 </div>
                                                 <button 
                                                     onClick={(e) => { e.stopPropagation(); deleteConversation(conv.id, chatAgent.id); }}
-                                                    className="absolute top-2 right-2 p-1.5 text-white/20 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all rounded hover:bg-white/5"
+                                                    className="absolute top-3 right-3 p-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all rounded-xl hover:bg-red-50 hover:border-red-100 border border-transparent"
                                                 >
-                                                    <Trash2 className="w-3 h-3" />
+                                                    <Trash2 className="w-4 h-4" />
                                                 </button>
                                             </div>
                                         ))
@@ -591,36 +456,40 @@ const MissionControl: React.FC = () => {
                         )}
 
                         {/* Messages Area */}
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-gray-50/30">
                             {messages.map((msg, i) => (
                                 <div key={i} className={`flex flex-col max-w-[85%] ${msg.role === 'user' ? 'ml-auto items-end' : 'mr-auto items-start'}`}>
-                                    <p className="text-[9px] font-mono text-white/30 uppercase tracking-widest mb-1.5 ml-1">
-                                        {msg.role === 'user' ? 'YOU' : chatAgent.name.toUpperCase()}
-                                    </p>
+                                    <div className="flex items-center gap-2 mb-1.5 px-1">
+                                        <span className="text-[10px] font-black tracking-widest uppercase text-gray-400">
+                                            {msg.role === 'user' ? 'Tú' : chatAgent.name}
+                                        </span>
+                                    </div>
                                     <div 
-                                        className={`rounded-lg px-4 py-3 text-[12px] leading-relaxed break-words whitespace-pre-wrap ${
-                                            msg.role === 'user' ? 'bg-[#00A2E0]/10 border border-[#00A2E0]/20 text-white/90' : 'bg-white/[0.03] border border-white/5 text-white/80'
+                                        className={`rounded-2xl px-5 py-4 text-[13px] leading-relaxed break-words whitespace-pre-wrap shadow-sm ${
+                                            msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-sm border border-blue-700' : 'bg-white border border-gray-200 text-gray-800 rounded-tl-sm'
                                         }`}
                                     >
                                         {msg.text}
 
-                                        {/* Tools / Artifacts rendered by assistant */}
+                                        {/* Tools Executed Rendering */}
                                         {msg.toolExecuted && (
-                                            <div className="mt-3 p-2.5 rounded border border-emerald-500/20 bg-emerald-500/5 flex items-start gap-2 text-emerald-400">
-                                                <span className="text-sm mt-0.5">{msg.toolExecuted.emoji || '⚡'}</span>
+                                            <div className={`mt-4 p-3 rounded-xl border flex items-start gap-3 ${msg.toolExecuted.success ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-red-50 border-red-100 text-red-800'}`}>
+                                                <span className="text-lg leading-none mt-0.5">{msg.toolExecuted.emoji || '⚡'}</span>
                                                 <div>
-                                                    <p className="text-[11px] font-bold">{msg.toolExecuted.label || msg.toolExecuted.action}</p>
-                                                    {msg.toolExecuted.message && <p className="text-[10px] opacity-70 mt-0.5">{msg.toolExecuted.message}</p>}
+                                                    <p className="text-[12px] font-black">{msg.toolExecuted.label || msg.toolExecuted.action}</p>
+                                                    {msg.toolExecuted.message && <p className="text-[11px] font-medium opacity-80 mt-1">{msg.toolExecuted.message}</p>}
                                                 </div>
                                             </div>
                                         )}
                                         {msg.workflowSuggestions && msg.workflowSuggestions.length > 0 && (
-                                            <div className="mt-3 pt-3 border-t border-white/5">
-                                                <p className="text-[9px] font-mono text-white/40 uppercase mb-2">Automated Tasks Initiated</p>
-                                                <div className="space-y-1">
+                                            <div className="mt-4 pt-4 border-t border-gray-100">
+                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Automatizaciones creadas</p>
+                                                <div className="space-y-2">
                                                     {msg.workflowSuggestions.map((s, idx) => (
-                                                        <div key={idx} className="flex gap-2 text-[10px] bg-black/20 p-2 rounded border border-white/5">
-                                                            <span>{s.emoji}</span><span className="text-[#F7A81B] font-mono">@{s.agent}</span><span className="text-white/60">{s.action}</span>
+                                                        <div key={idx} className="flex gap-2 items-center text-[11px] bg-gray-50 p-2 rounded-xl border border-gray-200 w-fit">
+                                                            <span className="text-sm">{s.emoji}</span>
+                                                            <span className="text-blue-600 font-black">@{s.agent}</span>
+                                                            <span className="text-gray-600 font-medium">{s.action}</span>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -630,35 +499,37 @@ const MissionControl: React.FC = () => {
                                 </div>
                             ))}
                             {loading && (
-                                <div className="flex gap-2 text-white/40 mr-auto mt-4 px-2">
-                                    <div className="w-1.5 h-1.5 bg-[#00A2E0] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                                    <div className="w-1.5 h-1.5 bg-[#00A2E0] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                                    <div className="w-1.5 h-1.5 bg-[#00A2E0] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                                <div className="flex gap-2 bg-white border border-gray-200 shadow-sm rounded-2xl rounded-tl-sm px-5 py-4 w-16 mr-auto items-center justify-center">
+                                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                                 </div>
                             )}
                             <div ref={chatEndRef} />
                         </div>
 
                         {/* Input Area */}
-                        <div className="p-4 bg-white/[0.02] border-t border-white/5 flex-shrink-0">
+                        <div className="p-5 bg-white border-t border-gray-100 flex-shrink-0 z-10 shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
                             {attachment && (
-                                <div className="mb-3 px-3 py-2 bg-[#00A2E0]/10 border border-[#00A2E0]/20 rounded-lg flex items-center justify-between">
-                                    <div className="flex items-center gap-2 overflow-hidden">
-                                        <FileText className="w-4 h-4 text-[#00A2E0] flex-shrink-0" />
+                                <div className="mb-3 px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-between">
+                                    <div className="flex items-center gap-3 overflow-hidden">
+                                        <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                                            <FileText className="w-4 h-4 text-blue-600" />
+                                        </div>
                                         <div className="min-w-0">
-                                            <p className="text-[11px] text-[#00A2E0] font-mono truncate">{attachment.name}</p>
-                                            <p className="text-[9px] text-[#00A2E0]/60">{formatFileSize(attachment.size)}</p>
+                                            <p className="text-xs font-bold text-gray-900 truncate">{attachment.name}</p>
+                                            <p className="text-[10px] text-gray-500 font-medium">{formatFileSize(attachment.size)}</p>
                                         </div>
                                     </div>
-                                    <button onClick={removeAttachment} className="p-1 hover:bg-[#00A2E0]/20 rounded-full text-[#00A2E0]"><X className="w-3.5 h-3.5" /></button>
+                                    <button onClick={removeAttachment} className="p-2 hover:bg-white hover:shadow-sm rounded-lg text-gray-400 hover:text-red-500 border border-transparent hover:border-gray-200 transition-all"><X className="w-4 h-4" /></button>
                                 </div>
                             )}
-                            <div className="flex items-center gap-2">
-                                <button onClick={toggleRecording} className={`p-2.5 rounded flex-shrink-0 transition-colors ${isRecording ? 'bg-red-500/20 text-red-500 border border-red-500/30' : 'bg-white/5 text-white/40 hover:text-white hover:bg-white/10'}`}>
-                                    {isRecording ? <MicOff className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
+                            <div className="flex items-center gap-3">
+                                <button onClick={toggleRecording} className={`p-3 rounded-xl flex-shrink-0 transition-all font-bold group border ${isRecording ? 'bg-red-50 border-red-200 text-red-600 shadow-sm' : 'bg-gray-50 border-gray-200 text-gray-500 hover:text-gray-900 hover:bg-white hover:shadow-sm'}`}>
+                                    {isRecording ? <MicOff className="w-5 h-5 animate-pulse" /> : <Mic className="w-5 h-5 group-hover:scale-110 transition-transform" />}
                                 </button>
-                                <button onClick={() => fileInputRef.current?.click()} className="p-2.5 rounded bg-white/5 flex-shrink-0 text-white/40 hover:text-white hover:bg-white/10 transition-colors">
-                                    <Paperclip className="w-4 h-4" />
+                                <button onClick={() => fileInputRef.current?.click()} className="p-3 rounded-xl flex-shrink-0 transition-all font-bold group border bg-gray-50 border-gray-200 text-gray-500 hover:text-gray-900 hover:bg-white hover:shadow-sm">
+                                    <Paperclip className="w-5 h-5 group-hover:scale-110 transition-transform" />
                                 </button>
                                 <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept="image/*,.pdf,.doc,.docx" />
                                 
@@ -668,12 +539,12 @@ const MissionControl: React.FC = () => {
                                     value={input} 
                                     onChange={(e) => setInput(e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-                                    placeholder={`Command ${chatAgent.name}...`}
-                                    className="flex-1 bg-white/5 border border-white/10 rounded px-4 py-2 text-[12px] font-mono text-white placeholder-white/30 focus:outline-none focus:border-[#00A2E0]/50 transition-colors"
+                                    placeholder={`Pregúntale a ${chatAgent.name}...`}
+                                    className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-5 py-3 text-sm font-medium text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-[#0082c3] focus:ring-4 focus:ring-[#0082c3]/10 transition-all"
                                 />
                                 
-                                <button onClick={sendMessage} disabled={loading || (!input.trim() && !attachment)} className="p-2.5 bg-[#00A2E0]/20 border border-[#00A2E0]/30 text-[#00A2E0] rounded hover:bg-[#00A2E0]/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                                    <Terminal className="w-4 h-4" />
+                                <button onClick={sendMessage} disabled={loading || (!input.trim() && !attachment)} className="p-3 bg-[#0082c3] border border-[#006292] text-white rounded-xl shadow-md shadow-[#0082c3]/20 hover:bg-[#0072aa] hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed group">
+                                    <Send className="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
                                 </button>
                             </div>
                         </div>
