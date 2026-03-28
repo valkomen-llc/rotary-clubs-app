@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     Radio, X, Send, Loader2, Paperclip, Mic, MicOff, FileText, Volume2, VolumeX,
-    History, Plus, Trash2, CheckCircle2, AlertCircle,
+    History, Plus, Trash2, CheckCircle2, AlertCircle, Activity, Zap, BarChart3, Database,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -112,10 +112,27 @@ const MissionControl: React.FC = () => {
     const [savedConversations, setSavedConversations] = useState<SavedConversation[]>([]);
     const [showHistory, setShowHistory] = useState(false);
 
+    // ── Live Operations Stats ──
+    const [stats, setStats] = useState<any>(null);
+
     const getHeaders = () => ({
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token || localStorage.getItem('rotary_token')}`,
     });
+
+    const fetchStats = useCallback(async () => {
+        try {
+            const res = await fetch(`${API_URL}/agents/activity/stats`, { headers: getHeaders() });
+            if (res.ok) setStats(await res.json());
+        } catch { }
+    }, [token]);
+
+    useEffect(() => {
+        fetchStats();
+        // Poll for live activity every 15s
+        const interval = setInterval(fetchStats, 15000);
+        return () => clearInterval(interval);
+    }, [fetchStats]);
 
     // ── Fetch saved conversations for an agent ──
     const fetchConversations = useCallback(async (agentId: string) => {
@@ -465,6 +482,116 @@ const MissionControl: React.FC = () => {
                         </div>
                     )}
                 </div>
+
+                {/* ── LIVE OPERATIONS DASHBOARD (When no agent selected) ── */}
+                {!chatAgent && (
+                    <div className="w-[45%] rounded-r-2xl border-l border-white/10 flex flex-col overflow-hidden relative"
+                        style={{
+                            background: 'linear-gradient(to bottom, #0f1c3f, #070e20)',
+                            height: 'calc(100vh - 320px)', minHeight: '450px',
+                            animation: 'slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1)'
+                        }}
+                    >
+                        {/* Header */}
+                        <div className="px-6 py-5 border-b border-white/5 bg-black/20 flex-shrink-0 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-[#F7A81B]/10 blur-[40px] rounded-full pointer-events-none" />
+                            <div className="flex items-center justify-between relative z-10">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#00A2E0]/20 to-[#00A2E0]/5 flex items-center justify-center border border-[#00A2E0]/20">
+                                        <Activity className="w-5 h-5 text-[#00A2E0]" />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-white tracking-wide text-lg">Live Operations</h4>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                            <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Monitoreo en tiempo real</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {/* KPI Metrics */}
+                            <div className="grid grid-cols-3 gap-3 mt-6">
+                                <div className="bg-white/5 rounded-xl border border-white/5 px-4 py-3 relative overflow-hidden group">
+                                    <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    <p className="text-[9px] font-black text-white/40 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                                        <Zap className="w-3 h-3 text-emerald-400" /> Tareas
+                                    </p>
+                                    <p className="text-2xl font-black text-white">{stats?.totals?.toolsExecuted || 0}</p>
+                                </div>
+                                <div className="bg-white/5 rounded-xl border border-white/5 px-4 py-3">
+                                    <p className="text-[9px] font-black text-white/40 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                                        <BarChart3 className="w-3 h-3 text-[#F7A81B]" /> Tasa Éxito
+                                    </p>
+                                    <p className="text-2xl font-black text-white">
+                                        {stats?.totals?.toolsExecuted 
+                                            ? Math.round((stats.totals.toolsSuccessful / stats.totals.toolsExecuted) * 100) 
+                                            : 100}%
+                                    </p>
+                                </div>
+                                <div className="bg-white/5 rounded-xl border border-white/5 px-4 py-3">
+                                    <p className="text-[9px] font-black text-white/40 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                                        <Database className="w-3 h-3 text-[#00A2E0]" /> Análisis
+                                    </p>
+                                    <p className="text-2xl font-black text-white">{stats?.totals?.totalConversations || 0}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Activity Feed */}
+                        <div className="flex-1 overflow-y-auto px-6 py-5">
+                            <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] mb-4">Feed de Actividad (Últimas Acciones)</p>
+                            
+                            {(!stats?.recentActivity || stats.recentActivity.length === 0) ? (
+                                <div className="flex flex-col items-center justify-center h-40 text-center opacity-50">
+                                    <div className="w-12 h-12 rounded-full border border-white/10 flex items-center justify-center mb-3">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-[#00A2E0] animate-ping" />
+                                    </div>
+                                    <p className="text-xs font-bold text-white uppercase tracking-widest">Escaneando red neuronal</p>
+                                    <p className="text-[10px] text-white/50 mt-1">Esperando nuevas ejecuciones del equipo...</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {stats.recentActivity.map((act: any, i: number) => {
+                                        const ag = agents.find(a => a.name === act.agentName);
+                                        return (
+                                            <div key={i} className="flex gap-4 group">
+                                                {/* Line & node */}
+                                                <div className="flex flex-col items-center pt-1.5">
+                                                    <div className={`w-2.5 h-2.5 rounded-full border-2 border-[#0f1c3f] relative z-10 ${act.success ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]' : 'bg-red-400'}`} />
+                                                    {i !== stats.recentActivity.length - 1 && (
+                                                        <div className="w-[1px] flex-1 bg-white/10 mt-1" />
+                                                    )}
+                                                </div>
+                                                {/* Content */}
+                                                <div className="flex-1 bg-white/[0.03] border border-white/5 rounded-xl p-3.5 group-hover:bg-white/[0.06] transition-colors relative overflow-hidden">
+                                                    {ag && (
+                                                        <div className="absolute top-0 right-0 w-16 h-16 blur-2xl opacity-20" style={{ background: ag.avatarColor }} />
+                                                    )}
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        {ag && (
+                                                            <div className="w-4 h-4 rounded-full overflow-hidden border border-white/20">
+                                                                <img src={avatarUrl(ag.avatarSeed)} alt="" className="w-full h-full" />
+                                                            </div>
+                                                        )}
+                                                        <span className="text-[11px] font-black text-white">{act.agentName || 'Sistema'}</span>
+                                                        <span className="text-[10px] text-white/40 font-medium">· {new Date(act.createdAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute:'2-digit' })}</span>
+                                                    </div>
+                                                    <p className="text-[12px] text-white/80 font-medium leading-relaxed">{act.action}</p>
+                                                    {act.tool && (
+                                                        <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 bg-black/30 rounded border border-white/5">
+                                                            <span className="text-[9px] font-mono text-[#00A2E0]">{act.tool}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {/* Chat Panel */}
                 {chatAgent && (
