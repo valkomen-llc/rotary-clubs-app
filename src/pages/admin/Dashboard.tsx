@@ -9,9 +9,9 @@ import {
 import MissionControl from '../../components/admin/MissionControl';
 import AgentProgressBar from '../../components/admin/AgentProgressBar';
 import AgentActivityDashboard from '../../components/admin/AgentActivityDashboard';
-
 import { useAuth } from '../../hooks/useAuth';
 import { useSetupProgress } from '../../hooks/useSetupProgress';
+import { Terminal } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -343,8 +343,27 @@ const Dashboard: React.FC = () => {
                             </Link>
                         </div>
                     </div>
-                    <MissionControl />
-                    <div className="mt-8">
+                    
+                    {/* Mission Control Launchpad */}
+                    <div className="bg-[#0A0F1C] rounded-2xl p-8 mb-8 border border-gray-800 shadow-2xl relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-[#00A2E0]/10 rounded-full blur-[60px] pointer-events-none group-hover:bg-[#00A2E0]/20 transition-all duration-700" />
+                        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                            <div>
+                                <h3 className="text-xl font-black text-white flex items-center gap-3 tracking-tight">
+                                    <Terminal className="w-6 h-6 text-[#00A2E0]" />
+                                    Gateway Control Plane
+                                </h3>
+                                <p className="text-sm text-gray-400 mt-2 max-w-lg">
+                                    Accede al centro de comando inmersivo para orquestar a los agentes de IA, monitorear operaciones en vivo y revisar logs de red neuronal.
+                                </p>
+                            </div>
+                            <Link to="/admin/agentes" className="bg-[#00A2E0]/10 hover:bg-[#00A2E0]/20 border border-[#00A2E0]/30 text-[#00A2E0] px-6 py-3 rounded-xl font-bold transition-all whitespace-nowrap hidden md:block shadow-[0_0_20px_rgba(0,162,224,0.1)] hover:shadow-[0_0_30px_rgba(0,162,224,0.2)]">
+                                Enter System [⌘+K]
+                            </Link>
+                        </div>
+                    </div>
+
+                    <div>
                         <AgentActivityDashboard />
                     </div>
                 </>

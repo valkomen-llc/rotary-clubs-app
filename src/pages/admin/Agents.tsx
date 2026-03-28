@@ -4,8 +4,7 @@ import {
     ChevronDown, ChevronUp, Bot, Rocket, CheckCircle, AlertTriangle, Loader
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
-import AdminLayout from '../../components/admin/AdminLayout';
-
+import MissionControlLayout from '../../components/admin/MissionControlLayout';
 const API = import.meta.env.VITE_API_URL || '/api';
 const avatar = (seed: string) => `https://api.dicebear.com/9.x/adventurer/svg?seed=${seed}&backgroundColor=transparent`;
 
@@ -192,17 +191,18 @@ const AgentsManagement: React.FC = () => {
         return acc;
     }, {} as Record<string, Agent[]>);
 
-    if (loading) return (
-        <AdminLayout>
-            <div className="flex items-center justify-center h-64">
-                <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-            </div>
-        </AdminLayout>
-    );
-
-    return (
+    if (loading) {
+        return (
+            <MissionControlLayout>
+                <div className="flex flex-col items-center justify-center p-20">
+                    <Loader className="w-8 h-8 text-[#00A2E0] animate-spin mb-4" />
+                    <p className="text-white/50 text-sm">Cargando módulos neuro-semánticos...</p>
+                </div>
+            </MissionControlLayout>
+        );
+    } return (
         <>
-        <AdminLayout>
+        <MissionControlLayout>
             <div className="space-y-6">
                 {/* Header */}
                 <div className="flex items-center justify-between">
@@ -428,7 +428,7 @@ const AgentsManagement: React.FC = () => {
                     );
                 })}
             </div>
-        </AdminLayout>
+        </MissionControlLayout>
 
         {/* ── Modal confirmación deploy ─────────────────────────── */}
         {showDeployConfirm && (
