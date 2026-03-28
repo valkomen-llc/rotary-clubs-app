@@ -80,7 +80,7 @@ app.use('/api/ngse', ngseRoutes);
 app.use('/api/rotex', rotexRoutes);
 app.use('/api/financial', financialRoutes);
 app.use('/api/seo', seoRoutes);
-app.use('/api/whatsapp-crm', whatsappCrmRoutes);
+app.use('/api/whatsapp', whatsappCrmRoutes);
 app.use('/api/agents', agentsRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/districts', districtsRoutes);
