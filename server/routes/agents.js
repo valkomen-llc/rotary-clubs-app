@@ -1,6 +1,7 @@
 import express from 'express';
 import db from '../lib/db.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { executeTool, getToolsForAgent } from '../lib/agent-tools.js';
 
 const router = express.Router();
 
@@ -679,6 +680,122 @@ router.get('/activity/stats', authMiddleware, async (req, res) => {
     } catch (error) {
         console.error('Activity stats error:', error);
         res.json({ agentStats: [], recentActivity: [], weeklyTimeline: [], totals: {} });
+    }
+});
+
+// ── Webhook Orquestador Interno (Elena) ───────────────────────────────────
+router.post('/orchestrate', async (req, res) => {
+    const { type, payload, clubId } = req.body;
+    if (!type || !payload || !clubId) return res.status(400).json({ error: 'Faltan campos requeridos' });
+
+    try {
+        // Encontrar a la agente orquestadora (Elena)
+        const agentQuery = await db.query(
+            `SELECT id, name FROM "Agent" WHERE LOWER(name) = 'elena' AND ("clubId" = $1 OR "clubId" IS NULL) ORDER BY "clubId" DESC NULLS LAST LIMIT 1`,
+            [clubId]
+        );
+        if (agentQuery.rows.length === 0) return res.status(404).json({ error: 'Orchestrator not found' });
+        
+        const elena = agentQuery.rows[0];
+
+        let eventPrompt = '';
+        if (type === 'onboarding_complete') {
+            eventPrompt = `EVENTO DEL SISTEMA: El club acaba de completar su Onboarding inicial.\n\nDatos del Club: ${JSON.stringify(payload, null, 2)}\n\nInstrucción para Orquestadora: Analiza estos datos y usa la herramienta 'delegate_task' al menos 2 veces para asignar tareas iniciales a tu equipo (ej: a Diana para estrategia, o Martín para SEO). Si no requiere más, delega solo 1.`;
+        } else if (type === 'new_contact_lead') {
+            eventPrompt = `EVENTO DEL SISTEMA: Nuevo mensaje de contacto (Lead) recibido desde el sitio web público.\n\nDatos del Lead: ${JSON.stringify(payload, null, 2)}\n\nInstrucción para Orquestadora: Analiza este mensaje y usa la herramienta 'delegate_task' para asignar el seguimiento a Isabel (Email Outreach) o Andrés (Social Media) dependiendo de la naturaleza del mensaje.`;
+        } else {
+            eventPrompt = `EVENTO DEL SISTEMA: ${type}\n\nDatos: ${JSON.stringify(payload, null, 2)}\n\nInstrucción: Toma medidas delegando tareas a tu equipo según corresponda con 'delegate_task'.`;
+        }
+
+        const orchestratorTools = getToolsForAgent(['orchestrate']);
+        
+        const systemPrompt = `Tu nombre es Elena, la Directora General y Orquestadora.
+Tu función es recibir EVENTOS DEL SISTEMA y DELEGAR tareas específicas a tu equipo usando la herramienta 'delegate_task'.
+Tu equipo disponible: Diana (Estrategia/Marca), Andrés (Social Media), Martín (SEO), Lucía (Pauta Digital), Isabel (Email Outreach), Rafael (Content/Copy).
+DEBES USAR OBLIGATORIAMENTE la herramienta 'delegate_task' mediante function calling para procesar este evento.`;
+
+        if (process.env.GEMINI_API_KEY) {
+            // Map OpenAI-style tools to Gemini Function Declarations
+            const geminiTools = orchestratorTools.map(t => {
+                const props = {};
+                for (const [k, v] of Object.entries(t.function.parameters.properties)) {
+                    props[k] = { type: v.type.toUpperCase(), description: v.description };
+                    if (v.enum) props[k].enum = v.enum;
+                }
+                return {
+                    name: t.function.name,
+                    description: t.function.description,
+                    parameters: {
+                        type: "OBJECT",
+                        properties: props,
+                        required: t.function.parameters.required
+                    }
+                };
+            });
+
+            const body = {
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                contents: [{ role: 'user', parts: [{ text: eventPrompt }] }],
+                tools: [{ functionDeclarations: geminiTools }],
+                toolConfig: { functionCallingConfig: { mode: "AUTO" } },
+                generationConfig: { temperature: 0.2 }
+            };
+
+            // Ejecución Asíncrona: responde al frontend inmediatamente, Gemini trabaja de fondo
+            fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }).then(async response => {
+                const data = await response.json();
+                const candidate = data.candidates?.[0];
+                const parts = candidate?.content?.parts || [];
+                
+                for (const part of parts) {
+                    if (part.functionCall) {
+                        try {
+                            const name = part.functionCall.name;
+                            const args = part.functionCall.args;
+                            console.log(`[Orquestadora Gemini] Ejecutando: ${name} para ${args.target_agent}`);
+                            await executeTool(name, args, null, clubId);
+                        } catch(err) { console.error('Error parseando tool call de Gemini:', err); }
+                    }
+                }
+            }).catch(e => console.error('Orchestration async error:', e.message));
+        } else if (process.env.OPENAI_API_KEY) {
+            const openaiPayload = {
+                model: 'gpt-4-turbo-preview',
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: eventPrompt }
+                ],
+                tools: orchestratorTools,
+                tool_choice: 'auto'
+            };
+
+            fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
+                body: JSON.stringify(openaiPayload)
+            }).then(async response => {
+                const data = await response.json();
+                const choice = data.choices?.[0];
+                if (choice?.message?.tool_calls) {
+                    for (const toolCall of choice.message.tool_calls) {
+                        try {
+                            const args = JSON.parse(toolCall.function.arguments);
+                            console.log(`[Orquestadora OpenAI] Ejecutando: ${toolCall.function.name} para ${args.target_agent}`);
+                            await executeTool(toolCall.function.name, args, null, clubId);
+                        } catch(err) { console.error('Error parseando tool call de Orquestadora:', err); }
+                    }
+                }
+            }).catch(e => console.error('Orchestration async error:', e.message));
+        }
+
+        return res.json({ success: true, message: 'Orchestration event dispatched', agentId: elena.id });
+    } catch (error) {
+        console.error('Orchestration webhook error:', error);
+        res.status(500).json({ error: 'Error processing orchestration' });
     }
 });
 

@@ -89,7 +89,10 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         }
     });
 
-    const isSuperAdmin = user?.role === 'administrator';
+    // True super admin = role 'administrator' AND no club assigned (platform-wide)
+    const storedClubData = (() => { try { return JSON.parse(localStorage.getItem('rotary_club') || '{}'); } catch { return {}; } })();
+    const userClubId = (user as any)?.clubId || (user as any)?.club?.id || storedClubData?.id;
+    const isSuperAdmin = user?.role === 'administrator' && !userClubId;
     // Skip setup gating if the club already has a published custom domain
     const hasPublishedDomain = (club as any)?.domain && !(club as any).domain.includes('clubplatform.org');
 
@@ -118,7 +121,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     useEffect(() => {
         // Fetch dashboard stats
         const token = localStorage.getItem('rotary_token');
-        fetch(`${API}/admin/stats`, { headers: { Authorization: `Bearer ${token}` } })
+        const statsUrl = userClubId ? `${API}/admin/stats?clubId=${userClubId}` : `${API}/admin/stats`;
+        fetch(statsUrl, { headers: { Authorization: `Bearer ${token}` } })
             .then(r => r.ok ? r.json() : null).then(d => d && setStats(d)).catch(() => { });
         // Fetch GA4 totals — only if super admin (global) or club has a hostname
         if (isSuperAdmin) {

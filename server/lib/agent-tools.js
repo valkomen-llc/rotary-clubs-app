@@ -122,6 +122,23 @@ export const AGENT_TOOLS = [
         },
         requiredCapabilities: ['trigger_n8n'],
     },
+    {
+        type: 'function',
+        function: {
+            name: 'delegate_task',
+            description: 'Asigna una tarea o delega una responsabilidad a otro agente especializado del equipo. Usa esta herramienta para distribuir el trabajo tras recibir un nuevo club, proyecto o lead de contacto.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    target_agent: { type: 'string', description: 'Nombre exacto del agente al que se le delega la tarea (Ej: Diana, Andrés, Martín, Lucía, Isabel, Rafael)' },
+                    task_description: { type: 'string', description: 'Descripción clara y detallada de lo que el agente debe hacer o el plan de acción' },
+                    urgency: { type: 'string', description: 'Nivel de urgencia', enum: ['baja', 'media', 'alta'] }
+                },
+                required: ['target_agent', 'task_description'],
+            },
+        },
+        requiredCapabilities: ['delegate', 'orchestrate'],
+    },
 ];
 
 
@@ -275,6 +292,68 @@ const toolExecutors = {
                 success: false,
                 action: 'trigger_n8n_webhook',
                 message: `❌ Error de red al disparar n8n: ${error.message}`
+            };
+        }
+    },
+
+    async delegate_task(args, userId, clubId) {
+        const { target_agent, task_description, urgency } = args;
+        
+        try {
+            // Find target agent id
+            const agentQuery = await db.query('SELECT id FROM "Agent" WHERE LOWER(name) = LOWER($1) AND ("clubId" = $2 OR "clubId" IS NULL) LIMIT 1', [target_agent, clubId]);
+            if (agentQuery.rows.length === 0) {
+                return { success: false, action: 'delegate_task', message: `❌ No se encontró al agente ${target_agent}.` };
+            }
+            const targetAgentId = agentQuery.rows[0].id;
+
+            // Generate a conversation ID for the delegated task
+            // Ensure tables exist before inserting
+            await db.query(`
+                CREATE TABLE IF NOT EXISTS "AgentConversation" (
+                    id VARCHAR(60) PRIMARY KEY, "agentId" UUID, "clubId" UUID, title VARCHAR(255),
+                    "lastMessage" TEXT, "messageCount" INT DEFAULT 0, "createdAt" TIMESTAMPTZ DEFAULT NOW(), "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+                )
+            `).catch(() => {});
+            await db.query(`
+                CREATE TABLE IF NOT EXISTS "AgentMessage" (
+                    id SERIAL PRIMARY KEY, "conversationId" VARCHAR(60), role VARCHAR(20), text TEXT, "createdAt" TIMESTAMPTZ DEFAULT NOW()
+                )
+            `).catch(() => {});
+
+            const conversationId = `delegated-${Date.now()}`;
+            const promptMsg = `[TAREA DELEGADA POR ORQUESTADOR] Urgencia: ${urgency || 'Media'}\n\nRequerimiento:\n${task_description}`;
+
+            await db.query(`
+                INSERT INTO "AgentConversation" (id, "agentId", "clubId", title, "lastMessage", "messageCount", "updatedAt")
+                VALUES ($1, $2, $3, $4, $5, $6, NOW())
+            `, [conversationId, targetAgentId, clubId, 'Tarea Delegada', promptMsg, 1]);
+            
+            await db.query(`
+                INSERT INTO "AgentMessage" ("conversationId", role, text, "createdAt")
+                VALUES ($1, 'user', $2, NOW())
+            `, [conversationId, promptMsg]);
+
+            // Track the activity
+            await db.query(`
+                INSERT INTO "AgentActivity" ("agentId", "agentName", "userId", "clubId", action, tool, details, success)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            `, [targetAgentId, target_agent, userId || null, clubId, 'task_received', 'delegate_task', JSON.stringify({ urgency }), true]).catch(() => {});
+
+            return {
+                success: true,
+                action: 'delegate_task',
+                emoji: '🤝',
+                label: `Tarea asignada a ${target_agent}`,
+                data: { target_agent, task_description },
+                message: `✅ Tarea delegada exitosamente a ${target_agent}.`
+            };
+        } catch (error) {
+            console.error('delegate_task error:', error);
+            return {
+                success: false,
+                action: 'delegate_task',
+                message: `❌ Error al delegar la tarea: ${error.message}`
             };
         }
     },

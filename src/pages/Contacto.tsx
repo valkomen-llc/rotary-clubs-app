@@ -198,6 +198,25 @@ const Contacto = () => {
       });
       if (res.ok) {
         setEnviado(true);
+
+        // ── Trigger Orchestrator Background Task ──
+        fetch(`${API}/agents/orchestrate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clubId: club.id,
+            type: 'new_contact_lead',
+            payload: {
+              name: fullName,
+              subject: formData.asunto,
+              message: formData.mensaje,
+              contact_info: { email: formData.email, phone: formData.telefono },
+              source: showExtended ? 'involucrate_form' : 'contact_form',
+              metadata
+            }
+          })
+        }).catch(err => console.error('[Orchestration] Dispatch failed:', err));
+
         setFormData({
           nombre: '', apellido: '', email: '', telefono: '', asunto: '', mensaje: '',
           profesion: '', empleador: '', rangoEdad: '', genero: '',

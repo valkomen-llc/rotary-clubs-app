@@ -36,7 +36,12 @@ const Skeleton = ({ h = 'h-8', w = 'w-24' }: { h?: string; w?: string }) => (
 
 const AnalyticsPage: React.FC = () => {
     const { user } = useAuth();
-    const isSuperAdmin = (user as any)?.role === 'administrator';
+    // True super admin = role 'administrator' AND no club assigned
+    const userClubId = (() => {
+        try { const c = JSON.parse(localStorage.getItem('rotary_club') || '{}'); return (user as any)?.clubId || c?.id || null; }
+        catch { return (user as any)?.clubId || null; }
+    })();
+    const isSuperAdmin = (user as any)?.role === 'administrator' && !userClubId;
 
     const [data, setData] = useState<TrafficData | null>(null);
     const [loading, setLoading] = useState(true);

@@ -425,6 +425,18 @@ const OnboardingWizard = ({ onDismiss }: { onDismiss: () => void }) => {
                         method: 'PATCH',
                         headers: { Authorization: `Bearer ${token}` },
                     });
+
+                    // ── Trigger Orchestrator Background Task ──
+                    fetch(`${apiUrl}/agents/orchestrate`.replace(/\/+/g, '/').replace(':/', '://'), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            clubId: club.id,
+                            type: 'onboarding_complete',
+                            payload: { clubName: club.name || 'El Club', step: 8 }
+                        })
+                    }).catch(err => console.error('[Orchestration] Dispatch failed:', err));
+
                 } catch (_) { }
             }
             setSaving(false);
