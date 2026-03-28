@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
-import { useAuth } from '../../hooks/useAuth';
+import { useClub } from '../../contexts/ClubContext';
 import {
     AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip,
     ResponsiveContainer, PieChart, Pie, Cell,
@@ -34,14 +34,22 @@ const Skeleton = ({ h = 'h-8', w = 'w-24' }: { h?: string; w?: string }) => (
     <div className={`${h} ${w} bg-gray-100 rounded-lg animate-pulse`} />
 );
 
+const PLATFORM_HOSTS = ['clubplatform.org', 'www.clubplatform.org', 'app.clubplatform.org', 'localhost'];
+
 const AnalyticsPage: React.FC = () => {
-    const { user } = useAuth();
-    // True super admin = role 'administrator' AND no club assigned
-    const userClubId = (() => {
-        try { const c = JSON.parse(localStorage.getItem('rotary_club') || '{}'); return (user as any)?.clubId || c?.id || null; }
-        catch { return (user as any)?.clubId || null; }
-    })();
-    const isSuperAdmin = (user as any)?.role === 'administrator' && !userClubId;
+    const { club } = useClub();
+
+    // Detect if we're on a club-specific domain vs the platform itself
+    const currentHost = window.location.hostname;
+    const isOnClubDomain = !PLATFORM_HOSTS.includes(currentHost);
+
+    // The hostname to filter GA4 by — always use actual browser hostname for club sites
+    const clubHostname: string | null = isOnClubDomain
+        ? currentHost
+        : ((club as any)?.domain || ((club as any)?.subdomain ? `${(club as any).subdomain}.clubplatform.org` : null));
+
+    // Only show global (unfiltered) data when on the platform domain AND no specific club loaded
+    const showGlobal = !isOnClubDomain && !clubHostname;
 
     const [data, setData] = useState<TrafficData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -49,22 +57,11 @@ const AnalyticsPage: React.FC = () => {
     const [metric, setMetric] = useState<'value' | 'users' | 'pageViews'>('value');
     const [geoTab, setGeoTab] = useState<'countries' | 'cities'>('cities');
 
-    const clubHostname: string | null = (() => {
-        try {
-            const stored = localStorage.getItem('rotary_club');
-            if (stored) {
-                const c = JSON.parse(stored);
-                return c.domain || (c.subdomain ? `${c.subdomain}.clubplatform.org` : null);
-            }
-        } catch { /* ignore */ }
-        return null;
-    })();
-
     const fetchData = useCallback(async (p: string) => {
         setLoading(true);
         try {
             const days = PERIOD_MAP[p] || '30';
-            const hostnameParam = isSuperAdmin ? '' : (clubHostname ? `&hostname=${encodeURIComponent(clubHostname)}` : '');
+            const hostnameParam = showGlobal ? '' : (clubHostname ? `&hostname=${encodeURIComponent(clubHostname)}` : '');
             const r = await fetch(`${API}/analytics/traffic?days=${days}${hostnameParam}`);
             const d = await r.json();
             setData(d);
@@ -73,7 +70,7 @@ const AnalyticsPage: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [isSuperAdmin, clubHostname]);
+    }, [showGlobal, clubHostname]);
 
     useEffect(() => { fetchData(period); }, []);
 
@@ -97,7 +94,7 @@ const AnalyticsPage: React.FC = () => {
                 <div>
                     <h1 className="text-3xl font-black text-gray-900 tracking-tight">Analytics</h1>
                     <p className="text-sm text-gray-400 font-medium mt-1">
-                        {isSuperAdmin
+                        {showGlobal
                             ? 'Todos los sitios de la plataforma'
                             : clubHostname || 'Tu sitio web'}
                     </p>

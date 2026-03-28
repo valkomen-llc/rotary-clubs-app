@@ -89,12 +89,22 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         }
     });
 
-    // True super admin = role 'administrator' AND no club assigned (platform-wide)
-    const storedClubData = (() => { try { return JSON.parse(localStorage.getItem('rotary_club') || '{}'); } catch { return {}; } })();
-    const userClubId = (user as any)?.clubId || (user as any)?.club?.id || storedClubData?.id;
-    const isSuperAdmin = user?.role === 'administrator' && !userClubId;
+    // ── Domain-based super admin detection ──
+    // If user is on a club-specific domain, always treat as club context
+    const PLATFORM_HOSTS = ['clubplatform.org', 'www.clubplatform.org', 'app.clubplatform.org', 'localhost'];
+    const currentHost = window.location.hostname;
+    const isOnClubDomain = !PLATFORM_HOSTS.includes(currentHost);
+
+    // isSuperAdmin = on the platform domain AND role is administrator
+    const isSuperAdmin = !isOnClubDomain && user?.role === 'administrator';
+
     // Skip setup gating if the club already has a published custom domain
-    const hasPublishedDomain = (club as any)?.domain && !(club as any).domain.includes('clubplatform.org');
+    const hasPublishedDomain = isOnClubDomain;
+
+    // Hostname for GA4 filtering
+    const clubHostname: string | null = isOnClubDomain
+        ? currentHost
+        : ((club as any)?.domain || ((club as any)?.subdomain ? `${(club as any).subdomain}.clubplatform.org` : null));
 
     // Redirect to dashboard if trying to access locked route
     useEffect(() => {
@@ -110,33 +120,29 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             return () => clearTimeout(t);
         }
     }, [lockedToast]);
-    const clubHostname: string | null = (() => {
-        try {
-            const s = localStorage.getItem('rotary_club');
-            if (s) { const c = JSON.parse(s); return c.domain || (c.subdomain ? `${c.subdomain}.clubplatform.org` : null); }
-        } catch { }
-        return null;
-    })();
 
     useEffect(() => {
         // Fetch dashboard stats
         const token = localStorage.getItem('rotary_token');
-        const statsUrl = userClubId ? `${API}/admin/stats?clubId=${userClubId}` : `${API}/admin/stats`;
+        // For club domains, pass the club.id from context; for platform, no filter
+        const clubId = (club as any)?.id;
+        const statsUrl = clubId ? `${API}/admin/stats?clubId=${clubId}` : `${API}/admin/stats`;
         fetch(statsUrl, { headers: { Authorization: `Bearer ${token}` } })
             .then(r => r.ok ? r.json() : null).then(d => d && setStats(d)).catch(() => { });
-        // Fetch GA4 totals — only if super admin (global) or club has a hostname
-        if (isSuperAdmin) {
-            fetch(`${API}/analytics/traffic?days=30`)
-                .then(r => r.json())
-                .then(d => { setGaMock(!!d.mock); if (d.totals) setGaTotals(d.totals); })
-                .catch(() => setGaMock(true));
-        } else if (clubHostname) {
+
+        // Fetch GA4 totals
+        if (clubHostname) {
             fetch(`${API}/analytics/traffic?days=30&hostname=${encodeURIComponent(clubHostname)}`)
                 .then(r => r.json())
                 .then(d => { setGaMock(!!d.mock); if (d.totals) setGaTotals(d.totals); })
                 .catch(() => setGaMock(true));
+        } else if (isSuperAdmin) {
+            fetch(`${API}/analytics/traffic?days=30`)
+                .then(r => r.json())
+                .then(d => { setGaMock(!!d.mock); if (d.totals) setGaTotals(d.totals); })
+                .catch(() => setGaMock(true));
         } else {
-            // No hostname available — show zeros, don't fetch global data
+            // No hostname available — show zeros
             setGaMock(true);
             setGaTotals({ users: 0, pageViews: 0 });
         }
