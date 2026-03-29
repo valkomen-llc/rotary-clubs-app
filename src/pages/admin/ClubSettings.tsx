@@ -44,6 +44,19 @@ const ClubSettings: React.FC = () => {
     const [paypalClientId, setPaypalClientId] = useState('');
     const [paypalSecretKey, setPaypalSecretKey] = useState('');
 
+    const [mapStyle, setMapStyle] = useState<string>('m');
+    const [savingMap, setSavingMap] = useState(false);
+
+    useEffect(() => {
+        if (isSuperAdmin) {
+            const token = localStorage.getItem('rotary_token');
+            fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/global-map-style`, { headers: { Authorization: `Bearer ${token}` } })
+                .then(r => r.json())
+                .then(data => setMapStyle(data.mapStyle || 'm'))
+                .catch(() => { });
+        }
+    }, [isSuperAdmin]);
+
     useEffect(() => {
         if (club) {
             setFormData({
@@ -295,6 +308,31 @@ const ClubSettings: React.FC = () => {
         } finally {
             setUploading(false);
             if (e.target) e.target.value = '';
+        }
+    };
+
+    const handleSaveMapStyle = async () => {
+        setSavingMap(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/global-map-style`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ mapStyle })
+            });
+
+            if (res.ok) {
+                toast.success('Estilo de mapa guardado globalmente');
+            } else {
+                toast.error('Error al guardar el estilo de mapa');
+            }
+        } catch (error) {
+            toast.error('Error de conexión');
+        } finally {
+            setSavingMap(false);
         }
     };
 
@@ -835,6 +873,56 @@ const ClubSettings: React.FC = () => {
                         )}
                     </div>
                 </div>
+
+                {/* SUPER ADMIN: Global Configuration */}
+                {isSuperAdmin && (
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-emerald-100 ring-1 ring-emerald-500/10 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl tracking-wider">
+                            GLOBAL PLATFORM
+                        </div>
+                        <h3 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
+                            <Globe className="w-5 h-5 text-emerald-600" /> Configuración Global de la Plataforma
+                        </h3>
+
+                        <div className="flex flex-col md:flex-row gap-6 p-5 border border-gray-100 rounded-xl bg-gray-50/50">
+                            <div className="md:w-1/3">
+                                <h4 className="font-bold text-gray-900 text-sm mb-1">Mapas de Google</h4>
+                                <p className="text-xs text-gray-500">
+                                    Aplica un estilo visual a los mapas de las <strong>secciones de contacto</strong> de TODOS los clubes que usen la plataforma.
+                                </p>
+                            </div>
+                            <div className="md:w-2/3">
+                                <label className="block text-xs font-bold text-gray-700 uppercase mb-2">
+                                    Estilo del Mapa
+                                </label>
+                                <div className="flex gap-3">
+                                    <select
+                                        value={mapStyle}
+                                        onChange={(e) => setMapStyle(e.target.value)}
+                                        className="flex-1 bg-white border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-rotary-blue/20 outline-none transition-all"
+                                    >
+                                        <option value="m">Estándar (Predeterminado)</option>
+                                        <option value="k">Satélite (Sin etiquetas)</option>
+                                        <option value="h">Híbrido (Satélite + Etiquetas)</option>
+                                        <option value="p">Terreno / Relieve</option>
+                                    </select>
+                                    <button
+                                        type="button"
+                                        onClick={handleSaveMapStyle}
+                                        disabled={savingMap}
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg flex items-center justify-center gap-2 font-bold text-sm transition-colors disabled:opacity-50"
+                                    >
+                                        {savingMap ? 'Guardando...' : (
+                                            <>
+                                                <Save className="w-4 h-4" /> Aplicar Estilo
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* AI & Strategy Settings */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
