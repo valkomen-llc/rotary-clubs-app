@@ -69,7 +69,7 @@ const QuienesSomos = () => {
         }}
       >
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <p className="text-white leading-tight font-light" style={{ fontSize: '30px' }}>
+          <p className="text-white leading-tight font-light" style={{ fontSize: '28px' }}>
             {getC('intro', 'quote', "Rotary es una red mundial compuesta de 1.400.000 vecinos, amigos, líderes y personas dedicadas a solucionar problemas, quienes ven un planeta en que las personas se unen y toman acción para generar un cambio perdurable en el mundo, sus comunidades y en sí mismos.")}
           </p>
         </div>
