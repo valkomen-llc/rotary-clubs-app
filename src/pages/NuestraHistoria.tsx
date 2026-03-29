@@ -4,21 +4,25 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
+import { useSiteImages } from '../hooks/useSiteImages';
 
 const NuestraHistoria = () => {
   const { club } = useClub();
   const { sections } = useCMSContent('nuestra-historia', club.id);
+  const images = useSiteImages();
   const [currentImage, setCurrentImage] = useState(0);
 
   const getC = (section: string, field: string, fallback: string) => {
     return sections[section]?.[field] || fallback;
   }
 
-  const galleryImages = sections['gallery']?.images || [
-    'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=500&fit=crop',
-    'https://images.unsplash.com/photo-1552664730-d307ca884978?w=800&h=500&fit=crop',
-    'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&h=500&fit=crop',
-    'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800&h=500&fit=crop'
+  const heroImage = images?.history?.[0]?.url || "https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=500&fit=crop";
+  const timelineImage = images?.history?.[1]?.url || "https://images.unsplash.com/photo-1552664730-d307ca884978?w=600&h=400&fit=crop";
+  
+  const galleryImages = [
+    images?.history?.[2]?.url || 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=500&fit=crop',
+    images?.history?.[3]?.url || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&h=500&fit=crop',
+    images?.history?.[4]?.url || 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800&h=500&fit=crop'
   ];
 
   const nextImage = () => {
@@ -37,7 +41,7 @@ const NuestraHistoria = () => {
       <section className="relative w-full h-[350px] md:h-[450px] overflow-hidden">
         <div className="absolute inset-0">
           <img
-            src={getC('hero', 'image', "https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=500&fit=crop")}
+            src={heroImage}
             alt="Rotary Historical"
             className="w-full h-full object-cover"
           />
@@ -127,7 +131,7 @@ const NuestraHistoria = () => {
 
             <div className="md:w-1/2">
               <img
-                src={getC('timeline', 'image', "https://images.unsplash.com/photo-1552664730-d307ca884978?w=600&h=400&fit=crop")}
+                src={timelineImage}
                 alt="Rotary History"
                 className="w-full h-full object-cover min-h-[300px]"
               />

@@ -11,6 +11,12 @@ export interface SiteImages {
     aboutCarousel?: ImgSlot[];
     causesHero?: ImgSlot;
     polio?: ImgSlot;
+    history?: ImgSlot[];
+    rotaract?: ImgSlot;
+    interact?: ImgSlot;
+    yep?: ImgSlot;
+    ngse?: ImgSlot;
+    rotex?: ImgSlot;
 }
 
 export function useSiteImages(): SiteImages {
