@@ -147,14 +147,7 @@ const Rotaract = () => {
 
             {/* Premium CTA Section */}
             <section 
-                className="py-24 relative overflow-hidden"
-                style={{
-                    backgroundColor: '#0c3c7c',
-                    backgroundImage: "url('/geo-darkblue.png')",
-                    backgroundPosition: '50% 0',
-                    backgroundRepeat: 'repeat',
-                    backgroundSize: '71px 85px'
-                }}
+                className="py-24 bg-rotary-geo relative overflow-hidden"
             >
                 <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
                     <h2 className="text-4xl md:text-5xl font-normal text-white mb-8">
