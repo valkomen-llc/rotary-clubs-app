@@ -122,7 +122,7 @@ export default function AppLogin() {
                 </div>
 
                 <p className="text-center text-gray-400 text-[11px] mt-6">
-                    © {new Date().getFullYear()} ClubPlatform — Plataforma digital para Clubes Rotarios · Por <a href="https://valkomen.com" target="_blank" rel="noopener noreferrer" className="font-bold hover:text-gray-600 transition-colors">Valkomen LLC</a>
+                    © {new Date().getFullYear()} ClubPlatform — Plataforma digital para Clubes Rotarios · Por <a href="https://valkomen.com" target="_blank" rel="noopener noreferrer" className="font-bold hover:text-gray-600 transition-colors">Valkomen</a>
                 </p>
             </div>
         </div>
