@@ -51,7 +51,11 @@ const DEFAULTS = {
     ],
     rotaract: { url: 'https://images.unsplash.com/photo-1529390079861-591de354faf5?w=1600&h=800&fit=crop', alt: 'Club Rotaract' },
     interact: { url: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=1600&h=800&fit=crop', alt: 'Club Interact' },
-    yep: { url: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes' },
+    yep: [
+        { url: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes 1' },
+        { url: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes 2' },
+        { url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes 3' }
+    ],
     ngse: { url: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=1600&h=800&fit=crop', alt: 'NGSE' },
     rotex: { url: 'https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?w=1600&h=800&fit=crop', alt: 'ROTEX' },
     chatbotPublicAvatar: { url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face', alt: 'Avatar Público' },
@@ -71,7 +75,7 @@ interface SiteImages {
     history: ImgSlot[];
     rotaract?: ImgSlot;
     interact?: ImgSlot;
-    yep?: ImgSlot;
+    yep?: ImgSlot[];
     ngse?: ImgSlot;
     rotex?: ImgSlot;
     chatbotPublicAvatar?: ImgSlot;
@@ -120,7 +124,7 @@ const ImageDistribution: React.FC = () => {
         const c = club as any;
         if (c?.modules?.rotaract) active.push({ key: 'rotaract', label: 'Club Rotaract', desc: 'Imagen de portada para la sección Rotaract.', count: 1, aspect: '16/8' });
         if (c?.modules?.interact) active.push({ key: 'interact', label: 'Club Interact', desc: 'Imagen de portada para la sección Interact.', count: 1, aspect: '16/8' });
-        if (c?.modules?.youthExchange) active.push({ key: 'yep', label: 'Intercambio de Jóvenes (YEP)', desc: 'Imagen de portada para el portal YEP.', count: 1, aspect: '16/8' });
+        if (c?.modules?.youthExchange) active.push({ key: 'yep', label: 'Intercambio de Jóvenes (YEP)', desc: 'Imágenes del slider para el portal YEP.', count: 3, aspect: '16/8' });
         if (c?.modules?.ngse) active.push({ key: 'ngse', label: 'Intercambios NGSE', desc: 'Imagen de portada para la directiva de NGSE.', count: 1, aspect: '16/8' });
         if (c?.modules?.rotex) active.push({ key: 'rotex', label: 'Red ROTEX', desc: 'Imagen de portada para los ex-intercambistas.', count: 1, aspect: '16/8' });
         return active;

@@ -14,7 +14,7 @@ export interface SiteImages {
     history?: ImgSlot[];
     rotaract?: ImgSlot;
     interact?: ImgSlot;
-    yep?: ImgSlot;
+    yep?: ImgSlot[];
     ngse?: ImgSlot;
     rotex?: ImgSlot;
     chatbotPublicAvatar?: ImgSlot;
