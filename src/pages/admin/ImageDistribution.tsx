@@ -114,10 +114,12 @@ const ImageDistribution: React.FC = () => {
     }, [club]);
 
     const [images, setImages] = useState<SiteImages | null>(null);
+    const [baseImages, setBaseImages] = useState<SiteImages | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [dirty, setDirty] = useState(false);
     const [expanded, setExpanded] = useState<Record<string, boolean>>({ hero: true, causes: false, foundation: false, join: false });
+
     // Media picker
     const [pickerOpen, setPickerOpen] = useState(false);
     const [pickerTarget, setPickerTarget] = useState<{ key: string; index: number } | null>(null);
@@ -132,43 +134,45 @@ const ImageDistribution: React.FC = () => {
     const clubId = isSuperAdmin ? null : (user?.clubId || (club as any)?.id);
     const viewClubId = (club as any)?.id; // for loading images (always need a club context)
 
+    // Build complete images object overlaying over DEFAULTS
+    const buildImages = React.useCallback((src: any) => {
+        const result: any = {};
+        for (const key of Object.keys(DEFAULTS)) {
+            const def = (DEFAULTS as any)[key];
+            if (Array.isArray(def)) result[key] = src?.[key] || def.map((d: any) => ({ ...d }));
+            else result[key] = src?.[key] || { ...def };
+        }
+        return result as SiteImages;
+    }, []);
+
     // ── Load current site images ──────────────────────────────────────────
     useEffect(() => {
         if (!viewClubId && !isSuperAdmin) { setLoading(false); return; }
         (async () => {
             try {
-                // Super admin: load global images (clubId=NULL) directly from DB
-                // Club admin: load merged (global + club) from site-images endpoint
-                let data: any = {};
                 if (isSuperAdmin) {
                     const res = await fetch(`${API}/clubs/_global/site-images?_t=${Date.now()}`);
-                    data = res.ok ? await res.json() : {};
+                    const data = res.ok ? await res.json() : {};
+                    setImages(buildImages(data));
+                    setBaseImages(buildImages({})); // Super admin's default is the hardcoded Vite DEFAULTS
                 } else {
                     const res = await fetch(`${API}/clubs/${viewClubId}/site-images?_t=${Date.now()}`);
-                    data = res.ok ? await res.json() : {};
+                    const data = res.ok ? await res.json() : {};
+                    setImages(buildImages(data));
+
+                    // Fetch global defaults to define baseline for standard clubs
+                    const gRes = await fetch(`${API}/clubs/_global/site-images?_t=${Date.now()}`);
+                    const gData = gRes.ok ? await gRes.json() : {};
+                    setBaseImages(buildImages(gData));
                 }
-                const buildImages = (src: any) => {
-                    const result: any = {};
-                    for (const key of Object.keys(DEFAULTS)) {
-                        const def = (DEFAULTS as any)[key];
-                        if (Array.isArray(def)) result[key] = src[key] || def.map((d: any) => ({ ...d }));
-                        else result[key] = src[key] || { ...def };
-                    }
-                    return result as SiteImages;
-                };
-                setImages(buildImages(data));
             } catch { 
-                const fallback: any = {};
-                for (const key of Object.keys(DEFAULTS)) {
-                    const def = (DEFAULTS as any)[key];
-                    if (Array.isArray(def)) fallback[key] = def.map((d: any) => ({ ...d }));
-                    else fallback[key] = { ...def };
-                }
-                setImages(fallback as SiteImages);
+                const fallback = buildImages({});
+                setImages(fallback);
+                setBaseImages(fallback);
             }
             finally { setLoading(false); }
         })();
-    }, [viewClubId, isSuperAdmin]);
+    }, [viewClubId, isSuperAdmin, buildImages]);
 
     // ── Save ──────────────────────────────────────────────────────────────
     const handleSave = async () => {
@@ -275,12 +279,13 @@ const ImageDistribution: React.FC = () => {
     const resetSlot = (key: string, index: number) => {
         if (!images) return;
         const newImages: any = { ...images };
-        const def = (DEFAULTS as any)[key];
-        if (Array.isArray(def)) {
+        const baseDef = (baseImages || DEFAULTS) as any;
+        const groupDef = baseDef[key];
+        if (Array.isArray(groupDef)) {
             newImages[key] = [...newImages[key]];
-            newImages[key][index] = { ...def[index] };
+            newImages[key][index] = { ...groupDef[index] };
         } else {
-            newImages[key] = { ...def };
+            newImages[key] = { ...groupDef };
         }
         setImages(newImages as SiteImages);
         setDirty(true);
@@ -288,10 +293,11 @@ const ImageDistribution: React.FC = () => {
 
     const isDefault = (key: string, index: number): boolean => {
         if (!images) return true;
-        const def = (DEFAULTS as any)[key];
+        const baseDef = (baseImages || DEFAULTS) as any;
+        const groupDef = baseDef[key];
         const val = (images as any)[key];
-        if (Array.isArray(def)) return val?.[index]?.url === def[index]?.url;
-        return val?.url === def?.url;
+        if (Array.isArray(groupDef)) return val?.[index]?.url === groupDef[index]?.url;
+        return val?.url === groupDef?.url;
     };
 
     const getSlots = (key: string): ImgSlot[] => {
