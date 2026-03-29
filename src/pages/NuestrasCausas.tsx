@@ -71,6 +71,9 @@ const NuestrasCausas = () => {
         return custom?.url ? { ...causa, image: custom.url } : causa;
     });
 
+    const heroImg = siteImages.causesHero?.url || getC('hero', 'image', "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=1600&h=600&fit=crop");
+    const polioImg = siteImages.polio?.url || getC('polio', 'image', "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&h=600&fit=crop");
+
     return (
         <div className="min-h-screen bg-white">
             <Navbar />
@@ -79,7 +82,7 @@ const NuestrasCausas = () => {
             <section className="relative w-full h-[350px] md:h-[450px] overflow-hidden">
                 <div className="absolute inset-0">
                     <img
-                        src={getC('hero', 'image', "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=1600&h=600&fit=crop")}
+                        src={heroImg}
                         alt="Nuestras Causas"
                         className="w-full h-full object-cover"
                     />
@@ -145,7 +148,7 @@ const NuestrasCausas = () => {
                     {/* Polio - 80px below causes grid */}
                     <div className="flex flex-col lg:flex-row rounded-3xl overflow-hidden shadow-xl ring-1 ring-gray-100" style={{ marginTop: '80px' }}>
                         <div className="lg:w-1/2 h-[300px] lg:h-auto">
-                            <img src={getC('polio', 'image', "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&h=600&fit=crop")} alt="Erradicación de la polio" className="w-full h-full object-cover" />
+                            <img src={polioImg} alt="Erradicación de la polio" className="w-full h-full object-cover" />
                         </div>
                         <div className="lg:w-1/2 bg-[#A32036] p-8 md:p-12 flex flex-col justify-center text-white">
                             <h2 className="text-3xl md:text-4xl font-bold mb-6">

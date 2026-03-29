@@ -38,6 +38,8 @@ const DEFAULTS = {
         { url: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=400&h=250&fit=crop', alt: 'Combatimos enfermedades' },
         { url: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=400&h=250&fit=crop', alt: 'Protegemos a madres e hijos' },
     ],
+    causesHero: { url: 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=1600&h=600&fit=crop', alt: 'Nuestras Causas' },
+    polio: { url: 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&h=600&fit=crop', alt: 'Erradicación de la Polio' },
 };
 
 interface ImgSlot { url: string; alt: string; }
@@ -48,6 +50,8 @@ interface SiteImages {
     join: ImgSlot;
     aboutHero: ImgSlot;
     aboutCarousel: ImgSlot[];
+    causesHero: ImgSlot;
+    polio: ImgSlot;
     [key: string]: ImgSlot | ImgSlot[];
 }
 
@@ -64,10 +68,12 @@ const CONTAINERS: Container[] = [
     { key: 'foundation', label: 'Fundación Rotaria', desc: '1 imagen de fondo para la sección de la Fundación. Tamaño ideal: 1600×800px, panorámica.', count: 1, aspect: '16/8' },
     { key: 'join', label: 'Sección Únete', desc: '1 imagen motivacional para la sección de reclutamiento. Tamaño ideal: 600×500px.', count: 1, aspect: '6/5' },
     {
-        key: 'about', label: 'Quiénes Somos', desc: 'Imágenes de la página Quiénes Somos: banner hero y carrusel de causas.', count: 6, aspect: '16/5',
+        key: 'about', label: 'Quiénes Somos', desc: 'Imágenes de las páginas Quiénes Somos y Nuestras Causas.', count: 8, aspect: '16/5',
         groups: [
-            { key: 'aboutHero', subLabel: 'Hero — Banner', count: 1, aspect: '16/5' },
+            { key: 'aboutHero', subLabel: 'Hero — Banner (Quiénes Somos)', count: 1, aspect: '16/5' },
             { key: 'aboutCarousel', subLabel: 'Carrusel de Causas', count: 5, aspect: '8/5' },
+            { key: 'causesHero', subLabel: 'Hero — Banner (Causas)', count: 1, aspect: '16/6' },
+            { key: 'polio', subLabel: 'Erradicación a la Polio', count: 1, aspect: '4/3' },
         ],
     },
 ];

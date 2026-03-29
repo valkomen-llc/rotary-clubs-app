@@ -9,6 +9,8 @@ export interface SiteImages {
     join?: ImgSlot;
     aboutHero?: ImgSlot;
     aboutCarousel?: ImgSlot[];
+    causesHero?: ImgSlot;
+    polio?: ImgSlot;
 }
 
 export function useSiteImages(): SiteImages {
