@@ -7,7 +7,7 @@ const defaultSlides = [
   { id: 3, image: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes 3' },
 ];
 
-const YEPHero = ({ title, description }: { title: string, description: string }) => {
+const YEPHero = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const siteImages = useSiteImages();
 
@@ -60,20 +60,9 @@ const YEPHero = ({ title, description }: { title: string, description: string })
               />
             </div>
           ))}
-          <div className="absolute inset-0 bg-gradient-to-r from-rotary-navy/90 via-rotary-navy/70 to-transparent z-20" />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/40 to-transparent z-20" />
         </div>
         
-        <div className="relative h-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center z-30">
-          <div className="max-w-2xl text-left pointer-events-none">
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight">
-              {title}
-            </h1>
-            <p className="text-white/90 text-lg md:text-xl leading-relaxed">
-              {description}
-            </p>
-          </div>
-        </div>
-
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex gap-2">
           {slides.map((_, index) => (
             <button

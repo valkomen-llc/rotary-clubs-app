@@ -48,10 +48,28 @@ const IntercambioJovenes = () => {
       <Navbar />
 
       {/* YEP Hero Slider */}
-      <YEPHero 
-        title={getC('hero', 'title', "Intercambio de Jóvenes de Rotary")}
-        description={getC('hero', 'description', `El Programa de Intercambio de Jóvenes del club ${club.name} hace parte de una red global con 22 países aliados.`)}
-      />
+      <YEPHero />
+
+      {/* Title Section Container */}
+      <section
+        className="py-12 md:py-16"
+        style={{
+          backgroundColor: '#0c3c7c',
+          backgroundImage: "url('/geo-darkblue.png')",
+          backgroundPosition: '50% 0',
+          backgroundRepeat: 'repeat',
+          backgroundSize: '71px 85px'
+        }}
+      >
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h1 className="text-white font-bold" style={{ fontSize: '35px' }}>
+            {getC('hero', 'title', "Intercambio de Jóvenes de Rotary")}
+          </h1>
+          <p className="text-white/80 mt-2 italic text-lg opacity-90">
+            {getC('hero', 'description', `El Programa de Intercambio de Jóvenes del club ${club.name} hace parte de una red global con 22 países aliados.`)}
+          </p>
+        </div>
+      </section>
 
       {/* Experiencia Section */}
       <section className="py-16 md:py-24 bg-rotary-concrete">
