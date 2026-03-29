@@ -276,7 +276,7 @@ const Proyectos = () => {
           <div className="absolute inset-0 bg-black/40" />
         </div>
         <div className="relative h-full flex items-center justify-center">
-          <h1 className="text-4xl md:text-5xl text-white font-bold drop-shadow-md pb-4 md:pb-6">
+          <h1 className="text-4xl md:text-5xl text-white">
             {getC('hero', 'title', "Proyectos")}
           </h1>
         </div>
@@ -296,9 +296,6 @@ const Proyectos = () => {
 
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
           <div className="text-center max-w-4xl mx-auto">
-            <span className="inline-block bg-rotary-gold text-white text-sm font-semibold px-4 py-1 rounded-full mb-6">
-              Nuestros Proyectos
-            </span>
             <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight">
               {getC('header', 'title', "Transformando Vidas,")} {' '}
               <span className="text-white">{getC('header', 'highlight', "Un Proyecto a la Vez")}</span>
