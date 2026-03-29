@@ -222,6 +222,8 @@ const ChatBot: React.FC = () => {
         ? 'Tu asistente de gestión inteligente'
         : 'En línea · Responde al instante';
 
+    if (siteImages._loading) return null;
+
     return (
         <>
             {/* Chat Window */}
