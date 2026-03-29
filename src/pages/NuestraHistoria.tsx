@@ -61,35 +61,33 @@ const NuestraHistoria = () => {
         }}
       >
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-3xl md:text-4xl font-bold text-white">
+          <h1 className="text-white" style={{ fontSize: '35px' }}>
             {getC('header', 'title', "Nuestra Historia")}
           </h1>
-          <p className="text-white/80 mt-2 italic">
+          <p className="text-white/80 mt-2 italic text-lg opacity-90">
             {getC('header', 'subtitle', club.name)}
           </p>
         </div>
       </section>
 
-      {/* Intro Content Section */}
-      <section className="py-12 md:py-16 bg-rotary-concrete">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-
+      {/* Intro + Content Section */}
+      <section className="bg-rotary-concrete" style={{ paddingTop: '48px', paddingBottom: '64px' }}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          
           {/* Intro paragraphs */}
-          <p className="text-gray-600 leading-relaxed mb-6">
+          <p className="text-xl md:text-2xl text-gray-700 leading-relaxed font-light text-center max-w-4xl mx-auto" style={{ marginBottom: '48px' }}>
             {getC('intro', 'p1', "Rotary nace con la visión de un hombre, Paul Harris, abogado de Chicago quien fundó el Club Rotario de Chicago un 23 de febrero de 1905.")}
-          </p>
-
-          <p className="text-gray-600 leading-relaxed mb-10">
+            <br className="my-4 block" />
             {getC('intro', 'p2', "Con el tiempo, el alcance y la visión de Rotary se extendieron gradualmente al servicio humanitario.")}
           </p>
 
           {/* Quote */}
-          <div className="mb-10">
-            <h2 className="text-2xl md:text-3xl font-medium text-gray-700 mb-6 leading-tight">
+          <div className="max-w-4xl mx-auto text-center" style={{ marginTop: '80px' }}>
+            <h2 className="text-2xl md:text-3xl font-light text-gray-700 mb-6 leading-tight italic">
               {getC('quote', 'text', "«Más allá de lo que Rotary signifique para nosotros, el mundo lo conocerá por las obras que realice.»")}
             </h2>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden bg-gray-200">
                 <img
                   src={getC('quote', 'authorImage', "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=face")}
                   alt="Author"
@@ -97,55 +95,45 @@ const NuestraHistoria = () => {
                 />
               </div>
               <div>
-                <p className="font-bold text-gray-800">{getC('quote', 'authorName', "Paul Harris")}</p>
+                <p className="font-bold text-gray-800 text-lg">{getC('quote', 'authorName', "Paul Harris")}</p>
                 <p className="text-sm text-gray-500">{getC('quote', 'authorRole', "Fundador de Rotary")}</p>
               </div>
             </div>
           </div>
 
           {/* Compromiso Local */}
-          <div className="mb-12">
+          <div className="max-w-4xl mx-auto text-center" style={{ marginTop: '80px' }}>
             <h2 className="text-2xl font-bold text-gray-800 mb-4">
               {getC('local', 'title', `Nuestra historia en ${club.city}`)}
             </h2>
-            <p className="text-gray-600 leading-relaxed mb-4">
+            <p className="text-gray-600 leading-relaxed text-lg">
               {getC('local', 'content', "Ese compromiso sigue vigente hoy gracias a una organización verdaderamente internacional.")}
             </p>
           </div>
 
-        </div>
-      </section>
-
-      {/* Cronología - Split Box */}
-      <section className="py-8 md:py-12 bg-rotary-concrete">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row overflow-hidden rounded-lg shadow-xl">
-            <div className="md:w-1/2 bg-rotary-navy p-8 md:p-12 flex flex-col justify-center">
-              <h3 className="text-xl md:text-2xl font-bold text-white mb-4">
+          {/* Cronología - Split Box */}
+          <div className="flex flex-col lg:flex-row overflow-hidden rounded-3xl shadow-xl ring-1 ring-gray-100" style={{ marginTop: '80px' }}>
+            <div className="lg:w-1/2 bg-rotary-navy p-8 md:p-12 flex flex-col justify-center">
+              <h3 className="text-3xl md:text-4xl font-bold text-white mb-6">
                 {getC('timeline', 'title', "Décadas de Impacto")}
               </h3>
-              <p className="text-white/80 leading-relaxed mb-8">
+              <p className="text-lg leading-relaxed mb-8 opacity-90 text-white">
                 {getC('timeline', 'description', "Nuestros socios se unen a los líderes comunitarios, amigos y aliados en una red global que aborda desafíos en todo el mundo.")}
               </p>
             </div>
-
-            <div className="md:w-1/2">
+            <div className="lg:w-1/2 h-[300px] lg:h-auto">
               <img
                 src={timelineImage}
                 alt="Rotary History"
-                className="w-full h-full object-cover min-h-[300px]"
+                className="w-full h-full object-cover"
               />
             </div>
           </div>
-        </div>
-      </section>
 
-      {/* Image Gallery */}
-      <section className="py-8 bg-rotary-concrete">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-xl font-bold text-gray-800 mb-6 text-center">Momentos Históricos</h2>
-          <div className="relative">
-            <div className="relative overflow-hidden rounded-lg shadow-lg aspect-[16/9]">
+          {/* Image Gallery */}
+          <div className="max-w-5xl mx-auto" style={{ marginTop: '80px' }}>
+            <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Momentos Históricos</h2>
+            <div className="relative aspect-video rounded-3xl overflow-hidden shadow-2xl ring-1 ring-gray-200 bg-black">
               <img
                 src={galleryImages[currentImage]}
                 alt={`Gallery image ${currentImage + 1}`}
@@ -154,27 +142,30 @@ const NuestraHistoria = () => {
 
               <button
                 onClick={prevImage}
-                className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 hover:bg-white rounded-full shadow-lg flex items-center justify-center transition-colors"
+                className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/90 hover:bg-white rounded-full shadow-lg flex items-center justify-center transition-colors z-10"
+                aria-label="Imagen anterior"
               >
-                <ChevronLeft className="w-5 h-5 text-gray-700" />
+                <ChevronLeft className="w-6 h-6 text-gray-700" />
               </button>
               <button
                 onClick={nextImage}
-                className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 hover:bg-white rounded-full shadow-lg flex items-center justify-center transition-colors"
+                className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/90 hover:bg-white rounded-full shadow-lg flex items-center justify-center transition-colors z-10"
+                aria-label="Siguiente imagen"
               >
-                <ChevronRight className="w-5 h-5 text-gray-700" />
+                <ChevronRight className="w-6 h-6 text-gray-700" />
               </button>
             </div>
 
-            <div className="flex justify-center gap-2 mt-4">
+            <div className="flex justify-center gap-2 mt-6">
               {galleryImages.map((_: any, index: number) => (
                 <button
                   key={index}
                   onClick={() => setCurrentImage(index)}
                   className={`
-                    w-2 h-2 rounded-full transition-all
-                    ${index === currentImage ? 'bg-rotary-blue w-6' : 'bg-gray-300'}
+                    w-2.5 h-2.5 rounded-full transition-all
+                    ${index === currentImage ? 'bg-rotary-blue w-8' : 'bg-gray-300'}
                   `}
+                  aria-label={`Ir a imagen ${index + 1}`}
                 />
               ))}
             </div>
