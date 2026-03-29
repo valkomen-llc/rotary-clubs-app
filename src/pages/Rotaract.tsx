@@ -42,39 +42,39 @@ const Rotaract = () => {
 
             </section>
 
-            {/* Intro Stats Bar */}
-            <section className="relative z-20 -mt-12 max-w-5xl mx-auto px-4">
-                <div 
-                    className="grid grid-cols-1 md:grid-cols-3 gap-0 rounded-3xl overflow-hidden shadow-2xl border border-white/10"
-                    style={{
-                        backgroundColor: '#0c3c7c',
-                        backgroundImage: "url('/geo-darkblue.png')",
-                        backgroundPosition: '50% 0',
-                        backgroundRepeat: 'repeat',
-                        backgroundSize: '71px 85px'
-                    }}
-                >
-                    <div className="p-8 text-center border-b md:border-b-0 md:border-r border-white/10">
-                        <Users className="w-8 h-8 text-rotaract mx-auto mb-3" />
-                        <h3 className="text-3xl font-bold text-white tracking-tight">+18</h3>
-                        <p className="text-xs font-bold text-white/70 uppercase tracking-widest">Años de Edad</p>
-                    </div>
-                    <div className="p-8 text-center border-b md:border-b-0 md:border-r border-white/10">
-                        <Globe className="w-8 h-8 text-rotaract mx-auto mb-3" />
-                        <h3 className="text-3xl font-bold text-white tracking-tight">Global</h3>
-                        <p className="text-xs font-bold text-white/70 uppercase tracking-widest">Red Internacional</p>
-                    </div>
-                    <div className="p-8 text-center">
-                        <Zap className="w-8 h-8 text-rotaract mx-auto mb-3" />
-                        <h3 className="text-3xl font-bold text-white tracking-tight">Acción</h3>
-                        <p className="text-xs font-bold text-white/70 uppercase tracking-widest">Proyectos de Impacto</p>
+            {/* Main Content & Stats Wrapper */}
+            <section className="bg-rotary-concrete relative">
+                {/* Intro Stats Bar */}
+                <div className="relative z-20 -mt-12 max-w-5xl mx-auto px-4">
+                    <div 
+                        className="grid grid-cols-1 md:grid-cols-3 gap-0 rounded-3xl overflow-hidden shadow-2xl border border-white/10"
+                        style={{
+                            backgroundColor: '#0c3c7c',
+                            backgroundImage: "url('/geo-darkblue.png')",
+                            backgroundPosition: '50% 0',
+                            backgroundRepeat: 'repeat',
+                            backgroundSize: '71px 85px'
+                        }}
+                    >
+                        <div className="p-8 text-center border-b md:border-b-0 md:border-r border-white/10">
+                            <Users className="w-8 h-8 text-white mx-auto mb-3" />
+                            <h3 className="text-3xl font-bold text-white tracking-tight">+18</h3>
+                            <p className="text-xs font-bold text-white/70 uppercase tracking-widest">Años de Edad</p>
+                        </div>
+                        <div className="p-8 text-center border-b md:border-b-0 md:border-r border-white/10">
+                            <Globe className="w-8 h-8 text-white mx-auto mb-3" />
+                            <h3 className="text-3xl font-bold text-white tracking-tight">Global</h3>
+                            <p className="text-xs font-bold text-white/70 uppercase tracking-widest">Red Internacional</p>
+                        </div>
+                        <div className="p-8 text-center">
+                            <Zap className="w-8 h-8 text-white mx-auto mb-3" />
+                            <h3 className="text-3xl font-bold text-white tracking-tight">Acción</h3>
+                            <p className="text-xs font-bold text-white/70 uppercase tracking-widest">Proyectos de Impacto</p>
+                        </div>
                     </div>
                 </div>
-            </section>
 
-            {/* Main Content — Modern Alternating Layout */}
-            <section className="py-24 md:py-32 bg-rotary-concrete">
-                <div className="max-w-6xl mx-auto px-6">
+                <div className="py-24 md:py-32 max-w-6xl mx-auto px-6">
                     <div className="flex flex-col md:flex-row items-center gap-16 mb-24">
                         <div className="flex-1">
                             <h2 className="text-indigo-900 text-xs font-normal uppercase tracking-[0.3em] mb-4">Misión & Propósito</h2>
