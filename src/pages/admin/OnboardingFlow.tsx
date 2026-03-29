@@ -3,12 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import {
     ArrowRight, ArrowLeft, Building2, Palette, Share2, ImageIcon,
     Camera, Rocket, CheckCircle2, Upload, X, Loader2, ShieldCheck, AlertTriangle, ExternalLink,
-    Plus, Globe, Dna,
+    Plus, Globe,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
-import { generateClubArchetype, extractOnboardingData } from '../../lib/clubArchetypeEngine';
-import type { ArchetypeResult } from '../../lib/clubArchetypeEngine';
-import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -23,7 +20,6 @@ const STEPS = [
     { id: 'social', title: 'Redes', icon: Share2 },
     { id: 'images', title: 'Imágenes', icon: ImageIcon },
     { id: 'modules', title: 'Módulos', icon: Globe },
-    { id: 'archetype', title: 'Arquetipo', icon: Dna },
     { id: 'complete', title: '¡Listo!', icon: CheckCircle2 },
 ];
 
@@ -459,11 +455,11 @@ const StepSocial: React.FC<{ data: any; onChange: (d: any) => void }> = ({ data,
 // ── Step 4: Site Images (matches admin ImageDistribution) ────────
 const SITE_IMG_DEFAULTS = {
     hero: [
-        { url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=700&fit=crop', alt: 'Trabajo en equipo' },
-        { url: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&h=700&fit=crop', alt: 'Promoción de la paz' },
-        { url: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=1600&h=700&fit=crop', alt: 'Lucha contra enfermedades' },
-        { url: 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=1600&h=700&fit=crop', alt: 'Educación' },
-        { url: 'https://images.unsplash.com/photo-1531206715517-5c0ba140b2b8?w=1600&h=700&fit=crop', alt: 'Desarrollo económico' },
+        { url: '/defaults/hero/1-teamwork.png', alt: 'Trabajo en equipo' },
+        { url: '/defaults/hero/2-peace.png', alt: 'Promoción de la paz' },
+        { url: '/defaults/hero/3-health.png', alt: 'Lucha contra enfermedades' },
+        { url: '/defaults/hero/4-education.png', alt: 'Educación' },
+        { url: '/defaults/hero/5-economy.png', alt: 'Desarrollo económico' },
     ],
     causes: [
         { url: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=500&h=500&fit=crop', alt: 'Promoción de la paz' },
@@ -792,14 +788,126 @@ const ToggleRow: React.FC<{ title: string; description: string; active: boolean;
     </div>
 );
 
+// ── Step 6: Members ──────────────────────────────────────────────
+const StepMembers: React.FC<{
+    count: number;
+    members: any[];
+    onChange: (members: any[]) => void;
+    onImageUpload: (file: File, index: number) => Promise<void>;
+}> = ({ count, members, onChange, onImageUpload }) => {
+    
+    // Ensure the array matches the count
+    useEffect(() => {
+        if (members.length < count) {
+            const newArray = [...members];
+            for (let i = members.length; i < count; i++) {
+                newArray.push({ id: Date.now().toString() + i, name: '', description: '', image: '', isBoard: false, boardRole: '' });
+            }
+            onChange(newArray);
+        } else if (members.length > count) {
+            onChange(members.slice(0, count));
+        }
+    }, [count]);
+
+    const fileRef = useRef<HTMLInputElement>(null);
+    const [uploadIdx, setUploadIdx] = useState<number | null>(null);
+
+    const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file && uploadIdx !== null) await onImageUpload(file, uploadIdx);
+        e.target.value = '';
+    };
+
+    const updateMember = (index: number, field: string, value: any) => {
+        const newArray = [...members];
+        newArray[index] = { ...newArray[index], [field]: value };
+        onChange(newArray);
+    };
+
+    if (count <= 0) {
+        return (
+            <div className="max-w-3xl mx-auto text-center py-10">
+                <p className="text-gray-500 font-bold">Ingresaste 0 en la cantidad de socios en el paso anterior. Puedes avanzar y agregarlos en el panel cuando quieras.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="max-w-3xl mx-auto">
+            <h2 className="text-2xl font-black text-gray-900 mb-2">👥 Directorio de Socios</h2>
+            <p className="text-sm text-gray-400 mb-8">
+                Completa la información de los {count} socios. Estos campos son <strong>opcionales</strong>, puedes completarlos más tarde desde el panel administrativo.
+            </p>
+
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+
+            <div className="space-y-6">
+                {members.slice(0, count).map((m, i) => (
+                    <div key={m.id || i} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col md:flex-row gap-5 relative group">
+                        
+                        {/* Indicador de Número */}
+                        <div className="absolute top-4 right-4 bg-gray-100 text-gray-500 text-xs font-black px-2 py-1 rounded-lg">
+                            Socio #{i + 1}
+                        </div>
+
+                        {/* Foto */}
+                        <div className="flex-shrink-0 flex flex-col items-center gap-2">
+                            <div 
+                                onClick={() => { setUploadIdx(i); fileRef.current?.click(); }}
+                                className="w-24 h-24 rounded-full border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center cursor-pointer hover:border-blue-400 overflow-hidden relative group transition-all"
+                            >
+                                {m.image ? (
+                                    <>
+                                        <img src={m.image} alt="" className="w-full h-full object-cover" />
+                                        <div className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center">
+                                            <Upload className="w-5 h-5 text-white" />
+                                        </div>
+                                    </>
+                                ) : (
+                                    <Camera className="w-6 h-6 text-gray-300" />
+                                )}
+                            </div>
+                            <span className="text-[10px] text-gray-400 font-bold uppercase">Foto</span>
+                        </div>
+                        
+                        {/* Info */}
+                        <div className="flex-1 space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Nombre Completo</label>
+                                <input value={m.name} onChange={e => updateMember(i, 'name', e.target.value)} placeholder="Nombre del socio"
+                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Descripción corta (opcional)</label>
+                                <textarea value={m.description} onChange={e => updateMember(i, 'description', e.target.value)} rows={2} placeholder="Breve descripción o profesión..."
+                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all resize-none" />
+                            </div>
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-4 pt-2 border-t border-gray-50">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <div className={`w-10 h-5 flex items-center rounded-full p-1 transition-colors ${m.isBoard ? 'bg-[#019fcb]' : 'bg-gray-200'}`}
+                                         onClick={() => updateMember(i, 'isBoard', !m.isBoard)}>
+                                        <div className={`bg-white w-3 h-3 rounded-full shadow-md transform transition-transform ${m.isBoard ? 'translate-x-5' : 'translate-x-0'}`} />
+                                    </div>
+                                    <span className="text-xs font-bold text-gray-600">¿Pertenece a la Junta Directiva?</span>
+                                </label>
+                                
+                                {m.isBoard && (
+                                    <div className="flex-1">
+                                        <input value={m.boardRole} onChange={e => updateMember(i, 'boardRole', e.target.value)} placeholder="Cargo (Ej: Presidente)"
+                                            className="w-full bg-blue-50 border border-blue-200 text-blue-800 rounded-xl px-4 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#019fcb]/30 font-bold placeholder-blue-300" />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
 
 
-
-// ── Step 7: Archetype (handled inline via ClubArchetypeCard) ────
-// The archetype step renders the ClubArchetypeCard component directly
-// in the main flow, so it doesn't need its own step component.
-
-// ── Step 8: Complete ─────────────────────────────────────────────
+// ── Step 7: Complete ─────────────────────────────────────────────
 const StepComplete: React.FC<{ clubName: string; onFinish: () => void; saving: boolean }> = ({ clubName, onFinish, saving }) => (
     <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-6">
         <div className="w-24 h-24 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center mb-8 shadow-2xl shadow-emerald-500/30">
@@ -884,10 +992,6 @@ const OnboardingFlow: React.FC = () => {
     const [clubDocuments, setClubDocuments] = useState<any[]>([]);
     const [uploadingDoc, setUploadingDoc] = useState(false);
 
-    // ── Archetype State ──
-    const [archetypeResult, setArchetypeResult] = useState<ArchetypeResult | null>(null);
-
-
     // Update form when club data loads
     useEffect(() => {
         if (!userClub) return;
@@ -951,12 +1055,10 @@ const OnboardingFlow: React.FC = () => {
             hasRotex: settingsMap['module_rotex'] === 'true'
         });
 
-        // Resume to saved onboarding step ONLY on initial load
-        if (step === 0) {
-            const savedStep = parseInt(settingsMap['onboarding_step'] || '0');
-            if (savedStep > 0 && savedStep < STEPS.length - 1) {
-                setStep(savedStep);
-            }
+        // Resume to saved onboarding step
+        const savedStep = parseInt(settingsMap['onboarding_step'] || '0');
+        if (savedStep > 0 && savedStep < STEPS.length - 1) {
+            setStep(savedStep);
         }
     }, [userClub]);
 
@@ -1175,64 +1277,31 @@ const OnboardingFlow: React.FC = () => {
 
     const handleNext = async () => {
         await saveStepData();
-
-        // ── Generate Archetype when advancing to archetype step ──
-        const nextStep = Math.min(step + 1, STEPS.length - 1);
-        if (STEPS[nextStep]?.id === 'archetype' && !archetypeResult) {
-            const onboardingData = extractOnboardingData(
-                info, branding, social, modules, [], siteImages, clubDocuments,
-            );
-            const result = generateClubArchetype(onboardingData);
-            setArchetypeResult(result);
-        }
-
-        setStep(nextStep);
+        setStep(s => Math.min(s + 1, STEPS.length - 1));
     };
 
     const handleBack = () => setStep(s => Math.max(s - 1, 0));
-
-    // ── Regenerate archetype (from the card's button) ──
-    const handleRegenerateArchetype = () => {
-        const onboardingData = extractOnboardingData(
-            info, branding, social, modules, [], siteImages, clubDocuments,
-        );
-        const result = generateClubArchetype(onboardingData);
-        setArchetypeResult(result);
-    };
 
     // ── Finish onboarding ──
     const handleFinish = async () => {
         if (!clubId || !token) return;
         setSaving(true);
         try {
-            // Save current step data before completing
+            // Save current step data (especially step 5 modules) before completing
             await saveStepData();
 
-            // ── Save archetype to database ──
-            if (archetypeResult) {
-                await fetch(`${API}/admin/clubs/${clubId}/save-archetype`, {
-                    method: 'PATCH',
-                    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ archetype: archetypeResult }),
-                }).catch(err => console.error('Save archetype error:', err));
-            }
-
-            // ── Complete onboarding ──
             const res = await fetch(`${API}/admin/clubs/${clubId}/complete-onboarding`, {
                 method: 'PATCH',
                 headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
             });
             if (!res.ok) throw new Error('Failed');
-
             // Update localStorage club data
             const stored = localStorage.getItem('rotary_club');
             if (stored) {
                 const parsed = JSON.parse(stored);
                 parsed.onboardingCompleted = true;
                 parsed.status = 'active';
-                if (archetypeResult) {
-                    parsed.archetype = archetypeResult;
-                }
+                // Also save modules to localStorage so sidebar picks them up immediately
                 parsed.modules = {
                     ...parsed.modules,
                     projects: modules.hasProjects,
@@ -1247,24 +1316,6 @@ const OnboardingFlow: React.FC = () => {
                 };
                 localStorage.setItem('rotary_club', JSON.stringify(parsed));
             }
-
-            // ── Trigger orchestrator with archetype data for sub-agent delegation ──
-            if (archetypeResult) {
-                fetch(`${API}/agents/orchestrate`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                    body: JSON.stringify({
-                        clubId,
-                        type: 'onboarding_complete',
-                        payload: {
-                            clubName: info.name || 'El Club',
-                            step: STEPS.length,
-                            archetype: archetypeResult,
-                        },
-                    }),
-                }).catch(err => console.error('[Orchestration] Dispatch failed:', err));
-            }
-
             // Small delay to ensure DB commit before reload
             await new Promise(r => setTimeout(r, 500));
             window.location.href = '/#/admin/dashboard';
@@ -1341,17 +1392,7 @@ const OnboardingFlow: React.FC = () => {
                             {step === 3 && <StepSocial data={social} onChange={setSocial} />}
                             {step === 4 && <StepSiteImages data={siteImages} onChange={setSiteImages} onImageUpload={handleSiteImageUpload} />}
                             {step === 5 && <StepModules data={modules} onChange={setModules} />}
-                            {step === 6 && archetypeResult && (
-                                <ClubArchetypeCard
-                                    result={archetypeResult}
-                                    clubName={info.name || 'tu club'}
-                                    clubColors={{ primary: branding.colorPrimary, secondary: branding.colorSecondary }}
-                                    onFinish={handleFinish}
-                                    onRegenerate={handleRegenerateArchetype}
-                                    saving={saving}
-                                />
-                            )}
-                            {step === 7 && <StepComplete clubName={info.name || 'tu club'} onFinish={handleFinish} saving={saving} />}
+                            {step === 6 && <StepComplete clubName={info.name || 'tu club'} onFinish={handleFinish} saving={saving} />}
                         </>
                     )}
                 </div>

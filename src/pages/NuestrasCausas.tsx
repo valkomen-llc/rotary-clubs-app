@@ -3,6 +3,7 @@ import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
 import { useSEO } from '../hooks/useSEO';
+import { useSiteImages } from '../hooks/useSiteImages';
 
 const NuestrasCausas = () => {
     const { club } = useClub();
@@ -63,7 +64,12 @@ const NuestrasCausas = () => {
         }
     ];
 
-    const causas = sections['grid']?.items || defaultCausas;
+    const siteImages = useSiteImages();
+
+    const causas = sections['grid']?.items || defaultCausas.map((causa, i) => {
+        const custom = siteImages.causes?.[i];
+        return custom?.url ? { ...causa, image: custom.url } : causa;
+    });
 
     return (
         <div className="min-h-screen bg-white">

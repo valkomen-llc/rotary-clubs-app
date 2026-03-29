@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import { useSiteImages } from '../hooks/useSiteImages';
 
 const defaultSlides = [
-  { id: 1, image: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=700&fit=crop', alt: 'Rotary - Trabajo en equipo' },
-  { id: 2, image: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&h=700&fit=crop', alt: 'Rotary - Promoción de la paz' },
-  { id: 3, image: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=1600&h=700&fit=crop', alt: 'Rotary - Lucha contra enfermedades' },
-  { id: 4, image: 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=1600&h=700&fit=crop', alt: 'Rotary - Educación' },
-  { id: 5, image: 'https://images.unsplash.com/photo-1531206715517-5c0ba140b2b8?w=1600&h=700&fit=crop', alt: 'Rotary - Desarrollo económico' },
+  { id: 1, image: '/defaults/hero/1-teamwork.png', alt: 'Rotary - Trabajo en equipo' },
+  { id: 2, image: '/defaults/hero/2-peace.png', alt: 'Rotary - Promoción de la paz' },
+  { id: 3, image: '/defaults/hero/3-health.png', alt: 'Rotary - Lucha contra enfermedades' },
+  { id: 4, image: '/defaults/hero/4-education.png', alt: 'Rotary - Educación' },
+  { id: 5, image: '/defaults/hero/5-economy.png', alt: 'Rotary - Desarrollo económico' },
 ];
 
 const HeroSection = () => {

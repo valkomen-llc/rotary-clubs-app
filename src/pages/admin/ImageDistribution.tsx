@@ -13,11 +13,11 @@ const API = import.meta.env.VITE_API_URL || '/api';
 // ── Default Unsplash images (fallbacks) ────────────────────────────────────
 const DEFAULTS = {
     hero: [
-        { url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=700&fit=crop', alt: 'Trabajo en equipo' },
-        { url: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&h=700&fit=crop', alt: 'Promoción de la paz' },
-        { url: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=1600&h=700&fit=crop', alt: 'Lucha contra enfermedades' },
-        { url: 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=1600&h=700&fit=crop', alt: 'Educación' },
-        { url: 'https://images.unsplash.com/photo-1531206715517-5c0ba140b2b8?w=1600&h=700&fit=crop', alt: 'Desarrollo económico' },
+        { url: '/defaults/hero/1-teamwork.png', alt: 'Trabajo en equipo' },
+        { url: '/defaults/hero/2-peace.png', alt: 'Promoción de la paz' },
+        { url: '/defaults/hero/3-health.png', alt: 'Lucha contra enfermedades' },
+        { url: '/defaults/hero/4-education.png', alt: 'Educación' },
+        { url: '/defaults/hero/5-economy.png', alt: 'Desarrollo económico' },
     ],
     causes: [
         { url: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=500&h=500&fit=crop', alt: 'Promoción de la paz' },
