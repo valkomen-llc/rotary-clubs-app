@@ -31,6 +31,8 @@ export interface ClubConfig {
     };
     paymentConfigs?: any[];
     isMainPlatform?: boolean;
+    archetype?: any;
+    settings?: any;
 }
 
 // Default/Fallback configuration for when API is loading or fails

@@ -51,6 +51,15 @@ export const getClubById = async (req, res) => {
             ngse: settingsMap['module_ngse'] === 'true',
             rotex: settingsMap['module_rotex'] === 'true',
         };
+        
+        // Expose settings directly as a map for flexible frontend usage
+        club.settings = settingsMap;
+        
+        if (settingsMap['club_archetype']) {
+            try {
+                club.archetype = JSON.parse(settingsMap['club_archetype']);
+            } catch(e) {}
+        }
 
         res.json(club);
     } catch (error) {
@@ -86,7 +95,7 @@ export const updateClub = async (req, res) => {
         primaryColor, secondaryColor, logo, footerLogo, endPolioLogo, favicon, status,
         stripePublicKey, stripeSecretKey, useStripe,
         usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
-        storeActive, logoHeaderSize,
+        storeActive, logoHeaderSize, autoGenerateCalendar,
         memberCount, moduleProjects, moduleEvents, moduleRotaract, moduleInteract, moduleEcommerce, moduleDian,
         moduleYouthExchange, moduleNgse, moduleRotex
     } = req.body;
@@ -153,6 +162,7 @@ export const updateClub = async (req, res) => {
             'module_youth_exchange': moduleYouthExchange !== undefined ? String(moduleYouthExchange) : undefined,
             'module_ngse': moduleNgse !== undefined ? String(moduleNgse) : undefined,
             'module_rotex': moduleRotex !== undefined ? String(moduleRotex) : undefined,
+            'auto_generate_calendar': autoGenerateCalendar !== undefined ? String(autoGenerateCalendar) : undefined,
         };
 
         for (const [key, value] of Object.entries(settingsToUpdate)) {

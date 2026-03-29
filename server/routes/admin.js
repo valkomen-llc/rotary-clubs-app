@@ -208,5 +208,42 @@ router.patch('/clubs/:id/complete-onboarding', roleMiddleware(adminRoles), async
         res.status(500).json({ error: 'Error completing onboarding' });
     }
 });
+// Save Club Archetype Strategy
+router.patch('/:id/save-archetype', roleMiddleware(['super_admin', 'club_admin']), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { archetype } = req.body;
+
+        if (!archetype) {
+            return res.status(400).json({ error: 'Archetype data is required' });
+        }
+
+        // We save it as a JSON string in the Setting table with key 'club_archetype'
+        const existingArchetype = await prisma.setting.findFirst({
+            where: { clubId: id, key: 'club_archetype' }
+        });
+
+        if (existingArchetype) {
+            await prisma.setting.update({
+                where: { id: existingArchetype.id },
+                data: { value: JSON.stringify(archetype) }
+            });
+        } else {
+            await prisma.setting.create({
+                data: {
+                    clubId: id,
+                    key: 'club_archetype',
+                    value: JSON.stringify(archetype)
+                }
+            });
+        }
+
+        res.json({ message: 'Archetype saved successfully' });
+    } catch (error) {
+        console.error('Save archetype error:', error);
+        res.status(500).json({ error: 'Error saving archetype' });
+    }
+});
+
 
 export default router;

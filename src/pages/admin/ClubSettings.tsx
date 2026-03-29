@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useClub } from '../../contexts/ClubContext';
 import { useAuth } from '../../hooks/useAuth';
-import { Save, Globe, MessageSquare, Phone, Palette, Upload, Image as ImageIcon, Store } from 'lucide-react';
+import { Save, Globe, MessageSquare, Phone, Palette, Upload, Image as ImageIcon, Store, Dna, Settings as SettingsIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
 
 const ClubSettings: React.FC = () => {
     const { club } = useClub();
@@ -28,6 +29,7 @@ const ClubSettings: React.FC = () => {
         endPolioLogo: '',
         favicon: '',
         logoHeaderSize: 200,
+        autoGenerateCalendar: true,
     });
     const [uploading, setUploading] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -62,6 +64,7 @@ const ClubSettings: React.FC = () => {
                 endPolioLogo: club.endPolioLogo || '',
                 favicon: club.favicon || '',
                 logoHeaderSize: club.logoHeaderSize ?? 200,
+                autoGenerateCalendar: club.settings?.auto_generate_calendar !== false,
             });
 
             // If platform supports paymentConfigs from populated backend
@@ -831,6 +834,53 @@ const ClubSettings: React.FC = () => {
                             </div>
                         )}
                     </div>
+                </div>
+
+                {/* AI & Strategy Settings */}
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
+                        <Dna className="w-5 h-5 text-rotary-blue" /> Inteligencia Artificial & Estrategia
+                    </h3>
+
+                    {isSuperAdmin && (
+                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-5 mb-8 border border-emerald-100 rounded-xl bg-emerald-50 max-w-2xl">
+                            <div>
+                                <h4 className="font-bold text-gray-900 border-b border-emerald-200 pb-2 mb-2 flex items-center gap-2">
+                                    <SettingsIcon className="w-4 h-4 text-emerald-600" />
+                                    Generación Automática de Parrilla
+                                    <span className="bg-emerald-600 text-white text-[9px] px-2 py-0.5 rounded uppercase tracking-wider">Super Admin</span>
+                                </h4>
+                                <p className="text-sm text-gray-600 mt-1">
+                                    Si esta opción está activa, la plataforma ordenará automáticamente al equipo de Agentes IA diseñar el calendario editorial completo del mes al finalizar el Onboarding.
+                                </p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                                <input
+                                    type="checkbox"
+                                    className="sr-only peer"
+                                    checked={formData.autoGenerateCalendar}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, autoGenerateCalendar: e.target.checked }))}
+                                />
+                                <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                            </label>
+                        </div>
+                    )}
+
+                    {club.archetype ? (
+                        <div className="mt-8 border-t border-gray-100 pt-8">
+                            <ClubArchetypeCard
+                                result={club.archetype}
+                                clubName={club.name}
+                                clubColors={{ primary: club.colors?.primary || '#013388', secondary: club.colors?.secondary || '#E29C00' }}
+                                onFinish={() => toast.success('Arquetipo guardado en la configuración')}
+                                saving={false}
+                            />
+                        </div>
+                    ) : (
+                        <p className="text-sm text-gray-500 italic text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                            Aún no se ha generado el Club DNA Profile (Arquetipo) para este club. Este proceso sucede automáticamente al terminar el Onboarding.
+                        </p>
+                    )}
                 </div>
 
                 <div className="flex justify-end">

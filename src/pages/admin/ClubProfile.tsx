@@ -3,10 +3,11 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import { Link } from 'react-router-dom';
 import {
     Building2, Save, Upload, MapPin, Globe, Mail, Phone,
-    Facebook, Instagram, Twitter, Youtube, Info, Trash2
+    Facebook, Instagram, Twitter, Youtube, Info, Trash2, Dna
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
+import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
 
 const ClubProfile: React.FC = () => {
     const { user } = useAuth();
@@ -14,7 +15,25 @@ const ClubProfile: React.FC = () => {
     const [isSaving, setIsSaving] = useState(false);
 
     const [clubType, setClubType] = useState('');
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<{
+        name: string;
+        description: string;
+        city: string;
+        country: string;
+        district: string;
+        logo: string;
+        domain: string;
+        email: string;
+        phone: string;
+        address: string;
+        facebook: string;
+        instagram: string;
+        twitter: string;
+        youtube: string;
+        storeActive: boolean;
+        logoHeaderSize: number;
+        archetype: any;
+    }>({
         name: '',
         description: '',
         city: '',
@@ -32,6 +51,7 @@ const ClubProfile: React.FC = () => {
         youtube: '',
         storeActive: true,
         logoHeaderSize: 200,
+        archetype: null,
     });
 
     useEffect(() => {
@@ -58,9 +78,13 @@ const ClubProfile: React.FC = () => {
 
                 // Map settings array to form fields
                 const settingsMap: any = {};
-                data.settings?.forEach((s: any) => {
-                    settingsMap[s.key] = s.value;
-                });
+                if (Array.isArray(data.settings)) {
+                    data.settings.forEach((s: any) => {
+                        settingsMap[s.key] = s.value;
+                    });
+                } else if (data.settings && typeof data.settings === 'object') {
+                    Object.assign(settingsMap, data.settings);
+                }
 
                 setFormData({
                     name: data.name || '',
@@ -79,6 +103,7 @@ const ClubProfile: React.FC = () => {
                     youtube: settingsMap['social_youtube'] || '',
                     storeActive: settingsMap['store_active'] !== 'false', // Default true
                     logoHeaderSize: parseInt(settingsMap['logo_header_size']) || 150,
+                    archetype: data.archetype || null,
                 });
             }
         } catch (error) {
@@ -530,6 +555,27 @@ const ClubProfile: React.FC = () => {
                         </p>
                     </div>
                 </div>
+
+                {/* ── Club DNA Profile / Archetype ── */}
+                {formData.archetype && (
+                    <div className="mt-12 pt-8 border-t border-gray-100">
+                        <div className="flex bg-white rounded-t-3xl border-x border-t border-gray-100 px-8 py-5 items-center gap-3">
+                            <Dna className="w-6 h-6 text-rotary-blue" />
+                            <div>
+                                <h2 className="text-xl font-black text-gray-800 tracking-tight">ADN de tu Club</h2>
+                                <p className="text-xs text-gray-500 font-medium mt-0.5">Perfil de inteligencia comercial según tu onboarding.</p>
+                            </div>
+                        </div>
+                        <div className="bg-white border-x border-b border-gray-100 rounded-b-3xl p-8 pt-4 shadow-sm">
+                            <ClubArchetypeCard
+                                result={formData.archetype}
+                                clubName={formData.name || 'Tu Club'}
+                                clubColors={{ primary: '#013388', secondary: '#E29C00' }}
+                                hideCTAs={true}
+                            />
+                        </div>
+                    </div>
+                )}
             </form>
         </AdminLayout>
     );

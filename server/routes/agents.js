@@ -700,7 +700,7 @@ router.post('/orchestrate', async (req, res) => {
 
         let eventPrompt = '';
         if (type === 'onboarding_complete') {
-            eventPrompt = `EVENTO DEL SISTEMA: El club acaba de completar su Onboarding inicial.\n\nDatos del Club: ${JSON.stringify(payload, null, 2)}\n\nInstrucción para Orquestadora: Analiza estos datos y usa la herramienta 'delegate_task' al menos 2 veces para asignar tareas iniciales a tu equipo (ej: a Diana para estrategia, o Martín para SEO). Si no requiere más, delega solo 1.`;
+            eventPrompt = `EVENTO DEL SISTEMA: El club acaba de completar su Onboarding inicial.\n\nDatos del Club: ${JSON.stringify(payload, null, 2)}\n\nInstrucción para Orquestadora: Has recibido el 'Club DNA Profile' (Arquetipo) recién generado. Analiza este Arquetipo y sus pilares de comunicación, y usa la herramienta 'delegate_task' al menos 2 veces para asignar tareas iniciales a tu equipo (ej: a Diana para definir la primera parrilla basada en los pilares sugeridos, o Andrés para las redes). Menciona su Arquetipo al delegar.`;
         } else if (type === 'new_contact_lead') {
             eventPrompt = `EVENTO DEL SISTEMA: Nuevo mensaje de contacto (Lead) recibido desde el sitio web público.\n\nDatos del Lead: ${JSON.stringify(payload, null, 2)}\n\nInstrucción para Orquestadora: Analiza este mensaje y usa la herramienta 'delegate_task' para asignar el seguimiento a Isabel (Email Outreach) o Andrés (Social Media) dependiendo de la naturaleza del mensaje.`;
         } else {
