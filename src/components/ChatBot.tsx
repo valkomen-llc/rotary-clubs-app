@@ -216,7 +216,7 @@ const ChatBot: React.FC = () => {
     const quickItems = isClubAdmin ? ADMIN_ACTIONS : PUBLIC_QUESTIONS;
     const headerGradient = isClubAdmin
         ? 'from-slate-800 via-slate-900 to-gray-900'
-        : 'from-rotary-blue to-sky-700';
+        : 'from-[#0C3C7C] to-sky-700';
     const headerTitle = isClubAdmin ? 'ClubAssist' : 'Asistente Rotary';
     const headerSubtitle = isClubAdmin
         ? 'Tu asistente de gestión inteligente'
