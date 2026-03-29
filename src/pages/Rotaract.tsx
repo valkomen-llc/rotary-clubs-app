@@ -32,8 +32,11 @@ const Rotaract = () => {
                     <div className="inline-flex items-center gap-2 bg-rotaract/20 backdrop-blur-md border border-rotaract/30 px-4 py-1.5 rounded-full text-white text-xs font-bold tracking-[0.2em] uppercase mb-6 animate-fade-in-down">
                         <Sparkles className="w-4 h-4 text-rotaract fill-rotaract" /> Liderazgo y Servicio Joven
                     </div>
-                    <h1 className="text-5xl md:text-7xl font-extrabold text-white mb-6 drop-shadow-2xl animate-fade-in">
-                        Rotaract <span className="text-rotaract">{club.name}</span>
+                    <h1 className="text-5xl md:text-7xl font-extrabold text-white mb-6 drop-shadow-2xl animate-fade-in leading-tight">
+                        Rotaract <br />
+                        <span className="text-rotaract">
+                            {club.name.replace(/Rotary Club de |Rotary Club |Rotary /gi, '')}
+                        </span>
                     </h1>
                     <p className="text-xl md:text-2xl text-white/90 max-w-2xl mx-auto font-light leading-relaxed animate-fade-in-up">
                         {getC('hero', 'subtitle', "Formando a los líderes de hoy, sirviendo a las comunidades del mañana.")}
