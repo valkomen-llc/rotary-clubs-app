@@ -66,7 +66,7 @@ const Rotaract = () => {
             </section>
 
             {/* Main Content — Modern Alternating Layout */}
-            <section className="py-24 md:py-32 bg-white">
+            <section className="py-24 md:py-32 bg-rotary-concrete">
                 <div className="max-w-6xl mx-auto px-6">
                     <div className="flex flex-col md:flex-row items-center gap-16 mb-24">
                         <div className="flex-1">
