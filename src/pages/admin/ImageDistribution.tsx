@@ -111,20 +111,20 @@ const ImageDistribution: React.FC = () => {
                 }
                 const buildImages = (src: any) => {
                     const result: any = {};
-                    for (const c of CONTAINERS) {
-                        const def = (DEFAULTS as any)[c.key];
-                        if (Array.isArray(def)) result[c.key] = src[c.key] || def.map((d: any) => ({ ...d }));
-                        else result[c.key] = src[c.key] || { ...def };
+                    for (const key of Object.keys(DEFAULTS)) {
+                        const def = (DEFAULTS as any)[key];
+                        if (Array.isArray(def)) result[key] = src[key] || def.map((d: any) => ({ ...d }));
+                        else result[key] = src[key] || { ...def };
                     }
                     return result as SiteImages;
                 };
                 setImages(buildImages(data));
             } catch { 
                 const fallback: any = {};
-                for (const c of CONTAINERS) {
-                    const def = (DEFAULTS as any)[c.key];
-                    if (Array.isArray(def)) fallback[c.key] = def.map((d: any) => ({ ...d }));
-                    else fallback[c.key] = { ...def };
+                for (const key of Object.keys(DEFAULTS)) {
+                    const def = (DEFAULTS as any)[key];
+                    if (Array.isArray(def)) fallback[key] = def.map((d: any) => ({ ...d }));
+                    else fallback[key] = { ...def };
                 }
                 setImages(fallback as SiteImages);
             }
