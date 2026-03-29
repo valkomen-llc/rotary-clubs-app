@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageCircle, X, Send, Bot, Loader2, ChevronDown, Mic, MicOff, Volume2, VolumeX, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
+import { X, Send, Loader2, ChevronDown, Mic, MicOff, Volume2, VolumeX, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useClub } from '../contexts/ClubContext';
 import { useAuth } from '../hooks/useAuth';
 
@@ -41,6 +41,10 @@ const ChatBot: React.FC = () => {
     const { club } = useClub();
     const { user, token, isAuthenticated } = useAuth();
     const isClubAdmin = isAuthenticated && (user?.role === 'club_admin' || user?.role === 'administrator');
+
+    // Avatars
+    const PUBLIC_AVATAR = "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face";
+    const ADMIN_AVATAR = "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150&h=150&fit=crop&crop=face";
 
     const [isOpen, setIsOpen] = useState(false);
     const [isMinimized, setIsMinimized] = useState(false);
@@ -222,11 +226,8 @@ const ChatBot: React.FC = () => {
                         className={`bg-gradient-to-r ${headerGradient} px-5 py-4 flex items-center gap-3 cursor-pointer flex-shrink-0`}
                         onClick={() => setIsMinimized(!isMinimized)}
                     >
-                        <div className={`w-9 h-9 ${isClubAdmin ? 'bg-emerald-500/20' : 'bg-white/20'} rounded-xl flex items-center justify-center flex-shrink-0`}>
-                            {isClubAdmin
-                                ? <Sparkles className="w-5 h-5 text-emerald-400" />
-                                : <Bot className="w-5 h-5 text-white" />
-                            }
+                        <div className={`w-10 h-10 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0 border-2 border-white/20 shadow-sm`}>
+                            <img src={isClubAdmin ? ADMIN_AVATAR : PUBLIC_AVATAR} alt="Avatar" className="w-full h-full object-cover" />
                         </div>
                         <div className="flex-1 min-w-0">
                             <p className="text-white font-bold text-sm leading-tight">{headerTitle}</p>
@@ -262,11 +263,8 @@ const ChatBot: React.FC = () => {
                                 {messages.map((msg) => (
                                     <div key={msg.id} className={`flex gap-2.5 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                                         {msg.role === 'bot' && (
-                                            <div className={`w-7 h-7 ${isClubAdmin ? 'bg-slate-800' : 'bg-rotary-blue'} rounded-xl flex items-center justify-center flex-shrink-0 mt-1`}>
-                                                {isClubAdmin
-                                                    ? <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                                                    : <Bot className="w-4 h-4 text-white" />
-                                                }
+                                            <div className={`w-8 h-8 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0 mt-1 shadow-sm border border-gray-200`}>
+                                                <img src={isClubAdmin ? ADMIN_AVATAR : PUBLIC_AVATAR} alt="Avatar" className="w-full h-full object-cover" />
                                             </div>
                                         )}
                                         <div className="max-w-[80%] group">
@@ -325,8 +323,8 @@ const ChatBot: React.FC = () => {
                                 {/* Typing indicator */}
                                 {isTyping && (
                                     <div className="flex gap-2.5">
-                                        <div className={`w-7 h-7 ${isClubAdmin ? 'bg-slate-800' : 'bg-rotary-blue'} rounded-xl flex items-center justify-center flex-shrink-0`}>
-                                            {isClubAdmin ? <Sparkles className="w-3.5 h-3.5 text-emerald-400" /> : <Bot className="w-4 h-4 text-white" />}
+                                        <div className={`w-8 h-8 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0 shadow-sm border border-gray-200`}>
+                                            <img src={isClubAdmin ? ADMIN_AVATAR : PUBLIC_AVATAR} alt="Avatar" className="w-full h-full object-cover" />
                                         </div>
                                         <div className="bg-white px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm border border-gray-100">
                                             <div className="flex gap-1 items-center h-4">
@@ -412,11 +410,11 @@ const ChatBot: React.FC = () => {
             {/* Floating Button */}
             <button
                 onClick={() => { setIsOpen(!isOpen); setUnread(0); }}
-                className={`fixed bottom-6 right-4 sm:right-8 z-50 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 ${isOpen
-                    ? 'bg-gray-900'
+                className={`fixed bottom-6 right-4 sm:right-8 z-50 w-14 h-14 rounded-full shadow-2xl overflow-hidden transition-all duration-300 hover:scale-110 active:scale-95 ${isOpen
+                    ? 'bg-gray-900 flex items-center justify-center'
                     : isClubAdmin
-                        ? 'bg-gradient-to-br from-slate-800 to-slate-900'
-                        : 'bg-rotary-blue hover:bg-sky-800'
+                        ? 'border-2 border-emerald-400 p-[2px] bg-slate-900'
+                        : 'border-2 border-rotary-blue p-[2px] bg-white'
                     }`}
                 style={{
                     boxShadow: isOpen
@@ -427,15 +425,13 @@ const ChatBot: React.FC = () => {
                 }}
                 aria-label="Abrir asistente"
             >
-                <div className="relative">
+                <div className="relative w-full h-full">
                     {isOpen
-                        ? <X className="w-5 h-5 text-white" />
-                        : isClubAdmin
-                            ? <Sparkles className="w-5 h-5 text-emerald-400" />
-                            : <MessageCircle className="w-6 h-6 text-white" />
+                        ? <div className="flex items-center justify-center w-full h-full"><X className="w-5 h-5 text-white" /></div>
+                        : <img src={isClubAdmin ? ADMIN_AVATAR : PUBLIC_AVATAR} alt="Chat Avatar" className="w-full h-full object-cover rounded-full" />
                     }
                     {!isOpen && unread > 0 && (
-                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[8px] font-black rounded-full flex items-center justify-center animate-bounce shadow-lg">
+                        <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center animate-bounce shadow-lg ring-2 ring-white">
                             {unread}
                         </span>
                     )}
