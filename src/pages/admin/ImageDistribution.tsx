@@ -312,6 +312,16 @@ const ImageDistribution: React.FC = () => {
         }
     };
 
+    const handleMediaClick = (url: string, filename: string) => {
+        if (pickerTarget?.key.startsWith('chatbot')) {
+            setCropImageSrc(url);
+            // Create a pseudo-file to carry over the original filename safely
+            setCropFile(new File([], filename || 'avatar.jpg'));
+            return;
+        }
+        selectMedia(url, filename);
+    };
+
     const selectMedia = (url: string, filename: string) => {
         if (!images || !pickerTarget) return;
         const { key, index } = pickerTarget;
@@ -567,7 +577,7 @@ const ImageDistribution: React.FC = () => {
                             ) : (
                                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
                                     {filteredMedia.map(item => (
-                                        <button key={item.id} onClick={() => selectMedia(item.url, item.filename)}
+                                        <button key={item.id} onClick={() => handleMediaClick(item.url, item.filename)}
                                             className="group relative rounded-xl overflow-hidden border-2 border-gray-200 hover:border-violet-500 hover:shadow-lg transition-all aspect-square">
                                             <img src={item.url} alt={item.filename} className="w-full h-full object-cover" />
                                             <div className="absolute inset-0 bg-violet-500/0 group-hover:bg-violet-500/20 transition-all flex items-center justify-center">
@@ -589,8 +599,12 @@ const ImageDistribution: React.FC = () => {
                                 e.preventDefault();
                                 const input = (e.target as HTMLFormElement).elements.namedItem('customUrl') as HTMLInputElement;
                                 if (input.value && pickerTarget) {
-                                    handleCustomUrl(pickerTarget.key, pickerTarget.index, input.value);
-                                    setPickerOpen(false);
+                                    if (pickerTarget.key.startsWith('chatbot')) {
+                                        handleMediaClick(input.value, `custom-url-${Date.now()}.jpg`);
+                                    } else {
+                                        handleCustomUrl(pickerTarget.key, pickerTarget.index, input.value);
+                                        setPickerOpen(false);
+                                    }
                                 }
                             }} className="flex gap-2">
                                 <input name="customUrl" type="url" placeholder="https://ejemplo.com/imagen.jpg"
