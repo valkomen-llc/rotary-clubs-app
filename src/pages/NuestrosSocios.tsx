@@ -45,7 +45,7 @@ const NuestrosSocios = () => {
         }}
       >
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-6">
+          <h1 className="text-4xl md:text-5xl font-light text-white mb-6">
             {getC('header', 'title', "Nuestros Socios")}
           </h1>
           <p className="text-white/90 text-lg max-w-2xl mx-auto">
