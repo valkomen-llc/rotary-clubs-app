@@ -118,6 +118,10 @@ router.get('/by-domain', async (req, res) => {
             logoHeaderSize: parseInt(settings['logo_header_size']) || 200,
             onboardingCompleted: settings['onboarding_completed'] === 'true',
             onboardingStep: parseInt(settings['onboarding_step']) || 0,
+            settings: {
+                rotaract_logo: settings['rotaract_logo'] || null,
+                interact_logo: settings['interact_logo'] || null,
+            }
         };
 
         res.json(mappedClub);
