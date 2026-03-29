@@ -4,6 +4,7 @@ import Footer from '../sections/Footer';
 import { Heart, X, Check } from 'lucide-react';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
+import FoundationImpactSection from '../sections/FoundationImpactSection';
 
 const ManerasDeContribuir = () => {
     const { club } = useClub();
@@ -140,6 +141,9 @@ const ManerasDeContribuir = () => {
                     </div>
                 </div>
             )}
+
+            {/* Foundation Impact Metrics Section */}
+            <FoundationImpactSection />
 
             <Footer />
         </div>
