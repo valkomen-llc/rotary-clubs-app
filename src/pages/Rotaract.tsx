@@ -146,8 +146,16 @@ const Rotaract = () => {
             </section>
 
             {/* Premium CTA Section */}
-            <section className="py-24 bg-rotary-geo relative overflow-hidden">
-                <div className="absolute inset-0 bg-rotary-blue shadow-inner" />
+            <section 
+                className="py-24 relative overflow-hidden"
+                style={{
+                    backgroundColor: '#0c3c7c',
+                    backgroundImage: "url('/geo-darkblue.png')",
+                    backgroundPosition: '50% 0',
+                    backgroundRepeat: 'repeat',
+                    backgroundSize: '71px 85px'
+                }}
+            >
                 <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
                     <h2 className="text-4xl md:text-5xl font-normal text-white mb-8">
                         ¿Estás listo para ser el <span className="text-rotaract font-normal">cambio</span>?
