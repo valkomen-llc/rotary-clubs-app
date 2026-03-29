@@ -40,6 +40,11 @@ const DEFAULTS = {
     ],
     causesHero: { url: 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=1600&h=600&fit=crop', alt: 'Nuestras Causas' },
     polio: { url: 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&h=600&fit=crop', alt: 'Erradicación de la Polio' },
+    rotaract: { url: 'https://images.unsplash.com/photo-1529390079861-591de354faf5?w=1600&h=800&fit=crop', alt: 'Club Rotaract' },
+    interact: { url: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=1600&h=800&fit=crop', alt: 'Club Interact' },
+    yep: { url: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes' },
+    ngse: { url: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=1600&h=800&fit=crop', alt: 'NGSE' },
+    rotex: { url: 'https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?w=1600&h=800&fit=crop', alt: 'ROTEX' },
 };
 
 interface ImgSlot { url: string; alt: string; }
@@ -52,7 +57,12 @@ interface SiteImages {
     aboutCarousel: ImgSlot[];
     causesHero: ImgSlot;
     polio: ImgSlot;
-    [key: string]: ImgSlot | ImgSlot[];
+    rotaract?: ImgSlot;
+    interact?: ImgSlot;
+    yep?: ImgSlot;
+    ngse?: ImgSlot;
+    rotex?: ImgSlot;
+    [key: string]: ImgSlot | ImgSlot[] | undefined;
 }
 
 interface MediaItem { id: string; url: string; filename: string; type: string; }
@@ -62,7 +72,7 @@ interface MediaItem { id: string; url: string; filename: string; type: string; }
 interface SubGroup { key: string; subLabel: string; count: number; aspect: string; }
 interface Container { key: string; label: string; desc: string; count: number; aspect: string; groups?: SubGroup[]; }
 
-const CONTAINERS: Container[] = [
+const BASE_CONTAINERS: Container[] = [
     { key: 'hero', label: 'Hero — Slider Principal', desc: '5 imágenes de slide con rotación automática. Tamaño ideal: 1600×700px, horizontal.', count: 5, aspect: '16/7' },
     { key: 'causes', label: 'Áreas de Interés — Causas', desc: '7 imágenes para las tarjetas de causas Rotary. Tamaño ideal: 500×500px, cuadrado.', count: 7, aspect: '1/1' },
     { key: 'foundation', label: 'Fundación Rotaria', desc: '1 imagen de fondo para la sección de la Fundación. Tamaño ideal: 1600×800px, panorámica.', count: 1, aspect: '16/8' },
@@ -81,6 +91,19 @@ const CONTAINERS: Container[] = [
 const ImageDistribution: React.FC = () => {
     const { user } = useAuth();
     const { club } = useClub();
+    
+    // Compute dynamic containers based on club modules
+    const activeContainers = React.useMemo(() => {
+        const active: Container[] = [...BASE_CONTAINERS];
+        const c = club as any;
+        if (c?.hasRotaract) active.push({ key: 'rotaract', label: 'Club Rotaract', desc: 'Imagen de portada para la sección Rotaract.', count: 1, aspect: '16/8' });
+        if (c?.hasInteract) active.push({ key: 'interact', label: 'Club Interact', desc: 'Imagen de portada para la sección Interact.', count: 1, aspect: '16/8' });
+        if (c?.hasYouthExchange) active.push({ key: 'yep', label: 'Intercambio de Jóvenes (YEP)', desc: 'Imagen de portada para el portal YEP.', count: 1, aspect: '16/8' });
+        if (c?.hasNGSE) active.push({ key: 'ngse', label: 'Intercambios NGSE', desc: 'Imagen de portada para la directiva de NGSE.', count: 1, aspect: '16/8' });
+        if (c?.hasRotex) active.push({ key: 'rotex', label: 'Red ROTEX', desc: 'Imagen de portada para los ex-intercambistas.', count: 1, aspect: '16/8' });
+        return active;
+    }, [club]);
+
     const [images, setImages] = useState<SiteImages | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -303,12 +326,11 @@ const ImageDistribution: React.FC = () => {
                     </div>
                 )}
 
-                {/* Containers */}
-                {CONTAINERS.map(container => {
+                {activeContainers.map((container: Container) => {
                     // For grouped containers, calculate totals across groups
                     const subGroups = container.groups || [{ key: container.key, subLabel: '', count: container.count, aspect: container.aspect }];
-                    const totalCount = subGroups.reduce((sum, g) => sum + g.count, 0);
-                    const totalCustom = subGroups.reduce((sum, g) => {
+                    const totalCount = subGroups.reduce((sum: number, g: SubGroup) => sum + g.count, 0);
+                    const totalCustom = subGroups.reduce((sum: number, g: SubGroup) => {
                         const s = getSlots(g.key);
                         return sum + s.filter((_, i) => !isDefault(g.key, i)).length;
                     }, 0);
