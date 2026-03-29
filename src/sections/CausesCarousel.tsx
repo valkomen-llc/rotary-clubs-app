@@ -68,7 +68,7 @@ const CausesCarousel = () => {
 
   return (
     <section className="py-16 md:py-20">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="relative flex items-center justify-center">
           {/* Left Arrow */}
           <button
@@ -79,7 +79,7 @@ const CausesCarousel = () => {
           </button>
 
           {/* Cards Container */}
-          <div className="flex items-center justify-center gap-4 md:gap-6 py-8">
+          <div className="flex items-center justify-center gap-4 md:gap-12 py-8">
             {visibleCards.map((cause, index) => {
               const isCenter = index === 1;
               return (
@@ -87,7 +87,7 @@ const CausesCarousel = () => {
                   key={cause.id}
                   className={`
                     rounded-2xl overflow-hidden shadow-xl transition-all duration-500
-                    ${isCenter ? 'w-72 md:w-80 scale-110 z-10' : 'w-60 md:w-72 scale-90 opacity-70'}
+                    ${isCenter ? 'w-72 md:w-[400px] scale-110 z-10' : 'w-64 md:w-80 scale-90 opacity-70'}
                   `}
                 >
                   {/* Image */}
