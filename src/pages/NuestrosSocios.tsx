@@ -56,26 +56,27 @@ const NuestrosSocios = () => {
 
       {/* Socios Grid */}
       <section className="py-12 md:py-16 bg-rotary-concrete">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
             {socios.map((socio: any, i: number) => (
               <div
                 key={i}
-                className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow flex"
+                className="bg-white rounded-2xl shadow-xl overflow-hidden hover:-translate-y-2 hover:shadow-2xl transition-all duration-300 flex flex-col group border border-gray-100"
               >
-                <div className="w-32 h-32 md:w-40 md:h-40 flex-shrink-0">
+                <div className="w-full aspect-square overflow-hidden relative">
+                  <div className="absolute inset-0 bg-rotary-navy/10 group-hover:bg-transparent transition-colors z-10 pointer-events-none"></div>
                   <img
                     src={socio.imagen}
                     alt={socio.nombre}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
                   />
                 </div>
 
-                <div className="p-4 md:p-6 flex flex-col justify-center">
-                  <h3 className="text-lg md:text-xl font-bold text-gray-800 mb-2">
+                <div className="p-6 md:p-8 flex flex-col flex-grow text-center bg-white">
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">
                     {socio.nombre}
                   </h3>
-                  <p className="text-gray-600 text-sm md:text-base">
+                  <p className="text-rotary-blue font-medium text-sm md:text-base leading-relaxed">
                     {socio.profesion}
                   </p>
                 </div>

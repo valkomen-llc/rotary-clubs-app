@@ -58,32 +58,38 @@ const NuestraJuntaDirectiva = () => {
 
       {/* Junta Directiva Grid */}
       <section className="py-12 md:py-16 bg-rotary-concrete">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
             {juntaDirectiva.map((miembro: any, i: number) => (
               <div
                 key={i}
-                className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow flex"
+                className="bg-white rounded-2xl shadow-xl overflow-hidden hover:-translate-y-2 hover:shadow-2xl transition-all duration-300 flex flex-col group border border-gray-100 relative"
               >
-                <div className="w-32 h-32 md:w-40 md:h-40 flex-shrink-0">
+                {/* Image Section */}
+                <div className="w-full aspect-square overflow-hidden relative">
+                  <div className="absolute inset-0 bg-rotary-navy/10 group-hover:bg-transparent transition-colors z-10 pointer-events-none"></div>
                   <img
                     src={miembro.imagen}
                     alt={miembro.nombre}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
                   />
+                  {/* Floating Badge overlay for Cargo */}
+                  <div className="absolute top-4 right-4 z-20">
+                    <div className="bg-white/95 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-lg border border-gray-100 flex items-center gap-1.5">
+                      <Award className="w-4 h-4 text-rotary-gold" />
+                      <span className="text-rotary-blue font-bold text-xs uppercase tracking-wider">
+                        {miembro.cargo}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="p-4 md:p-6 flex flex-col justify-center">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Award className="w-4 h-4 text-rotary-gold" />
-                    <span className="text-rotary-blue font-semibold text-sm uppercase tracking-wide">
-                      {miembro.cargo}
-                    </span>
-                  </div>
-                  <h3 className="text-lg md:text-xl font-bold text-gray-800 mb-2">
+                {/* Content Section */}
+                <div className="p-6 md:p-8 flex flex-col flex-grow text-center bg-white">
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">
                     {miembro.nombre}
                   </h3>
-                  <p className="text-gray-600 text-sm md:text-base">
+                  <p className="text-gray-500 font-medium text-sm md:text-base leading-relaxed">
                     {miembro.profesion}
                   </p>
                 </div>
