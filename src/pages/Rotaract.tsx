@@ -59,13 +59,7 @@ const Rotaract = () => {
                 <div className="relative z-20 -mt-20 max-w-5xl mx-auto px-4 w-full">
                     <div 
                         className="grid grid-cols-1 md:grid-cols-3 gap-0 rounded-3xl overflow-hidden shadow-2xl border border-white/10"
-                        style={{
-                            backgroundColor: '#0c3c7c',
-                            backgroundImage: "url('/geo-darkblue.png')",
-                            backgroundPosition: '50% 0',
-                            backgroundRepeat: 'repeat',
-                            backgroundSize: '71px 85px'
-                        }}
+                        style={{ backgroundColor: '#d91b5c' }}
                     >
                         <div className="p-8 text-center border-b md:border-b-0 md:border-r border-white/10">
                             <Users className="w-8 h-8 text-white mx-auto mb-3" />
