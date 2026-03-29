@@ -202,14 +202,14 @@ const Navbar = () => {
               onClick={() => setSearchOpen(true)}
               className="text-gray-600 hover:text-rotary-blue transition-colors"
             >
-              <Search className="w-5 h-5" />
+              <Search className="w-[18px] h-[18px]" strokeWidth={2} />
             </button>
             {club.storeActive && (
               <button
                 onClick={() => setCartOpen(true)}
                 className="text-gray-600 hover:text-rotary-blue transition-colors relative"
               >
-                <ShoppingCart className="w-5 h-5" />
+                <ShoppingCart className="w-[18px] h-[18px]" strokeWidth={2} />
                 {itemCount > 0 && (
                   <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-sm">
                     {itemCount}
@@ -224,7 +224,7 @@ const Navbar = () => {
                 onMouseLeave={() => setUserMenuOpen(false)}
               >
                 {/* Avatar Button */}
-                <button className="flex items-center justify-center w-9 h-9 rounded-full bg-rotary-blue text-white font-bold text-sm shadow-sm hover:bg-rotary-blue/90 transition-all ring-2 ring-white hover:ring-rotary-gold">
+                <button className="flex items-center justify-center w-8 h-8 rounded-full bg-rotary-blue text-white font-bold text-xs shadow-sm hover:bg-rotary-blue/90 transition-all ring-2 ring-white hover:ring-rotary-gold" title="Perfil">
                   {user?.name ? user.name.charAt(0).toUpperCase() : user?.email?.charAt(0).toUpperCase() ?? '?'}
                 </button>
 
@@ -262,10 +262,10 @@ const Navbar = () => {
             ) : (
               <button
                 onClick={() => setLoginModalOpen(true)}
-                className="hidden sm:flex items-center justify-center w-9 h-9 rounded-full bg-gray-100 text-rotary-blue hover:bg-rotary-blue hover:text-white transition-all"
+                className="hidden sm:flex items-center justify-center w-8 h-8 rounded-full bg-gray-50 text-rotary-blue border border-gray-200 hover:bg-rotary-blue hover:text-white transition-all"
                 title="Iniciar sesión"
               >
-                <LogIn className="w-4.5 h-4.5" />
+                <LogIn className="w-4 h-4 ml-0.5" />
               </button>
             )}
 
@@ -273,11 +273,11 @@ const Navbar = () => {
             <div className="relative" ref={languageRef} data-no-translate>
               <button
                 onClick={() => setLanguageOpen(!languageOpen)}
-                className="flex items-center gap-2 px-3 py-1.5 border border-rotary-blue rounded-full text-sm text-rotary-blue hover:bg-sky-50 transition-colors"
+                className="flex items-center gap-1.5 px-2.5 py-1 border border-rotary-blue rounded-full text-xs text-rotary-blue hover:bg-sky-50 transition-colors"
               >
-                <span className="text-lg">{currentLanguage.flag}</span>
-                <span className="font-medium">{currentLanguage.code.toUpperCase()}</span>
-                <ChevronDown className={`w-4 h-4 transition-transform ${languageOpen ? 'rotate-180' : ''}`} />
+                <span className="text-base leading-none">{currentLanguage.flag}</span>
+                <span className="font-semibold tracking-wide">{currentLanguage.code.toUpperCase()}</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${languageOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {languageOpen && (
