@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Image as ImageIcon, Save, Loader2, Trash2, Upload, Plus,
-    Monitor, ChevronDown, ChevronUp, CheckCircle, X, Search
+    Monitor, ChevronDown, ChevronUp, CheckCircle, X, Search, AlertCircle, XCircle
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -343,6 +343,8 @@ const ImageDistribution: React.FC = () => {
                         const s = getSlots(g.key);
                         return sum + s.filter((_, i) => !isDefault(g.key, i)).length;
                     }, 0);
+                    
+                    const percentage = container.key === 'causes' ? 100 : Math.round((totalCustom / totalCount) * 100);
                     const isOpen = expanded[container.key];
 
                     return (
@@ -352,16 +354,15 @@ const ImageDistribution: React.FC = () => {
                                 className="w-full px-6 py-5 flex items-center gap-4 hover:bg-gray-50/50 transition-colors text-left">
                                 <Monitor className="w-5 h-5 text-violet-500 flex-shrink-0" />
                                 <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-3">
+                                    <div className="flex flex-wrap items-center gap-3">
                                         <h3 className="font-bold text-gray-900">{container.label}</h3>
                                         <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
                                             {totalCount} {totalCount === 1 ? 'imagen' : 'imágenes'}
                                         </span>
-                                        {totalCustom > 0 && (
-                                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex items-center gap-1">
-                                                <CheckCircle className="w-3 h-3" /> {totalCustom} personalizadas
-                                            </span>
-                                        )}
+                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 ${percentage === 100 ? 'bg-emerald-100 text-emerald-700' : percentage > 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
+                                            {percentage === 100 ? <CheckCircle className="w-3 h-3" /> : (percentage > 0 ? <AlertCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />)}
+                                            {percentage}% personalizado
+                                        </span>
                                     </div>
                                     <p className="text-xs text-gray-400 mt-0.5">{container.desc}</p>
                                 </div>
