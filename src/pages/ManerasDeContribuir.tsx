@@ -25,7 +25,7 @@ const ManerasDeContribuir = () => {
             {/* Top Section */}
             <section className="py-32 bg-rotary-concrete">
                 <div className="max-w-4xl mx-auto px-4 text-center">
-                    <h1 className="text-4xl md:text-6xl font-light text-rotary-blue mb-8">
+                    <h1 className="text-4xl md:text-6xl font-bold text-gray-800 mb-8">
                         {getC('header', 'title', "Maneras de contribuir")}
                     </h1>
                     <p className="text-gray-600 text-lg md:text-xl leading-relaxed max-w-3xl mx-auto">
