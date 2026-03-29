@@ -99,7 +99,8 @@ const NewsSection = () => {
         >
           {/* Grid de 3 noticias */}
           <div
-            className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 transition-all duration-500"
+            key={currentSlide}
+            className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 animate-fade-in"
           >
             {visibleArticles.map((article, index) => (
               <Link

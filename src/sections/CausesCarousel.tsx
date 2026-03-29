@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useSiteImages } from '../hooks/useSiteImages';
 
@@ -43,6 +43,7 @@ const defaultCauses = [
 const CausesCarousel = () => {
   const siteImages = useSiteImages();
   const [currentIndex, setCurrentIndex] = useState(1);
+  const [isAutoPlaying, setIsAutoPlaying] = useState(true);
 
   // Override images with custom aboutCarousel images from admin
   const causes = defaultCauses.map((cause, i) => ({
@@ -58,6 +59,15 @@ const CausesCarousel = () => {
     setCurrentIndex((prev) => (prev === causes.length - 1 ? 0 : prev + 1));
   };
 
+  // Auto-play carousel every 5 seconds
+  useEffect(() => {
+    if (!isAutoPlaying) return;
+    const interval = setInterval(() => {
+      goToNext();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isAutoPlaying, causes.length]);
+
   const getVisibleCards = () => {
     const prev = currentIndex === 0 ? causes.length - 1 : currentIndex - 1;
     const next = currentIndex === causes.length - 1 ? 0 : currentIndex + 1;
@@ -69,7 +79,11 @@ const CausesCarousel = () => {
   return (
     <section className="py-16 md:py-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="relative flex items-center justify-center">
+        <div
+          className="relative flex items-center justify-center"
+          onMouseEnter={() => setIsAutoPlaying(false)}
+          onMouseLeave={() => setIsAutoPlaying(true)}
+        >
           {/* Left Arrow */}
           <button
             onClick={goToPrevious}
@@ -79,7 +93,7 @@ const CausesCarousel = () => {
           </button>
 
           {/* Cards Container */}
-          <div className="flex items-center justify-center gap-4 md:gap-12 py-8">
+          <div key={currentIndex} className="flex items-center justify-center gap-4 md:gap-12 py-8 animate-fade-in">
             {visibleCards.map((cause, index) => {
               const isCenter = index === 1;
               return (

@@ -59,11 +59,11 @@ const NuestraJuntaDirectiva = () => {
       {/* Junta Directiva Grid */}
       <section className="py-12 md:py-16 bg-rotary-concrete">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+          <div className="flex flex-wrap justify-center gap-8">
             {juntaDirectiva.map((miembro: any, i: number) => (
               <div
                 key={i}
-                className="bg-white rounded-2xl shadow-xl overflow-hidden hover:-translate-y-2 hover:shadow-2xl transition-all duration-300 flex flex-col group border border-gray-100 relative"
+                className="w-full sm:w-[calc(50%-1rem)] lg:w-[calc(33.333%-1.5rem)] xl:w-[calc(25%-1.5rem)] bg-white rounded-2xl shadow-xl overflow-hidden hover:-translate-y-2 hover:shadow-2xl transition-all duration-300 flex flex-col group border border-gray-100 relative"
               >
                 {/* Image Section */}
                 <div className="w-full aspect-square overflow-hidden relative">
