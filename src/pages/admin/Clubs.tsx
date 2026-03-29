@@ -33,8 +33,18 @@ const ClubsManagement: React.FC = () => {
         domain: '',
         subdomain: '',
         description: '',
-        status: 'active'
+        status: 'active',
+        moduleProjects: true,
+        moduleEvents: true,
+        moduleRotaract: false,
+        moduleInteract: false,
+        moduleEcommerce: false,
+        moduleDian: false,
+        moduleYouthExchange: false,
+        moduleNgse: false,
+        moduleRotex: false,
     });
+    const [isFetchingDetails, setIsFetchingDetails] = useState(false);
 
     useEffect(() => {
         fetchClubs();
@@ -57,7 +67,8 @@ const ClubsManagement: React.FC = () => {
         }
     };
 
-    const handleOpenModal = (club?: Club) => {
+    const handleOpenModal = async (club?: Club) => {
+        setIsModalOpen(true);
         if (club) {
             setEditingClub(club);
             setFormData({
@@ -67,8 +78,37 @@ const ClubsManagement: React.FC = () => {
                 domain: club.domain || '',
                 subdomain: club.subdomain || '',
                 description: club.description || '',
-                status: club.status || 'active'
+                status: club.status || 'active',
+                moduleProjects: true, moduleEvents: true, moduleRotaract: false, moduleInteract: false,
+                moduleEcommerce: false, moduleDian: false, moduleYouthExchange: false, moduleNgse: false, moduleRotex: false,
             });
+            setIsFetchingDetails(true);
+            try {
+                const token = localStorage.getItem('rotary_token');
+                const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs/${club.id}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const fullData = await response.json();
+                    const m = fullData.modules || {};
+                    setFormData(prev => ({
+                        ...prev,
+                        moduleProjects: m.projects ?? true,
+                        moduleEvents: m.events ?? true,
+                        moduleRotaract: m.rotaract ?? false,
+                        moduleInteract: m.interact ?? false,
+                        moduleEcommerce: m.ecommerce ?? false,
+                        moduleDian: m.dian ?? false,
+                        moduleYouthExchange: m.youth_exchange ?? false,
+                        moduleNgse: m.ngse ?? false,
+                        moduleRotex: m.rotex ?? false,
+                    }));
+                }
+            } catch (error) {
+                console.error("Error fetching club details:", error);
+            } finally {
+                setIsFetchingDetails(false);
+            }
         } else {
             setEditingClub(null);
             setFormData({
@@ -78,10 +118,11 @@ const ClubsManagement: React.FC = () => {
                 domain: '',
                 subdomain: '',
                 description: '',
-                status: 'active'
+                status: 'active',
+                moduleProjects: true, moduleEvents: true, moduleRotaract: false, moduleInteract: false,
+                moduleEcommerce: false, moduleDian: false, moduleYouthExchange: false, moduleNgse: false, moduleRotex: false,
             });
         }
-        setIsModalOpen(true);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -336,6 +377,52 @@ const ClubsManagement: React.FC = () => {
                                 </div>
                             </div>
 
+                            {/* MODULES SECTION */}
+                            <div className="mt-8 pt-6 border-t border-gray-100">
+                                <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                    ⚙️ Módulos y Funcionalidades
+                                    {isFetchingDetails && <span className="text-[10px] text-[#019fcb] font-bold uppercase animate-pulse">Obteniendo...</span>}
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    <label className="flex items-center gap-3 cursor-pointer p-3 border border-gray-100 rounded-xl hover:bg-gray-50 transition-colors">
+                                        <input type="checkbox" className="w-4 h-4 text-rotary-blue rounded border-gray-300 focus:ring-rotary-blue" checked={formData.moduleProjects} onChange={(e) => setFormData({ ...formData, moduleProjects: e.target.checked })} />
+                                        <span className="text-[13px] font-bold text-gray-700">Proyectos</span>
+                                    </label>
+                                    <label className="flex items-center gap-3 cursor-pointer p-3 border border-gray-100 rounded-xl hover:bg-gray-50 transition-colors">
+                                        <input type="checkbox" className="w-4 h-4 text-rotary-blue rounded border-gray-300 focus:ring-rotary-blue" checked={formData.moduleEvents} onChange={(e) => setFormData({ ...formData, moduleEvents: e.target.checked })} />
+                                        <span className="text-[13px] font-bold text-gray-700">Eventos</span>
+                                    </label>
+                                    <label className="flex items-center gap-3 cursor-pointer p-3 border border-gray-100 rounded-xl hover:bg-gray-50 transition-colors">
+                                        <input type="checkbox" className="w-4 h-4 text-rotary-blue rounded border-gray-300 focus:ring-rotary-blue" checked={formData.moduleEcommerce} onChange={(e) => setFormData({ ...formData, moduleEcommerce: e.target.checked })} />
+                                        <span className="text-[13px] font-bold text-gray-700">Ecommerce</span>
+                                    </label>
+                                    <label className="flex items-center gap-3 cursor-pointer p-3 border border-gray-100 rounded-xl hover:bg-gray-50 transition-colors">
+                                        <input type="checkbox" className="w-4 h-4 text-rotary-blue rounded border-gray-300 focus:ring-rotary-blue" checked={formData.moduleRotaract} onChange={(e) => setFormData({ ...formData, moduleRotaract: e.target.checked })} />
+                                        <span className="text-[13px] font-bold text-gray-700">Club Rotaract</span>
+                                    </label>
+                                    <label className="flex items-center gap-3 cursor-pointer p-3 border border-gray-100 rounded-xl hover:bg-gray-50 transition-colors">
+                                        <input type="checkbox" className="w-4 h-4 text-rotary-blue rounded border-gray-300 focus:ring-rotary-blue" checked={formData.moduleInteract} onChange={(e) => setFormData({ ...formData, moduleInteract: e.target.checked })} />
+                                        <span className="text-[13px] font-bold text-gray-700">Club Interact</span>
+                                    </label>
+                                    <label className="flex items-center gap-3 cursor-pointer p-3 border border-gray-100 rounded-xl hover:bg-gray-50 transition-colors">
+                                        <input type="checkbox" className="w-4 h-4 text-rotary-blue rounded border-gray-300 focus:ring-rotary-blue" checked={formData.moduleYouthExchange} onChange={(e) => setFormData({ ...formData, moduleYouthExchange: e.target.checked })} />
+                                        <span className="text-[13px] font-bold text-gray-700">Youth Exchange</span>
+                                    </label>
+                                    <label className="flex items-center gap-3 cursor-pointer p-3 border border-gray-100 rounded-xl hover:bg-gray-50 transition-colors">
+                                        <input type="checkbox" className="w-4 h-4 text-rotary-blue rounded border-gray-300 focus:ring-rotary-blue" checked={formData.moduleNgse} onChange={(e) => setFormData({ ...formData, moduleNgse: e.target.checked })} />
+                                        <span className="text-[13px] font-bold text-gray-700">NGSE</span>
+                                    </label>
+                                    <label className="flex items-center gap-3 cursor-pointer p-3 border border-gray-100 rounded-xl hover:bg-gray-50 transition-colors">
+                                        <input type="checkbox" className="w-4 h-4 text-rotary-blue rounded border-gray-300 focus:ring-rotary-blue" checked={formData.moduleRotex} onChange={(e) => setFormData({ ...formData, moduleRotex: e.target.checked })} />
+                                        <span className="text-[13px] font-bold text-gray-700">ROTEX</span>
+                                    </label>
+                                    <label className="flex items-center gap-3 cursor-pointer p-3 border border-gray-100 rounded-xl hover:bg-gray-50 transition-colors">
+                                        <input type="checkbox" className="w-4 h-4 text-rotary-blue rounded border-gray-300 focus:ring-rotary-blue" checked={formData.moduleDian} onChange={(e) => setFormData({ ...formData, moduleDian: e.target.checked })} />
+                                        <span className="text-[13px] font-bold text-gray-700">Status DIAN</span>
+                                    </label>
+                                </div>
+                            </div>
+
                             <div className="mt-8 flex justify-end gap-3 border-t border-gray-100 pt-6">
                                 <button
                                     type="button"
@@ -346,7 +433,7 @@ const ClubsManagement: React.FC = () => {
                                 </button>
                                 <button
                                     type="submit"
-                                    disabled={isSubmitting}
+                                    disabled={isSubmitting || isFetchingDetails}
                                     className="bg-rotary-blue text-white px-8 py-2 rounded-full font-bold hover:bg-sky-800 transition-all disabled:opacity-50"
                                 >
                                     {isSubmitting ? 'Guardando...' : (editingClub ? 'Guardar Cambios' : 'Crear Club')}
