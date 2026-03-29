@@ -27,6 +27,7 @@ const ClubSettings: React.FC = () => {
         logo: '',
         footerLogo: '',
         endPolioLogo: '',
+        rotaractLogo: '',
         favicon: '',
         logoHeaderSize: 200,
         autoGenerateCalendar: true,
@@ -75,6 +76,7 @@ const ClubSettings: React.FC = () => {
                 logo: club.logo || '',
                 footerLogo: club.footerLogo || '',
                 endPolioLogo: club.endPolioLogo || '',
+                rotaractLogo: club.settings?.rotaract_logo || '',
                 favicon: club.favicon || '',
                 logoHeaderSize: club.logoHeaderSize ?? 200,
                 autoGenerateCalendar: club.settings?.auto_generate_calendar !== false,
@@ -267,6 +269,43 @@ const ClubSettings: React.FC = () => {
             }
         } catch (error: any) {
             console.error('End Polio logo upload error:', error);
+            toast.error(`Error al subir: ${error.message}`);
+        } finally {
+            setUploading(false);
+            if (e.target) e.target.value = '';
+        }
+    };
+
+    const handleRotaractLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setUploading(true);
+        const formDataUpload = new FormData();
+        formDataUpload.append('file', file);
+        formDataUpload.append('folder', 'logos-rotaract');
+
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const apiUrl = import.meta.env.VITE_API_URL || '/api';
+            const targetUrl = `${apiUrl}/media/upload?folder=logos-rotaract&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
+
+            const response = await fetch(targetUrl, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formDataUpload
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setFormData(prev => ({ ...prev, rotaractLogo: data.url }));
+                toast.success('Logo Rotaract subido con éxito');
+            } else {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Falla en el servidor');
+            }
+        } catch (error: any) {
+            console.error('Rotaract logo upload error:', error);
             toast.error(`Error al subir: ${error.message}`);
         } finally {
             setUploading(false);
@@ -607,6 +646,38 @@ const ClubSettings: React.FC = () => {
                                     {uploading ? 'Subiendo...' : 'Seleccionar Logo End Polio'}
                                     <input type="file" className="hidden" accept="image/*" onChange={(e) => {
                                         handleEndPolioLogoUpload(e);
+                                    }} disabled={uploading} />
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Rotaract Logo Section - Limited to Super Admin */}
+                {isSuperAdmin && (
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                        <div className="flex justify-between items-start mb-6">
+                            <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                                <ImageIcon className="w-5 h-5 text-rotary-blue" /> Logo Rotaract
+                            </h3>
+                        </div>
+                        <div className="flex flex-col md:flex-row items-center gap-8">
+                            <div className="w-48 h-48 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden bg-gray-50">
+                                {formData.rotaractLogo ? (
+                                    <img src={formData.rotaractLogo} alt="Rotaract Logo preview" className="w-full h-full object-contain p-4" />
+                                ) : (
+                                    <ImageIcon className="w-12 h-12 text-gray-300" />
+                                )}
+                            </div>
+                            <div className="flex-1 space-y-4">
+                                <p className="text-sm text-gray-500">
+                                    Sube el logo de Rotaract del club. Se mostrará en la sección y portal de Rotaract.
+                                </p>
+                                <label className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2.5 rounded-full font-bold cursor-pointer transition-colors">
+                                    <Upload className="w-4 h-4" />
+                                    {uploading ? 'Subiendo...' : 'Seleccionar Logo Rotaract'}
+                                    <input type="file" className="hidden" accept="image/*" onChange={(e) => {
+                                        handleRotaractLogoUpload(e);
                                     }} disabled={uploading} />
                                 </label>
                             </div>

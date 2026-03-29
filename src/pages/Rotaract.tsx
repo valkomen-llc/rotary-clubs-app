@@ -32,9 +32,17 @@ const Rotaract = () => {
                     <div className="inline-flex items-center gap-2 bg-rotaract/20 backdrop-blur-md border border-rotaract/30 px-4 py-1.5 rounded-full text-white text-xs font-bold tracking-[0.2em] uppercase mb-6 animate-fade-in-down">
                         <Sparkles className="w-4 h-4 text-rotaract fill-rotaract" /> Liderazgo y Servicio Joven
                     </div>
-                    <h1 className="text-5xl md:text-7xl font-extrabold text-white mb-6 drop-shadow-2xl animate-fade-in leading-tight">
-                        Rotaract <br />
-                        <span className="text-rotaract">
+                    <h1 className="text-center mb-6 drop-shadow-2xl animate-fade-in leading-tight">
+                        {club.settings?.rotaract_logo ? (
+                            <div className="flex justify-center items-center mb-6">
+                                <img src={club.settings.rotaract_logo} alt="Rotaract Logo" className="h-[100px] md:h-[160px] w-auto object-contain" />
+                            </div>
+                        ) : (
+                            <span className="block text-5xl md:text-7xl font-extrabold text-white mb-2">
+                                Rotaract
+                            </span>
+                        )}
+                        <span className="block text-4xl md:text-6xl font-extrabold text-rotaract">
                             {club.name.replace(/Rotary Club de |Rotary Club |Rotary /gi, '')}
                         </span>
                     </h1>

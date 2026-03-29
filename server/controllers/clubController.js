@@ -89,81 +89,83 @@ export const createClub = async (req, res) => {
 
 export const updateClub = async (req, res) => {
     const { id } = req.params;
-    const {
-        name, description, city, country, district, domain, subdomain,
-        email, phone, address, state, socialLinks, customSocialLinks, siteImages, galleryImages,
-        primaryColor, secondaryColor, logo, footerLogo, endPolioLogo, favicon, status,
-        stripePublicKey, stripeSecretKey, useStripe,
-        usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
-        storeActive, logoHeaderSize, autoGenerateCalendar,
-        memberCount, moduleProjects, moduleEvents, moduleRotaract, moduleInteract, moduleEcommerce, moduleDian,
-        moduleYouthExchange, moduleNgse, moduleRotex
-    } = req.body;
-
-    try {
-        if (req.user.role !== 'administrator' && req.user.clubId !== id) {
-            return res.status(403).json({ error: 'Access denied' });
-        }
-
-        const currentClub = await db.query('SELECT * FROM "Club" WHERE id = $1', [id]);
-        if (!currentClub.rows[0]) return res.status(404).json({ error: 'Club not found' });
-
-        const params = [
+        const {
             name, description, city, country, district, domain, subdomain,
-            logo, footerLogo, endPolioLogo, favicon, status, id
-        ].map(val => val === undefined ? null : val);
+            email, phone, address, state, socialLinks, customSocialLinks, siteImages, galleryImages,
+            primaryColor, secondaryColor, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, favicon, status,
+            stripePublicKey, stripeSecretKey, useStripe,
+            usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
+            storeActive, logoHeaderSize, autoGenerateCalendar,
+            memberCount, moduleProjects, moduleEvents, moduleRotaract, moduleInteract, moduleEcommerce, moduleDian,
+            moduleYouthExchange, moduleNgse, moduleRotex
+        } = req.body;
 
-        const result = await db.query(
-            `UPDATE "Club" SET 
-             name=COALESCE($1, name), 
-             description=COALESCE($2, description), 
-             city=COALESCE($3, city), 
-             country=COALESCE($4, country), 
-             district=COALESCE($5, district), 
-             domain=COALESCE($6, domain), 
-             subdomain=COALESCE($7, subdomain),
-             logo=COALESCE($8, logo), 
-             "footerLogo"=COALESCE($9, "footerLogo"), 
-             "endPolioLogo"=COALESCE($10, "endPolioLogo"), 
-             favicon=COALESCE($11, favicon),
-             status=COALESCE($12, status), 
-             "updatedAt"=NOW()
-             WHERE id=$13 RETURNING *`,
-            params
-        );
+        try {
+            if (req.user.role !== 'administrator' && req.user.clubId !== id) {
+                return res.status(403).json({ error: 'Access denied' });
+            }
 
-        // Vercel Auto-provision: If domain has changed or is being set
-        const existingDomain = currentClub.rows[0].domain;
-        if (domain && domain !== existingDomain) {
-            await VercelService.addDomain(domain);
-        }
+            const currentClub = await db.query('SELECT * FROM "Club" WHERE id = $1', [id]);
+            if (!currentClub.rows[0]) return res.status(404).json({ error: 'Club not found' });
 
-        // Build settings map — all key-value pairs that go to the Settings table
-        const settingsToUpdate = {
-            'contact_email': email,
-            'contact_phone': phone,
-            'contact_address': address,
-            'club_state': state,
-            'social_links': socialLinks ? JSON.stringify(socialLinks) : undefined,
-            'custom_social_links': customSocialLinks ? JSON.stringify(customSocialLinks) : undefined,
-            'site_images': siteImages ? JSON.stringify(siteImages) : undefined,
-            'gallery_images': galleryImages ? JSON.stringify(galleryImages) : undefined,
-            'color_primary': primaryColor,
-            'color_secondary': secondaryColor,
-            'store_active': storeActive !== undefined ? String(storeActive) : undefined,
-            'logo_header_size': logoHeaderSize !== undefined ? String(logoHeaderSize) : undefined,
-            'member_count': memberCount,
-            'module_projects': moduleProjects !== undefined ? String(moduleProjects) : undefined,
-            'module_events': moduleEvents !== undefined ? String(moduleEvents) : undefined,
-            'module_rotaract': moduleRotaract !== undefined ? String(moduleRotaract) : undefined,
-            'module_interact': moduleInteract !== undefined ? String(moduleInteract) : undefined,
-            'module_ecommerce': moduleEcommerce !== undefined ? String(moduleEcommerce) : undefined,
-            'module_dian': moduleDian !== undefined ? String(moduleDian) : undefined,
-            'module_youth_exchange': moduleYouthExchange !== undefined ? String(moduleYouthExchange) : undefined,
-            'module_ngse': moduleNgse !== undefined ? String(moduleNgse) : undefined,
-            'module_rotex': moduleRotex !== undefined ? String(moduleRotex) : undefined,
-            'auto_generate_calendar': autoGenerateCalendar !== undefined ? String(autoGenerateCalendar) : undefined,
-        };
+            const params = [
+                name, description, city, country, district, domain, subdomain,
+                logo, footerLogo, endPolioLogo, favicon, status, id
+            ].map(val => val === undefined ? null : val);
+
+            const result = await db.query(
+                `UPDATE "Club" SET 
+                 name=COALESCE($1, name), 
+                 description=COALESCE($2, description), 
+                 city=COALESCE($3, city), 
+                 country=COALESCE($4, country), 
+                 district=COALESCE($5, district), 
+                 domain=COALESCE($6, domain), 
+                 subdomain=COALESCE($7, subdomain),
+                 logo=COALESCE($8, logo), 
+                 "footerLogo"=COALESCE($9, "footerLogo"), 
+                 "endPolioLogo"=COALESCE($10, "endPolioLogo"), 
+                 favicon=COALESCE($11, favicon),
+                 status=COALESCE($12, status), 
+                 "updatedAt"=NOW()
+                 WHERE id=$13 RETURNING *`,
+                params
+            );
+
+            // Vercel Auto-provision: If domain has changed or is being set
+            const existingDomain = currentClub.rows[0].domain;
+            if (domain && domain !== existingDomain) {
+                await VercelService.addDomain(domain);
+            }
+
+            // Build settings map — all key-value pairs that go to the Settings table
+            const settingsToUpdate = {
+                'contact_email': email,
+                'contact_phone': phone,
+                'contact_address': address,
+                'club_state': state,
+                'social_links': socialLinks ? JSON.stringify(socialLinks) : undefined,
+                'custom_social_links': customSocialLinks ? JSON.stringify(customSocialLinks) : undefined,
+                'site_images': siteImages ? JSON.stringify(siteImages) : undefined,
+                'gallery_images': galleryImages ? JSON.stringify(galleryImages) : undefined,
+                'color_primary': primaryColor,
+                'color_secondary': secondaryColor,
+                'rotaract_logo': rotaractLogo,
+                'interact_logo': interactLogo,
+                'store_active': storeActive !== undefined ? String(storeActive) : undefined,
+                'logo_header_size': logoHeaderSize !== undefined ? String(logoHeaderSize) : undefined,
+                'member_count': memberCount,
+                'module_projects': moduleProjects !== undefined ? String(moduleProjects) : undefined,
+                'module_events': moduleEvents !== undefined ? String(moduleEvents) : undefined,
+                'module_rotaract': moduleRotaract !== undefined ? String(moduleRotaract) : undefined,
+                'module_interact': moduleInteract !== undefined ? String(moduleInteract) : undefined,
+                'module_ecommerce': moduleEcommerce !== undefined ? String(moduleEcommerce) : undefined,
+                'module_dian': moduleDian !== undefined ? String(moduleDian) : undefined,
+                'module_youth_exchange': moduleYouthExchange !== undefined ? String(moduleYouthExchange) : undefined,
+                'module_ngse': moduleNgse !== undefined ? String(moduleNgse) : undefined,
+                'module_rotex': moduleRotex !== undefined ? String(moduleRotex) : undefined,
+                'auto_generate_calendar': autoGenerateCalendar !== undefined ? String(autoGenerateCalendar) : undefined,
+            };
 
         for (const [key, value] of Object.entries(settingsToUpdate)) {
             if (value !== undefined) {
