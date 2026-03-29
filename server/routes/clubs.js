@@ -68,8 +68,14 @@ router.get('/by-domain', async (req, res) => {
         // Use a consistent fallback for logo assets if neither the club nor master has them
         const defaultFooter = "https://rotary-platform-assets.s3.amazonaws.com/logos/rotary-logo-white-main.png";
 
+        // Fetch global settings
+        const globalSettingsResult = await db.query('SELECT value FROM "Setting" WHERE key = $1 AND "clubId" IS NULL', ['map_style']);
+        const globalMapStyle = globalSettingsResult.rows[0]?.value || 'm';
+
         const mappedClub = {
             ...clubDataRaw,
+            // Globally defined map style
+            mapStyle: globalMapStyle,
             // LOGO INHERITANCE RULE:
             // 1. Header Logo: Use club's, fallback to master's
             logo: clubDataRaw.logo || masterLogos.logo,

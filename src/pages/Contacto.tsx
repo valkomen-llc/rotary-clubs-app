@@ -663,7 +663,7 @@ const Contacto = () => {
                   style={{ border: 0, position: 'absolute', top: 0, left: 0 }}
                   loading="lazy"
                   allowFullScreen
-                  src={`https://maps.google.com/maps?q=${encodeURIComponent(`${club.contact?.address || ''} ${club.city || 'Bogotá, Colombia'}`.trim())}&t=&z=14&ie=UTF8&iwloc=&output=embed`}
+                  src={`https://maps.google.com/maps?q=${encodeURIComponent(`${club.contact?.address || ''} ${club.city || 'Bogotá, Colombia'}`.trim())}&t=${(club as any).mapStyle || 'm'}&z=14&ie=UTF8&iwloc=&output=embed`}
                 />
               </div>
 

@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "rhel-openssl-3.0.x", "debian-openssl-1.1.x", "debian-openssl-3.0.x"]
 }
 
@@ -9,153 +9,150 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  name      String?
-  phone     String?
-  phoneCountry String?
-  clubRole  String?
-  emailVerified    Boolean  @default(false)
-  verificationCode String?
+  id                 String             @id @default(uuid())
+  email              String             @unique
+  password           String
+  role               String
+  clubId             String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  clubRole           String?
+  emailVerified      Boolean            @default(false)
+  name               String?
+  phone              String?
+  phoneCountry       String?
+  verificationCode   String?
   verificationExpiry DateTime?
-  role      String   // administrator (super_admin), club_admin, member
-  clubId    String?
-  club      Club?    @relation(fields: [clubId], references: [id])
-  orders    Order[]
-  communicationLogs CommunicationLog[]
-  uploadedDocuments ClubDocument[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  uploadedDocuments  ClubDocument[]
+  communicationLogs  CommunicationLog[]
+  orders             Order[]
+  club               Club?              @relation(fields: [clubId], references: [id])
 }
 
 model Club {
-  id          String   @id @default(uuid())
-  name        String
-  city        String?
-  country     String?
-  district    String?
-  domain      String?  @unique
-  subdomain   String?  @unique
-  logo          String?
-  footerLogo    String?
-  endPolioLogo  String?
-  favicon       String?
-  description   String?
-  status      String   @default("active") // active, inactive
-  type        String   @default("club")   // club, district, foundation
-  users       User[]
-  projects    Project[]
-  posts       Post[]
-  donations   Donation[]
-  settings    Setting[]
-  content     ContentSection[]
-  publications Publication[]
-  events       CalendarEvent[]
-  knowledge    KnowledgeSource[]
-  products    Product[]
-  categories  ProductCategory[]
-  orders      Order[]
-  payments    Payment[]
-  paymentConfigs PaymentProviderConfig[]
-  payouts      PayoutRequest[]
-  
-  notificationConfigs NotificationConfig[]
+  id                     String                  @id @default(uuid())
+  name                   String
+  city                   String?
+  country                String?
+  district               String?
+  domain                 String?                 @unique
+  subdomain              String?                 @unique
+  logo                   String?
+  footerLogo             String?
+  endPolioLogo           String?
+  description            String?
+  status                 String                  @default("active")
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  favicon                String?
+  type                   String                  @default("club")
+  events                 CalendarEvent[]
+  documents              ClubDocument[]
+  members                ClubMember[]
+  communicationLogs      CommunicationLog[]
   communicationTemplates CommunicationTemplate[]
-  communicationLogs CommunicationLog[]
-  testimonials    Testimonial[]
-  sponsoredClubs  SponsoredClub[]
-  exchangeStudents ExchangeStudent[]
-  exchangeHostFamilies ExchangeHostFamily[]
-  ngseParticipants NgseParticipant[]
-  ngseHostFamilies NgseHostFamily[]
-  rotexMembers     RotexMember[]
-  financialReports FinancialReport[]
-  // WhatsApp CRM
-  whatsAppConfig    WhatsAppConfig?
-  whatsAppContacts  WhatsAppContact[]
-  whatsAppLists     WhatsAppContactList[]
-  whatsAppTemplates WhatsAppTemplate[]
-  whatsAppCampaigns WhatsAppCampaign[]
-  
-  members     ClubMember[]
-  documents   ClubDocument[]
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  content                ContentSection[]
+  donations              Donation[]
+  exchangeHostFamilies   ExchangeHostFamily[]
+  exchangeStudents       ExchangeStudent[]
+  financialReports       FinancialReport[]
+  knowledge              KnowledgeSource[]
+  ngseHostFamilies       NgseHostFamily[]
+  ngseParticipants       NgseParticipant[]
+  notificationConfigs    NotificationConfig[]
+  orders                 Order[]
+  payments               Payment[]
+  paymentConfigs         PaymentProviderConfig[]
+  payouts                PayoutRequest[]
+  posts                  Post[]
+  products               Product[]
+  categories             ProductCategory[]
+  projects               Project[]
+  publications           Publication[]
+  rotexMembers           RotexMember[]
+  settings               Setting[]
+  sponsoredClubs         SponsoredClub[]
+  testimonials           Testimonial[]
+  users                  User[]
+  whatsAppCampaigns      WhatsAppCampaign[]
+  whatsAppConfig         WhatsAppConfig?
+  whatsAppContacts       WhatsAppContact[]
+  whatsAppLists          WhatsAppContactList[]
+  WhatsAppCustomField    WhatsAppCustomField[]
+  whatsAppTemplates      WhatsAppTemplate[]
 }
 
 model ClubDocument {
-  id            String   @id @default(uuid())
-  clubId        String
-  club          Club     @relation(fields: [clubId], references: [id])
-  fileName      String
-  fileUrl       String
-  s3Key         String
-  fileType      String
-  fileSize      Int
-  category      String   @default("general")
-  uploadedById  String?
-  uploadedBy    User?    @relation(fields: [uploadedById], references: [id])
-  createdAt     DateTime @default(now())
+  id           String   @id @default(uuid())
+  clubId       String
+  fileName     String
+  fileUrl      String
+  s3Key        String
+  fileType     String
+  fileSize     Int
+  category     String   @default("general")
+  uploadedById String?
+  createdAt    DateTime @default(now())
+  club         Club     @relation(fields: [clubId], references: [id])
+  uploadedBy   User?    @relation(fields: [uploadedById], references: [id])
 }
 
 model Media {
   id        String   @id @default(uuid())
   filename  String
   url       String
-  type      String   // image, document
+  type      String
   size      Int
   bucket    String?
   region    String?
-  s3Key     String?  // The path inside the bucket
   clubId    String?
   createdAt DateTime @default(now())
+  s3Key     String?
 }
 
 model Project {
-  id              String   @id @default(uuid())
+  id              String     @id @default(uuid())
   title           String
-  description     String   @db.Text
+  description     String
   image           String?
-  status          String   // active, completed, planned
+  status          String
   category        String?
-  meta            Float?   @default(0)
-  recaudado       Float?   @default(0)
-  donantes        Int?     @default(0)
-  beneficiarios   Int?     @default(0)
+  meta            Float?     @default(0)
+  recaudado       Float?     @default(0)
+  donantes        Int?       @default(0)
+  beneficiarios   Int?       @default(0)
   ubicacion       String?
   fechaEstimada   DateTime?
   videoUrl        String?
-  images          String[]  // Multiple image gallery
-  impacto         String?   @db.Text
-  actualizaciones String?   @db.Text
-  deletedAt       DateTime? // null = activo, fecha = en papelera
+  images          String[]
+  impacto         String?
+  actualizaciones String?
   clubId          String
-  club            Club     @relation(fields: [clubId], references: [id])
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  deletedAt       DateTime?
   donations       Donation[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  club            Club       @relation(fields: [clubId], references: [id])
 }
 
 model Post {
   id             String   @id @default(uuid())
   title          String
-  content        String   @db.Text
+  content        String
   image          String?
   published      Boolean  @default(false)
   category       String?
   tags           String[]
   keywords       String?
   seoTitle       String?
-  seoDescription String?  @db.Text
+  seoDescription String?
   videoUrl       String?
-  images         String[] // Gallery images
+  images         String[]
   isAI           Boolean  @default(false)
   clubId         String?
-  club           Club?    @relation(fields: [clubId], references: [id])
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  club           Club?    @relation(fields: [clubId], references: [id])
 }
 
 model Donation {
@@ -164,37 +161,37 @@ model Donation {
   currency    String   @default("USD")
   donorName   String?
   donorEmail  String?
-  status      String   // pending, success, failed
+  status      String
   clubId      String?
-  club        Club?    @relation(fields: [clubId], references: [id])
-  projectId   String?
-  project     Project? @relation(fields: [projectId], references: [id])
-  message     String?  @db.Text
-  isAnonymous Boolean  @default(false)
-  orderId     String?  @unique
-  order       Order?   @relation(fields: [orderId], references: [id])
   date        DateTime @default(now())
+  isAnonymous Boolean  @default(false)
+  message     String?
+  orderId     String?  @unique
+  projectId   String?
+  club        Club?    @relation(fields: [clubId], references: [id])
+  order       Order?   @relation(fields: [orderId], references: [id])
+  project     Project? @relation(fields: [projectId], references: [id])
 }
 
 model Setting {
   id        String   @id @default(uuid())
-  key       String   
-  value     String   @db.Text
+  key       String
+  value     String
   clubId    String?
-  club      Club?    @relation(fields: [clubId], references: [id])
   updatedAt DateTime @updatedAt
+  club      Club?    @relation(fields: [clubId], references: [id])
 
   @@unique([key, clubId])
 }
 
 model ContentSection {
   id        String   @id @default(uuid())
-  page      String   // home, about, etc.
-  section   String   // hero, foundation, etc.
-  content   String   @db.Text // JSON string with the section content
+  page      String
+  section   String
+  content   String
   clubId    String?
-  club      Club?    @relation(fields: [clubId], references: [id])
   updatedAt DateTime @updatedAt
+  club      Club?    @relation(fields: [clubId], references: [id])
 
   @@unique([page, section, clubId])
 }
@@ -202,191 +199,174 @@ model ContentSection {
 model Publication {
   id          String   @id @default(uuid())
   title       String
-  content     String   @db.Text
-  platform    String?  // Instagram, Facebook, LinkedIn
-  status      String   @default("draft") // draft, scheduled, published
+  content     String
+  platform    String?
+  status      String   @default("draft")
   publishDate DateTime
   mediaUrl    String?
   aiGenerated Boolean  @default(false)
   clubId      String
-  club        Club     @relation(fields: [clubId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  club        Club     @relation(fields: [clubId], references: [id])
 }
 
 model CalendarEvent {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   title       String
-  description String?  @db.Text
+  description String?
   startDate   DateTime
   endDate     DateTime?
   location    String?
-  type        String   @default("meeting") // meeting, project, social, rotary_date
+  type        String    @default("meeting")
   clubId      String
-  club        Club     @relation(fields: [clubId], references: [id])
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
+  club        Club      @relation(fields: [clubId], references: [id])
 }
 
 model KnowledgeSource {
   id        String   @id @default(uuid())
   title     String
-  type      String   // pdf, text, presentation
-  content   String   @db.Text // Extracted text for the AI
+  type      String
+  content   String
   fileUrl   String?
-  clubId    String?  // Null for global Rotary documents
-  club      Club?    @relation(fields: [clubId], references: [id])
+  clubId    String?
   createdAt DateTime @default(now())
+  club      Club?    @relation(fields: [clubId], references: [id])
 }
 
 model ClubMember {
   id          String   @id @default(uuid())
   name        String
   image       String?
-  description String?  @db.Text
+  description String?
   isBoard     Boolean  @default(false)
   boardRole   String?
-  
   clubId      String
-  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
 }
 
-// --- E-COMMERCE MODELS ---
-
 model ProductCategory {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   name      String
   slug      String
   clubId    String
-  club      Club     @relation(fields: [clubId], references: [id])
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   products  Product[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  club      Club      @relation(fields: [clubId], references: [id])
 
   @@unique([slug, clubId])
 }
 
 model Product {
-  id               String   @id @default(uuid())
+  id               String           @id @default(uuid())
   name             String
   slug             String
-  description      String   @db.Text
+  description      String
   price            Float
-  currency         String   @default("USD")
-  status           String   @default("active") // active, draft, archived
+  currency         String           @default("USD")
+  status           String           @default("active")
   images           String[]
-  isDigital        Boolean  @default(false)
-  shippingRequired Boolean  @default(false)
+  isDigital        Boolean          @default(false)
+  shippingRequired Boolean          @default(false)
   clubId           String
-  club             Club     @relation(fields: [clubId], references: [id])
   categoryId       String?
-  category         ProductCategory? @relation(fields: [categoryId], references: [id])
-  variants         ProductVariant[]
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
   orderItems       OrderItem[]
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  category         ProductCategory? @relation(fields: [categoryId], references: [id])
+  club             Club             @relation(fields: [clubId], references: [id])
+  variants         ProductVariant[]
 }
 
 model ProductVariant {
-  id            String   @id @default(uuid())
+  id            String      @id @default(uuid())
   sku           String?
-  attributes    String   // JSON string, e.g., '{"size": "M", "color": "Blue"}'
+  attributes    String
   priceOverride Float?
-  stock         Int      @default(0)
+  stock         Int         @default(0)
   productId     String
-  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
   orderItems    OrderItem[]
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  product       Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
 }
 
 model Order {
-  id          String   @id @default(uuid())
-  subtotal    Float
-  shipping    Float    @default(0)
-  tax         Float    @default(0)
-  discount    Float    @default(0)
-  total       Float
-  currency    String   @default("USD")
-  status      String   @default("pending") // pending, paid, fulfilled, cancelled, refunded
+  id            String      @id @default(uuid())
+  subtotal      Float
+  shipping      Float       @default(0)
+  tax           Float       @default(0)
+  discount      Float       @default(0)
+  total         Float
+  currency      String      @default("USD")
+  status        String      @default("pending")
   customerName  String?
   customerEmail String?
   customerPhone String?
-  metadata    String?  @db.Text // JSON string
-  
-  clubId      String
-  club        Club     @relation(fields: [clubId], references: [id])
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id])
-  
-  items       OrderItem[]
-  payments    Payment[]
-  donation    Donation? // If the order resulted in a donation
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  metadata      String?
+  clubId        String
+  userId        String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  donation      Donation?
+  club          Club        @relation(fields: [clubId], references: [id])
+  user          User?       @relation(fields: [userId], references: [id])
+  items         OrderItem[]
+  payments      Payment[]
 }
 
 model OrderItem {
-  id          String   @id @default(uuid())
-  type        String   // product, donation, membership
-  title       String
-  qty         Int
-  unitPrice   Float
-  total       Float
-  
-  orderId     String
-  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  
-  productId   String?
-  product     Product? @relation(fields: [productId], references: [id])
-  variantId   String?
-  variant     ProductVariant? @relation(fields: [variantId], references: [id])
-  
-  metadata    String?  @db.Text // JSON for donation project info or membership details
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String          @id @default(uuid())
+  type      String
+  title     String
+  qty       Int
+  unitPrice Float
+  total     Float
+  orderId   String
+  productId String?
+  variantId String?
+  metadata  String?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  order     Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product?        @relation(fields: [productId], references: [id])
+  variant   ProductVariant? @relation(fields: [variantId], references: [id])
 }
 
 model Payment {
-  id          String   @id @default(uuid())
-  provider    String   @default("stripe") // stripe, paypal
-  providerRef String?  // e.g. PaymentIntent ID
-  status      String   // pending, succeeded, failed, refunded
-  amount      Float
-  currency    String
-  rawPayload  String?  @db.Text // JSON strings from webhook
-  
-  orderId     String?
-  order       Order?   @relation(fields: [orderId], references: [id])
-  clubId      String
-  club        Club     @relation(fields: [clubId], references: [id])
-  
-  // Platform fee tracking
-  applicationFee Float? @default(0) // Valkomen/Platform fee amount
-  netAmount      Float? // Amount minus Stripe fee and Application fee
-  isPlatformCollection Boolean @default(true) // True if collected by Valkomen's master account
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                   String   @id @default(uuid())
+  provider             String   @default("stripe")
+  providerRef          String?
+  status               String
+  amount               Float
+  currency             String
+  rawPayload           String?
+  orderId              String?
+  clubId               String
+  applicationFee       Float?   @default(0)
+  netAmount            Float?
+  isPlatformCollection Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  club                 Club     @relation(fields: [clubId], references: [id])
+  order                Order?   @relation(fields: [orderId], references: [id])
 }
 
 model PaymentProviderConfig {
-  id          String   @id @default(uuid())
-  provider    String   // stripe, paypal, custom
-  enabled     Boolean  @default(false)
-  publicKey   String?
-  secretRef   String?  // Env var or encrypted string
-  settings    String?  @db.Text // JSON string for metadata/config
-  
-  clubId      String
-  club        Club     @relation(fields: [clubId], references: [id])
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(uuid())
+  provider  String
+  enabled   Boolean  @default(false)
+  publicKey String?
+  secretRef String?
+  settings  String?
+  clubId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  club      Club     @relation(fields: [clubId], references: [id])
 
   @@unique([provider, clubId])
 }
@@ -395,490 +375,454 @@ model PayoutRequest {
   id          String   @id @default(uuid())
   amount      Float
   currency    String   @default("USD")
-  status      String   @default("pending") // pending, processing, completed, rejected
-  bankDetails String?  @db.Text // JSON string with destination accounts
-  notes       String?  @db.Text
-  
+  status      String   @default("pending")
+  bankDetails String?
+  notes       String?
   clubId      String
-  club        Club     @relation(fields: [clubId], references: [id])
-  
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  club        Club     @relation(fields: [clubId], references: [id])
 }
-
-// ==========================================
-// MÓDULO CRM Y NOTIFICACIONES
-// ==========================================
 
 model NotificationConfig {
   id          String   @id @default(uuid())
-  type        String   @default("smtp") // smtp, whatsapp
+  type        String   @default("smtp")
   enabled     Boolean  @default(false)
-  
-  // SMTP Fields
   host        String?
   port        Int?
   user        String?
   password    String?
   fromName    String?
   fromEmail   String?
-  
-  // WhatsApp Fields
   apiKey      String?
   phoneNumber String?
-  wsSession   String?  @db.Text // Para almacenar la sesión si se usa librería QR
-  
+  wsSession   String?
   clubId      String
-  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
+  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
   @@unique([type, clubId])
 }
 
 model CommunicationTemplate {
-  id          String   @id @default(uuid())
-  name        String   // Ejemplo: "Bienvenida Socio", "Alerta Vencimiento"
-  type        String   @default("email") // email, whatsapp
-  subject     String?  // Solo aplica para Email
-  content     String   @db.Text // Texto o HTML con variables (ej. {{nombre_usuario}})
-  
-  clubId      String
-  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(uuid())
+  name      String
+  type      String   @default("email")
+  subject   String?
+  content   String
+  clubId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
 }
 
 model CommunicationLog {
-  id          String   @id @default(uuid())
-  type        String   // email, whatsapp
-  recipient   String   // Correo o Número de Teléfono
-  subject     String?
-  content     String   @db.Text
-  status      String   @default("sent") // sent, failed, pending
-  errorMsg    String?  @db.Text
-  
-  clubId      String
-  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  
-  sentById    String?
-  sentBy      User?    @relation(fields: [sentById], references: [id], onDelete: SetNull)
-  
-  createdAt   DateTime @default(now())
+  id        String   @id @default(uuid())
+  type      String
+  recipient String
+  subject   String?
+  content   String
+  status    String   @default("sent")
+  errorMsg  String?
+  clubId    String
+  sentById  String?
+  createdAt DateTime @default(now())
+  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  sentBy    User?    @relation(fields: [sentById], references: [id])
 }
 
 model Testimonial {
-  id          String    @id @default(uuid())
-  name        String
-  role        String
-  text        String    @db.Text
-  image       String?
-  clubId      String
-  club        Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  deletedAt   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id        String    @id @default(uuid())
+  name      String
+  role      String
+  text      String
+  image     String?
+  clubId    String
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  club      Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
 }
 
-// ==========================================
-// MÓDULO CRM WHATSAPP — META CLOUD API
-// ==========================================
-
-// Configuración de la cuenta WhatsApp Business por club
 model WhatsAppConfig {
-  id             String   @id @default(uuid())
-  clubId         String   @unique
-  club           Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-
-  phoneNumberId  String   // ID del número en Meta
-  wabaId         String   // WhatsApp Business Account ID
-  accessToken    String   @db.Text // System User Token permanente
-  verifyToken    String   // Token secreto para validar webhooks
-  appId          String?  // Meta App ID
-
-  enabled        Boolean  @default(true)
+  id             String    @id @default(uuid())
+  clubId         String    @unique
+  phoneNumberId  String
+  wabaId         String
+  accessToken    String
+  verifyToken    String
+  appId          String?
+  enabled        Boolean   @default(true)
   lastVerifiedAt DateTime?
-
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  club           Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
 }
 
-// Contactos del CRM WhatsApp
 model WhatsAppContact {
-  id          String   @id @default(uuid())
-  clubId      String
-  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-
-  name        String
-  phone       String   // E.164 format: +573001234567
-  email       String?
-  tags        String[]
-  source      String   @default("manual") // manual, csv_import, lead_sync
-  status      String   @default("active")  // active, blocked, opted_out
-  metadata    String?  @db.Text
-
-  totalSent       Int @default(0)
-  totalDelivered  Int @default(0)
-  totalRead       Int @default(0)
-  totalFailed     Int @default(0)
-
-  optedOutAt  DateTime?
-  leadId      String?
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
+  id              String               @id @default(uuid())
+  clubId          String
+  name            String
+  phone           String
+  email           String?
+  tags            String[]
+  source          String               @default("manual")
+  status          String               @default("active")
+  metadata        String?
+  totalSent       Int                  @default(0)
+  totalDelivered  Int                  @default(0)
+  totalRead       Int                  @default(0)
+  totalFailed     Int                  @default(0)
+  optedOutAt      DateTime?
+  leadId          String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  archivedAt      DateTime?            @db.Timestamptz(6)
   listMemberships ContactListMember[]
+  club            Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
   messageLogs     WhatsAppMessageLog[]
 
   @@unique([phone, clubId])
+  @@index([clubId], map: "idx_wa_contact_club")
+  @@index([phone], map: "idx_wa_contact_phone")
+  @@index([status], map: "idx_wa_contact_status")
 }
 
-// Listas / Segmentos de contactos
 model WhatsAppContactList {
-  id          String   @id @default(uuid())
+  id          String              @id @default(uuid())
   clubId      String
-  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-
   name        String
-  description String?  @db.Text
-  color       String   @default("#3B82F6")
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
+  description String?
+  color       String              @default("#3B82F6")
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
   members     ContactListMember[]
   campaigns   WhatsAppCampaign[]
+  club        Club                @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([clubId], map: "idx_wa_list_club")
 }
 
-// Relación N:M entre Contactos y Listas
 model ContactListMember {
   id        String              @id @default(uuid())
   listId    String
-  list      WhatsAppContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
   contactId String
-  contact   WhatsAppContact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
   addedAt   DateTime            @default(now())
+  contact   WhatsAppContact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  list      WhatsAppContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
 
   @@unique([listId, contactId])
+  @@index([contactId], map: "idx_clmember_contact")
+  @@index([listId], map: "idx_clmember_list")
 }
 
-// Templates HSM (sincronizados con Meta)
 model WhatsAppTemplate {
-  id             String   @id @default(uuid())
+  id             String             @id @default(uuid())
   clubId         String
-  club           Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-
-  name           String   // snake_case, nombre en Meta
+  name           String
   displayName    String
-  category       String   @default("MARKETING") // MARKETING, UTILITY, AUTHENTICATION
-  language       String   @default("es")
-  status         String   @default("pending")   // pending, approved, rejected, paused
-
-  headerType     String?  // TEXT, IMAGE, VIDEO, DOCUMENT
-  headerContent  String?  @db.Text
-  bodyText       String   @db.Text
+  category       String             @default("MARKETING")
+  language       String             @default("es")
+  status         String             @default("pending")
+  headerType     String?
+  headerContent  String?
+  bodyText       String
   footerText     String?
-  buttons        String?  @db.Text // JSON array
-
+  buttons        String?
   metaTemplateId String?
-
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
   campaigns      WhatsAppCampaign[]
+  club           Club               @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([clubId], map: "idx_wa_template_club")
+  @@index([status], map: "idx_wa_template_status")
 }
 
-// Campañas de Marketing WhatsApp
 model WhatsAppCampaign {
-  id          String   @id @default(uuid())
-  clubId      String
-  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-
-  name        String
-  description String?  @db.Text
-
-  listId      String?
-  list        WhatsAppContactList? @relation(fields: [listId], references: [id])
-  templateId  String?
-  template    WhatsAppTemplate?    @relation(fields: [templateId], references: [id])
-  templateVars String? @db.Text // JSON de variables {{1}}, {{2}}
-
-  status        String   @default("draft") // draft, scheduled, sending, sent, paused, failed
+  id            String               @id @default(uuid())
+  clubId        String
+  name          String
+  description   String?
+  listId        String?
+  templateId    String?
+  templateVars  String?
+  status        String               @default("draft")
   scheduledAt   DateTime?
   sentAt        DateTime?
+  totalContacts Int                  @default(0)
+  sent          Int                  @default(0)
+  delivered     Int                  @default(0)
+  read          Int                  @default(0)
+  failed        Int                  @default(0)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  club          Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  list          WhatsAppContactList? @relation(fields: [listId], references: [id])
+  template      WhatsAppTemplate?    @relation(fields: [templateId], references: [id])
+  messageLogs   WhatsAppMessageLog[]
 
-  totalContacts Int @default(0)
-  sent          Int @default(0)
-  delivered     Int @default(0)
-  read          Int @default(0)
-  failed        Int @default(0)
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  messageLogs WhatsAppMessageLog[]
+  @@index([clubId], map: "idx_wa_campaign_club")
+  @@index([status], map: "idx_wa_campaign_status")
 }
 
-// Log individual de cada mensaje enviado
 model WhatsAppMessageLog {
-  id         String   @id @default(uuid())
-  clubId     String
-
-  campaignId String?
-  campaign   WhatsAppCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  contactId  String?
-  contact    WhatsAppContact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
-
+  id           String            @id @default(uuid())
+  clubId       String
+  campaignId   String?
+  contactId    String?
   phone        String
-  messageId    String?  // wamid devuelto por Meta
+  messageId    String?
   templateName String?
-  bodyText     String?  @db.Text
-  direction    String   @default("outgoing") // incoming, outgoing
-
-  status       String   @default("pending") // pending, sent, delivered, read, failed
+  bodyText     String?
+  status       String            @default("pending")
   errorCode    String?
-  errorMessage String?  @db.Text
-
-  sentAt      DateTime?
-  deliveredAt DateTime?
-  readAt      DateTime?
-  failedAt    DateTime?
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  errorMessage String?
+  sentAt       DateTime?
+  deliveredAt  DateTime?
+  readAt       DateTime?
+  failedAt     DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  direction    String            @default("outgoing")
+  campaign     WhatsAppCampaign? @relation(fields: [campaignId], references: [id])
+  contact      WhatsAppContact?  @relation(fields: [contactId], references: [id])
 
   @@index([messageId])
   @@index([campaignId, status])
+  @@index([campaignId, status], map: "idx_wa_msglog_campaign")
+  @@index([clubId], map: "idx_wa_msglog_club")
+  @@index([messageId], map: "idx_wa_msglog_messageid")
 }
-
-// ==========================================
-// CONFIGURACIÓN GLOBAL DE PLATAFORMA
-// ==========================================
 
 model PlatformConfig {
   id        String   @id @default(uuid())
   key       String   @unique
-  value     String   @db.Text
+  value     String
   updatedAt DateTime @updatedAt
 }
 
-// ==========================================
-// MÓDULO AGENTES IA (N8N)
-// ==========================================
-
 model Agent {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  clubId       String?  @db.Uuid
-  name         String   @db.VarChar(100)
-  role         String   @db.VarChar(200)
-  category     String?  @db.VarChar(50)
-  description  String?  @db.Text
-  systemPrompt String?  @db.Text
-  aiModel      String?  @default("gpt-4") @db.VarChar(50)
-  avatarSeed   String?  @db.VarChar(50)
-  avatarColor  String?  @db.VarChar(20)
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clubId       String?   @db.Uuid
+  name         String    @db.VarChar(100)
+  role         String    @db.VarChar(200)
+  category     String?   @db.VarChar(50)
+  description  String?
+  systemPrompt String?
+  aiModel      String?   @default("gpt-4") @db.VarChar(50)
+  avatarSeed   String?   @db.VarChar(50)
+  avatarColor  String?   @db.VarChar(20)
   capabilities String[]
-  active       Boolean? @default(true)
-  order        Int?     @default(0)
-  greeting     String?  @db.Text
-  createdAt    DateTime? @default(now()) @db.Timestamptz
-  updatedAt    DateTime? @default(now()) @db.Timestamptz
+  active       Boolean?  @default(true)
+  order        Int?      @default(0)
+  greeting     String?
+  createdAt    DateTime? @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime? @default(now()) @db.Timestamptz(6)
 
   @@index([clubId, order])
+  @@index([clubId, order], map: "idx_agent_club")
 }
-// ==========================================
-// MÓDULO CLUBES PATROCINADOS (ROTARACT / INTERACT)
-// ==========================================
 
 model SponsoredClub {
-  id              String   @id @default(uuid())
-  clubId          String
-  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  
-  type            String   // "rotaract", "interact", etc.
-  name            String
-  foundationDate  DateTime?
-  meetingInfo     String?  @db.Text
-  description     String?  @db.Text
-  logo            String?
-  facebookUrl     String?
-  instagramUrl    String?
-  
-  members         SponsoredClubMember[]
-  projects        SponsoredClubProject[]
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String                 @id @default(uuid())
+  clubId         String
+  type           String
+  name           String
+  foundationDate DateTime?
+  meetingInfo    String?
+  description    String?
+  logo           String?
+  facebookUrl    String?
+  instagramUrl   String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  club           Club                   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  members        SponsoredClubMember[]
+  projects       SponsoredClubProject[]
 
   @@unique([clubId, type])
 }
 
 model SponsoredClubMember {
-  id              String   @id @default(uuid())
+  id              String        @id @default(uuid())
   sponsoredClubId String
-  sponsoredClub   SponsoredClub @relation(fields: [sponsoredClubId], references: [id], onDelete: Cascade)
-  
   name            String
-  role            String?  // Presidente, Secretario, Socio, etc.
+  role            String?
   email           String?
   phone           String?
-  birthDate       DateTime? // Crítico para asegurar límites de edad Rotaract (18-30) / Interact (12-18)
+  birthDate       DateTime?
   image           String?
-  isBoard         Boolean  @default(false)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  isBoard         Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  sponsoredClub   SponsoredClub @relation(fields: [sponsoredClubId], references: [id], onDelete: Cascade)
 }
 
 model SponsoredClubProject {
-  id              String   @id @default(uuid())
+  id              String        @id @default(uuid())
   sponsoredClubId String
-  sponsoredClub   SponsoredClub @relation(fields: [sponsoredClubId], references: [id], onDelete: Cascade)
-  
   title           String
-  description     String   @db.Text
+  description     String
   date            DateTime?
   image           String?
   images          String[]
-  status          String   @default("completed") // planned, active, completed
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  status          String        @default("completed")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  sponsoredClub   SponsoredClub @relation(fields: [sponsoredClubId], references: [id], onDelete: Cascade)
 }
 
-// ==========================================
-// MÓDULO INTERCAMBIOS DE JÓVENES (YOUTH EXCHANGE)
-// ==========================================
-
 model ExchangeStudent {
-  id              String   @id @default(uuid())
+  id              String               @id @default(uuid())
   clubId          String
-  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  
-  type            String   // "inbound" o "outbound"
+  type            String
   name            String
   email           String?
   phone           String?
-  country         String?  // País de origen (inbound) o destino (outbound)
-  sponsorClubName String?  // Nombre del club rotario en el extranjero
-  academicYear    String?  // ej. "2024-2025"
-  status          String   @default("active") // active, returned, planned
+  country         String?
+  sponsorClubName String?
+  academicYear    String?
+  status          String               @default("active")
   image           String?
-  
-  counselorName   String?  // Consejero Rotario asignado
-  
+  counselorName   String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
   hostFamilies    ExchangeHostFamily[]
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  club            Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
 }
 
 model ExchangeHostFamily {
-  id              String   @id @default(uuid())
-  clubId          String
-  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  
-  familyName      String   // Ej. "Familia Pérez"
-  address         String?
-  phone           String?
-  email           String?
-  
-  studentId       String?
-  student         ExchangeStudent? @relation(fields: [studentId], references: [id], onDelete: SetNull)
-  
-  startDate       DateTime?
-  endDate         DateTime?
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id         String           @id @default(uuid())
+  clubId     String
+  familyName String
+  address    String?
+  phone      String?
+  email      String?
+  studentId  String?
+  startDate  DateTime?
+  endDate    DateTime?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  club       Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  student    ExchangeStudent? @relation(fields: [studentId], references: [id])
 }
 
-// ==========================================
-// MÓDULO INTERCAMBIOS NGSE (NUEVAS GENERACIONES)
-// ==========================================
-
 model NgseParticipant {
-  id              String   @id @default(uuid())
+  id              String           @id @default(uuid())
   clubId          String
-  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  
-  type            String   // "inbound" o "outbound"
+  type            String
   name            String
   email           String?
   phone           String?
-  country         String?  // País de origen (inbound) o destino (outbound)
-  sponsorClubName String?  // Nombre del club rotario en el extranjero
-  profession      String?  // Carrera o vocación
-  serviceArea     String?  // Área de servicio
-  status          String   @default("active") // active, returned, planned
+  country         String?
+  sponsorClubName String?
+  profession      String?
+  serviceArea     String?
+  status          String           @default("active")
   image           String?
-  
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
   hostFamilies    NgseHostFamily[]
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  club            Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
 }
 
 model NgseHostFamily {
-  id              String   @id @default(uuid())
-  clubId          String
-  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  
-  familyName      String   // Ej. "Familia Pérez"
-  address         String?
-  phone           String?
-  email           String?
-  
-  participantId   String?
-  participant     NgseParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
-  
-  startDate       DateTime?
-  endDate         DateTime?
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String           @id @default(uuid())
+  clubId        String
+  familyName    String
+  address       String?
+  phone         String?
+  email         String?
+  participantId String?
+  startDate     DateTime?
+  endDate       DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  club          Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  participant   NgseParticipant? @relation(fields: [participantId], references: [id])
 }
-
-// ==========================================
-// MÓDULO ROTEX (EX-INTERCAMBISTAS ALUMNI)
-// ==========================================
 
 model RotexMember {
   id              String   @id @default(uuid())
   clubId          String
-  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  
   name            String
   email           String?
   phone           String?
-  exchangeYear    String?  // Ej: "2018-2019"
-  exchangeCountry String?  // País de destino o de origen
-  role            String   @default("member") // president, mentor, member
-  status          String   @default("active") // active, inactive
+  exchangeYear    String?
+  exchangeCountry String?
+  role            String   @default("member")
+  status          String   @default("active")
   image           String?
-  
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
 }
 
-// ==========================================
-// MÓDULO TRANSPARENCIA FINANCIERA Y DIAN
-// ==========================================
-
 model FinancialReport {
-  id              String   @id @default(uuid())
-  clubId          String
-  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  
-  year            String   // Ej: "2023"
-  title           String   // Ej: "Estados Financieros Anuales", "Régimen Tributario"
-  documentUrl     String   // Link al PDF alojado
-  category        String   // dian, financial, management, other
-  status          String   @default("public") // public, private
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id          String   @id @default(uuid())
+  clubId      String
+  year        String
+  title       String
+  documentUrl String
+  category    String
+  status      String   @default("public")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+}
+
+model AgentActivity {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agentId   String    @db.Uuid
+  agentName String?   @db.VarChar(100)
+  userId    String    @db.Uuid
+  clubId    String?   @db.Uuid
+  action    String    @db.VarChar(80)
+  tool      String?   @db.VarChar(80)
+  details   Json?     @default("{}")
+  success   Boolean?  @default(true)
+  createdAt DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([agentId, createdAt(sort: Desc)], map: "idx_activity_agent")
+  @@index([clubId, createdAt(sort: Desc)], map: "idx_activity_club")
+}
+
+model AgentConversation {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agentId      String    @db.Uuid
+  userId       String    @db.Uuid
+  clubId       String?   @db.Uuid
+  title        String?   @db.VarChar(200)
+  messages     Json?     @default("[]")
+  messageCount Int?      @default(0)
+  lastMessage  String?
+  createdAt    DateTime? @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([clubId, updatedAt(sort: Desc)], map: "idx_conv_club")
+  @@index([userId, agentId, updatedAt(sort: Desc)], map: "idx_conv_user_agent")
+}
+
+model AgentMessage {
+  id             Int       @id @default(autoincrement())
+  conversationId String?   @db.VarChar(60)
+  role           String?   @db.VarChar(20)
+  text           String?
+  createdAt      DateTime? @default(now()) @db.Timestamptz(6)
+}
+
+model WhatsAppCustomField {
+  id        String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  clubId    String
+  label     String   @db.VarChar(100)
+  key       String   @db.VarChar(100)
+  type      String   @default("text") @db.VarChar(30)
+  required  Boolean  @default(false)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  Club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([clubId, key])
 }

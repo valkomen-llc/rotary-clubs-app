@@ -85,6 +85,39 @@ router.post('/clubs', superAdminOnly, createClub);
 router.delete('/clubs/:id', superAdminOnly, deleteClub);
 router.get('/clubs/:clubId/agent-context', roleMiddleware(['administrator', 'club_admin']), getClubAgentContext);
 
+// Global Setup Routes
+router.get('/global-map-style', superAdminOnly, async (req, res) => {
+    try {
+        const result = await db.query('SELECT value FROM "Setting" WHERE key = $1 AND "clubId" IS NULL LIMIT 1', ['map_style']);
+        res.json({ mapStyle: result.rows[0]?.value || 'm' });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+router.post('/global-map-style', superAdminOnly, async (req, res) => {
+    try {
+        const { mapStyle } = req.body;
+        const existing = await db.query('SELECT id FROM "Setting" WHERE key = $1 AND "clubId" IS NULL', ['map_style']);
+        if (existing.rows.length > 0) {
+            await db.query('UPDATE "Setting" SET value = $1, "updatedAt" = NOW() WHERE id = $2', [mapStyle, existing.rows[0].id]);
+        } else {
+            const { PrismaClient } = await import('@prisma/client');
+            const prisma = new PrismaClient();
+            await prisma.setting.create({
+                data: {
+                    key: 'map_style',
+                    value: mapStyle
+                }
+            });
+            await prisma.$disconnect();
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // --- CLUB ADMIN & SUPER ADMIN ROUTES ---
 const adminRoles = ['administrator', 'club_admin'];
 
