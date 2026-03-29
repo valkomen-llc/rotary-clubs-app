@@ -13,13 +13,27 @@ router.get('/by-domain', async (req, res) => {
     }
 
     try {
-        // 1. Fetch Master Club (origen) to get global logos
+        // 1. Fetch Master Club (origen) to get global logos and settings
         // Use double quotes for camelCase columns to ensure Postgres matches Prisma's naming
         const masterResult = await db.query(
-            'SELECT logo, "footerLogo", "endPolioLogo", favicon FROM "Club" WHERE subdomain = $1',
+            `SELECT c.logo, c."footerLogo", c."endPolioLogo", c.favicon, s.key, s.value 
+             FROM "Club" c 
+             LEFT JOIN "Setting" s ON s."clubId" = c.id 
+             WHERE c.subdomain = $1`,
             ['origen']
         );
-        const masterLogos = masterResult.rows[0] || {};
+        
+        const masterLogos = masterResult.rows.length ? {
+            logo: masterResult.rows[0].logo,
+            footerLogo: masterResult.rows[0].footerLogo,
+            endPolioLogo: masterResult.rows[0].endPolioLogo,
+            favicon: masterResult.rows[0].favicon
+        } : {};
+
+        const masterSettings = {};
+        masterResult.rows.forEach(r => {
+            if (r.key) masterSettings[r.key] = r.value;
+        });
 
         // 2. Fetch Current Club
         // When preview=true, allow loading draft clubs too
@@ -119,8 +133,8 @@ router.get('/by-domain', async (req, res) => {
             onboardingCompleted: settings['onboarding_completed'] === 'true',
             onboardingStep: parseInt(settings['onboarding_step']) || 0,
             settings: {
-                rotaract_logo: settings['rotaract_logo'] || null,
-                interact_logo: settings['interact_logo'] || null,
+                rotaract_logo: settings['rotaract_logo'] || masterSettings['rotaract_logo'] || null,
+                interact_logo: settings['interact_logo'] || masterSettings['interact_logo'] || null,
             }
         };
 
