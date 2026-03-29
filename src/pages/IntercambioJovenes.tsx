@@ -7,7 +7,6 @@ import {
 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
-import CausesHexSection from '../sections/CausesHexSection';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
 
@@ -47,31 +46,26 @@ const IntercambioJovenes = () => {
     <div className="min-h-screen bg-white">
       <Navbar />
 
-      {/* Hero Section */}
-      <section className="relative w-full h-[500px] md:h-[600px] overflow-hidden">
-        <div className="absolute inset-0">
-          <img
-            src={getC('hero', 'image', "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&h=800&fit=crop")}
-            alt="Intercambio de Jóvenes Rotary"
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-rotary-navy/90 via-rotary-navy/70 to-transparent" />
-        </div>
-        <div className="relative h-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center">
-          <div className="max-w-2xl">
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight">
-              {getC('hero', 'title', "Intercambio de Jóvenes de Rotary")}
-            </h1>
-            <p className="text-white/90 text-lg md:text-xl leading-relaxed">
-              {getC('hero', 'description', `El Programa de Intercambio de Jóvenes del club ${club.name} hace parte de una red global con 22 países aliados.`)}
-            </p>
-          </div>
+      {/* Title Section */}
+      <section
+        className="py-12 md:py-16"
+        style={{
+          backgroundColor: '#0c3c7c',
+          backgroundImage: "url('/geo-darkblue.png')",
+          backgroundPosition: '50% 0',
+          backgroundRepeat: 'repeat',
+          backgroundSize: '71px 85px'
+        }}
+      >
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h1 className="text-white font-bold" style={{ fontSize: '35px' }}>
+            {getC('hero', 'title', "Intercambio de Jóvenes de Rotary")}
+          </h1>
+          <p className="text-white/80 mt-2 italic text-lg opacity-90">
+            {getC('hero', 'description', `El Programa de Intercambio de Jóvenes del club ${club.name} hace parte de una red global con 22 países aliados.`)}
+          </p>
         </div>
       </section>
-
-      {/* Nuestras Causas Section */}
-      <CausesHexSection />
 
       {/* Experiencia Section */}
       <section className="py-16 md:py-24 bg-rotary-concrete">
