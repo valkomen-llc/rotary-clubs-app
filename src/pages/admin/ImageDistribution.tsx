@@ -365,7 +365,7 @@ const ImageDistribution: React.FC = () => {
                                         <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
                                             {totalCount} {totalCount === 1 ? 'imagen' : 'imágenes'}
                                         </span>
-                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 ${percentage === 100 ? 'bg-emerald-100 text-emerald-700' : percentage > 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
+                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 ${percentage === 100 ? 'bg-emerald-100 text-emerald-700' : percentage > 0 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
                                             {percentage === 100 ? <CheckCircle className="w-3 h-3" /> : (percentage > 0 ? <AlertCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />)}
                                             {percentage}% personalizado
                                         </span>
