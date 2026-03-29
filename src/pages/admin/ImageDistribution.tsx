@@ -7,6 +7,8 @@ import {
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import { toast } from 'sonner';
+import Cropper from 'react-easy-crop';
+import { getCroppedImg } from '../../utils/cropImage';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -139,6 +141,13 @@ const ImageDistribution: React.FC = () => {
     const [mediaSearch, setMediaSearch] = useState('');
     const [uploading, setUploading] = useState(false);
 
+    // Cropping states
+    const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+    const [cropFile, setCropFile] = useState<File | null>(null);
+    const [cropData, setCropData] = useState({ x: 0, y: 0 });
+    const [zoom, setZoom] = useState(1);
+    const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
+
     const token = () => localStorage.getItem('rotary_token');
     const isSuperAdmin = user?.role === 'administrator';
     // Super admin saves globally (clubId=null); club admin saves to their club
@@ -228,14 +237,13 @@ const ImageDistribution: React.FC = () => {
         finally { setMediaLoading(false); }
     };
 
-    // ── Upload image directly from picker ──────────────────────────────────
-    const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+    // ── Upload logic execution ─────────────────────────────────────────────
+    const performUpload = async (fileToUpload: File) => {
         setUploading(true);
         const formData = new FormData();
-        formData.append('file', file);
+        formData.append('file', fileToUpload);
         formData.append('clubId', clubId || '');
+        let newUrl = null;
         try {
             const res = await fetch(`${API}/media/upload`, {
                 method: 'POST',
@@ -243,15 +251,65 @@ const ImageDistribution: React.FC = () => {
                 body: formData,
             });
             if (res.ok) {
-                toast.success('✅ Imagen subida. Selecciónala de la galería.');
-                // Refresh gallery so the new image appears — modal stays open
+                const data = await res.json();
+                toast.success('✅ Imagen subida y seleccionada automáticamente.');
                 await fetchMedia();
+                
+                // Extra: Automatically select the image avoiding the click in the gallery
+                if (data.url) {
+                    newUrl = data;
+                }
             } else {
                 const err = await res.json().catch(() => ({}));
                 toast.error(err.error || 'Error al subir imagen');
             }
         } catch { toast.error('Error de conexión'); }
-        finally { setUploading(false); e.target.value = ''; }
+        finally { setUploading(false); }
+        
+        return newUrl;
+    };
+
+    // ── Upload image directly from picker ──────────────────────────────────
+    const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (pickerTarget?.key.startsWith('chatbot')) {
+            const reader = new FileReader();
+            reader.onload = () => {
+                setCropImageSrc(reader.result as string);
+                setCropFile(file);
+            };
+            reader.readAsDataURL(file);
+            e.target.value = '';
+            return;
+        }
+
+        const data = await performUpload(file);
+        if (data && data.url) {
+            selectMedia(data.url, file.name);
+        }
+        e.target.value = '';
+    };
+
+    const handleCropSave = async () => {
+        if (!cropImageSrc || !croppedAreaPixels || !cropFile) return;
+        setUploading(true);
+        try {
+            const croppedBlob = await getCroppedImg(cropImageSrc, croppedAreaPixels);
+            const file = new File([croppedBlob], cropFile.name, { type: 'image/jpeg' });
+            
+            const data = await performUpload(file);
+            setCropImageSrc(null);
+            setCropFile(null);
+            
+            if (data && data.url) {
+                selectMedia(data.url, file.name);
+            }
+        } catch (e) {
+            toast.error('Error al recortar la imagen');
+            setUploading(false);
+        }
     };
 
     const selectMedia = (url: string, filename: string) => {
@@ -541,6 +599,66 @@ const ImageDistribution: React.FC = () => {
                                     Usar URL
                                 </button>
                             </form>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Crop Modal ── */}
+            {cropImageSrc && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+                        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                            <h2 className="font-bold text-gray-800 flex items-center gap-2">
+                                <ImageIcon className="w-5 h-5 text-violet-500" /> Recortar Avatar
+                            </h2>
+                            <button onClick={() => { setCropImageSrc(null); setCropFile(null); }} className="text-gray-400 hover:text-gray-600 p-1">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+                        <div className="relative w-full h-80 bg-gray-900">
+                            <Cropper
+                                image={cropImageSrc}
+                                crop={cropData}
+                                zoom={zoom}
+                                aspect={1}
+                                cropShape="round"
+                                showGrid={false}
+                                onCropChange={setCropData}
+                                onCropComplete={(_, croppedAreaPixels) => setCroppedAreaPixels(croppedAreaPixels)}
+                                onZoomChange={setZoom}
+                            />
+                        </div>
+                        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex flex-col gap-4">
+                            <div className="flex items-center gap-4">
+                                <span className="text-xs font-bold text-gray-500">Zoom</span>
+                                <input
+                                    type="range"
+                                    value={zoom}
+                                    min={1}
+                                    max={3}
+                                    step={0.1}
+                                    aria-labelledby="Zoom"
+                                    onChange={(e) => setZoom(Number(e.target.value))}
+                                    className="flex-1 accent-violet-600 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                                />
+                            </div>
+                            <div className="flex justify-end gap-3">
+                                <button
+                                    onClick={() => { setCropImageSrc(null); setCropFile(null); }}
+                                    className="px-4 py-2 font-bold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={handleCropSave}
+                                    disabled={uploading}
+                                    className={`px-5 py-2 font-bold text-white rounded-xl shadow-lg transition-all flex items-center gap-2 ${uploading ? 'bg-violet-400' : 'bg-violet-600 hover:bg-violet-700'}`}
+                                >
+                                    {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                    {uploading ? 'Subiendo...' : 'Recortar y Subir'}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
