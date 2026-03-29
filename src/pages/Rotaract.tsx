@@ -40,8 +40,6 @@ const Rotaract = () => {
                     </p>
                 </div>
 
-                {/* Decorative curve */}
-                <div className="absolute bottom-0 left-0 w-full h-24 bg-white clip-path-slant-up" />
             </section>
 
             {/* Intro Stats Bar */}
@@ -185,9 +183,7 @@ const Rotaract = () => {
                     animation: fade-in 1.2s ease-out 0.2s forwards;
                     opacity: 0;
                 }
-                .clip-path-slant-up {
-                    clip-path: polygon(0 100%, 100% 100%, 100% 0);
-                }
+
             `}</style>
         </div>
     );
