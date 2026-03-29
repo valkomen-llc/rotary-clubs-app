@@ -45,7 +45,7 @@ const Rotaract = () => {
             {/* Main Content & Stats Wrapper */}
             <section className="bg-rotary-concrete relative">
                 {/* Intro Stats Bar */}
-                <div className="relative z-20 -mt-12 max-w-5xl mx-auto px-4">
+                <div className="relative z-20 -mt-20 md:-mt-24 max-w-5xl mx-auto px-4">
                     <div 
                         className="grid grid-cols-1 md:grid-cols-3 gap-0 rounded-3xl overflow-hidden shadow-2xl border border-white/10"
                         style={{
