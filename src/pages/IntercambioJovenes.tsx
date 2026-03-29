@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
+import CausesHexSection from '../sections/CausesHexSection';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
 
@@ -68,6 +69,9 @@ const IntercambioJovenes = () => {
           </div>
         </div>
       </section>
+
+      {/* Nuestras Causas Section */}
+      <CausesHexSection />
 
       {/* Experiencia Section */}
       <section className="py-16 md:py-24 bg-rotary-concrete">
