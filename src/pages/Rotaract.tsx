@@ -70,8 +70,8 @@ const Rotaract = () => {
                 <div className="max-w-6xl mx-auto px-6">
                     <div className="flex flex-col md:flex-row items-center gap-16 mb-24">
                         <div className="flex-1">
-                            <h2 className="text-indigo-900 text-xs font-bold uppercase tracking-[0.3em] mb-4">Misión & Propósito</h2>
-                            <h3 className="text-3xl md:text-5xl font-black text-gray-900 mb-8 leading-tight">
+                            <h2 className="text-indigo-900 text-xs font-normal uppercase tracking-[0.3em] mb-4">Misión & Propósito</h2>
+                            <h3 className="text-3xl md:text-5xl font-normal text-gray-900 mb-8 leading-tight">
                                 {getC('section1', 'title', "¿Qué es Rotaract?")}
                             </h3>
                             <p className="text-lg text-gray-600 leading-relaxed mb-6 font-light">
@@ -100,8 +100,8 @@ const Rotaract = () => {
 
                     <div className="flex flex-col md:flex-row-reverse items-center gap-16">
                         <div className="flex-1">
-                            <h2 className="text-indigo-900 text-xs font-bold uppercase tracking-[0.3em] mb-4">Nuestro Legado</h2>
-                            <h3 className="text-3xl md:text-5xl font-black text-gray-900 mb-8 leading-tight">
+                            <h2 className="text-indigo-900 text-xs font-normal uppercase tracking-[0.3em] mb-4">Nuestro Legado</h2>
+                            <h3 className="text-3xl md:text-5xl font-normal text-gray-900 mb-8 leading-tight">
                                 {getC('section2', 'title', "Nuestro Impacto")}
                             </h3>
                             <p className="text-lg text-gray-600 leading-relaxed mb-8 font-light">
@@ -137,8 +137,8 @@ const Rotaract = () => {
             <section className="py-24 bg-rotary-geo relative overflow-hidden">
                 <div className="absolute inset-0 bg-rotary-blue shadow-inner" />
                 <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
-                    <h2 className="text-4xl md:text-5xl font-black text-white mb-8">
-                        ¿Estás listo para ser el <span className="text-rotaract">cambio</span>?
+                    <h2 className="text-4xl md:text-5xl font-normal text-white mb-8">
+                        ¿Estás listo para ser el <span className="text-rotaract font-normal">cambio</span>?
                     </h2>
                     <p className="text-xl text-white/80 mb-12 font-light max-w-2xl mx-auto">
                         Únete a Rotaract {club.name} y comienza tu viaje de liderazgo y servicio hoy mismo.
