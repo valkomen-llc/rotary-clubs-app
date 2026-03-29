@@ -3,8 +3,14 @@ export const createImage = (url: string): Promise<HTMLImageElement> =>
     const image = new Image()
     image.addEventListener('load', () => resolve(image))
     image.addEventListener('error', (error) => reject(error))
-    image.setAttribute('crossOrigin', 'anonymous') // avoided CORS issues
-    image.src = url
+    if (url.startsWith('data:')) {
+      image.src = url
+    } else {
+      image.setAttribute('crossOrigin', 'anonymous') // avoided CORS issues
+      // Bypass browser cache to avoid CORS errors when the image was previously 
+      // loaded without crossOrigin in the Cropper UI
+      image.src = url + (url.includes('?') ? '&' : '?') + 'cors-bypass=' + Date.now()
+    }
   })
 
 export async function getCroppedImg(

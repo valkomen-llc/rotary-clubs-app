@@ -306,8 +306,9 @@ const ImageDistribution: React.FC = () => {
             if (data && data.url) {
                 selectMedia(data.url, file.name);
             }
-        } catch (e) {
-            toast.error('Error al recortar la imagen');
+        } catch (e: any) {
+            console.error('Cropper error:', e);
+            toast.error(e.message || 'Error al recortar la imagen (posible bloqueo CORS o imagen inválida)');
             setUploading(false);
         }
     };
