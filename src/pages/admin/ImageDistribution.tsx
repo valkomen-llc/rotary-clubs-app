@@ -105,11 +105,11 @@ const ImageDistribution: React.FC = () => {
     const activeContainers = React.useMemo(() => {
         const active: Container[] = [...BASE_CONTAINERS];
         const c = club as any;
-        if (c?.hasRotaract) active.push({ key: 'rotaract', label: 'Club Rotaract', desc: 'Imagen de portada para la sección Rotaract.', count: 1, aspect: '16/8' });
-        if (c?.hasInteract) active.push({ key: 'interact', label: 'Club Interact', desc: 'Imagen de portada para la sección Interact.', count: 1, aspect: '16/8' });
-        if (c?.hasYouthExchange) active.push({ key: 'yep', label: 'Intercambio de Jóvenes (YEP)', desc: 'Imagen de portada para el portal YEP.', count: 1, aspect: '16/8' });
-        if (c?.hasNGSE) active.push({ key: 'ngse', label: 'Intercambios NGSE', desc: 'Imagen de portada para la directiva de NGSE.', count: 1, aspect: '16/8' });
-        if (c?.hasRotex) active.push({ key: 'rotex', label: 'Red ROTEX', desc: 'Imagen de portada para los ex-intercambistas.', count: 1, aspect: '16/8' });
+        if (c?.modules?.rotaract) active.push({ key: 'rotaract', label: 'Club Rotaract', desc: 'Imagen de portada para la sección Rotaract.', count: 1, aspect: '16/8' });
+        if (c?.modules?.interact) active.push({ key: 'interact', label: 'Club Interact', desc: 'Imagen de portada para la sección Interact.', count: 1, aspect: '16/8' });
+        if (c?.modules?.youthExchange) active.push({ key: 'yep', label: 'Intercambio de Jóvenes (YEP)', desc: 'Imagen de portada para el portal YEP.', count: 1, aspect: '16/8' });
+        if (c?.modules?.ngse) active.push({ key: 'ngse', label: 'Intercambios NGSE', desc: 'Imagen de portada para la directiva de NGSE.', count: 1, aspect: '16/8' });
+        if (c?.modules?.rotex) active.push({ key: 'rotex', label: 'Red ROTEX', desc: 'Imagen de portada para los ex-intercambistas.', count: 1, aspect: '16/8' });
         return active;
     }, [club]);
 
