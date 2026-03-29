@@ -429,12 +429,12 @@ const ChatBot: React.FC = () => {
 
                 <button
                     onClick={() => { setIsOpen(!isOpen); setUnread(0); }}
-                    className={`relative w-16 h-16 sm:w-20 sm:h-20 rounded-full shadow-2xl overflow-hidden transition-all duration-300 hover:scale-[1.05] active:scale-95 flex-shrink-0 ${
+                    className={`relative w-[60px] h-[60px] rounded-full shadow-2xl transition-all duration-300 hover:scale-[1.05] active:scale-95 flex-shrink-0 ${
                         isOpen
                             ? 'bg-gray-900 flex items-center justify-center'
                             : isClubAdmin
-                                ? 'border-2 sm:border-4 border-emerald-400 p-[2px] sm:p-1 bg-slate-900'
-                                : 'border-2 sm:border-4 border-rotary-blue p-[2px] sm:p-1 bg-white'
+                                ? 'border-2 border-emerald-400 p-[2px] bg-slate-900'
+                                : 'border-2 border-rotary-blue p-[2px] bg-white'
                     }`}
                     style={{
                         boxShadow: isOpen
@@ -447,21 +447,21 @@ const ChatBot: React.FC = () => {
                 >
                     <div className="relative w-full h-full flex items-center justify-center">
                         {isOpen
-                            ? <X className="w-6 h-6 sm:w-8 sm:h-8 text-white relative z-10" />
+                            ? <X className="w-6 h-6 text-white relative z-10" />
                             : <img src={isClubAdmin ? ADMIN_AVATAR : PUBLIC_AVATAR} alt="Chat Avatar" className="w-full h-full object-cover rounded-full relative z-10 bg-white" />
                         }
 
-                        {/* Unread badge */}
+                        {/* Unread badge placed outside */}
                         {!isOpen && unread > 0 && (
-                            <span className="absolute -top-1 -right-1 sm:top-0 sm:right-0 w-5 h-5 sm:w-6 sm:h-6 bg-red-500 text-white text-[10px] sm:text-xs font-black rounded-full flex items-center justify-center animate-bounce shadow-lg ring-2 ring-white z-20">
+                            <span className="absolute -top-3 -right-3 w-6 h-6 bg-red-500 text-white text-xs font-black rounded-full flex items-center justify-center shadow-lg ring-2 ring-white z-20">
                                 {unread}
                             </span>
                         )}
 
-                        {/* Online green indicator dot */}
+                        {/* Online green indicator dot placed slightly outside */}
                         {!isOpen && (
                             <span 
-                                className="absolute bottom-0 right-0 sm:bottom-1 sm:right-1 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-green-500 rounded-full border-2 border-white z-20"
+                                className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white z-20"
                                 title="Online"
                             ></span>
                         )}
