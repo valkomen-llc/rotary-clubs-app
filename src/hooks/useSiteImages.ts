@@ -17,6 +17,8 @@ export interface SiteImages {
     yep?: ImgSlot;
     ngse?: ImgSlot;
     rotex?: ImgSlot;
+    chatbotPublicAvatar?: ImgSlot;
+    chatbotAdminAvatar?: ImgSlot;
 }
 
 export function useSiteImages(): SiteImages & { _loading?: boolean } {

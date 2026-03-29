@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { X, Send, Loader2, ChevronDown, Mic, MicOff, Volume2, VolumeX, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useClub } from '../contexts/ClubContext';
 import { useAuth } from '../hooks/useAuth';
+import { useSiteImages } from '../hooks/useSiteImages';
 
 // ── Interfaces ───────────────────────────────────────────────────────────
 interface ToolExecuted {
@@ -41,10 +42,19 @@ const ChatBot: React.FC = () => {
     const { club } = useClub();
     const { user, token, isAuthenticated } = useAuth();
     const isClubAdmin = isAuthenticated && (user?.role === 'club_admin' || user?.role === 'administrator');
+    const siteImages = useSiteImages();
 
     // Avatars
-    const PUBLIC_AVATAR = "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face";
-    const ADMIN_AVATAR = "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150&h=150&fit=crop&crop=face";
+    const defaultPublic = "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face";
+    const defaultAdmin = "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150&h=150&fit=crop&crop=face";
+    
+    const PUBLIC_AVATAR = (siteImages.chatbotPublicAvatar && !Array.isArray(siteImages.chatbotPublicAvatar)) 
+        ? siteImages.chatbotPublicAvatar.url 
+        : defaultPublic;
+        
+    const ADMIN_AVATAR = (siteImages.chatbotAdminAvatar && !Array.isArray(siteImages.chatbotAdminAvatar))
+        ? siteImages.chatbotAdminAvatar.url
+        : defaultAdmin;
 
     const [isOpen, setIsOpen] = useState(false);
     const [isMinimized, setIsMinimized] = useState(false);

@@ -52,6 +52,8 @@ const DEFAULTS = {
     yep: { url: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes' },
     ngse: { url: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=1600&h=800&fit=crop', alt: 'NGSE' },
     rotex: { url: 'https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?w=1600&h=800&fit=crop', alt: 'ROTEX' },
+    chatbotPublicAvatar: { url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face', alt: 'Avatar Público' },
+    chatbotAdminAvatar: { url: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150&h=150&fit=crop&crop=face', alt: 'Avatar Admin' },
 };
 
 interface ImgSlot { url: string; alt: string; }
@@ -70,6 +72,8 @@ interface SiteImages {
     yep?: ImgSlot;
     ngse?: ImgSlot;
     rotex?: ImgSlot;
+    chatbotPublicAvatar?: ImgSlot;
+    chatbotAdminAvatar?: ImgSlot;
     [key: string]: ImgSlot | ImgSlot[] | undefined;
 }
 
@@ -93,6 +97,13 @@ const BASE_CONTAINERS: Container[] = [
             { key: 'causesHero', subLabel: 'Hero — Banner (Causas)', count: 1, aspect: '16/6' },
             { key: 'polio', subLabel: 'Erradicación a la Polio', count: 1, aspect: '4/3' },
             { key: 'history', subLabel: 'Nuestra Historia', count: 5, aspect: '16/9' },
+        ],
+    },
+    {
+        key: 'chatbot', label: 'Asistente IA (ChatBot)', desc: 'Imágenes de avatar para el asistente en la plataforma.', count: 2, aspect: '1/1',
+        groups: [
+            { key: 'chatbotPublicAvatar', subLabel: 'Avatar Público', count: 1, aspect: '1/1' },
+            { key: 'chatbotAdminAvatar', subLabel: 'Avatar Administrador', count: 1, aspect: '1/1' },
         ],
     },
 ];
