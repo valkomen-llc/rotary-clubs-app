@@ -2,12 +2,14 @@ import React from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import SiteSetupCard from '../../components/admin/SiteSetupCard';
 
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { Sparkles, CheckCircle2 } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
 const SiteSetupPage: React.FC = () => {
+    const navigate = useNavigate();
     const { user } = useAuth();
     const isSuperAdmin = (user as any)?.role === 'administrator';
 
@@ -58,7 +60,7 @@ const SiteSetupPage: React.FC = () => {
                     </p>
                 </div>
             ) : (
-                <SiteSetupCard stats={stats} onOpenWizard={() => {}} />
+                <SiteSetupCard stats={stats} onOpenWizard={() => navigate('/admin/onboarding')} />
             )}
         </AdminLayout>
     );
