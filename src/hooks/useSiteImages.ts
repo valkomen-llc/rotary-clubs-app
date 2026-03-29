@@ -19,9 +19,9 @@ export interface SiteImages {
     rotex?: ImgSlot;
 }
 
-export function useSiteImages(): SiteImages {
+export function useSiteImages(): SiteImages & { _loading?: boolean } {
     const { club } = useClub();
-    const [images, setImages] = useState<SiteImages>({});
+    const [images, setImages] = useState<SiteImages & { _loading?: boolean }>({ _loading: true });
     const clubId = (club as any)?.id;
 
     useEffect(() => {
@@ -29,8 +29,8 @@ export function useSiteImages(): SiteImages {
         const API = import.meta.env.VITE_API_URL || '/api';
         fetch(`${API}/clubs/${clubId}/site-images?_t=${Date.now()}`)
             .then(r => r.ok ? r.json() : {})
-            .then(data => setImages(data))
-            .catch(() => {});
+            .then(data => setImages({ ...data, _loading: false }))
+            .catch(() => setImages({ _loading: false }));
     }, [clubId]);
 
     return images;

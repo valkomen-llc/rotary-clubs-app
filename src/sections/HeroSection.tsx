@@ -19,11 +19,21 @@ const HeroSection = () => {
     : defaultSlides;
 
   useEffect(() => {
+    if (siteImages._loading) return; // Wait for initial images
+
     const interval = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % slides.length);
     }, 5000);
     return () => clearInterval(interval);
-  }, [slides.length]);
+  }, [slides.length, siteImages._loading]);
+
+  if (siteImages._loading) {
+    return (
+      <section className="relative w-full h-[440px] md:h-[540px] overflow-hidden bg-gray-100 flex items-center justify-center">
+        <div className="absolute inset-0 bg-gray-200 animate-pulse" />
+      </section>
+    );
+  }
 
   return (
     <>
