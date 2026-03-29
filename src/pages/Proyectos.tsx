@@ -265,6 +265,23 @@ const Proyectos = () => {
     <div className="min-h-screen bg-white">
       <Navbar />
 
+      {/* Hero Section */}
+      <section className="relative w-full h-[300px] md:h-[400px] overflow-hidden">
+        <div className="absolute inset-0">
+          <img
+            src={getC('hero', 'image', "https://images.unsplash.com/photo-1593113598332-cd288d649433?w=1600&h=500&fit=crop")}
+            alt="Proyectos"
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-black/40" />
+        </div>
+        <div className="relative h-full flex items-center justify-center">
+          <h1 className="text-4xl md:text-5xl text-white font-bold drop-shadow-md pb-4 md:pb-6">
+            {getC('hero', 'title', "Proyectos")}
+          </h1>
+        </div>
+      </section>
+
       {/* Hero Section - Impacto */}
       <section
         className="relative overflow-hidden"
