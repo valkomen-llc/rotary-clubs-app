@@ -66,7 +66,7 @@ const IntercambioJovenes = () => {
         }}
       >
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-white font-bold" style={{ fontSize: '35px' }}>
+          <h1 className="text-white font-normal" style={{ fontSize: '35px' }}>
             {getC('hero', 'title', "Intercambio de Jóvenes de Rotary")}
           </h1>
           <p className="text-white/80 mt-2 italic text-lg opacity-90">
@@ -85,7 +85,7 @@ const IntercambioJovenes = () => {
                 <Globe className="w-4 h-4" />
                 <span>Intercambio Internacional</span>
               </div>
-              <h2 className="text-4xl lg:text-5xl font-extrabold text-rotary-navy mb-6 leading-tight">
+              <h2 className="text-4xl lg:text-5xl font-normal text-rotary-navy mb-6 leading-tight">
                 {getC('experience', 'title', "¿Te interesa vivir una experiencia como estudiante de intercambio?")}
               </h2>
               <p className="text-gray-600 text-lg leading-relaxed mb-8">
@@ -148,7 +148,7 @@ const IntercambioJovenes = () => {
         <div className="absolute top-0 inset-x-0 h-40 bg-gradient-to-b from-gray-50 to-transparent" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="text-center max-w-3xl mx-auto mb-16">
-            <h2 className="text-4xl md:text-5xl font-extrabold text-rotary-navy mb-6">
+            <h2 className="text-4xl md:text-5xl font-normal text-rotary-navy mb-6">
               {getC('documents', 'title', "¿Listo para comenzar tu viaje?")}
             </h2>
             <p className="text-xl text-gray-600">
@@ -197,7 +197,7 @@ const IntercambioJovenes = () => {
           <div className="absolute inset-0 bg-gradient-to-t from-rotary-navy/95 via-rotary-navy/80 to-rotary-navy/60 backdrop-blur-[2px]" />
         </div>
         <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-4xl md:text-5xl lg:text-6xl font-black text-white leading-tight drop-shadow-lg">
+          <h2 className="text-4xl md:text-5xl lg:text-6xl font-normal text-white leading-tight drop-shadow-lg">
             {getC('banner', 'text', "¡Atrévete a cruzar fronteras, descubrir culturas y transformar tu mundo!")}
           </h2>
           <div className="mt-10">
@@ -212,7 +212,7 @@ const IntercambioJovenes = () => {
       <section className="py-20 md:py-32 bg-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto mb-16">
-            <h2 className="text-3xl md:text-4xl font-extrabold text-rotary-navy">Todo lo que necesitas saber</h2>
+            <h2 className="text-3xl md:text-4xl font-normal text-rotary-navy">Todo lo que necesitas saber</h2>
             <p className="mt-4 text-gray-600 text-lg">Resumen de los beneficios y los requerimientos económicos del programa de Intercambio de Jóvenes.</p>
           </div>
 
@@ -225,7 +225,7 @@ const IntercambioJovenes = () => {
               <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mb-8 shadow-inner">
                 <Users className="w-8 h-8 text-rotary-blue" />
               </div>
-              <h3 className="text-3xl font-black text-rotary-navy mb-8">
+              <h3 className="text-3xl font-normal text-rotary-navy mb-8">
                 ¿Qué ventajas ofrece?
               </h3>
               <ul className="space-y-4 relative z-10">
@@ -246,7 +246,7 @@ const IntercambioJovenes = () => {
               <div className="w-16 h-16 bg-yellow-50 rounded-2xl flex items-center justify-center mb-8 shadow-inner">
                 <DollarSign className="w-8 h-8 text-rotary-gold" />
               </div>
-              <h3 className="text-3xl font-black text-rotary-navy mb-8">
+              <h3 className="text-3xl font-normal text-rotary-navy mb-8">
                 ¿Cuál es el costo?
               </h3>
               <ul className="space-y-4 relative z-10">
