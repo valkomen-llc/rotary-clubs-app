@@ -6,7 +6,7 @@ const FoundationImpactSection = () => {
             <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
                 
                 {/* 1. Título principal */}
-                <h2 className="text-white text-[32px] md:text-[40px] font-semibold text-center mb-10 leading-tight max-w-4xl mx-auto">
+                <h2 className="text-white text-[32px] md:text-[40px] font-light text-center mb-10 leading-tight max-w-4xl mx-auto">
                     Con tu ayuda, podemos mejorar las condiciones de vida en tu comunidad y alrededor del mundo.
                 </h2>
 
