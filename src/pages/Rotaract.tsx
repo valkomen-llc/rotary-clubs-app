@@ -44,21 +44,30 @@ const Rotaract = () => {
 
             {/* Intro Stats Bar */}
             <section className="relative z-20 -mt-12 max-w-5xl mx-auto px-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-0 rounded-3xl overflow-hidden shadow-2xl border border-gray-100 bg-white/80 backdrop-blur-xl">
-                    <div className="p-8 text-center border-b md:border-b-0 md:border-r border-gray-100/50">
+                <div 
+                    className="grid grid-cols-1 md:grid-cols-3 gap-0 rounded-3xl overflow-hidden shadow-2xl border border-white/10"
+                    style={{
+                        backgroundColor: '#0c3c7c',
+                        backgroundImage: "url('/geo-darkblue.png')",
+                        backgroundPosition: '50% 0',
+                        backgroundRepeat: 'repeat',
+                        backgroundSize: '71px 85px'
+                    }}
+                >
+                    <div className="p-8 text-center border-b md:border-b-0 md:border-r border-white/10">
                         <Users className="w-8 h-8 text-rotaract mx-auto mb-3" />
-                        <h3 className="text-3xl font-bold text-gray-800 tracking-tight">+18</h3>
-                        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Años de Edad</p>
+                        <h3 className="text-3xl font-bold text-white tracking-tight">+18</h3>
+                        <p className="text-xs font-bold text-white/70 uppercase tracking-widest">Años de Edad</p>
                     </div>
-                    <div className="p-8 text-center border-b md:border-b-0 md:border-r border-gray-100/50">
+                    <div className="p-8 text-center border-b md:border-b-0 md:border-r border-white/10">
                         <Globe className="w-8 h-8 text-rotaract mx-auto mb-3" />
-                        <h3 className="text-3xl font-bold text-gray-800 tracking-tight">Global</h3>
-                        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Red Internacional</p>
+                        <h3 className="text-3xl font-bold text-white tracking-tight">Global</h3>
+                        <p className="text-xs font-bold text-white/70 uppercase tracking-widest">Red Internacional</p>
                     </div>
                     <div className="p-8 text-center">
                         <Zap className="w-8 h-8 text-rotaract mx-auto mb-3" />
-                        <h3 className="text-3xl font-bold text-gray-800 tracking-tight">Acción</h3>
-                        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Proyectos de Impacto</p>
+                        <h3 className="text-3xl font-bold text-white tracking-tight">Acción</h3>
+                        <p className="text-xs font-bold text-white/70 uppercase tracking-widest">Proyectos de Impacto</p>
                     </div>
                 </div>
             </section>
