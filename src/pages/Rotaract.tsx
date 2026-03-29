@@ -151,14 +151,14 @@ const Rotaract = () => {
             >
                 <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
                     <h2 className="text-4xl md:text-5xl font-normal text-white mb-8">
-                        ¿Estás listo para ser el <span className="text-rotaract font-normal">cambio</span>?
+                        ¿Estás listo para ser el cambio?
                     </h2>
                     <p className="text-xl text-white/80 mb-12 font-light max-w-2xl mx-auto">
                         Únete a Rotaract {club.name} y comienza tu viaje de liderazgo y servicio hoy mismo.
                     </p>
                     <a
                         href="#/contacto"
-                        className="inline-flex items-center gap-3 bg-rotaract hover:bg-rotaract/90 text-white px-10 py-5 rounded-full font-black shadow-2xl hover:translate-y-[-4px] active:translate-y-0 transition-all duration-300"
+                        className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
                     >
                         Quiero Ser Parte <ArrowRight className="w-5 h-5" />
                     </a>
