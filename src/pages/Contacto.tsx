@@ -656,27 +656,15 @@ const Contacto = () => {
               </p>
 
               <div className="bg-gray-100 rounded-xl overflow-hidden mb-8 aspect-[4/3] relative">
-                {club.contact?.address ? (
-                  <iframe
-                    title="Ubicación del club"
-                    width="100%"
-                    height="100%"
-                    style={{ border: 0, position: 'absolute', top: 0, left: 0 }}
-                    loading="lazy"
-                    allowFullScreen
-                    src={`https://maps.google.com/maps?q=${encodeURIComponent(`${club.contact?.address || ''} ${club.city || ''}`.trim())}&t=&z=15&ie=UTF8&iwloc=&output=embed`}
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-rotary-blue/5 to-rotary-gold/5 absolute inset-0">
-                    <div className="text-center p-8">
-                      <div className="w-20 h-20 bg-rotary-blue/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <MapPin className="w-10 h-10 text-rotary-blue" />
-                      </div>
-                      <h3 className="font-bold text-gray-900 mb-2">{club.name}</h3>
-                      <p className="text-gray-600 text-sm">Dirección no configurada</p>
-                    </div>
-                  </div>
-                )}
+                <iframe
+                  title="Ubicación del club"
+                  width="100%"
+                  height="100%"
+                  style={{ border: 0, position: 'absolute', top: 0, left: 0 }}
+                  loading="lazy"
+                  allowFullScreen
+                  src={`https://maps.google.com/maps?q=${encodeURIComponent(`${club.contact?.address || ''} ${club.city || 'Bogotá, Colombia'}`.trim())}&t=&z=14&ie=UTF8&iwloc=&output=embed`}
+                />
               </div>
 
               {/* Membership Steps — only when "Quiero ser socio" */}
