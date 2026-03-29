@@ -76,7 +76,7 @@ const IntercambioJovenes = () => {
       </section>
 
       {/* 3. Experiencia Section (Grid asimétrico con cards flotantes) */}
-      <section className="py-20 md:py-32 bg-gray-50 overflow-hidden">
+      <section className="py-20 md:py-32 bg-rotary-concrete overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
             {/* Texto y Listas */}
@@ -144,8 +144,8 @@ const IntercambioJovenes = () => {
       </section>
 
       {/* 4. Documentos Section (Grid de Interactive Cards) */}
-      <section className="py-20 md:py-32 bg-white relative">
-        <div className="absolute top-0 inset-x-0 h-40 bg-gradient-to-b from-gray-50 to-transparent" />
+      <section className="py-20 md:py-32 bg-rotary-concrete relative">
+        <div className="absolute top-0 inset-x-0 h-40 bg-gradient-to-b from-rotary-concrete to-transparent" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="text-center max-w-3xl mx-auto mb-16">
             <h2 className="text-4xl md:text-5xl font-normal text-rotary-navy mb-6">
