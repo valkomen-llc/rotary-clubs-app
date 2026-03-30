@@ -35,6 +35,7 @@ import Checkout from './pages/Checkout';
 import OrderSuccess from './pages/OrderSuccess';
 import Shop from './pages/Shop';
 import ProductDetail from './pages/ProductDetail';
+import DistrictMultimediaGallery from './pages/DistrictMultimediaGallery';
 
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { ClubProvider, useClub } from './contexts/ClubContext';
@@ -155,6 +156,11 @@ function SmartHome() {
   }
   if (isMainPlatform) return <LandingPage />;
   if (isDraft) return <ComingSoon clubName={club?.name} logo={club?.logo} primaryColor={club?.colors?.primary} />;
+
+  // District Site (e.g. 4271.org) — specialized multimedia gallery
+  if ((club as any)?.type === 'district' || (club as any)?.domain?.includes('4271')) {
+    return <DistrictMultimediaGallery />;
+  }
 
   // Foundation site (COLROTARIOS) — reuses shell, different middle content
   if ((club as any)?.type === 'foundation') {
