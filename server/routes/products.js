@@ -19,7 +19,7 @@ router.get('/public/product', getPublicProductBySlug);
 // All store/product admin routes are protected
 router.use(authMiddleware);
 
-const adminRoles = ['administrator', 'club_admin'];
+const adminRoles = ['administrator', 'club_admin', 'district_admin'];
 
 // Categories
 router.get('/categories', roleMiddleware(adminRoles), getCategories);

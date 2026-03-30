@@ -83,7 +83,7 @@ const superAdminOnly = roleMiddleware(['administrator']);
 router.get('/clubs', superAdminOnly, getAllClubs);
 router.post('/clubs', superAdminOnly, createClub);
 router.delete('/clubs/:id', superAdminOnly, deleteClub);
-router.get('/clubs/:clubId/agent-context', roleMiddleware(['administrator', 'club_admin']), getClubAgentContext);
+router.get('/clubs/:clubId/agent-context', roleMiddleware(['administrator', 'club_admin', 'district_admin']), getClubAgentContext);
 
 // Global Setup Routes
 router.get('/global-map-style', superAdminOnly, async (req, res) => {
@@ -119,7 +119,7 @@ router.post('/global-map-style', superAdminOnly, async (req, res) => {
 });
 
 // --- CLUB ADMIN & SUPER ADMIN ROUTES ---
-const adminRoles = ['administrator', 'club_admin'];
+const adminRoles = ['administrator', 'club_admin', 'district_admin'];
 
 router.get('/clubs/:id', roleMiddleware(adminRoles), getClubById);
 router.put('/clubs/:id', roleMiddleware(adminRoles), updateClub);
@@ -242,7 +242,7 @@ router.patch('/clubs/:id/complete-onboarding', roleMiddleware(adminRoles), async
     }
 });
 // Save Club Archetype Strategy
-router.patch('/:id/save-archetype', roleMiddleware(['super_admin', 'club_admin']), async (req, res) => {
+router.patch('/:id/save-archetype', roleMiddleware(['administrator', 'club_admin', 'district_admin']), async (req, res) => {
     try {
         const { id } = req.params;
         const { archetype } = req.body;
