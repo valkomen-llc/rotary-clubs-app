@@ -28,6 +28,7 @@ const ClubSettings: React.FC = () => {
         footerLogo: '',
         endPolioLogo: '',
         rotaractLogo: '',
+        interactLogo: '',
         favicon: '',
         logoHeaderSize: 200,
         autoGenerateCalendar: true,
@@ -77,6 +78,7 @@ const ClubSettings: React.FC = () => {
                 footerLogo: club.footerLogo || '',
                 endPolioLogo: club.endPolioLogo || '',
                 rotaractLogo: club.settings?.rotaract_logo || '',
+                interactLogo: club.settings?.interact_logo || '',
                 favicon: club.favicon || '',
                 logoHeaderSize: club.logoHeaderSize ?? 200,
                 autoGenerateCalendar: club.settings?.auto_generate_calendar !== false,
@@ -306,6 +308,45 @@ const ClubSettings: React.FC = () => {
             }
         } catch (error: any) {
             console.error('Rotaract logo upload error:', error);
+            toast.error(`Error al subir: ${error.message}`);
+        } finally {
+            setUploading(false);
+            if (e.target) e.target.value = '';
+        }
+    };
+
+    const handleInteractLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || e.target.files.length === 0) return;
+
+        setUploading(true);
+        const file = e.target.files[0];
+
+        // Ensure we send it to specific folder 'logos-interact'
+        const formDataUpload = new FormData();
+        formDataUpload.append('file', file);
+        formDataUpload.append('folder', 'logos-interact');
+
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const apiUrl = import.meta.env.VITE_API_URL || '/api';
+            const targetUrl = `${apiUrl}/media/upload-logo?folder=logos-interact&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
+
+            const response = await fetch(targetUrl, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formDataUpload
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setFormData(prev => ({ ...prev, interactLogo: data.url }));
+                toast.success('Logo Interact subido con éxito');
+            } else {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Falla en el servidor');
+            }
+        } catch (error: any) {
+            console.error('Interact logo upload error:', error);
             toast.error(`Error al subir: ${error.message}`);
         } finally {
             setUploading(false);
@@ -678,6 +719,38 @@ const ClubSettings: React.FC = () => {
                                     {uploading ? 'Subiendo...' : 'Seleccionar Logo Rotaract'}
                                     <input type="file" className="hidden" accept="image/*" onChange={(e) => {
                                         handleRotaractLogoUpload(e);
+                                    }} disabled={uploading} />
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Interact Logo Section - Limited to Super Admin */}
+                {isSuperAdmin && (
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mt-6">
+                        <div className="flex justify-between items-start mb-6">
+                            <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                                <ImageIcon className="w-5 h-5 text-rotary-blue" /> Logo Interact
+                            </h3>
+                        </div>
+                        <div className="flex flex-col md:flex-row items-center gap-8">
+                            <div className="w-48 h-48 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden bg-gray-50">
+                                {formData.interactLogo ? (
+                                    <img src={formData.interactLogo} alt="Interact Logo preview" className="w-full h-full object-contain p-4" />
+                                ) : (
+                                    <ImageIcon className="w-12 h-12 text-gray-300" />
+                                )}
+                            </div>
+                            <div className="flex-1 space-y-4">
+                                <p className="text-sm text-gray-500">
+                                    Sube el logo de Interact del club. Se mostrará en la sección y portal de Interact.
+                                </p>
+                                <label className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2.5 rounded-full font-bold cursor-pointer transition-colors">
+                                    <Upload className="w-4 h-4" />
+                                    {uploading ? 'Subiendo...' : 'Seleccionar Logo Interact'}
+                                    <input type="file" className="hidden" accept="image/*" onChange={(e) => {
+                                        handleInteractLogoUpload(e);
                                     }} disabled={uploading} />
                                 </label>
                             </div>
