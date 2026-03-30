@@ -160,7 +160,7 @@ const DistrictMultimediaGallery: React.FC = () => {
                     </h2>
                     
                     <p className="mb-6 leading-relaxed">
-                        🌟 El Gobernador Jorge Raúl Ossa Botero y el Comité Organizador de la Conferencia Bidistrital Rotary 4271 - 4281 Medellín 2026, invitan a todos los clubes rotarios a compartir sus fotografías oficiales de sus actividades, videos de proyectos o eventos de nuestro «Servicio en Acción» realizados durante el año rotario 2025-2026.
+                        🌟 La Gobernadora Ximena Caicedo y el Comité Organizador de la Conferencia Bidistrital Rotary 4271 - 4281 Medellín 2026, invitan a todos los clubes rotarios a compartir sus fotografías oficiales de sus actividades, videos de proyectos o eventos de nuestro «Servicio en Acción» realizados durante el año rotario 2025-2026.
                     </p>
 
                     <p className="mb-6 leading-relaxed">
