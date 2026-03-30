@@ -158,7 +158,9 @@ function SmartHome() {
   if (isDraft) return <ComingSoon clubName={club?.name} logo={club?.logo} primaryColor={club?.colors?.primary} />;
 
   // District Site (e.g. 4271.org) — specialized multimedia gallery
-  if ((club as any)?.type === 'district' || (club as any)?.domain?.includes('4271')) {
+  const currentHostname = window.location.hostname;
+  const currentParams = window.location.search;
+  if ((club as any)?.type === 'district' || currentHostname.includes('4271') || currentParams.includes('4271')) {
     return <DistrictMultimediaGallery />;
   }
 
