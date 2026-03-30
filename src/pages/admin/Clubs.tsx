@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
-import { Plus, Edit2, Trash2, Globe, MapPin, X } from 'lucide-react';
+import { Plus, Edit2, Trash2, Globe, MapPin, X, LogIn } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '../../hooks/useAuth';
 
 interface Club {
     id: string;
@@ -25,6 +26,7 @@ const ClubsManagement: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingClub, setEditingClub] = useState<Club | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const { impersonate } = useAuth();
 
     const [formData, setFormData] = useState({
         name: '',
@@ -181,6 +183,31 @@ const ClubsManagement: React.FC = () => {
         }
     };
 
+    const handleImpersonate = async (clubId: string, clubName: string) => {
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/auth/impersonate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ targetId: clubId, type: 'club' })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                toast.success(`Entrando como ${clubName}...`);
+                impersonate(data.token, data.user);
+            } else {
+                const data = await response.json();
+                throw new Error(data.error || 'No se pudo iniciar sesión en el club');
+            }
+        } catch (error: any) {
+            toast.error(error.message);
+        }
+    };
+
     return (
         <AdminLayout>
             <div className="flex justify-between items-center mb-8">
@@ -254,6 +281,13 @@ const ClubsManagement: React.FC = () => {
                                 </td>
                                 <td className="px-6 py-4 text-right">
                                     <div className="flex justify-end gap-2">
+                                        <button
+                                            onClick={() => handleImpersonate(club.id, club.name)}
+                                            className="p-2 text-gray-400 hover:text-green-500 transition-colors"
+                                            title="Ingresar como este club"
+                                        >
+                                            <LogIn className="w-4 h-4" />
+                                        </button>
                                         <button
                                             onClick={() => handleOpenModal(club)}
                                             className="p-2 text-gray-400 hover:text-rotary-blue transition-colors"

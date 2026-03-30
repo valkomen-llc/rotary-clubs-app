@@ -17,6 +17,9 @@ interface AuthContextType {
     login: (token: string, user: User) => void;
     logout: () => void;
     isAuthenticated: boolean;
+    impersonate: (newToken: string, newUser: User) => void;
+    revertImpersonation: () => void;
+    isImpersonating: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -65,6 +68,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(newUser);
         localStorage.setItem('rotary_token', newToken);
         localStorage.setItem('rotary_user', JSON.stringify(newUser));
+        // If an explicit login happens, clear any lingering impersonation state
+        localStorage.removeItem('rotary_super_token');
+        localStorage.removeItem('rotary_super_user');
+    };
+
+    const impersonate = (newToken: string, newUser: User) => {
+        // Save current actual admin token and user
+        if (!localStorage.getItem('rotary_super_token')) {
+            localStorage.setItem('rotary_super_token', token || '');
+            localStorage.setItem('rotary_super_user', JSON.stringify(user || {}));
+        }
+
+        // Apply new fake token
+        setToken(newToken);
+        setUser(newUser);
+        localStorage.setItem('rotary_token', newToken);
+        localStorage.setItem('rotary_user', JSON.stringify(newUser));
+        window.location.href = '/admin/dashboard'; // Force full reload
+    };
+
+    const revertImpersonation = () => {
+        const superToken = localStorage.getItem('rotary_super_token');
+        const superUser = localStorage.getItem('rotary_super_user');
+
+        if (superToken && superUser) {
+            setToken(superToken);
+            setUser(JSON.parse(superUser));
+            localStorage.setItem('rotary_token', superToken);
+            localStorage.setItem('rotary_user', superUser);
+        }
+
+        localStorage.removeItem('rotary_super_token');
+        localStorage.removeItem('rotary_super_user');
+        window.location.href = '/admin/clubs'; // Force full reload back to clubs
     };
 
     const logout = () => {
@@ -72,10 +109,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(null);
         localStorage.removeItem('rotary_token');
         localStorage.removeItem('rotary_user');
+        localStorage.removeItem('rotary_super_token');
+        localStorage.removeItem('rotary_super_user');
     };
 
     return (
-        <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!token }}>
+        <AuthContext.Provider value={{
+            user, token, login, logout, impersonate, revertImpersonation,
+            isAuthenticated: !!token,
+            isImpersonating: !!localStorage.getItem('rotary_super_token')
+        }}>
             {children}
         </AuthContext.Provider>
     );

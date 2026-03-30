@@ -2,11 +2,12 @@ import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Plus, Edit2, Trash2, Globe, MapPin, X, Search, Users,
-    Network, Building2, Mail, ExternalLink, CheckCircle, XCircle,
+    Network, Building2, Mail, ExternalLink, CheckCircle,
     Loader2, ArrowLeft, Shield, Copy, RefreshCw, AlertTriangle,
-    Eye, EyeOff, Lock, UserPlus, Wifi, WifiOff, Settings
+    Eye, EyeOff, Lock, UserPlus, Wifi, WifiOff, Settings, LogIn
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '../../hooks/useAuth';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -59,6 +60,7 @@ const DistrictsManagement: React.FC = () => {
     const [showPass, setShowPass] = useState(false);
     const [addingAdmin, setAddingAdmin] = useState(false);
     const [showAdminForm, setShowAdminForm] = useState(false);
+    const { impersonate } = useAuth();
 
     useEffect(() => { fetchDistricts(); }, []);
 
@@ -201,6 +203,27 @@ const DistrictsManagement: React.FC = () => {
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
         toast.success('Copiado al portapapeles');
+    };
+
+    const handleImpersonate = async (districtId: string, name: string) => {
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const res = await fetch(`${API}/auth/impersonate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ targetId: districtId, type: 'district' })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                toast.success(`Entrando como ${name}...`);
+                impersonate(data.token, data.user);
+            } else {
+                const data = await res.json();
+                throw new Error(data.error || 'No se pudo simular distrito');
+            }
+        } catch (error: any) {
+            toast.error(error.message);
+        }
     };
 
     const filtered = districts.filter(d =>
@@ -740,8 +763,9 @@ const DistrictsManagement: React.FC = () => {
                             <div key={dist.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden group">
                                 <div className="bg-gradient-to-br from-rotary-blue to-blue-700 p-5 text-white relative">
                                     <div className="absolute top-3 right-3 flex gap-1">
-                                        <button onClick={() => openModal(dist)} className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors opacity-0 group-hover:opacity-100"><Edit2 className="w-3.5 h-3.5" /></button>
-                                        <button onClick={() => handleDelete(dist)} className="p-1.5 rounded-lg bg-white/10 hover:bg-red-500/60 transition-colors opacity-0 group-hover:opacity-100"><Trash2 className="w-3.5 h-3.5" /></button>
+                                        <button onClick={() => handleImpersonate(dist.id, dist.name)} title="Ingresar como este distrito" className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 hover:text-green-300 transition-colors opacity-0 group-hover:opacity-100"><LogIn className="w-3.5 h-3.5" /></button>
+                                        <button onClick={() => openModal(dist)} title="Editar" className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors opacity-0 group-hover:opacity-100"><Edit2 className="w-3.5 h-3.5" /></button>
+                                        <button onClick={() => handleDelete(dist)} title="Eliminar" className="p-1.5 rounded-lg bg-white/10 hover:bg-red-500/60 transition-colors opacity-0 group-hover:opacity-100"><Trash2 className="w-3.5 h-3.5" /></button>
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center font-black text-lg">{dist.number}</div>

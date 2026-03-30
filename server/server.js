@@ -83,7 +83,7 @@ app.use('/api/seo', seoRoutes);
 app.use('/api/whatsapp', whatsappCrmRoutes);
 app.use('/api/agents', agentsRoutes);
 app.use('/api/calendar', calendarRoutes);
-app.use('/api/districts', districtsRoutes);
+app.use('/api/admin/districts', districtsRoutes);
 app.use('/api/documents', documentsRoutes);
 app.use('/api/faqs', faqsRoutes);
 app.use('/api/leads', leadsRoutes);

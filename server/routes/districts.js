@@ -64,14 +64,25 @@ router.post('/', authMiddleware, superAdminOnly, async (req, res) => {
 
     try {
         const result = await db.query(
-            `INSERT INTO "District" (number, name, governor, "governorEmail", countries, website, subdomain, domain, description, status, "updatedAt")
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+            `INSERT INTO "District" (id, number, name, governor, "governorEmail", countries, website, subdomain, domain, description, status, "updatedAt")
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
              RETURNING *`,
             [number, name, governor || null, governorEmail || null,
              countries || [], website || null, subdomain || null, domain || null,
              description || null, status || 'active']
         );
         const district = result.rows[0];
+
+        // 🟢 FIX: Create a mirror/shadow 'Club' for the district so it can use the website CMS platform correctly
+        try {
+            await db.query(
+                `INSERT INTO "Club" (id, name, type, district, domain, subdomain, status, "createdAt", "updatedAt")
+                 VALUES (gen_random_uuid(), $1, 'district', $2, $3, $4, $5, NOW(), NOW())`,
+                [`Distrito ${number}`, String(number), domain || null, subdomain || null, status || 'active']
+            );
+        } catch (e) {
+            console.warn('⚠️ Error creating shadow club for district:', e.message);
+        }
 
         // Auto-provisionar dominio en Vercel si se ha especificado
         if (domain) {
@@ -213,12 +224,21 @@ router.post('/:id/admins', authMiddleware, superAdminOnly, async (req, res) => {
         const exists = await db.query('SELECT id FROM "User" WHERE email = $1', [email]);
         if (exists.rows.length > 0) return res.status(409).json({ error: 'Ya existe un usuario con ese email' });
 
+        // Intentar buscar si este distrito tiene un "Club Sombra" de tipo district
+        const districtRow = await db.query('SELECT number FROM "District" WHERE id = $1', [id]);
+        const dNumber = districtRow.rows[0]?.number;
+        let mirrorClubId = null;
+        if (dNumber) {
+            const cRow = await db.query("SELECT id FROM \"Club\" WHERE type = 'district' AND district = $1 LIMIT 1", [String(dNumber)]);
+            mirrorClubId = cRow.rows[0]?.id || null;
+        }
+
         const hash = await bcrypt.hash(password, 10);
         const result = await db.query(
-            `INSERT INTO "User" (id, email, password, role, "districtId", "createdAt", "updatedAt")
-             VALUES (gen_random_uuid(), $1, $2, 'district_admin', $3, NOW(), NOW())
+            `INSERT INTO "User" (id, email, password, role, "districtId", "clubId", "createdAt", "updatedAt")
+             VALUES (gen_random_uuid(), $1, $2, 'district_admin', $3, $4, NOW(), NOW())
              RETURNING id, email, role, "createdAt"`,
-            [email, hash, id]
+            [email, hash, id, mirrorClubId]
         );
         res.status(201).json(result.rows[0]);
     } catch (error) {

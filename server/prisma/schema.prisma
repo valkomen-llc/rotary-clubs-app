@@ -27,6 +27,27 @@ model User {
   communicationLogs  CommunicationLog[]
   orders             Order[]
   club               Club?              @relation(fields: [clubId], references: [id])
+  districtId         String?
+  district           District?          @relation(fields: [districtId], references: [id])
+}
+
+model District {
+  id             String    @id @default(uuid())
+  number         Int?
+  name           String
+  governor       String?
+  governorEmail  String?
+  countries      String[]  @default([])
+  website        String?
+  subdomain      String?   @unique
+  domain         String?   @unique
+  description    String?
+  status         String    @default("active")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  clubs          Club[]
+  admins         User[]
 }
 
 model Club {
@@ -80,6 +101,8 @@ model Club {
   whatsAppLists          WhatsAppContactList[]
   WhatsAppCustomField    WhatsAppCustomField[]
   whatsAppTemplates      WhatsAppTemplate[]
+  districtId             String?
+  affiliatedDistrict     District?               @relation(fields: [districtId], references: [id])
 }
 
 model ClubDocument {
