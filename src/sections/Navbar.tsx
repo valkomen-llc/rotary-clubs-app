@@ -28,6 +28,11 @@ const Navbar = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Determine if it's a district site
+  const currentHostname = window.location.hostname;
+  const currentParams = window.location.search;
+  const isDistrict = (club as any)?.type === 'district' || currentHostname.includes('4271') || currentParams.includes('4271');
+
   // Search state
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -157,40 +162,44 @@ const Navbar = () => {
           <div className="hidden md:flex items-center space-x-6">
             <Link to="/" className="text-rotary-blue font-medium text-sm hover:text-rotary-gold transition-colors"><T>Inicio</T></Link>
 
-            {/* Sobre Nosotros Dropdown */}
-            <div className="relative" ref={sobreNosotrosRef}>
-              <button
-                onClick={() => setSobreNosotrosOpen(!sobreNosotrosOpen)}
-                className="flex items-center text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"
-              >
-                <T>Sobre Nosotros</T> <ChevronDown className={`w-4 h-4 ml-1 transition-transform ${sobreNosotrosOpen ? 'rotate-180' : ''}`} />
-              </button>
-              {sobreNosotrosOpen && (
-                <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-100 py-2 z-50">
-                  {sobreNosotrosItems.map((item, index) => (
-                    <Link
-                      key={index}
-                      to={item.href}
-                      className="flex items-center justify-between px-4 py-2 text-sm text-gray-700 hover:bg-sky-50 hover:text-rotary-blue transition-colors"
-                      onClick={() => setSobreNosotrosOpen(false)}
-                    >
-                      {item.label}
-                    </Link>
-                  ))}
+            {!isDistrict && (
+              <>
+                {/* Sobre Nosotros Dropdown */}
+                <div className="relative" ref={sobreNosotrosRef}>
+                  <button
+                    onClick={() => setSobreNosotrosOpen(!sobreNosotrosOpen)}
+                    className="flex items-center text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"
+                  >
+                    <T>Sobre Nosotros</T> <ChevronDown className={`w-4 h-4 ml-1 transition-transform ${sobreNosotrosOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {sobreNosotrosOpen && (
+                    <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-100 py-2 z-50">
+                      {sobreNosotrosItems.map((item, index) => (
+                        <Link
+                          key={index}
+                          to={item.href}
+                          className="flex items-center justify-between px-4 py-2 text-sm text-gray-700 hover:bg-sky-50 hover:text-rotary-blue transition-colors"
+                          onClick={() => setSobreNosotrosOpen(false)}
+                        >
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
 
-            <Link to="/proyectos" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Proyectos</T></Link>
-            <Link to="/blog" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Noticias</T></Link>
+                <Link to="/proyectos" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Proyectos</T></Link>
+                <Link to="/blog" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Noticias</T></Link>
 
-            {(club.eventsCount && club.eventsCount > 0) ? (
-              <Link to="/eventos" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Eventos</T></Link>
-            ) : null}
+                {(club.eventsCount && club.eventsCount > 0) ? (
+                  <Link to="/eventos" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Eventos</T></Link>
+                ) : null}
 
-            {club.storeActive ? (
-              <Link to="/shop" className="text-rotary-blue font-bold text-sm tracking-wide bg-rotary-blue/5 px-4 py-1.5 rounded-full hover:bg-rotary-blue/10 transition-colors">Tienda</Link>
-            ) : null}
+                {club.storeActive ? (
+                  <Link to="/shop" className="text-rotary-blue font-bold text-sm tracking-wide bg-rotary-blue/5 px-4 py-1.5 rounded-full hover:bg-rotary-blue/10 transition-colors">Tienda</Link>
+                ) : null}
+              </>
+            )}
 
 
             <Link to="/contacto" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Contacto</T></Link>
@@ -315,32 +324,35 @@ const Navbar = () => {
             <div className="flex flex-col space-y-3 font-medium">
               <Link to="/" className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Inicio</Link>
 
+              {!isDistrict && (
+                <>
+                  {/* Sobre Nosotros en móvil */}
+                  <div className="pl-4 border-l-2 border-gray-200 space-y-2">
+                    <p className="text-xs text-gray-400 uppercase font-semibold">Sobre Nosotros</p>
+                    {sobreNosotrosItems.map((item, index) => (
+                      <Link
+                        key={index}
+                        to={item.href}
+                        className="block text-gray-600 text-sm"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
 
-              {/* Sobre Nosotros en móvil */}
-              <div className="pl-4 border-l-2 border-gray-200 space-y-2">
-                <p className="text-xs text-gray-400 uppercase font-semibold">Sobre Nosotros</p>
-                {sobreNosotrosItems.map((item, index) => (
-                  <Link
-                    key={index}
-                    to={item.href}
-                    className="block text-gray-600 text-sm"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </div>
+                  <Link to="/proyectos" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Proyectos</Link>
+                  <Link to="/blog" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Noticias</Link>
 
-              <Link to="/proyectos" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Proyectos</Link>
-              <Link to="/blog" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Noticias</Link>
+                  {(club.eventsCount && club.eventsCount > 0) ? (
+                    <Link to="/eventos" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Eventos</Link>
+                  ) : null}
 
-              {(club.eventsCount && club.eventsCount > 0) ? (
-                <Link to="/eventos" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Eventos</Link>
-              ) : null}
-
-              {club.storeActive ? (
-                <Link to="/shop" className="text-rotary-blue font-bold" onClick={() => setMobileMenuOpen(false)}>Tienda</Link>
-              ) : null}
+                  {club.storeActive ? (
+                    <Link to="/shop" className="text-rotary-blue font-bold" onClick={() => setMobileMenuOpen(false)}>Tienda</Link>
+                  ) : null}
+                </>
+              )}
 
               <Link to="/contacto" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Contacto</Link>
               {isAuthenticated ? (
