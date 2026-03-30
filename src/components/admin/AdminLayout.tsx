@@ -359,7 +359,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                             <div className="flex items-center gap-3">
                                 {club?.logo ? (
                                     <div className="flex flex-col">
-                                        <img src={club.logo} alt={club.name} className="h-10 w-auto max-w-[200px] object-contain" />
+                                        <img src={club.logo} alt={club.name} className="h-auto max-h-12 w-auto max-w-[220px] object-contain" />
                                         <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">Control Panel</p>
                                     </div>
                                 ) : (

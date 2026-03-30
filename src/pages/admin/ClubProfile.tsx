@@ -268,7 +268,7 @@ const ClubProfile: React.FC = () => {
                                     <input
                                         type="range"
                                         min={60}
-                                        max={300}
+                                        max={450}
                                         step={5}
                                         value={formData.logoHeaderSize}
                                         onChange={(e) => setFormData(prev => ({ ...prev, logoHeaderSize: Number(e.target.value) }))}
