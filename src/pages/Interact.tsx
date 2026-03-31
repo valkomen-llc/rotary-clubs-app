@@ -155,30 +155,42 @@ const Interact = () => {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                             
                             {/* Card 1 - Clubes */}
-                            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(157,34,53,0.12)] transition-all duration-300 flex flex-col items-center text-center group cursor-default hover:-translate-y-1">
-                                <div className="w-16 h-16 rounded-2xl bg-[#9D2235]/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-[#9D2235] transition-all duration-500">
-                                    <Users className="w-8 h-8 text-[#9D2235] group-hover:text-white transition-colors duration-500" />
+                            <div className="bg-white rounded-lg shadow-md p-8 text-center hover:shadow-lg transition-shadow">
+                                <div className="flex justify-center mb-4">
+                                    <Users className="w-10 h-10 text-[#9D2235]" />
                                 </div>
-                                <h4 className="text-[50px] lg:text-[55px] font-bold text-[#9D2235] mb-2 leading-none tracking-tight">14,911</h4>
-                                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mt-2">clubes Interact</p>
+                                <h3 className="text-4xl font-bold text-[#9D2235] mb-4">
+                                    14,911
+                                </h3>
+                                <p className="text-gray-600 text-sm leading-relaxed uppercase tracking-wider font-bold">
+                                    clubes Interact
+                                </p>
                             </div>
 
                             {/* Card 2 - Interactianos */}
-                            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,147,130,0.12)] transition-all duration-300 flex flex-col items-center text-center group cursor-default hover:-translate-y-1">
-                                <div className="w-16 h-16 rounded-2xl bg-[#009382]/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-[#009382] transition-all duration-500">
-                                    <Zap className="w-8 h-8 text-[#009382] group-hover:text-white transition-colors duration-500" />
+                            <div className="bg-white rounded-lg shadow-md p-8 text-center hover:shadow-lg transition-shadow">
+                                <div className="flex justify-center mb-4">
+                                    <Zap className="w-10 h-10 text-[#009382]" />
                                 </div>
-                                <h4 className="text-[50px] lg:text-[55px] font-bold text-[#009382] mb-2 leading-none tracking-tight">342,953</h4>
-                                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mt-2">interactianos</p>
+                                <h3 className="text-4xl font-bold text-[#009382] mb-4">
+                                    342,953
+                                </h3>
+                                <p className="text-gray-600 text-sm leading-relaxed uppercase tracking-wider font-bold">
+                                    interactianos
+                                </p>
                             </div>
 
                             {/* Card 3 - Países */}
-                            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(12,60,124,0.12)] transition-all duration-300 flex flex-col items-center text-center group cursor-default hover:-translate-y-1">
-                                <div className="w-16 h-16 rounded-2xl bg-[#0C3C7C]/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-[#0C3C7C] transition-all duration-500">
-                                    <Globe className="w-8 h-8 text-[#0C3C7C] group-hover:text-white transition-colors duration-500" />
+                            <div className="bg-white rounded-lg shadow-md p-8 text-center hover:shadow-lg transition-shadow">
+                                <div className="flex justify-center mb-4">
+                                    <Globe className="w-10 h-10 text-[#0C3C7C]" />
                                 </div>
-                                <h4 className="text-[50px] lg:text-[55px] font-bold text-[#0C3C7C] mb-2 leading-none tracking-tight">145</h4>
-                                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mt-2 leading-relaxed">países con clubes<br/>Interact</p>
+                                <h3 className="text-4xl font-bold text-[#0C3C7C] mb-4">
+                                    145
+                                </h3>
+                                <p className="text-gray-600 text-sm leading-relaxed uppercase tracking-wider font-bold">
+                                    países con clubes Interact
+                                </p>
                             </div>
 
                         </div>
