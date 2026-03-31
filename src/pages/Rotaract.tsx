@@ -90,16 +90,16 @@ const Rotaract = () => {
                     </div>
                 </div>
 
-                <div className="py-24 md:py-32 max-w-5xl mx-auto px-6">
+                <div className="py-16 md:py-24 max-w-5xl mx-auto px-6">
                     {/* Intro Hero Text */}
-                    <div className="text-center mb-16">
+                    <div className="text-center mb-10">
                         <h2 className="text-[40px] font-normal text-rotary-navy leading-tight max-w-4xl mx-auto">
                             Únete al movimiento internacional de jóvenes líderes, quienes dan cara a los problemas más acuciantes del mundo con soluciones innovadoras.
                         </h2>
                     </div>
 
                     {/* Video Player */}
-                    <div className="relative rounded-3xl overflow-hidden shadow-2xl border-4 border-white mb-16 group bg-black">
+                    <div className="relative rounded-3xl overflow-hidden shadow-2xl border-4 border-white mb-12 group bg-black">
                         <video 
                             controls
                             className="w-full aspect-video object-cover opacity-90 group-hover:opacity-100 transition-opacity duration-500"
@@ -111,7 +111,7 @@ const Rotaract = () => {
                     </div>
 
                     {/* Description Paragraphs */}
-                    <div className="space-y-6 text-xl text-gray-700 font-light leading-relaxed mb-20 max-w-4xl mx-auto">
+                    <div className="space-y-6 text-xl text-gray-700 font-light leading-relaxed mb-16 max-w-4xl mx-auto text-center">
                         <p>
                             Los clubes Rotaract ofrecen a personas de 18 años de edad en adelante la oportunidad de
                             intercambiar ideas con los líderes de la comunidad, adquirir habilidades profesionales y de
@@ -125,13 +125,13 @@ const Rotaract = () => {
                     </div>
 
                     {/* How they work Section */}
-                    <div className="bg-white p-10 md:p-14 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col md:flex-row gap-10 items-start relative overflow-hidden">
+                    <div className="bg-white p-8 md:p-12 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col md:flex-row gap-8 items-start relative overflow-hidden">
                         <div className="absolute -top-10 -right-10 w-40 h-40 bg-rotary-gold/20 rounded-full blur-3xl animate-pulse" />
                         <div className="flex-shrink-0 w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center border border-blue-100 relative z-10">
                             <Users className="w-8 h-8 text-rotaract" />
                         </div>
                         <div className="relative z-10">
-                            <h3 className="text-3xl font-normal text-rotary-navy mb-4">¿Cómo funcionan?</h3>
+                            <h3 className="text-3xl font-normal text-rotary-navy mb-3">¿Cómo funcionan?</h3>
                             <p className="text-lg text-gray-600 leading-relaxed font-light">
                                 Los clubes Rotaract deciden cómo van a organizar y gestionar sus operaciones, administrar sus 
                                 fondos y planificar e implementar actividades y proyectos de servicio a favor de causas que son 
@@ -142,7 +142,7 @@ const Rotaract = () => {
                     </div>
 
                     {/* Image Gallery */}
-                    <div className="mt-20">
+                    <div className="mt-16">
                         <div className="relative aspect-video rounded-3xl overflow-hidden shadow-2xl ring-1 ring-gray-200 bg-black">
                             <img
                                 src={rotaractGallery[currentImage]}
