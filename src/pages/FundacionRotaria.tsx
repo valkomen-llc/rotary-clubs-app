@@ -66,10 +66,7 @@ const FundacionRotaria = () => {
                 <section className="py-20 md:py-28 bg-rotary-concrete">
                     <div className="max-w-4xl mx-auto px-6 text-gray-800">
                         {/* Header Text Centered */}
-                        <div className="text-center mb-16">
-                            <h2 className="text-3xl md:text-[34px] font-normal text-gray-700 mb-8 leading-snug">
-                                La Fundación Rotaria transforma tus contribuciones en proyectos de servicio que cambian vidas en nuestras comunidades locales y en todo el mundo.
-                            </h2>
+                        <div className="mb-12">
                             <p className="text-lg leading-relaxed text-gray-800 mb-6">
                                 Desde su creación hace más de 100 años, la Fundación ha invertido más de USD 4000 millones en proyectos humanitarios transformadores y sostenibles.
                             </p>
