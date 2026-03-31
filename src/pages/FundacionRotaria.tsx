@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import FoundationImpactCarousel from '../sections/FoundationImpactCarousel';
-import FoundationImpactSection from '../sections/FoundationImpactSection';
+import FoundationCertifications from '../sections/FoundationCertifications';
 import { useClub } from '../contexts/ClubContext';
 import { useCMSContent } from '../hooks/useCMSContent';
 
@@ -147,8 +147,8 @@ const FundacionRotaria = () => {
                     </div>
                 </section>
 
-                {/* 6. Métricas e Impacto (Clonado de Maneras de Contribuir) */}
-                <FoundationImpactSection />
+                {/* 6. Certificaciones de Impacto (Sellos / Logos) */}
+                <FoundationCertifications />
 
             </main>
 
