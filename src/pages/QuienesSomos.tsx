@@ -76,7 +76,7 @@ const QuienesSomos = () => {
       </section>
 
       {/* Main Content */}
-      <section className="py-20 md:py-28 bg-white">
+      <section className="py-20 md:py-28 bg-rotary-concrete">
         <div className="max-w-4xl mx-auto px-6 text-gray-800">
           {/* Intro paragraph */}
           <p className="text-lg leading-relaxed text-gray-800 mb-12">

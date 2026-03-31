@@ -109,7 +109,7 @@ const FundacionRotaria = () => {
                 </section>
 
                 {/* 3. Contenedor de Textos Misión e Impacto */}
-                <section className="py-20 md:py-28 bg-white">
+                <section className="py-20 md:py-28 bg-rotary-concrete">
                     <div className="max-w-4xl mx-auto px-6 text-gray-800">
                         {/* Header Text Centered */}
                         <div className="text-center mb-16">
