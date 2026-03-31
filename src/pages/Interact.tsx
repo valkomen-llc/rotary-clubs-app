@@ -150,34 +150,35 @@ const Interact = () => {
 
                     </div>
 
-                    {/* Stats Layout reproducing exact image */}
-                    <div className="max-w-3xl mx-auto mt-24 mb-16">
-                        <div className="flex flex-col md:flex-row items-center justify-center pt-8">
+                    {/* Infographic Stats Layout */}
+                    <div className="max-w-5xl mx-auto mt-24 mb-16">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                             
-                            {/* Left Column (14,911) */}
-                            <div className="w-full md:w-1/2 flex flex-col items-center justify-center py-8">
-                                <h4 className="text-[55px] font-light text-[#9D2235] mb-2 leading-none">14,911</h4>
-                                <p className="text-xs text-[#9D2235]">clubes Interact</p>
+                            {/* Card 1 - Clubes */}
+                            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(157,34,53,0.12)] transition-all duration-300 flex flex-col items-center text-center group cursor-default hover:-translate-y-1">
+                                <div className="w-16 h-16 rounded-2xl bg-[#9D2235]/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-[#9D2235] transition-all duration-500">
+                                    <Users className="w-8 h-8 text-[#9D2235] group-hover:text-white transition-colors duration-500" />
+                                </div>
+                                <h4 className="text-[50px] lg:text-[55px] font-bold text-[#9D2235] mb-2 leading-none tracking-tight">14,911</h4>
+                                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mt-2">clubes Interact</p>
                             </div>
 
-                            {/* Middle Vertical Divider */}
-                            <div className="hidden md:block w-[1px] h-48 bg-gray-200" />
-
-                            {/* Right Column (Stacked) */}
-                            <div className="w-full md:w-1/2 flex flex-col items-center justify-center">
-                                
-                                <div className="text-center w-full py-8">
-                                    <h4 className="text-[55px] font-light text-[#009382] mb-2 leading-none">342,953</h4>
-                                    <p className="text-xs text-[#009382]">interactianos</p>
+                            {/* Card 2 - Interactianos */}
+                            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,147,130,0.12)] transition-all duration-300 flex flex-col items-center text-center group cursor-default hover:-translate-y-1">
+                                <div className="w-16 h-16 rounded-2xl bg-[#009382]/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-[#009382] transition-all duration-500">
+                                    <Zap className="w-8 h-8 text-[#009382] group-hover:text-white transition-colors duration-500" />
                                 </div>
-                                
-                                <div className="w-48 h-[1px] bg-gray-200" />
-                                
-                                <div className="text-center w-full py-8">
-                                    <h4 className="text-[55px] font-light text-[#0C3C7C] mb-2 leading-none">145</h4>
-                                    <p className="text-xs text-[#0C3C7C]">países con clubes<br/>Interact</p>
-                                </div>
+                                <h4 className="text-[50px] lg:text-[55px] font-bold text-[#009382] mb-2 leading-none tracking-tight">342,953</h4>
+                                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mt-2">interactianos</p>
+                            </div>
 
+                            {/* Card 3 - Países */}
+                            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(12,60,124,0.12)] transition-all duration-300 flex flex-col items-center text-center group cursor-default hover:-translate-y-1">
+                                <div className="w-16 h-16 rounded-2xl bg-[#0C3C7C]/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-[#0C3C7C] transition-all duration-500">
+                                    <Globe className="w-8 h-8 text-[#0C3C7C] group-hover:text-white transition-colors duration-500" />
+                                </div>
+                                <h4 className="text-[50px] lg:text-[55px] font-bold text-[#0C3C7C] mb-2 leading-none tracking-tight">145</h4>
+                                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mt-2 leading-relaxed">países con clubes<br/>Interact</p>
                             </div>
 
                         </div>
