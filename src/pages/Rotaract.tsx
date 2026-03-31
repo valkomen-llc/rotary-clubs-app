@@ -93,7 +93,7 @@ const Rotaract = () => {
                 <div className="py-24 md:py-32 max-w-5xl mx-auto px-6">
                     {/* Intro Hero Text */}
                     <div className="text-center mb-16">
-                        <h2 className="text-[25px] font-normal text-rotary-navy leading-tight max-w-4xl mx-auto">
+                        <h2 className="text-[40px] font-normal text-rotary-navy leading-tight max-w-4xl mx-auto">
                             Únete al movimiento internacional de jóvenes líderes, quienes dan cara a los problemas más acuciantes del mundo con soluciones innovadoras.
                         </h2>
                     </div>
