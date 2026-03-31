@@ -3,7 +3,7 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
-import { Users, Globe, Zap, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Users, Globe, Zap, ArrowRight, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const Rotaract = () => {
     const { club } = useClub();
@@ -16,8 +16,8 @@ const Rotaract = () => {
         "https://images.unsplash.com/photo-1552664730-d307ca884978?w=1200&h=800&fit=crop"
     ];
 
-    const nextImage = () => setCurrentImage((prev: number) => (prev + 1) % rotaractGallery.length);
-    const prevImage = () => setCurrentImage((prev: number) => (prev - 1 + rotaractGallery.length) % rotaractGallery.length);
+    const nextImage = () => setCurrentImage((prev) => (prev + 1) % rotaractGallery.length);
+    const prevImage = () => setCurrentImage((prev) => (prev - 1 + rotaractGallery.length) % rotaractGallery.length);
 
     const getC = (section: string, field: string, fallback: string) => {
         return sections[section]?.[field] || fallback;
@@ -111,7 +111,7 @@ const Rotaract = () => {
                     </div>
 
                     {/* Description Paragraphs */}
-                    <div className="space-y-6 text-xl text-gray-700 font-light leading-relaxed mb-16 max-w-4xl mr-auto text-left">
+                    <div className="space-y-6 text-xl text-gray-700 font-light leading-relaxed mb-16 max-w-4xl mx-auto text-left">
                         <p>
                             Los clubes Rotaract ofrecen a personas de 18 años de edad en adelante la oportunidad de
                             intercambiar ideas con los líderes de la comunidad, adquirir habilidades profesionales y de
@@ -182,22 +182,27 @@ const Rotaract = () => {
                             ))}
                         </div>
                     </div>
+                </div>
+            </section>
 
-                    {/* CTA Section (Standard) */}
-                    <div className="mt-20 border-t border-gray-100 pt-16 mb-10 max-w-3xl mr-auto text-left relative z-10">
-                        <h2 className="text-[25px] font-bold text-gray-900 mb-4">
-                            ¿Qué hago para ingresar a un club?
-                        </h2>
-                        <p className="text-xl text-gray-600 font-light mb-10">
-                            Háblanos un poco de ti para que podamos ponerte en contacto con el club adecuado.
-                        </p>
-                        <a
-                            href="/unete"
-                            className="inline-flex items-center justify-center font-bold px-10 py-3.5 text-sm md:text-base rounded-full shadow-md hover:shadow-lg transition-all text-white bg-[#00a3e0] hover:bg-[#008cc0]"
-                        >
-                            EMPIEZA
-                        </a>
-                    </div>
+            {/* Premium CTA Section */}
+            <section 
+                className="py-24 bg-rotary-geo relative overflow-hidden"
+            >
+                <div className="absolute inset-0 bg-rotary-blue/90 mix-blend-multiply" />
+                <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
+                    <h2 className="text-[25px] font-normal text-white mb-6">
+                        ¿Qué hago para ingresar a un club?
+                    </h2>
+                    <p className="text-xl md:text-2xl text-white/90 mb-10 font-light max-w-3xl mx-auto">
+                        Háblanos un poco de ti para que podamos ponerte en contacto con el club adecuado.
+                    </p>
+                    <a
+                        href="/unete"
+                        className="inline-flex items-center justify-center gap-2 bg-[#00a2d2] hover:bg-[#0081a8] text-white font-bold px-12 py-3 md:py-4 text-base md:text-lg rounded-full transition-all duration-300 shadow-xl hover:-translate-y-1 w-full sm:w-auto"
+                    >
+                        EMPIEZA <ArrowRight className="w-5 h-5 md:w-6 md:h-6" />
+                    </a>
                 </div>
             </section>
 
