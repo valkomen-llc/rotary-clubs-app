@@ -136,10 +136,7 @@ const FundacionRotaria = () => {
                 {/* 4. Carrusel de Impacto */}
                 <FoundationImpactCarousel />
 
-                {/* 5. Métricas e Impacto (Clonado de Maneras de Contribuir) */}
-                <FoundationImpactSection />
-
-                {/* 6. Contenedor de Estadísticas (Infogram Embeds) */}
+                {/* 5. Contenedor de Estadísticas (Infogram Embeds) */}
                 <section className="py-20 md:py-24 bg-rotary-concrete">
                     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-16">
                         {/* Embed 1 */}
@@ -149,6 +146,9 @@ const FundacionRotaria = () => {
                         <div className="infogram-embed w-full" data-id="bfbb9326-ffcb-40fa-9781-b6af7ce02350" data-type="interactive" data-title="ES: Global Grants by AOF 2021"></div>
                     </div>
                 </section>
+
+                {/* 6. Métricas e Impacto (Clonado de Maneras de Contribuir) */}
+                <FoundationImpactSection />
 
             </main>
 
