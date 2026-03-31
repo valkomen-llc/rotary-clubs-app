@@ -1,12 +1,23 @@
+import { useState } from 'react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
-import { Users, Globe, Zap, ArrowRight, Sparkles } from 'lucide-react';
+import { Users, Globe, Zap, ArrowRight, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const Rotaract = () => {
     const { club } = useClub();
     const { sections } = useCMSContent('rotaract', club.id);
+    const [currentImage, setCurrentImage] = useState(0);
+
+    const rotaractGallery = [
+        "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=1200&h=800&fit=crop",
+        "https://images.unsplash.com/photo-1511632765486-a01980e01a18?w=1200&h=800&fit=crop",
+        "https://images.unsplash.com/photo-1552664730-d307ca884978?w=1200&h=800&fit=crop"
+    ];
+
+    const nextImage = () => setCurrentImage((prev) => (prev + 1) % rotaractGallery.length);
+    const prevImage = () => setCurrentImage((prev) => (prev - 1 + rotaractGallery.length) % rotaractGallery.length);
 
     const getC = (section: string, field: string, fallback: string) => {
         return sections[section]?.[field] || fallback;
@@ -82,7 +93,7 @@ const Rotaract = () => {
                 <div className="py-24 md:py-32 max-w-5xl mx-auto px-6">
                     {/* Intro Hero Text */}
                     <div className="text-center mb-16">
-                        <h2 className="text-3xl md:text-5xl font-normal text-rotary-navy leading-tight max-w-4xl mx-auto">
+                        <h2 className="text-[25px] font-normal text-rotary-navy leading-tight max-w-4xl mx-auto">
                             Únete al movimiento internacional de jóvenes líderes, quienes dan cara a los problemas más acuciantes del mundo con soluciones innovadoras.
                         </h2>
                     </div>
@@ -127,6 +138,48 @@ const Rotaract = () => {
                                 importantes en la comunidad. Los socios del club rotario patrocinador sirven de mentores y 
                                 trabajan con los rotaractianos como socios en el servicio.
                             </p>
+                        </div>
+                    </div>
+
+                    {/* Image Gallery */}
+                    <div className="mt-20">
+                        <div className="relative aspect-video rounded-3xl overflow-hidden shadow-2xl ring-1 ring-gray-200 bg-black">
+                            <img
+                                src={rotaractGallery[currentImage]}
+                                alt={`Gallery image ${currentImage + 1}`}
+                                className="w-full h-full object-cover transition-transform duration-500"
+                            />
+
+                            <button
+                                onClick={prevImage}
+                                className="absolute left-6 top-1/2 -translate-y-1/2 w-14 h-14 bg-white/90 hover:bg-white rounded-full shadow-xl flex items-center justify-center transition-colors z-10"
+                                aria-label="Imagen anterior"
+                            >
+                                <ChevronLeft className="w-8 h-8 text-rotary-navy" />
+                            </button>
+                            <button
+                                onClick={nextImage}
+                                className="absolute right-6 top-1/2 -translate-y-1/2 w-14 h-14 bg-white/90 hover:bg-white rounded-full shadow-xl flex items-center justify-center transition-colors z-10"
+                                aria-label="Siguiente imagen"
+                            >
+                                <ChevronRight className="w-8 h-8 text-rotary-navy" />
+                            </button>
+                        </div>
+
+                        <div className="flex justify-center gap-3 mt-8">
+                            {rotaractGallery.map((_: any, index: number) => (
+                                <button
+                                    key={index}
+                                    onClick={() => setCurrentImage(index)}
+                                    className={`
+                                        w-3 h-3 rounded-full transition-all duration-300
+                                        ${currentImage === index 
+                                            ? 'bg-rotaract w-8 shadow-md' 
+                                            : 'bg-gray-300 hover:bg-gray-400'}
+                                    `}
+                                    aria-label={`Ir a la imagen ${index + 1}`}
+                                />
+                            ))}
                         </div>
                     </div>
                 </div>
