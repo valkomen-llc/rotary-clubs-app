@@ -204,7 +204,7 @@ const Rotaract = () => {
                         Háblanos un poco de ti para que podamos ponerte en contacto con el club adecuado.
                     </p>
                     <a
-                        href="/contacto"
+                        href="/contacto?asunto=Quiero+ser+socio"
                         className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
                     >
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
