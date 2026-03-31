@@ -3,7 +3,7 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
-import { Users, Globe, Zap, ArrowRight, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Users, Globe, Zap, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const Rotaract = () => {
     const { club } = useClub();
@@ -186,22 +186,31 @@ const Rotaract = () => {
             </section>
 
             {/* Premium CTA Section */}
-            <section 
-                className="py-24 bg-rotary-geo relative overflow-hidden"
+            <section
+                className="py-16 md:py-20"
+                style={{
+                    backgroundColor: '#0c3c7c',
+                    backgroundImage: "url('/geo-darkblue.png')",
+                    backgroundPosition: '50% 0',
+                    backgroundRepeat: 'repeat',
+                    backgroundSize: '71px 85px'
+                }}
             >
-                <div className="absolute inset-0 bg-rotary-blue/90 mix-blend-multiply" />
-                <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
-                    <h2 className="text-[25px] font-normal text-white mb-6">
+                <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
+                    <h2 className="text-[36px] font-light text-white mb-6">
                         ¿Qué hago para ingresar a un club?
                     </h2>
-                    <p className="text-xl md:text-2xl text-white/90 mb-10 font-light max-w-3xl mx-auto">
+                    <p className="text-white/90 text-base md:text-lg mb-8 max-w-3xl mx-auto leading-relaxed">
                         Háblanos un poco de ti para que podamos ponerte en contacto con el club adecuado.
                     </p>
                     <a
-                        href="/unete"
-                        className="inline-flex items-center justify-center gap-2 bg-[#00a2d2] hover:bg-[#0081a8] text-white font-bold px-12 py-3 md:py-4 text-base md:text-lg rounded-full transition-all duration-300 shadow-xl hover:-translate-y-1 w-full sm:w-auto"
+                        href="/contacto"
+                        className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
                     >
-                        EMPIEZA <ArrowRight className="w-5 h-5 md:w-6 md:h-6" />
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="#F5A623" />
+                        </svg>
+                        EMPIEZA
                     </a>
                 </div>
             </section>
