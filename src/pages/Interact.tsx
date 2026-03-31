@@ -2,7 +2,7 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
-import { Users, Globe, Zap, ArrowRight, Heart, Sparkles } from 'lucide-react';
+import { Users, Globe, Zap, Sparkles } from 'lucide-react';
 
 const Interact = () => {
     const { club } = useClub();
@@ -78,88 +78,136 @@ const Interact = () => {
                     </div>
                 </div>
 
-                <div className="py-24 md:py-32 max-w-6xl mx-auto px-6">
-                    <div className="flex flex-col md:flex-row items-center gap-16 mb-24">
-                        <div className="flex-1">
-                            <h2 className="text-indigo-900 text-xs font-normal uppercase tracking-[0.3em] mb-4">Misión & Propósito</h2>
-                            <h3 className="text-3xl md:text-5xl font-normal text-gray-900 mb-8 leading-tight">
-                                {getC('section1', 'title', "¿Qué es Interact?")}
-                            </h3>
-                            <p className="text-lg text-gray-600 leading-relaxed mb-6 font-light">
-                                {getC('section1', 'content', "Interact es un club de servicio para jóvenes de 12 a 18 años que quieren conectarse con otros jóvenes de su comunidad o escuela, desarrollar sus habilidades de liderazgo y divertirse mientras sirven.")}
-                            </p>
-                            <ul className="space-y-4">
-                                {['Liderazgo juvenil', 'Ayuda comunitaria', 'Perspectiva internacional'].map((item) => (
-                                    <li key={item} className="flex items-center gap-3 text-gray-700 font-bold">
-                                        <div className="w-2 h-2 rounded-full bg-interact" /> {item}
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                        <div className="flex-1 relative">
-                            <div className="absolute -top-10 -left-10 w-40 h-40 bg-rotary-gold/10 rounded-full blur-3xl animate-pulse" />
-                            <div className="relative rounded-3xl overflow-hidden shadow-2xl skew-y-1 hover:skew-y-0 transition-transform duration-700 border-8 border-white">
-                                <img
-                                    src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=800&h=800&fit=crop"
-                                    alt="Community action"
-                                    className="w-full grayscale-[50%] hover:grayscale-0 transition-all duration-1000"
-                                    loading="lazy"
-                                />
-                            </div>
-                        </div>
+                <div className="py-16 md:py-24 max-w-5xl mx-auto px-6">
+                    {/* Intro Hero Text */}
+                    <div className="text-center mb-10">
+                        <h2 className="text-[40px] font-normal text-rotary-navy leading-tight max-w-4xl mx-auto text-left md:text-center">
+                            Toma acción, promueve la comprensión internacional y gana nuevos amigos en todo el mundo.
+                        </h2>
                     </div>
 
-                    <div className="flex flex-col md:flex-row-reverse items-center gap-16">
-                        <div className="flex-1">
-                            <h2 className="text-indigo-900 text-xs font-normal uppercase tracking-[0.3em] mb-4">Nuestro Legado</h2>
-                            <h3 className="text-3xl md:text-5xl font-normal text-gray-900 mb-8 leading-tight">
-                                {getC('section2', 'title', "Nuestro Impacto")}
-                            </h3>
-                            <p className="text-lg text-gray-600 leading-relaxed mb-8 font-light">
-                                {getC('section2', 'content', "A través de 2 grandes proyectos de servicio anuales, los interactianos hacen una diferencia monumental en la sociedad y aprenden a ser agentes de cambio positivo a temprana edad.")}
-                            </p>
-                            <div className="grid grid-cols-2 gap-6">
-                                <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 hover:border-interact/30 transition-colors group">
-                                    <Heart className="w-8 h-8 text-interact mb-3 group-hover:scale-110 transition-transform" />
-                                    <p className="text-sm font-bold text-gray-800">Causas Sociales</p>
-                                </div>
-                                <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 hover:border-interact/30 transition-colors group">
-                                    <Users className="w-8 h-8 text-interact mb-3 group-hover:scale-110 transition-transform" />
-                                    <p className="text-sm font-bold text-gray-800">Networking</p>
-                                </div>
-                            </div>
+                    {/* Description Paragraph */}
+                    <div className="text-xl text-gray-700 font-light leading-relaxed mb-16 max-w-4xl mx-auto text-left">
+                        <p>
+                            Los clubes Interact ofrecen a jóvenes de 12 a 18 años la oportunidad de adquirir habilidades de 
+                            liderazgo y descubrir la fuerza de Dar de Sí antes de Pensar en Sí. Entérate cómo puedes ser un 
+                            líder y divertirte a la vez.
+                        </p>
+                    </div>
+
+                    {/* Video Player */}
+                    <div className="relative rounded-3xl overflow-hidden shadow-2xl border-4 border-white mb-16 group bg-black max-w-4xl mx-auto">
+                        <video 
+                            controls
+                            className="w-full aspect-video object-cover opacity-90 group-hover:opacity-100 transition-opacity duration-500"
+                            poster="https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1200&h=675&fit=crop"
+                        >
+                            <source src="https://cdn1-originals.webdamdb.com/13799_163692035?cache=1753396207&response-content-disposition=inline;filename=2025_092_Interact_Promo_ES_Subs.mp4&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cCo6Ly9jZG4xLW9yaWdpbmFscy53ZWJkYW1kYi5jb20vMTM3OTlfMTYzNjkyMDM1P2NhY2hlPTE3NTMzOTYyMDcmcmVzcG9uc2UtY29udGVudC1kaXNwb3NpdGlvbj1pbmxpbmU7ZmlsZW5hbWU9MjAyNV8wOTJfSW50ZXJhY3RfUHJvbW9fRVNfU3Vicy5tcDQiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjIxNDc0MTQ0MDB9fX1dfQ__&Signature=m5S7TTDhzmSZKnwoJogLXdovn0My2CinJesVkqiHSDKeQfY4xFEX8hNmjwcduZdtwKseK~Cmv0bv9wyvkclsUxbPnJAUy6t0ywM-k9X43bNzoNoTlgZOB5WWv4e~qBoe2VvZXOK1L-C1RPlH3Rufi9uQJoyOswvNf77tqmTlUXKbETZyEtmnb-AeSsKnrqecGvx8F0f4U~GW4s~cXk04~9VepR2NG07crz1sSBZ7GAJ9VbzYdTbXegmhjsIYjFTrFpamct-H0uECvHZrzSurgQuxEPFG5~ZKFKWE9Owt5aDDxxVcLgO7mUJYo2Qmtzp3fhryfbN3IHZmsQ3wGLrxjQ__&Key-Pair-Id=APKAI2ASI2IOLRFF2RHA" type="video/mp4" />
+                            Tu navegador no soporta la etiqueta de video.
+                        </video>
+                    </div>
+
+                    {/* Features Sections */}
+                    <div className="max-w-4xl mx-auto space-y-12 text-left mb-16">
+                        
+                        <div>
+                            <h3 className="text-[25px] font-bold text-gray-900 mb-4">¿Cuáles son las ventajas?</h3>
+                            <p className="text-lg text-gray-700 font-light mb-4">Conéctate con líderes de tu comunidad y el mundo entero para:</p>
+                            <ul className="list-disc pl-6 space-y-3 text-lg text-gray-700 font-light">
+                                <li>Tomar acción y marcar la diferencia en tu escuela o comunidad</li>
+                                <li>Descubrir nuevas culturas y promover la comprensión internacional</li>
+                                <li>Ser un líder en tu escuela y comunidad</li>
+                                <li>Divertirte y ganar amigos alrededor del mundo</li>
+                            </ul>
                         </div>
-                        <div className="flex-1 relative">
-                            <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-interact/10 rounded-full blur-3xl animate-pulse" />
-                            <div className="relative rounded-3xl overflow-hidden shadow-2xl -skew-y-1 hover:skew-y-0 transition-transform duration-700 border-8 border-white">
-                                <img
-                                    src="https://images.unsplash.com/photo-1511632765486-a01980e01a18?w=800&h=800&fit=crop"
-                                    alt="Leaders collaborate"
-                                    className="w-full grayscale-[50%] hover:grayscale-0 transition-all duration-1000"
-                                    loading="lazy"
-                                />
+
+                        <div>
+                            <h3 className="text-[25px] font-bold text-gray-900 mb-4">¿Qué actividades ofrecen los clubes?</h3>
+                            <p className="text-lg text-gray-700 font-light mb-4">
+                                Los clubes Interact llevan a cabo por lo menos dos proyectos al año: uno para beneficiar la 
+                                escuela o comunidad y otro para fomentar la comprensión internacional. Los interactianos 
+                                realizan sus actividades y desarrollan habilidades de liderazgo con la mentoría y orientación de 
+                                los socios del club rotario patrocinador.
+                            </p>
+                            <p className="text-lg text-gray-700 font-light mb-4">Celebra la diferencia que Interact marca en el mundo, participando en:</p>
+                            <ul className="list-disc pl-6 space-y-3 text-lg text-gray-700 font-light">
+                                <li>la Semana Mundial de Interact</li>
+                                <li>el Concurso de video de Interact</li>
+                                <li>el Día de Rotary en las Naciones Unidas</li>
+                                <li>el Día Mundial del Voluntariado Juvenil</li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <h3 className="text-[25px] font-bold text-gray-900 mb-4">¿Qué hago para ingresar a un club?</h3>
+                            <p className="text-lg text-gray-700 font-light mb-4">
+                                Averigua primero si hay un club en tu escuela o <a href="#/contacto" className="text-interact font-bold hover:underline">contacta con el club rotario de tu localidad</a> para ver si hay uno en la comunidad. Luego comunícate con el club Interact para participar en su próxima reunión, proyecto de servicio o evento social.
+                            </p>
+                            <p className="text-lg text-gray-700 font-light">
+                                Sigue a Interact en <a href="https://www.facebook.com/interactofficial/" target="_blank" rel="noopener noreferrer" className="text-interact font-bold hover:underline">Facebook</a> y descubre cómo los interactianos se divierten y sirven a la vez.
+                            </p>
+                        </div>
+
+                    </div>
+
+                    {/* Stats Layout reproducing exact image */}
+                    <div className="max-w-3xl mx-auto mt-24 mb-16">
+                        <div className="flex flex-col md:flex-row items-center justify-center pt-8">
+                            
+                            {/* Left Column (14,911) */}
+                            <div className="w-full md:w-1/2 flex flex-col items-center justify-center py-8">
+                                <h4 className="text-[55px] font-light text-[#9D2235] mb-2 leading-none">14,911</h4>
+                                <p className="text-xs text-[#9D2235]">clubes Interact</p>
                             </div>
+
+                            {/* Middle Vertical Divider */}
+                            <div className="hidden md:block w-[1px] h-48 bg-gray-200" />
+
+                            {/* Right Column (Stacked) */}
+                            <div className="w-full md:w-1/2 flex flex-col items-center justify-center">
+                                
+                                <div className="text-center w-full py-8">
+                                    <h4 className="text-[55px] font-light text-[#009382] mb-2 leading-none">342,953</h4>
+                                    <p className="text-xs text-[#009382]">interactianos</p>
+                                </div>
+                                
+                                <div className="w-48 h-[1px] bg-gray-200" />
+                                
+                                <div className="text-center w-full py-8">
+                                    <h4 className="text-[55px] font-light text-[#0C3C7C] mb-2 leading-none">145</h4>
+                                    <p className="text-xs text-[#0C3C7C]">países con clubes<br/>Interact</p>
+                                </div>
+
+                            </div>
+
                         </div>
                     </div>
                 </div>
             </section>
 
             {/* Premium CTA Section */}
-            <section 
-                className="py-24 bg-rotary-geo relative overflow-hidden"
+            <section
+                className="py-16 md:py-20"
+                style={{
+                    backgroundColor: '#0c3c7c',
+                    backgroundImage: "url('/geo-darkblue.png')",
+                    backgroundPosition: '50% 0',
+                    backgroundRepeat: 'repeat',
+                    backgroundSize: '71px 85px'
+                }}
             >
-                <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
-                    <h2 className="text-4xl md:text-5xl font-normal text-white mb-8">
-                        ¿Estás listo para ser el cambio?
+                <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
+                    <h2 className="text-[36px] font-light text-white mb-6">
+                        ¿Qué hago para ingresar a un club?
                     </h2>
-                    <p className="text-xl text-white/80 mb-12 font-light max-w-2xl mx-auto">
-                        Únete a Interact {club.name} y comienza tu viaje de liderazgo y servicio hoy mismo.
-                    </p>
                     <a
-                        href="#/contacto"
+                        href="#/contacto?asunto=Quiero+ser+socio"
                         className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
                     >
-                        Quiero Ser Parte <ArrowRight className="w-5 h-5" />
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="#F5A623" />
+                        </svg>
+                        EMPIEZA
                     </a>
                 </div>
             </section>
