@@ -2,7 +2,7 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
-import { Users, Globe, Zap, ArrowRight, Heart, Sparkles } from 'lucide-react';
+import { Users, Globe, Zap, ArrowRight, Sparkles } from 'lucide-react';
 
 const Rotaract = () => {
     const { club } = useClub();
@@ -79,67 +79,54 @@ const Rotaract = () => {
                     </div>
                 </div>
 
-                <div className="py-24 md:py-32 max-w-6xl mx-auto px-6">
-                    <div className="flex flex-col md:flex-row items-center gap-16 mb-24">
-                        <div className="flex-1">
-                            <h2 className="text-indigo-900 text-xs font-normal uppercase tracking-[0.3em] mb-4">Misión & Propósito</h2>
-                            <h3 className="text-3xl md:text-5xl font-normal text-gray-900 mb-8 leading-tight">
-                                {getC('section1', 'title', "¿Qué es Rotaract?")}
-                            </h3>
-                            <p className="text-lg text-gray-600 leading-relaxed mb-6 font-light">
-                                {getC('section1', 'content', "Los clubes Rotaract ofrecen a personas de 18 años en adelante la oportunidad de intercambiar ideas con los líderes de la comunidad, adquirir habilidades profesionales y de liderazgo y, sobre todo, servir y divertirse.")}
-                            </p>
-                            <ul className="space-y-4">
-                                {['Desarrollo profesional', 'Servicio a la comunidad', 'Comprensión internacional'].map((item) => (
-                                    <li key={item} className="flex items-center gap-3 text-gray-700 font-bold">
-                                        <div className="w-2 h-2 rounded-full bg-rotaract" /> {item}
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                        <div className="flex-1 relative">
-                            <div className="absolute -top-10 -left-10 w-40 h-40 bg-rotary-gold/10 rounded-full blur-3xl animate-pulse" />
-                            <div className="relative rounded-3xl overflow-hidden shadow-2xl skew-y-1 hover:skew-y-0 transition-transform duration-700 border-8 border-white">
-                                <img
-                                    src="https://images.unsplash.com/photo-1511632765486-a01980e01a18?w=800&h=800&fit=crop"
-                                    alt="Community action"
-                                    className="w-full grayscale-[50%] hover:grayscale-0 transition-all duration-1000"
-                                    loading="lazy"
-                                />
-                            </div>
-                        </div>
+                <div className="py-24 md:py-32 max-w-5xl mx-auto px-6">
+                    {/* Intro Hero Text */}
+                    <div className="text-center mb-16">
+                        <h2 className="text-3xl md:text-5xl font-normal text-rotary-navy leading-tight max-w-4xl mx-auto">
+                            Únete al movimiento internacional de jóvenes líderes, quienes dan cara a los problemas más acuciantes del mundo con soluciones innovadoras.
+                        </h2>
                     </div>
 
-                    <div className="flex flex-col md:flex-row-reverse items-center gap-16">
-                        <div className="flex-1">
-                            <h2 className="text-indigo-900 text-xs font-normal uppercase tracking-[0.3em] mb-4">Nuestro Legado</h2>
-                            <h3 className="text-3xl md:text-5xl font-normal text-gray-900 mb-8 leading-tight">
-                                {getC('section2', 'title', "Nuestro Impacto")}
-                            </h3>
-                            <p className="text-lg text-gray-600 leading-relaxed mb-8 font-light">
-                                {getC('section2', 'content', "A través de proyectos de servicio local e internacional, los socios de Rotaract ayudan a mejorar la vida de los demás.")}
-                            </p>
-                            <div className="grid grid-cols-2 gap-6">
-                                <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 hover:border-rotaract/30 transition-colors group">
-                                    <Heart className="w-8 h-8 text-rotaract mb-3 group-hover:scale-110 transition-transform" />
-                                    <p className="text-sm font-bold text-gray-800">Causas Sociales</p>
-                                </div>
-                                <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 hover:border-rotaract/30 transition-colors group">
-                                    <Users className="w-8 h-8 text-rotaract mb-3 group-hover:scale-110 transition-transform" />
-                                    <p className="text-sm font-bold text-gray-800">Networking</p>
-                                </div>
-                            </div>
+                    {/* Video Player */}
+                    <div className="relative rounded-3xl overflow-hidden shadow-2xl border-4 border-white mb-16 group bg-black">
+                        <video 
+                            controls
+                            className="w-full aspect-video object-cover opacity-90 group-hover:opacity-100 transition-opacity duration-500"
+                            poster="https://images.unsplash.com/photo-1511632765486-a01980e01a18?w=1200&h=675&fit=crop"
+                        >
+                            <source src="https://cdn1-originals.webdamdb.com/13799_104818460?cache=1692205462&response-content-disposition=inline;filename=2019_112_RotaractRecruitment_ES.mp4&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cCo6Ly9jZG4xLW9yaWdpbmFscy53ZWJkYW1kYi5jb20vMTM3OTlfMTA0ODE4NDYwP2NhY2hlPTE2OTIyMDU0NjImcmVzcG9uc2UtY29udGVudC1kaXNwb3NpdGlvbj1pbmxpbmU7ZmlsZW5hbWU9MjAxOV8xMTJfUm90YXJhY3RSZWNydWl0bWVudF9FUy5tcDQiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjIxNDc0MTQ0MDB9fX1dfQ__&Signature=TArO9B21cApRnSv2Di~IuA02tCq-GXx9YqjOyu9zkwWhSSKP1I6suUKHSlFyky~KMYtgn50imYd~N-d-b1d8jq~4forns0v56DIISmv8SlE2ZBA4LeH07v67X8DlQBxc1lvcKW6yTfmiGQVOaFL4XyL2-SFFQrYUrydBCdDQ14u0F1r7y37a8wPZIHbtwMzG5hObyq6G6O-WqFSKQbgc24vBvWXPeVy1r-kx6qA7nKLF0~jQeOIZKqoxikhipoC151CbkTqepklvI34GrN9hwN6UtdjEro5XizDClXaR6qD1cPOwfH3bmvJ4CJPlDVrXxOhNVh-IYbQXKBp4-llh4Q__&Key-Pair-Id=APKAI2ASI2IOLRFF2RHA" type="video/mp4" />
+                            Tu navegador no soporta la etiqueta de video.
+                        </video>
+                    </div>
+
+                    {/* Description Paragraphs */}
+                    <div className="space-y-6 text-xl text-gray-700 font-light leading-relaxed mb-20 max-w-4xl mx-auto">
+                        <p>
+                            Los clubes Rotaract ofrecen a personas de 18 años de edad en adelante la oportunidad de
+                            intercambiar ideas con los líderes de la comunidad, adquirir habilidades profesionales y de
+                            liderazgo y, sobre todo, de servir y divertirse a la vez.
+                        </p>
+                        <p>
+                            Los socios de Rotary y Rotaract trabajan hombro a hombro en todo el mundo para tomar
+                            acción mediante el servicio. Ya sea en grandes urbes o zonas rurales, Rotaract marca el cambio
+                            en comunidades como la tuya.
+                        </p>
+                    </div>
+
+                    {/* How they work Section */}
+                    <div className="bg-white p-10 md:p-14 rounded-[3rem] shadow-xl border border-gray-100 flex flex-col md:flex-row gap-10 items-start relative overflow-hidden">
+                        <div className="absolute -top-10 -right-10 w-40 h-40 bg-rotary-gold/20 rounded-full blur-3xl animate-pulse" />
+                        <div className="flex-shrink-0 w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center border border-blue-100 relative z-10">
+                            <Users className="w-8 h-8 text-rotaract" />
                         </div>
-                        <div className="flex-1 relative">
-                            <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-rotaract/10 rounded-full blur-3xl animate-pulse" />
-                            <div className="relative rounded-3xl overflow-hidden shadow-2xl -skew-y-1 hover:skew-y-0 transition-transform duration-700 border-8 border-white">
-                                <img
-                                    src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&h=800&fit=crop"
-                                    alt="Leaders collaborate"
-                                    className="w-full grayscale-[50%] hover:grayscale-0 transition-all duration-1000"
-                                    loading="lazy"
-                                />
-                            </div>
+                        <div className="relative z-10">
+                            <h3 className="text-3xl font-normal text-rotary-navy mb-4">¿Cómo funcionan?</h3>
+                            <p className="text-lg text-gray-600 leading-relaxed font-light">
+                                Los clubes Rotaract deciden cómo van a organizar y gestionar sus operaciones, administrar sus 
+                                fondos y planificar e implementar actividades y proyectos de servicio a favor de causas que son 
+                                importantes en la comunidad. Los socios del club rotario patrocinador sirven de mentores y 
+                                trabajan con los rotaractianos como socios en el servicio.
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -149,18 +136,19 @@ const Rotaract = () => {
             <section 
                 className="py-24 bg-rotary-geo relative overflow-hidden"
             >
+                <div className="absolute inset-0 bg-rotary-blue/90 mix-blend-multiply" />
                 <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
-                    <h2 className="text-4xl md:text-5xl font-normal text-white mb-8">
-                        ¿Estás listo para ser el cambio?
+                    <h2 className="text-4xl md:text-5xl font-normal text-white mb-6">
+                        ¿Qué hago para ingresar a un club?
                     </h2>
-                    <p className="text-xl text-white/80 mb-12 font-light max-w-2xl mx-auto">
-                        Únete a Rotaract {club.name} y comienza tu viaje de liderazgo y servicio hoy mismo.
+                    <p className="text-2xl text-white/90 mb-12 font-light max-w-3xl mx-auto">
+                        Háblanos un poco de ti para que podamos ponerte en contacto con el club adecuado.
                     </p>
                     <a
-                        href="#/contacto"
-                        className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
+                        href="/unete"
+                        className="inline-flex items-center gap-2 bg-sky-100 hover:bg-white text-rotary-blue font-bold px-10 py-4 text-lg rounded-full transition-all duration-300 shadow-2xl hover:shadow-sky-500/50 hover:-translate-y-1"
                     >
-                        Quiero Ser Parte <ArrowRight className="w-5 h-5" />
+                        EMPIEZA <ArrowRight className="w-6 h-6" />
                     </a>
                 </div>
             </section>
