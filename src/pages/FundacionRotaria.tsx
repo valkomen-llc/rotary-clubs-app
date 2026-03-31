@@ -19,6 +19,21 @@ const FundacionRotaria = () => {
         window.scrollTo(0, 0);
     }, []);
 
+    // Cargar script de Infogram para las gráficas
+    useEffect(() => {
+        const i = "infogram-async";
+        const s = "https://e.infogram.com/js/dist/embed-loader-min.js";
+        if (!document.getElementById(i)) {
+            const r = document.createElement("script");
+            r.async = true;
+            r.id = i;
+            r.src = s;
+            document.head.appendChild(r);
+        } else if ((window as any).InfogramEmbeds && (window as any).InfogramEmbeds.process) {
+            (window as any).InfogramEmbeds.process();
+        }
+    }, []);
+
     // Imagen por defecto del Hero (igual que en Quiénes Somos pero con foto de la Fundación si se desea)
     const heroImage = getC('hero', 'image', "https://images.unsplash.com/photo-1532629345422-7515f3d16bb6?w=1600&h=800&fit=crop");
 
@@ -119,6 +134,17 @@ const FundacionRotaria = () => {
 
                 {/* 4. Carrusel de Impacto */}
                 <FoundationImpactCarousel />
+
+                {/* 5. Contenedor de Estadísticas (Infogram Embeds) */}
+                <section className="py-20 md:py-24 bg-rotary-concrete">
+                    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-16">
+                        {/* Embed 1 */}
+                        <div className="infogram-embed w-full" data-id="8429f8ab-b085-44b2-8d70-285b0ac5935a" data-type="interactive" data-title="ES: Rotary Grants 2021-22"></div>
+                        
+                        {/* Embed 2 */}
+                        <div className="infogram-embed w-full" data-id="bfbb9326-ffcb-40fa-9781-b6af7ce02350" data-type="interactive" data-title="ES: Global Grants by AOF 2021"></div>
+                    </div>
+                </section>
 
             </main>
 
