@@ -151,7 +151,7 @@ const Interact = () => {
                     </div>
 
                     {/* Infographic Stats Layout */}
-                    <div className="max-w-5xl mx-auto mt-24 mb-16">
+                    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-24 mb-16">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                             
                             {/* Card 1 - Clubes */}
@@ -162,7 +162,7 @@ const Interact = () => {
                                 <h3 className="text-4xl font-bold text-[#9D2235] mb-4">
                                     14,911
                                 </h3>
-                                <p className="text-gray-600 text-sm leading-relaxed uppercase tracking-wider font-bold">
+                                <p className="text-gray-600 text-sm leading-relaxed">
                                     clubes Interact
                                 </p>
                             </div>
@@ -175,7 +175,7 @@ const Interact = () => {
                                 <h3 className="text-4xl font-bold text-[#009382] mb-4">
                                     342,953
                                 </h3>
-                                <p className="text-gray-600 text-sm leading-relaxed uppercase tracking-wider font-bold">
+                                <p className="text-gray-600 text-sm leading-relaxed">
                                     interactianos
                                 </p>
                             </div>
@@ -188,7 +188,7 @@ const Interact = () => {
                                 <h3 className="text-4xl font-bold text-[#0C3C7C] mb-4">
                                     145
                                 </h3>
-                                <p className="text-gray-600 text-sm leading-relaxed uppercase tracking-wider font-bold">
+                                <p className="text-gray-600 text-sm leading-relaxed">
                                     países con clubes Interact
                                 </p>
                             </div>
