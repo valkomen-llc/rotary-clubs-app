@@ -49,7 +49,7 @@ const FundacionRotaria = () => {
             `}</style>
 
             {/* Contenedores reemplazados (Hero + Header Azul) */}
-            <main className="flex-1 mt-[104px]">
+            <main className="flex-1">
                 
                 {/* 1. Hero (Clonado de Intercambio de Jóvenes) */}
                 <section className="relative w-full h-[500px] md:h-[600px] overflow-hidden">
