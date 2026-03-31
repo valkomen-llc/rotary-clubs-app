@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
+import FoundationImpactCarousel from '../sections/FoundationImpactCarousel';
 import { useClub } from '../contexts/ClubContext';
 import { useCMSContent } from '../hooks/useCMSContent';
 
@@ -115,6 +116,9 @@ const FundacionRotaria = () => {
                         </div>
                     </div>
                 </section>
+
+                {/* 4. Carrusel de Impacto */}
+                <FoundationImpactCarousel />
 
             </main>
 
