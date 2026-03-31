@@ -92,7 +92,7 @@ export const updateClub = async (req, res) => {
         const {
             name, description, city, country, district, domain, subdomain,
             email, phone, address, state, socialLinks, customSocialLinks, siteImages, galleryImages,
-            primaryColor, secondaryColor, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, favicon, status,
+            primaryColor, secondaryColor, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, status,
             stripePublicKey, stripeSecretKey, useStripe,
             usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
             storeActive, logoHeaderSize, autoGenerateCalendar,
@@ -152,6 +152,7 @@ export const updateClub = async (req, res) => {
                 'color_secondary': secondaryColor,
                 'rotaract_logo': rotaractLogo,
                 'interact_logo': interactLogo,
+                'youth_exchange_logo': youthExchangeLogo,
                 'store_active': storeActive !== undefined ? String(storeActive) : undefined,
                 'logo_header_size': logoHeaderSize !== undefined ? String(logoHeaderSize) : undefined,
                 'member_count': memberCount,

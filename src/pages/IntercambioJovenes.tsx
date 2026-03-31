@@ -65,11 +65,15 @@ const IntercambioJovenes = () => {
           backgroundSize: '71px 85px'
         }}
       >
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-white font-normal" style={{ fontSize: '35px' }}>
-            {getC('hero', 'title', "Intercambio de Jóvenes de Rotary")}
-          </h1>
-          <p className="text-white/80 mt-2 italic text-lg opacity-90">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center flex flex-col items-center justify-center">
+          {club.settings?.youth_exchange_logo ? (
+              <img src={club.settings.youth_exchange_logo} alt="Youth Exchange" className="h-[100px] md:h-[150px] w-auto object-contain mb-6 drop-shadow-xl" />
+          ) : (
+              <h1 className="text-white font-normal mb-2" style={{ fontSize: '35px' }}>
+                {getC('hero', 'title', "Intercambio de Jóvenes de Rotary")}
+              </h1>
+          )}
+          <p className="text-white/80 mt-2 italic text-lg opacity-90 text-center">
             {getC('hero', 'description', `El Programa de Intercambio de Jóvenes del club ${club.name} hace parte de una red global con 22 países aliados.`)}
           </p>
         </div>
