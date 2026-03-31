@@ -96,7 +96,7 @@ const Interact = () => {
                     </div>
 
                     {/* Video Player */}
-                    <div className="relative rounded-3xl overflow-hidden shadow-2xl border-4 border-white mb-16 group bg-black max-w-4xl mx-auto">
+                    <div className="relative rounded-3xl overflow-hidden shadow-2xl mb-16 group bg-black max-w-4xl mx-auto">
                         <video 
                             controls
                             className="w-full aspect-video object-cover opacity-90 group-hover:opacity-100 transition-opacity duration-500"

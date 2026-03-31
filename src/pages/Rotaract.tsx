@@ -99,7 +99,7 @@ const Rotaract = () => {
                     </div>
 
                     {/* Video Player */}
-                    <div className="relative rounded-3xl overflow-hidden shadow-2xl border-4 border-white mb-12 group bg-black">
+                    <div className="relative rounded-3xl overflow-hidden shadow-2xl mb-12 group bg-black">
                         <video 
                             controls
                             className="w-full aspect-video object-cover opacity-90 group-hover:opacity-100 transition-opacity duration-500"
