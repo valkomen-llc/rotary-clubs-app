@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import FoundationImpactCarousel from '../sections/FoundationImpactCarousel';
+import FoundationImpactSection from '../sections/FoundationImpactSection';
 import { useClub } from '../contexts/ClubContext';
 import { useCMSContent } from '../hooks/useCMSContent';
 
@@ -135,7 +136,10 @@ const FundacionRotaria = () => {
                 {/* 4. Carrusel de Impacto */}
                 <FoundationImpactCarousel />
 
-                {/* 5. Contenedor de Estadísticas (Infogram Embeds) */}
+                {/* 5. Métricas e Impacto (Clonado de Maneras de Contribuir) */}
+                <FoundationImpactSection />
+
+                {/* 6. Contenedor de Estadísticas (Infogram Embeds) */}
                 <section className="py-20 md:py-24 bg-rotary-concrete">
                     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-16">
                         {/* Embed 1 */}
