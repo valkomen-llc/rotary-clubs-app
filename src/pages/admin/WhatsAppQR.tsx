@@ -107,8 +107,8 @@ const WhatsAppQR: React.FC = () => {
         setLoadingChats(false);
     };
 
-    const fetchMessages = async (chatId: string) => {
-        setLoadingMessages(true);
+    const fetchMessages = async (chatId: string, silent = false) => {
+        if (!silent) setLoadingMessages(true);
         try {
             const res = await fetch(`${API}/whatsapp-qr/chats/${chatId}/messages`, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -119,7 +119,7 @@ const WhatsAppQR: React.FC = () => {
                 setMessages(data.messages.reverse());
             }
         } catch (e) { console.error(e); }
-        setLoadingMessages(false);
+        if (!silent) setLoadingMessages(false);
     };
 
     const handleSendMessage = async (e: React.FormEvent) => {
@@ -153,7 +153,7 @@ const WhatsAppQR: React.FC = () => {
             if (status === 'CONNECTED') {
                 fetchChats();
                 if (selectedChat) {
-                    fetchMessages(selectedChat.id);
+                    fetchMessages(selectedChat.id, true);
                 }
             }
         }, 5000);
@@ -417,7 +417,12 @@ const WhatsAppQR: React.FC = () => {
                                                         <div className={`max-w-[70%] rounded-2xl px-4 py-2 shadow-sm relative text-sm ${
                                                             msg.fromMe ? 'bg-[#D9FDD3] text-gray-900 rounded-tr-none' : 'bg-white text-gray-900 rounded-tl-none'
                                                         }`}>
-                                                            {msg.hasMedia && <div className="text-xs text-gray-500 italic mb-1">📷 Archivo multimedia adjunto</div>}
+                                                            {msg.hasMedia && (
+                                                                <div className="flex items-center gap-2 px-2 py-1.5 bg-black/5 rounded-md border border-black/5 mb-2 mt-1">
+                                                                    <ImageIcon className="w-4 h-4 opacity-60" />
+                                                                    <span className="text-[11px] font-medium opacity-70">Archivo adjunto (Ver en app celular)</span>
+                                                                </div>
+                                                            )}
                                                             <div className="whitespace-pre-wrap break-words">{msg.body}</div>
                                                             <div className={`text-[10px] text-right mt-1 opacity-60 flex items-center justify-end gap-1 ${msg.fromMe ? 'text-gray-600' : 'text-gray-400'}`}>
                                                                 {new Date(msg.timestamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
