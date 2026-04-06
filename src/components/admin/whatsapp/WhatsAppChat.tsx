@@ -36,6 +36,7 @@ const WhatsAppChat: React.FC = () => {
     const [sending, setSending] = useState(false);
     const [mediaUrl, setMediaUrl] = useState('');
     const [activeFilter, setActiveFilter] = useState<ChatFilter>('all');
+    const [chatMessage, setChatMessage] = useState('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => { fetchContacts(); fetchTemplates(); }, []);
@@ -143,29 +144,39 @@ const WhatsAppChat: React.FC = () => {
         } catch { }
     };
 
-    const handleSendTemplate = async (template: any) => {
+    const executeSend = async (payload: any, successMsg: string) => {
         if (!selectedContact || sending) return;
         setSending(true);
         try {
-            const vars: any = {};
-            if (mediaUrl.trim()) vars.mediaUrl = mediaUrl.trim();
             const res = await fetch(`${API}/whatsapp/contacts/${selectedContact.id}/send`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ templateId: template.id, vars }),
+                body: JSON.stringify(payload),
             });
             const data = await res.json();
             if (res.ok && data.success) {
                 setMessages(prev => [...prev, data.message]);
+                setChatMessage('');
                 setSelectedTemplate(null);
                 setMediaUrl('');
-                toast.success(`Plantilla "${template.displayName || template.name}" enviada a ${selectedContact.name}`);
+                toast.success(successMsg);
             } else {
                 toast.error(data.error || 'Error al enviar');
             }
         } catch (err: any) {
             toast.error('Error de conexión al enviar mensaje');
         } finally { setSending(false); }
+    };
+
+    const handleSendTemplate = async (template: any) => {
+        const vars: any = {};
+        if (mediaUrl.trim()) vars.mediaUrl = mediaUrl.trim();
+        await executeSend({ templateId: template.id, vars }, `Plantilla "${template.displayName || template.name}" enviada a ${selectedContact?.name}`);
+    };
+
+    const handleSendText = async () => {
+        if (!chatMessage.trim()) return;
+        await executeSend({ text: chatMessage.trim() }, `Mensaje enviado a ${selectedContact?.name}`);
     };
 
     const tagColors: { [key: string]: string } = {
@@ -417,8 +428,8 @@ const WhatsAppChat: React.FC = () => {
                             <div className="border-t border-gray-100 bg-white px-4 py-3">
                                 {templates.length > 0 ? (
                                     <div className="space-y-2">
-                                        <p className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1.5">
-                                            <FileText className="w-3.5 h-3.5" /> Enviar plantilla a {selectedContact.name}
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1.5">
+                                            <FileText className="w-3 h-3" /> Enviar plantilla oficial a {selectedContact.name}
                                         </p>
                                         <div className="flex gap-2">
                                             <select
@@ -428,7 +439,7 @@ const WhatsAppChat: React.FC = () => {
                                                     setSelectedTemplate(t || null);
                                                     setMediaUrl('');
                                                 }}
-                                                className="flex-1 px-3 py-2.5 rounded-lg border border-gray-200 text-sm bg-white outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20"
+                                                className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-xs bg-white outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20"
                                             >
                                                 <option value="">— Seleccionar plantilla —</option>
                                                 {templates.map((t: any) => (
@@ -447,39 +458,59 @@ const WhatsAppChat: React.FC = () => {
                                                     handleSendTemplate(selectedTemplate);
                                                 }}
                                                 disabled={sending || !selectedTemplate}
-                                                className="px-5 py-2.5 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm transition-colors"
+                                                className="px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
                                             >
-                                                {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                                                Enviar
+                                                {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                                                Enviar Plantilla
                                             </button>
                                         </div>
                                         {selectedTemplate && ['IMAGE','VIDEO','DOCUMENT'].includes(selectedTemplate.headerType) && (
-                                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-1">
-                                                <p className="text-[11px] font-bold text-amber-700 mb-1.5">
-                                                    📎 URL del {selectedTemplate.headerType === 'IMAGE' ? 'imagen' : selectedTemplate.headerType === 'VIDEO' ? 'video' : 'documento'} (opcional)
+                                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 mt-1">
+                                                <p className="text-[10px] font-bold text-amber-700 mb-1">
+                                                    📎 URL {selectedTemplate.headerType === 'IMAGE' ? 'imagen' : selectedTemplate.headerType === 'VIDEO' ? 'video' : 'documento'} (opcional)
                                                 </p>
                                                 <input
                                                     value={mediaUrl}
                                                     onChange={e => setMediaUrl(e.target.value)}
                                                     placeholder={selectedTemplate.headerType === 'IMAGE' ? 'https://ejemplo.com/imagen.jpg' : selectedTemplate.headerType === 'VIDEO' ? 'https://ejemplo.com/video.mp4' : 'https://ejemplo.com/doc.pdf'}
-                                                    className="w-full px-3 py-2 rounded-lg border border-amber-300 text-sm outline-none focus:border-amber-500 bg-white"
+                                                    className="w-full px-2 py-1.5 rounded-md border border-amber-300 text-xs outline-none focus:border-amber-500 bg-white"
                                                 />
-                                                <p className="text-[10px] text-amber-500 mt-1">Opcional: si dejas vacío se usa el archivo original del template. Si lo proporcionas, usa una URL pública accesible.</p>
-                                            </div>
-                                        )}
-                                        {selectedTemplate && (
-                                            <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-1">
-                                                <p className="text-xs font-bold text-green-700 mb-1">📋 {selectedTemplate.displayName || selectedTemplate.name}</p>
-                                                <p className="text-xs text-green-600">{selectedTemplate.bodyText || 'Sin vista previa del contenido'}</p>
                                             </div>
                                         )}
                                     </div>
                                 ) : (
                                     <div className="flex items-center gap-3 text-gray-400">
-                                        <FileText className="w-5 h-5" />
-                                        <p className="text-sm">No hay plantillas aprobadas. Crea una en la sección Templates.</p>
+                                        <FileText className="w-4 h-4" />
+                                        <p className="text-xs">No hay plantillas aprobadas.</p>
                                     </div>
                                 )}
+                            </div>
+
+                            {/* Free Text Chat Input */}
+                            <div className="border-t border-gray-100 bg-gray-50 px-4 py-3 pb-4">
+                                <div className="flex gap-2 items-end">
+                                    <textarea 
+                                        value={chatMessage} 
+                                        onChange={e => setChatMessage(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                handleSendText();
+                                            }
+                                        }}
+                                        placeholder="Escribe un mensaje libre... (El contacto debe haberte escrito en las últimas 24h)"
+                                        className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm bg-white outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 resize-none"
+                                        rows={2}
+                                    />
+                                    <button 
+                                        onClick={handleSendText}
+                                        disabled={sending || !chatMessage.trim()}
+                                        className="p-3 mb-0.5 rounded-full bg-green-600 text-white shadow-sm hover:bg-green-700 disabled:opacity-40 transition-colors flex items-center justify-center flex-shrink-0"
+                                        title="Enviar mensaje"
+                                    >
+                                        {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                                    </button>
+                                </div>
                             </div>
                         </>
                     ) : (

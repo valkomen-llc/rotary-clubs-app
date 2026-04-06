@@ -395,8 +395,11 @@ export const sendMessageToContact = async (req, res) => {
     try {
         const clubId = await resolveClubId(req);
         const contactId = req.params.id;
-        const { templateId, vars = {} } = req.body;
-        if (!templateId) return res.status(400).json({ error: 'Se requiere un templateId' });
+        const { templateId, text, vars = {} } = req.body;
+
+        if (!templateId && !text) {
+            return res.status(400).json({ error: 'Se requiere templateId o contenido de texto' });
+        }
 
         // Get contact
         const contactR = await db.query(`SELECT * FROM "WhatsAppContact" WHERE id=$1 AND "clubId"=$2`, [contactId, clubId]);
@@ -407,42 +410,59 @@ export const sendMessageToContact = async (req, res) => {
         const config = await getClubConfig(clubId);
         if (!config || !config.enabled) return res.status(400).json({ error: 'WhatsApp no está configurado o habilitado' });
 
-        // Get template
-        const tmplR = await db.query(`SELECT * FROM "WhatsAppTemplate" WHERE id=$1 AND "clubId"=$2`, [templateId, clubId]);
-        if (!tmplR.rows.length) return res.status(404).json({ error: 'Template no encontrado' });
-        const template = tmplR.rows[0];
-        if (template.status !== 'approved')
-            return res.status(400).json({ error: 'Solo se pueden enviar templates aprobados por Meta' });
+        let apiBody = {};
+        let logTemplateName = null;
+        let logBodyText = '';
 
-        // Build components for send
-        const components = [];
+        if (templateId) {
+            // Send Template
+            const tmplR = await db.query(`SELECT * FROM "WhatsAppTemplate" WHERE id=$1 AND "clubId"=$2`, [templateId, clubId]);
+            if (!tmplR.rows.length) return res.status(404).json({ error: 'Template no encontrado' });
+            const template = tmplR.rows[0];
+            if (template.status !== 'approved') {
+                return res.status(400).json({ error: 'Solo se pueden enviar templates aprobados por Meta' });
+            }
 
-        // Handle templates with media headers
-        if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
-            const headerComps = await buildMediaHeader({ template, mediaUrl: vars.mediaUrl, config });
-            components.push(...headerComps);
-        }
+            const components = [];
+            if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
+                const headerComps = await buildMediaHeader({ template, mediaUrl: vars.mediaUrl, config });
+                components.push(...headerComps);
+            }
+            const bodyVars = { ...vars };
+            delete bodyVars.mediaUrl;
+            const bodyComponents = buildTemplateComponents(bodyVars);
+            if (bodyComponents.length > 0) components.push(...bodyComponents);
 
-        // Add body components if we have vars (exclude mediaUrl from body params)
-        const bodyVars = { ...vars };
-        delete bodyVars.mediaUrl;
-        const bodyComponents = buildTemplateComponents(bodyVars);
-        if (bodyComponents.length > 0) components.push(...bodyComponents);
+            const templatePayload = { name: template.name, language: { code: template.language } };
+            if (components.length > 0) templatePayload.components = components;
 
-        const templatePayload = { name: template.name, language: { code: template.language } };
-        if (components.length > 0) templatePayload.components = components;
-
-        const apiRes = await metaApiCall({
-            method: 'POST',
-            path: `/${config.phoneNumberId}/messages`,
-            body: {
+            apiBody = {
                 messaging_product: 'whatsapp',
                 to: contact.phone,
                 type: 'template',
                 template: templatePayload,
-            },
+            };
+            logTemplateName = template.name;
+            logBodyText = template.bodyText || `[Template: ${template.name}]`;
+        } else if (text) {
+            // Send Free Text
+            apiBody = {
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to: contact.phone,
+                type: 'text',
+                text: { preview_url: false, body: text }
+            };
+            logBodyText = text;
+        }
+
+        const apiRes = await metaApiCall({
+            method: 'POST',
+            path: `/${config.phoneNumberId}/messages`,
+            body: apiBody,
             token: config.accessToken,
         });
+
         const messageId = apiRes.messages?.[0]?.id;
         const msgLogId = crypto.randomUUID();
 
@@ -450,16 +470,16 @@ export const sendMessageToContact = async (req, res) => {
         await db.query(
             `INSERT INTO "WhatsAppMessageLog" (id, "clubId","contactId",phone,"messageId","templateName","bodyText",status,direction,"sentAt","createdAt","updatedAt")
              VALUES ($1,$2,$3,$4,$5,$6,$7,'sent','outgoing',NOW(),NOW(),NOW())`,
-            [msgLogId, clubId, contact.id, contact.phone, messageId || null, template.name, template.bodyText || `[Template: ${template.name}]`]
+            [msgLogId, clubId, contact.id, contact.phone, messageId || null, logTemplateName, logBodyText]
         );
         await db.query(`UPDATE "WhatsAppContact" SET "totalSent"="totalSent"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
 
         res.json({
             success: true,
             message: {
-                id: messageId,
-                templateName: template.name,
-                bodyText: template.bodyText || `[Template: ${template.name}]`,
+                id: msgLogId,
+                templateName: logTemplateName,
+                bodyText: logBodyText,
                 status: 'sent',
                 sentAt: new Date().toISOString(),
                 createdAt: new Date().toISOString(),
