@@ -222,6 +222,40 @@ const WhatsAppChat: React.FC = () => {
         }
     };
 
+    const renderMessageBody = (text: string | null | undefined, msg: any, isOutgoing: boolean) => {
+        if (!text) return <p className="text-sm leading-relaxed whitespace-pre-wrap">{`[Template: ${msg.templateName}]`}</p>;
+    
+        // Check for media encoding: [MEDIA|type|url] caption  (Make it robust with /s just in case)
+        const mediaMatch = text.match(/^\[MEDIA\|(image|video|document|audio)\|(https?:\/\/[^\]]+)\]([\s\S]*)$/i);
+        if (mediaMatch) {
+            const [, type, url, caption] = mediaMatch;
+            return (
+                <div className="flex flex-col gap-2">
+                    {type === 'image' && (
+                        <div className="bg-black/5 rounded-lg overflow-hidden flex justify-center">
+                            <img src={url} alt="Attachment" className="max-w-full object-contain max-h-[250px]" />
+                        </div>
+                    )}
+                    {type === 'video' && (
+                        <video src={url} controls className="max-w-full rounded-lg max-h-[250px] bg-black/5" />
+                    )}
+                    {type === 'audio' && (
+                        <audio src={url} controls className="w-full max-w-[250px]" />
+                    )}
+                    {type === 'document' && (
+                        <a href={url} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-2 p-3 rounded-lg bg-black/10 hover:bg-black/20 transition-colors ${isOutgoing ? 'text-white' : 'text-green-700'}`}>
+                            <FileText className="w-6 h-6 flex-shrink-0" />
+                            <span className="text-xs truncate font-bold">Abrir Documento Adjunto</span>
+                        </a>
+                    )}
+                    {caption.trim() && <p className="text-sm leading-relaxed whitespace-pre-wrap">{caption.trim()}</p>}
+                </div>
+            );
+        }
+        
+        return <p className="text-sm leading-relaxed whitespace-pre-wrap">{text}</p>;
+    };
+
     const tagColors: { [key: string]: string } = {
         'vip': 'bg-yellow-100 text-yellow-700 border-yellow-200',
         'socio': 'bg-blue-100 text-blue-700 border-blue-200',
@@ -441,12 +475,12 @@ const WhatsAppChat: React.FC = () => {
                                                         <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm ${isOutgoing
                                                             ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white rounded-br-md'
                                                             : 'bg-white text-gray-800 rounded-bl-md border border-gray-100'}`}>
-                                                            {msg.templateName && (
+                                                            {msg.templateName && !msg.bodyText?.startsWith('[MEDIA|') && (
                                                                 <p className={`text-[10px] font-bold mb-1 ${isOutgoing ? 'text-green-200' : 'text-green-600'}`}>
                                                                     📋 {msg.templateName}
                                                                 </p>
                                                             )}
-                                                            <p className="text-sm leading-relaxed">{msg.bodyText || `[Template: ${msg.templateName}]`}</p>
+                                                            {renderMessageBody(msg.bodyText, msg, isOutgoing)}
                                                             <div className={`flex items-center gap-1.5 mt-1 ${isOutgoing ? 'justify-end' : ''}`}>
                                                                 <span className={`text-[10px] ${isOutgoing ? 'text-green-200' : 'text-gray-400'}`}>
                                                                     {formatTime(msg.sentAt || msg.createdAt)}

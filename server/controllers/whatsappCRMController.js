@@ -465,7 +465,8 @@ export const sendMessageToContact = async (req, res) => {
                 apiBody[type].filename = fileName;
             }
             
-            logBodyText = text ? `[${type.toUpperCase()}] ${text}` : `[${type.toUpperCase()} adjunto]`;
+            // Encode the media URL in the body text so the UI knows how to render it
+            logBodyText = `[MEDIA|${type}|${mediaUrl}] ${text || ''}`.trim();
         } else if (text) {
             // Send Free Text
             apiBody = {
