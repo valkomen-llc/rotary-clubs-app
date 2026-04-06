@@ -118,27 +118,34 @@ export const getChats = async (req, res) => {
         // Fetch top 50 recent to prioritize
         const recentChats = chats.sort((a, b) => b.timestamp - a.timestamp).slice(0, 50);
 
-        // Fetch profile pics concurrently
-        const mappedChats = await Promise.all(recentChats.map(async (c) => {
-            let profilePicUrl = null;
-            try {
-                // Not all have profile pictures, catch silently
-                profilePicUrl = await waClient.getProfilePicUrl(c.id._serialized);
-            } catch (err) {}
-
-            return {
-                id: c.id._serialized,
-                name: c.name || c.id.user,
-                isGroup: c.isGroup,
-                unreadCount: c.unreadCount,
-                timestamp: c.timestamp,
-                profilePicUrl
-            };
+        const mappedChats = recentChats.map(c => ({
+            id: c.id._serialized,
+            name: c.name || c.id.user,
+            isGroup: c.isGroup,
+            unreadCount: c.unreadCount,
+            timestamp: c.timestamp
         }));
         
         res.json({ success: true, chats: mappedChats });
     } catch (e) {
         console.error('[WA-QR] Error getting chats:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+export const getChatImage = async (req, res) => {
+    if (clientStatus !== 'CONNECTED' || !waClient) {
+        return res.status(400).json({ error: 'WhatsApp Web no está conectado.' });
+    }
+    const { chatId } = req.params;
+    try {
+        const profilePicUrl = await waClient.getProfilePicUrl(chatId);
+        if (!profilePicUrl) {
+            return res.status(404).send('No profile picture');
+        }
+        return res.redirect(profilePicUrl);
+    } catch (e) {
+        console.error('[WA-QR] Error getting chat image:', e);
         res.status(500).json({ error: e.message });
     }
 };
@@ -152,7 +159,7 @@ export const getMessages = async (req, res) => {
         const chat = await waClient.getChatById(chatId);
         if (!chat) return res.status(404).json({ error: 'Chat not found' });
         
-        const messages = await chat.fetchMessages({ limit: 50 });
+        const messages = await chat.fetchMessages({ limit: 40 });
         
         const mappedMsgs = messages.map(m => ({
             id: m.id._serialized,
@@ -179,8 +186,7 @@ export const getMessageMedia = async (req, res) => {
         const chat = await waClient.getChatById(chatId);
         if (!chat) return res.status(404).json({ error: 'Chat not found' });
         
-        // Fetch last 50 messages to locate the specific message object in local instance memory
-        const messages = await chat.fetchMessages({ limit: 50 });
+        const messages = await chat.fetchMessages({ limit: 40 });
         const msg = messages.find(m => m.id._serialized === messageId || m.id.id === messageId);
         
         if (!msg) return res.status(404).json({ error: 'Message not found in recent history' });

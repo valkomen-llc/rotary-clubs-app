@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { QrCode, Smartphone, Wifi, WifiOff, LogOut, Loader, RefreshCw, Send, Users, MessageSquare, Clock, Search } from 'lucide-react';
+import { QrCode, Smartphone, WifiOff, Loader, RefreshCw, Send, Users, MessageSquare, Clock, Search } from 'lucide-react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
 import { CheckCheck, Sparkles, Paperclip, Smile, Mic, Image as ImageIcon } from 'lucide-react';
@@ -493,11 +493,18 @@ const WhatsAppQR: React.FC = () => {
                                                 className={`w-full text-left p-4 hover:bg-gray-50 flex items-center gap-3 transition-colors ${selectedChat?.id === chat.id ? 'bg-emerald-50 hover:bg-emerald-50' : ''}`}
                                             >
                                                 <div className={`w-12 h-12 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center font-bold text-white shadow-sm ${chat.isGroup ? 'bg-indigo-500' : 'bg-emerald-500'}`}>
-                                                    {chat.profilePicUrl ? (
-                                                        <img src={chat.profilePicUrl} alt={chat.name} className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        chat.isGroup ? <Users className="w-5 h-5" /> : chat.name.substring(0, 2).toUpperCase()
-                                                    )}
+                                                    <img 
+                                                        src={`${API}/whatsapp-qr/chats/${encodeURIComponent(chat.id)}/image?token=${token}`} 
+                                                        alt={chat.name} 
+                                                        className="w-full h-full object-cover" 
+                                                        onError={(e) => {
+                                                            const target = e.target as HTMLImageElement;
+                                                            target.style.display = 'none';
+                                                            if (target.parentElement) {
+                                                                target.parentElement.innerHTML = chat.isGroup ? `<div class="w-full h-full flex items-center justify-center">G</div>` : `<div class="w-full h-full flex items-center justify-center">${chat.name.substring(0, 2).toUpperCase()}</div>`;
+                                                            }
+                                                        }}
+                                                    />
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center justify-between mb-1">
