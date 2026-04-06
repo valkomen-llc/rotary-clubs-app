@@ -115,14 +115,26 @@ export const getChats = async (req, res) => {
     }
     try {
         const chats = await waClient.getChats();
-        // Return lightweight version of chats
-        const mappedChats = chats.map(c => ({
-            id: c.id._serialized,
-            name: c.name || c.id.user,
-            isGroup: c.isGroup,
-            unreadCount: c.unreadCount,
-            timestamp: c.timestamp,
-        })).sort((a, b) => b.timestamp - a.timestamp).slice(0, 50); // Get top 50 recent
+        // Fetch top 50 recent to prioritize
+        const recentChats = chats.sort((a, b) => b.timestamp - a.timestamp).slice(0, 50);
+
+        // Fetch profile pics concurrently
+        const mappedChats = await Promise.all(recentChats.map(async (c) => {
+            let profilePicUrl = null;
+            try {
+                // Not all have profile pictures, catch silently
+                profilePicUrl = await waClient.getProfilePicUrl(c.id._serialized);
+            } catch (err) {}
+
+            return {
+                id: c.id._serialized,
+                name: c.name || c.id.user,
+                isGroup: c.isGroup,
+                unreadCount: c.unreadCount,
+                timestamp: c.timestamp,
+                profilePicUrl
+            };
+        }));
         
         res.json({ success: true, chats: mappedChats });
     } catch (e) {

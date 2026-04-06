@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { QrCode, Smartphone, Wifi, WifiOff, LogOut, Loader, RefreshCw, Send, Users, MessageSquare, Clock, Search } from 'lucide-react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
+import { CheckCheck, Sparkles, Paperclip, Smile, Mic, Image as ImageIcon } from 'lucide-react';
 
 const VITE_API_URL = import.meta.env.VITE_API_URL || '';
 // In production (Vercel), we must use /vps for the QR gateway to trigger vercel.json rewrites 
@@ -14,6 +15,7 @@ interface Chat {
     isGroup: boolean;
     unreadCount: number;
     timestamp: number;
+    profilePicUrl?: string;
 }
 
 interface Message {
@@ -342,8 +344,12 @@ const WhatsAppQR: React.FC = () => {
                                                 onClick={() => { setSelectedChat(chat); fetchMessages(chat.id); }}
                                                 className={`w-full text-left p-4 hover:bg-gray-50 flex items-center gap-3 transition-colors ${selectedChat?.id === chat.id ? 'bg-emerald-50 hover:bg-emerald-50' : ''}`}
                                             >
-                                                <div className={`w-12 h-12 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-white shadow-sm ${chat.isGroup ? 'bg-indigo-500' : 'bg-emerald-500'}`}>
-                                                    {chat.isGroup ? <Users className="w-5 h-5" /> : chat.name.substring(0, 2).toUpperCase()}
+                                                <div className={`w-12 h-12 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center font-bold text-white shadow-sm ${chat.isGroup ? 'bg-indigo-500' : 'bg-emerald-500'}`}>
+                                                    {chat.profilePicUrl ? (
+                                                        <img src={chat.profilePicUrl} alt={chat.name} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        chat.isGroup ? <Users className="w-5 h-5" /> : chat.name.substring(0, 2).toUpperCase()
+                                                    )}
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center justify-between mb-1">
@@ -402,7 +408,7 @@ const WhatsAppQR: React.FC = () => {
                                                         <div className="whitespace-pre-wrap break-words">{msg.body}</div>
                                                         <div className={`text-[10px] text-right mt-1 opacity-60 flex items-center justify-end gap-1 ${msg.fromMe ? 'text-gray-600' : 'text-gray-400'}`}>
                                                             {new Date(msg.timestamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                                            {msg.fromMe && <CheckChecks className="w-3 h-3 text-blue-500" />}
+                                                            {msg.fromMe && <CheckCheck className="w-3 h-3 text-blue-500" />}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -412,8 +418,32 @@ const WhatsAppQR: React.FC = () => {
                                     )}
                                 </div>
 
+                                {/* Tools & AI Bar */}
+                                <div className="px-4 py-2 bg-[#F0F2F5] border-t border-gray-200 flex justify-between items-center text-gray-500">
+                                    <div className="flex items-center gap-2">
+                                        <button className="p-2 hover:bg-gray-200 rounded-full transition-colors" title="Adjuntar Documento">
+                                            <Paperclip className="w-5 h-5" />
+                                        </button>
+                                        <button className="p-2 hover:bg-gray-200 rounded-full transition-colors" title="Adjuntar Imagen">
+                                            <ImageIcon className="w-5 h-5" />
+                                        </button>
+                                        <button className="p-2 hover:bg-gray-200 rounded-full transition-colors" title="Añadir Emoji">
+                                            <Smile className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                    <button 
+                                        className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white text-xs font-bold px-3 py-1.5 rounded-full flex flex-row items-center gap-2 shadow-sm transition-all"
+                                        onClick={() => {
+                                            setMessageText('Generando respuesta sugerida por IA basándose en el historial de chat con el Agente Camila...');
+                                        }}
+                                    >
+                                        <Sparkles className="w-3.5 h-3.5" />
+                                        Sugerir con Subagente
+                                    </button>
+                                </div>
+
                                 {/* Message Input */}
-                                <div className="p-4 bg-[#F0F2F5] border-t border-gray-200 flex gap-2 items-end">
+                                <div className="p-4 bg-[#F0F2F5] flex gap-2 items-end">
                                     <textarea 
                                         value={messageText}
                                         onChange={e => setMessageText(e.target.value)}
@@ -428,9 +458,14 @@ const WhatsAppQR: React.FC = () => {
                                         rows={1}
                                     />
                                     <button 
+                                        className="p-3 bg-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-full transition-colors flex-shrink-0"
+                                    >
+                                        <Mic className="w-5 h-5" />
+                                    </button>
+                                    <button 
                                         onClick={handleSendMessage}
                                         disabled={!messageText.trim() || sending}
-                                        className="bg-emerald-600 text-white p-3 rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-50 flex-shrink-0 shadow-sm"
+                                        className="bg-emerald-600 text-white p-3 rounded-full hover:bg-emerald-700 transition-colors disabled:opacity-50 flex-shrink-0 shadow-sm disabled:cursor-not-allowed"
                                     >
                                         {sending ? <Loader className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                                     </button>
