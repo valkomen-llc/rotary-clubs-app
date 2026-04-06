@@ -34,6 +34,7 @@ const MediaLoader: React.FC<{ chatId: string; messageId: string; token: string |
     const [error, setError] = useState('');
 
     const fetchMedia = async () => {
+        if (loading || mediaUrl) return;
         setLoading(true);
         setError('');
         try {
@@ -53,10 +54,17 @@ const MediaLoader: React.FC<{ chatId: string; messageId: string; token: string |
             setMediaType(contentType);
             setMediaUrl(objectUrl);
         } catch (e) {
-            setError('Error de conectividad en Vercel Edge');
+            setError('Error de conectividad');
         }
         setLoading(false);
     };
+
+    // Auto-fetch on mount
+    useEffect(() => {
+        if (token && chatId && messageId) {
+            fetchMedia();
+        }
+    }, [chatId, messageId, token]);
 
     // Cleanup object URL on unmount to prevent memory leaks
     useEffect(() => {
@@ -108,14 +116,9 @@ const MediaLoader: React.FC<{ chatId: string; messageId: string; token: string |
     }
 
     return (
-        <div 
-            onClick={loading ? undefined : fetchMedia}
-            className={`flex items-center gap-2 px-2 py-1.5 rounded-md border mb-2 mt-1 transition-colors ${loading ? 'bg-blue-50 border-blue-100' : 'bg-black/5 border-black/5 cursor-pointer hover:bg-black/10'}`}
-        >
-            {loading ? <RefreshCw className="w-4 h-4 opacity-60 animate-spin text-blue-500" /> : <ImageIcon className="w-4 h-4 opacity-60" />}
-            <span className={`text-[11px] font-medium ${loading ? 'text-blue-600' : 'opacity-70'}`}>
-                {loading ? 'Descargando desde WhatsApp...' : 'Clic para cargar archivo multimedia'}
-            </span>
+        <div className="flex items-center gap-2 px-2 py-1.5 rounded-md border mb-2 mt-1 bg-black/5 border-black/5 animate-pulse">
+            <RefreshCw className="w-4 h-4 opacity-40 animate-spin text-emerald-500" />
+            <span className="text-[11px] font-medium opacity-50">Cargando multimedia...</span>
         </div>
     );
 };
