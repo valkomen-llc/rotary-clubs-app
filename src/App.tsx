@@ -79,6 +79,7 @@ const FinancialPage = React.lazy(() => import('./pages/admin/FinancialPage'));
 const YouthExchangePage = React.lazy(() => import('./pages/admin/YouthExchangePage'));
 const NGSEPage = React.lazy(() => import('./pages/admin/NGSEPage'));
 const RotexPage = React.lazy(() => import('./pages/admin/RotexPage'));
+const WhatsAppQR = React.lazy(() => import('./pages/admin/WhatsAppQR'));
 import ClubPreview from './pages/ClubPreview';
 import ChatBot from './components/ChatBot';
 import LandingPage from './pages/LandingPage';
@@ -571,6 +572,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <MissionControlVIP />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/whatsapp-qr"
+                  element={
+                    <PrivateRoute>
+                      <WhatsAppQR />
                     </PrivateRoute>
                   }
                 />

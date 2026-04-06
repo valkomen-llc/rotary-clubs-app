@@ -60,6 +60,7 @@ import faqsRoutes from './routes/faqs.js';
 import leadsRoutes from './routes/leads.js';
 import payoutsRoutes from './routes/payouts.js';
 import siteProgressRoutes from './routes/site-progress.js';
+import whatsappQrRoutes from './routes/whatsapp-qr.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -89,6 +90,7 @@ app.use('/api/faqs', faqsRoutes);
 app.use('/api/leads', leadsRoutes);
 app.use('/api/payouts', payoutsRoutes);
 app.use('/api/site-progress', siteProgressRoutes);
+app.use('/api/whatsapp-qr', whatsappQrRoutes);
 
 export default app;
 

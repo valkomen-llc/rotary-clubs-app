@@ -38,6 +38,7 @@ import {
     Briefcase,
     Award,
     Terminal,
+    QrCode
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -232,7 +233,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
         if (isSuperAdmin) {
             items.push(
-                { icon: Terminal, label: 'Mission Control VIP', path: '/admin/mission-control-vip', category: 'General', keywords: ['agentes', 'mission control', 'gateway', 'vip'] }
+                { icon: Terminal, label: 'Mission Control VIP', path: '/admin/mission-control-vip', category: 'General', keywords: ['agentes', 'mission control', 'gateway', 'vip'] },
+                { icon: QrCode, label: 'WhatsApp QR Gateway', path: '/admin/whatsapp-qr', category: 'General', keywords: ['whatsapp', 'qr', 'web', 'grupos'] }
             );
         }
 
