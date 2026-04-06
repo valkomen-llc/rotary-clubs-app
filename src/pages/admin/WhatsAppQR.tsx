@@ -374,6 +374,7 @@ const WhatsAppQR: React.FC = () => {
 
                         {/* Main Chat Area */}
                         {selectedChat ? (
+                            <>
                             <div className="flex-1 flex flex-col bg-[url('https://upload.wikimedia.org/wikipedia/commons/8/82/WhatsApp_background.png')] bg-opacity-5">
                                 <div className="h-[68px] bg-white border-b border-gray-200 p-4 flex items-center gap-3 shadow-sm z-10 flex-shrink-0">
                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${selectedChat.isGroup ? 'bg-indigo-500' : 'bg-emerald-500'}`}>
@@ -388,9 +389,20 @@ const WhatsAppQR: React.FC = () => {
                                 </div>
 
                                 <div className="flex-1 overflow-y-auto p-4 space-y-4 relative w-full bg-[#E5DDD5]">
-                                    {loadingMessages && messages.length === 0 ? (
+                                    {loadingMessages ? (
                                         <div className="absolute inset-0 flex items-center justify-center bg-[#E5DDD5]/80 z-10">
-                                            <Loader className="w-8 h-8 animate-spin text-emerald-600" />
+                                            <div className="flex flex-col items-center gap-2">
+                                                <Loader className="w-8 h-8 animate-spin text-emerald-600" />
+                                                <span className="text-emerald-700 font-medium text-sm">Sincronizando historial...</span>
+                                            </div>
+                                        </div>
+                                    ) : messages.length === 0 ? (
+                                        <div className="flex-1 h-full flex flex-col items-center justify-center text-center opacity-70">
+                                            <div className="bg-[#E1F3FB] p-4 rounded-full mb-4">
+                                                <Clock className="w-8 h-8 text-blue-500" />
+                                            </div>
+                                            <h4 className="text-gray-700 font-bold mb-1">Sin historial local</h4>
+                                            <p className="text-xs text-gray-500 max-w-xs">Los mensajes antiguos pueden tardar en sincronizarse o no estar disponibles en esta instancia del servidor. Los mensajes nuevos aparecerán aquí.</p>
                                         </div>
                                     ) : (
                                         <>
@@ -470,7 +482,62 @@ const WhatsAppQR: React.FC = () => {
                                         {sending ? <Loader className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                                     </button>
                                 </div>
+                            
+                            {/* Archetype Profile Sidebar for AI Context */}
+                            <div className="w-[320px] bg-white border-l border-gray-200 hidden lg:flex flex-col flex-shrink-0 animate-fade-in">
+                                <div className="p-4 border-b border-gray-100 flex items-center">
+                                    <h3 className="font-bold text-gray-900">Arquetipo Rotario</h3>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-5">
+                                    <div className="flex flex-col items-center text-center">
+                                        <div className={`w-20 h-20 rounded-full overflow-hidden flex items-center justify-center font-bold text-white shadow-sm mb-4 ${selectedChat.isGroup ? 'bg-indigo-500' : 'bg-emerald-500'}`}>
+                                            {selectedChat.profilePicUrl ? (
+                                                <img src={selectedChat.profilePicUrl} alt={selectedChat.name} className="w-full h-full object-cover" />
+                                            ) : (
+                                                selectedChat.isGroup ? <Users className="w-8 h-8" /> : selectedChat.name.substring(0, 2).toUpperCase()
+                                            )}
+                                        </div>
+                                        <h4 className="font-bold text-gray-900 text-lg mb-1 leading-tight">{selectedChat.name}</h4>
+                                        <p className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md mb-2">
+                                            {selectedChat.isGroup ? 'Comunidad Distrital' : 'Socio Activo'}
+                                        </p>
+                                        <p className="text-xs text-gray-400 font-mono mb-4">{selectedChat.id.split('@')[0]}</p>
+                                    </div>
+
+                                    <div className="pt-4 border-t border-gray-100 space-y-4">
+                                        <div>
+                                            <p className="text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Contexto para el Agente</p>
+                                            <p className="text-[13px] text-gray-700 bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-sm leading-relaxed">
+                                                Identificador base. Usado por la IA para cruzar datos con el CRM y formular respuestas personalizadas con el protocolo institucional.
+                                            </p>
+                                        </div>
+                                        
+                                        <div className="mt-4 px-3 py-2 bg-blue-50/50 rounded-lg border border-blue-100">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="text-xs font-semibold text-gray-600">Distrito Asignado</span>
+                                                <span className="text-xs font-bold text-blue-700">4281</span>
+                                            </div>
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="text-xs font-semibold text-gray-600">Club Rotario</span>
+                                                <span className="text-xs font-bold text-gray-800">Pendiente Mapeo</span>
+                                            </div>
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="text-xs font-semibold text-gray-600">Cargo Presencial</span>
+                                                <span className="text-xs font-medium text-gray-500">-</span>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-xs font-semibold text-gray-600">Score de Impacto</span>
+                                                <span className="text-xs font-bold text-emerald-600">Calculando...</span>
+                                            </div>
+                                        </div>
+                                        <button className="w-full py-2.5 mt-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm">
+                                            Vincular a CRM Central
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
+                            </div>
+                            </>
                         ) : (
                             <div className="flex-1 flex flex-col items-center justify-center bg-[#F8F9FA] text-gray-400">
                                 <div className="w-32 h-32 bg-gray-100 rounded-full flex items-center justify-center mb-6">
