@@ -13,6 +13,7 @@ const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
     'producción': { label: 'Producción de Contenido', color: '#EC4899' },
     'tecnología': { label: 'Tecnología y Plataformas', color: '#0EA5E9' },
     'difusión': { label: 'Difusión y Comunidad', color: '#F97316' },
+    'premium_b2b': { label: 'Servicios VIP B2B', color: '#8B5CF6' }
 };
 
 const AI_MODELS = [
@@ -48,6 +49,11 @@ const CAPABILITY_OPTIONS = [
     // Imágenes del Sitio
     { value: 'distribute_site_images', label: '🖼️ Distribuir imágenes en secciones del sitio' },
     { value: 'approve_site_images', label: '✅ Aprobar imágenes del sitio (identidad visual)' },
+    // B2B Skills
+    { value: 'vip_account_management', label: '🤝 Gestión VIP y Diplomacia' },
+    { value: 'campaign_concierge_reception', label: '🛎️ Recepción de Briefs B2B' },
+    { value: 'customer_success_support', label: '🛠️ Soporte L1/L2 a Plataforma' },
+    { value: 'internal_communications', label: '📢 Upselling y Comunicados Base' },
 ];
 
 interface Agent {
@@ -271,6 +277,7 @@ const AgentsManagement: React.FC = () => {
                                     <option value="producción">Producción de Contenido</option>
                                     <option value="tecnología">Tecnología y Plataformas</option>
                                     <option value="difusión">Difusión y Comunidad</option>
+                                    <option value="premium_b2b">Servicios VIP B2B</option>
                                 </select>
                             </div>
                             <div>
