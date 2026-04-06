@@ -60,7 +60,6 @@ export const uploadMemory = multer({
     limits: { fileSize: 5 * 1024 * 1024 }
 });
 
-// Document uploads for Club Knowledge Base
 export const uploadDocuments = multer({
     storage: multerS3({
         s3: s3,
@@ -86,4 +85,32 @@ export const uploadDocuments = multer({
     limits: { fileSize: 10 * 1024 * 1024 } // 10MB
 });
 
-export default { s3, upload, uploadMemory, uploadDocuments };
+// WA Media for CRM (Images, Videos, Documents, Audios)
+export const uploadWAMedia = multer({
+    storage: multerS3({
+        s3: s3,
+        bucket: process.env.AWS_BUCKET_NAME || 'rotary-platform-assets',
+        contentType: multerS3.AUTO_CONTENT_TYPE,
+        metadata: function (req, file, cb) {
+            cb(null, { fieldName: file.fieldname });
+        },
+        key: function (req, file, cb) {
+            const clubId = req.query.clubId || req.body.clubId || req.user?.clubId || 'global';
+            const fileName = `${Date.now()}-${file.originalname.replace(/\s+/g, '_')}`;
+            cb(null, `clubs/${clubId}/wa-media/${fileName}`);
+        }
+    }),
+    fileFilter: (req, file, cb) => {
+        // Allow all reasonably typical formats for WhatsApp Media
+        const allowedExtensions = /jpeg|jpg|png|webp|webp|mp4|avi|mov|mp3|ogg|wav|pdf|doc|docx|txt|xls|xlsx|csv/;
+        const ext = path.extname(file.originalname).toLowerCase();
+        
+        if (allowedExtensions.test(ext) || file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/') || file.mimetype.startsWith('audio/') || file.mimetype.startsWith('application/')) {
+            return cb(null, true);
+        }
+        cb(new Error("Error: Formato multimedia no admitido."));
+    },
+    limits: { fileSize: 16 * 1024 * 1024 } // 16MB Meta limit
+});
+
+export default { s3, upload, uploadMemory, uploadDocuments, uploadWAMedia };
