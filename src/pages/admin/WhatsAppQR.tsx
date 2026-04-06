@@ -96,8 +96,12 @@ const WhatsAppQR: React.FC = () => {
         if (status !== 'CONNECTED') return;
         setLoadingChats(true);
         try {
-            const res = await fetch(`${API}/whatsapp-qr/chats`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+            const res = await fetch(`${API}/whatsapp-qr/chats?_t=${Date.now()}`, {
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache'
+                }
             });
             const data = await res.json();
             if (data.success) {
@@ -110,13 +114,24 @@ const WhatsAppQR: React.FC = () => {
     const fetchMessages = async (chatId: string, silent = false) => {
         if (!silent) setLoadingMessages(true);
         try {
-            const res = await fetch(`${API}/whatsapp-qr/chats/${chatId}/messages`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+            const res = await fetch(`${API}/whatsapp-qr/chats/${chatId}/messages?_t=${Date.now()}`, {
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache'
+                }
             });
             const data = await res.json();
             if (data.success) {
                 // Reverse to show oldest first in UI flow
-                setMessages(data.messages.reverse());
+                setMessages(prev => {
+                    // Safe merge to ensure locally appended messages stay visible 
+                    // even if the WhatsApp core hasn't synced them to the fetch db yet
+                    const fetchedMessages = data.messages.reverse();
+                    const fetchedIds = new Set(fetchedMessages.map((m: any) => m.id));
+                    const missingLocals = prev.filter(m => m.fromMe && !fetchedIds.has(m.id) && (Date.now() / 1000 - m.timestamp < 60));
+                    return [...fetchedMessages, ...missingLocals].sort((a, b) => a.timestamp - b.timestamp);
+                });
             }
         } catch (e) { console.error(e); }
         if (!silent) setLoadingMessages(false);
