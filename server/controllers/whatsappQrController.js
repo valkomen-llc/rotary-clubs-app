@@ -106,3 +106,81 @@ export const disconnectClient = async (req, res) => {
         res.status(500).json({ error: e.message });
     }
 };
+
+// ── CRM Endpoints ───────────────────────────────────────────────────────────
+
+export const getChats = async (req, res) => {
+    if (clientStatus !== 'CONNECTED' || !waClient) {
+        return res.status(400).json({ error: 'WhatsApp Web no está conectado.' });
+    }
+    try {
+        const chats = await waClient.getChats();
+        // Return lightweight version of chats
+        const mappedChats = chats.map(c => ({
+            id: c.id._serialized,
+            name: c.name || c.id.user,
+            isGroup: c.isGroup,
+            unreadCount: c.unreadCount,
+            timestamp: c.timestamp,
+        })).sort((a, b) => b.timestamp - a.timestamp).slice(0, 50); // Get top 50 recent
+        
+        res.json({ success: true, chats: mappedChats });
+    } catch (e) {
+        console.error('[WA-QR] Error getting chats:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+export const getMessages = async (req, res) => {
+    if (clientStatus !== 'CONNECTED' || !waClient) {
+        return res.status(400).json({ error: 'WhatsApp Web no está conectado.' });
+    }
+    const { chatId } = req.params;
+    try {
+        const chat = await waClient.getChatById(chatId);
+        if (!chat) return res.status(404).json({ error: 'Chat not found' });
+        
+        const messages = await chat.fetchMessages({ limit: 50 });
+        
+        const mappedMsgs = messages.map(m => ({
+            id: m.id._serialized,
+            fromMe: m.fromMe,
+            body: m.body,
+            timestamp: m.timestamp,
+            hasMedia: m.hasMedia,
+            type: m.type
+        }));
+        
+        res.json({ success: true, messages: mappedMsgs });
+    } catch (e) {
+        console.error('[WA-QR] Error getting messages:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+export const sendMessage = async (req, res) => {
+    if (clientStatus !== 'CONNECTED' || !waClient) {
+        return res.status(400).json({ error: 'WhatsApp Web no está conectado.' });
+    }
+    const { chatId, message } = req.body;
+    if (!chatId || !message) {
+         return res.status(400).json({ error: 'chatId and message are required' });
+    }
+    try {
+        const response = await waClient.sendMessage(chatId, message);
+        res.json({ 
+            success: true, 
+            message: {
+                id: response.id._serialized,
+                fromMe: response.fromMe,
+                body: response.body,
+                timestamp: response.timestamp,
+                hasMedia: false,
+                type: response.type
+            }
+        });
+    } catch (e) {
+        console.error('[WA-QR] Error sending message:', e);
+        res.status(500).json({ error: e.message });
+    }
+};

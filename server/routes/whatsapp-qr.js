@@ -11,4 +11,9 @@ router.get('/status', authMiddleware, superAdminMiddleware, whatsappQrController
 router.post('/start', authMiddleware, superAdminMiddleware, whatsappQrController.startClient);
 router.post('/disconnect', authMiddleware, superAdminMiddleware, whatsappQrController.disconnectClient);
 
+// CRM Endpoints
+router.get('/chats', authMiddleware, superAdminMiddleware, whatsappQrController.getChats);
+router.get('/chats/:chatId/messages', authMiddleware, superAdminMiddleware, whatsappQrController.getMessages);
+router.post('/send-message', authMiddleware, superAdminMiddleware, whatsappQrController.sendMessage);
+
 export default router;
