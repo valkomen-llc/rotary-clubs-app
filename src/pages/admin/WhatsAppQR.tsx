@@ -28,7 +28,8 @@ interface Message {
 }
 
 const MediaLoader: React.FC<{ chatId: string; messageId: string; token: string | null }> = ({ chatId, messageId, token }) => {
-    const [media, setMedia] = useState<{ mimetype: string; data: string; filename?: string } | null>(null);
+    const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+    const [mediaType, setMediaType] = useState<string>('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -36,59 +37,72 @@ const MediaLoader: React.FC<{ chatId: string; messageId: string; token: string |
         setLoading(true);
         setError('');
         try {
-            const res = await fetch(`${API}/whatsapp-qr/chats/${chatId}/messages/${messageId}/media`, {
+            const res = await fetch(`${API}/whatsapp-qr/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}/media`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            const data = await res.json();
-            if (data.success) {
-                setMedia(data);
-            } else {
-                setError(data.error || 'Error al descargar');
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                setError(errData.error || 'Error de descarga');
+                setLoading(false);
+                return;
             }
+            
+            const contentType = res.headers.get('Content-Type') || '';
+            const blob = await res.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            setMediaType(contentType);
+            setMediaUrl(objectUrl);
         } catch (e) {
-            setError('Error de conectividad');
+            setError('Error de conectividad en Vercel Edge');
         }
         setLoading(false);
     };
 
+    // Cleanup object URL on unmount to prevent memory leaks
+    useEffect(() => {
+        return () => {
+            if (mediaUrl) URL.revokeObjectURL(mediaUrl);
+        };
+    }, [mediaUrl]);
+
     if (error) {
         return (
             <div className="flex flex-col items-center justify-center p-2 bg-red-50 rounded-md border border-red-100 mb-2 mt-1 gap-1 cursor-pointer hover:bg-red-100 transition-colors" onClick={fetchMedia}>
-                <ImageIcon className="w-4 h-4 text-red-400" />
-                <span className="text-[10px] text-red-500 font-medium">{error}. Clic para reintentar.</span>
+                <ImageIcon className="w-4 h-4 text-red-500 opacity-80" />
+                <span className="text-[10px] text-red-600 font-medium text-center">{error}. Clic para reintentar.</span>
             </div>
         );
     }
 
-    if (media) {
-        if (media.mimetype.startsWith('image/')) {
+    if (mediaUrl) {
+        if (mediaType.startsWith('image/')) {
             return (
                 <div className="mb-2 mt-1 rounded-md overflow-hidden bg-black/5 flex justify-center">
-                    <img src={`data:${media.mimetype};base64,${media.data}`} alt="Media" className="max-w-full max-h-64 object-contain rounded-md cursor-pointer hover:opacity-90" onClick={() => window.open(`data:${media.mimetype};base64,${media.data}`)} />
+                    <img src={mediaUrl} alt="Media" className="max-w-full max-h-64 object-contain rounded-md cursor-pointer hover:opacity-90" onClick={() => window.open(mediaUrl)} />
                 </div>
             );
         }
-        if (media.mimetype.startsWith('audio/')) {
+        if (mediaType.startsWith('audio/')) {
             return (
                 <div className="mb-2 mt-1 w-full relative">
-                    <audio controls className="w-full h-10" src={`data:${media.mimetype};base64,${media.data}`} />
+                    <audio controls className="w-full h-10" src={mediaUrl} />
                 </div>
             );
         }
-        if (media.mimetype.startsWith('video/')) {
+        if (mediaType.startsWith('video/')) {
             return (
                 <div className="mb-2 mt-1 rounded-md overflow-hidden bg-black/5 flex justify-center">
-                    <video controls className="max-w-full max-h-64 rounded-md" src={`data:${media.mimetype};base64,${media.data}`} />
+                    <video controls className="max-w-full max-h-64 rounded-md" src={mediaUrl} />
                 </div>
             );
         }
         return (
             <a 
-                href={`data:${media.mimetype};base64,${media.data}`} 
-                download={media.filename || 'archivo_adjunto'} 
+                href={mediaUrl} 
+                download={`archivo_adjunto`} 
                 className="flex items-center gap-2 p-2 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 mb-2 mt-1 transition-colors cursor-pointer text-blue-700"
             >
-                <div className="text-xs font-bold px-2 py-1 flex items-center gap-2"><ImageIcon className="w-4 h-4"/> ⬇️ Descargar archivo ({media.mimetype})</div>
+                <div className="text-xs font-bold px-2 py-1 flex items-center gap-2"><ImageIcon className="w-4 h-4"/> ⬇️ Descargar archivo ({mediaType})</div>
             </a>
         );
     }
@@ -238,12 +252,11 @@ const WhatsAppQR: React.FC = () => {
         setSending(false);
     };
 
-    // Core Polling logic
+    // Fetch chats every 5 seconds (suppressed log in the UI)
     useEffect(() => {
         checkStatus();
         const interval = setInterval(() => {
             checkStatus();
-            // If connected, sync chats and current messages silently
             if (status === 'CONNECTED') {
                 fetchChats();
                 if (selectedChat) {
@@ -261,11 +274,30 @@ const WhatsAppQR: React.FC = () => {
         }
     }, [status]);
 
+    // Track unread counts and play audio notification
+    const prevUnreadRef = useRef<number>(0);
+    useEffect(() => {
+        const currentUnread = chats.reduce((sum, c) => sum + c.unreadCount, 0);
+        if (currentUnread > prevUnreadRef.current) {
+            // New message arrived! Play notification.
+            try {
+                const audio = new Audio('/whatsapp-notify.ogg');
+                audio.play().catch(e => console.log('Audio autoplay blocked by browser', e));
+            } catch (e) {
+                console.error("Audio error", e);
+            }
+        }
+        prevUnreadRef.current = currentUnread;
+    }, [chats]);
+
     // Scroll to bottom when messages load
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
+    // Compute CRM Stats
+    const totalUnreadChats = chats.filter(c => c.unreadCount > 0).length;
+    const resolvedChats = chats.filter(c => c.unreadCount === 0).length;
 
     return (
         <AdminLayout>
@@ -417,6 +449,25 @@ const WhatsAppQR: React.FC = () => {
                                     <RefreshCw className={`w-4 h-4 ${loadingChats ? 'animate-spin' : ''}`} />
                                 </button>
                             </div>
+
+                            {/* CRM Metrics Grid */}
+                            <div className="px-3 py-3 bg-white grid grid-cols-2 gap-2.5 border-b border-gray-100">
+                                <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-2.5 flex flex-col items-center justify-center text-center">
+                                    <div className="flex items-center gap-1.5 text-emerald-600 mb-0.5">
+                                        <Clock className="w-3.5 h-3.5" />
+                                        <span className="text-[10px] font-bold uppercase tracking-tight">Pendientes</span>
+                                    </div>
+                                    <span className="text-xl font-black text-emerald-700 leading-none">{totalUnreadChats}</span>
+                                </div>
+                                <div className="bg-blue-50 border border-blue-100 rounded-xl p-2.5 flex flex-col items-center justify-center text-center">
+                                    <div className="flex items-center gap-1.5 text-blue-600 mb-0.5">
+                                        <CheckCheck className="w-3.5 h-3.5" />
+                                        <span className="text-[10px] font-bold uppercase tracking-tight">Gestionados</span>
+                                    </div>
+                                    <span className="text-xl font-black text-blue-700 leading-none">{resolvedChats}</span>
+                                </div>
+                            </div>
+
                             <div className="p-3 border-b border-gray-100 bg-white">
                                 <div className="relative">
                                     <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />

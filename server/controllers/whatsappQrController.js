@@ -189,12 +189,10 @@ export const getMessageMedia = async (req, res) => {
         const media = await msg.downloadMedia();
         if (!media) return res.status(404).json({ error: 'Media expired or unavailable' });
         
-        res.json({ 
-            success: true, 
-            mimetype: media.mimetype, 
-            data: media.data, 
-            filename: media.filename 
-        });
+        const buffer = Buffer.from(media.data, 'base64');
+        res.setHeader('Content-Type', media.mimetype);
+        res.setHeader('Content-Disposition', `inline; filename="${media.filename || 'media'}"`);
+        res.send(buffer);
     } catch (e) {
         console.error('[WA-QR] Error getting media for message:', e);
         res.status(500).json({ error: e.message });
