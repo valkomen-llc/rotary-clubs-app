@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     Plus, Save, X, Edit2, Trash2, ToggleLeft, ToggleRight,
-    ChevronDown, ChevronUp, Bot, Rocket, CheckCircle, AlertTriangle, Loader
+    ChevronDown, ChevronUp, Bot, Rocket, CheckCircle, AlertTriangle, Loader, MessageSquare
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import MissionControlLayout from '../../components/admin/MissionControlLayout';
@@ -361,70 +361,88 @@ const AgentsManagement: React.FC = () => {
                                 <span className="text-xs text-gray-400 font-bold">{catAgents.length}</span>
                             </div>
 
-                            <div className="grid gap-3">
+                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                                 {catAgents.map(agent => (
                                     <div key={agent.id}
-                                        className={`bg-white rounded-2xl border p-4 transition-all hover:shadow-md ${agent.active ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
-                                        <div className="flex items-center gap-4">
-                                            {/* Avatar */}
-                                            <div className="w-12 h-12 rounded-full overflow-hidden border-2 flex-shrink-0"
-                                                style={{ borderColor: agent.avatarColor, background: agent.avatarColor + '20' }}>
-                                                <img src={avatar(agent.avatarSeed)} alt={agent.name} className="w-full h-full" />
-                                            </div>
+                                        className={`bg-white rounded-[20px] p-6 transition-all hover:shadow-xl shadow-sm border flex flex-col gap-4 relative overflow-hidden group ${agent.active ? 'border-gray-200 hover:border-gray-300' : 'border-gray-100 opacity-60'}`}>
+                                        
+                                        {/* Colored Accent Strip */}
+                                        <div className="absolute top-0 left-0 w-1.5 h-full opacity-60 group-hover:opacity-100 transition-opacity" style={{ backgroundColor: agent.avatarColor }} />
 
-                                            {/* Info */}
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2">
-                                                    <h4 className="font-black text-gray-900">{agent.name}</h4>
-                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase"
-                                                        style={{ background: cat.color + '15', color: cat.color }}>{agent.aiModel}</span>
-                                                    {!agent.active && <span className="px-2 py-0.5 bg-gray-100 rounded-full text-[9px] font-bold text-gray-400">INACTIVO</span>}
+                                        <div className="flex items-start justify-between">
+                                            <div className="flex items-start gap-4">
+                                                {/* Premium Avatar */}
+                                                <div className="relative mt-1">
+                                                    <div className="w-14 h-14 rounded-2xl overflow-hidden shadow-inner flex-shrink-0"
+                                                        style={{ backgroundColor: agent.avatarColor + '10' }}>
+                                                        <img src={avatar(agent.avatarSeed)} alt={agent.name} className="w-full h-full object-cover scale-110" />
+                                                    </div>
+                                                    <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 border-2 border-white rounded-full ${agent.active ? 'bg-emerald-500' : 'bg-gray-300'}`} />
                                                 </div>
-                                                <p className="text-xs text-gray-500 font-medium mt-0.5">{agent.role}</p>
-                                                <p className="text-[10px] text-gray-400 mt-0.5">{agent.description}</p>
+
+                                                {/* Identity Info */}
+                                                <div className="pt-1">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <h4 className="font-black text-gray-900 text-lg leading-none tracking-tight">{agent.name}</h4>
+                                                        <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border"
+                                                            style={{ background: cat.color + '10', color: cat.color, borderColor: cat.color + '30' }}>
+                                                            {agent.aiModel}
+                                                        </span>
+                                                        {!agent.active && <span className="px-2 py-0.5 bg-gray-100 rounded-md text-[9px] font-bold text-gray-400">INACTIVO</span>}
+                                                    </div>
+                                                    <p className="text-xs font-bold mt-1" style={{ color: agent.avatarColor }}>{agent.role}</p>
+                                                </div>
                                             </div>
 
-                                            {/* Capabilities badges */}
-                                            <div className="hidden md:flex flex-wrap gap-1 max-w-[200px]">
-                                                {(agent.capabilities || []).slice(0, 3).map(c => (
-                                                    <span key={c} className="px-2 py-0.5 bg-gray-50 rounded text-[8px] font-bold text-gray-400 uppercase">{c.replace(/_/g, ' ')}</span>
-                                                ))}
-                                                {(agent.capabilities || []).length > 3 && (
-                                                    <span className="px-2 py-0.5 bg-gray-50 rounded text-[8px] font-bold text-gray-400">+{agent.capabilities.length - 3}</span>
-                                                )}
-                                            </div>
-
-                                            {/* Actions */}
-                                            <div className="flex items-center gap-1 flex-shrink-0">
-                                                <button onClick={() => toggleActive(agent)} className="p-2 rounded-xl hover:bg-gray-100 transition-colors"
+                                            {/* Action Dock */}
+                                            <div className="flex items-center gap-1 bg-gray-50 rounded-xl p-1 border border-gray-100 shadow-sm flex-shrink-0">
+                                                <button onClick={() => toggleActive(agent)} className="p-1.5 rounded-lg hover:bg-white hover:shadow-sm transition-all"
                                                     title={agent.active ? 'Desactivar' : 'Activar'}>
                                                     {agent.active
                                                         ? <ToggleRight className="w-5 h-5 text-emerald-500" />
-                                                        : <ToggleLeft className="w-5 h-5 text-gray-300" />}
+                                                        : <ToggleLeft className="w-5 h-5 text-gray-400" />}
                                                 </button>
                                                 <button onClick={() => setExpandedPrompt(expandedPrompt === agent.id ? null : agent.id)}
-                                                    className="p-2 rounded-xl hover:bg-gray-100 transition-colors" title="Ver prompt">
-                                                    {expandedPrompt === agent.id ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                                                    className={`p-1.5 rounded-lg hover:bg-white hover:shadow-sm transition-all ${expandedPrompt === agent.id ? 'bg-white shadow-sm' : ''}`} title="Ver Prompt">
+                                                    {expandedPrompt === agent.id ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
                                                 </button>
-                                                <button onClick={() => startEdit(agent)} className="p-2 rounded-xl hover:bg-gray-100 transition-colors" title="Editar">
-                                                    <Edit2 className="w-4 h-4 text-gray-400" />
+                                                <button onClick={() => startEdit(agent)} className="p-1.5 rounded-lg hover:bg-white hover:shadow-sm transition-all text-gray-400 hover:text-blue-500" title="Editar">
+                                                    <Edit2 className="w-4 h-4" />
                                                 </button>
-                                                <button onClick={() => deleteAgent(agent.id)} className="p-2 rounded-xl hover:bg-red-50 transition-colors" title="Eliminar">
-                                                    <Trash2 className="w-4 h-4 text-gray-300 hover:text-red-400" />
+                                                <div className="w-[1px] h-4 bg-gray-200 mx-0.5"></div>
+                                                <button onClick={() => deleteAgent(agent.id)} className="p-1.5 rounded-lg hover:bg-red-50 hover:text-red-500 transition-all text-gray-300" title="Eliminar">
+                                                    <Trash2 className="w-4 h-4" />
                                                 </button>
                                             </div>
                                         </div>
 
-                                        {/* Expanded Prompt */}
+                                        {/* Description */}
+                                        <div className="pl-[4.5rem]">
+                                            <p className="text-[13px] text-gray-500 font-medium leading-relaxed">{agent.description}</p>
+                                        </div>
+
+                                        {/* Capabilities Badges */}
+                                        <div className="pl-[4.5rem] pt-3 flex flex-wrap gap-1.5">
+                                            {(agent.capabilities || []).map(c => (
+                                                <span key={c} className="px-2.5 py-1 bg-gray-50/80 border border-gray-100 rounded-lg text-[9px] font-black text-gray-500 uppercase tracking-widest">{c.replace(/_/g, ' ')}</span>
+                                            ))}
+                                        </div>
+
+                                        {/* Expanded Prompt View */}
                                         {expandedPrompt === agent.id && (
-                                            <div className="mt-3 pt-3 border-t border-gray-100">
-                                                <p className="text-[10px] font-black text-gray-400 uppercase mb-1">System Prompt</p>
-                                                <p className="text-xs text-gray-500 leading-relaxed font-mono bg-gray-50 rounded-xl p-3">{agent.systemPrompt || 'Sin prompt configurado'}</p>
+                                            <div className="mt-4 pt-4 border-t border-gray-100 pl-[4.5rem] animate-fade-in">
+                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><Bot className="w-3.5 h-3.5"/> System Prompt</p>
+                                                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                                                    <p className="text-xs text-gray-600 leading-relaxed font-mono whitespace-pre-wrap">{agent.systemPrompt || 'Sin prompt configurado'}</p>
+                                                </div>
+                                                
                                                 {agent.greeting && (
-                                                    <>
-                                                        <p className="text-[10px] font-black text-gray-400 uppercase mb-1 mt-2">Saludo</p>
-                                                        <p className="text-xs text-gray-500 bg-gray-50 rounded-xl p-3">{agent.greeting}</p>
-                                                    </>
+                                                    <div className="mt-4">
+                                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5"/> Saludo de Inicio</p>
+                                                        <div className="bg-[#00A2E0]/5 rounded-xl p-3 border border-[#00A2E0]/10">
+                                                            <p className="text-xs text-[#00A2E0] font-medium italic">"{agent.greeting}"</p>
+                                                        </div>
+                                                    </div>
                                                 )}
                                             </div>
                                         )}
