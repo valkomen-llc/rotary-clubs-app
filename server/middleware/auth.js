@@ -1,7 +1,13 @@
 import jwt from 'jsonwebtoken';
 
 export const authMiddleware = (req, res, next) => {
-    const token = req.headers.authorization?.split(' ')[1];
+    let token = req.headers.authorization?.split(' ')[1];
+    
+    // Support token in query string for image/media proxy endpoints
+    if (!token && req.query.token) {
+        token = req.query.token;
+    }
+
     if (!token) return res.status(401).json({ error: 'No token provided' });
 
     try {

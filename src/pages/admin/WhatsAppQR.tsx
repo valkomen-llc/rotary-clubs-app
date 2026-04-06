@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { QrCode, Smartphone, WifiOff, Loader, RefreshCw, Send, Users, MessageSquare, Clock, Search } from 'lucide-react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
-import { CheckCheck, Sparkles, Paperclip, Smile, Mic, Image as ImageIcon } from 'lucide-react';
+import { CheckCheck, Sparkles, Paperclip, Smile, Mic, Image as ImageIcon, Copy, Check } from 'lucide-react';
 
 const VITE_API_URL = import.meta.env.VITE_API_URL || '';
 // In production (Vercel), we must use /vps for the QR gateway to trigger vercel.json rewrites 
@@ -138,7 +138,54 @@ const WhatsAppQR: React.FC = () => {
     const [loadingMessages, setLoadingMessages] = useState(false);
     const [sending, setSending] = useState(false);
 
+    // State for CRM enhancements
+    const [searchTerm, setSearchTerm] = useState('');
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    const [copiedId, setCopiedId] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const filteredChats = chats.filter(c => 
+        c.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !selectedChat) return;
+
+        setSending(true);
+        try {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = async () => {
+                const base64Data = (reader.result as string).split(',')[1];
+                const res = await fetch(`${API}/whatsapp-qr/send-media`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        chatId: selectedChat.id, 
+                        mediaData: base64Data,
+                        filename: file.name,
+                        mimetype: file.type,
+                        caption: '' 
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    setMessages(prev => [...prev, data.message]);
+                }
+            };
+        } catch (err) { console.error(err); }
+        setSending(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const copyToClipboard = (text: string, msgId: string) => {
+        navigator.clipboard.writeText(text);
+        setCopiedId(msgId);
+        setTimeout(() => setCopiedId(null), 2000);
+    };
 
     const checkStatus = async () => {
         try {
@@ -474,7 +521,13 @@ const WhatsAppQR: React.FC = () => {
                             <div className="p-3 border-b border-gray-100 bg-white">
                                 <div className="relative">
                                     <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                                    <input type="text" placeholder="Buscar chat o grupo..." className="w-full bg-gray-100 border-none rounded-xl py-2 pl-9 pr-4 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+                                    <input 
+                                        type="text" 
+                                        placeholder="Buscar chat o grupo..." 
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="w-full bg-gray-100 border-none rounded-xl py-2 pl-9 pr-4 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" 
+                                    />
                                 </div>
                             </div>
                             
@@ -486,7 +539,7 @@ const WhatsAppQR: React.FC = () => {
                                     </div>
                                 ) : (
                                     <div className="divide-y divide-gray-100">
-                                        {chats.map(chat => (
+                                        {filteredChats.map(chat => (
                                             <button 
                                                 key={chat.id} 
                                                 onClick={() => { setMessages([]); setSelectedChat(chat); fetchMessages(chat.id); }}
@@ -568,7 +621,7 @@ const WhatsAppQR: React.FC = () => {
                                                     </span>
                                                 </div>
                                                 {messages.map((msg, i) => (
-                                                    <div key={msg.id || i} className={`w-full flex ${msg.fromMe ? 'justify-end' : 'justify-start'}`}>
+                                                    <div key={msg.id || i} className={`w-full flex ${msg.fromMe ? 'justify-end' : 'justify-start'} group`}>
                                                         <div className={`max-w-[70%] rounded-2xl px-4 py-2 shadow-sm relative text-sm ${
                                                             msg.fromMe ? 'bg-[#D9FDD3] text-gray-900 rounded-tr-none' : 'bg-white text-gray-900 rounded-tl-none'
                                                         }`}>
@@ -577,6 +630,13 @@ const WhatsAppQR: React.FC = () => {
                                                             )}
                                                             <div className="whitespace-pre-wrap break-words">{msg.body}</div>
                                                             <div className={`text-[10px] text-right mt-1 opacity-60 flex items-center justify-end gap-1 ${msg.fromMe ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                <button 
+                                                                    onClick={() => copyToClipboard(msg.body, msg.id || i.toString())}
+                                                                    className="mr-auto opacity-0 group-hover:opacity-100 transition-opacity hover:text-emerald-600"
+                                                                    title="Copiar mensaje"
+                                                                >
+                                                                    {copiedId === (msg.id || i.toString()) ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                                                                </button>
                                                                 {new Date(msg.timestamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                                                                 {msg.fromMe && <CheckCheck className="w-3 h-3 text-blue-500" />}
                                                             </div>
@@ -586,20 +646,55 @@ const WhatsAppQR: React.FC = () => {
                                                 <div ref={messagesEndRef} />
                                             </>
                                         )}
-                                    </div>
-
-                                    {/* Tools & AI Bar */}
-                                    <div className="px-4 py-2 bg-[#F0F2F5] border-t border-gray-200 flex justify-between items-center text-gray-500">
+                                                         {/* Tools & AI Bar */}
+                                    <div className="px-4 py-2 bg-[#F0F2F5] border-t border-gray-200 flex justify-between items-center text-gray-500 relative">
                                         <div className="flex items-center gap-2">
-                                            <button className="p-2 hover:bg-gray-200 rounded-full transition-colors" title="Adjuntar Documento">
+                                            <input 
+                                                type="file" 
+                                                ref={fileInputRef} 
+                                                className="hidden" 
+                                                onChange={handleFileUpload}
+                                                accept="image/*,video/*,application/pdf"
+                                            />
+                                            <button 
+                                                onClick={() => fileInputRef.current?.click()}
+                                                className="p-2 hover:bg-gray-200 rounded-full transition-colors" title="Adjuntar Archivo"
+                                            >
                                                 <Paperclip className="w-5 h-5" />
                                             </button>
-                                            <button className="p-2 hover:bg-gray-200 rounded-full transition-colors" title="Adjuntar Imagen">
+                                            <button 
+                                                onClick={() => fileInputRef.current?.click()}
+                                                className="p-2 hover:bg-gray-200 rounded-full transition-colors" title="Adjuntar Imagen"
+                                            >
                                                 <ImageIcon className="w-5 h-5" />
                                             </button>
-                                            <button className="p-2 hover:bg-gray-200 rounded-full transition-colors" title="Añadir Emoji">
-                                                <Smile className="w-5 h-5" />
-                                            </button>
+                                            <div className="relative">
+                                                <button 
+                                                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                                                    className={`p-2 hover:bg-gray-200 rounded-full transition-colors ${showEmojiPicker ? 'bg-gray-200 text-emerald-600' : ''}`} 
+                                                    title="Añadir Emoji"
+                                                >
+                                                    <Smile className="w-5 h-5" />
+                                                </button>
+                                                {showEmojiPicker && (
+                                                    <div className="absolute bottom-full left-0 mb-2 bg-white shadow-xl border border-gray-200 rounded-2xl p-3 z-50 w-[280px] animate-in fade-in slide-in-from-bottom-2">
+                                                        <div className="grid grid-cols-8 gap-1">
+                                                            {['🤝', '😊', '💡', '✅', '🚀', '🌟', '📍', '🙌', '🙏', '❤️', '🤔', '🔥', '⚙️', '📈', '✨', '🌍'].map(emoji => (
+                                                                <button 
+                                                                    key={emoji}
+                                                                    onClick={() => {
+                                                                        setMessageText(prev => prev + emoji);
+                                                                        setShowEmojiPicker(false);
+                                                                    }}
+                                                                    className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-lg text-xl"
+                                                                >
+                                                                    {emoji}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                         <button 
                                             className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white text-xs font-bold px-3 py-1.5 rounded-full flex flex-row items-center gap-2 shadow-sm transition-all"
@@ -648,11 +743,18 @@ const WhatsAppQR: React.FC = () => {
                                     <div className="flex-1 overflow-y-auto p-5">
                                         <div className="flex flex-col items-center text-center">
                                             <div className={`w-20 h-20 rounded-full overflow-hidden flex items-center justify-center font-bold text-white shadow-sm mb-4 ${selectedChat.isGroup ? 'bg-indigo-500' : 'bg-emerald-500'}`}>
-                                                {selectedChat.profilePicUrl ? (
-                                                    <img src={selectedChat.profilePicUrl} alt={selectedChat.name} className="w-full h-full object-cover" />
-                                                ) : (
-                                                    selectedChat.isGroup ? <Users className="w-8 h-8" /> : selectedChat.name.substring(0, 2).toUpperCase()
-                                                )}
+                                                <img 
+                                                    src={`${API}/whatsapp-qr/chats/${encodeURIComponent(selectedChat.id)}/image?token=${token}`} 
+                                                    alt={selectedChat.name} 
+                                                    className="w-full h-full object-cover" 
+                                                    onError={(e) => {
+                                                        const target = e.target as HTMLImageElement;
+                                                        target.style.display = 'none';
+                                                        if (target.parentElement) {
+                                                            target.parentElement.innerHTML = selectedChat.isGroup ? `<div class="w-full h-full flex items-center justify-center">G</div>` : `<div class="w-full h-full flex items-center justify-center text-3xl">${selectedChat.name.substring(0, 2).toUpperCase()}</div>`;
+                                                        }
+                                                    }}
+                                                />
                                             </div>
                                             <h4 className="font-bold text-gray-900 text-lg mb-1 leading-tight">{selectedChat.name}</h4>
                                             <p className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md mb-2">

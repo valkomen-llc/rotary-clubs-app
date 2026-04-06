@@ -1,5 +1,5 @@
 import pkg from 'whatsapp-web.js';
-const { Client, LocalAuth } = pkg;
+const { Client, LocalAuth, MessageMedia } = pkg;
 import qrcode from 'qrcode';
 
 // Global state for the SuperAdmin WhatsApp Web connection
@@ -237,6 +237,34 @@ export const sendMessage = async (req, res) => {
         });
     } catch (e) {
         console.error('[WA-QR] Error sending message:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+export const sendMedia = async (req, res) => {
+    if (clientStatus !== 'CONNECTED' || !waClient) {
+        return res.status(400).json({ error: 'WhatsApp Web no está conectado.' });
+    }
+    const { chatId, caption, mediaData, filename, mimetype } = req.body;
+    if (!chatId || !mediaData || !mimetype) {
+         return res.status(400).json({ error: 'chatId, mediaData and mimetype are required' });
+    }
+    try {
+        const media = new MessageMedia(mimetype, mediaData, filename);
+        const response = await waClient.sendMessage(chatId, media, { caption });
+        res.json({ 
+            success: true, 
+            message: {
+                id: response.id._serialized,
+                fromMe: response.fromMe,
+                body: response.body || caption || '[Multimedia]',
+                timestamp: response.timestamp,
+                hasMedia: true,
+                type: response.type
+            }
+        });
+    } catch (e) {
+        console.error('[WA-QR] Error sending media:', e);
         res.status(500).json({ error: e.message });
     }
 };

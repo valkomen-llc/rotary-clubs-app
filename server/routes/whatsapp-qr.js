@@ -18,5 +18,6 @@ router.get('/chats/:chatId/messages', authMiddleware, superAdminMiddleware, what
 router.get('/chats/:chatId/image', authMiddleware, superAdminMiddleware, whatsappQrController.getChatImage);
 router.get('/chats/:chatId/messages/:messageId/media', authMiddleware, superAdminMiddleware, whatsappQrController.getMessageMedia);
 router.post('/send-message', authMiddleware, superAdminMiddleware, whatsappQrController.sendMessage);
+router.post('/send-media', authMiddleware, superAdminMiddleware, whatsappQrController.sendMedia);
 
 export default router;
