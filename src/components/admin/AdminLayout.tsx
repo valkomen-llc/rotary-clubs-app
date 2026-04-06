@@ -37,6 +37,7 @@ import {
     Globe,
     Briefcase,
     Award,
+    Terminal,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -228,6 +229,12 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             { icon: LayoutDashboard, label: 'Overview', path: '/admin/dashboard', category: 'General', keywords: ['inicio', 'panel', 'dashboard', 'resumen'] },
             { icon: PieChart, label: 'Analytics', path: '/admin/analytics', category: 'General', keywords: ['estadisticas', 'visitas', 'trafico', 'ga4'] },
         );
+
+        if (isSuperAdmin) {
+            items.push(
+                { icon: Terminal, label: 'Mission Control VIP', path: '/admin/agentes', category: 'General', keywords: ['agentes', 'mission control', 'gateway', 'vip'] }
+            );
+        }
 
         if (isSuperAdmin) {
             items.push(
