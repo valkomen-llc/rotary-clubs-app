@@ -482,6 +482,7 @@ const WhatsAppQR: React.FC = () => {
                                         {sending ? <Loader className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                                     </button>
                                 </div>
+                            </div>
                             
                             {/* Archetype Profile Sidebar for AI Context */}
                             <div className="w-[320px] bg-white border-l border-gray-200 hidden lg:flex flex-col flex-shrink-0 animate-fade-in">
@@ -535,7 +536,6 @@ const WhatsAppQR: React.FC = () => {
                                         </button>
                                     </div>
                                 </div>
-                            </div>
                             </div>
                             </>
                         ) : (
