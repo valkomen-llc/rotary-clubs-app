@@ -3,7 +3,10 @@ import { QrCode, Smartphone, Wifi, WifiOff, LogOut, Loader, RefreshCw, Send, Use
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
 
-const API = import.meta.env.VITE_API_URL || '/api';
+const VITE_API_URL = import.meta.env.VITE_API_URL || '';
+// In production (Vercel), we must use /vps for the QR gateway to trigger vercel.json rewrites 
+// bypassing Vercel's strict /api/ serverless function filesystem lock.
+const API = VITE_API_URL ? VITE_API_URL : (import.meta.env.PROD ? '/vps' : '/api');
 
 interface Chat {
     id: string;
@@ -98,7 +101,7 @@ const WhatsAppQR: React.FC = () => {
             if (data.success) {
                 setChats(data.chats);
             }
-        } catch (e) console.error(e);
+        } catch (e) { console.error(e); }
         setLoadingChats(false);
     };
 
@@ -113,7 +116,7 @@ const WhatsAppQR: React.FC = () => {
                 // Reverse to show oldest first in UI flow
                 setMessages(data.messages.reverse());
             }
-        } catch (e) console.error(e);
+        } catch (e) { console.error(e); }
         setLoadingMessages(false);
     };
 
@@ -135,7 +138,7 @@ const WhatsAppQR: React.FC = () => {
             } else {
                 alert(data.error);
             }
-        } catch (e) console.error(e);
+        } catch (e) { console.error(e); }
         setSending(false);
     };
 

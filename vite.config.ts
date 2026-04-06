@@ -11,6 +11,18 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    proxy: {
+      '/api/whatsapp-qr': {
+        target: 'http://76.13.101.187:5001',
+        changeOrigin: true,
+      },
+      '/api': {
+        target: 'http://76.13.101.187:5001',
+        changeOrigin: true,
+      }
+    }
+  },
   build: {
     rollupOptions: {
       output: {
