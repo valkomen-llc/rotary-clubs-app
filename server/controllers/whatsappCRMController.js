@@ -1174,11 +1174,12 @@ export const handleWebhook = async (req, res) => {
                 }
 
                 // Save incoming message
+                const incLogId = crypto.randomUUID();
                 await db.query(
-                    `INSERT INTO "WhatsAppMessageLog" ("clubId","contactId",phone,"messageId","bodyText",direction,status,"sentAt","createdAt")
-                     VALUES ($1,$2,$3,$4,$5,'incoming','received',$6,$6)
+                    `INSERT INTO "WhatsAppMessageLog" (id, "clubId","contactId",phone,"messageId","bodyText",direction,status,"sentAt","createdAt","updatedAt")
+                     VALUES ($1,$2,$3,$4,$5,$6,'incoming','received',$7,$7,NOW())
                      ON CONFLICT DO NOTHING`,
-                    [clubId, contactId, normalizedPhone, messageId, bodyText, timestamp]
+                    [incLogId, clubId, contactId, normalizedPhone, messageId, bodyText, timestamp]
                 );
             }
         }
