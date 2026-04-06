@@ -96,7 +96,7 @@ const MissionControlVIP: React.FC = () => {
                         <div className="flex items-center gap-3">
                             <BrainCircuit className="w-8 h-8 text-indigo-400 animate-pulse" />
                             <h1 className="text-3xl font-black text-white tracking-widest uppercase">
-                                Välkommen AI Gateway
+                                Valkomen AI Gateway
                             </h1>
                         </div>
                         <p className="text-sm text-gray-500 mt-2 tracking-wide">
@@ -196,7 +196,7 @@ const MissionControlVIP: React.FC = () => {
                         {/* Terminal Window */}
                         <div className="flex-1 p-5 overflow-y-auto space-y-3">
                             <div className="mb-4">
-                                <p className="text-[10px] text-emerald-500">Välkommen B2B Engine v1.0.0 init...</p>
+                                <p className="text-[10px] text-emerald-500">Valkomen B2B Engine v1.0.0 init...</p>
                                 <p className="text-[10px] text-emerald-500">Connecting to graph.facebook.com... [OK]</p>
                                 <p className="text-[10px] text-emerald-500">Loading Agent Cognitive Models... [OK]</p>
                             </div>
