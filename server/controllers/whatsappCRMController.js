@@ -6,10 +6,44 @@
 
 import db from '../lib/db.js';
 import crypto from 'crypto';
+import { s3 } from '../lib/storage.js';
+import pkg from '@aws-sdk/client-s3';
+const { PutObjectCommand } = pkg;
 
 const WA_API_BASE = `https://graph.facebook.com/${process.env.WA_API_VERSION || 'v21.0'}`;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+async function syncMetaMediaToS3(mediaId, token, clubId, fileExtension = 'jpg', folder = 'wa-media-in', customMime = 'image/jpeg') {
+    try {
+        const metaRes = await fetch(`${WA_API_BASE}/${mediaId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const metaData = await metaRes.json();
+        if (!metaData.url) return null;
+        
+        const binRes = await fetch(metaData.url, { headers: { 'Authorization': `Bearer ${token}` } });
+        const buffer = await binRes.arrayBuffer();
+        
+        const fileName = `${Date.now()}-${crypto.randomUUID().substring(0,8)}.${fileExtension}`;
+        const key = `clubs/${clubId}/${folder}/${fileName}`;
+        const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
+        const contentType = binRes.headers.get('content-type') || customMime;
+        
+        await s3.send(new PutObjectCommand({
+            Bucket: bucket,
+            Key: key,
+            Body: Buffer.from(buffer),
+            ContentType: contentType,
+            ACL: 'public-read'
+        }));
+        
+        return `https://${bucket}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${key}`;
+    } catch(e) {
+        console.error('Error in syncMetaMediaToS3:', e);
+        return null;
+    }
+}
 
 /** Resolve clubId — super admins may not have clubId in JWT, fallback to first club */
 async function resolveClubId(req, fromBody = false) {
@@ -1154,9 +1188,13 @@ export const handleWebhook = async (req, res) => {
         // Resolve clubId from phoneNumberId in the webhook metadata
         const phoneNumberId = changes.metadata?.phone_number_id;
         let clubId = null;
+        let clubToken = null;
         if (phoneNumberId) {
-            const configR = await db.query(`SELECT "clubId" FROM "WhatsAppConfig" WHERE "phoneNumberId"=$1 LIMIT 1`, [phoneNumberId]);
-            if (configR.rows.length) clubId = configR.rows[0].clubId;
+            const configR = await db.query(`SELECT "clubId", "accessToken" FROM "WhatsAppConfig" WHERE "phoneNumberId"=$1 LIMIT 1`, [phoneNumberId]);
+            if (configR.rows.length) {
+                clubId = configR.rows[0].clubId;
+                clubToken = configR.rows[0].accessToken;
+            }
         }
 
         // Handle incoming messages
@@ -1170,17 +1208,28 @@ export const handleWebhook = async (req, res) => {
                 // Extract message text based on type
                 let bodyText = '';
                 const msgType = msg.type || 'text';
-                if (msg.type === 'text') {
+                
+                if (msgType === 'text') {
                     bodyText = msg.text?.body || '';
-                } else if (msg.type === 'image') {
-                    bodyText = msg.image?.caption || '[Imagen]';
-                } else if (msg.type === 'video') {
-                    bodyText = msg.video?.caption || '[Video]';
-                } else if (msg.type === 'audio') {
-                    bodyText = '[Audio]';
-                } else if (msg.type === 'document') {
-                    bodyText = msg.document?.filename || '[Documento]';
-                } else if (msg.type === 'sticker') {
+                } else if (['image', 'video', 'audio', 'document'].includes(msgType)) {
+                    let mediaObj = msg[msgType];
+                    let mediaUrl = null;
+                    if (mediaObj && mediaObj.id && clubToken) {
+                        let ext = msgType === 'image' ? 'jpg' : msgType === 'video' ? 'mp4' : msgType === 'audio' ? 'ogg' : 'pdf';
+                        let mime = mediaObj.mime_type || (msgType === 'image' ? 'image/jpeg' : msgType === 'video' ? 'video/mp4' : 'application/pdf');
+                        if (msgType === 'document' && mediaObj.filename) {
+                            const parsedExt = mediaObj.filename.split('.').pop();
+                            if (parsedExt) ext = parsedExt;
+                        }
+                        mediaUrl = await syncMetaMediaToS3(mediaObj.id, clubToken, clubId, ext, 'wa-media-in', mime);
+                    }
+                    const caption = mediaObj?.caption || (msgType === 'document' ? mediaObj?.filename : '');
+                    if (mediaUrl) {
+                        bodyText = `[MEDIA|${msgType}|${mediaUrl}] ${caption}`.trim();
+                    } else {
+                        bodyText = caption ? `[${msgType.toUpperCase()}] ${caption}` : `[${msgType.toUpperCase()} adjunto]`;
+                    }
+                } else if (msgType === 'sticker') {
                     bodyText = '[Sticker]';
                 } else if (msg.type === 'location') {
                     bodyText = `[Ubicación: ${msg.location?.latitude}, ${msg.location?.longitude}]`;

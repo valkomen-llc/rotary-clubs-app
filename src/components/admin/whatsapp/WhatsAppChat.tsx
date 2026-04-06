@@ -57,6 +57,45 @@ const WhatsAppChat: React.FC = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
+    // --- POLLING ENGINE (Phase 2) ---
+    const fetchContactsSilent = async () => {
+        try {
+            const filterParam = activeFilter === 'all' ? '' : `&filter=${activeFilter}`;
+            const res = await fetch(`${API}/whatsapp/contacts?limit=500${filterParam}`, { headers: { Authorization: `Bearer ${token}` } });
+            const data = await res.json();
+            setContacts(data.contacts || []);
+        } catch { }
+    };
+
+    const fetchMessagesSilent = async (contactId: string) => {
+        try {
+            const res = await fetch(`${API}/whatsapp/contacts/${contactId}/messages`, { headers: { Authorization: `Bearer ${token}` } });
+            if (res.ok) {
+                const data = await res.json();
+                const newMsgs = data.messages || [];
+                setMessages(prev => {
+                    if (newMsgs.length !== prev.length) return newMsgs;
+                    // Check if last message status changed (e.g., delivered -> read)
+                    if (prev.length > 0 && newMsgs.length > 0) {
+                        if (prev[prev.length - 1].status !== newMsgs[newMsgs.length - 1].status) return newMsgs;
+                    }
+                    return prev;
+                });
+            }
+        } catch { }
+    };
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            fetchContactsSilent();
+            if (selectedContact) {
+                fetchMessagesSilent(selectedContact.id);
+            }
+        }, 8000);
+        return () => clearInterval(interval);
+    }, [activeFilter, selectedContact, token]);
+    // -------------------------------
+
     const fetchContacts = async () => {
         setLoading(true);
         try {
@@ -220,6 +259,27 @@ const WhatsAppChat: React.FC = () => {
             setUploadingMedia(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
+    };
+
+    const toggleTag = async (tag: string) => {
+        if (!selectedContact) return;
+        const currentTags = selectedContact.tags || [];
+        const isSelected = currentTags.includes(tag);
+        const newTags = isSelected ? currentTags.filter(t => t !== tag) : [...currentTags, tag];
+        
+        try {
+            const res = await fetch(`${API}/whatsapp/contacts/${selectedContact.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ tags: newTags })
+            });
+            if (res.ok) {
+                const updated = await res.json();
+                setSelectedContact(updated);
+                setContacts(prev => prev.map(c => c.id === updated.id ? updated : c));
+                toast.success(isSelected ? 'Etiqueta removida' : 'Etiqueta añadida');
+            }
+        } catch { toast.error('Error al actualizar etiquetas'); }
     };
 
     const renderMessageBody = (text: string | null | undefined, msg: any, isOutgoing: boolean) => {
@@ -672,18 +732,22 @@ const WhatsAppChat: React.FC = () => {
                         <div className="p-4 border-b border-gray-100">
                             <div className="flex items-center gap-2 mb-3">
                                 <Tag className="w-4 h-4 text-gray-400" />
-                                <p className="text-xs font-bold text-gray-500 uppercase">Etiquetas</p>
+                                <p className="text-xs font-bold text-gray-500 uppercase">Kamban / Etiquetas</p>
                             </div>
-                            <div className="flex flex-wrap gap-1.5">
-                                {selectedContact.tags && selectedContact.tags.length > 0 ? (
-                                    selectedContact.tags.map(tag => (
-                                        <span key={tag} className={`text-xs font-bold px-2.5 py-1 rounded-full border ${getTagStyle(tag)}`}>
-                                            {tag}
-                                        </span>
-                                    ))
-                                ) : (
-                                    <span className="text-xs text-gray-400">Sin etiquetas</span>
-                                )}
+                            <div className="flex flex-wrap gap-2">
+                                {['vip', 'socio', 'rotary', 'prospecto'].map(tag => {
+                                    const isActive = selectedContact.tags?.includes(tag);
+                                    return (
+                                        <button 
+                                            key={tag}
+                                            onClick={() => toggleTag(tag)}
+                                            className={`text-xs font-bold px-3 py-1.5 rounded-full border transition-all ${isActive ? getTagStyle(tag) : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100 hover:text-gray-700'}`}
+                                            title={isActive ? 'Quitar etiqueta' : 'Añadir etiqueta'}
+                                        >
+                                            {isActive ? '✓ ' : '+ '}{tag.toUpperCase()}
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
 
