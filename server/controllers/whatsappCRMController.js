@@ -5,6 +5,7 @@
  */
 
 import db from '../lib/db.js';
+import crypto from 'crypto';
 
 const WA_API_BASE = `https://graph.facebook.com/${process.env.WA_API_VERSION || 'v21.0'}`;
 
@@ -443,12 +444,13 @@ export const sendMessageToContact = async (req, res) => {
             token: config.accessToken,
         });
         const messageId = apiRes.messages?.[0]?.id;
+        const msgLogId = crypto.randomUUID();
 
         // Log the message
         await db.query(
-            `INSERT INTO "WhatsAppMessageLog" ("clubId","contactId",phone,"messageId","templateName","bodyText",status,direction,"sentAt")
-             VALUES ($1,$2,$3,$4,$5,$6,'sent','outgoing',NOW())`,
-            [clubId, contact.id, contact.phone, messageId || null, template.name, template.bodyText || `[Template: ${template.name}]`]
+            `INSERT INTO "WhatsAppMessageLog" (id, "clubId","contactId",phone,"messageId","templateName","bodyText",status,direction,"sentAt")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,'sent','outgoing',NOW())`,
+            [msgLogId, clubId, contact.id, contact.phone, messageId || null, template.name, template.bodyText || `[Template: ${template.name}]`]
         );
         await db.query(`UPDATE "WhatsAppContact" SET "totalSent"="totalSent"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
 
@@ -472,10 +474,11 @@ export const sendMessageToContact = async (req, res) => {
             const clubId = await resolveClubId(req);
             const contactR = await db.query(`SELECT phone FROM "WhatsAppContact" WHERE id=$1`, [req.params.id]);
             if (contactR.rows.length) {
+                const cfLogId = crypto.randomUUID();
                 await db.query(
-                    `INSERT INTO "WhatsAppMessageLog" ("clubId","contactId",phone,"templateName",status,"errorMessage","failedAt")
-                     VALUES ($1,$2,$3,$4,'failed',$5,NOW())`,
-                    [clubId, req.params.id, contactR.rows[0].phone, req.body.templateId || 'unknown', errorMsg]
+                    `INSERT INTO "WhatsAppMessageLog" (id, "clubId","contactId",phone,"templateName",status,direction,"errorMessage","failedAt")
+                     VALUES ($1,$2,$3,$4,$5,'failed','outgoing',$6,NOW())`,
+                    [cfLogId, clubId, req.params.id, contactR.rows[0].phone, req.body.templateId || 'unknown', errorMsg]
                 );
             }
         } catch { /* ignore logging error */ }
@@ -975,18 +978,20 @@ export const sendCampaign = async (req, res) => {
                     token: config.accessToken,
                 });
                 const messageId = apiRes.messages?.[0]?.id;
+                const cMsgId = crypto.randomUUID();
                 await db.query(
-                    `INSERT INTO "WhatsAppMessageLog" ("clubId","campaignId","contactId",phone,"messageId","templateName",status,direction,"sentAt")
-                     VALUES ($1,$2,$3,$4,$5,$6,'sent','outgoing',NOW())`,
-                    [clubId, id, contact.id, contact.phone, messageId || null, template.name]
+                    `INSERT INTO "WhatsAppMessageLog" (id,"clubId","campaignId","contactId",phone,"messageId","templateName",status,direction,"sentAt")
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,'sent','outgoing',NOW())`,
+                    [cMsgId, clubId, id, contact.id, contact.phone, messageId || null, template.name]
                 );
                 await db.query(`UPDATE "WhatsAppContact" SET "totalSent"="totalSent"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
                 return { ok: true };
             } catch (err) {
+                const cfLogId = crypto.randomUUID();
                 await db.query(
-                    `INSERT INTO "WhatsAppMessageLog" ("clubId","campaignId","contactId",phone,"templateName",status,direction,"errorMessage","failedAt")
-                     VALUES ($1,$2,$3,$4,$5,'failed','outgoing',$6,NOW())`,
-                    [clubId, id, contact.id, contact.phone, template.name, err.message]
+                    `INSERT INTO "WhatsAppMessageLog" (id,"clubId","campaignId","contactId",phone,"templateName",status,direction,"errorMessage","failedAt")
+                     VALUES ($1,$2,$3,$4,$5,$6,'failed','outgoing',$7,NOW())`,
+                    [cfLogId, clubId, id, contact.id, contact.phone, template.name, err.message]
                 ).catch(() => {});
                 await db.query(`UPDATE "WhatsAppContact" SET "totalFailed"="totalFailed"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]).catch(() => {});
                 return { ok: false };
