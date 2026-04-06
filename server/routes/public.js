@@ -11,6 +11,10 @@ const router = express.Router();
 // This endpoint is used by the generic SaaS landing page (RegisterClub.tsx wizard)
 router.post('/register-club', autoRegisterClub);
 
+import { getRobotsTxt, getSitemap } from '../controllers/seoController.js';
+router.get('/seo/robots.txt', getRobotsTxt);
+router.get('/seo/sitemap.xml', getSitemap);
+
 // --- DISTRICT MULTIMEDIA UPLOAD LOGIC ---
 const uploadDistrictMedia = multer({
     storage: multerS3({

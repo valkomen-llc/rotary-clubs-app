@@ -221,6 +221,44 @@ const AnalyticsTracker = () => {
   return null;
 };
 
+// SEO Tracker to inject Schema, Meta Tags, and Canonical URLs dynamically
+const SEOTracker = () => {
+  const location = useLocation();
+  const { club } = useClub();
+
+  useEffect(() => {
+    if (club) {
+        let baseTitle = club.name || 'Rotary ClubPlatform';
+        let pageName = 'Inicio';
+        
+        if (location.pathname.includes('/quienes-somos')) pageName = 'Quiénes Somos';
+        else if (location.pathname.includes('/nuestras-causas')) pageName = 'Nuestras Causas';
+        else if (location.pathname.includes('/proyectos')) pageName = 'Proyectos de Impacto';
+        else if (location.pathname.includes('/blog')) pageName = 'Noticias';
+        else if (location.pathname.includes('/eventos')) pageName = 'Eventos';
+        else if (location.pathname.includes('/contacto')) pageName = 'Contacto';
+        else if (location.pathname.includes('/admin')) pageName = 'DSO Admin';
+
+        if (location.pathname === '/') document.title = `${baseTitle} | Sitio Oficial`;
+        else document.title = `${pageName} - ${baseTitle}`;
+        
+        const metaDesc = document.querySelector('meta[name="description"]');
+        if (metaDesc && club.description) metaDesc.setAttribute("content", club.description);
+        
+        let linkCanonical = document.querySelector('link[rel="canonical"]');
+        if (!linkCanonical) {
+            linkCanonical = document.createElement('link');
+            linkCanonical.setAttribute('rel', 'canonical');
+            document.head.appendChild(linkCanonical);
+        }
+        const domainUrl = club.domain || (club.subdomain ? `${club.subdomain}.clubplatform.org` : 'rotaryplatform.com');
+        linkCanonical.setAttribute('href', `https://${domainUrl}${location.pathname}`);
+    }
+  }, [location, club]);
+
+  return null;
+};
+
 // Main App Router component
 function App() {
   // Auto-load real GA4 Measurement ID on startup (applies to all club domains)
@@ -238,6 +276,7 @@ function App() {
           <CartProvider>
             <Router>
               <AnalyticsTracker />
+              <SEOTracker />
               <Suspense fallback={
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#0B1120' }}>
                   <div style={{ textAlign: 'center', color: '#94a3b8' }}>
