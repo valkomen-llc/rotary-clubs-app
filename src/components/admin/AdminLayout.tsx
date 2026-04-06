@@ -232,7 +232,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
         if (isSuperAdmin) {
             items.push(
-                { icon: Terminal, label: 'Mission Control VIP', path: '/admin/agentes', category: 'General', keywords: ['agentes', 'mission control', 'gateway', 'vip'] }
+                { icon: Terminal, label: 'Mission Control VIP', path: '/admin/mission-control-vip', category: 'General', keywords: ['agentes', 'mission control', 'gateway', 'vip'] }
             );
         }
 

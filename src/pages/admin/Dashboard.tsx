@@ -357,7 +357,7 @@ const Dashboard: React.FC = () => {
                                     Accede al centro de comando inmersivo para orquestar a los agentes de IA, monitorear operaciones en vivo y revisar logs de red neuronal.
                                 </p>
                             </div>
-                            <Link to="/admin/agentes" className="bg-[#00A2E0]/10 hover:bg-[#00A2E0]/20 border border-[#00A2E0]/30 text-[#00A2E0] px-6 py-3 rounded-xl font-bold transition-all whitespace-nowrap hidden md:block shadow-[0_0_20px_rgba(0,162,224,0.1)] hover:shadow-[0_0_30px_rgba(0,162,224,0.2)]">
+                            <Link to="/admin/mission-control-vip" className="bg-[#00A2E0]/10 hover:bg-[#00A2E0]/20 border border-[#00A2E0]/30 text-[#00A2E0] px-6 py-3 rounded-xl font-bold transition-all whitespace-nowrap hidden md:block shadow-[0_0_20px_rgba(0,162,224,0.1)] hover:shadow-[0_0_30px_rgba(0,162,224,0.2)]">
                                 Enter System [⌘+K]
                             </Link>
                         </div>
