@@ -173,7 +173,7 @@ export const getMessages = async (req, res) => {
         const mappedMsgs = messages.map(m => ({
             id: m.id._serialized,
             fromMe: m.fromMe,
-            body: m.body,
+            body: m.body || '',
             timestamp: m.timestamp,
             hasMedia: m.hasMedia,
             type: m.type

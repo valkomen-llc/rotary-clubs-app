@@ -25,11 +25,12 @@ interface Message {
     timestamp: number;
     hasMedia: boolean;
     type: string;
+    localUrl?: string; // Cache for immediate local preview
 }
 
-const MediaLoader: React.FC<{ chatId: string; messageId: string; token: string | null }> = ({ chatId, messageId, token }) => {
-    const [mediaUrl, setMediaUrl] = useState<string | null>(null);
-    const [mediaType, setMediaType] = useState<string>('');
+const MediaLoader: React.FC<{ chatId: string; messageId: string; token: string | null; localUrl?: string; localType?: string }> = ({ chatId, messageId, token, localUrl: initialLocalUrl, localType: initialLocalType }) => {
+    const [mediaUrl, setMediaUrl] = useState<string | null>(initialLocalUrl || null);
+    const [mediaType, setMediaType] = useState<string>(initialLocalType || '');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -155,28 +156,44 @@ const WhatsAppQR: React.FC = () => {
         if (!file || !selectedChat) return;
 
         setSending(true);
+        const localUrl = URL.createObjectURL(file);
+        const localType = file.type;
+
+        const readAsBase64 = (f: File): Promise<string> => {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve((reader.result as string).split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(f);
+            });
+        };
+
         try {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = async () => {
-                const base64Data = (reader.result as string).split(',')[1];
-                const res = await fetch(`${API}/whatsapp-qr/send-media`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        chatId: selectedChat.id, 
-                        mediaData: base64Data,
-                        filename: file.name,
-                        mimetype: file.type,
-                        caption: '' 
-                    })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    setMessages(prev => [...prev, data.message]);
-                }
-            };
-        } catch (err) { console.error(err); }
+            const base64Data = await readAsBase64(file);
+            const res = await fetch(`${API}/whatsapp-qr/send-media`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    chatId: selectedChat.id, 
+                    mediaData: base64Data,
+                    filename: file.name,
+                    mimetype: file.type,
+                    caption: '' 
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                // Pre-append with localUrl for instant feedback
+                setMessages(prev => [...prev, { ...data.message, localUrl, type: localType }]);
+            } else {
+                alert(data.error);
+                URL.revokeObjectURL(localUrl);
+            }
+        } catch (err) { 
+            console.error(err);
+            URL.revokeObjectURL(localUrl);
+        }
+        
         setSending(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
@@ -626,7 +643,7 @@ const WhatsAppQR: React.FC = () => {
                                                             msg.fromMe ? 'bg-[#D9FDD3] text-gray-900 rounded-tr-none' : 'bg-white text-gray-900 rounded-tl-none'
                                                         }`}>
                                                             {msg.hasMedia && selectedChat && (
-                                                                <MediaLoader chatId={selectedChat.id} messageId={msg.id} token={token} />
+                                                                <MediaLoader chatId={selectedChat.id} messageId={msg.id} token={token} localUrl={msg.localUrl} localType={msg.type} />
                                                             )}
                                                             <div className="whitespace-pre-wrap break-words">{msg.body}</div>
                                                             <div className={`text-[10px] text-right mt-1 opacity-60 flex items-center justify-end gap-1 ${msg.fromMe ? 'text-gray-600' : 'text-gray-400'}`}>
