@@ -143,10 +143,19 @@ export const getChatImage = async (req, res) => {
         if (!profilePicUrl) {
             return res.status(404).send('No profile picture');
         }
-        return res.redirect(profilePicUrl);
+
+        // Acting as a full proxy to avoid CORS and browser blocks
+        const imgRes = await fetch(profilePicUrl);
+        if (!imgRes.ok) throw new Error('WhatsApp CDN error');
+        
+        const buffer = Buffer.from(await imgRes.arrayBuffer());
+        res.setHeader('Content-Type', imgRes.headers.get('Content-Type') || 'image/jpeg');
+        res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+        res.send(buffer);
     } catch (e) {
         console.error('[WA-QR] Error getting chat image:', e);
-        res.status(500).json({ error: e.message });
+        // Silently return 404 for frontend fallback
+        res.status(404).send('Error');
     }
 };
 
