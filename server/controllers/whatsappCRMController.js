@@ -76,7 +76,7 @@ async function uploadMediaToMeta({ url, type, phoneNumberId, token }) {
 
 /**
  * Build the header component for a media template.
- * Strategy: always upload media to Meta to get a valid media_id.
+ * Strategy: use the public URL directly via 'link' to avoid Vercel timeouts from downloading/uploading.
  * Priority: user mediaUrl > saved headerContent > Meta API lookup
  */
 async function buildMediaHeader({ template, mediaUrl, config }) {
@@ -85,23 +85,15 @@ async function buildMediaHeader({ template, mediaUrl, config }) {
 
     // Collect candidate URLs (prioritized)
     const candidates = [];
-    if (mediaUrl) candidates.push({ src: 'user', url: mediaUrl });
+    if (mediaUrl && mediaUrl.startsWith('http')) candidates.push({ src: 'user', url: mediaUrl });
     if (template.headerContent && template.headerContent.startsWith('http')) {
         candidates.push({ src: 'saved', url: template.headerContent });
     }
 
-    // Try each candidate URL — download and upload to Meta
+    // Return the first valid URL as a link parameter
     for (const { src, url } of candidates) {
-        try {
-            console.log(`[WA] Trying ${src} media: ${url.substring(0, 70)}...`);
-            const mediaId = await uploadMediaToMeta({
-                url, type: mediaType,
-                phoneNumberId: config.phoneNumberId, token: config.accessToken,
-            });
-            return [{ type: 'header', parameters: [{ type: mediaType, [mediaType]: { id: mediaId } }] }];
-        } catch (err) {
-            console.error(`[WA] ${src} media upload failed:`, err.message);
-        }
+        console.log(`[WA] Using ${src} media link: ${url.substring(0, 70)}...`);
+        return [{ type: 'header', parameters: [{ type: mediaType, [mediaType]: { link: url } }] }];
     }
 
     // Fallback: fetch header_url from Meta template API
@@ -114,25 +106,17 @@ async function buildMediaHeader({ template, mediaUrl, config }) {
         if (metaTemplate) {
             const headerComp = metaTemplate.components?.find(c => c.type === 'HEADER');
             const headerUrl = headerComp?.example?.header_url?.[0];
-            console.log('[WA] Meta API header_url:', headerUrl?.substring(0, 60));
-            if (headerUrl) {
-                try {
-                    const mediaId = await uploadMediaToMeta({
-                        url: headerUrl, type: mediaType,
-                        phoneNumberId: config.phoneNumberId, token: config.accessToken,
-                    });
-                    return [{ type: 'header', parameters: [{ type: mediaType, [mediaType]: { id: mediaId } }] }];
-                } catch (err) {
-                    console.error('[WA] Meta header_url upload failed:', err.message);
-                }
+            if (headerUrl && headerUrl.startsWith('http')) {
+                console.log('[WA] Using Meta API header_url link:', headerUrl.substring(0, 60));
+                return [{ type: 'header', parameters: [{ type: mediaType, [mediaType]: { link: headerUrl } }] }];
             }
         }
     } catch (err) {
         console.error('[WA] Fetch template header failed:', err.message);
     }
 
-    console.error('[WA] Could not build header component — all media upload attempts failed');
-    throw new Error(`No se pudo procesar el encabezado multimedia del template. Verifica que la imagen/video/documento sea accesible públicamente o vuelve a sincronizar los templates desde Meta.`);
+    console.error('[WA] Could not build header component — no media link available');
+    throw new Error(`Se requiere una URL pública para el encabezado de este template (${mediaType}). Por favor incluye un enlace a tu archivo multimedia antes de enviar.`);
 }
 
 function buildTemplateComponents(vars = {}) {
