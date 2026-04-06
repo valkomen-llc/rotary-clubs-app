@@ -248,13 +248,10 @@ Siembras ideas de manera sutil sobre las ventajas de los módulos superiores. Ac
 const seedAgents = async (clubId) => {
     try {
         for (const agent of DEFAULT_AGENTS) {
-            const whereClause = clubId ? '"clubId" = $1' : '"clubId" IS NULL';
-            const params = clubId ? [agent.name, clubId] : [agent.name];
-            const secondParam = clubId ? '$2' : 'NULL';
-
             // Check if this agent already exists
             const existing = await db.query(
-                `SELECT id FROM "Agent" WHERE name = $1 AND ${whereClause}`, params
+                `SELECT id FROM "Agent" WHERE name = $1 AND ${clubId ? '"clubId" = $2::uuid' : '"clubId" IS NULL'}`,
+                clubId ? [agent.name, clubId] : [agent.name]
             );
 
             if (existing.rows.length > 0) {
@@ -263,7 +260,7 @@ const seedAgents = async (clubId) => {
                     `UPDATE "Agent"
                      SET role = $1, description = $2, "systemPrompt" = $3,
                          greeting = $4, capabilities = $5, "updatedAt" = NOW()
-                     WHERE name = $6 AND ${whereClause}`,
+                     WHERE name = $6 AND ${clubId ? '"clubId" = $7::uuid' : '"clubId" IS NULL'}`,
                     clubId
                         ? [agent.role, agent.description, agent.systemPrompt, agent.greeting, agent.capabilities, agent.name, clubId]
                         : [agent.role, agent.description, agent.systemPrompt, agent.greeting, agent.capabilities, agent.name]
@@ -272,7 +269,7 @@ const seedAgents = async (clubId) => {
                 // INSERT: agent doesn't exist yet
                 await db.query(
                     `INSERT INTO "Agent" (name, role, category, description, "systemPrompt", "aiModel", "avatarSeed", "avatarColor", capabilities, active, "order", greeting, "clubId")
-                     VALUES ($1, $2, $3, $4, $5, 'gpt-4', $6, $7, $8, true, $9, $10, ${secondParam})`,
+                     VALUES ($1, $2, $3, $4, $5, 'gpt-4', $6, $7, $8, true, $9, $10, ${clubId ? '$11::uuid' : 'NULL'})`,
                     clubId
                         ? [agent.name, agent.role, agent.category, agent.description, agent.systemPrompt, agent.avatarSeed, agent.avatarColor, agent.capabilities, agent.order, agent.greeting, clubId]
                         : [agent.name, agent.role, agent.category, agent.description, agent.systemPrompt, agent.avatarSeed, agent.avatarColor, agent.capabilities, agent.order, agent.greeting]
