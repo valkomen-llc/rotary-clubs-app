@@ -646,7 +646,9 @@ const WhatsAppQR: React.FC = () => {
                                                 <div ref={messagesEndRef} />
                                             </>
                                         )}
-                                                         {/* Tools & AI Bar */}
+                                    </div>
+
+                                    {/* Tools & AI Bar */}
                                     <div className="px-4 py-2 bg-[#F0F2F5] border-t border-gray-200 flex justify-between items-center text-gray-500 relative">
                                         <div className="flex items-center gap-2">
                                             <input 
@@ -823,14 +825,5 @@ const WhatsAppQR: React.FC = () => {
         </AdminLayout>
     );
 };
-
-// Extracted from lucide internally
-const CheckChecks = ({ className }: { className?: string }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-        <path d="m18 7-9.5 9.5-3-3" />
-        <path d="m22 7-6.5 6.5" />
-        <path d="M12 11.5 13.5 10" />
-    </svg>
-);
 
 export default WhatsAppQR;
