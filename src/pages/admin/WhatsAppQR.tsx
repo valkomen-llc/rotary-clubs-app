@@ -27,6 +27,85 @@ interface Message {
     type: string;
 }
 
+const MediaLoader: React.FC<{ chatId: string; messageId: string; token: string | null }> = ({ chatId, messageId, token }) => {
+    const [media, setMedia] = useState<{ mimetype: string; data: string; filename?: string } | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    const fetchMedia = async () => {
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch(`${API}/whatsapp-qr/chats/${chatId}/messages/${messageId}/media`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (data.success) {
+                setMedia(data);
+            } else {
+                setError(data.error || 'Error al descargar');
+            }
+        } catch (e) {
+            setError('Error de conectividad');
+        }
+        setLoading(false);
+    };
+
+    if (error) {
+        return (
+            <div className="flex flex-col items-center justify-center p-2 bg-red-50 rounded-md border border-red-100 mb-2 mt-1 gap-1 cursor-pointer hover:bg-red-100 transition-colors" onClick={fetchMedia}>
+                <ImageIcon className="w-4 h-4 text-red-400" />
+                <span className="text-[10px] text-red-500 font-medium">{error}. Clic para reintentar.</span>
+            </div>
+        );
+    }
+
+    if (media) {
+        if (media.mimetype.startsWith('image/')) {
+            return (
+                <div className="mb-2 mt-1 rounded-md overflow-hidden bg-black/5 flex justify-center">
+                    <img src={`data:${media.mimetype};base64,${media.data}`} alt="Media" className="max-w-full max-h-64 object-contain rounded-md cursor-pointer hover:opacity-90" onClick={() => window.open(`data:${media.mimetype};base64,${media.data}`)} />
+                </div>
+            );
+        }
+        if (media.mimetype.startsWith('audio/')) {
+            return (
+                <div className="mb-2 mt-1 w-full relative">
+                    <audio controls className="w-full h-10" src={`data:${media.mimetype};base64,${media.data}`} />
+                </div>
+            );
+        }
+        if (media.mimetype.startsWith('video/')) {
+            return (
+                <div className="mb-2 mt-1 rounded-md overflow-hidden bg-black/5 flex justify-center">
+                    <video controls className="max-w-full max-h-64 rounded-md" src={`data:${media.mimetype};base64,${media.data}`} />
+                </div>
+            );
+        }
+        return (
+            <a 
+                href={`data:${media.mimetype};base64,${media.data}`} 
+                download={media.filename || 'archivo_adjunto'} 
+                className="flex items-center gap-2 p-2 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 mb-2 mt-1 transition-colors cursor-pointer text-blue-700"
+            >
+                <div className="text-xs font-bold px-2 py-1 flex items-center gap-2"><ImageIcon className="w-4 h-4"/> ⬇️ Descargar archivo ({media.mimetype})</div>
+            </a>
+        );
+    }
+
+    return (
+        <div 
+            onClick={loading ? undefined : fetchMedia}
+            className={`flex items-center gap-2 px-2 py-1.5 rounded-md border mb-2 mt-1 transition-colors ${loading ? 'bg-blue-50 border-blue-100' : 'bg-black/5 border-black/5 cursor-pointer hover:bg-black/10'}`}
+        >
+            {loading ? <RefreshCw className="w-4 h-4 opacity-60 animate-spin text-blue-500" /> : <ImageIcon className="w-4 h-4 opacity-60" />}
+            <span className={`text-[11px] font-medium ${loading ? 'text-blue-600' : 'opacity-70'}`}>
+                {loading ? 'Descargando desde WhatsApp...' : 'Clic para cargar archivo multimedia'}
+            </span>
+        </div>
+    );
+};
+
 const WhatsAppQR: React.FC = () => {
     const { token } = useAuth();
     const [status, setStatus] = useState<string>('LOADING'); // LOADING, DISCONNECTED, INITIALIZING, QR_READY, CONNECTED
@@ -432,11 +511,8 @@ const WhatsAppQR: React.FC = () => {
                                                         <div className={`max-w-[70%] rounded-2xl px-4 py-2 shadow-sm relative text-sm ${
                                                             msg.fromMe ? 'bg-[#D9FDD3] text-gray-900 rounded-tr-none' : 'bg-white text-gray-900 rounded-tl-none'
                                                         }`}>
-                                                            {msg.hasMedia && (
-                                                                <div className="flex items-center gap-2 px-2 py-1.5 bg-black/5 rounded-md border border-black/5 mb-2 mt-1">
-                                                                    <ImageIcon className="w-4 h-4 opacity-60" />
-                                                                    <span className="text-[11px] font-medium opacity-70">Archivo adjunto (Ver en app celular)</span>
-                                                                </div>
+                                                            {msg.hasMedia && selectedChat && (
+                                                                <MediaLoader chatId={selectedChat.id} messageId={msg.id} token={token} />
                                                             )}
                                                             <div className="whitespace-pre-wrap break-words">{msg.body}</div>
                                                             <div className={`text-[10px] text-right mt-1 opacity-60 flex items-center justify-end gap-1 ${msg.fromMe ? 'text-gray-600' : 'text-gray-400'}`}>

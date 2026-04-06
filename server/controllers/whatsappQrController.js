@@ -170,6 +170,37 @@ export const getMessages = async (req, res) => {
     }
 };
 
+export const getMessageMedia = async (req, res) => {
+    if (clientStatus !== 'CONNECTED' || !waClient) {
+        return res.status(400).json({ error: 'WhatsApp Web no está conectado.' });
+    }
+    const { chatId, messageId } = req.params;
+    try {
+        const chat = await waClient.getChatById(chatId);
+        if (!chat) return res.status(404).json({ error: 'Chat not found' });
+        
+        // Fetch last 50 messages to locate the specific message object in local instance memory
+        const messages = await chat.fetchMessages({ limit: 50 });
+        const msg = messages.find(m => m.id._serialized === messageId || m.id.id === messageId);
+        
+        if (!msg) return res.status(404).json({ error: 'Message not found in recent history' });
+        if (!msg.hasMedia) return res.status(400).json({ error: 'Message does not contain media' });
+        
+        const media = await msg.downloadMedia();
+        if (!media) return res.status(404).json({ error: 'Media expired or unavailable' });
+        
+        res.json({ 
+            success: true, 
+            mimetype: media.mimetype, 
+            data: media.data, 
+            filename: media.filename 
+        });
+    } catch (e) {
+        console.error('[WA-QR] Error getting media for message:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
 export const sendMessage = async (req, res) => {
     if (clientStatus !== 'CONNECTED' || !waClient) {
         return res.status(400).json({ error: 'WhatsApp Web no está conectado.' });
