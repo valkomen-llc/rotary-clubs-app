@@ -292,9 +292,24 @@ router.get('/', authMiddleware, async (req, res) => {
         // Club users see global agents (super admin) + their own club agents
         const result = clubId
             ? await db.query(`SELECT * FROM "Agent" WHERE "clubId" = $1 OR "clubId" IS NULL ORDER BY "order" ASC, "createdAt" ASC`, [clubId])
-            : await db.query(`SELECT * FROM "Agent" ORDER BY "order" ASC, "createdAt" ASC`);
+            : await db.query(`SELECT * FROM "Agent" WHERE "clubId" IS NULL ORDER BY "order" ASC, "createdAt" ASC`);
 
-        res.json({ agents: result.rows });
+        let agents = result.rows;
+        
+        // Deduplicate agents (prefer club-specific agent over global template if both exist)
+        if (agents.length > 0) {
+            const agentMap = new Map();
+            for (const ag of agents) {
+                if (ag.clubId) {
+                    agentMap.set(ag.name, ag); // Club-specific overwrites global
+                } else {
+                    if (!agentMap.has(ag.name)) agentMap.set(ag.name, ag); // Add global only if not already set by club
+                }
+            }
+            agents = Array.from(agentMap.values()).sort((a, b) => a.order - b.order);
+        }
+
+        res.json({ agents });
     } catch (error) {
         console.error('Agent list error:', error);
         res.json({ agents: [] });
