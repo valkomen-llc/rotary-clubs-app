@@ -402,7 +402,7 @@ router.post('/deploy-all', authMiddleware, async (req, res) => {
 
         for (const club of clubs) {
             try {
-                const whereClause = '"clubId" = $1';
+                const whereClause = '"clubId" = $2::uuid';
 
                 for (const agent of DEFAULT_AGENTS) {
                     try {
@@ -416,14 +416,14 @@ router.post('/deploy-all', authMiddleware, async (req, res) => {
                                 `UPDATE "Agent"
                                  SET role = $1, description = $2, "systemPrompt" = $3,
                                      greeting = $4, capabilities = $5, "updatedAt" = NOW()
-                                 WHERE name = $6 AND "clubId" = $7`,
+                                 WHERE name = $6 AND "clubId" = $7::uuid`,
                                 [agent.role, agent.description, agent.systemPrompt,
                                  agent.greeting, agent.capabilities, agent.name, club.id]
                             );
                         } else {
                             await db.query(
                                 `INSERT INTO "Agent" (name, role, category, description, "systemPrompt", "aiModel", "avatarSeed", "avatarColor", capabilities, active, "order", greeting, "clubId")
-                                 VALUES ($1, $2, $3, $4, $5, 'gpt-4', $6, $7, $8, true, $9, $10, $11)`,
+                                 VALUES ($1, $2, $3, $4, $5, 'gpt-4', $6, $7, $8, true, $9, $10, $11::uuid)`,
                                 [agent.name, agent.role, agent.category, agent.description,
                                  agent.systemPrompt, agent.avatarSeed, agent.avatarColor,
                                  agent.capabilities, agent.order, agent.greeting, club.id]
