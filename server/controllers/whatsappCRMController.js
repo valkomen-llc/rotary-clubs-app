@@ -395,10 +395,10 @@ export const sendMessageToContact = async (req, res) => {
     try {
         const clubId = await resolveClubId(req);
         const contactId = req.params.id;
-        const { templateId, text, vars = {} } = req.body;
+        const { templateId, text, mediaUrl, mediaType, fileName, vars = {} } = req.body;
 
-        if (!templateId && !text) {
-            return res.status(400).json({ error: 'Se requiere templateId o contenido de texto' });
+        if (!templateId && !text && !mediaUrl) {
+            return res.status(400).json({ error: 'Se requiere templateId, texto o contenido multimedia' });
         }
 
         // Get contact
@@ -444,6 +444,28 @@ export const sendMessageToContact = async (req, res) => {
             };
             logTemplateName = template.name;
             logBodyText = template.bodyText || `[Template: ${template.name}]`;
+        } else if (mediaUrl && mediaType) {
+            // Send Media (Image, Video, Document, Audio)
+            const allowedMedia = ['image', 'video', 'document', 'audio'];
+            const type = allowedMedia.includes(mediaType) ? mediaType : 'document';
+            
+            apiBody = {
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to: contact.phone,
+                type: type,
+                [type]: { link: mediaUrl }
+            };
+            
+            // Add captions and filename where appropriate
+            if (text && type !== 'audio') {
+                apiBody[type].caption = text;
+            }
+            if (fileName && type === 'document') {
+                apiBody[type].filename = fileName;
+            }
+            
+            logBodyText = text ? `[${type.toUpperCase()}] ${text}` : `[${type.toUpperCase()} adjunto]`;
         } else if (text) {
             // Send Free Text
             apiBody = {

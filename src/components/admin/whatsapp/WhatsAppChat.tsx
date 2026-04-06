@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
-import { Search, Send, Phone, MoreVertical, User, X, Tag, MessageCircle, ChevronLeft, Loader2, FileText, Archive, ArchiveRestore, Inbox, CheckCheck, Mail, MailOpen } from 'lucide-react';
+import { Search, Send, Phone, MoreVertical, User, X, Tag, MessageCircle, ChevronLeft, Loader2, FileText, Archive, ArchiveRestore, Inbox, CheckCheck, Mail, MailOpen, Paperclip, Smile } from 'lucide-react';
 import { toast } from 'sonner';
+import EmojiPicker from 'emoji-picker-react';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -37,7 +38,10 @@ const WhatsAppChat: React.FC = () => {
     const [mediaUrl, setMediaUrl] = useState('');
     const [activeFilter, setActiveFilter] = useState<ChatFilter>('all');
     const [chatMessage, setChatMessage] = useState('');
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    const [uploadingMedia, setUploadingMedia] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => { fetchContacts(); fetchTemplates(); }, []);
     useEffect(() => { fetchContacts(); }, [activeFilter]);
@@ -177,6 +181,45 @@ const WhatsAppChat: React.FC = () => {
     const handleSendText = async () => {
         if (!chatMessage.trim()) return;
         await executeSend({ text: chatMessage.trim() }, `Mensaje enviado a ${selectedContact?.name}`);
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setUploadingMedia(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const uploadRes = await fetch(`${API}/whatsapp/upload-media`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: formData,
+            });
+            const uploadData = await uploadRes.json();
+            
+            if (uploadRes.ok && uploadData.url) {
+                let mediaType = 'document';
+                if (file.type.startsWith('image/')) mediaType = 'image';
+                else if (file.type.startsWith('video/')) mediaType = 'video';
+                else if (file.type.startsWith('audio/')) mediaType = 'audio';
+
+                await executeSend({
+                    mediaUrl: uploadData.url,
+                    mediaType,
+                    fileName: file.name,
+                    text: chatMessage.trim()
+                }, `Archivo adjunto enviado a ${selectedContact?.name}`);
+                setChatMessage('');
+            } else {
+                toast.error(uploadData.error || 'Error al subir archivo');
+            }
+        } catch (err) {
+            toast.error('Error de conexión al subir archivo');
+        } finally {
+            setUploadingMedia(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
     };
 
     const tagColors: { [key: string]: string } = {
@@ -487,24 +530,67 @@ const WhatsAppChat: React.FC = () => {
                             </div>
 
                             {/* Free Text Chat Input */}
-                            <div className="border-t border-gray-100 bg-gray-50 px-4 py-3 pb-4">
-                                <div className="flex gap-2 items-end">
-                                    <textarea 
-                                        value={chatMessage} 
-                                        onChange={e => setChatMessage(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' && !e.shiftKey) {
-                                                e.preventDefault();
-                                                handleSendText();
-                                            }
-                                        }}
-                                        placeholder="Escribe un mensaje libre... (El contacto debe haberte escrito en las últimas 24h)"
-                                        className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm bg-white outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 resize-none"
-                                        rows={2}
-                                    />
+                            <div className="border-t border-gray-100 bg-gray-50 px-4 py-3 pb-4 relative">
+                                {showEmojiPicker && (
+                                    <div className="absolute bottom-[80px] left-4 z-50 shadow-2xl rounded-xl overflow-hidden border border-gray-100">
+                                        <EmojiPicker 
+                                            onEmojiClick={(e) => setChatMessage(prev => prev + e.emoji)}
+                                            width={320}
+                                            height={400}
+                                        />
+                                    </div>
+                                )}
+                                <div className="flex gap-2 items-end relative">
                                     <button 
-                                        onClick={handleSendText}
-                                        disabled={sending || !chatMessage.trim()}
+                                        onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                                        className={`p-2 mb-1.5 rounded-full text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors ${showEmojiPicker ? 'text-green-600 bg-green-50' : ''}`}
+                                        title="Emojis"
+                                    >
+                                        <Smile className="w-6 h-6" />
+                                    </button>
+                                    
+                                    <input 
+                                        type="file" 
+                                        className="hidden" 
+                                        ref={fileInputRef} 
+                                        onChange={handleFileUpload} 
+                                    />
+                                    
+                                    <button 
+                                        onClick={() => fileInputRef.current?.click()}
+                                        disabled={uploadingMedia || sending}
+                                        className="p-2 mb-1.5 rounded-full text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-50"
+                                        title="Adjuntar archivo, foto o video"
+                                    >
+                                        {uploadingMedia ? <Loader2 className="w-6 h-6 animate-spin text-blue-500" /> : <Paperclip className="w-6 h-6" />}
+                                    </button>
+                                    
+                                    <div className="flex-1 relative">
+                                        {uploadingMedia && (
+                                            <div className="absolute inset-0 bg-white/80 z-10 flex items-center justify-center rounded-xl p-2 border border-blue-100">
+                                                <p className="text-xs font-bold text-blue-600 flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin"/> Subiendo archivo...</p>
+                                            </div>
+                                        )}
+                                        <textarea 
+                                            value={chatMessage} 
+                                            onChange={e => setChatMessage(e.target.value)}
+                                            onFocus={() => setShowEmojiPicker(false)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && !e.shiftKey) {
+                                                    e.preventDefault();
+                                                    handleSendText();
+                                                    setShowEmojiPicker(false);
+                                                }
+                                            }}
+                                            placeholder="Escribe un mensaje libre... (El contacto debe haberte escrito en las últimas 24h)"
+                                            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm bg-white outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 resize-none max-h-32"
+                                            rows={1}
+                                            style={{ minHeight: '44px' }}
+                                        />
+                                    </div>
+                                    <button 
+                                        onClick={() => { handleSendText(); setShowEmojiPicker(false); }}
+                                        disabled={sending || (!chatMessage.trim() && !uploadingMedia)}
                                         className="p-3 mb-0.5 rounded-full bg-green-600 text-white shadow-sm hover:bg-green-700 disabled:opacity-40 transition-colors flex items-center justify-center flex-shrink-0"
                                         title="Enviar mensaje"
                                     >

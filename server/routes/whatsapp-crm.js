@@ -111,4 +111,11 @@ router.get('/custom-fields', getCustomFields);
 router.post('/custom-fields', createCustomField);
 router.delete('/custom-fields/:id', deleteCustomField);
 
+// ── Media Upload for Chat ────────────────────────────────────────────────
+import { uploadDocuments } from '../lib/storage.js';
+router.post('/upload-media', uploadDocuments.single('file'), (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'No se subió ningún archivo' });
+    res.json({ url: req.file.location, originalName: req.file.originalname, mimeType: req.file.contentType });
+});
+
 export default router;
