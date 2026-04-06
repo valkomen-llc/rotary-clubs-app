@@ -798,11 +798,11 @@ router.post('/chat', async (req, res) => {
 ${contextBlock}
 
 REGLAS:
-- Responde de forma amable, concisa y profesional en español (máximo 2 párrafos cortos).
+- Responde de forma amable, concisa y persuasiva en español (máximo 2 párrafos cortos).
 - Usa emojis con moderación.
 - Cuando el visitante pregunte sobre proyectos, CITA los proyectos REALES del club por nombre.
-- Cuando pregunte por contacto, da los datos REALES del club si están disponibles.
-- Si no sabes algo específico, invita al visitante a usar la sección de Contacto del sitio.
+- TAREA CRÍTICA (LEAD GEN): Si el usuario muestra intención de unirse al club, donar, colaborar o necesita contactar directo al club, NO ofrezcas correos o formularios crudos al instante. EN VEZ DE ESO, dile algo como: "¡Me encanta tu interés! Déjame tu nombre y número telefónico de WhatsApp e inmediatamente conectaremos esa info con nuestro equipo para que te hablen."
+- SÓLO cuando el usuario te dé su nombre y teléfono, EJECUTA la herramienta "capture_whatsapp_lead" que tienes disponible y agradécele.
 - NO inventes información que no esté en el contexto.
 - Rotary es una organización mundial de líderes cívicos y profesionales que brindan servicio humanitario.`;
 
@@ -819,27 +819,76 @@ REGLAS:
             console.log(`[public-chat] Router fallback: ${routerErr.message}`);
         }
 
-        // Fallback to direct OpenAI
+        // Fallback to direct OpenAI with Tool Calling for CRM Lead Gen
         if (process.env.OPENAI_API_KEY) {
+            const agentTools = getToolsForAgent(['lead_gen', 'public_chat']);
+            const messages = [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: message }
+            ];
+
+            const openaiPayload = {
+                model: 'gpt-3.5-turbo',
+                messages,
+                max_tokens: 400,
+                temperature: 0.7
+            };
+
+            if (agentTools.length > 0) {
+                openaiPayload.tools = agentTools;
+                openaiPayload.tool_choice = 'auto';
+            }
+
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
                 },
-                body: JSON.stringify({
-                    model: 'gpt-3.5-turbo',
-                    messages: [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: message }
-                    ],
-                    max_tokens: 400,
-                    temperature: 0.7
-                })
+                body: JSON.stringify(openaiPayload)
             });
 
             const data = await response.json();
-            const reply = data.choices?.[0]?.message?.content || 'Lo siento, no pude generar una respuesta.';
+            const choice = data.choices?.[0];
+
+            // Handle tool call (Lead Capture)
+            if (choice?.finish_reason === 'tool_calls' || choice?.message?.tool_calls?.length > 0) {
+                const toolCall = choice.message.tool_calls[0];
+                const toolName = toolCall.function.name;
+                const toolArgs = JSON.parse(toolCall.function.arguments || '{}');
+                
+                // Execute lead capture
+                const toolResult = await executeTool(toolName, toolArgs, null, clubId);
+
+                // Get natural language summary back to the user
+                messages.push(choice.message);
+                messages.push({ role: 'tool', tool_call_id: toolCall.id, content: JSON.stringify(toolResult) });
+                
+                const sumRes = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+                    body: JSON.stringify({ model: 'gpt-3.5-turbo', messages, max_tokens: 400, temperature: 0.7 }),
+                });
+                
+                const sumData = await sumRes.json();
+                const summary = sumData.choices?.[0]?.message?.content || toolResult.message;
+
+                return res.json({
+                    reply: summary,
+                    toolExecuted: {
+                        name: toolName,
+                        success: toolResult.success,
+                        action: toolName.replace(/_/g, ' '),
+                        emoji: toolResult.emoji || (toolResult.success ? '✅' : '❌'),
+                        label: toolResult.label || 'ACCIÓN',
+                        message: toolResult.message || (toolResult.success ? 'Acción completada' : 'Error en la acción'),
+                        data: toolResult.data,
+                    }
+                });
+            }
+
+            // Regular text response
+            const reply = choice?.message?.content || 'Lo siento, no pude generar una respuesta.';
             return res.json({ reply });
         }
 

@@ -15,6 +15,25 @@ export const AGENT_TOOLS = [
     {
         type: 'function',
         function: {
+            name: 'capture_whatsapp_lead',
+            description: 'Captura los datos de un prospecto o potencial donante (Lead) que navega la web y envíalos directamente al CRM de WhatsApp del club. Usa esta herramienta SÓLO cuando el usuario muestre intención de unirse, donar o contactar y te haya facilitado al menos su nombre y teléfono (o email).',
+            parameters: {
+                type: 'object',
+                properties: {
+                    name:  { type: 'string', description: 'Nombre completo del prospecto' },
+                    phone: { type: 'string', description: 'Número de WhatsApp o teléfono celular del prospecto' },
+                    email: { type: 'string', description: 'Correo electrónico del prospecto (opcional)' },
+                    reason:{ type: 'string', description: 'Razón principal del contacto: unirse, donar, rotaract, interact, colaboracion, duda_general', enum: ['unirse', 'donar', 'rotaract', 'interact', 'colaboracion', 'duda_general'] },
+                    message:{ type: 'string', description: 'Mensaje adicional o comentario dejado por el usuario en el chat' }
+                },
+                required: ['name', 'phone', 'reason'],
+            },
+        },
+        requiredCapabilities: ['lead_gen', 'public_chat'],
+    },
+    {
+        type: 'function',
+        function: {
             name: 'create_news_post',
             description: 'Crea una noticia/artículo en el blog del club. Usa esta herramienta cuando el usuario te pida crear, redactar o publicar una noticia o artículo.',
             parameters: {
@@ -238,6 +257,35 @@ export const AGENT_TOOLS = [
 // ═══════════════════════════════════════════════════════════════════════════
 
 const toolExecutors = {
+    async capture_whatsapp_lead(args, userId, clubId) {
+        const { name, phone, email, reason, message } = args;
+        const fallbackClubId = clubId || '00000000-0000-0000-0000-000000000000'; // Public requests might have a specific clubId
+        const result = await db.query(
+            `INSERT INTO "WhatsAppContact" (id, "clubId", name, phone, email, tags, source, status, metadata, "updatedAt")
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, 'chatbot', 'active', $6, NOW())
+             ON CONFLICT (phone, "clubId") DO UPDATE SET
+             tags = array_append("WhatsAppContact".tags, 'prospecto'),
+             "updatedAt" = NOW()
+             RETURNING id, name, phone`,
+            [
+                fallbackClubId, 
+                name, 
+                phone, 
+                email || null, 
+                ['prospecto', reason || 'duda_general'], 
+                message ? JSON.stringify({ ai_capture_message: message }) : null
+            ]
+        );
+        return {
+            success: true,
+            action: 'capture_whatsapp_lead',
+            emoji: '📱',
+            label: 'LEAD CAPTURADO',
+            data: result.rows[0],
+            message: `✅ Contacto guardado con éxito. Pronto nos comunicaremos al ${phone}.`
+        };
+    },
+
     async create_news_post(args, userId, clubId) {
         const { title, content, category, published } = args;
         const result = await db.query(
