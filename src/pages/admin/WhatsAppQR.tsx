@@ -356,7 +356,7 @@ const WhatsAppQR: React.FC = () => {
                                         {chats.map(chat => (
                                             <button 
                                                 key={chat.id} 
-                                                onClick={() => { setSelectedChat(chat); fetchMessages(chat.id); }}
+                                                onClick={() => { setMessages([]); setSelectedChat(chat); fetchMessages(chat.id); }}
                                                 className={`w-full text-left p-4 hover:bg-gray-50 flex items-center gap-3 transition-colors ${selectedChat?.id === chat.id ? 'bg-emerald-50 hover:bg-emerald-50' : ''}`}
                                             >
                                                 <div className={`w-12 h-12 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center font-bold text-white shadow-sm ${chat.isGroup ? 'bg-indigo-500' : 'bg-emerald-500'}`}>
