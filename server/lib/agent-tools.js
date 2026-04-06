@@ -130,7 +130,7 @@ export const AGENT_TOOLS = [
             parameters: {
                 type: 'object',
                 properties: {
-                    target_agent: { type: 'string', description: 'Nombre exacto del agente al que se le delega la tarea (Ej: Diana, Andrés, Martín, Lucía, Isabel, Rafael)' },
+                    target_agent: { type: 'string', description: 'Nombre exacto del agente al que se le delega la tarea (Ej: Diana, Andrés, Martín, Lucía, Isabel, Rafael, Camila)' },
                     task_description: { type: 'string', description: 'Descripción clara y detallada de lo que el agente debe hacer o el plan de acción' },
                     urgency: { type: 'string', description: 'Nivel de urgencia', enum: ['baja', 'media', 'alta'] }
                 },
@@ -138,6 +138,97 @@ export const AGENT_TOOLS = [
             },
         },
         requiredCapabilities: ['delegate', 'orchestrate'],
+    },
+
+    // ── WhatsApp Communication Tools ─────────────────────────────────────
+    {
+        type: 'function',
+        function: {
+            name: 'send_whatsapp_message',
+            description: 'Envía un mensaje directo a un contacto por WhatsApp Business API. Usa esta herramienta cuando necesites comunicarte con un socio, lead o contacto del club.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    phone:   { type: 'string', description: 'Número de teléfono del destinatario con código de país (ej: 573001234567)' },
+                    message: { type: 'string', description: 'Texto del mensaje a enviar' },
+                    contactName: { type: 'string', description: 'Nombre del contacto (para registro y creación automática si no existe)' },
+                },
+                required: ['phone', 'message'],
+            },
+        },
+        requiredCapabilities: ['whatsapp_send', 'whatsapp_campaigns'],
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'create_whatsapp_campaign',
+            description: 'Crea una campaña de WhatsApp para enviar mensajes masivos a una lista de contactos usando un template aprobado por Meta. Usa esta herramienta para difundir eventos, noticias o convocatorias.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    name:        { type: 'string', description: 'Nombre descriptivo de la campaña (ej: "Convocatoria Reunión Abril")' },
+                    description: { type: 'string', description: 'Descripción interna de la campaña' },
+                    listName:    { type: 'string', description: 'Nombre de la lista de contactos a la que se enviará (ej: "Socios Activos", "Leads Web")' },
+                    templateName:{ type: 'string', description: 'Nombre del template de WhatsApp aprobado a usar' },
+                    templateVars:{ type: 'string', description: 'Variables del template en formato JSON string (ej: {"1":"Reunión Mensual","2":"15 de Abril"})' },
+                    scheduledAt: { type: 'string', description: 'Fecha/hora de envío programado en ISO (opcional, si no se indica se crea como borrador)' },
+                },
+                required: ['name', 'listName'],
+            },
+        },
+        requiredCapabilities: ['whatsapp_campaigns'],
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'import_leads_to_whatsapp',
+            description: 'Importa los leads (formularios de contacto) del sitio web como contactos de WhatsApp para seguimiento directo. Usa esta herramienta cuando quieras convertir visitantes interesados en contactos activos de WhatsApp.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    tags:     { type: 'string', description: 'Tags separados por coma para categorizar los contactos importados (ej: "lead-web,interesado,abril-2026")' },
+                    listName: { type: 'string', description: 'Nombre de la lista donde agrupar los contactos importados (se crea si no existe)' },
+                },
+                required: [],
+            },
+        },
+        requiredCapabilities: ['whatsapp_import', 'whatsapp_campaigns'],
+    },
+
+    // ── SEO & Performance Optimization Tools ─────────────────────────────
+    {
+        type: 'function',
+        function: {
+            name: 'run_seo_audit',
+            description: 'Ejecuta una auditoría SEO completa del sitio web del club. Revisa meta-tags, headings, Open Graph, sitemap coverage y problemas de indexación. Usa esta herramienta cuando el usuario pida optimizar SEO o revisar el posicionamiento.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    scope: { type: 'string', description: 'Alcance de la auditoría', enum: ['full', 'meta-tags', 'og-data', 'sitemap', 'headings'] },
+                    pages: { type: 'string', description: 'Páginas específicas a auditar separadas por coma (opcional, por defecto audita todas). Ej: "home,quienes-somos,proyectos"' },
+                },
+                required: ['scope'],
+            },
+        },
+        requiredCapabilities: ['seo_technical', 'seo_content', 'seo_sitemap'],
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'generate_seo_content',
+            description: 'Genera contenido optimizado para SEO: meta descriptions, títulos, keywords y textos alternativos. Usa esta herramienta cuando necesites mejorar el posicionamiento de una página o sección del sitio.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    page:        { type: 'string', description: 'Página objetivo (ej: "home", "quienes-somos", "proyectos", "rotaract")' },
+                    contentType: { type: 'string', description: 'Tipo de contenido SEO a generar', enum: ['meta_description', 'seo_title', 'keywords', 'alt_texts', 'structured_data', 'full_package'] },
+                    language:    { type: 'string', description: 'Idioma del contenido', enum: ['es', 'en', 'fr'] },
+                    focusKeyword:{ type: 'string', description: 'Keyword principal para optimizar (ej: "club rotario", "servicio comunitario", "voluntariado")' },
+                },
+                required: ['page', 'contentType'],
+            },
+        },
+        requiredCapabilities: ['seo_content', 'programmatic_seo', 'seo_technical'],
     },
 ];
 
@@ -357,6 +448,476 @@ const toolExecutors = {
             };
         }
     },
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ── WHATSAPP COMMUNICATION EXECUTORS ────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════
+
+    async send_whatsapp_message(args, userId, clubId) {
+        const { phone, message, contactName } = args;
+
+        try {
+            // Get club's WhatsApp config
+            const configR = await db.query(
+                'SELECT "phoneNumberId", "accessToken", enabled FROM "WhatsAppConfig" WHERE "clubId" = $1',
+                [clubId]
+            );
+            if (configR.rows.length === 0 || !configR.rows[0].enabled) {
+                return {
+                    success: false, action: 'send_whatsapp_message',
+                    message: '❌ WhatsApp no está configurado para este club. Ve a Configuración → WhatsApp CRM para activarlo.'
+                };
+            }
+            const { phoneNumberId, accessToken } = configR.rows[0];
+
+            // Ensure contact exists (upsert)
+            await db.query(`
+                INSERT INTO "WhatsAppContact" (id, "clubId", name, phone, source, status, "createdAt", "updatedAt")
+                VALUES (gen_random_uuid(), $1, $2, $3, 'agent', 'active', NOW(), NOW())
+                ON CONFLICT (phone, "clubId") DO UPDATE SET name = COALESCE(NULLIF($2, ''), "WhatsAppContact".name), "updatedAt" = NOW()
+            `, [clubId, contactName || 'Sin nombre', phone]);
+
+            // Send via Meta Graph API
+            const waResponse = await fetch(`https://graph.facebook.com/${process.env.WA_API_VERSION || 'v21.0'}/${phoneNumberId}/messages`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`,
+                },
+                body: JSON.stringify({
+                    messaging_product: 'whatsapp',
+                    to: phone,
+                    type: 'text',
+                    text: { body: message },
+                }),
+            });
+            const waData = await waResponse.json();
+
+            if (!waResponse.ok) {
+                return {
+                    success: false, action: 'send_whatsapp_message',
+                    message: `❌ Error de WhatsApp API: ${waData.error?.message || waResponse.statusText}`
+                };
+            }
+
+            // Log the message
+            const messageId = waData.messages?.[0]?.id || null;
+            await db.query(`
+                INSERT INTO "WhatsAppMessageLog" (id, "clubId", phone, "messageId", "bodyText", status, direction, "sentAt", "createdAt", "updatedAt")
+                VALUES (gen_random_uuid(), $1, $2, $3, $4, 'sent', 'outgoing', NOW(), NOW(), NOW())
+            `, [clubId, phone, messageId, message]);
+
+            // Update contact stats
+            await db.query(
+                'UPDATE "WhatsAppContact" SET "totalSent" = "totalSent" + 1, "updatedAt" = NOW() WHERE phone = $1 AND "clubId" = $2',
+                [phone, clubId]
+            );
+
+            return {
+                success: true,
+                action: 'send_whatsapp_message',
+                emoji: '💬',
+                label: 'Mensaje WhatsApp enviado',
+                data: { phone, messageId },
+                message: `✅ Mensaje enviado a ${contactName || phone} por WhatsApp.`,
+            };
+        } catch (error) {
+            console.error('send_whatsapp_message error:', error);
+            return { success: false, action: 'send_whatsapp_message', message: `❌ Error al enviar WhatsApp: ${error.message}` };
+        }
+    },
+
+    async create_whatsapp_campaign(args, userId, clubId) {
+        const { name, description, listName, templateName, templateVars, scheduledAt } = args;
+
+        try {
+            // Find or notify about the list
+            const listR = await db.query(
+                'SELECT id, name FROM "WhatsAppContactList" WHERE "clubId" = $1 AND LOWER(name) = LOWER($2)',
+                [clubId, listName]
+            );
+
+            let listId = null;
+            let listInfo = '';
+            if (listR.rows.length > 0) {
+                listId = listR.rows[0].id;
+                // Count members
+                const countR = await db.query('SELECT COUNT(*) as total FROM "ContactListMember" WHERE "listId" = $1', [listId]);
+                listInfo = ` (${countR.rows[0].total} contactos)`;
+            } else {
+                // Create the list
+                const newList = await db.query(
+                    'INSERT INTO "WhatsAppContactList" (id, "clubId", name, description, "createdAt", "updatedAt") VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW()) RETURNING id',
+                    [clubId, listName, `Lista creada por agente para campaña: ${name}`]
+                );
+                listId = newList.rows[0].id;
+                listInfo = ' (nueva, 0 contactos — necesitas agregar contactos)';
+            }
+
+            // Find template if specified
+            let templateId = null;
+            if (templateName) {
+                const tmplR = await db.query(
+                    'SELECT id FROM "WhatsAppTemplate" WHERE "clubId" = $1 AND LOWER(name) = LOWER($2)',
+                    [clubId, templateName]
+                );
+                if (tmplR.rows.length > 0) templateId = tmplR.rows[0].id;
+            }
+
+            // Create the campaign
+            const campaignR = await db.query(`
+                INSERT INTO "WhatsAppCampaign" (id, "clubId", name, description, "listId", "templateId", "templateVars", status, "scheduledAt", "createdAt", "updatedAt")
+                VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+                RETURNING id, name, status
+            `, [clubId, name, description || '', listId, templateId, templateVars || null, scheduledAt ? 'scheduled' : 'draft', scheduledAt ? new Date(scheduledAt) : null]);
+
+            const campaign = campaignR.rows[0];
+            const statusEmoji = campaign.status === 'scheduled' ? '⏰' : '📝';
+
+            return {
+                success: true,
+                action: 'create_whatsapp_campaign',
+                emoji: '📢',
+                label: 'Campaña WhatsApp creada',
+                data: campaign,
+                message: `✅ Campaña "${name}" creada ${statusEmoji} como ${campaign.status === 'scheduled' ? 'programada' : 'borrador'}.\n📋 Lista: "${listName}"${listInfo}\n${templateId ? `📄 Template: ${templateName}` : '⚠️ Sin template asignado — asigna uno desde el CRM WhatsApp.'}\n\nPuedes gestionarla en Admin → WhatsApp CRM → Campañas.`
+            };
+        } catch (error) {
+            console.error('create_whatsapp_campaign error:', error);
+            return { success: false, action: 'create_whatsapp_campaign', message: `❌ Error al crear campaña: ${error.message}` };
+        }
+    },
+
+    async import_leads_to_whatsapp(args, userId, clubId) {
+        const { tags, listName } = args;
+
+        try {
+            // Fetch leads that have phone numbers
+            const leadsR = await db.query(`
+                SELECT id, name, email, phone FROM "CommunicationLog"
+                WHERE "clubId" = $1 AND type = 'contact_form' AND phone IS NOT NULL AND phone != ''
+                ORDER BY "createdAt" DESC LIMIT 200
+            `, [clubId]).catch(() => ({ rows: [] }));
+
+            // Also check User table for users with phone who signed up
+            const usersR = await db.query(`
+                SELECT id, name, email, phone FROM "User"
+                WHERE "clubId" = $1 AND phone IS NOT NULL AND phone != ''
+                ORDER BY "createdAt" DESC LIMIT 200
+            `, [clubId]).catch(() => ({ rows: [] }));
+
+            const allLeads = [...leadsR.rows, ...usersR.rows];
+
+            if (allLeads.length === 0) {
+                return {
+                    success: false, action: 'import_leads_to_whatsapp',
+                    message: '⚠️ No se encontraron leads con número de teléfono para importar. Los visitantes deben completar el formulario de contacto con su número primero.'
+                };
+            }
+
+            const tagArray = tags ? tags.split(',').map(t => t.trim()) : ['lead-importado'];
+
+            // Create or find the list
+            let listId = null;
+            const targetListName = listName || 'Leads Web';
+            const listR = await db.query(
+                'SELECT id FROM "WhatsAppContactList" WHERE "clubId" = $1 AND LOWER(name) = LOWER($2)',
+                [clubId, targetListName]
+            );
+            if (listR.rows.length > 0) {
+                listId = listR.rows[0].id;
+            } else {
+                const newList = await db.query(
+                    'INSERT INTO "WhatsAppContactList" (id, "clubId", name, description, "createdAt", "updatedAt") VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW()) RETURNING id',
+                    [clubId, targetListName, 'Contactos importados automáticamente desde leads del sitio web']
+                );
+                listId = newList.rows[0].id;
+            }
+
+            let imported = 0;
+            let skipped = 0;
+
+            for (const lead of allLeads) {
+                if (!lead.phone) { skipped++; continue; }
+                try {
+                    // Upsert contact
+                    const contactR = await db.query(`
+                        INSERT INTO "WhatsAppContact" (id, "clubId", name, phone, email, tags, source, status, "createdAt", "updatedAt")
+                        VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, 'lead-import', 'active', NOW(), NOW())
+                        ON CONFLICT (phone, "clubId") DO UPDATE SET 
+                            tags = array_cat("WhatsAppContact".tags, $5::text[]),
+                            "updatedAt" = NOW()
+                        RETURNING id
+                    `, [clubId, lead.name || 'Sin nombre', lead.phone, lead.email || null, tagArray]);
+
+                    const contactId = contactR.rows[0].id;
+
+                    // Add to list (ignore duplicates)
+                    await db.query(`
+                        INSERT INTO "ContactListMember" (id, "listId", "contactId", "addedAt")
+                        VALUES (gen_random_uuid(), $1, $2, NOW())
+                        ON CONFLICT ("listId", "contactId") DO NOTHING
+                    `, [listId, contactId]);
+
+                    imported++;
+                } catch (e) {
+                    skipped++;
+                }
+            }
+
+            return {
+                success: true,
+                action: 'import_leads_to_whatsapp',
+                emoji: '📥',
+                label: 'Leads importados a WhatsApp',
+                data: { imported, skipped, listName: targetListName },
+                message: `✅ Importación completada:\n• ${imported} contactos importados\n• ${skipped} omitidos (duplicados o sin teléfono)\n• Lista: "${targetListName}"\n• Tags: ${tagArray.join(', ')}\n\nPuedes ver los contactos en Admin → WhatsApp CRM → Contactos.`
+            };
+        } catch (error) {
+            console.error('import_leads_to_whatsapp error:', error);
+            return { success: false, action: 'import_leads_to_whatsapp', message: `❌ Error al importar leads: ${error.message}` };
+        }
+    },
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ── SEO & OPTIMIZATION EXECUTORS ───────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════
+
+    async run_seo_audit(args, userId, clubId) {
+        const { scope, pages } = args;
+
+        try {
+            // Get club info for domain resolution
+            const clubR = await db.query('SELECT name, subdomain, domain FROM "Club" WHERE id = $1', [clubId]);
+            if (clubR.rows.length === 0) {
+                return { success: false, action: 'run_seo_audit', message: '❌ Club no encontrado.' };
+            }
+            const club = clubR.rows[0];
+            const clubDomain = club.domain || `${club.subdomain}.clubplatform.org`;
+
+            const audit = { domain: clubDomain, score: 0, maxScore: 0, issues: [], passed: [], recommendations: [] };
+
+            // ── Meta Tags Audit ──
+            if (['full', 'meta-tags'].includes(scope)) {
+                const settings = await db.query(
+                    'SELECT key, value FROM "Setting" WHERE "clubId" = $1 AND key IN ($2, $3, $4, $5)',
+                    [clubId, 'seo_title', 'seo_description', 'hero_title', 'hero_subtitle']
+                );
+                const settingsMap = {};
+                settings.rows.forEach(s => { settingsMap[s.key] = s.value; });
+
+                audit.maxScore += 4;
+                if (settingsMap.seo_title && settingsMap.seo_title.length >= 30) {
+                    audit.score++; audit.passed.push('✅ SEO Title configurado (' + settingsMap.seo_title.length + ' chars)');
+                } else {
+                    audit.issues.push('❌ SEO Title ausente o demasiado corto (mín. 30 chars)');
+                    audit.recommendations.push('Configura un título SEO descriptivo con 50-60 caracteres incluyendo el nombre del club y ciudad.');
+                }
+                if (settingsMap.seo_description && settingsMap.seo_description.length >= 50) {
+                    audit.score++; audit.passed.push('✅ Meta Description configurada (' + settingsMap.seo_description.length + ' chars)');
+                } else {
+                    audit.issues.push('❌ Meta Description ausente o demasiado corta (mín. 50 chars)');
+                    audit.recommendations.push('Escribe una meta description de 150-160 chars que incluya la misión del club y ubicación.');
+                }
+                if (settingsMap.hero_title) {
+                    audit.score++; audit.passed.push('✅ Hero Title (H1) configurado');
+                } else {
+                    audit.issues.push('⚠️ Hero Title no personalizado — usando valor por defecto');
+                }
+                if (settingsMap.hero_subtitle) {
+                    audit.score++; audit.passed.push('✅ Hero Subtitle configurado');
+                } else {
+                    audit.issues.push('⚠️ Hero Subtitle no personalizado');
+                }
+            }
+
+            // ── OG Data Audit ──
+            if (['full', 'og-data'].includes(scope)) {
+                const ogTypes = ['club', 'project', 'news'];
+                audit.maxScore += 3;
+
+                // Check if club has logo for OG image
+                const logoR = await db.query('SELECT logo FROM "Club" WHERE id = $1', [clubId]);
+                if (logoR.rows[0]?.logo) {
+                    audit.score++; audit.passed.push('✅ Logo/OG Image del club configurado');
+                } else {
+                    audit.issues.push('❌ Sin logo — las previsualizaciones en redes sociales no tendrán imagen');
+                    audit.recommendations.push('Sube un logo del club desde Admin → Mi Club para mejorar la presencia en redes.');
+                }
+
+                // Check published projects have images
+                const projImgR = await db.query(
+                    'SELECT COUNT(*) as total, COUNT(CASE WHEN image IS NOT NULL AND image != \'\' THEN 1 END) as with_image FROM "Project" WHERE "clubId" = $1',
+                    [clubId]
+                );
+                const proj = projImgR.rows[0];
+                if (parseInt(proj.total) > 0) {
+                    const pct = Math.round((parseInt(proj.with_image) / parseInt(proj.total)) * 100);
+                    if (pct >= 80) { audit.score++; audit.passed.push(`✅ ${pct}% de proyectos tienen imagen`); }
+                    else { audit.issues.push(`⚠️ Solo ${pct}% de proyectos tienen imagen para OG`); audit.recommendations.push('Agrega imágenes a los proyectos para mejorar el engagement en redes.'); }
+                } else { audit.score++; audit.passed.push('ℹ️ Sin proyectos aún'); }
+
+                // Check posts have images
+                const postImgR = await db.query(
+                    'SELECT COUNT(*) as total, COUNT(CASE WHEN image IS NOT NULL AND image != \'\' THEN 1 END) as with_image FROM "Post" WHERE "clubId" = $1 AND published = true',
+                    [clubId]
+                );
+                const posts = postImgR.rows[0];
+                if (parseInt(posts.total) > 0) {
+                    const pct = Math.round((parseInt(posts.with_image) / parseInt(posts.total)) * 100);
+                    if (pct >= 80) { audit.score++; audit.passed.push(`✅ ${pct}% de noticias publicadas tienen imagen`); }
+                    else { audit.issues.push(`⚠️ Solo ${pct}% de noticias tienen imagen para OG`); }
+                } else { audit.score++; audit.passed.push('ℹ️ Sin noticias publicadas aún'); }
+            }
+
+            // ── Content Volume Audit ──
+            if (['full', 'headings'].includes(scope)) {
+                audit.maxScore += 3;
+
+                const contentR = await db.query(`
+                    SELECT
+                        (SELECT COUNT(*) FROM "Post" WHERE "clubId" = $1 AND published = true) as posts,
+                        (SELECT COUNT(*) FROM "Project" WHERE "clubId" = $1) as projects,
+                        (SELECT COUNT(*) FROM "CalendarEvent" WHERE "clubId" = $1) as events
+                `, [clubId]);
+                const counts = contentR.rows[0];
+
+                if (parseInt(counts.posts) >= 3) { audit.score++; audit.passed.push(`✅ ${counts.posts} noticias publicadas`); }
+                else { audit.issues.push(`⚠️ Solo ${counts.posts} noticias — Google necesita contenido fresco`); audit.recommendations.push('Publica al menos 3 noticias o artículos del club para mejorar la indexación.'); }
+
+                if (parseInt(counts.projects) >= 2) { audit.score++; audit.passed.push(`✅ ${counts.projects} proyectos registrados`); }
+                else { audit.issues.push(`⚠️ Solo ${counts.projects} proyectos — agrega más contenido relevante`); }
+
+                if (parseInt(counts.events) >= 1) { audit.score++; audit.passed.push(`✅ ${counts.events} eventos en calendario`); }
+                else { audit.issues.push('⚠️ Sin eventos — los eventos generan Structured Data valioso'); }
+            }
+
+            // Calculate final score
+            const percentage = audit.maxScore > 0 ? Math.round((audit.score / audit.maxScore) * 100) : 0;
+            const grade = percentage >= 90 ? 'A' : percentage >= 70 ? 'B' : percentage >= 50 ? 'C' : 'D';
+            const gradeEmoji = { A: '🟢', B: '🟡', C: '🟠', D: '🔴' }[grade];
+
+            let report = `${gradeEmoji} **Auditoría SEO: ${percentage}% (${grade})**\n🌐 Dominio: ${clubDomain}\n📊 Alcance: ${scope}\n\n`;
+            if (audit.passed.length > 0) report += `**Aprobados (${audit.passed.length}):**\n${audit.passed.join('\n')}\n\n`;
+            if (audit.issues.length > 0) report += `**Problemas (${audit.issues.length}):**\n${audit.issues.join('\n')}\n\n`;
+            if (audit.recommendations.length > 0) report += `**Recomendaciones:**\n${audit.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n')}`;
+
+            return {
+                success: true,
+                action: 'run_seo_audit',
+                emoji: '🔍',
+                label: `Auditoría SEO: ${grade} (${percentage}%)`,
+                data: { score: audit.score, maxScore: audit.maxScore, percentage, grade, issues: audit.issues.length },
+                message: report,
+            };
+        } catch (error) {
+            console.error('run_seo_audit error:', error);
+            return { success: false, action: 'run_seo_audit', message: `❌ Error en auditoría SEO: ${error.message}` };
+        }
+    },
+
+    async generate_seo_content(args, userId, clubId) {
+        const { page, contentType, language, focusKeyword } = args;
+
+        try {
+            // Get club context
+            const clubR = await db.query('SELECT name, city, country, description, district FROM "Club" WHERE id = $1', [clubId]);
+            if (clubR.rows.length === 0) return { success: false, action: 'generate_seo_content', message: '❌ Club no encontrado.' };
+            const club = clubR.rows[0];
+
+            const lang = language || 'es';
+            const keyword = focusKeyword || `club rotario ${club.city || ''}`.trim();
+
+            // Generate content based on type
+            const seoContent = {};
+            const pageTitles = {
+                home: 'Inicio', 'quienes-somos': 'Quiénes Somos', proyectos: 'Proyectos', rotaract: 'Rotaract',
+                interact: 'Interact', blog: 'Blog', eventos: 'Eventos', contacto: 'Contacto',
+                'la-fundacion-rotaria': 'La Fundación Rotaria', 'intercambio-jovenes': 'Intercambio de Jóvenes',
+            };
+            const pageTitle = pageTitles[page] || page;
+
+            if (['seo_title', 'full_package'].includes(contentType)) {
+                seoContent.seoTitle = `${pageTitle} | ${club.name}${club.city ? ` — ${club.city}` : ''} | Rotary International`;
+                if (seoContent.seoTitle.length > 60) {
+                    seoContent.seoTitle = `${pageTitle} | ${club.name} — Rotary`;
+                }
+            }
+
+            if (['meta_description', 'full_package'].includes(contentType)) {
+                const descriptions = {
+                    home: `${club.name}${club.city ? ` en ${club.city}` : ''}: club miembro de Rotary International dedicado al servicio comunitario, ${keyword} y desarrollo social. ¡Descubre nuestros proyectos!`,
+                    'quienes-somos': `Conoce la historia, misión y valores de ${club.name}. Somos un ${keyword} comprometido con el servicio por encima del interés propio.`,
+                    proyectos: `Proyectos de impacto social de ${club.name}: salud, educación, agua y medio ambiente. ${keyword} transformando comunidades.`,
+                    rotaract: `Rotaract de ${club.name}: jóvenes líderes entre 18-30 años creando impacto positivo a través del servicio comunitario y el liderazgo.`,
+                    interact: `Interact de ${club.name}: adolescentes de 12-18 años desarrollando liderazgo y servicio. Programa juvenil de Rotary International.`,
+                    blog: `Últimas noticias y artículos de ${club.name}. Entérate de eventos, proyectos y logros del ${keyword}.`,
+                    contacto: `Contáctanos: ${club.name}${club.city ? ` en ${club.city}` : ''}. Formulario de contacto, ubicación y cómo unirte.`,
+                };
+                seoContent.metaDescription = descriptions[page] || `${pageTitle} — ${club.name}, ${keyword}. Rotary International: Servicio por encima del interés propio.`;
+                // Truncate to 160 chars
+                if (seoContent.metaDescription.length > 160) {
+                    seoContent.metaDescription = seoContent.metaDescription.substring(0, 157) + '...';
+                }
+            }
+
+            if (['keywords', 'full_package'].includes(contentType)) {
+                const baseKeywords = [keyword, club.name, 'rotary international', 'servicio comunitario'];
+                const pageKeywords = {
+                    home: ['voluntariado', club.city, 'club rotario', 'impacto social'],
+                    proyectos: ['proyectos sociales', 'donaciones', 'impacto comunitario', club.city],
+                    rotaract: ['rotaract', 'jóvenes líderes', 'servicio juvenil', 'liderazgo joven'],
+                    interact: ['interact', 'adolescentes', 'servicio escolar', 'liderazgo juvenil'],
+                    blog: ['noticias rotary', 'blog rotario', 'eventos', club.city],
+                };
+                seoContent.keywords = [...baseKeywords, ...(pageKeywords[page] || [])].filter(Boolean).join(', ');
+            }
+
+            if (['structured_data', 'full_package'].includes(contentType)) {
+                seoContent.structuredData = {
+                    '@context': 'https://schema.org',
+                    '@type': 'Organization',
+                    name: club.name,
+                    description: club.description || `Club miembro de Rotary International en ${club.city || 'Colombia'}`,
+                    address: club.city ? { '@type': 'PostalAddress', addressLocality: club.city, addressCountry: club.country || 'CO' } : undefined,
+                    memberOf: { '@type': 'Organization', name: 'Rotary International', url: 'https://www.rotary.org' },
+                };
+            }
+
+            // Auto-save SEO title and description to Settings
+            if (seoContent.seoTitle) {
+                await db.query(
+                    `INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt") VALUES (gen_random_uuid(), $1, $2, $3, NOW()) ON CONFLICT (key, "clubId") DO UPDATE SET value = $2, "updatedAt" = NOW()`,
+                    [`seo_title_${page}`, seoContent.seoTitle, clubId]
+                );
+            }
+            if (seoContent.metaDescription) {
+                await db.query(
+                    `INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt") VALUES (gen_random_uuid(), $1, $2, $3, NOW()) ON CONFLICT (key, "clubId") DO UPDATE SET value = $2, "updatedAt" = NOW()`,
+                    [`seo_desc_${page}`, seoContent.metaDescription, clubId]
+                );
+            }
+
+            let report = `✅ **Contenido SEO generado para "${pageTitle}"**\n🔑 Keyword: ${keyword}\n\n`;
+            if (seoContent.seoTitle) report += `📌 **Title Tag** (${seoContent.seoTitle.length} chars):\n\`${seoContent.seoTitle}\`\n\n`;
+            if (seoContent.metaDescription) report += `📝 **Meta Description** (${seoContent.metaDescription.length} chars):\n\`${seoContent.metaDescription}\`\n\n`;
+            if (seoContent.keywords) report += `🏷️ **Keywords:**\n${seoContent.keywords}\n\n`;
+            if (seoContent.structuredData) report += `📊 **Structured Data (JSON-LD):**\nGenerado y listo para insertar en la página.\n\n`;
+            report += `💾 Configuración guardada automáticamente en Settings del club.`;
+
+            return {
+                success: true,
+                action: 'generate_seo_content',
+                emoji: '🔎',
+                label: `SEO "${pageTitle}" generado`,
+                data: seoContent,
+                message: report,
+            };
+        } catch (error) {
+            console.error('generate_seo_content error:', error);
+            return { success: false, action: 'generate_seo_content', message: `❌ Error al generar SEO content: ${error.message}` };
+        }
+    },
 };
 
 
@@ -431,30 +992,32 @@ export function getWorkflowSuggestions(toolName, toolArgs = {}) {
         case 'create_project':
             suggestions.push(
                 { agent: 'Rafael', emoji: '✍️', action: `Redactar la descripción de impacto del proyecto "${toolArgs.title}"` },
-                { agent: 'Camila', emoji: '📸', action: `Definir el concepto visual y fotos para el proyecto "${toolArgs.title}"` },
+                { agent: 'Camila', emoji: '💬', action: `Notificar a los socios por WhatsApp sobre el nuevo proyecto "${toolArgs.title}"` },
+                { agent: 'Martín', emoji: '🔎', action: `Generar SEO optimizado para el proyecto "${toolArgs.title}"` },
                 { agent: 'Santiago', emoji: '💻', action: `Verificar que el proyecto "${toolArgs.title}" se publique correctamente en el sitio` },
             );
             break;
 
         case 'create_news_post':
             suggestions.push(
-                { agent: 'Camila', emoji: '📸', action: `Crear imagen de portada para la noticia "${toolArgs.title}"` },
                 { agent: 'Andrés', emoji: '📱', action: `Preparar posts de redes sociales para difundir "${toolArgs.title}"` },
+                { agent: 'Camila', emoji: '💬', action: `Enviar la noticia a contactos WhatsApp del club` },
                 { agent: 'Valentina', emoji: '🎨', action: `Revisar que la noticia cumpla con la identidad visual del club` },
+                { agent: 'Martín', emoji: '🔎', action: `Optimizar SEO del artículo "${toolArgs.title}"` },
             );
             break;
 
         case 'create_calendar_event':
             suggestions.push(
-                { agent: 'Andrés', emoji: '📱', action: `Crear publicación de invitación para el evento "${toolArgs.title}"` },
-                { agent: 'Isabel', emoji: '📰', action: `Preparar comunicado de prensa para el evento` },
-                { agent: 'Camila', emoji: '📸', action: `Planificar cobertura visual del evento` },
+                { agent: 'Camila', emoji: '💬', action: `Crear campaña WhatsApp de invitación al evento "${toolArgs.title}"` },
+                { agent: 'Andrés', emoji: '📱', action: `Crear publicación de invitación para redes sociales` },
+                { agent: 'Isabel', emoji: '✉️', action: `Preparar secuencia de email para el evento` },
             );
             break;
 
         case 'create_publication':
             suggestions.push(
-                { agent: 'Camila', emoji: '📸', action: `Crear visual/diseño para la publicación "${toolArgs.title}"` },
+                { agent: 'Camila', emoji: '💬', action: `Difundir la publicación "${toolArgs.title}" por WhatsApp` },
                 { agent: 'Valentina', emoji: '🎨', action: `Aprobar que el diseño cumpla con la marca Rotary` },
             );
             break;
@@ -463,6 +1026,44 @@ export function getWorkflowSuggestions(toolName, toolArgs = {}) {
             suggestions.push(
                 { agent: 'Santiago', emoji: '💻', action: `Verificar que el cambio "${toolArgs.key}" se refleje correctamente en el sitio` },
                 { agent: 'Valentina', emoji: '🎨', action: `Revisar coherencia visual después del cambio de configuración` },
+            );
+            break;
+
+        case 'send_whatsapp_message':
+            suggestions.push(
+                { agent: 'Isabel', emoji: '✉️', action: `Complementar seguimiento por email al contacto ${toolArgs.phone}` },
+                { agent: 'Andrés', emoji: '📱', action: `Verificar presencia del contacto en redes sociales del club` },
+            );
+            break;
+
+        case 'create_whatsapp_campaign':
+            suggestions.push(
+                { agent: 'Rafael', emoji: '✍️', action: `Redactar el copy de la campaña "${toolArgs.name}"` },
+                { agent: 'Lucía', emoji: '📈', action: `Preparar tracking de conversión para la campaña WhatsApp` },
+                { agent: 'Andrés', emoji: '📱', action: `Crear versión de la campaña para redes sociales` },
+            );
+            break;
+
+        case 'import_leads_to_whatsapp':
+            suggestions.push(
+                { agent: 'Camila', emoji: '💬', action: `Crear campaña de bienvenida para los leads importados` },
+                { agent: 'Isabel', emoji: '✉️', action: `Preparar secuencia de email complementaria para nuevos leads` },
+                { agent: 'Diana', emoji: '🧠', action: `Analizar el perfil de los leads importados para segmentación` },
+            );
+            break;
+
+        case 'run_seo_audit':
+            suggestions.push(
+                { agent: 'Martín', emoji: '🔎', action: `Generar contenido SEO para las páginas con problemas detectados` },
+                { agent: 'Santiago', emoji: '💻', action: `Implementar las correcciones técnicas recomendadas` },
+                { agent: 'Valentina', emoji: '🎨', action: `Revisar que las correcciones SEO no afecten el diseño` },
+            );
+            break;
+
+        case 'generate_seo_content':
+            suggestions.push(
+                { agent: 'Santiago', emoji: '💻', action: `Implementar los meta-tags generados en la página "${toolArgs.page}"` },
+                { agent: 'Martín', emoji: '🔎', action: `Verificar indexación después de actualizar el SEO` },
             );
             break;
     }

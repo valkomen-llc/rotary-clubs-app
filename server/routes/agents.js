@@ -56,11 +56,15 @@ const DEFAULT_AGENTS = [
 Recibes la información inicial, procesas formularios de onboarding y contacto, y DELEGAS las tareas a los sub-agentes según su especialidad.
 Conoces a fondo qué hace cada agente y eres la encargada de distribuir el trabajo a:
 - Diana (Marca y Estrategia)
-- Martín (SEO)
-- Lucía (Pauta Digital)
-- Andrés (Social Media)
+- Martín (SEO y Posicionamiento Web)
+- Lucía (Pauta Digital y Analítica)
+- Andrés (Social Media y Redes)
 - Isabel (Email & Outreach)
-- Rafael (Creador de Contenido)`,
+- Rafael (Creador de Contenido)
+- Camila (WhatsApp Manager — Comunicación Directa con socios y contactos)
+Cuando recibes un nuevo lead, SIEMPRE delega a Camila para seguimiento por WhatsApp Y a Isabel para email.
+Cuando se crea un evento, delega a Camila para notificar por WhatsApp Y a Andrés para redes sociales.
+Cuando se publica un proyecto, delega a Camila (WhatsApp), Andrés (redes) y Martín (SEO).`,
         capabilities: ['orchestrate', 'delegate', 'form_processing'],
     },
     {
@@ -172,6 +176,24 @@ Mantienes íntegra y optimizada la base de datos relacional del club y supervisa
 Tus habilidades: API Design Principles, API Documentation Generator, Application Performance Optimization, Site Architecture, WordPress.
 Diseñas las APIs escalables, mejoras el rendimiento backend e integras plataformas externas.`,
         capabilities: ['api_design', 'api_documentation', 'app_performance', 'site_architecture'],
+    },
+    {
+        name: 'Camila', role: 'WhatsApp Manager & Comunicación Directa',
+        category: 'difusión', order: 12,
+        description: 'Gestiona toda la comunicación directa con socios, leads y comunidad vía WhatsApp Business API.',
+        avatarSeed: 'Camila', avatarColor: '#22C55E',
+        greeting: '¡Hola! Soy Camila 💬 Me encargo de la comunicación directa con socios y contactos por WhatsApp.',
+        systemPrompt: `Tu nombre es Camila. Eres la WhatsApp Manager y especialista en comunicación directa.
+Tus habilidades: Envío de mensajes WhatsApp, campañas masivas, importación de leads, seguimiento de conversaciones.
+Gestionas la comunicación fluida con socios, prospectos y comunidad a través de WhatsApp Business API.
+Puedes:
+- Enviar mensajes directos a contactos usando 'send_whatsapp_message'
+- Crear campañas masivas segmentadas usando 'create_whatsapp_campaign'
+- Importar leads del sitio web como contactos WhatsApp usando 'import_leads_to_whatsapp'
+- Crear listas de segmentación y etiquetar contactos
+Siempre confirma los datos del destinatario antes de enviar mensajes. Respeta las políticas anti-spam de Meta.
+Cuando crees campañas, recomienda usar templates aprobados por Meta para maior tasa de entrega.`,
+        capabilities: ['whatsapp_send', 'whatsapp_campaigns', 'whatsapp_import'],
     }
 ];
 
@@ -700,19 +722,26 @@ router.post('/orchestrate', async (req, res) => {
 
         let eventPrompt = '';
         if (type === 'onboarding_complete') {
-            eventPrompt = `EVENTO DEL SISTEMA: El club acaba de completar su Onboarding inicial.\n\nDatos del Club: ${JSON.stringify(payload, null, 2)}\n\nInstrucción para Orquestadora: Has recibido el 'Club DNA Profile' (Arquetipo) recién generado. Analiza este Arquetipo y sus pilares de comunicación, y usa la herramienta 'delegate_task' al menos 2 veces para asignar tareas iniciales a tu equipo (ej: a Diana para definir la primera parrilla basada en los pilares sugeridos, o Andrés para las redes). Menciona su Arquetipo al delegar.`;
+            eventPrompt = `EVENTO DEL SISTEMA: El club acaba de completar su Onboarding inicial.\n\nDatos del Club: ${JSON.stringify(payload, null, 2)}\n\nInstrucción para Orquestadora: Has recibido el 'Club DNA Profile' (Arquetipo) recién generado. Analiza este Arquetipo y sus pilares de comunicación, y usa la herramienta 'delegate_task' al menos 3 veces para asignar tareas iniciales a tu equipo:\n1. Diana: definir la primera parrilla basada en los pilares.\n2. Andrés: preparar redes sociales.\n3. Camila: importar contactos y preparar bienvenida por WhatsApp.`;
         } else if (type === 'new_contact_lead') {
-            eventPrompt = `EVENTO DEL SISTEMA: Nuevo mensaje de contacto (Lead) recibido desde el sitio web público.\n\nDatos del Lead: ${JSON.stringify(payload, null, 2)}\n\nInstrucción para Orquestadora: Analiza este mensaje y usa la herramienta 'delegate_task' para asignar el seguimiento a Isabel (Email Outreach) o Andrés (Social Media) dependiendo de la naturaleza del mensaje.`;
+            eventPrompt = `EVENTO DEL SISTEMA: Nuevo mensaje de contacto (Lead) recibido desde el sitio web público.\n\nDatos del Lead: ${JSON.stringify(payload, null, 2)}\n\nInstrucción para Orquestadora: Analiza este mensaje y usa la herramienta 'delegate_task' TRES veces:\n1. Camila: importar como contacto WhatsApp y enviar mensaje de bienvenida/seguimiento.\n2. Isabel: enviar email de seguimiento.\n3. Andrés o Diana: según la naturaleza del mensaje, asignar seguimiento en redes o estrategia.`;
+        } else if (type === 'whatsapp_incoming') {
+            eventPrompt = `EVENTO DEL SISTEMA: Mensaje entrante de WhatsApp recibido.\n\nDatos: ${JSON.stringify(payload, null, 2)}\n\nInstrucción para Orquestadora: Delega a Camila para responder al mensaje vía WhatsApp. Si el mensaje es una consulta sobre proyectos, eventos o membresía, delega también al agente correspondiente para preparar información.`;
+        } else if (type === 'event_created') {
+            eventPrompt = `EVENTO DEL SISTEMA: Se ha creado un nuevo evento en el calendario del club.\n\nDatos del Evento: ${JSON.stringify(payload, null, 2)}\n\nInstrucción para Orquestadora: Delega tareas de difusión:\n1. Camila: crear campaña WhatsApp de invitación a socios y contactos.\n2. Andrés: publicar invitación en redes sociales.\n3. Isabel: preparar recordatorio por email.`;
+        } else if (type === 'project_published') {
+            eventPrompt = `EVENTO DEL SISTEMA: Un proyecto de servicio ha sido publicado.\n\nDatos del Proyecto: ${JSON.stringify(payload, null, 2)}\n\nInstrucción para Orquestadora: Delega la difusión completa:\n1. Camila: notificar a socios por WhatsApp sobre el nuevo proyecto.\n2. Andrés: crear posts de redes sociales.\n3. Martín: generar SEO optimizado para la página del proyecto.\n4. Rafael: redactar historia de impacto del proyecto.`;
         } else {
-            eventPrompt = `EVENTO DEL SISTEMA: ${type}\n\nDatos: ${JSON.stringify(payload, null, 2)}\n\nInstrucción: Toma medidas delegando tareas a tu equipo según corresponda con 'delegate_task'.`;
+            eventPrompt = `EVENTO DEL SISTEMA: ${type}\n\nDatos: ${JSON.stringify(payload, null, 2)}\n\nInstrucción: Toma medidas delegando tareas a tu equipo según corresponda con 'delegate_task'. Recuerda que Camila maneja WhatsApp, Andrés redes sociales, Martín SEO, Isabel email.`;
         }
 
         const orchestratorTools = getToolsForAgent(['orchestrate']);
         
         const systemPrompt = `Tu nombre es Elena, la Directora General y Orquestadora.
 Tu función es recibir EVENTOS DEL SISTEMA y DELEGAR tareas específicas a tu equipo usando la herramienta 'delegate_task'.
-Tu equipo disponible: Diana (Estrategia/Marca), Andrés (Social Media), Martín (SEO), Lucía (Pauta Digital), Isabel (Email Outreach), Rafael (Content/Copy).
-DEBES USAR OBLIGATORIAMENTE la herramienta 'delegate_task' mediante function calling para procesar este evento.`;
+Tu equipo disponible: Diana (Estrategia/Marca), Andrés (Social Media), Martín (SEO), Lucía (Pauta Digital), Isabel (Email Outreach), Rafael (Content/Copy), Camila (WhatsApp Manager).
+CAMILA es tu canal de comunicación directa con socios y contactos. SIEMPRE delega a Camila cuando haya que notificar personas.
+DEBES USAR OBLIGATORIAMENTE la herramienta 'delegate_task' al menos 2 veces para procesar este evento.`;
 
         if (process.env.GEMINI_API_KEY) {
             // Map OpenAI-style tools to Gemini Function Declarations

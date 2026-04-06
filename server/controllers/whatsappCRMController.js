@@ -6,7 +6,7 @@
 
 import db from '../lib/db.js';
 
-const WA_API_BASE = `https://graph.facebook.com/${process.env.WA_API_VERSION || 'v19.0'}`;
+const WA_API_BASE = `https://graph.facebook.com/${process.env.WA_API_VERSION || 'v21.0'}`;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -131,8 +131,8 @@ async function buildMediaHeader({ template, mediaUrl, config }) {
         console.error('[WA] Fetch template header failed:', err.message);
     }
 
-    console.warn('[WA] Could not build header component — template will likely fail');
-    return [];
+    console.error('[WA] Could not build header component — all media upload attempts failed');
+    throw new Error(`No se pudo procesar el encabezado multimedia del template. Verifica que la imagen/video/documento sea accesible públicamente o vuelve a sincronizar los templates desde Meta.`);
 }
 
 function buildTemplateComponents(vars = {}) {
@@ -462,8 +462,8 @@ export const sendMessageToContact = async (req, res) => {
 
         // Log the message
         await db.query(
-            `INSERT INTO "WhatsAppMessageLog" ("clubId","contactId",phone,"messageId","templateName","bodyText",status,"sentAt")
-             VALUES ($1,$2,$3,$4,$5,$6,'sent',NOW())`,
+            `INSERT INTO "WhatsAppMessageLog" ("clubId","contactId",phone,"messageId","templateName","bodyText",status,direction,"sentAt")
+             VALUES ($1,$2,$3,$4,$5,$6,'sent','outgoing',NOW())`,
             [clubId, contact.id, contact.phone, messageId || null, template.name, template.bodyText || `[Template: ${template.name}]`]
         );
         await db.query(`UPDATE "WhatsAppContact" SET "totalSent"="totalSent"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
@@ -992,16 +992,16 @@ export const sendCampaign = async (req, res) => {
                 });
                 const messageId = apiRes.messages?.[0]?.id;
                 await db.query(
-                    `INSERT INTO "WhatsAppMessageLog" ("clubId","campaignId","contactId",phone,"messageId","templateName",status,"sentAt")
-                     VALUES ($1,$2,$3,$4,$5,$6,'sent',NOW())`,
+                    `INSERT INTO "WhatsAppMessageLog" ("clubId","campaignId","contactId",phone,"messageId","templateName",status,direction,"sentAt")
+                     VALUES ($1,$2,$3,$4,$5,$6,'sent','outgoing',NOW())`,
                     [clubId, id, contact.id, contact.phone, messageId || null, template.name]
                 );
                 await db.query(`UPDATE "WhatsAppContact" SET "totalSent"="totalSent"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
                 return { ok: true };
             } catch (err) {
                 await db.query(
-                    `INSERT INTO "WhatsAppMessageLog" ("clubId","campaignId","contactId",phone,"templateName",status,"errorMessage","failedAt")
-                     VALUES ($1,$2,$3,$4,$5,'failed',$6,NOW())`,
+                    `INSERT INTO "WhatsAppMessageLog" ("clubId","campaignId","contactId",phone,"templateName",status,direction,"errorMessage","failedAt")
+                     VALUES ($1,$2,$3,$4,$5,'failed','outgoing',$6,NOW())`,
                     [clubId, id, contact.id, contact.phone, template.name, err.message]
                 ).catch(() => {});
                 await db.query(`UPDATE "WhatsAppContact" SET "totalFailed"="totalFailed"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]).catch(() => {});
