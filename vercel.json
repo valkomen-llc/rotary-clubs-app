@@ -7,6 +7,10 @@
     },
     "rewrites": [
         {
+            "source": "/api/whatsapp-qr/:path*",
+            "destination": "http://76.13.101.187:5001/api/whatsapp-qr/:path*"
+        },
+        {
             "source": "/api/:path*",
             "destination": "/api/index.js"
         },
