@@ -209,7 +209,7 @@ const DashboardOverview: React.FC = () => {
                                     <Database className="w-4 h-4 text-[#F7A81B]" /> Cantidad Máxima por Extracción
                                 </label>
                                 <div className="flex gap-4">
-                                    {[5, 10, 20].map(val => (
+                                    {[3, 5, 10, 20].map(val => (
                                         <button 
                                             key={val}
                                             onClick={() => setGrantLimit(val)}
