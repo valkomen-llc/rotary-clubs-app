@@ -101,6 +101,7 @@ model Club {
   whatsAppLists          WhatsAppContactList[]
   WhatsAppCustomField    WhatsAppCustomField[]
   whatsAppTemplates      WhatsAppTemplate[]
+  fundingOpportunities   FundingOpportunity[]
   districtId             String?
   affiliatedDistrict     District?               @relation(fields: [districtId], references: [id])
 }
@@ -848,4 +849,22 @@ model WhatsAppCustomField {
   Club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([clubId, key])
+}
+
+model FundingOpportunity {
+  id              String   @id @default(uuid())
+  title           String
+  description     String
+  matchCategory   String?
+  sourceUrl       String?
+  sourceName      String?
+  deadline        DateTime?
+  amount          Float?
+  status          String   @default("backlog")
+  priority        String   @default("Medium")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  clubId          String?
+  agentId         String?  @default("rafael")
+  club            Club?    @relation(fields: [clubId], references: [id])
 }

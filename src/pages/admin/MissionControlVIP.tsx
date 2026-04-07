@@ -160,8 +160,33 @@ const INITIAL_TASKS: Task[] = [
 ];
 
 const HQDashboard: React.FC = () => {
-    const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
+    const [tasks, setTasks] = useState<Task[]>([]);
+    const [isLoadingTasks, setIsLoadingTasks] = useState(true);
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+
+    useEffect(() => {
+        fetch(`${API_BASE}/scout-grants`)
+            .then(res => res.json())
+            .then(data => {
+                const mappedTasks: Task[] = data.map((g: any) => ({
+                    id: g.id,
+                    title: g.title,
+                    description: g.description,
+                    category: g.matchCategory || 'Unknown',
+                    agentId: g.agentId || 'rafael',
+                    time: new Date(g.createdAt).toLocaleDateString(),
+                    priority: g.priority || 'Medium',
+                    status: g.status || 'backlog'
+                }));
+                // Combine with initial static tasks strictly for MVP UI show/tell purposes
+                setTasks([...INITIAL_TASKS, ...mappedTasks]);
+                setIsLoadingTasks(false);
+            })
+            .catch(() => {
+                setTasks(INITIAL_TASKS);
+                setIsLoadingTasks(false);
+            });
+    }, []);
     const [showSettings, setShowSettings] = useState(false);
     
     // --- WHATSAPP BROADCAST MODAL (PREVIOUS FEATURE) ---
