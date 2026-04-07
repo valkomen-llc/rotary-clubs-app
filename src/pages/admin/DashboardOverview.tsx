@@ -13,7 +13,10 @@ import {
     Globe,
     Calendar,
     Layers,
-    Save
+    Save,
+    FileText,
+    UploadCloud,
+    Paperclip
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -46,6 +49,8 @@ const DashboardOverview: React.FC = () => {
     const [grantFreq, setGrantFreq] = useState('Semanal');
     const [grantLimit, setGrantLimit] = useState(10);
     const [grantSources, setGrantSources] = useState('Rotary International, USAID, Fundación Bill Gates');
+    const [grantContext, setGrantContext] = useState('Busca oportunidades que encajen estrictamente con las Áreas de Interés de Rotary (Agua, Paz, Educación, Madre e Hijo, Economía, Medio Ambiente, Prevención de Enfermedades). Omite licitaciones de infraestructura pesada estatal. Traduce los TDRs a un lenguaje diplomático pero urgente.');
+    const [attachedFiles, setAttachedFiles] = useState<string[]>(['Estatutos_Club_Rotary_2026.pdf']);
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500 relative">
@@ -224,11 +229,60 @@ const DashboardOverview: React.FC = () => {
                                 <textarea 
                                     value={grantSources}
                                     onChange={(e) => setGrantSources(e.target.value)}
-                                    rows={3}
+                                    rows={2}
                                     className="w-full bg-slate-50 border border-slate-200 text-sm font-medium text-slate-800 rounded-xl p-4 focus:ring-4 focus:ring-[#013388]/10 focus:border-[#013388] outline-none resize-none"
                                     placeholder="Rotary International, USAID, Fundación Bill Gates..."
                                 />
                                 <p className="text-[10px] text-slate-500">Usado por la API de Perplexity/Google para acotar los resultados del motor.</p>
+                            </div>
+
+                            <div className="space-y-4">
+                                <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                    <FileText className="w-4 h-4 text-[#F7A81B]" /> System Prompt (Contexto Base para Sub-Agentes)
+                                </label>
+                                <textarea 
+                                    value={grantContext}
+                                    onChange={(e) => setGrantContext(e.target.value)}
+                                    rows={4}
+                                    className="w-full bg-slate-50 border border-slate-200 text-sm font-medium text-slate-800 rounded-xl p-4 focus:ring-4 focus:ring-[#013388]/10 focus:border-[#013388] outline-none resize-none"
+                                    placeholder="Instrucciones para los agentes..."
+                                />
+                                <p className="text-[10px] text-slate-500">Rafael y Camila leerán esta directriz rectora antes de extraer y redactar las subvenciones.</p>
+                            </div>
+
+                            <div className="space-y-4">
+                                <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                    <Paperclip className="w-4 h-4 text-[#F7A81B]" /> Adjuntos de Referencia (Base de Conocimiento)
+                                </label>
+                                
+                                <div className="border-2 border-dashed border-slate-200 rounded-2xl p-8 bg-slate-50/50 flex flex-col items-center justify-center text-center hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer">
+                                    <UploadCloud className="w-8 h-8 text-slate-400 mb-3" />
+                                    <h4 className="text-sm font-black text-slate-800 mb-1">Arrastra tus estatutos o reglamentos aquí</h4>
+                                    <p className="text-xs font-medium text-slate-500 max-w-sm mb-4">
+                                        Sube PDFs de proyectos pasados, actas corporativas o lineamientos del distrito para que los sub-agentes tengan un contexto mucho más amplio al evaluar si aplicamos o no.
+                                    </p>
+                                    <button className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-black uppercase tracking-widest hover:border-[#013388] hover:text-[#013388] transition-all">
+                                        Seleccionar Archivos
+                                    </button>
+                                </div>
+                                
+                                {attachedFiles.length > 0 && (
+                                    <div className="mt-4 space-y-2">
+                                        {attachedFiles.map((file, i) => (
+                                            <div key={i} className="flex items-center justify-between bg-white border border-slate-100 rounded-xl p-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
+                                                        <FileText className="w-4 h-4" />
+                                                    </div>
+                                                    <span className="text-xs font-bold text-slate-700">{file}</span>
+                                                </div>
+                                                <button onClick={() => setAttachedFiles(fs => fs.filter(f => f !== file))} className="text-slate-400 hover:text-red-500 p-2">
+                                                    <X className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         </div>
 
