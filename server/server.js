@@ -81,7 +81,11 @@ app.use('/api/ngse', ngseRoutes);
 app.use('/api/rotex', rotexRoutes);
 app.use('/api/financial', financialRoutes);
 app.use('/api/seo', seoRoutes);
+
+// REORDER WHATSAPP-QR FIRST TO AVOID PREFIX CONFLICT WITH '/api/whatsapp'
+app.use('/api/whatsapp-qr', whatsappQrRoutes);
 app.use('/api/whatsapp', whatsappCrmRoutes);
+
 app.use('/api/agents', agentsRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/admin/districts', districtsRoutes);
@@ -90,7 +94,6 @@ app.use('/api/faqs', faqsRoutes);
 app.use('/api/leads', leadsRoutes);
 app.use('/api/payouts', payoutsRoutes);
 app.use('/api/site-progress', siteProgressRoutes);
-app.use('/api/whatsapp-qr', whatsappQrRoutes);
 
 export default app;
 
