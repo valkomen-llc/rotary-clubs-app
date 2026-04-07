@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     BrainCircuit,
     Zap,
@@ -12,13 +12,23 @@ import {
     MessageSquare,
     Loader2,
     ShieldCheck,
-    AlertCircle
+    AlertCircle,
+    Activity,
+    Cpu,
+    Network,
+    Terminal,
+    ChevronRight,
+    Power,
+    Settings2,
+    Search,
+    Globe,
+    Layers,
+    Bot
 } from 'lucide-react';
 
 const getApiBase = () => {
     const envApi = import.meta.env.VITE_API_URL;
     if (envApi && envApi !== '/api') return envApi.replace(/\/$/, '');
-    // Si estamos en producción (app.clubplatform.org), usamos el origin actual
     return `${window.location.origin}/api`;
 };
 
@@ -33,56 +43,68 @@ interface Agent {
     lastTask: string;
 }
 
-interface Goal {
+interface ActionPlan {
     id: string;
     title: string;
+    description: string;
+    isActive: boolean;
     progress: number;
-    status: 'active' | 'paused' | 'completed';
-    category: string;
-    assignedAgents: string[];
+    subtasks: string[];
+    agents: string[];
 }
 
-interface Task {
+interface LogEntry {
     id: string;
     agentName: string;
     agentColor: string;
-    content: string;
+    mainActivity: string;
+    subtask: string;
     time: string;
-    type: 'peer_review' | 'heartbeat' | 'execution' | 'research';
-    status: 'backlog' | 'in_progress' | 'done';
+    type: 'peer_review' | 'heartbeat' | 'execution' | 'research' | 'alert';
+    status: 'done' | 'processing' | 'pending';
 }
 
 const VIP_AGENTS: Agent[] = [
-    { id: 'mateo', name: 'Mateo', role: 'Account Manager VIP', color: 'bg-[#013388]', status: 'online', lastTask: 'Analizando ROI Distrito' },
-    { id: 'sofia', name: 'Sofía', role: 'Campaign Concierge', color: 'bg-[#D91B5C]', status: 'processing', lastTask: 'Estructurando Brief' },
-    { id: 'diego', name: 'Diego', role: 'Customer Success Specialist', color: 'bg-[#005DAA]', status: 'idle', lastTask: 'Waiting...' },
-    { id: 'valeria', name: 'Valeria', role: 'Institutional Comms', color: 'bg-[#F7A81B]', status: 'processing', lastTask: 'Drafting Newsletter' },
-    { id: 'rafael', name: 'Rafael', role: 'Grant & Content Analyst', color: 'bg-emerald-600', status: 'online', lastTask: 'Scanning SECOP' },
+    { id: 'rafael', name: 'Rafael', role: 'Grant Intelligence Expert', color: 'bg-indigo-500', status: 'online', lastTask: 'Scanning SECOP II' },
+    { id: 'mateo', name: 'Mateo', role: 'Strategic ROI Analyst', color: 'bg-blue-600', status: 'online', lastTask: 'Calculating Grant Impacts' },
+    { id: 'sofia', name: 'Sofía', role: 'Campaign Concierge', color: 'bg-rose-500', status: 'idle', lastTask: 'Waiting for leads' },
+    { id: 'valeria', name: 'Valeria', role: 'Institutional Comms', color: 'bg-amber-500', status: 'processing', lastTask: 'Drafting announcement' },
 ];
 
-const INITIAL_GOALS: Goal[] = [
-    { id: 'g1', title: 'Fortalecimiento de Marca en Meta', category: 'DIFUSIÓN', progress: 85, status: 'active', assignedAgents: ['sofia', 'valeria'] },
-    { id: 'g2', title: 'Identificación de Subvenciones Salud', category: 'FUNDACIÓN', progress: 40, status: 'active', assignedAgents: ['rafael', 'mateo'] },
-    { id: 'g3', title: 'Optimización de Retención de Socios', category: 'MEMBRESÍA', progress: 10, status: 'paused', assignedAgents: ['diego'] },
-];
-
-const INITIAL_TASKS: Task[] = [
-    { id: 't1', agentName: 'Rafael', agentColor: 'bg-emerald-600', content: 'Escaneando SECOP II: Detectada subvención USAID para salud rural.', time: '2m ago', type: 'research', status: 'in_progress' },
-    { id: 't2', agentName: 'Sofía', agentColor: 'bg-[#D91B5C]', content: 'Brief generado para Campaña Polio Plus 2026.', time: '8m ago', type: 'execution', status: 'done' },
-    { id: 't3', agentName: 'Valeria', agentColor: 'bg-[#F7A81B]', content: 'Revisión técnica de post para Instagram: Aprobado por Rafael.', time: '12m ago', type: 'peer_review', status: 'done' },
-    { id: 't4', agentName: 'Mateo', agentColor: 'bg-[#013388]', content: 'Calculando impacto proyectado de subvención educativa global.', time: '15m ago', type: 'research', status: 'backlog' },
+const INITIAL_PLANS: ActionPlan[] = [
+    {
+        id: 'grand-scope',
+        title: 'Grand Scope Engine',
+        description: 'Gestión Automatizada de Subvenciones (SECOP II, USAID, Rotary Foundation)',
+        isActive: true,
+        progress: 68,
+        subtasks: ['Escaneo de Bases de Datos', 'Filtrage por TDRs', 'Análisis de Viabilidad IA', 'Generación de Borradores'],
+        agents: ['rafael', 'mateo']
+    },
+    {
+        id: 'membership-pulse',
+        title: 'Membership Pulse IQ',
+        description: 'Análisis de retención y captación de nuevos socios vía IA predictiva.',
+        isActive: false,
+        progress: 0,
+        subtasks: ['Análisis de Churn', 'Lead Scoring Socios', 'Plan de Onboarding'],
+        agents: ['sofia']
+    },
+    {
+        id: 'brand-amplifier',
+        title: 'Brand Amplifier VIP',
+        description: 'Orquestación de imagen pública e impacto institucional en redes.',
+        isActive: true,
+        progress: 45,
+        subtasks: ['Monitor de Menciones', 'Drafting Automático', 'Schedule de Ráfagas'],
+        agents: ['valeria', 'sofia']
+    }
 ];
 
 const HQDashboard: React.FC = () => {
-    const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
-    const [goals] = useState<Goal[]>(INITIAL_GOALS);
-    const [isScouting, setIsScouting] = useState(false);
-    const [scoutProgress, setScoutProgress] = useState(0);
-    const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
+    const [plans, setPlans] = useState<ActionPlan[]>(INITIAL_PLANS);
+    const [logs, setLogs] = useState<LogEntry[]>([]);
     const [showPublish, setShowPublish] = useState<any>(null);
-    const [showAllGoals, setShowAllGoals] = useState(false);
-    
-    // WhatsApp integration states
     const [chats, setChats] = useState<any[]>([]);
     const [selectedChats, setSelectedChats] = useState<string[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
@@ -92,364 +114,464 @@ const HQDashboard: React.FC = () => {
     const [sendingProgress, setSendingProgress] = useState({ current: 0, total: 0 });
     const [sendSuccess, setSendSuccess] = useState(false);
 
-    const startScoutEngine = () => {
-        if (isScouting) return;
-        setIsScouting(true);
-        setScoutProgress(0);
-        
-        const scoutLogs = [
-            { agent: 'Rafael', msg: 'Iniciando Grand Scope Engine v4.2...', delay: 500, type: 'heartbeat' },
-            { agent: 'Rafael', msg: 'Conectando con Google Search API & Perplexity...', delay: 2000, type: 'research' },
-            { agent: 'Rafael', msg: 'Escaneando SECOP II & Portal USAID...', delay: 4000, type: 'research' },
-            { agent: 'Rafael', msg: 'Identificada Subvención Global: Rotary Foundation #2501', delay: 7000, type: 'execution' },
-            { agent: 'Rafael', msg: 'Analizando TDRs con IA comercial...', delay: 10000, type: 'peer_review' }
+    const logsEndRef = useRef<HTMLDivElement>(null);
+
+    // Initial Logs
+    useEffect(() => {
+        const initialLogs: LogEntry[] = [
+            { id: '1', agentName: 'Rafael', agentColor: 'bg-indigo-500', mainActivity: 'Grand Scope Engine', subtask: 'Conectado a SECOP II API: Filtrando subvenciones de salud.', time: '2m', type: 'research', status: 'done' },
+            { id: '2', agentName: 'Mateo', agentColor: 'bg-blue-600', mainActivity: 'Grand Scope Engine', subtask: 'Analizando ROI de Subvención RF-2025: Impacto proyectado 45%.', time: '5m', type: 'execution', status: 'done' },
+            { id: '3', agentName: 'Valeria', agentColor: 'bg-amber-500', mainActivity: 'Brand Amplifier', subtask: 'Generando post institucional: Campaña Polio Plus.', time: '10m', type: 'execution', status: 'done' },
         ];
+        setLogs(initialLogs);
+    }, []);
 
-        scoutLogs.forEach((log, index) => {
-            setTimeout(() => {
-                const agent = VIP_AGENTS.find(a => a.name === log.agent) || VIP_AGENTS[0];
-                const newTask: Task = {
-                    id: Math.random().toString(),
-                    agentName: agent.name,
-                    agentColor: agent.color,
-                    content: log.msg,
-                    time: 'Ahora',
-                    type: log.type as any,
-                    status: index === scoutLogs.length - 1 ? 'in_progress' : 'done'
-                };
-                setTasks(prev => [newTask, ...prev.slice(0, 15)]);
-                setScoutProgress((index + 1) * (100 / scoutLogs.length));
-                
-                if (index === scoutLogs.length - 1) {
-                    setIsScouting(false);
-                    const grandTask: Task = {
-                        id: 'grant-' + Date.now(),
-                        agentName: 'Rafael',
-                        agentColor: 'bg-emerald-600',
-                        content: 'Subvención Rotary Foundation: Detectado Nuevo Fondo de Salud',
-                        time: 'Ahora',
-                        type: 'execution',
-                        status: 'done'
-                    };
-                    setTasks(prev => [grandTask, ...prev]);
-                }
-            }, log.delay);
-        });
-    };
-
+    // Neural Feed Logic
     useEffect(() => {
         const interval = setInterval(() => {
-            if (isScouting) return;
-            const agent = VIP_AGENTS[Math.floor(Math.random() * VIP_AGENTS.length)];
-            const newLog: Task = {
+            const activePlans = plans.filter(p => p.isActive);
+            if (activePlans.length === 0) return;
+
+            const randomPlan = activePlans[Math.floor(Math.random() * activePlans.length)];
+            const randomAgentId = randomPlan.agents[Math.floor(Math.random() * randomPlan.agents.length)];
+            const agent = VIP_AGENTS.find(a => a.id === randomAgentId) || VIP_AGENTS[0];
+            const randomSubtask = randomPlan.subtasks[Math.floor(Math.random() * randomPlan.subtasks.length)];
+
+            const newLog: LogEntry = {
                 id: Math.random().toString(),
                 agentName: agent.name,
                 agentColor: agent.color,
-                content: `Monitoreo estable en ${agent.role}...`,
+                mainActivity: randomPlan.title,
+                subtask: `${randomSubtask}: Procesamiento neuronal activo...`,
                 time: 'Ahora',
                 type: 'heartbeat',
-                status: 'done'
+                status: 'processing'
             };
-            setTasks(prev => [newLog, ...prev.slice(0, 15)]);
-        }, 12000);
-        return () => clearInterval(interval);
-    }, [isScouting]);
 
-    // Fetch chats for WhatsApp
+            setLogs(prev => [newLog, ...prev.slice(0, 20)]);
+        }, 8000);
+        return () => clearInterval(interval);
+    }, [plans]);
+
+    const togglePlan = (id: string) => {
+        setPlans(prev => prev.map(p => {
+            if (p.id === id) {
+                const newState = !p.isActive;
+                // Add activation log
+                const log: LogEntry = {
+                    id: Math.random().toString(),
+                    agentName: 'System',
+                    agentColor: 'bg-slate-900',
+                    mainActivity: p.title,
+                    subtask: newState ? 'MOTOR INICIADO: Cargando protocolos distribuidos.' : 'MOTOR DETENIDO: Hibernando agentes.',
+                    time: 'Ahora',
+                    type: newState ? 'execution' : 'alert',
+                    status: 'done'
+                };
+                setLogs(prevLogs => [log, ...prevLogs]);
+                return { ...p, isActive: newState };
+            }
+            return p;
+        }));
+    };
+
+    // WhatsApp Fetch (only when modal opens)
     useEffect(() => {
         if (showPublish) {
             const token = localStorage.getItem('rotary_token');
             setIsLoadingChats(true);
             setFetchError(null);
-            
-            // CACHE BUSTER + ABSOLUTE URL
             const url = `${API_BASE}/whatsapp-qr/chats?cb=${Date.now()}`;
             
-            fetch(url, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            })
-            .then(async r => {
-                if (!r.ok) {
-                    const txt = await r.text();
-                    throw new Error(`Servidor respondió: ${r.status}`);
-                }
-                return r.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    setChats(data.chats || []);
-                } else {
-                    setFetchError(data.error || 'Gateway no conectado.');
-                }
-            })
-            .catch(e => {
-                console.error("Gateway Sync Error:", e);
-                setFetchError(`Error de Sincronización: ${e.message}`);
-            })
-            .finally(() => {
-                setIsLoadingChats(false);
-            });
+            fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(async r => {
+                    if (!r.ok) throw new Error(`Status ${r.status}`);
+                    return r.json();
+                })
+                .then(data => {
+                    if (data.success) setChats(data.chats || []);
+                    else setFetchError(data.error || 'Gateway offline');
+                })
+                .catch(e => setFetchError(`Error de Sincronización: ${e.message}`))
+                .finally(() => setIsLoadingChats(false));
         }
     }, [showPublish]);
 
-    const handlePublish = (task: Task) => {
+    const handlePublish = (log: LogEntry) => {
         setSendSuccess(false);
         setSelectedChats([]);
-        setSendingProgress({ current: 0, total: 0 });
         setShowPublish({
-            hook: "🚀 ¡Nueva oportunidad detectada para Rotary!",
-            context: task.content,
-            ctaLabel: "Ver detalles y postularse",
-            url: "https://clubplatform.org/grants/rf-2501",
-            imageUrl: "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?q=80&w=2670&auto=format&fit=crop"
+            hook: `🚀 Actualización de ${log.mainActivity}`,
+            context: log.subtask,
+            ctaLabel: "Ver Detalles en HQ",
+            url: "https://clubplatform.org/hq/grand-scope",
+            imageUrl: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2672&auto=format&fit=crop"
         });
-    };
-
-    const toggleChat = (id: string) => {
-        setSelectedChats(prev => 
-            prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
-        );
     };
 
     const sendToWhatsApp = async () => {
         if (selectedChats.length === 0 || isSending) return;
         setIsSending(true);
         setSendingProgress({ current: 0, total: selectedChats.length });
-        
         const token = localStorage.getItem('rotary_token');
-        const url = `${API_BASE}/whatsapp-qr/send-message`;
 
         for (let i = 0; i < selectedChats.length; i++) {
             const chatId = selectedChats[i];
             setSendingProgress(p => ({ ...p, current: i + 1 }));
-            
-            if (i > 0) await new Promise(r => setTimeout(r, i < 3 ? 2000 : 4000 + Math.random() * 2000));
+            if (i > 0) await new Promise(r => setTimeout(r, 4000 + Math.random() * 1000));
 
             try {
-                const variants = ["Hola", "Buen día", "Estimados", "Atención"];
-                const prefix = variants[Math.floor(Math.random() * variants.length)];
-                const message = `*${prefix}* - ${showPublish.hook}\n\n${showPublish.context}\n\n🔗 *${showPublish.ctaLabel}:*\n${showPublish.url}`;
-                
-                await fetch(url, {
+                const message = `*${showPublish.hook}*\n\n${showPublish.context}\n\n🔗 *${showPublish.ctaLabel}:*\n${showPublish.url}`;
+                await fetch(`${API_BASE}/whatsapp-qr/send-message`, {
                     method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ chatId: chatId, message: message })
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ chatId, message })
                 });
-            } catch (e) {
-                console.error(`Error sending to ${chatId}:`, e);
-            }
+            } catch (e) { console.error(e); }
         }
-        
         setSendSuccess(true);
         setIsSending(false);
-        setTimeout(() => {
-            setShowPublish(null);
-            setSendSuccess(false);
-        }, 3000);
+        setTimeout(() => { setShowPublish(null); setSendSuccess(false); }, 3000);
     };
 
-    const filteredChats = chats.filter(c => 
-        c.name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
     return (
-        <div className="fixed inset-0 bg-[#F4F7FA] text-gray-700 font-sans z-[9999] overflow-hidden flex flex-col">
+        <div className="fixed inset-0 bg-[#000814] text-slate-300 font-sans z-[9999] overflow-hidden flex flex-col selection:bg-[#F7A81B]/30">
             
-            {/* TOP BAR */}
-            <header className="h-20 bg-white border-b border-gray-200 flex items-center justify-between px-8 shrink-0 shadow-sm relative z-[100]">
+            {/* AMBIENT BACKGROUND */}
+            <div className="absolute inset-0 pointer-events-none opacity-20">
+                <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[#013388] rounded-full blur-[150px]" />
+                <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#F7A81B] rounded-full blur-[150px]" />
+                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10" />
+            </div>
+
+            {/* TOP BAR - FUTURISTIC HUD */}
+            <header className="h-20 bg-black/40 backdrop-blur-2xl border-b border-white/10 flex items-center justify-between px-8 shrink-0 relative z-[100]">
                 <div className="flex items-center gap-6">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-[#013388] rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/20 text-white">
-                            <BrainCircuit className="w-6 h-6" />
+                    <div className="flex items-center gap-4">
+                        <div className="relative">
+                            <div className="w-11 h-11 bg-gradient-to-br from-[#013388] to-blue-400 rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(1,51,136,0.5)]">
+                                <Activity className="w-6 h-6 text-white animate-pulse" />
+                            </div>
+                            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-black" />
                         </div>
                         <div>
-                            <h1 className="text-[#013388] font-black text-lg uppercase tracking-tight leading-none italic">Mission Control VIP</h1>
-                            <span className="text-[10px] text-gray-400 font-bold tracking-[0.2em] uppercase">Club Platform Gateway</span>
+                            <h1 className="text-white font-black text-xl uppercase tracking-tighter italic flex items-center gap-2">
+                                Mission Control <span className="text-[#F7A81B] text-sm not-italic font-bold bg-[#F7A81B]/10 px-2 py-0.5 rounded border border-[#F7A81B]/20">VIP IQ</span>
+                            </h1>
+                            <div className="flex items-center gap-2 mt-0.5">
+                                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping" />
+                                <span className="text-[10px] text-slate-500 font-black tracking-[0.25em] uppercase">Club Platform Neural Gateway • v4.0</span>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-4">
-                    <button onClick={startScoutEngine} disabled={isScouting} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${isScouting ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#013388] text-white hover:bg-[#00246B] active:scale-95'}`}>
-                        <Zap className={`w-4 h-4 ${isScouting ? 'animate-spin' : ''}`} />
-                        {isScouting ? 'Scouting...' : 'Scout Engine'}
-                    </button>
-                    <button onClick={() => window.close()} className="bg-gray-100 hover:bg-gray-200 text-gray-500 p-2.5 rounded-xl transition-all border border-gray-200">
+                <div className="flex items-center gap-5">
+                    <div className="hidden md:flex items-center gap-6 px-6 py-2 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-md">
+                        <div className="text-center">
+                            <p className="text-[8px] text-slate-500 font-bold uppercase tracking-widest mb-0.5">Core Efficiency</p>
+                            <p className="text-xs font-black text-emerald-400">98.4%</p>
+                        </div>
+                        <div className="w-px h-6 bg-white/10" />
+                        <div className="text-center">
+                            <p className="text-[8px] text-slate-500 font-bold uppercase tracking-widest mb-0.5">Active Agents</p>
+                            <p className="text-xs font-black text-blue-400">{VIP_AGENTS.filter(a => a.status !== 'idle').length}/{VIP_AGENTS.length}</p>
+                        </div>
+                    </div>
+                    <button onClick={() => window.close()} className="bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white p-3 rounded-2xl transition-all border border-white/10">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
             </header>
 
             {/* MAIN WORKSPACE */}
-            <main className="flex-1 flex overflow-hidden p-8 gap-8">
+            <main className="flex-1 flex overflow-hidden p-8 gap-8 relative z-10">
                 
-                {/* COLUMN 1: GOALS */}
-                <section className="w-[320px] flex flex-col gap-6 shrink-0 z-10">
+                {/* COLUMN 1: STRATEGIC NODES (PLANS) */}
+                <section className="w-[360px] flex flex-col gap-6 shrink-0 h-full">
                     <div className="flex items-center justify-between px-2">
-                        <h2 className="text-[11px] uppercase font-black tracking-[0.2em] text-[#013388] flex items-center gap-2">
-                            <LayoutDashboard className="w-4 h-4" /> Objetivos de Red
+                        <h2 className="text-[11px] uppercase font-black tracking-[0.3em] text-[#F7A81B] flex items-center gap-2">
+                            <Cpu className="w-4 h-4" /> Orchestrator
                         </h2>
+                        <span className="text-[9px] font-bold text-slate-500 uppercase">3 Nodes Active</span>
                     </div>
-                    <div className="flex-1 overflow-y-auto space-y-4 pr-2 scrollbar-hide">
-                        {goals.map(goal => (
-                            <div key={goal.id} onClick={() => setSelectedGoal(goal)} className="bg-white border border-gray-100 rounded-3xl p-5 hover:border-blue-300 hover:shadow-xl transition-all cursor-pointer group relative overflow-hidden">
+
+                    <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
+                        {plans.map(plan => (
+                            <div key={plan.id} className={`group relative bg-white/5 border rounded-[32px] p-6 transition-all duration-500 ${plan.isActive ? 'border-[#F7A81B]/40 bg-[#F7A81B]/5 shadow-[0_0_30px_rgba(247,168,27,0.05)]' : 'border-white/5 grayscale opacity-60'}`}>
                                 <div className="flex items-start justify-between mb-4">
-                                    <h3 className="text-sm font-bold text-gray-900 leading-snug">{goal.title}</h3>
-                                    <ArrowUpRight className="w-4 h-4 text-gray-300 group-hover:text-[#013388]" />
+                                    <div className="space-y-1">
+                                        <h3 className="text-sm font-black text-white uppercase tracking-tight">{plan.title}</h3>
+                                        <p className="text-[10px] text-slate-400 leading-tight font-medium pr-8">{plan.description}</p>
+                                    </div>
+                                    <button onClick={() => togglePlan(plan.id)} className={`w-10 h-6 rounded-full relative transition-all duration-300 ${plan.isActive ? 'bg-[#F7A81B]' : 'bg-slate-700'}`}>
+                                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 ${plan.isActive ? 'left-5' : 'left-1'}`} />
+                                    </button>
                                 </div>
-                                <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
-                                    <div className="h-full bg-[#013388] transition-all duration-1000" style={{ width: `${goal.progress}%` }} />
+                                
+                                {plan.isActive && (
+                                    <div className="mt-6 space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between text-[9px] font-bold uppercase tracking-widest mb-1 text-slate-500">
+                                                <span>Goal Integrity</span>
+                                                <span className="text-[#F7A81B]">{plan.progress}%</span>
+                                            </div>
+                                            <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                                                <div className="h-full bg-[#F7A81B] shadow-[0_0_10px_#F7A81B] transition-all duration-1000" style={{ width: `${plan.progress}%` }} />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <p className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500">Sub-nodes:</p>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {plan.subtasks.map(s => (
+                                                    <span key={s} className="text-[8px] font-bold bg-white/5 px-2 py-1 rounded-lg border border-white/5 hover:border-[#F7A81B]/30 transition-colors">{s}</span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </section>
+
+                {/* COLUMN 2: NEURAL FEED (CENTER) */}
+                <section className="flex-1 flex flex-col bg-black/40 rounded-[40px] border border-white/5 overflow-hidden shadow-2xl backdrop-blur-xl relative group">
+                    <div className="absolute inset-0 bg-gradient-to-b from-[#013388]/5 to-transparent pointer-events-none" />
+                    
+                    <div className="p-8 border-b border-white/5 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-white/5 flex items-center justify-center border border-white/10">
+                                <Terminal className="w-5 h-5 text-[#F7A81B]" />
+                            </div>
+                            <div>
+                                <h2 className="text-xs uppercase font-black tracking-[0.4em] text-white">Neural activity feed</h2>
+                                <p className="text-[9px] text-slate-500 font-bold mt-0.5">Real-time Agent Synchronization</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 bg-[#F7A81B] rounded-full animate-pulse shadow-[0_0_8px_#F7A81B]" />
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">LIVE DATASTREAM</span>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar relative">
+                        {logs.map(log => (
+                            <div key={log.id} className="animate-in fade-in zoom-in-95 duration-500 relative">
+                                <div className="flex gap-5">
+                                    <div className="flex flex-col items-center">
+                                        <div className={`w-10 h-10 rounded-2xl ${log.agentColor} flex items-center justify-center text-white text-xs font-black shadow-lg shadow-black/40 border border-white/10 shrink-0`}>
+                                            {log.agentName.charAt(0)}
+                                        </div>
+                                        <div className="w-px flex-1 bg-gradient-to-b from-white/10 to-transparent mt-3" />
+                                    </div>
+                                    <div className="flex-1 min-w-0 pt-0.5">
+                                        <div className="flex items-center justify-between mb-1.5">
+                                            <span className="text-[10px] font-black text-[#F7A81B] uppercase tracking-[0.2em]">{log.mainActivity}</span>
+                                            <span className="text-[8px] font-bold text-slate-600 uppercase tabular-nums">{log.time}</span>
+                                        </div>
+                                        <div className="bg-white/5 border border-white/5 p-4 rounded-3xl group/log hover:border-white/10 transition-all">
+                                            <p className="text-[11px] text-slate-300 leading-relaxed font-medium mb-3">
+                                                <span className="text-white font-bold opacity-70 underline decoration-[#F7A81B]/40 underline-offset-4">{log.agentName}</span>: {log.subtask}
+                                            </p>
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    {log.status === 'processing' ? <Loader2 className="w-3 h-3 animate-spin text-blue-400" /> : <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />}
+                                                    <span className={`text-[8px] font-black uppercase tracking-widest ${log.status === 'processing' ? 'text-blue-400' : 'text-emerald-500'}`}>{log.status}</span>
+                                                </div>
+                                                {log.status === 'done' && (
+                                                    <button onClick={() => handlePublish(log)} className="flex items-center gap-2 text-[9px] font-black text-[#F7A81B] brightness-90 hover:brightness-110 uppercase tracking-widest transition-all">
+                                                        <MessageSquare className="w-3.5 h-3.5" /> Publish to District
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         ))}
                     </div>
                 </section>
 
-                {/* COLUMN 2: ACTIVITY FEED */}
-                <section className="w-[420px] flex flex-col bg-white rounded-[32px] border border-gray-200 overflow-hidden shadow-xl shadow-blue-900/5 shrink-0 z-10">
-                    <div className="p-6 border-b border-gray-100 bg-white text-[#013388]">
-                        <h2 className="text-xs uppercase font-black tracking-[0.2em] flex items-center gap-2">
-                            <History className="w-5 h-5" /> Centro de Actividad
+                {/* COLUMN 3: AGENT NETWORK (RIGHT) */}
+                <section className="w-[300px] flex flex-col gap-6 shrink-0">
+                    <div className="px-2">
+                        <h2 className="text-[11px] uppercase font-black tracking-[0.3em] text-[#013388] flex items-center gap-2">
+                            <Bot className="w-4 h-4" /> Cyber Agents
                         </h2>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-6 space-y-5 custom-scrollbar">
-                        {tasks.map(task => (
-                            <div key={task.id} className="group border-b border-gray-50 pb-5 last:border-0 hover:bg-gray-50/50 p-3 -mx-3 rounded-2xl transition-all">
-                                <div className="flex items-start gap-4">
-                                    <div className={`w-9 h-9 rounded-xl ${task.agentColor} flex items-center justify-center text-white text-xs font-black shrink-0`}>
-                                        {task.agentName.charAt(0)}
+
+                    <div className="space-y-4 overflow-y-auto pr-2 flex-1 scrollbar-hide">
+                        {VIP_AGENTS.map(agent => (
+                            <div key={agent.id} className="bg-white/5 border border-white/5 rounded-3xl p-5 hover:bg-white/[0.07] transition-all">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <div className={`w-8 h-8 rounded-xl ${agent.color} flex items-center justify-center text-white text-[10px] font-black`}>
+                                        {agent.name.charAt(0)}
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-[11px] text-gray-600 leading-relaxed font-bold">{task.content}</p>
-                                        {task.status === 'done' && task.type !== 'heartbeat' && (
-                                            <button onClick={() => handlePublish(task)} className="mt-2 text-[10px] font-black text-[#013388] flex items-center gap-1 hover:underline">
-                                                <MoreHorizontal className="w-3.5 h-3.5" /> PREPARAR PUBLICACIÓN
-                                            </button>
-                                        )}
+                                    <div className="flex-1">
+                                        <h4 className="text-[11px] font-black text-white leading-none mb-1">{agent.name}</h4>
+                                        <p className="text-[8px] text-slate-500 uppercase font-bold tracking-widest">{agent.role}</p>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <p className="text-[9px] text-slate-400 italic">"{agent.lastTask}"</p>
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5">
+                                            <div className={`w-1.5 h-1.5 rounded-full ${agent.status === 'online' ? 'bg-emerald-500' : agent.status === 'processing' ? 'bg-blue-400' : 'bg-slate-600'}`} />
+                                            <span className="text-[8px] font-black uppercase text-slate-500">{agent.status}</span>
+                                        </div>
+                                        <Layers className="w-3 h-3 text-white/10" />
                                     </div>
                                 </div>
                             </div>
                         ))}
                     </div>
-                </section>
 
-                {/* COLUMN 3: KANBAN */}
-                <section className="flex-1 flex flex-col gap-6 overflow-hidden z-10">
-                    <div className="flex-1 flex gap-6 overflow-x-auto pb-4 custom-scrollbar">
-                        {['Pendiente', 'En Proceso', 'Finalizado'].map(col => (
-                            <div key={col} className="w-[300px] shrink-0 flex flex-col gap-4">
-                                <h4 className="text-[11px] uppercase font-black tracking-widest text-gray-400 px-2">{col}</h4>
-                                <div className="flex-1 bg-gray-50/50 rounded-[32px] p-4 flex flex-col gap-4 border border-dashed border-gray-200 overflow-y-auto custom-scrollbar">
-                                    {tasks.filter(t => t.status === (col === 'Pendiente' ? 'backlog' : col === 'En Proceso' ? 'in_progress' : 'done')).map(t => (
-                                        <div key={t.id} className="bg-white border border-gray-100 rounded-3xl p-4 shadow-sm hover:shadow-md transition-all">
-                                            <p className="text-[11px] font-bold text-gray-800">{t.content}</p>
-                                            {col === 'Finalizado' && t.type !== 'heartbeat' && (
-                                                <button onClick={() => handlePublish(t)} className="mt-3 w-full py-2 bg-emerald-50 text-emerald-700 rounded-xl text-[10px] font-black uppercase hover:bg-emerald-100 transition-colors">
-                                                    Compartir en WhatsApp
-                                                </button>
-                                            )}
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        ))}
+                    {/* GLOBAL STATUS HUD */}
+                    <div className="bg-gradient-to-br from-[#013388]/20 to-blue-900/20 border border-[#013388]/30 rounded-3xl p-6 backdrop-blur-xl">
+                        <div className="flex items-center gap-3 mb-4">
+                            <ShieldCheck className="w-5 h-5 text-blue-400" />
+                            <span className="text-[10px] font-black text-white uppercase tracking-widest">Network Shield</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-black/40 rounded-full mb-3 overflow-hidden">
+                            <div className="h-full bg-blue-500 animate-pulse transition-all duration-300" style={{ width: '92%' }} />
+                        </div>
+                        <p className="text-[9px] text-blue-400 font-bold uppercase tracking-widest leading-relaxed">District Nodes Secure • Anti-Ban Logic Active</p>
                     </div>
                 </section>
             </main>
 
-            {/* PUBLISH MODAL */}
+            {/* NEURAL PUBLISH MODAL (Glassmorphism) */}
             {showPublish && (
-                <div className="fixed inset-0 bg-[#013388]/60 backdrop-blur-md z-[300] flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-lg rounded-[40px] shadow-2xl overflow-hidden animate-fade-in flex flex-col text-gray-900 max-h-[95vh]">
-                        <div className="p-8 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                            <h3 className="font-black text-[#013388] uppercase tracking-widest text-xs font-sans">Previsualización WhatsApp</h3>
-                            <button onClick={() => setShowPublish(null)} className="p-2 hover:bg-gray-200 rounded-full transition-all">
-                                <X className="w-5 h-5 text-gray-400" />
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-3xl z-[300] flex items-center justify-center p-4">
+                    <div className="bg-slate-900/40 w-full max-w-xl rounded-[48px] border border-white/10 shadow-2xl overflow-hidden animate-fade-in flex flex-col max-h-[95vh] relative">
+                        {/* Modal Ambient Lights */}
+                        <div className="absolute top-0 left-1/4 w-1/2 h-1/2 bg-[#F7A81B]/5 rounded-full blur-[100px] pointer-events-none" />
+                        
+                        <div className="p-10 border-b border-white/5 flex justify-between items-center relative z-10">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-[#25D366]/20 rounded-2xl flex items-center justify-center border border-[#25D366]/30 shadow-[0_0_15px_rgba(37,211,102,0.2)]">
+                                    <MessageSquare className="w-6 h-6 text-[#25D366]" />
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-white uppercase tracking-[0.3em] text-xs">WhatsApp Sync</h3>
+                                    <p className="text-[9px] text-slate-500 font-bold mt-0.5">Publishing Neural Activity to Nodes</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowPublish(null)} className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl transition-all border border-white/5">
+                                <X className="w-5 h-5 text-slate-400" />
                             </button>
                         </div>
-                        <div className="p-8 overflow-y-auto custom-scrollbar">
-                            <div className="bg-[#E4FDDB] rounded-3xl p-6 border border-[#BDE0A8] shadow-inner font-sans text-sm text-[#111B21] space-y-4 max-w-sm mx-auto relative mb-8">
-                                <span className="absolute -top-3 left-6 bg-[#128C7E] text-white px-2 py-0.5 rounded text-[8px] font-black tracking-widest uppercase">WHATSAPP PREVIEW</span>
-                                <img src={showPublish.imageUrl} className="w-full h-40 object-cover rounded-2xl" alt="Preview" />
-                                <div className="space-y-3">
-                                    <p className="font-bold text-[#128C7E] leading-tight">{showPublish.hook}</p>
-                                    <p className="leading-relaxed opacity-90">{showPublish.context}</p>
-                                    <p className="text-[#34B7F1] font-bold underline truncate">{showPublish.url}</p>
+
+                        <div className="p-10 overflow-y-auto custom-scrollbar relative z-10">
+                            <div className="bg-[#111B21] rounded-[32px] p-8 border border-white/5 shadow-2xl font-sans text-sm text-[#E9EDEF] space-y-5 max-w-md mx-auto relative mb-10 overflow-hidden group/wp">
+                                <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent pointer-events-none" />
+                                <span className="inline-block bg-[#128C7E] text-white px-2 py-0.5 rounded text-[8px] font-black tracking-widest uppercase">ENCRYPTED PREVIEW</span>
+                                <img src={showPublish.imageUrl} className="w-full h-44 object-cover rounded-[24px] grayscale-[0.3] group-hover/wp:grayscale-0 transition-all duration-700" alt="Preview" />
+                                <div className="space-y-4">
+                                    <p className="font-black text-[#25D366] text-base leading-tight tracking-tight">{showPublish.hook}</p>
+                                    <p className="leading-relaxed opacity-80 text-xs font-medium">{showPublish.context}</p>
+                                    <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex items-center gap-3">
+                                        <Globe className="w-5 h-5 text-blue-400" />
+                                        <p className="text-blue-400 font-bold underline truncate text-xs">{showPublish.url}</p>
+                                    </div>
                                 </div>
                             </div>
                             
-                            <div className="space-y-6">
-                                <div className="space-y-4">
+                            <div className="space-y-8">
+                                <div className="space-y-5">
                                     <div className="flex items-center justify-between px-2">
-                                        <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2">
-                                            <MessageSquare className="w-3 h-3" /> Destinatarios ({selectedChats.length})
+                                        <label className="text-[10px] font-black text-[#F7A81B] uppercase tracking-[0.2em] flex items-center gap-2">
+                                            <Target className="w-4 h-4" /> Targeting Nodes ({selectedChats.length})
                                         </label>
-                                        <button onClick={() => setSelectedChats(chats.map(c => c.id))} className="text-[9px] font-black text-[#013388] hover:underline uppercase">Seleccionar Todos</button>
+                                        <button onClick={() => setSelectedChats(chats.map(c => c.id))} className="text-[9px] font-black text-white/50 hover:text-white uppercase transition-colors tracking-widest">Select All</button>
                                     </div>
                                     
-                                    <input 
-                                        type="text" 
-                                        placeholder="Buscar contacto o grupo..." 
-                                        value={searchTerm} 
-                                        onChange={(e) => setSearchTerm(e.target.value)} 
-                                        className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-xs font-bold outline-none focus:border-[#013388]/30 transition-all" 
-                                    />
+                                    <div className="relative group">
+                                        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                                            <Search className="w-4 h-4 text-slate-500 group-focus-within:text-[#F7A81B] transition-colors" />
+                                        </div>
+                                        <input 
+                                            type="text" 
+                                            placeholder="SEARCH DISTRICT NODES OR INDIVIDUALS..." 
+                                            value={searchTerm} 
+                                            onChange={(e) => setSearchTerm(e.target.value)} 
+                                            className="w-full pl-12 pr-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black tracking-widest uppercase placeholder:text-slate-700 outline-none focus:border-[#F7A81B]/50 focus:bg-white/[0.08] transition-all" 
+                                        />
+                                    </div>
 
-                                    <div className="max-h-[200px] min-h-[100px] overflow-y-auto space-y-2 pr-2 custom-scrollbar border border-gray-50 rounded-2xl p-2 relative">
+                                    <div className="max-h-[250px] min-h-[150px] overflow-y-auto space-y-2.5 pr-2 custom-scrollbar relative">
                                         {isLoadingChats && (
-                                            <div className="absolute inset-0 bg-white/80 z-20 flex flex-col items-center justify-center gap-3 backdrop-blur-[2px]">
-                                                <Loader2 className="w-6 h-6 text-[#013388] animate-spin" />
-                                                <p className="text-[9px] font-black font-sans text-[#013388] uppercase tracking-widest">Sincronizando Gateway...</p>
+                                            <div className="absolute inset-0 bg-slate-900/80 z-20 flex flex-col items-center justify-center gap-4 backdrop-blur-md rounded-2xl">
+                                                <Loader2 className="w-8 h-8 text-[#F7A81B] animate-spin" />
+                                                <p className="text-[10px] font-black font-sans text-[#F7A81B] uppercase tracking-[0.3em] animate-pulse">Syncing District Grid...</p>
                                             </div>
                                         )}
 
                                         {fetchError && (
-                                            <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex flex-col items-center text-center gap-2">
-                                                <AlertCircle className="w-5 h-5 text-red-500" />
-                                                <p className="text-[10px] font-bold text-red-600 uppercase leading-relaxed">{fetchError}</p>
+                                            <div className="p-6 bg-red-500/10 border border-red-500/20 rounded-3xl flex flex-col items-center text-center gap-3">
+                                                <AlertCircle className="w-6 h-6 text-red-400" />
+                                                <p className="text-[10px] font-bold text-red-400 uppercase leading-relaxed tracking-widest">{fetchError}</p>
                                             </div>
                                         )}
 
                                         {!isLoadingChats && !fetchError && filteredChats.length === 0 && (
-                                            <p className="text-[10px] text-center text-gray-400 font-bold uppercase py-10">No se encontraron chats activos</p>
+                                            <p className="text-[10px] text-center text-slate-600 font-bold uppercase py-10 tracking-widest">No matching nodes found</p>
                                         )}
 
                                         {!isLoadingChats && !fetchError && filteredChats.map(c => (
-                                            <div key={c.id} onClick={() => toggleChat(c.id)} className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${selectedChats.includes(c.id) ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-50 hover:bg-gray-50'}`}>
-                                                <div className="flex items-center gap-3">
-                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black ${c.isGroup ? 'bg-[#013388]/10 text-[#013388]' : 'bg-emerald-100 text-emerald-700'}`}>{c.name.charAt(0)}</div>
+                                            <div key={c.id} onClick={() => toggleChat(c.id)} className={`group/chat flex items-center justify-between p-4 rounded-3xl cursor-pointer transition-all border ${selectedChats.includes(c.id) ? 'bg-[#F7A81B]/10 border-[#F7A81B]/30' : 'bg-white/5 border-white/5 hover:border-white/20'}`}>
+                                                <div className="flex items-center gap-4">
+                                                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-[11px] font-black transition-all ${selectedChats.includes(c.id) ? 'bg-[#F7A81B] text-white' : 'bg-white/10 text-slate-400 group-hover/chat:bg-white/20'}`}>{c.name.charAt(0)}</div>
                                                     <div>
-                                                        <p className="text-[11px] font-bold text-gray-800 leading-none mb-1">{c.name}</p>
-                                                        <p className="text-[8px] text-gray-400 uppercase font-black tracking-tighter">{c.isGroup ? 'Grupo Distrital' : 'Contacto Directo'}</p>
+                                                        <p className="text-xs font-black text-white leading-none mb-1.5 uppercase tracking-tighter">{c.name}</p>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className={`w-1.5 h-1.5 rounded-full ${c.isGroup ? 'bg-indigo-400' : 'bg-emerald-400'}`} />
+                                                            <p className="text-[8px] text-slate-500 uppercase font-black tracking-widest">{c.isGroup ? 'District Node' : 'Individual Agent'}</p>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <div className={`w-5 h-5 rounded-md border-2 transition-all flex items-center justify-center ${selectedChats.includes(c.id) ? 'bg-[#013388] border-[#013388]' : 'border-gray-200'}`}>
-                                                    {selectedChats.includes(c.id) && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                                                <div className={`w-6 h-6 rounded-xl border-2 transition-all flex items-center justify-center ${selectedChats.includes(c.id) ? 'bg-[#F7A81B] border-[#F7A81B] scale-110' : 'border-white/10'}`}>
+                                                    {selectedChats.includes(c.id) && <CheckCircle2 className="w-4 h-4 text-white" />}
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
                                 </div>
 
-                                <button onClick={sendToWhatsApp} disabled={selectedChats.length === 0 || isSending || sendSuccess} className={`w-full py-5 rounded-3xl font-black uppercase tracking-widest transition-all shadow-xl flex flex-col items-center justify-center gap-1 ${sendSuccess ? 'bg-emerald-500 text-white shadow-emerald-900/20' : isSending ? 'bg-gray-100 text-gray-400 shadow-none' : 'bg-[#25D366] text-white hover:bg-[#128C7E] shadow-emerald-900/10'}`}>
-                                    <div className="flex items-center gap-3">
-                                        {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : sendSuccess ? <CheckCircle2 className="w-6 h-6" /> : <Zap className="w-4 h-4 fill-current" />}
-                                        <span className="text-sm">{sendSuccess ? 'Difusión Completada' : isSending ? `Enviando ${sendingProgress.current}/${sendingProgress.total}` : `Enviar a ${selectedChats.length} Chats`}</span>
+                                <div className="space-y-4">
+                                    <button onClick={sendToWhatsApp} disabled={selectedChats.length === 0 || isSending || sendSuccess} className={`w-full py-6 rounded-[32px] font-black uppercase tracking-[0.3em] transition-all shadow-2xl flex flex-col items-center justify-center gap-2 relative overflow-hidden group/send ${sendSuccess ? 'bg-emerald-500 text-white' : isSending ? 'bg-white/5 text-slate-500' : 'bg-[#25D366] text-white hover:brightness-110 shadow-[#25D366]/20'}`}>
+                                        <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover/send:translate-x-[100%] transition-transform duration-1000 ease-in-out pointer-events-none" />
+                                        <div className="flex items-center gap-3 relative z-10">
+                                            {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : sendSuccess ? <CheckCircle2 className="w-6 h-6" /> : <Zap className="w-5 h-5 fill-current" />}
+                                            <span className="text-xs">{sendSuccess ? 'Sync Completed' : isSending ? `UPDATING NODES ${sendingProgress.current}/${sendingProgress.total}` : `INITIATE BROADCAST TO ${selectedChats.length}`}</span>
+                                        </div>
+                                        {isSending && <div className="w-64 h-1 bg-white/10 rounded-full mt-2 overflow-hidden relative z-10"><div className="h-full bg-white shadow-[0_0_8px_white] transition-all duration-300" style={{ width: `${(sendingProgress.current / sendingProgress.total) * 100}%` }} /></div>}
+                                    </button>
+                                    
+                                    <div className="bg-indigo-500/10 rounded-3xl p-5 border border-indigo-500/20 flex items-center gap-4">
+                                        <ShieldCheck className="w-6 h-6 text-indigo-400" />
+                                        <div>
+                                            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-0.5">Valkomen Anti-Ban Shield</p>
+                                            <p className="text-[9px] text-slate-500 font-bold leading-tight">Neural variance and staggered dispatching (4-8s) active. Your district nodes remain secure.</p>
+                                        </div>
                                     </div>
-                                    {isSending && <div className="w-40 h-1 bg-gray-200 rounded-full mt-2 overflow-hidden"><div className="h-full bg-[#128C7E] transition-all duration-300" style={{ width: `${(sendingProgress.current / sendingProgress.total) * 100}%` }} /></div>}
-                                </button>
-                                <div className="p-4 bg-[#F7A81B]/10 rounded-2xl border border-[#F7A81B]/20 flex items-center gap-3">
-                                    <ShieldCheck className="w-5 h-5 text-[#F7A81B]" />
-                                    <p className="text-[9px] font-bold text-[#A8710F] uppercase tracking-wider leading-tight">Protección Anti-Ban HQ: Retardo de 4-6s y varianza léxica activa para ráfagas seguras.</p>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
             )}
+            
+            <style dangerouslySetInnerHTML={{ __html: `
+                .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 10px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.1); }
+                .scrollbar-hide::-webkit-scrollbar { display: none; }
+                @keyframes fade-in { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+                .animate-fade-in { animation: fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+            `}} />
         </div>
     );
 };
