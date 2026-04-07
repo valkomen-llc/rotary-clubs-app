@@ -45,6 +45,7 @@ interface Agent {
 interface Goal {
     id: string;
     title: string;
+    description: string;
     status: 'active' | 'completed' | 'paused';
     progress: number;
     total: number;
@@ -85,18 +86,24 @@ const AGENTS: Agent[] = [
     { id: 'valeria', name: 'Valeria', icon: '🐉', color: 'bg-emerald-600', status: 'busy' },
     { id: 'diego', name: 'Diego', icon: '🐺', color: 'bg-amber-600', status: 'idle' },
 ];
+import { IMPLEMENTATIONS } from './DashboardOverview';
 
-const INITIAL_GOALS: Goal[] = [
-    { id: 'g1', title: 'Grand Scope: Subvenciones Salud', status: 'active', current: 8, total: 8, progress: 100, assignedAgents: ['rafael', 'mateo', 'valeria'] },
-    { id: 'g2', title: 'Market Rotary to Districts', status: 'active', current: 8, total: 20, progress: 40, assignedAgents: ['sofia', 'diego'] },
-    { id: 'g3', title: 'Convert HQ Leads', status: 'active', current: 2, total: 21, progress: 10, assignedAgents: ['mateo', 'valeria'] },
-];
+const INITIAL_GOALS: Goal[] = IMPLEMENTATIONS.filter(i => i.status === 'active').map(impl => ({
+    id: impl.id,
+    title: impl.name,
+    description: impl.description,
+    status: 'active',
+    current: impl.load > 0 ? impl.load : 50,
+    total: 100,
+    progress: impl.load > 0 ? impl.load : 50,
+    assignedAgents: ['rafael', 'mateo', 'valeria', 'sofia', 'diego'].slice(0, impl.agents || 2),
+}));
 
 const INITIAL_TASKS: Task[] = [
-    { id: 't1', title: 'Monitor and optimize live SECOP engagement', category: 'Grand Scope', agentId: 'rafael', time: '3h ago', priority: 'High', status: 'backlog' },
-    { id: 't2', title: 'Set up District community space for early adopters', category: 'Conversion', agentId: 'mateo', time: '18h ago', priority: 'Medium', status: 'backlog' },
-    { id: 't3', title: 'Create post-launch engagement plan', category: 'Grand Scope', agentId: 'sofia', time: '10h ago', priority: 'Medium', status: 'backlog' },
-    { id: 't4', title: 'Find Rotary threads to engage with', category: 'Market', agentId: 'diego', time: '10d ago', priority: 'High', status: 'done', details: {
+    { id: 't1', title: 'Monitor and optimize live SECOP engagement', description: 'Monitor engagement metrics', category: 'Grand Scope', agentId: 'rafael', time: '3h ago', priority: 'High', status: 'backlog' },
+    { id: 't2', title: 'Set up District community space for early adopters', description: 'Create community guidelines and structure', category: 'Conversion', agentId: 'mateo', time: '18h ago', priority: 'Medium', status: 'backlog' },
+    { id: 't3', title: 'Create post-launch engagement plan', description: 'Draft post-launch engagement and followup plan', category: 'Grand Scope', agentId: 'sofia', time: '10h ago', priority: 'Medium', status: 'backlog' },
+    { id: 't4', title: 'Find Rotary threads to engage with', description: 'Search related subreddits and forums', category: 'Market', agentId: 'diego', time: '10d ago', priority: 'High', status: 'done', details: {
         gaps: [
             "Response length: Opp #3/5 are 200+ words = 'essay spam' risk.",
             "Schedule feels engineered vs natural engagement.",
@@ -172,10 +179,11 @@ const HQDashboard: React.FC = () => {
                     <div className="flex-1 overflow-y-auto p-3 space-y-3">
                         {INITIAL_GOALS.map(goal => (
                             <div key={goal.id} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm hover:shadow-md transition-all">
-                                <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center justify-between mb-1.5">
                                     <h4 className="text-xs font-bold text-gray-800 leading-tight">{goal.title}</h4>
-                                    <div className="bg-blue-50 text-[#013388] text-[9px] font-black px-1.5 py-0.5 rounded uppercase">Active</div>
+                                    <div className="bg-blue-50 text-[#013388] text-[9px] font-black px-1.5 py-0.5 rounded uppercase shrink-0 ml-2">Active</div>
                                 </div>
+                                <p className="text-[10px] text-gray-500 mb-3 leading-tight line-clamp-2">{goal.description}</p>
                                 <div className="space-y-2">
                                     <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
                                         <div className="h-full bg-emerald-500 transition-all duration-1000" style={{ width: `${goal.progress}%` }} />
