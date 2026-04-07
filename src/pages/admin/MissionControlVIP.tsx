@@ -168,6 +168,35 @@ const HQDashboard: React.FC = () => {
         done: tasks.filter(t => t.status === 'done')
     };
 
+    // Trigger n8n Webhook
+    const handleShareGrant = async (network: 'whatsapp' | 'email', task: Task) => {
+        const webhookUrl = import.meta.env.VITE_N8N_WEBHOOK_URL || 'https://n8n.clubplatform.org/webhook/grant-distribution';
+        try {
+            const payload = {
+                network,
+                grantData: {
+                    title: task.title,
+                    description: task.description,
+                    matchCategory: task.category
+                },
+                adminContact: 'admin@rotary4271.org',
+                timestamp: new Date().toISOString()
+            };
+            
+            // Execute silent fetch to n8n (no wait on UI blocking)
+            fetch(`${webhookUrl}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).catch(() => null); // Fail silently if no n8n server exists locally yet.
+
+            alert(`¡Distribución vía ${network.toUpperCase()} iniciada! Se ha despachado el payload a n8n.`);
+        } catch (error) {
+            console.error("Error triggerring webhook:", error);
+            alert(`Error simulando envío a n8n por ${network}.`);
+        }
+    };
+
     return (
         <div className="fixed inset-0 bg-[#F1F5F9] text-gray-800 font-sans z-[9999] overflow-hidden flex flex-col">
             
@@ -301,7 +330,7 @@ const HQDashboard: React.FC = () => {
                                         {key === 'done' && (
                                             <div className="flex items-center gap-2 mb-4 border-t border-gray-50 pt-3">
                                                 <button 
-                                                    onClick={(e) => { e.stopPropagation(); alert('Se disparará el webhook a n8n para enviar la campaña por WhatsApp (Camila)'); }}
+                                                    onClick={(e) => { e.stopPropagation(); handleShareGrant('whatsapp', t); }}
                                                     className="flex flex-1 items-center justify-center gap-1.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 transition-colors border border-emerald-100" 
                                                     title="Enviar vía WhatsApp"
                                                 >
@@ -309,7 +338,7 @@ const HQDashboard: React.FC = () => {
                                                     <span className="text-[9px] font-black uppercase tracking-wider">WhatsApp</span>
                                                 </button>
                                                 <button 
-                                                    onClick={(e) => { e.stopPropagation(); alert('Se enviará una plantilla de correo a los clubes con el formato de la oportunidad.'); }}
+                                                    onClick={(e) => { e.stopPropagation(); handleShareGrant('email', t); }}
                                                     className="flex flex-1 items-center justify-center gap-1.5 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 transition-colors border border-blue-100" 
                                                     title="Enviar Plantilla Correo"
                                                 >
