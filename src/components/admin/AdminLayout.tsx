@@ -38,7 +38,8 @@ import {
     Briefcase,
     Award,
     Terminal,
-    QrCode
+    QrCode,
+    ShieldCheck
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -234,7 +235,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         if (isSuperAdmin) {
             items.push(
                 { icon: Terminal, label: 'Mission Control VIP', path: '/admin/mission-control-vip', category: 'General', keywords: ['agentes', 'mission control', 'gateway', 'vip'] },
-                { icon: QrCode, label: 'WhatsApp QR Gateway', path: '/admin/whatsapp-qr', category: 'General', keywords: ['whatsapp', 'qr', 'web', 'grupos'] }
+                { icon: QrCode, label: 'WhatsApp QR Gateway', path: '/admin/whatsapp-qr', category: 'General', keywords: ['whatsapp', 'qr', 'web', 'grupos'] },
+                { icon: ShieldCheck, label: 'System Updates', path: '/admin/system-updates', category: 'General', keywords: ['updates', 'versiones', 'changelog', 'sistema'] }
             );
         }
 
