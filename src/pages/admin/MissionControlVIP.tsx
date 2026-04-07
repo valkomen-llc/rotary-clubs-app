@@ -1,33 +1,28 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-    BrainCircuit,
+    LayoutDashboard,
     Zap,
     Target,
     History,
     CheckCircle2,
     X,
-    LayoutDashboard,
     MoreHorizontal,
-    ArrowUpRight,
     MessageSquare,
     Loader2,
     ShieldCheck,
     AlertCircle,
     Activity,
-    Cpu,
-    Network,
     Terminal,
-    ChevronRight,
-    Power,
-    Settings2,
+    Settings,
+    Plus,
     Search,
-    Globe,
-    Layers,
-    Bot,
+    ChevronRight,
+    SearchCode,
+    Filter,
+    MessageCircle,
+    ArrowRightCircle,
     ExternalLink,
-    Database,
-    BarChart3,
-    Fingerprint
+    Database
 } from 'lucide-react';
 
 const getApiBase = () => {
@@ -38,524 +33,373 @@ const getApiBase = () => {
 
 const API_BASE = getApiBase();
 
-// COLORS: Rotary Official Palette
-const COLORS = {
-  ROTARY_BLUE: '#013388',
-  ROTARY_GOLD: '#F7A81B',
-  ROTARY_SKY: '#005DAA',
-  BG_DARK: '#001A47', // Deep Rotary Variation
-  WHITE: '#FFFFFF'
-};
-
+// --- DATA TYPES ---
 interface Agent {
     id: string;
     name: string;
-    role: string;
+    icon: string;
     color: string;
-    status: 'online' | 'processing' | 'idle';
-    lastTask: string;
+    status: 'online' | 'busy' | 'idle';
 }
 
-interface ActionPlan {
+interface Goal {
+    id: string;
+    title: string;
+    status: 'active' | 'completed' | 'paused';
+    progress: number;
+    total: number;
+    current: number;
+    assignedAgents: string[];
+}
+
+interface Task {
     id: string;
     title: string;
     description: string;
-    isActive: boolean;
-    progress: number;
-    subtasks: string[];
-    agents: string[];
+    category: string;
+    agentId: string;
+    time: string;
+    priority: 'High' | 'Medium' | 'Low';
+    status: 'backlog' | 'todo' | 'in_progress' | 'peer_review' | 'done';
     details?: {
+        gaps: string[];
+        quality: string;
         source: string;
-        url: string;
-        method: string;
-        kpis: { label: string; value: string }[];
-        summary: string;
+        link: string;
     }
 }
 
-interface LogEntry {
+interface ActivityLog {
     id: string;
     agentName: string;
-    agentColor: string;
-    mainActivity: string;
-    subtask: string;
+    content: string;
     time: string;
-    type: 'peer_review' | 'heartbeat' | 'execution' | 'research' | 'alert';
-    status: 'done' | 'processing' | 'pending';
-    detailedInfo?: any;
+    type: 'peer_review' | 'heartbeat' | 'execution';
 }
 
-const VIP_AGENTS: Agent[] = [
-    { id: 'rafael', name: 'Rafael', role: 'Grant Intelligence Expert', color: 'bg-[#005DAA]', status: 'online', lastTask: 'Scanning SECOP II' },
-    { id: 'mateo', name: 'Mateo', role: 'Strategic ROI Analyst', color: 'bg-[#013388]', status: 'online', lastTask: 'Calculating Grant Impacts' },
-    { id: 'sofia', name: 'Sofía', role: 'Campaign Concierge', color: 'bg-[#00246B]', status: 'idle', lastTask: 'Waiting for leads' },
-    { id: 'valeria', name: 'Valeria', role: 'Institutional Comms', color: 'bg-[#F7A81B]', status: 'processing', lastTask: 'Drafting announcement' },
+// --- MOCK DATA BASED ON SCREENSHOTS ---
+const AGENTS: Agent[] = [
+    { id: 'rafael', name: 'Rafael', icon: '🤖', color: 'bg-blue-600', status: 'online' },
+    { id: 'mateo', name: 'Mateo', icon: '🍷', color: 'bg-red-600', status: 'busy' },
+    { id: 'sofia', name: 'Sofía', icon: '⚔️', color: 'bg-slate-700', status: 'online' },
+    { id: 'valeria', name: 'Valeria', icon: '🐉', color: 'bg-emerald-600', status: 'busy' },
+    { id: 'diego', name: 'Diego', icon: '🐺', color: 'bg-amber-600', status: 'idle' },
 ];
 
-const INITIAL_PLANS: ActionPlan[] = [
-    {
-        id: 'grand-scope',
-        title: 'Grand Scope Engine',
-        description: 'Gestión Automatizada de Subvenciones (SECOP II, USAID, Rotary Foundation)',
-        isActive: true,
-        progress: 68,
-        subtasks: ['Escaneo de Bases de Datos', 'Filtrage por TDRs', 'Análisis de Viabilidad IA', 'Generación de Borradores'],
-        agents: ['rafael', 'mateo'],
-        details: {
-            source: "SECOP II / Ministerio de Salud Nacional",
-            url: "https://secop.gov.co/contracts/MS-2024-001",
-            method: "Apify Scraper + Perplexity Deep Search",
-            kpis: [
-                { label: "Confianza de Match", value: "94%" },
-                { label: "Monto Proyectado", value: "$50,000 USD" },
-                { label: "Prioridad Distrital", value: "A+" }
-            ],
-            summary: "Extrayendo requerimientos técnicos para proyecto de agua potable en el Distrito 4281."
-        }
-    },
-    {
-        id: 'membership-pulse',
-        title: 'Membership Pulse IQ',
-        description: 'Análisis de retención y captación de nuevos socios vía IA predictiva.',
-        isActive: false,
-        progress: 0,
-        subtasks: ['Análisis de Churn', 'Lead Scoring Socios', 'Plan de Onboarding'],
-        agents: ['sofia'],
-        details: {
-            source: "Base de Datos Interna Club Platform",
-            url: "https://app.clubplatform.org/admin/data",
-            method: "Neural Predictive Modeling",
-            kpis: [
-                { label: "Tasa de Retención", value: "85%" },
-                { label: "Nuevos Prospectos", value: "12" }
-            ],
-            summary: "Calculando probabilidad de salida de socios con menos de 2 años en el club."
-        }
-    },
-    {
-        id: 'brand-amplifier',
-        title: 'Brand Amplifier VIP',
-        description: 'Orquestación de imagen pública e impacto institucional en redes.',
-        isActive: true,
-        progress: 45,
-        subtasks: ['Monitor de Menciones', 'Drafting Automático', 'Schedule de Ráfagas'],
-        agents: ['valeria', 'sofia'],
-        details: {
-            source: "Meta Graph API / Brand Monitoring",
-            url: "https://facebook.com/rotaryinternational",
-            method: "Sentimental Analysis IA",
-            kpis: [
-                { label: "Alcance Orgánico", value: "24.5k" },
-                { label: "Sentimiento", value: "Positivo" }
-            ],
-            summary: "Monitoreando impacto del video de Polio Plus compartido hace 4 horas."
-        }
-    }
+const INITIAL_GOALS: Goal[] = [
+    { id: 'g1', title: 'Grand Scope: Subvenciones Salud', status: 'active', current: 8, total: 8, progress: 100, assignedAgents: ['rafael', 'mateo', 'valeria'] },
+    { id: 'g2', title: 'Market Rotary to Districts', status: 'active', current: 8, total: 20, progress: 40, assignedAgents: ['sofia', 'diego'] },
+    { id: 'g3', title: 'Convert HQ Leads', status: 'active', current: 2, total: 21, progress: 10, assignedAgents: ['mateo', 'valeria'] },
+];
+
+const INITIAL_TASKS: Task[] = [
+    { id: 't1', title: 'Monitor and optimize live SECOP engagement', category: 'Grand Scope', agentId: 'rafael', time: '3h ago', priority: 'High', status: 'backlog' },
+    { id: 't2', title: 'Set up District community space for early adopters', category: 'Conversion', agentId: 'mateo', time: '18h ago', priority: 'Medium', status: 'backlog' },
+    { id: 't3', title: 'Create post-launch engagement plan', category: 'Grand Scope', agentId: 'sofia', time: '10h ago', priority: 'Medium', status: 'backlog' },
+    { id: 't4', title: 'Find Rotary threads to engage with', category: 'Market', agentId: 'diego', time: '10d ago', priority: 'High', status: 'done', details: {
+        gaps: [
+            "Response length: Opp #3/5 are 200+ words = 'essay spam' risk.",
+            "Schedule feels engineered vs natural engagement.",
+            "No contingency if OP never replies."
+        ],
+        quality: "Excellent research + response variety. Needs conciseness + realistic flow.",
+        source: "Google Search + SECOP Portal",
+        link: "https://secop.gov.co/query"
+    }}
 ];
 
 const HQDashboard: React.FC = () => {
-    const [plans, setPlans] = useState<ActionPlan[]>(INITIAL_PLANS);
-    const [logs, setLogs] = useState<LogEntry[]>([]);
-    const [inspectorPlan, setInspectorPlan] = useState<ActionPlan | null>(null);
+    const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
+    const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+    const [showSettings, setShowSettings] = useState(false);
+    
+    // --- WHATSAPP BROADCAST MODAL (PREVIOUS FEATURE) ---
     const [showPublish, setShowPublish] = useState<any>(null);
     const [chats, setChats] = useState<any[]>([]);
     const [selectedChats, setSelectedChats] = useState<string[]>([]);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [isSending, setIsSending] = useState(false);
     const [isLoadingChats, setIsLoadingChats] = useState(false);
-    const [fetchError, setFetchError] = useState<string | null>(null);
-    const [sendingProgress, setSendingProgress] = useState({ current: 0, total: 0 });
-    const [sendSuccess, setSendSuccess] = useState(false);
 
-    // Initial Logs
-    useEffect(() => {
-        const initialLogs: LogEntry[] = [
-            { id: '1', agentName: 'Rafael', agentColor: 'bg-[#013388]', mainActivity: 'Grand Scope Engine', subtask: 'Conectado a SECOP II API: Filtrando subvenciones de salud.', time: '2m', type: 'research', status: 'done' },
-            { id: '2', agentName: 'Mateo', agentColor: 'bg-[#005DAA]', mainActivity: 'Grand Scope Engine', subtask: 'Analizando ROI de Subvención RF-2025: Impacto proyectado 45%.', time: '5m', type: 'execution', status: 'done' },
-            { id: '3', agentName: 'Valeria', agentColor: 'bg-[#F7A81B]', mainActivity: 'Brand Amplifier', subtask: 'Generando post institucional: Campaña Polio Plus.', time: '10m', type: 'execution', status: 'done' },
-        ];
-        setLogs(initialLogs);
-    }, []);
-
-    // Neural Feed Logic
-    useEffect(() => {
-        const interval = setInterval(() => {
-            const activePlans = plans.filter(p => p.isActive);
-            if (activePlans.length === 0) return;
-
-            const randomPlan = activePlans[Math.floor(Math.random() * activePlans.length)];
-            const randomAgentId = randomPlan.agents[Math.floor(Math.random() * randomPlan.agents.length)];
-            const agent = VIP_AGENTS.find(a => a.id === randomAgentId) || VIP_AGENTS[0];
-            const randomSubtask = randomPlan.subtasks[Math.floor(Math.random() * randomPlan.subtasks.length)];
-
-            const newLog: LogEntry = {
-                id: Math.random().toString(),
-                agentName: agent.name,
-                agentColor: agent.color,
-                mainActivity: randomPlan.title,
-                subtask: `${randomSubtask}: Procesamiento neuronal activo...`,
-                time: 'Ahora',
-                type: 'heartbeat',
-                status: 'processing'
-            };
-
-            setLogs(prev => [newLog, ...prev.slice(0, 20)]);
-        }, 8000);
-        return () => clearInterval(interval);
-    }, [plans]);
-
-    const togglePlan = (id: string, e: React.MouseEvent) => {
-        e.stopPropagation();
-        setPlans(prev => prev.map(p => {
-            if (p.id === id) return { ...p, isActive: !p.isActive };
-            return p;
-        }));
+    // Filter tasks by columns
+    const boardCols = {
+        backlog: tasks.filter(t => t.status === 'backlog'),
+        todo: tasks.filter(t => t.status === 'todo'),
+        in_progress: tasks.filter(t => t.status === 'in_progress'),
+        done: tasks.filter(t => t.status === 'done')
     };
-
-    // WhatsApp Fetch (only when modal opens)
-    useEffect(() => {
-        if (showPublish) {
-            const token = localStorage.getItem('rotary_token');
-            setIsLoadingChats(true);
-            setFetchError(null);
-            const url = `${API_BASE}/whatsapp-qr/chats?cb=${Date.now()}`;
-            
-            fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
-                .then(async r => {
-                    if (!r.ok) throw new Error(`Status ${r.status}`);
-                    return r.json();
-                })
-                .then(data => {
-                    if (data.success) setChats(data.chats || []);
-                    else setFetchError(data.error || 'Gateway offline');
-                })
-                .catch(e => setFetchError(`Error de Sincronización: ${e.message}`))
-                .finally(() => setIsLoadingChats(false));
-        }
-    }, [showPublish]);
-
-    const handlePublish = (log: LogEntry) => {
-        setSendSuccess(false);
-        setSelectedChats([]);
-        setShowPublish({
-            hook: `🚀 Actualización de ${log.mainActivity}`,
-            context: log.subtask,
-            ctaLabel: "Ver Detalles en HQ",
-            url: "https://clubplatform.org/hq/grand-scope",
-            imageUrl: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2672&auto=format&fit=crop"
-        });
-    };
-
-    const sendToWhatsApp = async () => {
-        if (selectedChats.length === 0 || isSending) return;
-        setIsSending(true);
-        setSendingProgress({ current: 0, total: selectedChats.length });
-        const token = localStorage.getItem('rotary_token');
-
-        for (let i = 0; i < selectedChats.length; i++) {
-            const chatId = selectedChats[i];
-            setSendingProgress(p => ({ ...p, current: i + 1 }));
-            if (i > 0) await new Promise(r => setTimeout(r, 4000 + Math.random() * 1000));
-
-            try {
-                const message = `*${showPublish.hook}*\n\n${showPublish.context}\n\n🔗 *${showPublish.ctaLabel}:*\n${showPublish.url}`;
-                await fetch(`${API_BASE}/whatsapp-qr/send-message`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ chatId, message })
-                });
-            } catch (e) { console.error(e); }
-        }
-        setSendSuccess(true);
-        setIsSending(false);
-        setTimeout(() => { setShowPublish(null); setSendSuccess(false); }, 3000);
-    };
-
-    const filteredChats = chats.filter(c => 
-        c.name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
 
     return (
-        <div className="fixed inset-0 bg-[#001438] text-slate-300 font-sans z-[9999] overflow-hidden flex flex-col">
+        <div className="fixed inset-0 bg-[#F1F5F9] text-gray-800 font-sans z-[9999] overflow-hidden flex flex-col">
             
-            {/* AMBIENT BACKGROUND */}
-            <div className="absolute inset-0 pointer-events-none opacity-20">
-                <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[#013388] rounded-full blur-[150px]" />
-                <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#F7A81B] rounded-full blur-[150px]" />
-                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-5" />
-            </div>
-
-            {/* TOP BAR - ROTARY BRANDED */}
-            <header className="h-20 bg-[#013388]/90 backdrop-blur-2xl border-b border-white/10 flex items-center justify-between px-8 shrink-0 relative z-[100]">
-                <div className="flex items-center gap-6">
-                    <div className="flex items-center gap-4">
-                        <div className="relative">
-                            <div className="w-11 h-11 bg-white rounded-xl flex items-center justify-center shadow-lg">
-                                <Activity className="w-6 h-6 text-[#013388] animate-pulse" />
+            {/* AGENT BAR (TOP) */}
+            <div className="h-14 bg-[#013388] px-4 flex items-center justify-between shadow-md">
+                <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide py-2">
+                    <span className="text-[10px] font-black text-white/50 uppercase tracking-widest mr-3">Agents</span>
+                    {AGENTS.map(agent => (
+                        <div key={agent.id} className="flex items-center gap-2 bg-black/20 hover:bg-black/30 px-3 py-1.5 rounded-lg border border-white/10 transition-all cursor-pointer">
+                            <div className="relative">
+                                <span className="text-sm">{agent.icon}</span>
+                                <div className={`absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-[#013388] ${agent.status === 'online' ? 'bg-emerald-500' : 'bg-red-500'}`} />
                             </div>
+                            <span className="text-[11px] font-bold text-white pr-1">{agent.name}</span>
                         </div>
-                        <div>
-                            <h1 className="text-white font-black text-xl uppercase tracking-tighter italic flex items-center gap-2">
-                                Mission Control <span className="text-[#F7A81B] text-sm not-italic font-bold bg-[#F7A81B]/10 px-2 py-0.5 rounded border border-[#F7A81B]/40">VIP HQ</span>
-                            </h1>
-                            <div className="flex items-center gap-2 mt-0.5">
-                                <span className="text-[10px] text-white/60 font-black tracking-[0.25em] uppercase">Rotary Intelligence Gateway • v4.2</span>
-                            </div>
-                        </div>
-                    </div>
+                    ))}
                 </div>
-
-                <div className="flex items-center gap-5">
-                    <div className="hidden md:flex items-center gap-6 px-6 py-2 bg-black/20 rounded-2xl border border-white/5 backdrop-blur-md">
-                        <div className="text-center">
-                            <p className="text-[8px] text-white/50 font-bold uppercase tracking-widest mb-0.5">Integridad</p>
-                            <p className="text-xs font-black text-[#F7A81B]">99.8%</p>
-                        </div>
-                    </div>
-                    <button onClick={() => window.close()} className="bg-white/10 hover:bg-white/20 text-white p-3 rounded-2xl transition-all border border-white/10">
+                <div className="flex items-center gap-4">
+                    <button onClick={() => setShowSettings(!showSettings)} className="text-white hover:bg-white/10 p-2 rounded-lg transition-colors">
+                        <Settings className="w-5 h-5" />
+                    </button>
+                    <button onClick={() => window.close()} className="bg-white/10 hover:bg-white/20 text-white p-2 rounded-lg transition-all">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
-            </header>
+            </div>
 
-            {/* MAIN WORKSPACE */}
-            <main className="flex-1 flex overflow-hidden p-8 gap-8 relative z-10">
+            {/* MAIN CONTENT AREA */}
+            <div className="flex-1 flex overflow-hidden">
                 
-                {/* COLUMN 1: ESTRATEGIA (PLANS) */}
-                <section className="w-[380px] flex flex-col gap-6 shrink-0 h-full">
-                    <div className="flex items-center justify-between px-2">
-                        <h2 className="text-[11px] uppercase font-black tracking-[0.3em] text-[#F7A81B] flex items-center gap-2">
-                            <Cpu className="w-4 h-4" /> ESTRATEGIA NODAL
-                        </h2>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
-                        {plans.map(plan => (
-                            <div 
-                                key={plan.id} 
-                                onClick={() => setInspectorPlan(plan)}
-                                className={`group relative bg-[#013388]/30 border rounded-[36px] p-6 transition-all duration-500 cursor-pointer ${inspectorPlan?.id === plan.id ? 'border-[#F7A81B] ring-2 ring-[#F7A81B]/20 bg-[#013388]/50' : 'border-white/5 hover:border-white/20'}`}
-                            >
-                                {plan.isActive && <div className="absolute top-6 right-6 w-2 h-2 bg-emerald-400 rounded-full animate-ping shadow-[0_0_10px_#10b981]" />}
-                                
-                                <div className="flex items-start justify-between mb-4">
-                                    <div className="space-y-1">
-                                        <h3 className="text-sm font-black text-white uppercase tracking-tight">{plan.title}</h3>
-                                        <p className="text-[10px] text-white/60 leading-tight font-medium pr-8">{plan.description}</p>
-                                    </div>
-                                    <button 
-                                        onClick={(e) => togglePlan(plan.id, e)} 
-                                        className={`w-10 h-6 rounded-full relative transition-all duration-300 ${plan.isActive ? 'bg-[#F7A81B]' : 'bg-slate-700'}`}
-                                    >
-                                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 ${plan.isActive ? 'left-5' : 'left-1'}`} />
-                                    </button>
-                                </div>
-                                
-                                <div className="mt-6 flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <BarChart3 className="w-3.5 h-3.5 text-[#F7A81B]" />
-                                        <span className="text-[10px] font-black text-white/70 uppercase">{plan.progress}%</span>
-                                    </div>
-                                    <div className="flex -space-x-2">
-                                        {plan.agents.map(aid => {
-                                            const ag = VIP_AGENTS.find(a => a.id === aid);
-                                            return <div key={aid} className={`w-6 h-6 rounded-lg ${ag?.color} border-2 border-[#001438] flex items-center justify-center text-[8px] font-black text-white`} title={ag?.name}>{ag?.name.charAt(0)}</div>
-                                        })}
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </section>
-
-                {/* COLUMN 2: NEURAL FEED (CENTER) */}
-                <section className="flex-1 flex flex-col bg-[#013388]/10 rounded-[48px] border border-white/5 overflow-hidden shadow-2xl backdrop-blur-xl relative">
-                    <div className="p-8 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
-                        <div className="flex items-center gap-3">
-                            <Terminal className="w-5 h-5 text-[#F7A81B]" />
-                            <h2 className="text-xs uppercase font-black tracking-[0.4em] text-white">Telemetría de Actividad</h2>
+                {/* COLUMN 1: GOALS (LEFT) */}
+                <div className="w-[300px] border-r border-gray-200 bg-white/50 flex flex-col">
+                    <div className="p-4 flex items-center justify-between border-b border-gray-100 uppercase">
+                        <div className="flex items-center gap-2">
+                            <Target className="w-4 h-4 text-[#013388]" />
+                            <span className="text-[11px] font-black text-gray-400 tracking-widest">Goals</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-gray-400">3</span>
+                            <Plus className="w-3.5 h-3.5 text-gray-400" />
                         </div>
                     </div>
-
-                    <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar relative">
-                        {logs.map(log => (
-                            <div key={log.id} className="animate-in fade-in slide-in-from-left-4 duration-500">
-                                <div className="flex gap-5">
-                                    <div className={`w-10 h-10 rounded-2xl ${log.agentColor} flex items-center justify-center text-white text-xs font-black shadow-lg border border-white/10 shrink-0`}>
-                                        {log.agentName.charAt(0)}
+                    <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                        {INITIAL_GOALS.map(goal => (
+                            <div key={goal.id} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm hover:shadow-md transition-all">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h4 className="text-xs font-bold text-gray-800 leading-tight">{goal.title}</h4>
+                                    <div className="bg-blue-50 text-[#013388] text-[9px] font-black px-1.5 py-0.5 rounded uppercase">Active</div>
+                                </div>
+                                <div className="space-y-2">
+                                    <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                                        <div className="h-full bg-emerald-500 transition-all duration-1000" style={{ width: `${goal.progress}%` }} />
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between mb-1.5">
-                                            <span className="text-[10px] font-black text-[#F7A81B] uppercase tracking-[0.2em]">{log.mainActivity}</span>
-                                            <span className="text-[8px] font-bold text-white/30 uppercase tabular-nums">{log.time}</span>
-                                        </div>
-                                        <div className="bg-white/5 border border-white/5 p-4 rounded-[24px] hover:border-[#F7A81B]/30 transition-all group">
-                                            <p className="text-[11px] text-white/80 leading-relaxed font-medium mb-3 whitespace-pre-wrap">
-                                                <span className="text-white font-bold">{log.agentName}</span>: {log.subtask}
-                                            </p>
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
-                                                    {log.status === 'processing' ? <Loader2 className="w-3 h-3 animate-spin text-blue-400" /> : <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />}
-                                                    <span className={`text-[8px] font-black uppercase tracking-widest ${log.status === 'processing' ? 'text-blue-400' : 'text-emerald-500'}`}>{log.status}</span>
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex -space-x-1">
+                                            {goal.assignedAgents.map(aid => (
+                                                <div key={aid} className="w-5 h-5 rounded-md bg-gray-100 border border-white flex items-center justify-center text-[9px] shadow-sm">
+                                                    {AGENTS.find(a => a.id === aid)?.icon}
                                                 </div>
-                                                {log.status === 'done' && (
-                                                    <button onClick={() => handlePublish(log)} className="text-[9px] font-black text-[#F7A81B] flex items-center gap-2 uppercase tracking-widest hover:scale-105 transition-all">
-                                                        <MessageSquare className="w-3.5 h-3.5" /> Difundir Hallazgo
-                                                    </button>
-                                                )}
-                                            </div>
+                                            ))}
                                         </div>
+                                        <span className="text-[10px] font-bold text-gray-400 tracking-tighter">{goal.current}/{goal.total} ({goal.progress}%)</span>
                                     </div>
                                 </div>
                             </div>
                         ))}
                     </div>
-                </section>
+                </div>
 
-                {/* COLUMN 3: INSPECTOR (RIGHT) */}
-                <section className="w-[340px] flex flex-col gap-6 shrink-0 h-full">
-                    {inspectorPlan ? (
-                        <div className="flex-1 flex flex-col bg-white/5 border border-white/10 rounded-[48px] overflow-hidden animate-in slide-in-from-right-8 duration-500 shadow-2xl">
-                            <div className="p-8 border-b border-white/10 bg-[#F7A81B]/10">
-                                <div className="flex items-center gap-3 mb-4">
-                                    <Fingerprint className="w-6 h-6 text-[#F7A81B]" />
-                                    <h2 className="text-xs font-black text-white uppercase tracking-widest">Plan Inspector</h2>
+                {/* COLUMN 2: ACTIVITY FEED */}
+                <div className="w-[340px] border-r border-gray-200 bg-white flex flex-col">
+                    <div className="p-4 flex items-center justify-between border-b border-gray-100 uppercase">
+                        <div className="flex items-center gap-2">
+                            <Activity className="w-4 h-4 text-[#013388]" />
+                            <span className="text-[11px] font-black text-gray-400 tracking-widest">Activity</span>
+                        </div>
+                        <span className="text-[10px] font-bold text-gray-400">60</span>
+                    </div>
+                    <div className="flex-1 overflow-y-auto custom-scrollbar">
+                        {INITIAL_TASKS.filter(t => t.status === 'done').map(task => (
+                            <div key={task.id} onClick={() => setSelectedTask(task)} className="p-4 border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer group">
+                                <div className="flex gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-sm shrink-0 border border-gray-200">
+                                        {AGENTS.find(a => a.id === task.agentId)?.icon}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-[11px] font-bold text-gray-800 leading-tight mb-1">
+                                            <span className="text-[#013388]">{AGENTS.find(a => a.id === task.agentId)?.name}</span> Peer reviewed: {task.title}
+                                        </p>
+                                        <span className="text-[9px] text-gray-400 font-bold uppercase">{task.time}</span>
+                                    </div>
+                                    <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <MessageCircle className="w-3.5 h-3.5 text-gray-300" />
+                                    </div>
                                 </div>
-                                <h3 className="text-sm font-black text-[#F7A81B] uppercase italic mb-2 leading-none shrink-0">{inspectorPlan.title}</h3>
+                            </div>
+                        ))}
+                        {/* Heartbeat logs */}
+                        <div className="p-4 flex gap-3 opacity-60">
+                             <div className="w-8 h-8 flex items-center justify-center text-sm">🛡️</div>
+                             <div>
+                                 <p className="text-[11px] font-bold text-gray-400 underline decoration-dotted">Samwell Tarly Heartbeat check: no tasks or reviews pending</p>
+                                 <span className="text-[9px] text-gray-400 font-bold uppercase">10m ago</span>
+                             </div>
+                             <div className="ml-auto">🗃️</div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* KANBAN BOARD (RIGHT) */}
+                <div className="flex-1 bg-gray-50/30 flex overflow-x-auto pb-4 custom-scrollbar">
+                    {Object.entries(boardCols).map(([key, colTasks]) => (
+                        <div key={key} className="w-[300px] shrink-0 flex flex-col p-4 gap-4 border-r border-gray-200 last:border-0">
+                            <div className="flex items-center justify-between px-2 uppercase">
                                 <div className="flex items-center gap-2">
-                                    <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
-                                        <div className="h-full bg-white transition-all duration-1000" style={{ width: `${inspectorPlan.progress}%` }} />
-                                    </div>
-                                    <span className="text-[9px] font-black text-white shrink-0">{inspectorPlan.progress}%</span>
+                                    <div className={`w-2 h-2 rounded-full ${key === 'done' ? 'bg-[#F7A81B]' : 'bg-gray-400'}`} />
+                                    <span className="text-[11px] font-black text-gray-400 tracking-widest">{key.replace('_', ' ')}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-bold text-gray-400">{colTasks.length}</span>
+                                    <Plus className="w-3.5 h-3.5 text-gray-400" />
                                 </div>
                             </div>
-
-                            <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
-                                {/* FUENTE DE VERDAD */}
-                                <div className="space-y-3">
-                                    <label className="text-[9px] font-black text-[#F7A81B] uppercase tracking-widest flex items-center gap-2">
-                                        <Database className="w-3.5 h-3.5" /> Fuente de Verdad
-                                    </label>
-                                    <div className="bg-black/40 rounded-2xl p-4 border border-white/5">
-                                        <p className="text-[10px] text-white font-bold leading-tight mb-2 underline">{inspectorPlan.details?.source}</p>
-                                        <a href={inspectorPlan.details?.url} target="_blank" rel="noreferrer" className="text-[9px] text-[#F7A81B]/70 truncate flex items-center gap-1 hover:text-[#F7A81B] transition-colors">
-                                            {inspectorPlan.details?.url} <ExternalLink className="w-2.5 h-2.5" />
-                                        </a>
-                                    </div>
-                                </div>
-
-                                {/* PROTOCOLO IA */}
-                                <div className="space-y-3">
-                                    <label className="text-[9px] font-black text-[#F7A81B] uppercase tracking-widest flex items-center gap-2">
-                                        <ShieldCheck className="w-3.5 h-3.5" /> Protocolo de Análisis
-                                    </label>
-                                    <div className="bg-[#013388]/40 rounded-2xl p-4 border border-[#F7A81B]/20">
-                                        <p className="text-[10px] text-white leading-relaxed italic">"{inspectorPlan.details?.method}"</p>
-                                    </div>
-                                </div>
-
-                                {/* KPIs */}
-                                <div className="space-y-3">
-                                    <label className="text-[9px] font-black text-[#F7A81B] uppercase tracking-widest flex items-center gap-2">
-                                        <BarChart3 className="w-3.5 h-3.5" /> Métricas de Impacto
-                                    </label>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {inspectorPlan.details?.kpis.map(kpi => (
-                                            <div key={kpi.label} className="bg-white/5 border border-white/5 p-3 rounded-2xl text-center">
-                                                <p className="text-[8px] text-white/40 font-bold uppercase mb-1">{kpi.label}</p>
-                                                <p className="text-xs font-black text-white">{kpi.value}</p>
+                            <div className="flex-1 space-y-4">
+                                {colTasks.map(t => (
+                                    <div key={t.id} onClick={() => setSelectedTask(t)} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer group">
+                                        <h5 className="text-[12px] font-bold text-gray-800 leading-snug mb-4 group-hover:text-[#013388]">{t.title}</h5>
+                                        <div className="inline-block bg-gray-50 text-gray-400 text-[10px] font-bold px-2 py-1 rounded-lg mb-4 border border-gray-100">{t.category}</div>
+                                        <div className="flex items-center justify-between border-t border-gray-50 pt-3">
+                                            <div className="w-7 h-7 rounded-lg bg-gray-50 flex items-center justify-center text-xs border border-gray-100">
+                                                {AGENTS.find(a => a.id === t.agentId)?.icon}
                                             </div>
-                                        ))}
+                                            <div className="flex items-center gap-2">
+                                                <div className={`w-3 h-3 rounded-full flex items-center justify-center text-[7px] text-white font-black ${t.priority === 'High' ? 'bg-red-500' : 'bg-gray-300'}`}>
+                                                    {t.priority.charAt(0)}
+                                                </div>
+                                                <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1 group-hover:text-gray-600 transition-colors">
+                                                    <Loader2 className="w-3 h-3 opacity-50" /> {t.time}
+                                                </span>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
 
-                                {/* RESUMEN AGENTE */}
-                                <div className="space-y-3">
-                                    <label className="text-[9px] font-black text-[#F7A81B] uppercase tracking-widest flex items-center gap-2">
-                                        <Bot className="w-3.5 h-3.5" /> Contexto Extraído
-                                    </label>
-                                    <p className="text-xs text-white/70 leading-relaxed font-medium bg-white/[0.02] p-4 rounded-3xl border border-white/5 italic">
-                                        {inspectorPlan.details?.summary}
-                                    </p>
-                                </div>
+            {/* TASK DETAIL MODAL (PEER REVIEW STYLE) */}
+            {selectedTask && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[10000] flex items-center justify-center p-4">
+                    <div className="bg-[#0F172A] w-full max-w-2xl rounded-[32px] border border-white/10 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh]">
+                        <div className="p-6 border-b border-white/10 flex items-center gap-3 bg-black/20">
+                            <div className="flex items-center gap-2 shrink-0">
+                                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full text-white uppercase ${selectedTask.priority === 'High' ? 'bg-red-600' : 'bg-slate-700'}`}>High</span>
+                                <span className="bg-slate-800 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter">{selectedTask.category}</span>
+                                <span className="bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">Peer Review</span>
                             </div>
+                            <button onClick={() => setSelectedTask(null)} className="ml-auto p-2 hover:bg-white/10 rounded-xl transition-all">
+                                <X className="w-5 h-5 text-white/50" />
+                            </button>
                         </div>
-                    ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center border border-dashed border-white/10 rounded-[48px] opacity-40">
-                             <Fingerprint className="w-12 h-12 mb-4 text-white/30" />
-                             <p className="text-[10px] font-black uppercase text-white/30 tracking-widest">Selecciona un Nodo</p>
-                        </div>
-                    )}
-                </section>
-            </main>
-
-            {/* PUBLISH MODAL (Glassmorphism) */}
-            {showPublish && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-3xl z-[300] flex items-center justify-center p-4">
-                    <div className="bg-[#001438] w-full max-w-xl rounded-[48px] border border-white/10 shadow-2xl overflow-hidden animate-fade-in flex flex-col text-slate-100">
-                        <div className="p-10 border-b border-white/5 flex justify-between items-center bg-[#013388]/20">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-[#25D366]/20 rounded-2xl flex items-center justify-center border border-[#25D366]/30 shadow-[0_0_15px_rgba(37,211,102,0.2)]">
-                                    <MessageSquare className="w-6 h-6 text-[#25D366]" />
-                                </div>
-                                <h3 className="font-black text-white uppercase tracking-[0.3em] text-xs">WhatsApp Sync Terminal</h3>
-                            </div>
-                            <button onClick={() => setShowPublish(null)} className="p-3 bg-white/5 rounded-2xl transition-all"><X className="w-5 h-5 text-slate-400" /></button>
-                        </div>
-                        <div className="p-10 overflow-y-auto custom-scrollbar">
-                            {/* PREVIEW TÁCTICA */}
-                            <div className="bg-[#111B21] rounded-[36px] p-8 border border-white/10 shadow-full font-sans text-sm text-[#E9EDEF] space-y-5 mb-10">
-                                <span className="inline-block bg-[#128C7E] text-white px-2 py-0.5 rounded text-[8px] font-black tracking-[0.3em] uppercase">ENCRYPTED PREVIEW</span>
-                                <img src={showPublish.imageUrl} className="w-full h-44 object-cover rounded-3xl" alt="Preview" />
-                                <div className="space-y-4">
-                                    <p className="font-black text-[#25D366] text-base leading-tight tracking-tight">{showPublish.hook}</p>
-                                    <p className="leading-relaxed opacity-80 text-xs font-medium">{showPublish.context}</p>
-                                </div>
-                            </div>
+                        
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-8 text-slate-300">
+                            <h2 className="text-xl font-black text-white mb-8 border-b border-white/5 pb-4 tracking-tight">{selectedTask.title}</h2>
                             
                             <div className="space-y-8">
-                                <div className="space-y-5">
-                                    <div className="flex items-center justify-between px-2">
-                                        <label className="text-[10px] font-black text-[#F7A81B] uppercase tracking-[0.2em] flex items-center gap-2"><Target className="w-4 h-4" /> Targeting ({selectedChats.length})</label>
-                                        <button onClick={() => setSelectedChats(chats.map(c => c.id))} className="text-[9px] font-black text-white/50 hover:text-white uppercase transition-colors tracking-widest uppercase">Todo el Distrito</button>
-                                    </div>
-                                    <div className="relative group">
-                                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-                                         <input type="text" placeholder="BUSCAR NODOS..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black tracking-widest placeholder:text-white/20 outline-none focus:border-[#F7A81B]/50 transition-all" />
-                                    </div>
-                                    <div className="max-h-[200px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
-                                        {isLoadingChats && <Loader2 className="w-8 h-8 text-[#F7A81B] animate-spin mx-auto my-8" />}
-                                        {fetchError && <p className="text-[10px] text-red-400 font-bold text-center py-4 uppercase">{fetchError}</p>}
-                                        {!isLoadingChats && !fetchError && filteredChats.map(c => (
-                                            <div key={c.id} onClick={() => toggleChat(c.id)} className={`flex items-center justify-between p-4 rounded-3xl cursor-pointer border ${selectedChats.includes(c.id) ? 'bg-[#F7A81B]/10 border-[#F7A81B]/30' : 'bg-white/5 border-white/5'}`}>
-                                                <div className="flex items-center gap-4">
-                                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-[10px] font-black ${selectedChats.includes(c.id) ? 'bg-[#F7A81B] text-white' : 'bg-white/10 text-white/40'}`}>{c.name.charAt(0)}</div>
-                                                    <p className="text-xs font-black text-white leading-none uppercase tracking-tighter">{c.name}</p>
-                                                </div>
-                                                <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center ${selectedChats.includes(c.id) ? 'bg-[#F7A81B] border-[#F7A81B]' : 'border-white/10'}`}>
-                                                    {selectedChats.includes(c.id) && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
-                                                </div>
-                                            </div>
-                                        ))}
+                                {/* Search Logic Simulation */}
+                                <div className="space-y-4">
+                                    <label className="text-[10px] font-black text-[#F7A81B] uppercase tracking-[0.2em] flex items-center gap-2">
+                                        <SearchCode className="w-4 h-4" /> Búsqueda en {selectedTask.details?.source || 'Fuentes Globales'}
+                                    </label>
+                                    <div className="bg-white/5 p-5 rounded-2xl border border-white/5 italic text-sm leading-relaxed">
+                                        "{selectedTask.description}"
                                     </div>
                                 </div>
-                                <button onClick={sendToWhatsApp} disabled={selectedChats.length === 0 || isSending || sendSuccess} className={`w-full py-6 rounded-[32px] font-black uppercase tracking-[0.3em] flex items-center justify-center gap-3 shadow-2xl transition-all ${sendSuccess ? 'bg-emerald-500' : isSending ? 'bg-white/5' : 'bg-[#25D366] hover:brightness-110'}`}>
-                                    {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : sendSuccess ? <CheckCircle2 className="w-6 h-6" /> : <Zap className="w-5 h-5 fill-current" />}
-                                    <span className="text-xs">{sendSuccess ? 'Broadcasting Complete' : isSending ? `TRANSMITIENDO...` : `DESPLEGAR EN ${selectedChats.length} NODOS`}</span>
+
+                                {/* Gaps / Findings */}
+                                <div className="space-y-4">
+                                    <label className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                                         <Filter className="w-4 h-4" /> Brechas en la comunidad (AI Analysis)
+                                    </label>
+                                    <ul className="space-y-3">
+                                        {(selectedTask.details?.gaps || ["Analizando respuesta en tiempo real...", "Extrayendo TDRs prioritarios..."]).map((gap, i) => (
+                                            <li key={i} className="flex gap-3 text-sm font-medium">
+                                                <span className="text-white/30">{i + 1}.</span>
+                                                <span>{gap}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+
+                                {/* Peer Review Conclusion */}
+                                <div className="p-6 bg-slate-900 border border-white/5 rounded-3xl">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="w-8 h-8 rounded-lg bg-red-800/30 border border-red-500/30 flex items-center justify-center shadow-lg shadow-red-500/10">🍷</div>
+                                        <div>
+                                            <p className="text-[11px] font-black text-white uppercase leading-none">Mateo <span className="text-white/40 not-italic font-medium lowercase">4m ago • Resolve</span></p>
+                                        </div>
+                                    </div>
+                                    <div className="text-sm font-medium leading-relaxed pl-11">
+                                        <p className="mb-4">PEER REVIEW Real Research: Excellent—5 real posts, Opp #1 PERFECT (explicitly wants AI video tools). Authentic protocol (no Rotary in first reply), variety (Help/Learning/Question), public only.</p>
+                                        <div className="space-y-2 text-white/70">
+                                            <p className="text-[10px] font-black text-[#F7A81B] uppercase tracking-widest mt-4">Response quality gaps:</p>
+                                            <p>1. Opp #1 response TOO LONG (massive paragraph)—Reddit prefers 3-4 line bursts.</p>
+                                            <p>2. Some pitchy despite "Help-Only" label: "We generate variants, test, scale winner" = marketing speak.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Interactive Chat Input */}
+                        <div className="p-6 bg-black/40 border-t border-white/10 flex items-center gap-4">
+                            <div className="flex-1 relative group">
+                                <input 
+                                    type="text" 
+                                    placeholder="Instrucción adicional para el agente..." 
+                                    className="w-full bg-slate-800/80 border border-white/10 p-4 pl-6 pr-14 rounded-2xl text-xs font-bold text-white outline-none focus:ring-2 focus:ring-[#013388]/50 transition-all placeholder:text-slate-600"
+                                />
+                                <button className="absolute right-3 top-1/2 -translate-y-1/2 bg-[#013388] text-white p-2 rounded-xl">
+                                    <ArrowRightCircle className="w-5 h-5" />
                                 </button>
                             </div>
+                            <button className="p-3 bg-red-600/10 text-red-500 border border-red-500/30 rounded-2xl hover:bg-red-600 transition-colors">
+                                <X className="w-5 h-5" />
+                            </button>
                         </div>
                     </div>
                 </div>
             )}
-            
+
+            {/* SETTINGS MODAL (API KEYS) */}
+            {showSettings && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[10001] flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-8 duration-300">
+                        <div className="p-8 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                            <div className="flex items-center gap-3">
+                                <Database className="w-5 h-5 text-[#013388]" />
+                                <h3 className="font-black text-[#013388] uppercase tracking-widest text-xs">API Configuration</h3>
+                            </div>
+                            <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-gray-200 rounded-xl transition-all">
+                                <X className="w-5 h-5 text-gray-400" />
+                            </button>
+                        </div>
+                        <div className="p-8 space-y-6">
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2">Apify API Key</label>
+                                    <input type="password" placeholder="apify_proxy_..." className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-xs font-bold outline-none border-focus:border-[#013388]/30" />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2">Perplexity API Key</label>
+                                    <input type="password" placeholder="pplx-..." className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-xs font-bold outline-none border-focus:border-[#013388]/30" />
+                                </div>
+                            </div>
+                            <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-center gap-3">
+                                <ShieldCheck className="w-5 h-5 text-[#013388]" />
+                                <p className="text-[9px] font-bold text-[#013388] uppercase leading-relaxed">Las llaves se guardarán en tu entorno seguro de Club Platform.</p>
+                            </div>
+                            <button onClick={() => setShowSettings(false)} className="w-full py-5 bg-[#013388] text-white rounded-[32px] font-black uppercase text-xs tracking-widest hover:brightness-110 shadow-xl transition-all">Guardar Configuración</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <style dangerouslySetInnerHTML={{ __html: `
-                .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+                .custom-scrollbar::-webkit-scrollbar { width: 5px; }
                 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-                .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 10px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.05); border-radius: 10px; }
                 .scrollbar-hide::-webkit-scrollbar { display: none; }
-                @keyframes fade-in { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
-                .animate-fade-in { animation: fade-in 0.4s ease-out; }
+                @keyframes pulse-ring { 0% { transform: scale(0.9); opacity: 0.5; } 50% { opacity: 0.3; } 100% { transform: scale(1.3); opacity: 0; } }
             `}} />
         </div>
     );
