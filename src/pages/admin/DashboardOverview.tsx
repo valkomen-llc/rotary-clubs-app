@@ -1,25 +1,16 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
-    Activity,
-    Zap,
-    Target,
-    ListChecks,
     Cpu,
-    RefreshCw,
     Database,
     Play,
     Pause,
-    ArrowRight,
     Settings,
-    MoreVertical,
-    BarChart3,
     Terminal,
-    Layers,
     PlusCircle,
     ArrowUpRight,
     ShieldCheck
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 const IMPLEMENTATIONS = [
     { 
@@ -45,6 +36,7 @@ const IMPLEMENTATIONS = [
 ];
 
 const DashboardOverview: React.FC = () => {
+    const navigate = useNavigate();
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
             {/* TOP METRICS */}
@@ -81,11 +73,7 @@ const DashboardOverview: React.FC = () => {
                         </p>
                      </div>
                      <button
-                         onClick={() => {
-                             const url = `${window.location.origin}${window.location.pathname}#/admin/mission-control-vip`;
-                             const win = window.open(url, '_blank');
-                             if (!win) window.location.hash = '#/admin/mission-control-vip';
-                         }}
+                         onClick={() => navigate('/admin/mission-control-vip')}
                          className="bg-white/10 hover:bg-white/20 border border-white/20 px-10 py-5 rounded-[24px] font-black uppercase text-xs tracking-widest transition-all backdrop-blur-md active:scale-95 flex items-center gap-3 cursor-pointer"
                      >
                          Enter System [⌘+K] <ArrowUpRight className="w-5 h-5 text-[#F7A81B]" />
