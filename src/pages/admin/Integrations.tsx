@@ -5,7 +5,7 @@ import {
     RefreshCw, Sparkles, CheckCircle, Languages, Eye, EyeOff,
     TrendingUp, Cpu, DollarSign, Database, AlertCircle,
     ChevronDown, ChevronUp, MapPin, Clock, Activity, ExternalLink,
-    LineChart, Zap, Bot, Star, Trash2, TestTube2,
+    LineChart, Zap, Bot, Star, Trash2, TestTube2, Search
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -720,25 +720,25 @@ const Integrations: React.FC = () => {
                     </div>
                 </div>
 
-                {/* ── Apify Integration Section ── */}
+                {/* ── Google Search API (Grant Scout) ── */}
                 <div className="bg-white border border-gray-100 rounded-[2.5rem] p-10 shadow-sm">
                     <div className="flex items-center gap-4 mb-8">
                         <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center shadow-sm">
-                            <Database className="w-6 h-6 text-blue-600" />
+                            <Search className="w-6 h-6 text-blue-600" />
                         </div>
                         <div>
-                            <h2 className="text-2xl font-black text-gray-900">Apify API (Grant Scout)</h2>
-                            <p className="text-sm text-gray-400 font-medium">Extrae datos de SECOP II, USAID y portales de subvenciones de forma programática.</p>
+                            <h2 className="text-2xl font-black text-gray-900">Google Custom Search API</h2>
+                            <p className="text-sm text-gray-400 font-medium">Búsqueda global de convocatorias de ONGs, Fundaciones Corporativas y entidades internacionales.</p>
                         </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
                         <div className="space-y-4">
-                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Apify API Token</label>
+                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Google API Key</label>
                             <div className="flex gap-3">
                                 <div className="relative flex-1">
                                     <input type={showApifyKey ? 'text' : 'password'} value={apifyKey}
-                                        onChange={e => setApifyKey(e.target.value)} placeholder="apify_api_..."
+                                        onChange={e => setApifyKey(e.target.value)} placeholder="AIzaSy..."
                                         className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-6 pr-12 text-sm font-bold text-gray-900 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400 transition-all" />
                                     <button type="button" onClick={() => setShowApifyKey(v => !v)}
                                         className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -751,15 +751,15 @@ const Integrations: React.FC = () => {
                                 </button>
                             </div>
                             <p className="text-[10px] text-gray-400 font-medium ml-1">
-                                Obtén tu token en <a href="https://console.apify.com/account/integrations" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">console.apify.com</a>. Las credenciales se inyectarán en los subagentes.
+                                Obtén tu token en <a href="https://developers.google.com/custom-search/v1/overview" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Google Cloud Console</a>. Reemplaza las búsquedas manuales por scouting automatizado.
                             </p>
                         </div>
                         <div className="bg-blue-50 rounded-[2rem] p-7 border border-blue-100">
-                            <h4 className="text-sm font-black text-gray-900 mb-2">Estado del Scraper</h4>
-                            <p className="text-[10px] text-gray-500 mb-4 leading-relaxed">El motor Grand Scope usará esta llave para instanciar subagentes como Rafael y rastrear oportunidades gubernamentales cada lunes.</p>
+                            <h4 className="text-sm font-black text-gray-900 mb-2">Estado de Búsqueda</h4>
+                            <p className="text-[10px] text-gray-500 mb-4 leading-relaxed">Sustituye a Apify/SECOP. El motor Grand Scope usará esta llave para buscar subvenciones internacionales confiables compatibles con Rotary de manera recurrente.</p>
                             <div className="flex items-center gap-2">
                                 <span className="inline-flex items-center gap-1 bg-white border border-blue-200 text-blue-700 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider">
-                                    <CheckCircle className="w-3 h-3" /> SECOP II Ready
+                                    <CheckCircle className="w-3 h-3" /> CSE Ready
                                 </span>
                             </div>
                         </div>
