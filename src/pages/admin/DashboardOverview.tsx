@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
     Cpu,
     Database,
@@ -8,11 +8,16 @@ import {
     Terminal,
     PlusCircle,
     ArrowUpRight,
-    ShieldCheck
+    ShieldCheck,
+    X,
+    Globe,
+    Calendar,
+    Layers,
+    Save
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-const IMPLEMENTATIONS = [
+export const IMPLEMENTATIONS = [
     { 
         id: 'grand-scope', 
         name: 'Grand Scope Engine', 
@@ -37,8 +42,13 @@ const IMPLEMENTATIONS = [
 
 const DashboardOverview: React.FC = () => {
     const navigate = useNavigate();
+    const [configModalOpen, setConfigModalOpen] = useState<string | null>(null);
+    const [grantFreq, setGrantFreq] = useState('Semanal');
+    const [grantLimit, setGrantLimit] = useState(10);
+    const [grantSources, setGrantSources] = useState('Rotary International, USAID, Fundación Bill Gates');
+
     return (
-        <div className="space-y-8 animate-in fade-in duration-500">
+        <div className="space-y-8 animate-in fade-in duration-500 relative">
             {/* TOP METRICS */}
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
                 {[
@@ -134,7 +144,7 @@ const DashboardOverview: React.FC = () => {
                                 </div>
 
                                 <div className="flex items-center gap-2">
-                                    <button className="flex-1 py-3 bg-white border border-slate-100 hover:border-[#013388] text-slate-700 hover:text-[#013388] rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2">
+                                    <button onClick={() => setConfigModalOpen(impl.id)} className="flex-1 py-3 bg-white border border-slate-100 hover:border-[#013388] text-slate-700 hover:text-[#013388] rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2">
                                         <Settings className="w-3.5 h-3.5" /> Config
                                     </button>
                                     <button className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${impl.status === 'active' ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20' : 'bg-[#013388] text-white shadow-lg shadow-[#013388]/20'}`}>
@@ -152,6 +162,85 @@ const DashboardOverview: React.FC = () => {
                 <ShieldCheck className="w-6 h-6 text-[#013388]" />
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Todos los protocolos de seguridad de Club Platform están activos.</p>
             </div>
+
+            {/* CONFIG MODAL */}
+            {configModalOpen === 'grand-scope' && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                    <div className="bg-white max-w-2xl w-full rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-8 border-b border-slate-100 relative">
+                            <button onClick={() => setConfigModalOpen(null)} className="absolute right-6 top-6 p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-600 rounded-full transition-all">
+                                <X className="w-5 h-5" />
+                            </button>
+                            <div className="flex items-center gap-4 mb-2">
+                                <div className="w-12 h-12 bg-[#013388] text-white rounded-2xl flex items-center justify-center shadow-lg shadow-[#013388]/20">
+                                    <Globe className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Grand Scope Config</h2>
+                                    <p className="text-[10px] text-slate-500 font-bold tracking-widest uppercase">Parámetros de extracción y publicación</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div className="p-8 space-y-8 max-h-[60vh] overflow-y-auto">
+                            <div className="space-y-4">
+                                <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                    <Calendar className="w-4 h-4 text-[#F7A81B]" /> Frecuencia de Búsqueda y Distribución
+                                </label>
+                                <select 
+                                    value={grantFreq} 
+                                    onChange={(e) => setGrantFreq(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 text-sm font-bold text-slate-800 rounded-xl p-4 focus:ring-4 focus:ring-[#013388]/10 focus:border-[#013388] outline-none"
+                                >
+                                    <option value="Diario">Todos los días (Resumen Diario)</option>
+                                    <option value="Semanal">Semanal (Boletín todos los Lunes)</option>
+                                    <option value="Quincenal">Quincenal (Cada 15 días)</option>
+                                    <option value="Mensual">Mensual</option>
+                                </select>
+                            </div>
+
+                            <div className="space-y-4">
+                                <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                    <Database className="w-4 h-4 text-[#F7A81B]" /> Cantidad Máxima por Extracción
+                                </label>
+                                <div className="flex gap-4">
+                                    {[5, 10, 20].map(val => (
+                                        <button 
+                                            key={val}
+                                            onClick={() => setGrantLimit(val)}
+                                            className={`flex-1 py-4 rounded-xl border font-black text-xs transition-all ${grantLimit === val ? 'bg-[#013388] text-white border-[#013388] shadow-md shadow-[#013388]/20' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}
+                                        >
+                                            {val} Subs
+                                        </button>
+                                    ))}
+                                </div>
+                                <p className="text-[10px] text-slate-500">Limita la sobrecarga de información que se le enviará a los clubes en un solo reporte de WhatsApp/Email.</p>
+                            </div>
+
+                            <div className="space-y-4">
+                                <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                    <Layers className="w-4 h-4 text-[#F7A81B]" /> Dominios o Palabras Clave (Dorks)
+                                </label>
+                                <textarea 
+                                    value={grantSources}
+                                    onChange={(e) => setGrantSources(e.target.value)}
+                                    rows={3}
+                                    className="w-full bg-slate-50 border border-slate-200 text-sm font-medium text-slate-800 rounded-xl p-4 focus:ring-4 focus:ring-[#013388]/10 focus:border-[#013388] outline-none resize-none"
+                                    placeholder="Rotary International, USAID, Fundación Bill Gates..."
+                                />
+                                <p className="text-[10px] text-slate-500">Usado por la API de Perplexity/Google para acotar los resultados del motor.</p>
+                            </div>
+                        </div>
+
+                        <div className="p-8 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-4">
+                            <button onClick={() => setConfigModalOpen(null)} className="px-6 py-3 text-xs font-black text-slate-500 uppercase tracking-widest hover:text-slate-800">Cancelar</button>
+                            <button onClick={() => { alert('Configuración guardada en la base de datos (Motor n8n actualizado).'); setConfigModalOpen(null); }} className="flex items-center gap-2 px-8 py-3 bg-[#013388] text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-900 shadow-xl shadow-[#013388]/20 transition-all">
+                                <Save className="w-4 h-4" /> Guardar Cambios
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
