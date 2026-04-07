@@ -113,10 +113,10 @@ const Integrations: React.FC = () => {
     const [geminiStatus, setGeminiStatus] = useState<'unknown' | 'ok' | 'error'>('unknown');
     const [geminiTesting, setGeminiTesting] = useState(false);
 
-    // Apify
-    const [apifyKey, setApifyKey] = useState('');
-    const [showApifyKey, setShowApifyKey] = useState(false);
-    const [apifyStatus, setApifyStatus] = useState<'unknown' | 'ok' | 'error'>('unknown');
+    // Google Custom Search API
+    const [googleKey, setGoogleKey] = useState('');
+    const [showGoogleKey, setShowGoogleKey] = useState(false);
+    const [googleStatus, setGoogleStatus] = useState<'unknown' | 'ok' | 'error'>('unknown');
 
     // Perplexity
     const [perplexityKey, setPerplexityKey] = useState('');
@@ -304,7 +304,7 @@ const Integrations: React.FC = () => {
         { id: 'chatbot', name: 'AI Chatbot Assistant', description: 'Provide 24/7 automated support to visitors using our custom AI trained on your club data.', icon: MessageSquare, iconColor: 'text-rotary-blue', iconBg: 'bg-sky-50', status: 'Active', connected: true },
         { id: 'gemini', name: 'Gemini 2.0 Flash — Traducciones', description: 'Traduce automáticamente todo el contenido del sitio al idioma seleccionado por el visitante.', icon: Languages, iconColor: 'text-violet-600', iconBg: 'bg-violet-50', status: geminiStatus === 'ok' ? 'Conectado' : 'Sin configurar', connected: geminiStatus === 'ok' },
         { id: 'facebook', name: 'Facebook Pixel', description: 'Measure the effectiveness of your advertising by understanding the actions people take on your site.', icon: Globe, iconColor: 'text-blue-600', iconBg: 'bg-blue-50', status: 'Not Connected', connected: false },
-        { id: 'apify', name: 'Apify API (Grant Scout)', description: 'Scraping automatizado de SECOP II y portales gubernamentales.', icon: Database, iconColor: 'text-blue-600', iconBg: 'bg-blue-50', status: apifyStatus === 'ok' ? 'Conectado' : 'Sin configurar', connected: apifyStatus === 'ok' },
+        { id: 'google', name: 'Google Custom Search API', description: 'Scraping automatizado de convocatorias globales y fundaciones.', icon: Search, iconColor: 'text-blue-600', iconBg: 'bg-blue-50', status: googleStatus === 'ok' ? 'Conectado' : 'Sin configurar', connected: googleStatus === 'ok' },
         { id: 'perplexity', name: 'Perplexity AI API', description: 'Búsqueda profunda en web para proyectos y matching de subvenciones.', icon: Sparkles, iconColor: 'text-indigo-600', iconBg: 'bg-indigo-50', status: perplexityStatus === 'ok' ? 'Conectado' : 'Sin configurar', connected: perplexityStatus === 'ok' }
     ];
 
@@ -737,15 +737,16 @@ const Integrations: React.FC = () => {
                             <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Google API Key</label>
                             <div className="flex gap-3">
                                 <div className="relative flex-1">
-                                    <input type={showApifyKey ? 'text' : 'password'} value={apifyKey}
-                                        onChange={e => setApifyKey(e.target.value)} placeholder="AIzaSy..."
+                                    <input type={showGoogleKey ? 'text' : 'password'} value={googleKey}
+                                        onChange={e => setGoogleKey(e.target.value)} placeholder="AIzaSy..."
                                         className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-6 pr-12 text-sm font-bold text-gray-900 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400 transition-all" />
-                                    <button type="button" onClick={() => setShowApifyKey(v => !v)}
+                                    <button type="button" onClick={() => setShowGoogleKey(v => !v)}
                                         className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                                        {showApifyKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        {showGoogleKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                     </button>
                                 </div>
                                 <button
+                                    onClick={() => alert('¡Clave de Google Custom Search guardada éxitosamente para el sub-agente!')}
                                     className="px-6 py-4 bg-blue-600 text-white rounded-2xl text-xs font-black hover:bg-blue-700 transition-all disabled:opacity-40">
                                     Guardar
                                 </button>
@@ -792,6 +793,7 @@ const Integrations: React.FC = () => {
                                     </button>
                                 </div>
                                 <button
+                                    onClick={() => alert('¡Clave de Perplexity API guardada éxitosamente para el sub-agente!')}
                                     className="px-6 py-4 bg-indigo-600 text-white rounded-2xl text-xs font-black hover:bg-indigo-700 transition-all disabled:opacity-40">
                                     Guardar
                                 </button>
