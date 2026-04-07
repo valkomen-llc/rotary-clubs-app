@@ -15,7 +15,14 @@ import {
     AlertCircle
 } from 'lucide-react';
 
-const API_BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+const getApiBase = () => {
+    const envApi = import.meta.env.VITE_API_URL;
+    if (envApi && envApi !== '/api') return envApi.replace(/\/$/, '');
+    // Si estamos en producción (app.clubplatform.org), usamos el origin actual
+    return `${window.location.origin}/api`;
+};
+
+const API_BASE = getApiBase();
 
 interface Agent {
     id: string;
@@ -155,34 +162,29 @@ const HQDashboard: React.FC = () => {
             setIsLoadingChats(true);
             setFetchError(null);
             
-            // Normalize path to avoid double slashes or missing API prefix issues
-            const url = `${API_BASE}/whatsapp-qr/chats`;
+            // CACHE BUSTER + ABSOLUTE URL
+            const url = `${API_BASE}/whatsapp-qr/chats?cb=${Date.now()}`;
             
             fetch(url, {
                 headers: { 'Authorization': `Bearer ${token}` }
             })
             .then(async r => {
                 if (!r.ok) {
-                    const errText = await r.text();
-                    try {
-                        const errJson = JSON.parse(errText);
-                        throw new Error(errJson.error || `HTTP ${r.status}`);
-                    } catch {
-                        throw new Error(`HTTP ${r.status}: ${errText.substring(0, 50)}`);
-                    }
+                    const txt = await r.text();
+                    throw new Error(`Servidor respondió: ${r.status}`);
                 }
                 return r.json();
             })
             .then(data => {
                 if (data.success) {
-                    setChats(data.chats);
+                    setChats(data.chats || []);
                 } else {
-                    setFetchError(data.error || 'Gateway desconectado.');
+                    setFetchError(data.error || 'Gateway no conectado.');
                 }
             })
             .catch(e => {
-                console.error("Gateway fetch error:", e);
-                setFetchError(`Error: ${e.message}. Verifica tu conexión.`);
+                console.error("Gateway Sync Error:", e);
+                setFetchError(`Error de Sincronización: ${e.message}`);
             })
             .finally(() => {
                 setIsLoadingChats(false);
@@ -221,7 +223,7 @@ const HQDashboard: React.FC = () => {
             const chatId = selectedChats[i];
             setSendingProgress(p => ({ ...p, current: i + 1 }));
             
-            if (i > 0) await new Promise(r => setTimeout(r, 4000 + Math.random() * 1000));
+            if (i > 0) await new Promise(r => setTimeout(r, i < 3 ? 2000 : 4000 + Math.random() * 2000));
 
             try {
                 const variants = ["Hola", "Buen día", "Estimados", "Atención"];
