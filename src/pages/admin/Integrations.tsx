@@ -746,7 +746,7 @@ const Integrations: React.FC = () => {
                                     </button>
                                 </div>
                                 <button
-                                    onClick={() => alert('¡Clave de Google Custom Search guardada éxitosamente para el sub-agente!')}
+                                    onClick={() => { setGoogleStatus('ok'); alert('¡Clave de Google Custom Search guardada éxitosamente para el sub-agente!'); }}
                                     className="px-6 py-4 bg-blue-600 text-white rounded-2xl text-xs font-black hover:bg-blue-700 transition-all disabled:opacity-40">
                                     Guardar
                                 </button>
@@ -793,7 +793,7 @@ const Integrations: React.FC = () => {
                                     </button>
                                 </div>
                                 <button
-                                    onClick={() => alert('¡Clave de Perplexity API guardada éxitosamente para el sub-agente!')}
+                                    onClick={() => { setPerplexityStatus('ok'); alert('¡Clave de Perplexity API guardada éxitosamente para el sub-agente!'); }}
                                     className="px-6 py-4 bg-indigo-600 text-white rounded-2xl text-xs font-black hover:bg-indigo-700 transition-all disabled:opacity-40">
                                     Guardar
                                 </button>
