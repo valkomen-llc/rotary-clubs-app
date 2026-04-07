@@ -67,23 +67,74 @@ const INITIAL_TASKS: Task[] = [
 const HQDashboard: React.FC = () => {
     const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
     const [goals] = useState<Goal[]>(INITIAL_GOALS);
+    const [isScouting, setIsScouting] = useState(false);
+    const [scoutProgress, setScoutProgress] = useState(0);
+
+    // Simulated Real-Time Activity Engine for "Grand Scope"
+    const startScoutEngine = () => {
+        if (isScouting) return;
+        setIsScouting(true);
+        setScoutProgress(0);
+        
+        const scoutLogs = [
+            { agent: 'Rafael', msg: 'Iniciando Grand Scope Engine v4.2...', delay: 500, type: 'heartbeat' },
+            { agent: 'Rafael', msg: 'Conectando con Google Search API & Perplexity...', delay: 2000, type: 'research' },
+            { agent: 'Rafael', msg: 'Escaneando SECOP II & Portal USAID (Colombia/Latam)...', delay: 4000, type: 'research' },
+            { agent: 'Rafael', msg: 'Identificada Subvención Global: Rotary Foundation #2501 (Salud Maternal)', delay: 7000, type: 'execution' },
+            { agent: 'Rafael', msg: 'Analizando TDRs con IA: 85% de coincidencia con Clubes de Distrito 4281.', delay: 10000, type: 'peer_review' }
+        ];
+
+        scoutLogs.forEach((log, index) => {
+            setTimeout(() => {
+                const agent = VIP_AGENTS.find(a => a.name === log.agent) || VIP_AGENTS[0];
+                const newTask: Task = {
+                    id: Math.random().toString(),
+                    agentName: agent.name,
+                    agentColor: agent.color,
+                    content: log.msg,
+                    time: 'Justo ahora',
+                    type: log.type as any,
+                    status: index === scoutLogs.length - 1 ? 'in_progress' : 'done'
+                };
+                setTasks(prev => [newTask, ...prev.slice(0, 15)]);
+                setScoutProgress((index + 1) * (100 / scoutLogs.length));
+                
+                if (index === scoutLogs.length - 1) {
+                    setIsScouting(false);
+                    // Add to Kanban
+                    const grandTask: Task = {
+                        id: 'grant-' + Date.now(),
+                        agentName: 'Rafael',
+                        agentColor: 'bg-emerald-600',
+                        content: 'Subvención Rotary Foundation: Evaluar Postulación Club Bogotá',
+                        time: 'Justo ahora',
+                        type: 'execution',
+                        status: 'backlog'
+                    };
+                    // Typically you'd have a separate state for kanban, but for now we mix tasks
+                    setTasks(prev => [grandTask, ...prev]);
+                }
+            }, log.delay);
+        });
+    };
 
     useEffect(() => {
         const interval = setInterval(() => {
+            if (isScouting) return;
             const agent = VIP_AGENTS[Math.floor(Math.random() * VIP_AGENTS.length)];
             const newLog: Task = {
                 id: Math.random().toString(),
                 agentName: agent.name,
                 agentColor: agent.color,
-                content: `Sistema estable monitoreando flujos de ${agent.role}...`,
+                content: `Monitorizando flujos en ${agent.role}... Sistema Estable.`,
                 time: 'Ahora',
                 type: 'heartbeat',
                 status: 'done'
             };
             setTasks(prev => [newLog, ...prev.slice(0, 15)]);
-        }, 8000);
+        }, 12000);
         return () => clearInterval(interval);
-    }, []);
+    }, [isScouting]);
 
     return (
         <div className="fixed inset-0 bg-[#F4F7FA] text-gray-700 font-sans z-[9999] overflow-hidden flex flex-col">
@@ -109,12 +160,22 @@ const HQDashboard: React.FC = () => {
                     </div>
                 </div>
 
+                {/* Progress bar for Scout Engine */}
+                {isScouting && (
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-gray-100">
+                        <div 
+                            className="h-full bg-gradient-to-r from-[#013388] via-[#F7A81B] to-[#013388] transition-all duration-300"
+                            style={{ width: `${scoutProgress}%` }}
+                        />
+                    </div>
+                )}
+
                 <div className="flex items-center gap-3 bg-gray-50 p-1.5 rounded-2xl border border-gray-100">
                     {VIP_AGENTS.map(agent => (
                         <div key={agent.id} className="group relative">
                             <div className={`w-10 h-10 rounded-xl ${agent.color} flex items-center justify-center text-white text-xs font-black shadow-sm group-hover:scale-105 transition-all cursor-pointer border-2 border-white`}>
                                 {agent.name.charAt(0)}
-                                <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${agent.status === 'processing' ? 'bg-[#F7A81B] animate-pulse' : 'bg-emerald-500'}`} />
+                                <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${agent.status === 'processing' || (isScouting && agent.name === 'Rafael') ? 'bg-[#F7A81B] animate-pulse' : 'bg-emerald-500'}`} />
                             </div>
                             <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 p-2 bg-white border border-gray-100 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50">
                                 <p className="text-[10px] font-black text-[#013388] uppercase">{agent.name}</p>
@@ -125,18 +186,15 @@ const HQDashboard: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-6 mr-4 hidden lg:flex">
-                        <div className="text-right">
-                            <p className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Database</p>
-                            <p className="text-xs font-bold text-gray-700 flex items-center justify-end gap-1.5">
-                                <Database className="w-3 h-3 text-emerald-500" /> 14ms
-                            </p>
-                        </div>
-                        <div className="text-right">
-                            <p className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Uptime</p>
-                            <p className="text-xs font-bold text-gray-700">99.98%</p>
-                        </div>
-                    </div>
+                    <button 
+                        onClick={startScoutEngine}
+                        disabled={isScouting}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${isScouting ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#013388] text-white hover:bg-[#00246B] shadow-lg shadow-blue-900/20 active:scale-95'}`}
+                    >
+                        <Zap className={`w-4 h-4 ${isScouting ? 'animate-spin' : ''}`} />
+                        {isScouting ? 'Scouting...' : 'Scout Engine'}
+                    </button>
+                    <div className="h-8 w-[1px] bg-gray-200 hidden lg:block" />
                     <button 
                         onClick={() => window.close()}
                         className="bg-gray-100 hover:bg-gray-200 text-gray-500 p-2.5 rounded-xl transition-all border border-gray-200"
