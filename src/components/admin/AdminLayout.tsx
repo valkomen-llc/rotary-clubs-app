@@ -490,6 +490,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                                 ) : (
                                                     <Link
                                                         to={item.path}
+                                                        target={item.path === '/admin/mission-control-vip' ? '_blank' : undefined}
+                                                        rel={item.path === '/admin/mission-control-vip' ? 'noopener noreferrer' : undefined}
                                                         className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all text-sm group ${isActive
                                                             ? isSetup ? 'bg-amber-50 text-amber-800 font-bold' : 'bg-gray-50 text-gray-900 font-bold'
                                                             : isSetup
