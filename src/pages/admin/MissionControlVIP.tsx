@@ -22,7 +22,8 @@ import {
     MessageCircle,
     ArrowRightCircle,
     ExternalLink,
-    Database
+    Database,
+    Mail
 } from 'lucide-react';
 
 const getApiBase = () => {
@@ -296,6 +297,28 @@ const HQDashboard: React.FC = () => {
                                     <div key={t.id} onClick={() => setSelectedTask(t)} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer group">
                                         <h5 className="text-[12px] font-bold text-gray-800 leading-snug mb-4 group-hover:text-[#013388]">{t.title}</h5>
                                         <div className="inline-block bg-gray-50 text-gray-400 text-[10px] font-bold px-2 py-1 rounded-lg mb-4 border border-gray-100">{t.category}</div>
+                                        
+                                        {key === 'done' && (
+                                            <div className="flex items-center gap-2 mb-4 border-t border-gray-50 pt-3">
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); alert('Se disparará el webhook a n8n para enviar la campaña por WhatsApp (Camila)'); }}
+                                                    className="flex flex-1 items-center justify-center gap-1.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 transition-colors border border-emerald-100" 
+                                                    title="Enviar vía WhatsApp"
+                                                >
+                                                    <MessageCircle className="w-3.5 h-3.5" />
+                                                    <span className="text-[9px] font-black uppercase tracking-wider">WhatsApp</span>
+                                                </button>
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); alert('Se enviará una plantilla de correo a los clubes con el formato de la oportunidad.'); }}
+                                                    className="flex flex-1 items-center justify-center gap-1.5 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 transition-colors border border-blue-100" 
+                                                    title="Enviar Plantilla Correo"
+                                                >
+                                                    <Mail className="w-3.5 h-3.5" />
+                                                    <span className="text-[9px] font-black uppercase tracking-wider">Email</span>
+                                                </button>
+                                            </div>
+                                        )}
+
                                         <div className="flex items-center justify-between border-t border-gray-50 pt-3">
                                             <div className="w-7 h-7 rounded-lg bg-gray-50 flex items-center justify-center text-xs border border-gray-100">
                                                 {AGENTS.find(a => a.id === t.agentId)?.icon}
