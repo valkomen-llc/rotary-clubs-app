@@ -113,6 +113,16 @@ const Integrations: React.FC = () => {
     const [geminiStatus, setGeminiStatus] = useState<'unknown' | 'ok' | 'error'>('unknown');
     const [geminiTesting, setGeminiTesting] = useState(false);
 
+    // Apify
+    const [apifyKey, setApifyKey] = useState('');
+    const [showApifyKey, setShowApifyKey] = useState(false);
+    const [apifyStatus, setApifyStatus] = useState<'unknown' | 'ok' | 'error'>('unknown');
+
+    // Perplexity
+    const [perplexityKey, setPerplexityKey] = useState('');
+    const [showPerplexityKey, setShowPerplexityKey] = useState(false);
+    const [perplexityStatus, setPerplexityStatus] = useState<'unknown' | 'ok' | 'error'>('unknown');
+
     // AI Models registry
     const [aiModels, setAiModels] = useState<any[]>([]);
     const [aiModelsLoading, setAiModelsLoading] = useState(false);
@@ -293,7 +303,9 @@ const Integrations: React.FC = () => {
         { id: 'ga4', name: 'Google Analytics 4', description: 'Track website traffic, user behavior, and conversion events across all club sites.', icon: BarChart3, iconColor: 'text-orange-500', iconBg: 'bg-orange-50', status: gaId ? 'Conectado' : 'Sin configurar', connected: !!gaId },
         { id: 'chatbot', name: 'AI Chatbot Assistant', description: 'Provide 24/7 automated support to visitors using our custom AI trained on your club data.', icon: MessageSquare, iconColor: 'text-rotary-blue', iconBg: 'bg-sky-50', status: 'Active', connected: true },
         { id: 'gemini', name: 'Gemini 2.0 Flash — Traducciones', description: 'Traduce automáticamente todo el contenido del sitio al idioma seleccionado por el visitante.', icon: Languages, iconColor: 'text-violet-600', iconBg: 'bg-violet-50', status: geminiStatus === 'ok' ? 'Conectado' : 'Sin configurar', connected: geminiStatus === 'ok' },
-        { id: 'facebook', name: 'Facebook Pixel', description: 'Measure the effectiveness of your advertising by understanding the actions people take on your site.', icon: Globe, iconColor: 'text-blue-600', iconBg: 'bg-blue-50', status: 'Not Connected', connected: false }
+        { id: 'facebook', name: 'Facebook Pixel', description: 'Measure the effectiveness of your advertising by understanding the actions people take on your site.', icon: Globe, iconColor: 'text-blue-600', iconBg: 'bg-blue-50', status: 'Not Connected', connected: false },
+        { id: 'apify', name: 'Apify API (Grant Scout)', description: 'Scraping automatizado de SECOP II y portales gubernamentales.', icon: Database, iconColor: 'text-blue-600', iconBg: 'bg-blue-50', status: apifyStatus === 'ok' ? 'Conectado' : 'Sin configurar', connected: apifyStatus === 'ok' },
+        { id: 'perplexity', name: 'Perplexity AI API', description: 'Búsqueda profunda en web para proyectos y matching de subvenciones.', icon: Sparkles, iconColor: 'text-indigo-600', iconBg: 'bg-indigo-50', status: perplexityStatus === 'ok' ? 'Conectado' : 'Sin configurar', connected: perplexityStatus === 'ok' }
     ];
 
     return (
@@ -705,6 +717,93 @@ const Integrations: React.FC = () => {
                         <button className="bg-gray-50 border border-gray-100 px-8 py-4 rounded-2xl text-xs font-black uppercase tracking-widest text-gray-600 hover:bg-white hover:shadow-lg transition-all active:scale-95">
                             Customize Knowledge Base
                         </button>
+                    </div>
+                </div>
+
+                {/* ── Apify Integration Section ── */}
+                <div className="bg-white border border-gray-100 rounded-[2.5rem] p-10 shadow-sm">
+                    <div className="flex items-center gap-4 mb-8">
+                        <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center shadow-sm">
+                            <Database className="w-6 h-6 text-blue-600" />
+                        </div>
+                        <div>
+                            <h2 className="text-2xl font-black text-gray-900">Apify API (Grant Scout)</h2>
+                            <p className="text-sm text-gray-400 font-medium">Extrae datos de SECOP II, USAID y portales de subvenciones de forma programática.</p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                        <div className="space-y-4">
+                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Apify API Token</label>
+                            <div className="flex gap-3">
+                                <div className="relative flex-1">
+                                    <input type={showApifyKey ? 'text' : 'password'} value={apifyKey}
+                                        onChange={e => setApifyKey(e.target.value)} placeholder="apify_api_..."
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-6 pr-12 text-sm font-bold text-gray-900 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400 transition-all" />
+                                    <button type="button" onClick={() => setShowApifyKey(v => !v)}
+                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                                        {showApifyKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </button>
+                                </div>
+                                <button
+                                    className="px-6 py-4 bg-blue-600 text-white rounded-2xl text-xs font-black hover:bg-blue-700 transition-all disabled:opacity-40">
+                                    Guardar
+                                </button>
+                            </div>
+                            <p className="text-[10px] text-gray-400 font-medium ml-1">
+                                Obtén tu token en <a href="https://console.apify.com/account/integrations" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">console.apify.com</a>. Las credenciales se inyectarán en los subagentes.
+                            </p>
+                        </div>
+                        <div className="bg-blue-50 rounded-[2rem] p-7 border border-blue-100">
+                            <h4 className="text-sm font-black text-gray-900 mb-2">Estado del Scraper</h4>
+                            <p className="text-[10px] text-gray-500 mb-4 leading-relaxed">El motor Grand Scope usará esta llave para instanciar subagentes como Rafael y rastrear oportunidades gubernamentales cada lunes.</p>
+                            <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center gap-1 bg-white border border-blue-200 text-blue-700 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider">
+                                    <CheckCircle className="w-3 h-3" /> SECOP II Ready
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* ── Perplexity AI Section ── */}
+                <div className="bg-white border border-gray-100 rounded-[2.5rem] p-10 shadow-sm">
+                    <div className="flex items-center gap-4 mb-8">
+                        <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center shadow-sm">
+                            <Sparkles className="w-6 h-6 text-indigo-600" />
+                        </div>
+                        <div>
+                            <h2 className="text-2xl font-black text-gray-900">Perplexity API</h2>
+                            <p className="text-sm text-gray-400 font-medium">Búsquedas profundas, análisis de TDRs y matching de subvenciones en tiempo real.</p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                        <div className="space-y-4">
+                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Perplexity API Key</label>
+                            <div className="flex gap-3">
+                                <div className="relative flex-1">
+                                    <input type={showPerplexityKey ? 'text' : 'password'} value={perplexityKey}
+                                        onChange={e => setPerplexityKey(e.target.value)} placeholder="pplx-..."
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-6 pr-12 text-sm font-bold text-gray-900 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all" />
+                                    <button type="button" onClick={() => setShowPerplexityKey(v => !v)}
+                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                                        {showPerplexityKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </button>
+                                </div>
+                                <button
+                                    className="px-6 py-4 bg-indigo-600 text-white rounded-2xl text-xs font-black hover:bg-indigo-700 transition-all disabled:opacity-40">
+                                    Guardar
+                                </button>
+                            </div>
+                            <p className="text-[10px] text-gray-400 font-medium ml-1">
+                                Obtén tu key en <a href="https://www.perplexity.ai/settings/api" target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline">perplexity.ai</a>.
+                            </p>
+                        </div>
+                        <div className="bg-indigo-50 rounded-[2rem] p-7 border border-indigo-100">
+                            <h4 className="text-sm font-black text-gray-900 mb-2">Modelos soportados</h4>
+                            <p className="text-[10px] text-gray-400 leading-relaxed">Soporte directo para <code className="bg-indigo-100 text-indigo-700 px-1 py-0.5 rounded">sonar-reasoning-pro</code> (análisis denso de bases de subvenciones) y resoluciones inmediatas online.</p>
+                        </div>
                     </div>
                 </div>
             </div>
