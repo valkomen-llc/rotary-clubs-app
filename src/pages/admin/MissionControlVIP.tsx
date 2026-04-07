@@ -1,33 +1,34 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-    LayoutDashboard,
+    BrainCircuit,
     Zap,
     Target,
     History,
     CheckCircle2,
     X,
+    LayoutDashboard,
     MoreHorizontal,
+    ArrowUpRight,
     MessageSquare,
     Loader2,
     ShieldCheck,
     AlertCircle,
     Activity,
+    Cpu,
+    Network,
     Terminal,
-    Settings,
-    Plus,
-    Search,
     ChevronRight,
-    SearchCode,
-    Filter,
-    MessageCircle,
-    ArrowRightCircle,
+    Power,
+    Settings,
+    Search,
+    Globe,
+    Layers,
+    Bot,
     ExternalLink,
     Database,
-    LineChart,
-    Brain,
-    ListChecks,
-    Eye,
-    RefreshCw
+    BarChart3,
+    Fingerprint,
+    ArrowRightCircle
 } from 'lucide-react';
 
 const getApiBase = () => {
@@ -38,374 +39,323 @@ const getApiBase = () => {
 
 const API_BASE = getApiBase();
 
-// --- DATA TYPES ---
 interface Agent {
     id: string;
     name: string;
-    icon: string;
+    role: string;
     color: string;
-    status: 'online' | 'busy' | 'idle';
-    load: number;
+    status: 'online' | 'processing' | 'idle';
+    lastTask: string;
 }
 
-interface Goal {
-    id: string;
-    title: string;
-    status: 'active' | 'completed' | 'paused';
-    progress: number;
-    total: number;
-    current: number;
-    assignedAgents: string[];
-    roadmap: string[];
-}
-
-interface Task {
+interface ActionPlan {
     id: string;
     title: string;
     description: string;
-    category: string;
-    agentId: string;
-    time: string;
-    priority: 'High' | 'Medium' | 'Low';
-    status: 'backlog' | 'todo' | 'in_progress' | 'peer_review' | 'done';
+    isActive: boolean;
+    progress: number;
     subtasks: { text: string; done: boolean }[];
+    agents: string[];
     details?: {
-        gaps: string[];
-        quality: string;
         source: string;
-        link: string;
-        thought: string;
+        url: string;
+        method: string;
+        kpis: { label: string; value: string }[];
+        summary: string;
     }
 }
 
-// --- MOCK DATA ---
-const AGENTS: Agent[] = [
-    { id: 'rafael', name: 'Rafael', icon: '🤖', color: 'bg-[#013388]', status: 'online', load: 85 },
-    { id: 'mateo', name: 'Mateo', icon: '🍷', color: 'bg-red-700', status: 'busy', load: 40 },
-    { id: 'sofia', name: 'Sofía', icon: '⚔️', color: 'bg-slate-700', status: 'online', load: 10 },
-    { id: 'valeria', name: 'Valeria', icon: '🐉', color: 'bg-emerald-600', status: 'busy', load: 95 },
+interface LogEntry {
+    id: string;
+    agentName: string;
+    agentColor: string;
+    mainActivity: string;
+    subtask: string;
+    time: string;
+    type: 'peer_review' | 'heartbeat' | 'execution' | 'research' | 'alert';
+    status: 'done' | 'processing' | 'pending';
+}
+
+const VIP_AGENTS: Agent[] = [
+    { id: 'rafael', name: 'Rafael', role: 'Grant Intelligence Expert', color: 'bg-[#013388]', status: 'online', lastTask: 'Scanning SECOP II' },
+    { id: 'mateo', name: 'Mateo', role: 'Strategic ROI Analyst', color: 'bg-[#013388]', status: 'online', lastTask: 'Calculating Grant Impacts' },
+    { id: 'sofia', name: 'Sofía', role: 'Campaign Concierge', color: 'bg-[#00246B]', status: 'idle', lastTask: 'Waiting for leads' },
+    { id: 'valeria', name: 'Valeria', role: 'Institutional Comms', color: 'bg-[#F7A81B]', status: 'processing', lastTask: 'Drafting announcement' },
 ];
 
-const INITIAL_GOALS: Goal[] = [
-    { id: 'g1', title: 'Grand Scope: Subvenciones 2026', status: 'active', current: 8, total: 10, progress: 80, assignedAgents: ['rafael', 'mateo'], roadmap: ['Configuración de Scrapers', 'Validación de TDRs Salud', 'Drafting Automático', 'Aprobación Distrital'] },
-    { id: 'g2', title: 'Market Rotary Districts', status: 'active', current: 8, total: 20, progress: 40, assignedAgents: ['sofia'], roadmap: ['Segmentación Meta', 'Creatividades IA', 'Lead Gen Funnel'] },
-];
-
-const INITIAL_TASKS: Task[] = [
-    { id: 't1', title: 'Monitor and optimize live SECOP engagement', category: 'Grand Scope', agentId: 'rafael', time: '3h ago', priority: 'High', status: 'backlog', 
-      subtasks: [{text: 'Scan Portal', done: true}, {text: 'Filter Health Projects', done: false}] },
-    { id: 't4', title: 'Find Rotary threads to engage with', category: 'Market', agentId: 'rafael', time: '10d ago', priority: 'High', status: 'done', 
-      subtasks: [{text: 'Search Reddit', done: true}],
-      details: {
-        gaps: ["Response length: Opp #3/5 are too long.", "Natural flow missing."],
-        quality: "Excellent research scope.",
-        thought: "Decidí priorizar Reddit sobre Twitter debido a la densidad de técnicos de Rotary activos en r/automation.",
-        source: "Google Search + SECOP Portal",
-        link: "https://secop.gov.co/query"
-      }}
+const INITIAL_PLANS: ActionPlan[] = [
+    {
+        id: 'grand-scope',
+        title: 'Grand Scope Engine',
+        description: 'Gestión Automatizada de Subvenciones (SECOP II, USAID, Rotary Foundation)',
+        isActive: true,
+        progress: 68,
+        subtasks: [
+            { text: 'Escaneo de Bases de Datos', done: true },
+            { text: 'Filtrage por TDRs', done: true },
+            { text: 'Análisis de Viabilidad IA', done: false },
+            { text: 'Generación de Borradores', done: false }
+        ],
+        agents: ['rafael', 'mateo'],
+        details: {
+            source: "SECOP II / Ministerio de Salud Nacional",
+            url: "https://secop.gov.co/contracts/MS-2024-001",
+            method: "Apify Scraper + Perplexity Deep Search",
+            kpis: [
+                { label: "Confianza", value: "94%" },
+                { label: "Monto", value: "$50k USD" },
+                { label: "Prioridad", value: "A+" }
+            ],
+            summary: "Extrayendo requerimientos técnicos para proyecto de agua potable en el Distrito 4281."
+        }
+    },
+    {
+        id: 'brand-amplifier',
+        title: 'Brand Amplifier VIP',
+        description: 'Orquestación de imagen pública e impacto institucional en redes.',
+        isActive: true,
+        progress: 45,
+        subtasks: [
+            { text: 'Monitor de Menciones', done: true },
+            { text: 'Drafting Automático', done: false },
+            { text: 'Schedule de Ráfagas', done: false }
+        ],
+        agents: ['valeria', 'sofia'],
+        details: {
+            source: "Meta Graph API / Brand Monitoring",
+            url: "https://facebook.com/rotaryinternational",
+            method: "Sentimental Analysis IA",
+            kpis: [
+                { label: "Alcance", value: "24.5k" },
+                { label: "Sentimiento", value: "Positivo" }
+            ],
+            summary: "Monitoreando impacto del video de Polio Plus compartido hace 4 horas."
+        }
+    }
 ];
 
 const HQDashboard: React.FC = () => {
-    const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
-    const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+    const [plans, setPlans] = useState<ActionPlan[]>(INITIAL_PLANS);
+    const [logs, setLogs] = useState<LogEntry[]>([]);
+    const [inspectorPlan, setInspectorPlan] = useState<ActionPlan | null>(null);
+    const [showPublish, setShowPublish] = useState<any>(null);
     const [showSettings, setShowSettings] = useState(false);
-    const [filterAgent, setFilterAgent] = useState<string | null>(null);
-    const [expandedGoal, setExpandedGoal] = useState<string | null>(null);
+    const [chats, setChats] = useState<any[]>([]);
+    const [selectedChats, setSelectedChats] = useState<string[]>([]);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [isSending, setIsSending] = useState(false);
+    const [isLoadingChats, setIsLoadingChats] = useState(false);
+    const [fetchError, setFetchError] = useState<string | null>(null);
+    const [sendingProgress, setSendingProgress] = useState({ current: 0, total: 0 });
+    const [sendSuccess, setSendSuccess] = useState(false);
 
-    const boardCols = {
-        backlog: tasks.filter(t => t.status === 'backlog'),
-        todo: tasks.filter(t => t.status === 'todo'),
-        in_progress: tasks.filter(t => t.status === 'in_progress'),
-        done: tasks.filter(t => t.status === 'done')
+    // Initial Logs
+    useEffect(() => {
+        const initialLogs: LogEntry[] = [
+            { id: '1', agentName: 'Rafael', agentColor: 'bg-[#013388]', mainActivity: 'Grand Scope Engine', subtask: 'Conectado a SECOP II API: Filtrando subvenciones de salud.', time: '2m', type: 'research', status: 'done' },
+            { id: '2', agentName: 'Mateo', agentColor: 'bg-[#013388]', mainActivity: 'Grand Scope Engine', subtask: 'Analizando ROI de Subvención RF-2025: Impacto proyectado 45%.', time: '5m', type: 'execution', status: 'done' },
+            { id: '3', agentName: 'Valeria', agentColor: 'bg-[#F7A81B]', mainActivity: 'Brand Amplifier', subtask: 'Generando post institucional: Campaña Polio Plus.', time: '10m', type: 'execution', status: 'done' },
+        ];
+        setLogs(initialLogs);
+    }, []);
+
+    const togglePlan = (id: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setPlans(prev => prev.map(p => {
+            if (p.id === id) return { ...p, isActive: !p.isActive };
+            return p;
+        }));
     };
 
+    const toggleChat = (id: string) => {
+        setSelectedChats(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    };
+
+    useEffect(() => {
+        if (showPublish) {
+            const token = localStorage.getItem('rotary_token');
+            setIsLoadingChats(true);
+            setFetchError(null);
+            fetch(`${API_BASE}/whatsapp-qr/chats?cb=${Date.now()}`, { headers: { 'Authorization': `Bearer ${token}` } })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) setChats(data.chats || []);
+                    else setFetchError(data.error || 'Gateway offline');
+                })
+                .catch(e => setFetchError(`Error: ${e.message}`))
+                .finally(() => setIsLoadingChats(false));
+        }
+    }, [showPublish]);
+
+    const handlePublish = (log: LogEntry) => {
+        setSendSuccess(false);
+        setSelectedChats([]);
+        setShowPublish({
+            hook: `🚀 Actualización: ${log.mainActivity}`,
+            context: log.subtask,
+            url: "https://clubplatform.org/hq",
+            imageUrl: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2672&auto=format&fit=crop"
+        });
+    };
+
+    const sendToWhatsApp = async () => {
+        if (selectedChats.length === 0 || isSending) return;
+        setIsSending(true);
+        setSendingProgress({ current: 0, total: selectedChats.length });
+        const token = localStorage.getItem('rotary_token');
+        for (let i = 0; i < selectedChats.length; i++) {
+            setSendingProgress(p => ({ ...p, current: i + 1 }));
+            if (i > 0) await new Promise(r => setTimeout(r, 4000));
+            try {
+                await fetch(`${API_BASE}/whatsapp-qr/send-message`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ chatId: selectedChats[i], message: `${showPublish.hook}\n\n${showPublish.context}\n\n${showPublish.url}` })
+                });
+            } catch (e) { console.error(e); }
+        }
+        setSendSuccess(true);
+        setIsSending(false);
+        setTimeout(() => setShowPublish(null), 2000);
+    };
+
+    const filteredChats = chats.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
+
     return (
-        <div className="fixed inset-0 bg-[#F8FAFC] text-slate-800 font-sans z-[9999] overflow-hidden flex flex-col">
-            
-            {/* AGENT BAR (HUD STYLE) */}
-            <div className="h-16 bg-[#013388] px-6 flex items-center justify-between shadow-xl relative z-10">
-                <div className="flex items-center gap-4 flex-1 overflow-x-auto scrollbar-hide py-2">
-                    <div className="flex items-center gap-2 border-r border-white/20 pr-6 mr-2">
-                         <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center border border-white/20">
-                             <Fingerprint className="text-white w-5 h-5" />
-                         </div>
-                         <div className="hidden sm:block leading-none">
-                             <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">HQ Sector</p>
-                             <p className="text-xs font-black text-white">COLOMBIA-4281</p>
-                         </div>
-                    </div>
-                    {AGENTS.map(agent => (
-                        <div key={agent.id} 
-                             onClick={() => setFilterAgent(filterAgent === agent.id ? null : agent.id)}
-                             className={`flex items-center gap-3 px-4 py-2 rounded-[14px] transition-all cursor-pointer border ${filterAgent === agent.id ? 'bg-white/20 border-white/40 scale-105' : 'bg-white/5 border-white/5 hover:bg-white/10'}`}>
-                            <div className="relative">
-                                <span className="text-base">{agent.icon}</span>
-                                <div className={`absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-[#013388] ${agent.status === 'online' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+        <div className="fixed inset-0 bg-[#001438] text-slate-300 font-sans z-[9999] overflow-hidden flex flex-col">
+            <header className="h-20 bg-[#013388]/90 backdrop-blur-2xl border-b border-white/10 flex items-center justify-between px-8 shrink-0 relative z-[100]">
+                <div className="flex items-center gap-4">
+                    <div className="w-11 h-11 bg-white rounded-xl flex items-center justify-center shadow-lg"><Activity className="w-6 h-6 text-[#013388]" /></div>
+                    <h1 className="text-white font-black text-xl uppercase tracking-tighter italic">Mission Control <span className="text-[#F7A81B]">VIP HQ</span></h1>
+                </div>
+                <div className="flex items-center gap-4">
+                    <button onClick={() => setShowSettings(true)} className="p-3 bg-white/10 rounded-2xl"><Settings className="w-5 h-5" /></button>
+                    <button onClick={() => window.close()} className="p-3 bg-white/10 rounded-2xl"><X className="w-5 h-5" /></button>
+                </div>
+            </header>
+
+            <main className="flex-1 flex overflow-hidden p-8 gap-8 relative z-10">
+                {/* GOALS */}
+                <section className="w-[380px] flex flex-col gap-6 shrink-0 h-full">
+                    <h2 className="text-[11px] uppercase font-black tracking-widest text-[#F7A81B]">ESTRATEGIA NODAL</h2>
+                    <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+                        {plans.map(plan => (
+                            <div key={plan.id} onClick={() => setInspectorPlan(plan)} className={`group relative bg-[#013388]/30 border rounded-[36px] p-6 cursor-pointer transition-all ${inspectorPlan?.id === plan.id ? 'border-[#F7A81B] ring-2 ring-[#F7A81B]/20' : 'border-white/5'}`}>
+                                <div className="flex items-start justify-between mb-4">
+                                    <h3 className="text-sm font-black text-white uppercase">{plan.title}</h3>
+                                    <button onClick={(e) => togglePlan(plan.id, e)} className={`w-10 h-6 rounded-full relative ${plan.isActive ? 'bg-[#F7A81B]' : 'bg-slate-700'}`}>
+                                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${plan.isActive ? 'left-5' : 'left-1'}`} />
+                                    </button>
+                                </div>
+                                <div className="space-y-2">
+                                    {plan.subtasks.map((s, i) => (
+                                        <div key={i} className="flex items-center gap-2">
+                                            <div className={`w-2.5 h-2.5 rounded-full ${s.done ? 'bg-[#F7A81B]' : 'bg-white/10'}`} />
+                                            <span className={`text-[10px] font-bold ${s.done ? 'text-white' : 'text-white/40'}`}>{s.text}</span>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
-                            <div className="hidden lg:block min-w-[60px]">
-                                <p className="text-[10px] font-black text-white leading-none mb-1">{agent.name}</p>
-                                <div className="h-0.5 w-full bg-white/10 rounded-full">
-                                    <div className="h-full bg-[#f7a81b] transition-all" style={{ width: `${agent.load}%` }} />
+                        ))}
+                    </div>
+                </section>
+
+                {/* FEED */}
+                <section className="flex-1 flex flex-col bg-[#013388]/10 rounded-[48px] border border-white/5 overflow-hidden backdrop-blur-xl">
+                    <div className="p-8 border-b border-white/5 flex items-center justify-between"><h2 className="text-xs uppercase font-black text-white">Telemetría de Actividad</h2></div>
+                    <div className="flex-1 overflow-y-auto p-8 space-y-6">
+                        {logs.map(log => (
+                            <div key={log.id} className="flex gap-5">
+                                <div className={`w-10 h-10 rounded-2xl ${log.agentColor} flex items-center justify-center text-white text-xs font-black shadow-lg`}>{log.agentName.charAt(0)}</div>
+                                <div className="flex-1 bg-white/5 border border-white/5 p-4 rounded-[24px] group">
+                                    <p className="text-[11px] text-white/80 font-medium mb-3"><span className="text-white font-bold">{log.agentName}</span>: {log.subtask}</p>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[10px] font-black text-[#F7A81B]">{log.mainActivity}</span>
+                                        {log.status === 'done' && <button onClick={() => handlePublish(log)} className="text-[9px] font-black text-[#F7A81B] uppercase flex items-center gap-2"><MessageSquare className="w-3.5 h-3.5" /> Difundir</button>}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+
+                {/* INSPECTOR */}
+                <section className="w-[340px] shrink-0 h-full">
+                    {inspectorPlan ? (
+                        <div className="h-full bg-white/5 border border-white/10 rounded-[48px] overflow-hidden animate-in slide-in-from-right-8">
+                            <div className="p-8 border-b border-white/10 bg-[#F7A81B]/10">
+                                <h2 className="text-xs font-black text-white uppercase tracking-widest mb-2">Protocol Inspector</h2>
+                                <h3 className="text-sm font-black text-[#F7A81B] uppercase">{inspectorPlan.title}</h3>
+                            </div>
+                            <div className="p-8 space-y-8">
+                                <div className="bg-black/40 rounded-2xl p-4 border border-white/5">
+                                    <p className="text-[10px] text-white font-bold mb-2">Fuente: {inspectorPlan.details?.source}</p>
+                                    <p className="text-[9px] text-[#F7A81B]/70 truncate">{inspectorPlan.details?.url}</p>
+                                </div>
+                                <p className="text-xs text-white/70 italic leading-relaxed">{inspectorPlan.details?.summary}</p>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {inspectorPlan.details?.kpis.map(kpi => (
+                                        <div key={kpi.label} className="bg-white/5 p-3 rounded-2xl text-center">
+                                            <p className="text-[8px] text-white/40 font-bold uppercase mb-1">{kpi.label}</p>
+                                            <p className="text-xs font-black text-white">{kpi.value}</p>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         </div>
-                    ))}
-                </div>
-                <div className="flex items-center gap-4">
-                    <button onClick={() => setShowSettings(!showSettings)} className="text-white hover:bg-white/10 p-2.5 rounded-xl transition-all border border-white/10 active:scale-95">
-                        <Settings className="w-5 h-5" />
-                    </button>
-                    <button onClick={() => window.close()} className="bg-red-500/80 hover:bg-red-600 text-white p-2.5 rounded-xl transition-all border border-red-400/50">
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
-            </div>
+                    ) : (
+                        <div className="h-full border border-dashed border-white/10 rounded-[48px] flex flex-col items-center justify-center opacity-40">
+                            <Fingerprint className="w-12 h-12 mb-4" /><p className="text-[10px] font-black uppercase">Click a Node</p>
+                        </div>
+                    )}
+                </section>
+            </main>
 
-            {/* MAIN WORKSPACE */}
-            <div className="flex-1 flex overflow-hidden">
-                
-                {/* COLUMN 1: ESTRATEGIA (GOALS) */}
-                <div className="w-[320px] border-r border-slate-200 bg-slate-50/50 flex flex-col p-4">
-                    <div className="flex items-center justify-between mb-6 px-2">
-                        <h2 className="text-[11px] font-black uppercase tracking-[0.3em] text-[#013388] flex items-center gap-2">
-                           <LineChart className="w-4 h-4" /> Objetivos de Red
-                        </h2>
-                        <Plus className="w-4 h-4 text-slate-400 cursor-pointer hover:text-[#013388]" />
-                    </div>
-                    <div className="flex-1 overflow-y-auto space-y-4 pr-1 scrollbar-hide">
-                        {INITIAL_GOALS.map(goal => (
-                            <div key={goal.id} className={`bg-white border rounded-[28px] p-5 shadow-sm transition-all duration-300 ${expandedGoal === goal.id ? 'border-[#013388] ring-4 ring-[#013388]/5 shadow-xl' : 'border-slate-100'}`} onClick={() => setExpandedGoal(expandedGoal === goal.id ? null : goal.id)}>
-                                <div className="flex items-start justify-between mb-4">
-                                    <h4 className="text-xs font-black text-slate-800 leading-tight uppercase tracking-tight">{goal.title}</h4>
-                                    <ChevronRight className={`w-4 h-4 text-slate-300 transition-transform ${expandedGoal === goal.id ? 'rotate-90' : ''}`} />
-                                </div>
-                                <div className="space-y-4">
-                                    <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                                        <div className="h-full bg-gradient-to-r from-[#013388] to-[#f7a81b] transition-all" style={{ width: `${goal.progress}%` }} />
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex -space-x-1.5">
-                                            {goal.assignedAgents.map(aid => (
-                                                <div key={aid} className="w-6 h-6 rounded-lg bg-slate-100 border-2 border-white flex items-center justify-center text-[10px] shadow-sm">{AGENTS.find(a => a.id === aid)?.icon}</div>
-                                            ))}
-                                        </div>
-                                        <span className="text-[10px] font-black text-slate-400">{goal.progress}%</span>
-                                    </div>
-
-                                    {expandedGoal === goal.id && (
-                                        <div className="pt-4 border-t border-slate-50 space-y-2 animate-in slide-in-from-top-2">
-                                            {goal.roadmap.map((step, i) => (
-                                                <div key={step} className="flex items-center gap-3 group">
-                                                    <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center ${i < goal.roadmap.length - 1 ? 'bg-[#013388] border-[#013388]' : 'border-slate-200'}`}>
-                                                        {i < goal.roadmap.length - 1 && <CheckCircle2 className="w-2 h-2 text-white" />}
-                                                    </div>
-                                                    <span className={`text-[10px] font-bold ${i < goal.roadmap.length - 1 ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{step}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* COLUMN 2: NEURAL ACTIVITY FEED */}
-                <div className="w-[360px] border-r border-slate-200 bg-white flex flex-col p-4">
-                    <div className="flex items-center justify-between mb-6 px-2">
-                        <h2 className="text-[11px] font-black uppercase tracking-[0.3em] text-[#013388] flex items-center gap-2">
-                           <RefreshCw className="w-4 h-4" /> Neural Feed
-                        </h2>
-                    </div>
-                    <div className="flex-1 overflow-y-auto custom-scrollbar">
-                        {INITIAL_TASKS.filter(t => !filterAgent || t.agentId === filterAgent).map(task => (
-                            <div key={task.id} onClick={() => setSelectedTask(task)} className="p-4 border-b border-slate-50 hover:bg-slate-50 transition-all cursor-pointer group rounded-2xl">
-                                <div className="flex gap-4">
-                                    <div className={`w-10 h-10 rounded-2xl ${AGENTS.find(a => a.id === task.agentId)?.color} flex items-center justify-center text-lg shrink-0 shadow-lg border border-white/20`}>
-                                        {AGENTS.find(a => a.id === task.agentId)?.icon}
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-[11px] font-bold text-slate-700 leading-snug mb-1">
-                                            <span className="text-[#013388] font-black uppercase tracking-tight">{AGENTS.find(a => a.id === task.agentId)?.name}</span> 
-                                            {task.status === 'done' ? ' finalizó revisión de: ' : ' procesando: '} 
-                                            <span className="text-slate-800 italic">"{task.title}"</span>
-                                        </p>
-                                        <div className="flex items-center justify-between mt-2">
-                                            <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest">{task.time}</span>
-                                            {task.status === 'done' && <div className="bg-emerald-50 text-emerald-600 text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase border border-emerald-100">Verified</div>}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* KANBAN OPERATIVO (CENTRO) */}
-                <div className="flex-1 bg-slate-50 flex overflow-x-auto p-6 gap-6 custom-scrollbar">
-                    {Object.entries(boardCols).map(([key, colTasks]) => (
-                        <div key={key} className="w-[320px] shrink-0 flex flex-col gap-6">
-                            <div className="flex items-center justify-between px-3">
-                                <span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.4em] flex items-center gap-2">
-                                    <div className={`w-2 h-2 rounded-full ${key === 'done' ? 'bg-[#f7a81b]' : 'bg-[#013388]/30'}`} /> {key}
-                                </span>
-                                <span className="bg-slate-200/50 text-slate-500 text-[10px] font-black px-2 py-0.5 rounded-full">{colTasks.length}</span>
-                            </div>
-                            <div className="flex-1 space-y-5 overflow-y-auto custom-scrollbar pr-2">
-                                {colTasks.map(t => (
-                                    <div key={t.id} onClick={() => setSelectedTask(t)} className="bg-white border border-slate-100 rounded-[32px] p-6 shadow-sm hover:shadow-xl transition-all cursor-pointer group relative overflow-hidden">
-                                        {t.priority === 'High' && <div className="absolute top-0 left-0 w-1.5 h-full bg-red-500" />}
-                                        <h5 className="text-[13px] font-black text-slate-800 leading-snug mb-4 group-hover:text-[#013388] transition-colors">{t.title}</h5>
-                                        
-                                        {/* SUBTASKS TOOL */}
-                                        <div className="space-y-2 mb-6">
-                                            {t.subtasks.map((st, i) => (
-                                                <div key={i} className="flex items-center gap-2">
-                                                    <CheckCircle2 className={`w-3.5 h-3.5 ${st.done ? 'text-emerald-500' : 'text-slate-200'}`} />
-                                                    <span className={`text-[10px] font-bold ${st.done ? 'text-slate-400 line-through' : 'text-slate-600'}`}>{st.text}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-
-                                        <div className="flex items-center justify-between pt-4 border-t border-slate-50">
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-sm border border-slate-100 group-hover:scale-110 transition-transform">
-                                                    {AGENTS.find(a => a.id === t.agentId)?.icon}
-                                                </div>
-                                                <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 hover:text-[#013388] border border-slate-100 group-hover:bg-slate-100 transition-all">
-                                                    <MessageCircle className="w-4 h-4" />
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest">{t.time}</p>
-                                                <p className="text-[9px] font-black text-[#013388] uppercase">{t.category}</p>
-                                            </div>
-                                        </div>
+            {/* SYNC MODAL */}
+            {showPublish && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-3xl z-[300] flex items-center justify-center p-4">
+                    <div className="bg-[#001438] w-full max-w-xl rounded-[48px] border border-white/10 overflow-hidden text-slate-100 flex flex-col p-10">
+                        <div className="flex justify-between items-center mb-10">
+                            <h3 className="font-black text-white uppercase text-xs">WhatsApp Sync Terminal</h3>
+                            <button onClick={() => setShowPublish(null)}><X className="w-5 h-5 text-slate-400" /></button>
+                        </div>
+                        <div className="bg-[#111B21] rounded-[36px] p-8 space-y-5 mb-10">
+                            <img src={showPublish.imageUrl} className="w-full h-44 object-cover rounded-3xl" alt="Preview" />
+                            <p className="font-black text-[#25D366] text-base leading-tight">{showPublish.hook}</p>
+                            <p className="opacity-80 text-xs font-medium">{showPublish.context}</p>
+                        </div>
+                        <div className="space-y-6">
+                            <input type="text" placeholder="BUSCAR NODOS..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-[10px] outline-none" />
+                            <div className="max-h-[150px] overflow-y-auto space-y-2">
+                                {isLoadingChats && <Loader2 className="w-6 h-6 animate-spin mx-auto" />}
+                                {filteredChats.map(c => (
+                                    <div key={c.id} onClick={() => toggleChat(c.id)} className={`flex items-center justify-between p-4 rounded-3xl border cursor-pointer ${selectedChats.includes(c.id) ? 'bg-[#F7A81B]/10 border-[#F7A81B]' : 'bg-white/5 border-white/5'}`}>
+                                        <p className="text-xs font-black uppercase">{c.name}</p>
+                                        <div className={`w-5 h-5 rounded-lg border flex items-center justify-center ${selectedChats.includes(c.id) ? 'bg-[#F7A81B]' : 'border-white/10'}`}>{selectedChats.includes(c.id) && <CheckCircle2 className="w-3 h-3 text-white" />}</div>
                                     </div>
                                 ))}
                             </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* TASK INSPECTOR MODAL */}
-            {selectedTask && (
-                <div className="fixed inset-0 bg-[#001438]/80 backdrop-blur-xl z-[10000] flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-2xl rounded-[48px] border border-white/10 shadow-full flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh]">
-                        <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                            <div className="flex items-center gap-3">
-                                <div className="bg-[#013388] text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">Protocol ID: 8821</div>
-                                <div className="bg-[#F7A81B] text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">{selectedTask.category}</div>
-                            </div>
-                            <button onClick={() => setSelectedTask(null)} className="p-3 hover:bg-slate-200 rounded-2xl transition-all">
-                                <X className="w-6 h-6 text-slate-400" />
+                            <button onClick={sendToWhatsApp} disabled={selectedChats.length === 0 || isSending} className="w-full py-6 bg-[#25D366] rounded-[32px] font-black uppercase text-xs">
+                                {isSending ? `Transmitiendo... ${sendingProgress.current}/${sendingProgress.total}` : sendSuccess ? 'Broadcast Completed' : `Sincronizar en ${selectedChats.length} Nodos`}
                             </button>
                         </div>
-                        
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-10">
-                            <h2 className="text-2xl font-black text-slate-900 mb-8 border-b border-slate-100 pb-6 leading-tight italic tracking-tighter">
-                                {selectedTask.title}
-                            </h2>
-                            
-                            <div className="space-y-10">
-                                {/* FUENTE Y THOUGHT */}
-                                <div className="space-y-4">
-                                    <label className="text-[10px] font-black text-[#013388] uppercase tracking-[0.3em] flex items-center gap-2">
-                                        <Brain className="w-4 h-4" /> AI Logical Thought
-                                    </label>
-                                    <div className="bg-[#F8FAFC] p-6 rounded-[32px] border border-slate-100 italic text-slate-700 text-sm leading-relaxed shadow-inner">
-                                        "{selectedTask.details?.thought || 'Iniciando proceso de razonamiento distribuido...'}"
-                                    </div>
-                                </div>
-
-                                {/* ANALYSIS GAPS */}
-                                <div className="space-y-4">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
-                                         <SearchCode className="w-4 h-4" /> Gaps & Findigs
-                                    </label>
-                                    <div className="grid grid-cols-1 gap-3">
-                                        {(selectedTask.details?.gaps || ["Buscando inconsistencias...", "Verificando TDRs..."]).map((gap, i) => (
-                                            <div key={i} className="flex gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                                <div className="w-6 h-6 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-[10px] font-black text-[#013388]">{i+1}</div>
-                                                <p className="text-xs font-bold text-slate-700">{gap}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* PEER REVIEW BUBBLE */}
-                                <div className="bg-[#013388] rounded-[40px] p-8 text-white relative">
-                                    <div className="absolute top-[-10px] left-8 w-4 h-4 bg-[#013388] rotate-45" />
-                                    <div className="flex items-center gap-4 mb-6">
-                                        <div className="w-10 h-10 rounded-2xl bg-white/20 border border-white/20 flex items-center justify-center shadow-xl">🍷</div>
-                                        <div className="flex-1">
-                                            <p className="text-xs font-black uppercase tracking-[0.2em]">Mateo • Peer Reviewer</p>
-                                            <p className="text-[10px] text-white/60 font-black uppercase">Verified • 4m ago</p>
-                                        </div>
-                                    </div>
-                                    <div className="text-sm font-bold leading-relaxed space-y-4">
-                                        <p>PEER REVIEW: El proceso de extracción en SECOP II ha sido exhaustivo. Se identificó la subvención "Salud Rural Distrital" como un match del 95% con los objetivos del club Buenaventura Pacífico.</p>
-                                        <div className="bg-white/10 p-5 rounded-2xl border border-white/10">
-                                            <p className="text-[10px] font-black text-[#F7A81B] uppercase mb-2">Quality Verdict:</p>
-                                            <p className="text-xs opacity-90 italic">Excellent research scope. Response matches local Rotary dialect. Ready for Governor review.</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* AGENT INTERACTION */}
-                        <div className="p-8 bg-slate-50 border-t border-slate-100 flex items-center gap-4">
-                            <div className="flex-1 relative group">
-                                <input type="text" placeholder="Dar instrucción táctica al agente..." className="w-full bg-white border border-slate-200 p-5 pl-8 pr-16 rounded-[28px] text-xs font-black text-slate-800 outline-none focus:ring-4 focus:ring-[#013388]/5 transition-all shadow-sm" />
-                                <button className="absolute right-3 top-1/2 -translate-y-1/2 bg-[#013388] text-white p-2.5 rounded-2xl hover:scale-105 transition-all"><ArrowRightCircle className="w-6 h-6" /></button>
-                            </div>
-                            <button className="p-4 bg-emerald-500 text-white rounded-2xl shadow-xl shadow-emerald-500/20 active:scale-95 transition-all"><CheckCircle2 className="w-6 h-6" /></button>
-                        </div>
                     </div>
                 </div>
             )}
 
-            {/* API SETTINGS */}
+            {/* SETTINGS MODAL */}
             {showSettings && (
-                <div className="fixed inset-0 bg-[#001438]/90 backdrop-blur-3xl z-[10001] flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-md rounded-[56px] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-12 duration-500">
-                        <div className="p-10 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                            <div className="flex items-center gap-3">
-                                <Database className="w-6 h-6 text-[#013388]" />
-                                <h3 className="font-black text-[#013388] uppercase tracking-widest text-xs">API Configuration</h3>
-                            </div>
-                            <button onClick={() => setShowSettings(false)} className="p-3 hover:bg-slate-200 rounded-2xl transition-all"><X className="w-6 h-6 text-slate-400" /></button>
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-3xl z-[10001] flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-md rounded-[56px] p-10 space-y-8">
+                        <div className="flex justify-between items-center"><h3 className="font-black text-[#013388] uppercase text-xs">API Configuration</h3><button onClick={() => setShowSettings(false)}><X className="w-5 h-5 text-slate-400" /></button></div>
+                        <div className="space-y-4">
+                            <div className="space-y-2"><label className="text-[10px] font-black uppercase text-slate-400">Apify API Key</label><input type="password" placeholder="apify_proxy_..." className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-[#013388]" /></div>
+                            <div className="space-y-2"><label className="text-[10px] font-black uppercase text-slate-400">Perplexity API Key</label><input type="password" placeholder="pplx-..." className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-[#013388]" /></div>
                         </div>
-                        <div className="p-10 space-y-8">
-                            <div className="space-y-6">
-                                <div className="space-y-3">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2">Apify API Key (Proxy Storage)</label>
-                                    <input type="password" placeholder="apify_proxy_..." className="w-full p-5 bg-slate-50 border border-slate-100 rounded-3xl text-sm font-black outline-none focus:border-[#013388]/30 transition-all font-mono" />
-                                </div>
-                                <div className="space-y-3">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2">Perplexity API Key (Deep Intelligence)</label>
-                                    <input type="password" placeholder="pplx-..." className="w-full p-5 bg-slate-50 border border-slate-100 rounded-3xl text-sm font-black outline-none focus:border-[#013388]/30 transition-all font-mono" />
-                                </div>
-                            </div>
-                            <div className="p-6 bg-[#013388]/5 rounded-[32px] border border-[#013388]/10 flex items-center gap-4">
-                                <ShieldCheck className="w-6 h-6 text-[#013388]" />
-                                <p className="text-[10px] font-black text-[#013388] uppercase leading-relaxed font-sans">Las llaves se encriptarán y se guardarán en el núcleo seguro de Club Platform.</p>
-                            </div>
-                            <button onClick={() => setShowSettings(false)} className="w-full py-6 bg-[#013388] text-white rounded-[32px] font-black uppercase text-xs tracking-[0.3em] hover:shadow-2xl shadow-[#013388]/20 transition-all active:scale-95">Memorizar Conexiones</button>
-                        </div>
+                        <button onClick={() => setShowSettings(false)} className="w-full py-6 bg-[#013388] text-white rounded-[32px] font-black uppercase text-xs shadow-xl">Memorizar Conexiones</button>
                     </div>
                 </div>
             )}
-
-            <style dangerouslySetInnerHTML={{ __html: `
-                .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-                .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(1,51,136,0.1); border-radius: 10px; }
-                .scrollbar-hide::-webkit-scrollbar { display: none; }
-                .shadow-full { shadow: 0 0 50px rgba(0,0,0,0.15); }
-            `}} />
         </div>
     );
 };
