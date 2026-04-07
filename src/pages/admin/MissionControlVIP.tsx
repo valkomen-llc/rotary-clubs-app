@@ -4,12 +4,14 @@ import {
     Zap,
     Target,
     History,
+    CheckCircle2,
     X,
     LayoutDashboard,
     MoreHorizontal,
     ArrowUpRight,
     MessageSquare,
-    Loader2
+    Loader2,
+    ShieldCheckIcon
 } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -74,8 +76,10 @@ const HQDashboard: React.FC = () => {
     
     // WhatsApp integration states
     const [chats, setChats] = useState<any[]>([]);
-    const [selectedChat, setSelectedChat] = useState('');
+    const [selectedChats, setSelectedChats] = useState<string[]>([]);
+    const [searchTerm, setSearchTerm] = useState('');
     const [isSending, setIsSending] = useState(false);
+    const [sendingProgress, setSendingProgress] = useState({ current: 0, total: 0 });
     const [sendSuccess, setSendSuccess] = useState(false);
 
     const startScoutEngine = () => {
@@ -152,7 +156,6 @@ const HQDashboard: React.FC = () => {
             .then(data => {
                 if (data.success) {
                     setChats(data.chats);
-                    if (data.chats.length > 0) setSelectedChat(data.chats[0].id);
                 }
             })
             .catch(console.error);
@@ -161,6 +164,8 @@ const HQDashboard: React.FC = () => {
 
     const handlePublish = (task: Task) => {
         setSendSuccess(false);
+        setSelectedChats([]);
+        setSendingProgress({ current: 0, total: 0 });
         setShowPublish({
             hook: "🚀 ¡Nueva oportunidad detectada para Rotary!",
             context: task.content,
@@ -170,39 +175,55 @@ const HQDashboard: React.FC = () => {
         });
     };
 
-    const sendToWhatsApp = async () => {
-        if (!selectedChat || isSending) return;
-        setIsSending(true);
-        try {
-            const token = localStorage.getItem('token');
-            const message = `${showPublish.hook}\n\n${showPublish.context}\n\n🔗 *${showPublish.ctaLabel}:*\n${showPublish.url}`;
-            
-            const res = await fetch(`${API}/whatsapp-qr/send-message`, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    chatId: selectedChat,
-                    message: message
-                })
-            });
-            
-            const data = await res.json();
-            if (data.success) {
-                setSendSuccess(true);
-                setTimeout(() => {
-                    setShowPublish(null);
-                    setSendSuccess(false);
-                }, 2000);
-            }
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setIsSending(false);
-        }
+    const toggleChat = (id: string) => {
+        setSelectedChats(prev => 
+            prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
+        );
     };
+
+    const sendToWhatsApp = async () => {
+        if (selectedChats.length === 0 || isSending) return;
+        setIsSending(true);
+        setSendingProgress({ current: 0, total: selectedChats.length });
+        
+        const token = localStorage.getItem('token');
+        
+        for (let i = 0; i < selectedChats.length; i++) {
+            const chatId = selectedChats[i];
+            setSendingProgress(p => ({ ...p, current: i + 1 }));
+            
+            // Safety delay (3-5 seconds)
+            if (i > 0) await new Promise(r => setTimeout(r, 3000 + Math.random() * 2000));
+
+            try {
+                const variants = ["Hola", "Buen día", "Estimados", "Atención"];
+                const prefix = variants[Math.floor(Math.random() * variants.length)];
+                const message = `*${prefix}* - ${showPublish.hook}\n\n${showPublish.context}\n\n🔗 *${showPublish.ctaLabel}:*\n${showPublish.url}`;
+                
+                await fetch(`${API}/whatsapp-qr/send-message`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ chatId: chatId, message: message })
+                });
+            } catch (e) {
+                console.error(`Error sending to ${chatId}:`, e);
+            }
+        }
+        
+        setSendSuccess(true);
+        setIsSending(false);
+        setTimeout(() => {
+            setShowPublish(null);
+            setSendSuccess(false);
+        }, 3000);
+    };
+
+    const filteredChats = chats.filter(c => 
+        c.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
     return (
         <div className="fixed inset-0 bg-[#F4F7FA] text-gray-700 font-sans z-[9999] overflow-hidden flex flex-col">
@@ -342,17 +363,7 @@ const HQDashboard: React.FC = () => {
                                 </button>
                             </div>
                             <h2 className="text-3xl font-black text-[#013388] mb-4">{selectedGoal?.title || "Todos los Objetivos"}</h2>
-                            <div className="grid grid-cols-2 gap-6 mb-8">
-                                <div className="bg-gray-50 p-6 rounded-[32px] border border-gray-100 text-center">
-                                    <p className="text-[10px] font-black text-gray-400 uppercase mb-2">Pasos Ejecutados</p>
-                                    <p className="text-4xl font-black text-[#013388]">12/15</p>
-                                </div>
-                                <div className="bg-gray-50 p-6 rounded-[32px] border border-gray-100 text-center">
-                                    <p className="text-[10px] font-black text-gray-400 uppercase mb-2">IA Hallazgos</p>
-                                    <p className="text-4xl font-black text-emerald-500">04</p>
-                                </div>
-                            </div>
-                            <button className="w-full py-4 bg-[#013388] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#00246B] transition-all shadow-xl shadow-blue-900/20">
+                            <button className="w-full py-4 bg-[#013388] text-white rounded-2xl font-black uppercase hover:bg-[#00246B] shadow-xl shadow-blue-900/20">
                                 Activar Plan de Operación
                             </button>
                         </div>
@@ -362,63 +373,54 @@ const HQDashboard: React.FC = () => {
 
             {showPublish && (
                 <div className="fixed inset-0 bg-[#013388]/60 backdrop-blur-md z-[300] flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-lg rounded-[40px] shadow-2xl overflow-hidden animate-fade-in flex flex-col text-gray-900">
+                    <div className="bg-white w-full max-w-lg rounded-[40px] shadow-2xl overflow-hidden animate-fade-in flex flex-col text-gray-900 max-h-[90vh]">
                         <div className="p-8 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                             <h3 className="font-black text-[#013388] uppercase tracking-widest text-xs">Previsualización WhatsApp</h3>
                             <button onClick={() => setShowPublish(null)} className="p-2 hover:bg-gray-200 rounded-full transition-all">
                                 <X className="w-5 h-5 text-gray-400" />
                             </button>
                         </div>
-                        <div className="p-8 overflow-y-auto">
-                            <div className="bg-[#E4FDDB] rounded-3xl p-6 border border-[#BDE0A8] shadow-inner font-sans text-sm text-[#111B21] space-y-4 max-w-sm mx-auto relative">
-                                <span className="absolute -top-3 left-6 bg-[#128C7E] text-white px-2 py-0.5 rounded text-[8px] font-black tracking-widest">WHATSAPP PREVIEW</span>
+                        <div className="p-8 overflow-y-auto custom-scrollbar">
+                            <div className="bg-[#E4FDDB] rounded-3xl p-6 border border-[#BDE0A8] shadow-inner font-sans text-sm text-[#111B21] space-y-4 max-w-sm mx-auto relative mb-8">
+                                <span className="absolute -top-3 left-6 bg-[#128C7E] text-white px-2 py-0.5 rounded text-[8px] font-black tracking-widest uppercase">WHATSAPP PREVIEW</span>
                                 <img src={showPublish.imageUrl} className="w-full h-40 object-cover rounded-2xl" alt="Preview" />
                                 <div className="space-y-3">
                                     <p className="font-bold text-[#128C7E] leading-tight">{showPublish.hook}</p>
                                     <p className="leading-relaxed opacity-90">{showPublish.context}</p>
                                     <p className="text-[#34B7F1] font-bold underline truncate">{showPublish.url}</p>
-                                    <div className="bg-white/50 p-2 rounded-lg border border-black/5 flex items-center justify-between text-[10px] font-bold">
-                                        <span>{showPublish.ctaLabel}</span>
-                                        <ArrowUpRight className="w-3 h-3" />
-                                    </div>
                                 </div>
                             </div>
                             
-                            <div className="mt-8 space-y-6">
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-gray-400 uppercase ml-2 flex items-center gap-2">
-                                        <MessageSquare className="w-3 h-3" /> Seleccionar Chat de Destino
-                                    </label>
-                                    <select 
-                                        value={selectedChat}
-                                        onChange={(e) => setSelectedChat(e.target.value)}
-                                        className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-bold text-gray-700 outline-none focus:border-emerald-300 transition-all"
-                                    >
-                                        <option value="">-- Seleccione un chat --</option>
-                                        {chats.map(c => (
-                                            <option key={c.id} value={c.id}>{c.name} {c.isGroup ? '(Grupo)' : ''}</option>
+                            <div className="space-y-6">
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between px-2">
+                                        <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2">
+                                            <MessageSquare className="w-3 h-3" /> Destinatarios ({selectedChats.length})
+                                        </label>
+                                        <button onClick={() => setSelectedChats(chats.map(c => c.id))} className="text-[9px] font-black text-[#013388] hover:underline">TODOS</button>
+                                    </div>
+                                    <input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold outline-none" />
+                                    <div className="max-h-[200px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                                        {filteredChats.map(c => (
+                                            <div key={c.id} onClick={() => toggleChat(c.id)} className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${selectedChats.includes(c.id) ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-50'}`}>
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black ${c.isGroup ? 'bg-violet-100 text-violet-700' : 'bg-emerald-100 text-emerald-700'}`}>{c.name.charAt(0)}</div>
+                                                    <p className="text-[11px] font-bold text-gray-800">{c.name}</p>
+                                                </div>
+                                                <div className={`w-4 h-4 rounded border-2 ${selectedChats.includes(c.id) ? 'bg-[#013388] border-[#013388]' : 'border-gray-200'}`} />
+                                            </div>
                                         ))}
-                                    </select>
+                                    </div>
                                 </div>
 
-                                <button 
-                                    onClick={sendToWhatsApp}
-                                    disabled={!selectedChat || isSending || sendSuccess}
-                                    className={`w-full py-4 rounded-2xl font-black uppercase tracking-widest transition-all shadow-xl flex items-center justify-center gap-3 ${
-                                        sendSuccess ? 'bg-emerald-500 text-white shadow-emerald-900/20' : 
-                                        isSending ? 'bg-gray-100 text-gray-400 shadow-none' : 
-                                        'bg-[#25D366] text-white hover:bg-[#128C7E] shadow-emerald-900/10'
-                                    }`}
-                                >
-                                    {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : sendSuccess ? <CheckCircle2 className="w-5 h-5" /> : null}
-                                    {sendSuccess ? 'Mensaje Enviado' : isSending ? 'Enviando...' : 'Enviar a WhatsApp Beta'}
+                                <button onClick={sendToWhatsApp} disabled={selectedChats.length === 0 || isSending || sendSuccess} className={`w-full py-4 rounded-2xl font-black uppercase tracking-widest transition-all shadow-xl flex flex-col items-center justify-center gap-1 ${sendSuccess ? 'bg-emerald-500 text-white' : isSending ? 'bg-gray-100 text-gray-400' : 'bg-[#25D366] text-white hover:bg-[#128C7E]'}`}>
+                                    <div className="flex items-center gap-2">
+                                        {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : sendSuccess ? <CheckCircle2 className="w-5 h-5" /> : null}
+                                        <span>{sendSuccess ? 'Enviado' : isSending ? `Enviando ${sendingProgress.current}/${sendingProgress.total}` : `Enviar a ${selectedChats.length} Chats`}</span>
+                                    </div>
+                                    {isSending && <div className="w-32 h-1 bg-gray-200 rounded-full mt-1 overflow-hidden"><div className="h-full bg-emerald-500 transition-all" style={{ width: `${(sendingProgress.current / sendingProgress.total) * 100}%` }} /></div>}
                                 </button>
-
-                                <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
-                                    <p className="text-[9px] font-bold text-[#013388] leading-relaxed">
-                                        * El mensaje se enviará a través de la sesión de SuperAdmin conectada en el Gateway.
-                                    </p>
-                                </div>
+                                <div className="p-3 bg-orange-50 rounded-xl border border-orange-100"><p className="text-[8px] font-black text-[#A8710F] uppercase tracking-wider text-center">Protección Anti-Ban: Retardo de 4s y Varianza de Mensaje activa.</p></div>
                             </div>
                         </div>
                     </div>
