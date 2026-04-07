@@ -21,7 +21,7 @@ interface UpdateItem {
     }>;
 }
 
-const SYSTEM_UPDATES: UpdateItem[] = [
+export const SYSTEM_UPDATES: UpdateItem[] = [
     {
         version: "v4.2.2",
         date: "07 Abril 2026",

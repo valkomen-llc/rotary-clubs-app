@@ -44,7 +44,7 @@ import {
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import { useSetupProgress, SETUP_ALLOWED_PATHS } from '../../hooks/useSetupProgress';
-
+import { SYSTEM_UPDATES } from '../../pages/admin/SystemUpdates';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const fmtN = (n: number) => n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
@@ -539,9 +539,14 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                 <LogOut className="w-5 h-5 text-gray-400 group-hover:text-red-500" />
                                 Logout
                             </button>
+                            <div className="flex justify-center mt-2">
+                                <span className="text-[10px] font-black tracking-widest text-gray-300 uppercase py-1 px-2 border border-gray-100 rounded-full bg-gray-50/50">
+                                    Release {SYSTEM_UPDATES[0].version}
+                                </span>
+                            </div>
                         </div>
 
-                        <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100 flex items-center gap-3">
+                        <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100 flex items-center gap-3 mt-4">
                             <div className="w-10 h-10 rounded-full bg-rotary-blue flex items-center justify-center text-white font-black text-xs shadow-md border-2 border-white">
                                 {user?.email?.charAt(0).toUpperCase()}
                             </div>
