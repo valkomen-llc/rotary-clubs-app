@@ -11,7 +11,8 @@ import {
     ArrowUpRight,
     MessageSquare,
     Loader2,
-    ShieldCheckIcon
+    ShieldCheckIcon,
+    AlertCircle
 } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -79,6 +80,8 @@ const HQDashboard: React.FC = () => {
     const [selectedChats, setSelectedChats] = useState<string[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [isSending, setIsSending] = useState(false);
+    const [isLoadingChats, setIsLoadingChats] = useState(false);
+    const [fetchError, setFetchError] = useState<string | null>(null);
     const [sendingProgress, setSendingProgress] = useState({ current: 0, total: 0 });
     const [sendSuccess, setSendSuccess] = useState(false);
 
@@ -148,7 +151,9 @@ const HQDashboard: React.FC = () => {
     // Fetch chats for WhatsApp
     useEffect(() => {
         if (showPublish) {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('rotary_token'); // CORRECT TOKEN KEY
+            setIsLoadingChats(true);
+            setFetchError(null);
             fetch(`${API}/whatsapp-qr/chats`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             })
@@ -156,9 +161,17 @@ const HQDashboard: React.FC = () => {
             .then(data => {
                 if (data.success) {
                     setChats(data.chats);
+                } else {
+                    setFetchError(data.error || 'No se pudieron cargar los chats. Verifica la sesión QR.');
                 }
             })
-            .catch(console.error);
+            .catch(e => {
+                console.error(e);
+                setFetchError('Error de red al conectar con el Gateway.');
+            })
+            .finally(() => {
+                setIsLoadingChats(false);
+            });
         }
     }, [showPublish]);
 
@@ -186,7 +199,7 @@ const HQDashboard: React.FC = () => {
         setIsSending(true);
         setSendingProgress({ current: 0, total: selectedChats.length });
         
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('rotary_token');
         
         for (let i = 0; i < selectedChats.length; i++) {
             const chatId = selectedChats[i];
@@ -399,9 +412,35 @@ const HQDashboard: React.FC = () => {
                                         </label>
                                         <button onClick={() => setSelectedChats(chats.map(c => c.id))} className="text-[9px] font-black text-[#013388] hover:underline">TODOS</button>
                                     </div>
-                                    <input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold outline-none" />
+                                    
+                                    <input 
+                                        type="text" 
+                                        placeholder="Buscar chat o grupo..." 
+                                        value={searchTerm} 
+                                        onChange={(e) => setSearchTerm(e.target.value)} 
+                                        className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold outline-none" 
+                                    />
+
                                     <div className="max-h-[200px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
-                                        {filteredChats.map(c => (
+                                        {isLoadingChats && (
+                                            <div className="flex flex-col items-center justify-center p-8 gap-3">
+                                                <Loader2 className="w-6 h-6 text-[#013388] animate-spin" />
+                                                <p className="text-[10px] font-black font-sans text-gray-400 uppercase">Cargando Gateway...</p>
+                                            </div>
+                                        )}
+
+                                        {fetchError && (
+                                            <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3">
+                                                <AlertCircle className="w-5 h-5 text-red-500" />
+                                                <p className="text-[10px] font-bold text-red-600 uppercase">{fetchError}</p>
+                                            </div>
+                                        )}
+
+                                        {!isLoadingChats && !fetchError && filteredChats.length === 0 && (
+                                            <p className="text-[10px] text-center text-gray-400 font-bold uppercase py-4">No se encontraron chats</p>
+                                        )}
+
+                                        {!isLoadingChats && !fetchError && filteredChats.map(c => (
                                             <div key={c.id} onClick={() => toggleChat(c.id)} className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${selectedChats.includes(c.id) ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-50'}`}>
                                                 <div className="flex items-center gap-3">
                                                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black ${c.isGroup ? 'bg-violet-100 text-violet-700' : 'bg-emerald-100 text-emerald-700'}`}>{c.name.charAt(0)}</div>
@@ -418,9 +457,8 @@ const HQDashboard: React.FC = () => {
                                         {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : sendSuccess ? <CheckCircle2 className="w-5 h-5" /> : null}
                                         <span>{sendSuccess ? 'Enviado' : isSending ? `Enviando ${sendingProgress.current}/${sendingProgress.total}` : `Enviar a ${selectedChats.length} Chats`}</span>
                                     </div>
-                                    {isSending && <div className="w-32 h-1 bg-gray-200 rounded-full mt-1 overflow-hidden"><div className="h-full bg-emerald-500 transition-all" style={{ width: `${(sendingProgress.current / sendingProgress.total) * 100}%` }} /></div>}
                                 </button>
-                                <div className="p-3 bg-orange-50 rounded-xl border border-orange-100"><p className="text-[8px] font-black text-[#A8710F] uppercase tracking-wider text-center">Protección Anti-Ban: Retardo de 4s y Varianza de Mensaje activa.</p></div>
+                                <div className="p-3 bg-orange-50 rounded-xl border border-orange-100"><p className="text-[8px] font-black text-[#A8710F] uppercase tracking-wider text-center">Protección Anti-Ban: Retardo de 4s y Varianza activa.</p></div>
                             </div>
                         </div>
                     </div>
