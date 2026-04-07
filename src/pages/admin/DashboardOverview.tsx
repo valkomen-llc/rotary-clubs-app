@@ -29,7 +29,7 @@ export const IMPLEMENTATIONS = [
         load: 45, 
         agents: 3, 
         version: 'v4.2',
-        description: 'Gestión de subvenciones en tiempo real vía Perplexity/Apify.'
+        description: 'Gestión de subvenciones en tiempo real vía Perplexity/Google Custom Search.'
     },
     { 
         id: 'crm-pulse', 
@@ -45,6 +45,21 @@ export const IMPLEMENTATIONS = [
 
 const DashboardOverview: React.FC = () => {
     const navigate = useNavigate();
+    
+    const [impls, setImpls] = useState(() => {
+        try {
+            const saved = localStorage.getItem('__impl_states');
+            if (saved) return JSON.parse(saved);
+        } catch(e) {}
+        return IMPLEMENTATIONS;
+    });
+
+    const togglePause = (id: string) => {
+        const updated = impls.map((i: any) => i.id === id ? {...i, status: i.status === 'active' ? 'idle' : 'active'} : i);
+        setImpls(updated);
+        localStorage.setItem('__impl_states', JSON.stringify(updated));
+    };
+
     const [configModalOpen, setConfigModalOpen] = useState<string | null>(null);
     const [grantFreq, setGrantFreq] = useState('Semanal');
     const [grantLimit, setGrantLimit] = useState(10);
@@ -115,11 +130,11 @@ const DashboardOverview: React.FC = () => {
                 
                 <div className="p-8">
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {IMPLEMENTATIONS.map(impl => (
+                        {impls.map((impl: any) => (
                             <div key={impl.id} className="group bg-slate-50 border border-slate-100 rounded-[32px] p-6 hover:bg-white hover:shadow-2xl transition-all duration-500 relative overflow-hidden">
                                 <div className="absolute top-0 right-0 p-4">
                                     <div className={`px-3 py-1 rounded-full text-[8px] font-black uppercase border ${impl.status === 'active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-200 text-slate-500 border-slate-300'}`}>
-                                        {impl.status}
+                                        {impl.status === 'active' ? 'Active' : 'Paused'}
                                     </div>
                                 </div>
                                 
@@ -152,7 +167,7 @@ const DashboardOverview: React.FC = () => {
                                     <button onClick={() => setConfigModalOpen(impl.id)} className="flex-1 py-3 bg-white border border-slate-100 hover:border-[#013388] text-slate-700 hover:text-[#013388] rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2">
                                         <Settings className="w-3.5 h-3.5" /> Config
                                     </button>
-                                    <button className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${impl.status === 'active' ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20' : 'bg-[#013388] text-white shadow-lg shadow-[#013388]/20'}`}>
+                                    <button onClick={() => togglePause(impl.id)} className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${impl.status === 'active' ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20 hover:bg-amber-600' : 'bg-[#013388] text-white shadow-lg shadow-[#013388]/20 hover:bg-blue-900'}`}>
                                         {impl.status === 'active' ? <><Pause className="w-3.5 h-3.5" /> Pausar</> : <><Play className="w-3.5 h-3.5" /> Desplegar</>}
                                     </button>
                                 </div>

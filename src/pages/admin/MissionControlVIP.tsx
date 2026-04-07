@@ -89,16 +89,26 @@ const AGENTS: Agent[] = [
 ];
 import { IMPLEMENTATIONS } from './DashboardOverview';
 
-const INITIAL_GOALS: Goal[] = IMPLEMENTATIONS.filter(i => i.status === 'active').map(impl => ({
-    id: impl.id,
-    title: impl.name,
-    description: impl.description,
-    status: 'active',
-    current: impl.load > 0 ? impl.load : 50,
-    total: 100,
-    progress: impl.load > 0 ? impl.load : 50,
-    assignedAgents: ['rafael', 'mateo', 'valeria', 'sofia', 'diego'].slice(0, impl.agents || 2),
-}));
+const getGoalsFromStorage = (): Goal[] => {
+    try {
+        const saved = localStorage.getItem('__impl_states');
+        const src = saved ? JSON.parse(saved) : IMPLEMENTATIONS;
+        return src.filter((i: any) => i.status === 'active').map((impl: any) => ({
+            id: impl.id,
+            title: impl.name,
+            description: impl.description,
+            status: 'active',
+            current: impl.load > 0 ? impl.load : 50,
+            total: 100,
+            progress: impl.load > 0 ? impl.load : 50,
+            assignedAgents: ['rafael', 'mateo', 'valeria', 'sofia', 'diego'].slice(0, impl.agents || 2),
+        }));
+    } catch(e) {
+        return [];
+    }
+};
+
+const INITIAL_GOALS = getGoalsFromStorage();
 
 const INITIAL_TASKS: Task[] = [
     { 
