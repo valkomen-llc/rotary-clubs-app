@@ -172,7 +172,7 @@ const HQDashboard: React.FC = () => {
                             <span className="text-[11px] font-black text-gray-400 tracking-widest">Goals</span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-gray-400">3</span>
+                            <span className="text-[10px] font-bold text-gray-400">{INITIAL_GOALS.length}</span>
                             <Plus className="w-3.5 h-3.5 text-gray-400" />
                         </div>
                     </div>
