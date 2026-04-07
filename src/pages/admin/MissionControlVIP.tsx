@@ -180,7 +180,7 @@ const HQDashboard: React.FC = () => {
 
     // Trigger n8n Webhook
     const handleShareGrant = async (network: 'whatsapp' | 'email', task: Task) => {
-        const webhookUrl = import.meta.env.VITE_N8N_WEBHOOK_URL || 'https://n8n.clubplatform.org/webhook/grant-distribution';
+        const webhookUrl = import.meta.env.VITE_N8N_WEBHOOK_URL || 'https://n8n-n8n.urnhq7.easypanel.host/webhook/grant-distribution';
         try {
             const payload = {
                 network,
