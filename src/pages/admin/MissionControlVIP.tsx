@@ -100,19 +100,52 @@ const INITIAL_GOALS: Goal[] = IMPLEMENTATIONS.filter(i => i.status === 'active')
 }));
 
 const INITIAL_TASKS: Task[] = [
-    { id: 't1', title: 'Monitor and optimize live SECOP engagement', description: 'Monitor engagement metrics', category: 'Grand Scope', agentId: 'rafael', time: '3h ago', priority: 'High', status: 'backlog' },
-    { id: 't2', title: 'Set up District community space for early adopters', description: 'Create community guidelines and structure', category: 'Conversion', agentId: 'mateo', time: '18h ago', priority: 'Medium', status: 'backlog' },
-    { id: 't3', title: 'Create post-launch engagement plan', description: 'Draft post-launch engagement and followup plan', category: 'Grand Scope', agentId: 'sofia', time: '10h ago', priority: 'Medium', status: 'backlog' },
-    { id: 't4', title: 'Find Rotary threads to engage with', description: 'Search related subreddits and forums', category: 'Market', agentId: 'diego', time: '10d ago', priority: 'High', status: 'done', details: {
-        gaps: [
-            "Response length: Opp #3/5 are 200+ words = 'essay spam' risk.",
-            "Schedule feels engineered vs natural engagement.",
-            "No contingency if OP never replies."
-        ],
-        quality: "Excellent research + response variety. Needs conciseness + realistic flow.",
-        source: "Google Search + SECOP Portal",
-        link: "https://secop.gov.co/query"
-    }}
+    { 
+        id: 'gx-1', 
+        title: 'Actualizar prompt base de Elena', 
+        description: 'Enseñar a la orquestadora a reconocer eventos new_grant_found.', 
+        category: 'Grand Scope', 
+        agentId: 'valeria', 
+        time: '1h ago', 
+        priority: 'Medium', 
+        status: 'todo' 
+    },
+    { 
+        id: 'gx-2', 
+        title: 'Configurar Workflow en n8n', 
+        description: 'Construir el scraper de SECOP II y USAID, e integrarlo con Gemini 1.5.', 
+        category: 'Grand Scope', 
+        agentId: 'rafael', 
+        time: '4h ago', 
+        priority: 'High', 
+        status: 'in_progress' 
+    },
+    { 
+        id: 'gx-3', 
+        title: 'Crear tabla FundingOpportunity en DB', 
+        description: 'Diseñar esquema migratorio de PostgreSQL para almacenar historiales de subvenciones.', 
+        category: 'Grand Scope', 
+        agentId: 'diego', 
+        time: '2d ago', 
+        priority: 'High', 
+        status: 'done',
+        details: {
+            gaps: ["Relación Many-to-Many con la tabla 'Club' pendiente de documentar."],
+            quality: "Optimizada para búsquedas indexadas y filtros de Áreas de Enfoque.",
+            source: "Terminal - Prisma Schema",
+            link: "https://github.com/valkomen-llc/rotary-clubs-app"
+        }
+    },
+    { 
+        id: 'gx-4', 
+        title: 'Diseñar plantilla en WhatsApp Meta', 
+        description: 'Plantilla de HSM para que Camila dispare la alerta de financiación a Presidentes.', 
+        category: 'Conversion', 
+        agentId: 'mateo', 
+        time: '5m ago', 
+        priority: 'Low', 
+        status: 'backlog' 
+    }
 ];
 
 const HQDashboard: React.FC = () => {
