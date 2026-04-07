@@ -48,13 +48,15 @@ const VIP_AGENTS = [
 
 const SIMULATED_LOGS = [
     "[SYSTEM] Autenticación biométrica de Gobernador aprobada.",
+    "[GRANT-SCOUT] Escaneando SECOP II... +4 oportunidades potenciales encontradas.",
+    "[RAFAEL] Analizando TDR de Subvención USAID en Ámbito de Salud.",
     "[SOFÍA] Recibiendo nota de voz de 45seg (Distrito 4271)...",
     "[WHISPER] Transcripción completada: 'Por favor lanzar campaña de polio para mañana'.",
+    "[GRANT-SCOUT] Generando resumen ejecutivo para convocatoria Global Grants.",
     "[SOFÍA] Brief generado y derivado a Trafficker Digital.",
     "[MATEO] Analizando tráfico cruzado entre 14 clubes suscritos.",
-    "[MATEO] +120 leads nuevos detectados en la red global Rotary.",
+    "[GRANT-SCOUT] 12 clubes calificados para Aplicación de Apoyo Económico.",
     "[DIEGO] Ticket #4029 recibido: Error acceso a tienda.",
-    "[DIEGO] Instrucciones enviadas por WhatsApp (Tasa de respuesta 2s).",
     "[VALERIA] Enviando newsletter a 240 Presidentes de Club.",
     "[SYSTEM] Sincronización con PostgreSQL (Neon) = OK."
 ];
@@ -116,6 +118,26 @@ const MissionControlVIP: React.FC = () => {
                             <p className="text-[10px] text-gray-500 uppercase tracking-widest">Global Ops</p>
                             <p className="text-xl text-sky-400 font-bold">{stats.requests.toLocaleString()}</p>
                         </div>
+                        <div className="text-right pl-6 border-l border-gray-800 flex items-center">
+                             <button
+                                onClick={async () => {
+                                    const toastId = (await import('sonner')).toast.loading('Ejecutando Grant Scout...');
+                                    try {
+                                        const token = localStorage.getItem('rotary_token');
+                                        const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/agents/orchestrate`, {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                            body: JSON.stringify({ type: 'new_grant_found', payload: { source: 'vip_cc_trigger' } })
+                                        });
+                                        if (response.ok) (await import('sonner')).toast.success('Búsqueda iniciada en segundo plano.', { id: toastId });
+                                        else (await import('sonner')).toast.error('Error de orquestación.', { id: toastId });
+                                    } catch (e) { (await import('sonner')).toast.error('Error de red.', { id: toastId }); }
+                                }}
+                                className="flex items-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 px-4 py-2 rounded-lg font-bold text-[10px] transition-all"
+                            >
+                                <Zap className="w-3.5 h-3.5" /> SCOUT ENGINE
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -156,6 +178,31 @@ const MissionControlVIP: React.FC = () => {
                                     </div>
                                 </div>
                             ))}
+                            {/* Rafael in VIP View */}
+                            <div className="bg-[#111111] border border-gray-800 rounded-2xl p-5 border-emerald-900/40 relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 blur-2xl pointer-events-none" />
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white font-black shadow-lg shadow-black/50">
+                                            R
+                                        </div>
+                                        <div>
+                                            <h3 className="text-white font-bold">Rafael</h3>
+                                            <p className="text-[10px] text-emerald-400 uppercase mt-0.5 tracking-wider font-bold">Grant Scout Specialist</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-[10px] bg-emerald-900/20 border border-emerald-800 px-2 py-1 rounded text-emerald-400 flex items-center gap-1">
+                                        <Activity className="w-3 h-3" /> ANALYZING
+                                    </div>
+                                </div>
+                                <div className="bg-black/50 rounded-lg p-3 border border-emerald-900/30">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                                        <span className="text-[10px] uppercase tracking-widest text-emerald-500 font-bold">Monitorizando Subvenciones</span>
+                                    </div>
+                                    <p className="text-xs text-emerald-200/60 truncate italic">❯ Preparando Borrador para Club Rotary Buenaventura...</p>
+                                </div>
+                            </div>
                         </div>
 
                         {/* Hardware Stats */}

@@ -31,6 +31,7 @@ const KnowledgeBase: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [isUploading, setIsUploading] = useState(false);
     const [showUploadModal, setShowUploadModal] = useState(false);
+    const [viewingSource, setViewingSource] = useState<KnowledgeSource | null>(null);
     const [newSource, setNewSource] = useState({ title: '', content: '', isGlobal: false });
 
     const isSuperAdmin = user?.role === 'administrator';
@@ -100,12 +101,34 @@ const KnowledgeBase: React.FC = () => {
                     </h1>
                     <p className="text-gray-500 text-sm">Entrena al asistente con documentos institucionales y locales.</p>
                 </div>
-                <button
-                    onClick={() => setShowUploadModal(true)}
-                    className="flex items-center gap-2 bg-rotary-blue text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-rotary-blue/20 hover:bg-sky-800 transition-all"
-                >
-                    <Plus className="w-5 h-5" /> Añadir Información
-                </button>
+                <div className="flex items-center gap-3">
+                    {isSuperAdmin && (
+                        <button
+                            onClick={async () => {
+                                const toastId = toast.loading('Iniciando búsqueda de subvenciones...');
+                                try {
+                                    const token = localStorage.getItem('rotary_token');
+                                    const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/agents/orchestrate`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                        body: JSON.stringify({ type: 'new_grant_found', payload: { source: 'manual_trigger' }, clubId: user?.clubId || '00000000-0000-0000-0000-000000000000' })
+                                    });
+                                    if (response.ok) toast.success('Automatización de Subvenciones disparada. Elena y Rafael están analizando fuentes.', { id: toastId });
+                                    else toast.error('Error al disparar la orquestación.', { id: toastId });
+                                } catch (e) { toast.error('Error de conexión.', { id: toastId }); }
+                            }}
+                            className="flex items-center gap-2 bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all"
+                        >
+                            <Sparkles className="w-5 h-5" /> Ejecutar Grant Scout
+                        </button>
+                    )}
+                    <button
+                        onClick={() => setShowUploadModal(true)}
+                        className="flex items-center gap-2 bg-rotary-blue text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-rotary-blue/20 hover:bg-sky-800 transition-all"
+                    >
+                        <Plus className="w-5 h-5" /> Añadir Información
+                    </button>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -130,7 +153,12 @@ const KnowledgeBase: React.FC = () => {
                                 </span>
                             </div>
                             <h3 className="font-bold text-gray-800 mb-2 truncate">{source.title}</h3>
-                            <p className="text-xs text-gray-500 line-clamp-2 mb-4">{source.content}</p>
+                            <button 
+                                onClick={() => setViewingSource(source)}
+                                className="text-left w-full group-hover:bg-gray-50 p-2 -m-2 rounded-xl transition-colors"
+                            >
+                                <p className="text-xs text-gray-500 line-clamp-3 mb-4">{source.content}</p>
+                            </button>
                             <div className="flex justify-between items-center pt-4 border-t border-gray-50">
                                 <span className="text-[10px] text-gray-400 font-bold">
                                     Añadido: {new Date(source.createdAt).toLocaleDateString()}
@@ -218,6 +246,42 @@ const KnowledgeBase: React.FC = () => {
                             >
                                 {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
                                 Guardar en la Base de Datos
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* View Source Modal */}
+            {viewingSource && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                    <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl p-8 animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+                        <div className="flex justify-between items-center mb-6">
+                            <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${viewingSource.clubId ? 'bg-sky-50 text-rotary-blue' : 'bg-purple-50 text-purple-600'}`}>
+                                    {viewingSource.clubId ? <Home className="w-5 h-5" /> : <Globe className="w-5 h-5" />}
+                                </div>
+                                <h3 className="text-xl font-bold text-gray-800">{viewingSource.title}</h3>
+                            </div>
+                            <button onClick={() => setViewingSource(null)} className="p-2 hover:bg-gray-100 rounded-full transition-all">
+                                <X className="w-5 h-5 text-gray-400" />
+                            </button>
+                        </div>
+
+                        <div className="overflow-y-auto pr-4 scrollbar-thin scrollbar-thumb-gray-200">
+                            <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 mb-6">
+                                <p className="text-gray-700 leading-relaxed whitespace-pre-wrap text-sm font-medium">
+                                    {viewingSource.content}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end pt-4 border-t border-gray-50 mt-auto">
+                            <button 
+                                onClick={() => setViewingSource(null)}
+                                className="px-6 py-2.5 bg-gray-900 text-white rounded-xl font-bold text-sm hover:bg-gray-800 transition-all"
+                            >
+                                Cerrar Vista
                             </button>
                         </div>
                     </div>

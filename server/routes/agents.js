@@ -122,15 +122,20 @@ Escribes y automatizas flujos de correo, consigues contactos en frío y mantiene
         capabilities: ['email_sequence', 'cold_email', 'email_systems', 'newsletter_curator'],
     },
     {
-        name: 'Rafael', role: 'Agencia Creativa (Content & Copywriter)',
+        name: 'Rafael', role: 'Agencia Creativa (Content & Grant Analyst)',
         category: 'producción', order: 7,
-        description: 'Redactor persuasivo puro. Escribe, edita conceptos en video, redacta guiones e historias de impacto.',
+        description: 'Redactor persuasivo y analista de subvenciones. Escribe historias de impacto y analiza oportunidades de financiamiento externas.',
         avatarSeed: 'Rafael', avatarColor: '#10B981',
-        greeting: '¡Hola! Soy Rafael ✍️ Creador puro de contenidos, copywriting y guiones.',
-        systemPrompt: `Tu nombre es Rafael. Eres el Creador de Contenidos y Copywriter principal.
-Tus habilidades (Skills): Content Creator, Copywriting, Seek & Analyze Video, Rotary News Analyst.
-Escribes textos persuasivos, redactas historias para proyectos, guiones de video y analizas tendencias. Analizas de manera profunda artículos pesados de Rotary International y los conviertes en storytelling local empático.`,
-        capabilities: ['content_creator', 'copywriting', 'video_analysis', 'rotary_news_analyst'],
+        greeting: '¡Hola! Soy Rafael ✍️ Creador de contenidos y analista de subvenciones. Transformo historias en impacto y busco fondos para tus proyectos.',
+        systemPrompt: `Tu nombre es Rafael. Eres el Creador de Contenidos y Analista de Subvenciones principal.
+Tus habilidades (Skills): Content Creator, Copywriting, Grant Analyst, Rotary News Analyst.
+Escribes textos persuasivos, analizas de manera profunda artículos de Rotary y TDRs (Términos de Referencia) de subvenciones externas.
+Tu misión es:
+1. Analizar convocatorias y generar resúmenes locales de impacto.
+2. Redactar el ARTÍCULO DE BLOG inicial con la información detallada.
+3. Crear el COPY persuasivo para WhatsApp (incluyendo CTA y sugerencia de imagen).
+Siempre busca alinear la historia del club con los requisitos del donante.`,
+        capabilities: ['content_creator', 'copywriting', 'video_analysis', 'rotary_news_analyst', 'grant_analysis'],
     },
     {
         name: 'Santiago', role: 'Arquitecto de Software & Next.js',
@@ -788,8 +793,10 @@ router.post('/orchestrate', async (req, res) => {
             eventPrompt = `EVENTO DEL SISTEMA: Se ha creado un nuevo evento en el calendario del club.\n\nDatos del Evento: ${JSON.stringify(payload, null, 2)}\n\nInstrucción para Orquestadora: Delega tareas de difusión:\n1. Camila: crear campaña WhatsApp de invitación a socios y contactos.\n2. Andrés: publicar invitación en redes sociales.\n3. Isabel: preparar recordatorio por email.`;
         } else if (type === 'project_published') {
             eventPrompt = `EVENTO DEL SISTEMA: Un proyecto de servicio ha sido publicado.\n\nDatos del Proyecto: ${JSON.stringify(payload, null, 2)}\n\nInstrucción para Orquestadora: Delega la difusión completa:\n1. Camila: notificar a socios por WhatsApp sobre el nuevo proyecto.\n2. Andrés: crear posts de redes sociales.\n3. Martín: generar SEO optimizado para la página del proyecto.\n4. Rafael: redactar historia de impacto del proyecto.`;
+        } else if (type === 'new_grant_found') {
+            eventPrompt = `EVENTO DEL SISTEMA: Se ha detectado una nueva oportunidad de subvención o financiamiento.\n\nDatos de la Subvención: ${JSON.stringify(payload, null, 2)}\n\nInstrucción para Orquestadora (Estrategia Blog-First):\n1. Rafael: Redactar primero un artículo detallado en el BLOG del club/sistema.\n2. Rafael: Preparar el resumen para WhatsApp con un CTA claro ("Leer más en el Blog", "Me interesa").\n3. Valeria: (si es para clubes premium) Preparar el comunicado institucional formal.\n4. Camila: Programar la difusión en la COMUNIDAD DE WHATSAPP y enviar alertas directas a los clubes con el área de enfoque correspondiente.`;
         } else {
-            eventPrompt = `EVENTO DEL SISTEMA: ${type}\n\nDatos: ${JSON.stringify(payload, null, 2)}\n\nInstrucción: Toma medidas delegando tareas a tu equipo según corresponda con 'delegate_task'. Recuerda que Camila maneja WhatsApp, Andrés redes sociales, Martín SEO, Isabel email.`;
+            eventPrompt = `EVENTO DEL SISTEMA: ${type}\n\nDatos: ${JSON.stringify(payload, null, 2)}\n\nInstrucción: Toma medidas delegando tareas a tu equipo según corresponda con 'delegate_task'. Recuerda que Camila maneja WhatsApp, Andrés redes sociales, Martín SEO, Isabel email, Rafael contenidos y subvenciones.`;
         }
 
         const orchestratorTools = getToolsForAgent(['orchestrate']);
