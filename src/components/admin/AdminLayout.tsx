@@ -487,23 +487,6 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                                         <span className="flex-1 text-left">{item.label}</span>
                                                         <Lock className="w-3.5 h-3.5 text-gray-300" />
                                                     </button>
-                                                ) : item.path === '/admin/mission-control-vip' ? (
-                                                    <a
-                                                        href={`${window.location.origin}${window.location.pathname}#/admin/mission-control-vip`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all text-sm group ${isActive
-                                                            ? 'bg-gray-50 text-gray-900 font-bold'
-                                                            : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-900'
-                                                            }`}
-                                                    >
-                                                        <item.icon className={`w-5 h-5 transition-colors ${isActive
-                                                            ? 'text-rotary-blue'
-                                                            : 'text-gray-400 group-hover:text-gray-600'
-                                                            }`} />
-                                                        <span className="flex-1">{item.label}</span>
-                                                        <ExternalLink className="w-3.5 h-3.5 text-gray-300" />
-                                                    </a>
                                                 ) : (
                                                     <Link
                                                         to={item.path}
