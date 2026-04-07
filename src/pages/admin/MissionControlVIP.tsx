@@ -4,13 +4,15 @@ import {
     Zap,
     Target,
     History,
-    CheckCircle2,
-    Clock,
     X,
     LayoutDashboard,
     MoreHorizontal,
-    ArrowUpRight
+    ArrowUpRight,
+    MessageSquare,
+    Loader2
 } from 'lucide-react';
+
+const API = import.meta.env.VITE_API_URL || '/api';
 
 interface Agent {
     id: string;
@@ -69,6 +71,12 @@ const HQDashboard: React.FC = () => {
     const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
     const [showPublish, setShowPublish] = useState<any>(null);
     const [showAllGoals, setShowAllGoals] = useState(false);
+    
+    // WhatsApp integration states
+    const [chats, setChats] = useState<any[]>([]);
+    const [selectedChat, setSelectedChat] = useState('');
+    const [isSending, setIsSending] = useState(false);
+    const [sendSuccess, setSendSuccess] = useState(false);
 
     const startScoutEngine = () => {
         if (isScouting) return;
@@ -133,7 +141,26 @@ const HQDashboard: React.FC = () => {
         return () => clearInterval(interval);
     }, [isScouting]);
 
+    // Fetch chats for WhatsApp
+    useEffect(() => {
+        if (showPublish) {
+            const token = localStorage.getItem('token');
+            fetch(`${API}/whatsapp-qr/chats`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    setChats(data.chats);
+                    if (data.chats.length > 0) setSelectedChat(data.chats[0].id);
+                }
+            })
+            .catch(console.error);
+        }
+    }, [showPublish]);
+
     const handlePublish = (task: Task) => {
+        setSendSuccess(false);
         setShowPublish({
             hook: "🚀 ¡Nueva oportunidad detectada para Rotary!",
             context: task.content,
@@ -141,6 +168,40 @@ const HQDashboard: React.FC = () => {
             url: "https://clubplatform.org/grants/rf-2501",
             imageUrl: "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?q=80&w=2670&auto=format&fit=crop"
         });
+    };
+
+    const sendToWhatsApp = async () => {
+        if (!selectedChat || isSending) return;
+        setIsSending(true);
+        try {
+            const token = localStorage.getItem('token');
+            const message = `${showPublish.hook}\n\n${showPublish.context}\n\n🔗 *${showPublish.ctaLabel}:*\n${showPublish.url}`;
+            
+            const res = await fetch(`${API}/whatsapp-qr/send-message`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    chatId: selectedChat,
+                    message: message
+                })
+            });
+            
+            const data = await res.json();
+            if (data.success) {
+                setSendSuccess(true);
+                setTimeout(() => {
+                    setShowPublish(null);
+                    setSendSuccess(false);
+                }, 2000);
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsSending(false);
+        }
     };
 
     return (
@@ -270,7 +331,7 @@ const HQDashboard: React.FC = () => {
             {/* MODALS */}
             {(selectedGoal || showAllGoals) && (
                 <div className="fixed inset-0 bg-[#013388]/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden animate-fade-in relative">
+                    <div className="bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden animate-fade-in relative text-gray-900">
                         <div className="p-8">
                             <div className="flex justify-between items-start mb-6">
                                 <div className="bg-orange-50 px-3 py-1 rounded-full border border-orange-100">
@@ -301,7 +362,7 @@ const HQDashboard: React.FC = () => {
 
             {showPublish && (
                 <div className="fixed inset-0 bg-[#013388]/60 backdrop-blur-md z-[300] flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-lg rounded-[40px] shadow-2xl overflow-hidden animate-fade-in flex flex-col">
+                    <div className="bg-white w-full max-w-lg rounded-[40px] shadow-2xl overflow-hidden animate-fade-in flex flex-col text-gray-900">
                         <div className="p-8 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                             <h3 className="font-black text-[#013388] uppercase tracking-widest text-xs">Previsualización WhatsApp</h3>
                             <button onClick={() => setShowPublish(null)} className="p-2 hover:bg-gray-200 rounded-full transition-all">
@@ -322,9 +383,43 @@ const HQDashboard: React.FC = () => {
                                     </div>
                                 </div>
                             </div>
-                            <button className="mt-8 w-full py-4 bg-[#25D366] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#128C7E] transition-all flex items-center justify-center gap-3">
-                                Enviar a WhatsApp Beta
-                            </button>
+                            
+                            <div className="mt-8 space-y-6">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-gray-400 uppercase ml-2 flex items-center gap-2">
+                                        <MessageSquare className="w-3 h-3" /> Seleccionar Chat de Destino
+                                    </label>
+                                    <select 
+                                        value={selectedChat}
+                                        onChange={(e) => setSelectedChat(e.target.value)}
+                                        className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-bold text-gray-700 outline-none focus:border-emerald-300 transition-all"
+                                    >
+                                        <option value="">-- Seleccione un chat --</option>
+                                        {chats.map(c => (
+                                            <option key={c.id} value={c.id}>{c.name} {c.isGroup ? '(Grupo)' : ''}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <button 
+                                    onClick={sendToWhatsApp}
+                                    disabled={!selectedChat || isSending || sendSuccess}
+                                    className={`w-full py-4 rounded-2xl font-black uppercase tracking-widest transition-all shadow-xl flex items-center justify-center gap-3 ${
+                                        sendSuccess ? 'bg-emerald-500 text-white shadow-emerald-900/20' : 
+                                        isSending ? 'bg-gray-100 text-gray-400 shadow-none' : 
+                                        'bg-[#25D366] text-white hover:bg-[#128C7E] shadow-emerald-900/10'
+                                    }`}
+                                >
+                                    {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : sendSuccess ? <CheckCircle2 className="w-5 h-5" /> : null}
+                                    {sendSuccess ? 'Mensaje Enviado' : isSending ? 'Enviando...' : 'Enviar a WhatsApp Beta'}
+                                </button>
+
+                                <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                                    <p className="text-[9px] font-bold text-[#013388] leading-relaxed">
+                                        * El mensaje se enviará a través de la sesión de SuperAdmin conectada en el Gateway.
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
