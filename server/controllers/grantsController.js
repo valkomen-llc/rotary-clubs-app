@@ -43,10 +43,20 @@ export const getGrants = async (req, res) => {
 export const updateGrantStatus = async (req, res) => {
     try {
         const { id } = req.params;
-        const { status } = req.body;
+        const { status, metadata } = req.body;
+        
+        const updateData = { status, updatedAt: new Date() };
+        if (metadata) {
+            try {
+                updateData.metadata = typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
+            } catch (e) {
+                updateData.metadata = metadata;
+            }
+        }
+
         const grant = await prisma.fundingOpportunity.update({
             where: { id },
-            data: { status, updatedAt: new Date() }
+            data: updateData
         });
         res.json(grant);
     } catch (error) {

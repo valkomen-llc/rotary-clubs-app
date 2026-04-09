@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
+import { useAuth } from '../../hooks/useAuth';
 import {
     LayoutDashboard,
     Zap,
@@ -23,7 +25,16 @@ import {
     ArrowRightCircle,
     ExternalLink,
     Database,
-    Mail
+    Mail,
+    Check,
+    Edit2,
+    PlayCircle,
+    FileText,
+    Settings2,
+    Trash2,
+    GripVertical,
+    StopCircle,
+    Clock
 } from 'lucide-react';
 
 const getApiBase = () => {
@@ -33,6 +44,10 @@ const getApiBase = () => {
 };
 
 const API_BASE = getApiBase();
+
+// In production (Vercel), we must use /vps for the QR gateway to trigger vercel.json rewrites bypassing Vercel's strict /api/ lock.
+const VITE_API_URL = import.meta.env.VITE_API_URL || '';
+const QR_API = VITE_API_URL ? VITE_API_URL : (import.meta.env.PROD ? '/vps' : '/api');
 
 // --- DATA TYPES ---
 interface Agent {
@@ -112,80 +127,95 @@ const INITIAL_GOALS = getGoalsFromStorage();
 
 const INITIAL_TASKS: Task[] = [
     { 
-        id: 'gx-1', 
-        title: 'Actualizar prompt base de Elena', 
-        description: 'Enseñar a la orquestadora a reconocer eventos new_grant_found.', 
-        category: 'Grand Scope', 
+        id: 'mock-1', 
+        title: 'Análisis de Elegibilidad de Club: Beca Equidad', 
+        description: 'IA evaluando si los proyectos del año pasado cumplen los requisitos.', 
+        category: 'Scouting', 
         agentId: 'valeria', 
-        time: '1h ago', 
+        time: new Date(Date.now() - 1200000).toLocaleString(), 
         priority: 'Medium', 
         status: 'todo' 
     },
     { 
-        id: 'gx-2', 
-        title: 'Configurar Workflow en n8n', 
-        description: 'Construir el scraper de SECOP II y USAID, e integrarlo con Gemini 1.5.', 
-        category: 'Grand Scope', 
-        agentId: 'rafael', 
-        time: '4h ago', 
+        id: 'mock-2', 
+        title: 'Creación de Campaña WhatsApp: Nuevos Fondos', 
+        description: 'Construyendo un copy persuasivo y formal para compartir la oportunidad EU-LAC con Gobernadores.', 
+        category: 'Outreach', 
+        agentId: 'mateo', 
+        time: new Date(Date.now() - 7200000).toLocaleString(), 
         priority: 'High', 
         status: 'in_progress' 
     },
     { 
-        id: 'gx-3', 
-        title: 'Crear tabla FundingOpportunity en DB', 
-        description: 'Diseñar esquema migratorio de PostgreSQL para almacenar historiales de subvenciones.', 
-        category: 'Grand Scope', 
-        agentId: 'diego', 
-        time: '2d ago', 
-        priority: 'High', 
+        id: 'mock-3', 
+        title: 'Revisión y Filtro de Convocatoria Global', 
+        description: 'Comparación exhaustiva de la oportunidad con los focos de Rotary International.', 
+        category: 'Calidad', 
+        agentId: 'sofia', 
+        time: new Date(Date.now() - 18000000).toLocaleString(), 
+        priority: 'Medium', 
         status: 'done',
         details: {
-            gaps: ["Relación Many-to-Many con la tabla 'Club' pendiente de documentar."],
-            quality: "Optimizada para búsquedas indexadas y filtros de Áreas de Enfoque.",
-            source: "Terminal - Prisma Schema",
-            link: "https://github.com/valkomen-llc/rotary-clubs-app"
+            gaps: ["La oportunidad requiere alianza local.", "El porcentaje financiero no coincide perfectamente."],
+            quality: "Evaluación completada. Oportunidad filtrada exitosamente.",
+            source: "AI Model Analysis",
+            link: "#"
         }
-    },
-    { 
-        id: 'gx-4', 
-        title: 'Diseñar plantilla en WhatsApp Meta', 
-        description: 'Plantilla de HSM para que Camila dispare la alerta de financiación a Presidentes.', 
-        category: 'Conversion', 
-        agentId: 'mateo', 
-        time: '5m ago', 
-        priority: 'Low', 
-        status: 'backlog' 
     }
 ];
 
 const HQDashboard: React.FC = () => {
+    const { token } = useAuth();
     const [tasks, setTasks] = useState<Task[]>([]);
     const [isLoadingTasks, setIsLoadingTasks] = useState(true);
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+    const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
 
     useEffect(() => {
-        fetch(`${API_BASE}/scout-grants`)
-            .then(res => res.json())
-            .then(data => {
-                const mappedTasks: Task[] = data.map((g: any) => ({
-                    id: g.id,
-                    title: g.title,
-                    description: g.description,
-                    category: g.matchCategory || 'Unknown',
-                    agentId: g.agentId || 'rafael',
-                    time: new Date(g.createdAt).toLocaleDateString(),
-                    priority: g.priority || 'Medium',
-                    status: g.status || 'backlog'
-                }));
-                // Combine with initial static tasks strictly for MVP UI show/tell purposes
-                setTasks([...INITIAL_TASKS, ...mappedTasks]);
-                setIsLoadingTasks(false);
-            })
-            .catch(() => {
-                setTasks(INITIAL_TASKS);
-                setIsLoadingTasks(false);
-            });
+        const fetchTasks = () => {
+            fetch(`${API_BASE}/scout-grants`)
+                .then(res => res.json())
+                .then(data => {
+                    const mappedTasks: Task[] = data.map((g: any) => {
+                        let parsedMeta = g.metadata;
+                        if (typeof parsedMeta === 'string') {
+                            try { parsedMeta = JSON.parse(parsedMeta); } catch(e) {}
+                        }
+                        return {
+                            id: g.id,
+                            title: g.title,
+                            description: g.description,
+                            category: g.matchCategory || 'Oportunidad',
+                            agentId: g.agentId || 'rafael',
+                            time: new Date(g.createdAt).toLocaleString(),
+                            priority: g.priority || 'High',
+                            status: g.status || 'backlog',
+                            details: parsedMeta || { link: g.sourceUrl || '' }
+                        };
+                    });
+                    
+                    // Deduplicate tasks by title to hide repetitive executions from N8N
+                    const uniqueTasks = mappedTasks.filter((task, index, self) =>
+                        index === self.findIndex((t) => (t.title === task.title))
+                    );
+
+                    // Combine with initial static tasks strictly for MVP UI show/tell purposes
+                    setTasks([...INITIAL_TASKS, ...uniqueTasks]);
+                    setIsLoadingTasks(false);
+                })
+                .catch(() => {
+                    setTasks(INITIAL_TASKS);
+                    setIsLoadingTasks(false);
+                });
+        };
+
+        // Fetch immediately
+        fetchTasks();
+
+        // Start real-time polling every 5 seconds to simulate liveliness of subagents
+        const intervalId = setInterval(fetchTasks, 5000);
+
+        return () => clearInterval(intervalId);
     }, []);
     const [showSettings, setShowSettings] = useState(false);
     
@@ -195,40 +225,184 @@ const HQDashboard: React.FC = () => {
     const [selectedChats, setSelectedChats] = useState<string[]>([]);
     const [isLoadingChats, setIsLoadingChats] = useState(false);
 
-    // Filter tasks by columns
+    // Filter tasks by columns matching the new visual structure
     const boardCols = {
-        backlog: tasks.filter(t => t.status === 'backlog'),
-        todo: tasks.filter(t => t.status === 'todo'),
-        in_progress: tasks.filter(t => t.status === 'in_progress'),
-        done: tasks.filter(t => t.status === 'done')
+        'Backlog': tasks.filter(t => ['backlog', 'todo'].includes(t.status)),
+        'In Progress': tasks.filter(t => t.status === 'in_progress'),
+        'Waiting Approval': tasks.filter(t => t.status === 'done'),
+        'Verified': tasks.filter(t => t.status === 'verified')
     };
 
-    // Trigger n8n Webhook
-    const handleShareGrant = async (network: 'whatsapp' | 'email', task: Task) => {
-        const webhookUrl = import.meta.env.VITE_N8N_WEBHOOK_URL || 'https://n8n-n8n.urnhq7.easypanel.host/webhook/grant-distribution';
+    const fetchChats = async () => {
+        setIsLoadingChats(true);
         try {
-            const payload = {
-                network,
-                grantData: {
-                    title: task.title,
-                    description: task.description,
-                    matchCategory: task.category
-                },
-                adminContact: 'admin@rotary4271.org',
-                timestamp: new Date().toISOString()
-            };
-            
-            // Execute silent fetch to n8n (no wait on UI blocking)
-            fetch(`${webhookUrl}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            }).catch(() => null); // Fail silently if no n8n server exists locally yet.
+            const res = await fetch(`${QR_API}/whatsapp-qr/chats?_t=${Date.now()}`, { 
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache'
+                } 
+            });
+            const data = await res.json();
+            if (data.success) {
+                setChats(data.chats || []);
+            } else {
+                toast.error('Error cargando chats de WhatsApp Web');
+            }
+        } catch (e) {
+            toast.error('Grave: Sin conexión con WhatsApp Web QR');
+        } finally {
+            setIsLoadingChats(false);
+        }
+    };
 
-            alert(`¡Distribución vía ${network.toUpperCase()} iniciada! Se ha despachado el payload a n8n.`);
+    useEffect(() => {
+        if (showPublish) fetchChats();
+    }, [showPublish]);
+
+    const handleShareGrant = async (network: 'whatsapp' | 'email', task: Task) => {
+        if (network === 'whatsapp') {
+            setShowPublish(task);
+            setSelectedChats([]);
+        } else {
+            alert(`Plantilla de Email preparada para: ${task.title}`);
+        }
+    };
+
+    const handleBroadcastWhatsApp = async () => {
+        if (!selectedChats.length) return toast.error('Selecciona al menos un chat destino');
+        const rawText = (showPublish.details as any)?.final_whatsapp_message || showPublish.description;
+        const sourceLink = (showPublish.details as any)?.link || showPublish.sourceUrl || '';
+        
+        let parsed = rawText;
+        parsed = parsed.replace(/^.*?:\s*\n+/ism, '').trim();
+        parsed = parsed.replace(/([?!]\s*(?:[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])?)\s+([A-Z¿¡])/u, '$1\n\n$2');
+        parsed = parsed.replace(/\s*(Descubre más|Más info|Aplica aquí|Haz clic)/gi, '\n\n$1');
+        parsed = parsed.replace(/\[URL\]/gi, sourceLink).replace(/\*\*/g, '*');
+
+        const loadingToast = toast.loading(`Disparando agente: enviando oportunidad a ${selectedChats.length} ecosistemas...`);
+        let succeses = 0;
+        
+        let mediaData: string | null = null;
+        let mimetype = 'image/jpeg';
+        let filename = 'subvencion.jpg';
+
+        try {
+            const prompt = showPublish.title + " " + showPublish.category + ", hyper-realistic, documentary photography, Rotary International style, natural lighting, perfect anatomy, high-end camera, masterpiece, cinematic, completely natural faces";
+            const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1080&height=720&nologo=true&seed=${String(showPublish.id).charCodeAt(0)}`;
+            const imRes = await fetch(imageUrl);
+            if(imRes.ok) {
+                const blob = await imRes.blob();
+                mimetype = blob.type || 'image/jpeg';
+                const reader = new FileReader();
+                mediaData = await new Promise<string>((resolve) => {
+                    reader.onloadend = () => {
+                        const b64 = reader.result as string;
+                        resolve(b64.split(',')[1]); 
+                    }
+                    reader.readAsDataURL(blob);
+                });
+            }
+        } catch (e) {
+            console.error("Error fetching AI image:", e);
+        }
+        
+        for (const chatId of selectedChats) {
+            try {
+                const endpoint = mediaData ? `${QR_API}/whatsapp-qr/send-media` : `${QR_API}/whatsapp-qr/send-message`;
+                const body = mediaData 
+                    ? { chatId, caption: parsed, mediaData, filename, mimetype }
+                    : { chatId, message: parsed };
+
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                    body: JSON.stringify(body)
+                });
+                if (res.ok) succeses++;
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        
+        try {
+            await fetch(`${API_BASE}/scout-grants/${showPublish.id}/status`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'verified' })
+            });
+            setTasks(prev => prev.map(t => t.id === showPublish.id ? { ...t, status: 'verified' } : t));
+        } catch(e) { console.error(e) }
+        
+        toast.dismiss(loadingToast);
+        toast.success(`Publicación enviada exitosamente a ${succeses} plataformas.`);
+        setShowPublish(null);
+        setSelectedChats([]);
+    };
+
+    const getAgentActionVerb = (status: string) => {
+        switch(status) {
+            case 'backlog': return 'ha localizado';
+            case 'todo': return 'tiene en cola';
+            case 'in_progress': return 'está procesando';
+            case 'done': return 'ha completado';
+            default: return 'está revisando';
+        }
+    };
+
+    const handleDrop = async (e: React.DragEvent<HTMLDivElement>, newStatus: string) => {
+        e.preventDefault();
+        const taskId = e.dataTransfer.getData('text/plain');
+        if (!taskId) return;
+
+        // Optimistic UI update
+        const taskToUpdate = tasks.find(t => t.id === taskId);
+        const updatedTasks = tasks.map(t => {
+            if (t.id === taskId) {
+                return { ...t, status: newStatus as Task['status'] };
+            }
+            return t;
+        });
+        setTasks(updatedTasks);
+
+        // Map status change to UI verb in Activity feed implicitly via state
+        if (!taskId.startsWith('mock-')) {
+            try {
+                await fetch(`${API_BASE}/scout-grants/${taskId}/status`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: newStatus })
+                });
+
+                // Si se movió a IN PROGRESS, mandamos la petición a n8n
+                if (newStatus === 'in_progress' && taskToUpdate) {
+                    const webhookUrl = 'https://n8n-n8n.urnhq7.easypanel.host/webhook/whatsapp-copy-generator';
+                    fetch(webhookUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            id: taskId,
+                            title: taskToUpdate.title, 
+                            description: taskToUpdate.description,
+                            url: taskToUpdate.details?.link || '',
+                        })
+                    }).catch(console.error);
+                }
+            } catch (error) {
+                console.error("Error updating priority via API", error);
+            }
+        }
+    };
+
+    const handleTriggerAI = async () => {
+        try {
+            // Reemplaza con la URL correcta del Trigger N8N (Webhook Run Now UI)
+            const n8nWebhook = 'https://n8n-n8n.urnhq7.easypanel.host/webhook/trigger-orchestrator';
+            await fetch(n8nWebhook, { method: 'POST', mode: 'no-cors' });
+            alert("¡Señal enviada a N8N!\n\nPerplexity e IA han despertado. Observa el tablero, las nuevas tarjetas empezarán a fluir entre columnas pronto.");
         } catch (error) {
-            console.error("Error triggerring webhook:", error);
-            alert(`Error simulando envío a n8n por ${network}.`);
+            console.error("Error triggering AI pipeline manually", error);
+            alert("Error de conexión con el motor IA.");
         }
     };
 
@@ -250,6 +424,13 @@ const HQDashboard: React.FC = () => {
                     ))}
                 </div>
                 <div className="flex items-center gap-4">
+                    <button 
+                        onClick={handleTriggerAI}
+                        className="bg-amber-500 hover:bg-amber-400 text-amber-950 font-bold px-4 py-1.5 rounded-lg flex items-center gap-2 text-xs transition-all shadow-lg animate-pulse"
+                    >
+                        <Zap className="w-4 h-4" />
+                        EJECUTAR PIPELINE IA ⚡
+                    </button>
                     <button onClick={() => setShowSettings(!showSettings)} className="text-white hover:bg-white/10 p-2 rounded-lg transition-colors">
                         <Settings className="w-5 h-5" />
                     </button>
@@ -276,7 +457,11 @@ const HQDashboard: React.FC = () => {
                     </div>
                     <div className="flex-1 overflow-y-auto p-3 space-y-3">
                         {INITIAL_GOALS.map(goal => (
-                            <div key={goal.id} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm hover:shadow-md transition-all">
+                            <div 
+                                key={goal.id} 
+                                onClick={() => setSelectedGoal(goal)}
+                                className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer hover:border-[#013388]/30"
+                            >
                                 <div className="flex items-center justify-between mb-1.5">
                                     <h4 className="text-xs font-bold text-gray-800 leading-tight">{goal.title}</h4>
                                     <div className="bg-blue-50 text-[#013388] text-[9px] font-black px-1.5 py-0.5 rounded uppercase shrink-0 ml-2">Active</div>
@@ -302,99 +487,101 @@ const HQDashboard: React.FC = () => {
                     </div>
                 </div>
 
-                {/* COLUMN 2: ACTIVITY FEED */}
-                <div className="w-[340px] border-r border-gray-200 bg-white flex flex-col">
-                    <div className="p-4 flex items-center justify-between border-b border-gray-100 uppercase">
-                        <div className="flex items-center gap-2">
-                            <Activity className="w-4 h-4 text-[#013388]" />
-                            <span className="text-[11px] font-black text-gray-400 tracking-widest">Activity</span>
-                        </div>
-                        <span className="text-[10px] font-bold text-gray-400">60</span>
-                    </div>
-                    <div className="flex-1 overflow-y-auto custom-scrollbar">
-                        {INITIAL_TASKS.filter(t => t.status === 'done').map(task => (
-                            <div key={task.id} onClick={() => setSelectedTask(task)} className="p-4 border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer group">
-                                <div className="flex gap-3">
-                                    <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-sm shrink-0 border border-gray-200">
-                                        {AGENTS.find(a => a.id === task.agentId)?.icon}
-                                    </div>
-                                    <div className="min-w-0">
-                                        <p className="text-[11px] font-bold text-gray-800 leading-tight mb-1">
-                                            <span className="text-[#013388]">{AGENTS.find(a => a.id === task.agentId)?.name}</span> Peer reviewed: {task.title}
-                                        </p>
-                                        <span className="text-[9px] text-gray-400 font-bold uppercase">{task.time}</span>
-                                    </div>
-                                    <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <MessageCircle className="w-3.5 h-3.5 text-gray-300" />
-                                    </div>
+                {/* KANBAN BOARD (REPLACES ACTIVITY FEED AND PREVIOUS BOARD) */}
+                <div className="flex-1 bg-[#F8FAFC] flex overflow-x-auto p-4 gap-4 custom-scrollbar">
+                    {Object.entries(boardCols).map(([colName, colTasks]) => (
+                        <div 
+                            key={colName} 
+                            className="w-[320px] shrink-0 flex flex-col bg-gray-50/80 rounded-2xl border border-gray-200 overflow-hidden shadow-sm"
+                            onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-blue-50/50'); }}
+                            onDragLeave={(e) => { e.currentTarget.classList.remove('bg-blue-50/50'); }}
+                            onDrop={(e) => {
+                                e.preventDefault();
+                                e.currentTarget.classList.remove('bg-blue-50/50');
+                                // Determine structural drop (this part requires mapping string to code-level logic, kept passive)
+                            }}
+                        >
+                            {/* Column Header */}
+                            <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-white">
+                                <div className="flex items-center gap-2">
+                                    <div className={`w-2 h-2 rounded-full ${colName === 'Backlog' ? 'bg-gray-400' : colName === 'In Progress' ? 'bg-amber-500' : colName === 'Waiting Approval' ? 'bg-orange-500' : 'bg-emerald-500'}`} />
+                                    <span className="text-[12px] font-black text-slate-800 uppercase tracking-wide">{colName}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-0.5 rounded-full">{colTasks.length}</span>
                                 </div>
                             </div>
-                        ))}
-                        {/* Heartbeat logs */}
-                        <div className="p-4 flex gap-3 opacity-60">
-                             <div className="w-8 h-8 flex items-center justify-center text-sm">🛡️</div>
-                             <div>
-                                 <p className="text-[11px] font-bold text-gray-400 underline decoration-dotted">Samwell Tarly Heartbeat check: no tasks or reviews pending</p>
-                                 <span className="text-[9px] text-gray-400 font-bold uppercase">10m ago</span>
-                             </div>
-                             <div className="ml-auto">🗃️</div>
-                        </div>
-                    </div>
-                </div>
 
-                {/* KANBAN BOARD (RIGHT) */}
-                <div className="flex-1 bg-gray-50/30 flex overflow-x-auto pb-4 custom-scrollbar">
-                    {Object.entries(boardCols).map(([key, colTasks]) => (
-                        <div key={key} className="w-[300px] shrink-0 flex flex-col p-4 gap-4 border-r border-gray-200 last:border-0">
-                            <div className="flex items-center justify-between px-2 uppercase">
-                                <div className="flex items-center gap-2">
-                                    <div className={`w-2 h-2 rounded-full ${key === 'done' ? 'bg-[#F7A81B]' : 'bg-gray-400'}`} />
-                                    <span className="text-[11px] font-black text-gray-400 tracking-widest">{key.replace('_', ' ')}</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-bold text-gray-400">{colTasks.length}</span>
-                                    <Plus className="w-3.5 h-3.5 text-gray-400" />
-                                </div>
-                            </div>
-                            <div className="flex-1 space-y-4">
+                            {/* Column Cards */}
+                            <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
                                 {colTasks.map(t => (
-                                    <div key={t.id} onClick={() => setSelectedTask(t)} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer group">
-                                        <h5 className="text-[12px] font-bold text-gray-800 leading-snug mb-4 group-hover:text-[#013388]">{t.title}</h5>
-                                        <div className="inline-block bg-gray-50 text-gray-400 text-[10px] font-bold px-2 py-1 rounded-lg mb-4 border border-gray-100">{t.category}</div>
-                                        
-                                        {key === 'done' && (
-                                            <div className="flex items-center gap-2 mb-4 border-t border-gray-50 pt-3">
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); handleShareGrant('whatsapp', t); }}
-                                                    className="flex flex-1 items-center justify-center gap-1.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 transition-colors border border-emerald-100" 
-                                                    title="Enviar vía WhatsApp"
-                                                >
-                                                    <MessageCircle className="w-3.5 h-3.5" />
-                                                    <span className="text-[9px] font-black uppercase tracking-wider">WhatsApp</span>
-                                                </button>
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); handleShareGrant('email', t); }}
-                                                    className="flex flex-1 items-center justify-center gap-1.5 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 transition-colors border border-blue-100" 
-                                                    title="Enviar Plantilla Correo"
-                                                >
-                                                    <Mail className="w-3.5 h-3.5" />
-                                                    <span className="text-[9px] font-black uppercase tracking-wider">Email</span>
-                                                </button>
+                                    <div 
+                                        key={t.id} 
+                                        draggable
+                                        onDragStart={(e) => e.dataTransfer.setData('text/plain', t.id)}
+                                        onClick={() => setSelectedTask(t)} 
+                                        className="bg-white border border-gray-200 rounded-[14px] shadow-sm hover:shadow-md hover:border-[#013388]/30 transition-all cursor-move group flex flex-col overflow-hidden"
+                                    >
+                                        {/* Card Top Icons */}
+                                        <div className="flex justify-between items-center p-3 pb-0">
+                                            <GripVertical className="w-4 h-4 text-gray-300" />
+                                            <div className="flex items-center gap-0.5 opacity-50 group-hover:opacity-100 transition-opacity">
+                                                <button className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-[#013388] transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
+                                                <button className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-[#013388] transition-colors"><FileText className="w-3.5 h-3.5" /></button>
+                                                <button className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                                             </div>
-                                        )}
+                                        </div>
 
-                                        <div className="flex items-center justify-between border-t border-gray-50 pt-3">
-                                            <div className="w-7 h-7 rounded-lg bg-gray-50 flex items-center justify-center text-xs border border-gray-100">
-                                                {AGENTS.find(a => a.id === t.agentId)?.icon}
+                                        {/* Content */}
+                                        <div className="px-5 py-2">
+                                            <h5 className="text-[12px] font-bold text-gray-800 leading-snug mb-1.5 line-clamp-2">{t.title}</h5>
+                                            <p className="text-[10px] text-gray-400 leading-tight block">({t.category})</p>
+                                        </div>
+
+                                        {/* Agent Status */}
+                                        <div className="px-5 py-2 flex items-center justify-between mt-auto">
+                                            <div className="flex items-center gap-1.5 opacity-90">
+                                                <span className="text-[14px] leading-none">{AGENTS.find(a => a.id === t.agentId)?.icon || '🤖'}</span>
+                                                <span className="text-[10px] font-bold text-[#013388]">Agent {AGENTS.find(a => a.id === t.agentId)?.name || 'Opus 4.5'}</span>
                                             </div>
-                                            <div className="flex items-center gap-2">
-                                                <div className={`w-3 h-3 rounded-full flex items-center justify-center text-[7px] text-white font-black ${t.priority === 'High' ? 'bg-red-500' : 'bg-gray-300'}`}>
-                                                    {t.priority.charAt(0)}
+                                            <div className="flex items-center gap-1 text-[9px] font-bold text-gray-400">
+                                                <Clock className="w-3 h-3" /> {t.time.split(',')[1]?.substring(0,6).trim() || ''}
+                                            </div>
+                                        </div>
+
+                                        {/* Action Buttons */}
+                                        <div className="p-3 pt-2 mt-auto">
+                                            {colName === 'Backlog' && (
+                                                <div className="flex gap-2">
+                                                    <button className="flex-1 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-600 text-[10px] font-black uppercase tracking-wide hover:bg-gray-100 flex items-center justify-center gap-1.5 transition-colors"><Edit2 className="w-3 h-3" /> Edit</button>
+                                                    <button className="flex-1 py-2 rounded-xl bg-blue-50 border border-blue-100 text-[#013388] text-[10px] font-black uppercase tracking-wide hover:bg-blue-100 flex items-center justify-center gap-1.5 transition-colors"><PlayCircle className="w-3 h-3" /> Make</button>
                                                 </div>
-                                                <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1 group-hover:text-gray-600 transition-colors">
-                                                    <Loader2 className="w-3 h-3 opacity-50" /> {t.time}
-                                                </span>
-                                            </div>
+                                            )}
+                                            {colName === 'In Progress' && (
+                                                <div className="flex gap-2">
+                                                    <button className="flex-1 py-2 rounded-xl bg-blue-50 border border-blue-100 text-[#013388] text-[10px] font-black uppercase tracking-wide hover:bg-blue-100 flex items-center justify-center gap-1.5 transition-colors">
+                                                        <FileText className="w-3 h-3" /> Logs <span className="bg-blue-200/50 text-[#013388] px-1.5 rounded text-[9px] ml-0.5">1</span>
+                                                    </button>
+                                                    <button className="w-10 rounded-xl bg-red-50 border border-red-100 text-red-500 hover:bg-red-100 flex items-center justify-center transition-colors"><StopCircle className="w-4 h-4" /></button>
+                                                </div>
+                                            )}
+                                            {colName === 'Waiting Approval' && (
+                                                <div className="flex gap-2">
+                                                    <button className="flex-1 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-600 text-[10px] font-black uppercase tracking-wide hover:bg-gray-100 flex items-center justify-center gap-1.5 transition-colors"><Settings2 className="w-3 h-3" /> Refine</button>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); handleShareGrant('whatsapp', t); }}
+                                                        className="flex-1 py-2 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 text-[10px] font-black uppercase tracking-wide hover:bg-emerald-100 flex items-center justify-center gap-1.5 transition-colors"
+                                                    >
+                                                        <MessageCircle className="w-3 h-3" /> Commit
+                                                    </button>
+                                                </div>
+                                            )}
+                                            {colName === 'Verified' && (
+                                                <div className="flex gap-2">
+                                                    <button className="flex-1 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-600 text-[10px] font-black uppercase tracking-wide hover:bg-gray-100 flex items-center justify-center gap-1.5 transition-colors"><FileText className="w-3 h-3" /> Logs</button>
+                                                    <button className="flex-1 py-2 rounded-xl bg-[#013388] text-white text-[10px] font-black uppercase tracking-wide hover:bg-blue-800 flex items-center justify-center gap-1.5 shadow-[0_2px_10px_rgba(1,51,136,0.2)] transition-colors border border-transparent"><CheckCircle2 className="w-3 h-3" /> Complete</button>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 ))}
@@ -406,82 +593,238 @@ const HQDashboard: React.FC = () => {
 
             {/* TASK DETAIL MODAL (PEER REVIEW STYLE) */}
             {selectedTask && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[10000] flex items-center justify-center p-4">
-                    <div className="bg-[#0F172A] w-full max-w-2xl rounded-[32px] border border-white/10 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh]">
-                        <div className="p-6 border-b border-white/10 flex items-center gap-3 bg-black/20">
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[10000] flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-2xl rounded-[32px] border border-gray-100 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh]">
+                        <div className="p-6 border-b border-gray-100 flex items-center gap-3 bg-gray-50/50">
                             <div className="flex items-center gap-2 shrink-0">
-                                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full text-white uppercase ${selectedTask.priority === 'High' ? 'bg-red-600' : 'bg-slate-700'}`}>High</span>
-                                <span className="bg-slate-800 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter">{selectedTask.category}</span>
-                                <span className="bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">Peer Review</span>
+                                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full text-white uppercase ${selectedTask.priority === 'High' ? 'bg-red-600' : 'bg-slate-400'}`}>High</span>
+                                <span className="bg-blue-50 text-[#013388] border border-blue-100 text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter">{selectedTask.category}</span>
+                                <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">Peer Review</span>
                             </div>
-                            <button onClick={() => setSelectedTask(null)} className="ml-auto p-2 hover:bg-white/10 rounded-xl transition-all">
-                                <X className="w-5 h-5 text-white/50" />
+                            <button onClick={() => setSelectedTask(null)} className="ml-auto p-2 hover:bg-gray-100 hover:text-gray-600 rounded-xl transition-all">
+                                <X className="w-5 h-5 text-gray-400" />
                             </button>
                         </div>
                         
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-8 text-slate-300">
-                            <h2 className="text-xl font-black text-white mb-8 border-b border-white/5 pb-4 tracking-tight">{selectedTask.title}</h2>
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-8 text-slate-600">
+                            <h2 className="text-xl font-black text-slate-800 mb-8 border-b border-gray-100 pb-4 tracking-tight">{selectedTask.title}</h2>
                             
                             <div className="space-y-8">
-                                {/* Search Logic Simulation */}
+                                {/* Base Information (Always Visible) */}
                                 <div className="space-y-4">
                                     <label className="text-[10px] font-black text-[#F7A81B] uppercase tracking-[0.2em] flex items-center gap-2">
                                         <SearchCode className="w-4 h-4" /> Búsqueda en {selectedTask.details?.source || 'Fuentes Globales'}
                                     </label>
-                                    <div className="bg-white/5 p-5 rounded-2xl border border-white/5 italic text-sm leading-relaxed">
-                                        "{selectedTask.description}"
+                                    <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100 text-sm leading-relaxed text-slate-600">
+                                        {selectedTask.description}
                                     </div>
+                                    {((selectedTask.details as any)?.link || (selectedTask.details as any)?.sourceUrl) && (
+                                        <div className="pt-2">
+                                            <a href={(selectedTask.details as any)?.link || (selectedTask.details as any)?.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-[#013388] hover:text-blue-700 transition-colors flex items-center gap-1">
+                                                Visualizar Fuente Original <ExternalLink className="w-3 h-3" />
+                                            </a>
+                                        </div>
+                                    )}
                                 </div>
 
-                                {/* Gaps / Findings */}
-                                <div className="space-y-4">
-                                    <label className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                                         <Filter className="w-4 h-4" /> Brechas en la comunidad (AI Analysis)
-                                    </label>
-                                    <ul className="space-y-3">
-                                        {(selectedTask.details?.gaps || ["Analizando respuesta en tiempo real...", "Extrayendo TDRs prioritarios..."]).map((gap, i) => (
-                                            <li key={i} className="flex gap-3 text-sm font-medium">
-                                                <span className="text-white/30">{i + 1}.</span>
-                                                <span>{gap}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-
-                                {/* Peer Review Conclusion */}
-                                <div className="p-6 bg-slate-900 border border-white/5 rounded-3xl">
-                                    <div className="flex items-center gap-3 mb-4">
-                                        <div className="w-8 h-8 rounded-lg bg-red-800/30 border border-red-500/30 flex items-center justify-center shadow-lg shadow-red-500/10">🍷</div>
+                                {/* Conditional Render based on Status */}
+                                {['backlog', 'todo'].includes(selectedTask.status) && (
+                                    <div className="p-6 bg-emerald-50/50 border border-emerald-100 rounded-3xl flex items-start gap-4 animate-pulse">
+                                        <div className="w-8 h-8 rounded-lg bg-emerald-100 border border-emerald-200 flex items-center justify-center shadow-sm">🌿</div>
                                         <div>
-                                            <p className="text-[11px] font-black text-white uppercase leading-none">Mateo <span className="text-white/40 not-italic font-medium lowercase">4m ago • Resolve</span></p>
+                                            <p className="text-[11px] font-black text-slate-800 uppercase leading-none mb-1">Valeria <span className="text-slate-500 not-italic font-medium lowercase">Analizando...</span></p>
+                                            <p className="text-xs text-slate-600 font-medium">Extrayendo criterios de elegibilidad y verificando compatibilidad con las Áreas de Interés de Rotary.</p>
                                         </div>
                                     </div>
-                                    <div className="text-sm font-medium leading-relaxed pl-11">
-                                        <p className="mb-4">PEER REVIEW Real Research: Excellent—5 real posts, Opp #1 PERFECT (explicitly wants AI video tools). Authentic protocol (no Rotary in first reply), variety (Help/Learning/Question), public only.</p>
-                                        <div className="space-y-2 text-white/70">
-                                            <p className="text-[10px] font-black text-[#F7A81B] uppercase tracking-widest mt-4">Response quality gaps:</p>
-                                            <p>1. Opp #1 response TOO LONG (massive paragraph)—Reddit prefers 3-4 line bursts.</p>
-                                            <p>2. Some pitchy despite "Help-Only" label: "We generate variants, test, scale winner" = marketing speak.</p>
+                                )}
+
+                                {selectedTask.status === 'in_progress' && (
+                                    <div className="p-6 bg-red-50/50 border border-red-100 rounded-3xl flex items-start gap-4 animate-pulse">
+                                        <div className="w-8 h-8 rounded-lg bg-red-100 border border-red-200 flex items-center justify-center shadow-sm">🍷</div>
+                                        <div>
+                                            <p className="text-[11px] font-black text-slate-800 uppercase leading-none mb-1">Mateo <span className="text-slate-500 not-italic font-medium lowercase">Redactando...</span></p>
+                                            <p className="text-xs text-slate-600 font-medium">Construyendo el texto persuasivo para distribución masiva por WhatsApp basado en los lineamientos del distrito.</p>
                                         </div>
                                     </div>
-                                </div>
+                                )}
+
+                                {selectedTask.status === 'done' && (
+                                    <div className="p-6 bg-blue-50/30 border border-blue-100 rounded-3xl">
+                                        <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
+                                            <div className="w-8 h-8 rounded-lg bg-red-100 border border-red-200 flex items-center justify-center shadow-sm">🍷</div>
+                                            <div>
+                                                <p className="text-[11px] font-black text-slate-800 uppercase leading-none">Mateo <span className="text-emerald-500 not-italic font-medium lowercase">Subvención Lista (Resolución Exitosa)</span></p>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="flex justify-center">
+                                            <div className="w-full max-w-[420px] bg-[#EFEAE2] rounded-xl overflow-hidden shadow-sm border border-gray-200 mx-auto transition-transform hover:scale-[1.01]">
+                                                <div className="relative h-[220px] bg-slate-200">
+                                                    <img 
+                                                        src={`https://image.pollinations.ai/prompt/${encodeURIComponent(selectedTask.title + " " + selectedTask.category + ", hyper-realistic, documentary photography, Rotary International style, natural lighting, perfect anatomy, high-end camera, masterpiece, cinematic, completely natural faces")}?width=1080&height=720&nologo=true&seed=${String(selectedTask.id).charCodeAt(0)}`}
+                                                        alt="AI Generated Grant Image" 
+                                                        className="w-full h-full object-cover" 
+                                                    />
+                                                </div>
+                                                <div className="p-4 bg-white m-3 rounded-lg shadow-sm border border-gray-100">
+                                                    <div className="text-[#111B21] text-[14.5px] leading-relaxed whitespace-pre-wrap font-sans">
+                                                        {(() => {
+                                                            const rawText = (selectedTask.details as any)?.final_whatsapp_message as string;
+                                                            if (!rawText) return "No se detectó texto. Asegúrate de ejecutar el nuevo pipeline de N8N.";
+                                                            
+                                                            const sourceLink = (selectedTask.details as any)?.link || selectedTask.sourceUrl || '';
+                                                            
+                                                            let parsed = rawText;
+                                                            // 1. Remove introductory AI text like "¡Claro que sí! Aquí tienes..."
+                                                            parsed = parsed.replace(/^.*?:\s*\n+/ism, '').trim();
+                                                            // 2. Add line break after Hook (sentence ending in ? or ! optionally followed by an emoji) if no linebreak exists
+                                                            parsed = parsed.replace(/([?!]\s*(?:[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])?)\s+([A-Z¿¡])/u, '$1\n\n$2');
+                                                            // 3. Add line break before CTA
+                                                            parsed = parsed.replace(/\s*(Descubre más|Más info|Aplica aquí|Haz clic)/gi, '\n\n$1');
+                                                            // 4. Inject URL and fix bold
+                                                            parsed = parsed.replace(/\[URL\]/gi, sourceLink).replace(/\*\*/g, '*');
+                                                            
+                                                            return parsed;
+                                                        })()}
+                                                    </div>
+                                                </div>
+                                                <div className="h-2 bg-[#EFEAE2]"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
                         {/* Interactive Chat Input */}
-                        <div className="p-6 bg-black/40 border-t border-white/10 flex items-center gap-4">
+                        <div className="p-6 bg-gray-50 border-t border-gray-100 flex items-center gap-4">
                             <div className="flex-1 relative group">
                                 <input 
                                     type="text" 
                                     placeholder="Instrucción adicional para el agente..." 
-                                    className="w-full bg-slate-800/80 border border-white/10 p-4 pl-6 pr-14 rounded-2xl text-xs font-bold text-white outline-none focus:ring-2 focus:ring-[#013388]/50 transition-all placeholder:text-slate-600"
+                                    className="w-full bg-white border border-gray-200 p-4 pl-6 pr-14 rounded-2xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-[#013388]/30 transition-all placeholder:text-gray-400 shadow-sm"
                                 />
-                                <button className="absolute right-3 top-1/2 -translate-y-1/2 bg-[#013388] text-white p-2 rounded-xl">
+                                <button className="absolute right-3 top-1/2 -translate-y-1/2 bg-[#013388] hover:bg-blue-800 text-white p-2 rounded-xl transition-colors">
                                     <ArrowRightCircle className="w-5 h-5" />
                                 </button>
                             </div>
-                            <button className="p-3 bg-red-600/10 text-red-500 border border-red-500/30 rounded-2xl hover:bg-red-600 transition-colors">
+                            <button className="p-3 bg-red-50 text-red-600 border border-red-100 rounded-2xl hover:bg-red-100 transition-colors">
                                 <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* GOAL DETAIL MODAL */}
+            {selectedGoal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[10000] flex items-center justify-center p-4">
+                    <div className="bg-[#0F172A] w-full max-w-2xl rounded-[32px] border border-white/10 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-6 border-b border-white/10 flex items-center gap-3 bg-black/20">
+                            <div className="flex items-center gap-2 shrink-0">
+                                <Target className="w-5 h-5 text-[#F7A81B]" />
+                                <span className="bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">Objetivo Maestro</span>
+                            </div>
+                            <button onClick={() => setSelectedGoal(null)} className="ml-auto p-2 hover:bg-white/10 rounded-xl transition-all">
+                                <X className="w-5 h-5 text-white/50" />
+                            </button>
+                        </div>
+                        
+                        <div className="p-8 text-slate-300 space-y-8">
+                            <div>
+                                <h2 className="text-2xl font-black text-white tracking-tight mb-2">{selectedGoal.title}</h2>
+                                <p className="text-sm font-medium leading-relaxed text-slate-400">{selectedGoal.description}</p>
+                            </div>
+
+                            <div className="p-6 bg-slate-900 border border-white/5 rounded-3xl">
+                                <h3 className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-4">Progreso de Motores Estocásticos ({selectedGoal.progress}%)</h3>
+                                <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden mb-6">
+                                    <div className="h-full bg-emerald-500 transition-all duration-1000" style={{ width: `${selectedGoal.progress}%` }} />
+                                </div>
+
+                                <div className="space-y-4">
+                                    <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Agentes Asignados y Operatividad</h3>
+                                    {selectedGoal.assignedAgents.map(aid => {
+                                        const agent = AGENTS.find(a => a.id === aid);
+                                        return agent ? (
+                                            <div key={aid} className="flex items-center gap-4 bg-white/5 p-3 rounded-2xl border border-white/5">
+                                                <div className="w-10 h-10 rounded-xl bg-black/30 border border-white/10 flex items-center justify-center text-lg shadow-inner">{agent.icon}</div>
+                                                <div className="flex-1">
+                                                    <p className="text-xs font-bold text-white mb-0.5">{agent.name}</p>
+                                                    <p className="text-[10px] text-slate-400">Ejecutando Workflows en Perplexity Pro para {selectedGoal.title.substring(0, 15)}...</p>
+                                                </div>
+                                                <div className="px-3 py-1 bg-emerald-500/10 text-emerald-400 text-[10px] font-black rounded-lg border border-emerald-500/20 uppercase tracking-widest">Activo</div>
+                                            </div>
+                                        ) : null;
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* WHATSAPP PUBLISH MODAL */}
+            {showPublish && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[10001] flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white w-full max-w-xl rounded-[32px] border border-gray-100 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 max-h-[85vh]">
+                        <div className="p-6 border-b border-gray-100 flex items-center gap-3 bg-gray-50/50">
+                            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                                <MessageCircle className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-black text-slate-800 tracking-tight">Publicar Subvención</h2>
+                                <p className="text-xs text-slate-500 font-medium">Asigna y dispersa usando WhatsApp Autónomo</p>
+                            </div>
+                            <button onClick={() => { setShowPublish(null); setSelectedChats([]); }} className="ml-auto p-2 hover:bg-gray-100 hover:text-gray-600 rounded-xl transition-all">
+                                <X className="w-5 h-5 text-gray-400" />
+                            </button>
+                        </div>
+                        
+                        <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-white">
+                            <h3 className="text-[10px] font-black text-slate-400 tracking-widest uppercase mb-4">Destinos Disponibles (Sesión QR Autónoma)</h3>
+                            {isLoadingChats ? (
+                                <div className="flex flex-col items-center justify-center py-12 opacity-60">
+                                    <Loader2 className="w-8 h-8 text-[#013388] animate-spin mb-4" />
+                                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Sincronizando chats en tiempo real...</p>
+                                </div>
+                            ) : chats.length === 0 ? (
+                                <div className="text-center py-12 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                                    <p className="text-sm font-bold text-slate-500 mb-2">No hay conectividad con Nodo de Meta</p>
+                                    <p className="text-xs text-slate-400">Verifica que tu sesión QR de SuperAdmin esté enlazada.</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {chats.map(chat => {
+                                        const isSelected = selectedChats.includes(chat.id);
+                                        return (
+                                            <div 
+                                                key={chat.id} 
+                                                onClick={() => setSelectedChats(prev => isSelected ? prev.filter(c => c !== chat.id) : [...prev, chat.id])}
+                                                className={`p-3.5 rounded-[20px] border cursor-pointer transition-all flex items-center gap-3 ${isSelected ? 'border-emerald-500 bg-emerald-50 scale-[1.02] shadow-sm' : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'}`}
+                                            >
+                                                <div className={`w-5 h-5 flex items-center justify-center shrink-0 transition-colors ${isSelected ? 'bg-emerald-500 text-white rounded-full' : 'bg-transparent border-2 border-gray-200 rounded-full'}`}>
+                                                    {isSelected && <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className={`text-sm font-black tracking-tight truncate ${isSelected ? 'text-emerald-900' : 'text-slate-700'}`}>{chat.name}</p>
+                                                    <p className={`text-[9px] mt-0.5 uppercase tracking-widest font-black ${chat.isGroup ? 'text-[#013388]' : 'text-slate-400'}`}>{chat.isGroup ? 'Grupo' : 'Contacto Directo'}</p>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-6 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
+                            <span className="text-[10px] font-black tracking-wider text-slate-500 uppercase">{selectedChats.length} seleccionados</span>
+                            <button 
+                                onClick={handleBroadcastWhatsApp} 
+                                disabled={selectedChats.length === 0}
+                                className="px-6 py-3.5 bg-[#013388] text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-blue-800 transition-all shadow-[0_8px_20px_-6px_rgba(1,51,136,0.5)] disabled:opacity-50 disabled:shadow-none flex items-center gap-2 hover:scale-105 active:scale-95"
+                            >
+                                Disparar Flujo
                             </button>
                         </div>
                     </div>
@@ -503,13 +846,47 @@ const HQDashboard: React.FC = () => {
                         </div>
                         <div className="p-8 space-y-6">
                             <div className="space-y-4">
+                                <h4 className="text-xs font-black text-gray-800 uppercase tracking-wider mb-2">Credenciales (API Keys)</h4>
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2">Apify API Key</label>
-                                    <input type="password" placeholder="apify_proxy_..." className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-xs font-bold outline-none border-focus:border-[#013388]/30" />
+                                    <input type="password" placeholder="apify_proxy_..." className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-xs font-bold outline-none focus:border-[#013388]/30" />
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2">Perplexity API Key</label>
-                                    <input type="password" placeholder="pplx-..." className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-xs font-bold outline-none border-focus:border-[#013388]/30" />
+                                    <input type="password" placeholder="pplx-..." className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-xs font-bold outline-none focus:border-[#013388]/30" />
+                                </div>
+                                
+                                <div className="pt-4 border-t border-gray-100">
+                                    <h4 className="text-xs font-black text-gray-800 uppercase tracking-wider mb-4">Autonomía de Agentes</h4>
+                                    
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between bg-blue-50/50 p-4 rounded-2xl border border-blue-50 hover:border-blue-100 transition-all">
+                                            <div>
+                                                <p className="text-xs font-bold text-gray-800">Pipeline Autónomo</p>
+                                                <p className="text-[10px] text-gray-500 mt-1">Mover tarjetas sin intervención humana</p>
+                                            </div>
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input type="checkbox" defaultChecked className="sr-only peer" />
+                                                <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#013388]"></div>
+                                            </label>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2">Frecuencia de Búsqueda (Scraper)</label>
+                                                <span className="text-xs font-bold text-[#013388]">Cada 4 Horas</span>
+                                            </div>
+                                            <input type="range" min="1" max="24" defaultValue="4" className="w-full accent-[#013388]" />
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2">Pausa entre Valeria y Mateo</label>
+                                                <span className="text-xs font-bold text-[#013388]">15 Minutos</span>
+                                            </div>
+                                            <input type="range" min="0" max="60" defaultValue="15" step="5" className="w-full accent-[#013388]" />
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                             <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-center gap-3">

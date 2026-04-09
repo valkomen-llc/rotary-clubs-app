@@ -11,6 +11,14 @@
             "destination": "http://76.13.101.187:5001/api/:path*"
         },
         {
+            "source": "/api/scout-grants",
+            "destination": "http://76.13.101.187:5001/api/scout-grants"
+        },
+        {
+            "source": "/api/scout-grants/:path*",
+            "destination": "http://76.13.101.187:5001/api/scout-grants/:path*"
+        },
+        {
             "source": "/api/:path*",
             "destination": "/api/index.js"
         },
