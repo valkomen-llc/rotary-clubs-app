@@ -53,10 +53,9 @@ router.post('/upload-logo', authMiddleware, (req, res) => {
             let finalContentType = 'image/png';
             try {
                 trimmedBuffer = await sharp(req.file.buffer)
-                    .trim({ threshold: 30 })
                     .png()
                     .toBuffer();
-                console.log('✅ Logo auto-cropped successfully');
+                console.log('✅ Logo auto-processed successfully (without trimming)');
             } catch (trimError) {
                 // Fallback: if trim fails for any reason, upload original image
                 console.warn('⚠️ Auto-trim failed, uploading original image:', trimError.message);
