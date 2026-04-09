@@ -175,6 +175,7 @@ const HQDashboard: React.FC = () => {
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     const fetchTasks = () => {
@@ -232,12 +233,19 @@ const HQDashboard: React.FC = () => {
   const [selectedChats, setSelectedChats] = useState<string[]>([]);
   const [isLoadingChats, setIsLoadingChats] = useState(false);
 
-  // Filter tasks by columns matching the new visual structure
+  // Filter tasks by searchQuery and columns matching the new visual structure
+  const filteredTasks = tasks.filter((t) => 
+    searchQuery === "" || 
+    t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    (t.description && t.description.toLowerCase().includes(searchQuery.toLowerCase())) || 
+    (t.category && t.category.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
   const boardCols = {
-    Backlog: tasks.filter((t) => ["backlog", "todo"].includes(t.status)),
-    "In Progress": tasks.filter((t) => t.status === "in_progress"),
-    "Waiting Approval": tasks.filter((t) => t.status === "done"),
-    Shared: tasks.filter((t) => t.status === "verified"),
+    Backlog: filteredTasks.filter((t) => ["backlog", "todo"].includes(t.status)),
+    "In Progress": filteredTasks.filter((t) => t.status === "in_progress"),
+    "Waiting Approval": filteredTasks.filter((t) => t.status === "done"),
+    Shared: filteredTasks.filter((t) => t.status === "verified"),
   };
 
   const fetchChats = async () => {
@@ -581,6 +589,8 @@ const HQDashboard: React.FC = () => {
               <input 
                 type="text" 
                 placeholder="Search features by keyword..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 pr-12 py-2 bg-white border border-gray-200 rounded-xl text-[11px] font-bold text-gray-700 w-[260px] focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all shadow-sm"
               />
               <div className="absolute right-2 top-1/2 transform -translate-y-1/2 px-1.5 py-0.5 bg-gray-50 border border-gray-200 rounded text-[9px] font-black text-gray-400">/</div>
