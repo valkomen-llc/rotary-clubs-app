@@ -35,6 +35,11 @@ import {
   GripVertical,
   StopCircle,
   Clock,
+  Image,
+  Package,
+  Minimize2,
+  Square,
+  Maximize2,
 } from "lucide-react";
 
 const getApiBase = () => {
@@ -566,24 +571,65 @@ const HQDashboard: React.FC = () => {
         </div>
 
         {/* KANBAN BOARD (REPLACES ACTIVITY FEED AND PREVIOUS BOARD) */}
-        <div className="flex-1 bg-[#F8FAFC] flex overflow-x-auto p-4 gap-4 custom-scrollbar">
-          {Object.entries(boardCols).map(([colName, colTasks]) => (
-            <div
-              key={colName}
-              className="w-[320px] shrink-0 flex flex-col bg-gray-50/80 rounded-2xl border border-gray-200 overflow-hidden shadow-sm"
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.currentTarget.classList.add("bg-blue-50/50");
-              }}
-              onDragLeave={(e) => {
-                e.currentTarget.classList.remove("bg-blue-50/50");
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                e.currentTarget.classList.remove("bg-blue-50/50");
-                // Determine structural drop (this part requires mapping string to code-level logic, kept passive)
-              }}
-            >
+        <div className="flex-1 bg-[#F8FAFC] flex flex-col overflow-hidden">
+          
+          {/* KANBAN TOOLBAR */}
+          <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-white/50 backdrop-blur-sm z-10 shrink-0">
+            {/* Search Bar Component */}
+            <div className="relative group">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 group-hover:text-[#013388] transition-colors" />
+              <input 
+                type="text" 
+                placeholder="Search features by keyword..." 
+                className="pl-9 pr-12 py-2 bg-white border border-gray-200 rounded-xl text-[11px] font-bold text-gray-700 w-[260px] focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all shadow-sm"
+              />
+              <div className="absolute right-2 top-1/2 transform -translate-y-1/2 px-1.5 py-0.5 bg-gray-50 border border-gray-200 rounded text-[9px] font-black text-gray-400">/</div>
+            </div>
+
+            {/* Right Tools Group Component */}
+            <div className="flex items-center gap-2">
+              <button className="p-2 bg-white flex items-center justify-center border border-gray-200 rounded-lg shadow-sm hover:border-[#013388] hover:bg-blue-50/30 hover:text-[#013388] text-gray-400 transition-all">
+                <Image className="w-4 h-4" />
+              </button>
+              <button className="p-2 bg-white flex items-center justify-center border border-gray-200 rounded-lg shadow-sm hover:border-[#013388] hover:bg-blue-50/30 hover:text-[#013388] text-gray-400 transition-all">
+                <Package className="w-4 h-4" />
+              </button>
+              
+              <div className="flex rounded-lg shadow-sm ml-2 bg-white border border-gray-200 overflow-hidden">
+                <button className="p-2 flex items-center justify-center text-gray-400 hover:text-[#013388] hover:bg-blue-50/30 transition-all">
+                  <Minimize2 className="w-4 h-4" />
+                </button>
+                <div className="w-[1px] bg-gray-100" />
+                <button className="p-2 flex items-center justify-center text-gray-400 hover:text-[#013388] hover:bg-blue-50/30 transition-all">
+                  <Square className="w-4 h-4" />
+                </button>
+                <div className="w-[1px] bg-gray-100" />
+                <button className="p-2 flex items-center justify-center text-gray-400 hover:text-[#013388] hover:bg-blue-50/30 transition-all">
+                  <Maximize2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* COLUMNS AREA */}
+          <div className="flex-1 flex overflow-x-auto p-4 gap-4 custom-scrollbar">
+            {Object.entries(boardCols).map(([colName, colTasks]) => (
+              <div
+                key={colName}
+                className="w-[320px] shrink-0 flex flex-col bg-gray-50/80 rounded-2xl border border-gray-200 overflow-hidden shadow-sm"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.classList.add("bg-blue-50/50");
+                }}
+                onDragLeave={(e) => {
+                  e.currentTarget.classList.remove("bg-blue-50/50");
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.classList.remove("bg-blue-50/50");
+                  // Determine structural drop (this part requires mapping string to code-level logic, kept passive)
+                }}
+              >
               {/* Column Header */}
               <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-white">
                 <div className="flex items-center gap-2">
@@ -729,6 +775,7 @@ const HQDashboard: React.FC = () => {
               </div>
             </div>
           ))}
+        </div>
         </div>
       </div>
 
