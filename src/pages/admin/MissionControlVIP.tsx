@@ -952,12 +952,20 @@ const HQDashboard: React.FC = () => {
 
                     <div className="flex justify-center">
                       <div className="w-full max-w-[420px] bg-[#EFEAE2] rounded-xl overflow-hidden shadow-sm border border-gray-200 mx-auto transition-transform hover:scale-[1.01]">
-                        <div className="relative h-[220px] bg-slate-200">
-                          <img
-                            src={`https://image.pollinations.ai/prompt/${encodeURIComponent(selectedTask.title + " " + selectedTask.category + ", hyper-realistic, documentary photography, Rotary International style, natural lighting, perfect anatomy, high-end camera, masterpiece, cinematic, completely natural faces")}?width=1080&height=720&nologo=true&seed=${String(selectedTask.id).charCodeAt(0)}`}
-                            alt="AI Generated Grant Image"
-                            className="w-full h-full object-cover"
-                          />
+                        <div className="relative h-[400px] bg-slate-900 overflow-hidden flex items-center justify-center">
+                          {((selectedTask.details as any)?.image_url) ? (
+                            <img
+                              src={(selectedTask.details as any).image_url}
+                              alt="Infografía Nano-Banana 2"
+                              className="w-full h-full object-contain object-center scale-105"
+                            />
+                          ) : (
+                            <img
+                              src={`https://image.pollinations.ai/prompt/${encodeURIComponent(selectedTask.title + " " + selectedTask.category + ", hyper-realistic, documentary photography, Rotary International style, natural lighting, perfect anatomy, high-end camera, masterpiece, cinematic, completely natural faces")}?width=1080&height=720&nologo=true&seed=${String(selectedTask.id).charCodeAt(0)}`}
+                              alt="AI Generated Grant Image"
+                              className="w-full h-full object-cover"
+                            />
+                          )}
                         </div>
                         <div className="p-4 bg-white m-3 rounded-lg shadow-sm border border-gray-100">
                           <div className="text-[#111B21] text-[14.5px] leading-relaxed whitespace-pre-wrap font-sans">
