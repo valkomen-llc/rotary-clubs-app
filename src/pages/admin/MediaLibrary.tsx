@@ -93,9 +93,16 @@ const MediaLibrary: React.FC = () => {
 
         setIsUploading(true);
         const token = localStorage.getItem('rotary_token');
+        let successCount = 0;
+        let errorCount = 0;
         
+        const toastId = toast.loading(`Subiendo 0 de ${files.length} archivos...`);
+
         try {
-            const uploadPromises = files.map(async (file) => {
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                toast.loading(`Subiendo ${i + 1} de ${files.length} archivos...`, { id: toastId });
+
                 const formData = new FormData();
                 formData.append('file', file);
                 formData.append('clubId', (isSuperAdmin ? selectedClubId : user?.clubId) || '');
@@ -106,12 +113,14 @@ const MediaLibrary: React.FC = () => {
                     body: formData
                 });
 
-                return response.ok;
-            });
+                if (response.ok) {
+                    successCount++;
+                } else {
+                    errorCount++;
+                }
+            }
 
-            const results = await Promise.all(uploadPromises);
-            const successCount = results.filter(Boolean).length;
-            const errorCount = results.length - successCount;
+            toast.dismiss(toastId);
 
             if (successCount > 0) {
                 toast.success(`${successCount} archivo(s) subido(s) con éxito`);
@@ -121,6 +130,7 @@ const MediaLibrary: React.FC = () => {
                 toast.error(`Error al subir ${errorCount} archivo(s)`);
             }
         } catch (error) {
+            toast.dismiss(toastId);
             toast.error('Error de conexión al subir archivos');
         } finally {
             setIsUploading(false);
