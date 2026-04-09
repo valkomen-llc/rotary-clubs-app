@@ -154,9 +154,8 @@ const ImageDistribution: React.FC = () => {
 
     const token = () => localStorage.getItem('rotary_token');
     const isSuperAdmin = user?.role === 'administrator';
-    // Super admin saves globally (clubId=null); club admin saves to their club
-    const clubId = isSuperAdmin ? null : (user?.clubId || (club as any)?.id);
-    const viewClubId = (club as any)?.id; // for loading images (always need a club context)
+    const viewClubId = (club as any)?.id; // always need a club context
+    const clubId = isSuperAdmin ? (viewClubId || null) : (user?.clubId || viewClubId);
 
     // Build complete images object overlaying over DEFAULTS
     const buildImages = React.useCallback((src: any) => {
@@ -174,17 +173,18 @@ const ImageDistribution: React.FC = () => {
         if (!viewClubId && !isSuperAdmin) { setLoading(false); return; }
         (async () => {
             try {
-                if (isSuperAdmin) {
+                if (isSuperAdmin && !viewClubId) {
+                    // Editing global templates
                     const res = await fetch(`${API}/clubs/_global/site-images?_t=${Date.now()}`);
                     const data = res.ok ? await res.json() : {};
                     setImages(buildImages(data));
-                    setBaseImages(buildImages({})); // Super admin's default is the hardcoded Vite DEFAULTS
+                    setBaseImages(buildImages({}));
                 } else {
+                    // Editing specific club (whether Super Admin or Club Admin)
                     const res = await fetch(`${API}/clubs/${viewClubId}/site-images?_t=${Date.now()}`);
                     const data = res.ok ? await res.json() : {};
                     setImages(buildImages(data));
 
-                    // Fetch global defaults to define baseline for standard clubs
                     const gRes = await fetch(`${API}/clubs/_global/site-images?_t=${Date.now()}`);
                     const gData = gRes.ok ? await gRes.json() : {};
                     setBaseImages(buildImages(gData));
@@ -201,7 +201,6 @@ const ImageDistribution: React.FC = () => {
     // ── Save ──────────────────────────────────────────────────────────────
     const handleSave = async () => {
         if (!images) return;
-        // Super admin: clubId is null (global); club admin: clubId is their club
         if (!isSuperAdmin && !clubId) return;
         setSaving(true);
         try {
@@ -209,7 +208,7 @@ const ImageDistribution: React.FC = () => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
                 body: JSON.stringify({
-                    clubId: clubId,  // null for super admin = global
+                    clubId: clubId,
                     sections: [{ page: 'home', section: 'images', content: images }]
                 })
             });
@@ -230,7 +229,7 @@ const ImageDistribution: React.FC = () => {
     const fetchMedia = async () => {
         setMediaLoading(true);
         try {
-            const res = await fetch(`${API}/media?type=image`, {
+            const res = await fetch(`${API}/media?type=image${viewClubId ? `&clubId=${viewClubId}` : ''}`, {
                 headers: { Authorization: `Bearer ${token()}` }
             });
             if (res.ok) {
@@ -246,7 +245,7 @@ const ImageDistribution: React.FC = () => {
         setUploading(true);
         const formData = new FormData();
         formData.append('file', fileToUpload);
-        formData.append('clubId', clubId || '');
+        formData.append('clubId', viewClubId || '');
         let newUrl = null;
         try {
             const res = await fetch(`${API}/media/upload`, {
