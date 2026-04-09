@@ -14,21 +14,36 @@ const getMediaType = (mimetype) => {
 };
 
 router.post('/upload', authMiddleware, (req, res) => {
-    upload.single('file')(req, res, async (err) => {
+    uploadMemory.single('file')(req, res, async (err) => {
         if (err) return res.status(400).json({ error: err.message });
         if (!req.file) return res.status(400).json({ error: 'No se seleccionó ningún archivo' });
 
         try {
             const targetClubId = (req.user.role === 'administrator') ? (req.query.clubId || req.body.clubId || req.user.clubId) : req.user.clubId;
+            
+            const fileName = `${Date.now()}-${req.file.originalname.replace(/\s+/g, '_')}`;
+            const s3Key = `clubs/${targetClubId}/images/${fileName}`;
+            const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
+
+            await s3.send(new PutObjectCommand({
+                Bucket: bucket,
+                Key: s3Key,
+                Body: req.file.buffer,
+                ContentType: req.file.mimetype,
+            }));
+
+            const encodedKey = s3Key.split('/').map(segment => encodeURIComponent(segment)).join('/');
+            const fileUrl = `https://${bucket}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${encodedKey}`;
 
             const result = await db.query(
                 `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "createdAt")
                  VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING *`,
-                [req.file.originalname, req.file.location, getMediaType(req.file.mimetype), req.file.size, req.file.bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, req.file.key]
+                [req.file.originalname, fileUrl, getMediaType(req.file.mimetype), req.file.buffer.length, bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, s3Key]
             );
             res.json(result.rows[0]);
         } catch (error) {
-            res.status(500).json({ error: 'Error al guardar en la base de datos' });
+            console.error('Media upload error:', error);
+            res.status(500).json({ error: 'Error al subir en la base de datos' });
         }
     });
 });
