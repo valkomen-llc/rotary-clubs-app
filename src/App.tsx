@@ -41,6 +41,7 @@ import { AuthProvider, useAuth } from './hooks/useAuth';
 import { ClubProvider, useClub } from './contexts/ClubContext';
 import { CartProvider } from './contexts/CartContext';
 import { LanguageProvider } from './contexts/LanguageContext';
+import { Toaster } from './components/ui/sonner';
 
 // ═══════════════════════════════════════════════════════════════
 // LAZY-LOADED ADMIN ROUTES — Web Performance Optimization Agent
@@ -604,6 +605,8 @@ function App() {
               </Suspense>
             </Router>
             <ChatBot />
+            <Toaster position="top-right" richColors />
+            <div dangerouslySetInnerHTML={{__html: '<style>#sonner-toaster { z-index: 999999 !important; }</style>'}} />
           </CartProvider>
         </AuthProvider>
       </LanguageProvider>

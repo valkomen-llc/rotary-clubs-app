@@ -149,7 +149,7 @@ const MediaLibrary: React.FC = () => {
                 formData.append('file', processedFile);
                 formData.append('clubId', (isSuperAdmin ? selectedClubId : user?.clubId) || '');
 
-                const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/api/media/upload`, {
+                const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/media/upload`, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}` },
                     body: formData
