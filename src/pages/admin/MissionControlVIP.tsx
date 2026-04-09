@@ -230,7 +230,7 @@ const HQDashboard: React.FC = () => {
         'Backlog': tasks.filter(t => ['backlog', 'todo'].includes(t.status)),
         'In Progress': tasks.filter(t => t.status === 'in_progress'),
         'Waiting Approval': tasks.filter(t => t.status === 'done'),
-        'Verified': tasks.filter(t => t.status === 'verified')
+        'Shared': tasks.filter(t => t.status === 'verified')
     };
 
     const fetchChats = async () => {
@@ -327,7 +327,7 @@ const HQDashboard: React.FC = () => {
         
         try {
             await fetch(`${API_BASE}/scout-grants/${showPublish.id}/status`, {
-                method: 'PATCH',
+                method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: 'verified' })
             });
@@ -570,13 +570,13 @@ const HQDashboard: React.FC = () => {
                                                     <button className="flex-1 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-600 text-[10px] font-black uppercase tracking-wide hover:bg-gray-100 flex items-center justify-center gap-1.5 transition-colors"><Settings2 className="w-3 h-3" /> Refine</button>
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); handleShareGrant('whatsapp', t); }}
-                                                        className="flex-1 py-2 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 text-[10px] font-black uppercase tracking-wide hover:bg-emerald-100 flex items-center justify-center gap-1.5 transition-colors"
+                                                        className="flex-[1.5] py-2 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 text-[10px] font-black uppercase tracking-wide hover:bg-emerald-100 flex items-center justify-center gap-1.5 transition-colors shadow-sm"
                                                     >
-                                                        <MessageCircle className="w-3 h-3" /> Commit
+                                                        <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
                                                     </button>
                                                 </div>
                                             )}
-                                            {colName === 'Verified' && (
+                                            {colName === 'Shared' && (
                                                 <div className="flex gap-2">
                                                     <button className="flex-1 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-600 text-[10px] font-black uppercase tracking-wide hover:bg-gray-100 flex items-center justify-center gap-1.5 transition-colors"><FileText className="w-3 h-3" /> Logs</button>
                                                     <button className="flex-1 py-2 rounded-xl bg-[#013388] text-white text-[10px] font-black uppercase tracking-wide hover:bg-blue-800 flex items-center justify-center gap-1.5 shadow-[0_2px_10px_rgba(1,51,136,0.2)] transition-colors border border-transparent"><CheckCircle2 className="w-3 h-3" /> Complete</button>

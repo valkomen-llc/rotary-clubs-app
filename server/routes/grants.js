@@ -9,7 +9,8 @@ router.get('/', getGrants);
 // POST a new grant (used by n8n scraper workflow)
 router.post('/', createGrant);
 
-// PUT to update status (used by Kanban drag-and-drop)
+// PUT/PATCH to update status (used by Kanban drag-and-drop)
 router.put('/:id/status', updateGrantStatus);
+router.patch('/:id/status', updateGrantStatus);
 
 export default router;

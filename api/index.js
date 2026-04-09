@@ -81,10 +81,24 @@ app.use('/api/admin/districts', async (req, res, next) => (await getDistricts())
 app.use('/api/whatsapp', async (req, res, next) => (await getWhatsAppCRM())(req, res, next));
 app.use('/api/platform-config', async (req, res, next) => (await getPlatformConfig())(req, res, next));
 app.use('/api/documents', async (req, res, next) => (await getDocuments())(req, res, next));
-app.use('/api/scout-grants', async (req, res, next) => {
-    let _grants;
-    if (!_grants) _grants = (await import('../server/routes/grants.js')).default;
-    return _grants(req, res, next);
+app.get('/api/scout-grants', async (req, res, next) => {
+    const { getGrants } = await import('../server/controllers/grantsController.js');
+    return getGrants(req, res, next);
+});
+
+app.post('/api/scout-grants', async (req, res, next) => {
+    const { createGrant } = await import('../server/controllers/grantsController.js');
+    return createGrant(req, res, next);
+});
+
+app.put('/api/scout-grants/:id/status', async (req, res, next) => {
+    const { updateGrantStatus } = await import('../server/controllers/grantsController.js');
+    return updateGrantStatus(req, res, next);
+});
+
+app.patch('/api/scout-grants/:id/status', async (req, res, next) => {
+    const { updateGrantStatus } = await import('../server/controllers/grantsController.js');
+    return updateGrantStatus(req, res, next);
 });
 
 export default app;
