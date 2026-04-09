@@ -91,7 +91,7 @@ const MediaLibrary: React.FC = () => {
         setLoading(true);
         try {
             const token = localStorage.getItem('rotary_token');
-            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/api/media/folders`, {
+            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/media/folders`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (response.ok) {
@@ -110,8 +110,8 @@ const MediaLibrary: React.FC = () => {
         try {
             const token = localStorage.getItem('rotary_token');
             const url = isSuperAdmin && selectedClubId
-                ? `${import.meta.env.VITE_API_URL || '/api'}/api/media?clubId=${selectedClubId}`
-                : `${import.meta.env.VITE_API_URL || '/api'}/api/media`;
+                ? `${import.meta.env.VITE_API_URL || '/api'}/media?clubId=${selectedClubId}`
+                : `${import.meta.env.VITE_API_URL || '/api'}/media`;
 
             const response = await fetch(url, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -185,7 +185,7 @@ const MediaLibrary: React.FC = () => {
 
         try {
             const token = localStorage.getItem('rotary_token');
-            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/api/media/${item.id}`, {
+            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/media/${item.id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
