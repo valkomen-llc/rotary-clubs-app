@@ -50,6 +50,7 @@ router.post('/upload-logo', authMiddleware, (req, res) => {
             // Auto-trim whitespace/transparent margins
             // threshold:30 catches near-white pixels (Rotary logos have white bg)
             let trimmedBuffer;
+            let finalContentType = 'image/png';
             try {
                 trimmedBuffer = await sharp(req.file.buffer)
                     .trim({ threshold: 30 })
@@ -60,6 +61,7 @@ router.post('/upload-logo', authMiddleware, (req, res) => {
                 // Fallback: if trim fails for any reason, upload original image
                 console.warn('⚠️ Auto-trim failed, uploading original image:', trimError.message);
                 trimmedBuffer = req.file.buffer;
+                finalContentType = req.file.mimetype; // Use original if we did not encode as PNG
             }
 
             // Build S3 key the same way as regular uploads
@@ -72,10 +74,11 @@ router.post('/upload-logo', authMiddleware, (req, res) => {
                 Bucket: bucket,
                 Key: s3Key,
                 Body: trimmedBuffer,
-                ContentType: 'image/png',
+                ContentType: finalContentType,
             }));
 
-            const fileUrl = `https://${bucket}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${s3Key}`;
+            const encodedKey = s3Key.split('/').map(segment => encodeURIComponent(segment)).join('/');
+            const fileUrl = `https://${bucket}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${encodedKey}`;
 
             // Save record to Media table
             const result = await db.query(

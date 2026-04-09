@@ -133,13 +133,15 @@ const Navbar = () => {
   return (
     <nav className="bg-white shadow-sm sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center justify-between h-16 cursor-default">
           {/* Logo */}
-          <Link to="/" className="flex items-center">
-            <div className="relative" style={{ width: `${club.logoHeaderSize ?? 200}px` }}>
-              {club.logo ? (
-                <img src={club.logo} alt={club.name} className="w-full h-auto object-contain" />
-              ) : (
+          <Link to="/" className="flex items-center gap-3">
+            {club.logo ? (
+              <div className="relative flex items-center" style={{ width: `${club.logoHeaderSize ?? 200}px` }}>
+                <img src={club.logo} alt={club.name} className="w-full h-auto object-contain max-h-[52px] object-left" />
+              </div>
+            ) : (
+              <>
                 <div className="w-10 h-10">
                   <svg viewBox="0 0 100 100" className="w-full h-full">
                     <circle cx="50" cy="50" r="45" fill="none" stroke="hsl(210 100% 25%)" strokeWidth="3" />
@@ -148,13 +150,11 @@ const Navbar = () => {
                     <path d="M22 22 L43 43 M57 57 L78 78 M78 22 L57 43 M43 57 L22 78" stroke="#F5A623" strokeWidth="3" />
                   </svg>
                 </div>
-              )}
-            </div>
-            {!club.logo && (
-              <div className="flex flex-col">
-                <span className="text-rotary-blue font-bold text-sm leading-tight">Rotary Club</span>
-                <span className="text-rotary-blue text-xs leading-tight">{club.name.replace(/^Rotary Club\s+/i, '')}</span>
-              </div>
+                <div className="flex flex-col">
+                  <span className="text-rotary-blue font-bold text-sm leading-tight">Rotary Club</span>
+                  <span className="text-rotary-blue text-xs leading-tight">{club.name.replace(/^Rotary Club\s+/i, '')}</span>
+                </div>
+              </>
             )}
           </Link>
 
