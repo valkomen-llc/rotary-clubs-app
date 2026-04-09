@@ -54,13 +54,26 @@ export const updateGrantStatus = async (req, res) => {
             }
         }
 
-        const grant = await prisma.fundingOpportunity.update({
+        const updatedGrant = await prisma.fundingOpportunity.update({
             where: { id },
             data: updateData
         });
-        res.json(grant);
+        res.json(updatedGrant);
     } catch (error) {
         console.error("Error updating grant status:", error);
         res.status(500).json({ error: "Failed to update grant status." });
+    }
+};
+
+export const deleteGrant = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await prisma.fundingOpportunity.delete({
+            where: { id }
+        });
+        res.json({ success: true, message: "Grant deleted successfully." });
+    } catch (error) {
+        console.error("Error deleting grant:", error);
+        res.status(500).json({ error: "Failed to delete grant opportunity." });
     }
 };

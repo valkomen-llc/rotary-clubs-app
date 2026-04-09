@@ -1,5 +1,5 @@
 import express from 'express';
-import { createGrant, getGrants, updateGrantStatus } from '../controllers/grantsController.js';
+import { createGrant, getGrants, updateGrantStatus, deleteGrant } from '../controllers/grantsController.js';
 
 const router = express.Router();
 
@@ -12,5 +12,8 @@ router.post('/', createGrant);
 // PUT/PATCH to update status (used by Kanban drag-and-drop)
 router.put('/:id/status', updateGrantStatus);
 router.patch('/:id/status', updateGrantStatus);
+
+// DELETE a grant (used by Mission Control UI)
+router.delete('/:id', deleteGrant);
 
 export default router;

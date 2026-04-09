@@ -125,45 +125,6 @@ const getGoalsFromStorage = (): Goal[] => {
 
 const INITIAL_GOALS = getGoalsFromStorage();
 
-const INITIAL_TASKS: Task[] = [
-    { 
-        id: 'mock-1', 
-        title: 'Análisis de Elegibilidad de Club: Beca Equidad', 
-        description: 'IA evaluando si los proyectos del año pasado cumplen los requisitos.', 
-        category: 'Scouting', 
-        agentId: 'valeria', 
-        time: new Date(Date.now() - 1200000).toLocaleString(), 
-        priority: 'Medium', 
-        status: 'todo' 
-    },
-    { 
-        id: 'mock-2', 
-        title: 'Creación de Campaña WhatsApp: Nuevos Fondos', 
-        description: 'Construyendo un copy persuasivo y formal para compartir la oportunidad EU-LAC con Gobernadores.', 
-        category: 'Outreach', 
-        agentId: 'mateo', 
-        time: new Date(Date.now() - 7200000).toLocaleString(), 
-        priority: 'High', 
-        status: 'in_progress' 
-    },
-    { 
-        id: 'mock-3', 
-        title: 'Revisión y Filtro de Convocatoria Global', 
-        description: 'Comparación exhaustiva de la oportunidad con los focos de Rotary International.', 
-        category: 'Calidad', 
-        agentId: 'sofia', 
-        time: new Date(Date.now() - 18000000).toLocaleString(), 
-        priority: 'Medium', 
-        status: 'done',
-        details: {
-            gaps: ["La oportunidad requiere alianza local.", "El porcentaje financiero no coincide perfectamente."],
-            quality: "Evaluación completada. Oportunidad filtrada exitosamente.",
-            source: "AI Model Analysis",
-            link: "#"
-        }
-    }
-];
-
 const HQDashboard: React.FC = () => {
     const { token } = useAuth();
     const [tasks, setTasks] = useState<Task[]>([]);
@@ -199,12 +160,11 @@ const HQDashboard: React.FC = () => {
                         index === self.findIndex((t) => (t.title === task.title))
                     );
 
-                    // Combine with initial static tasks strictly for MVP UI show/tell purposes
-                    setTasks([...INITIAL_TASKS, ...uniqueTasks]);
+                    setTasks(uniqueTasks);
                     setIsLoadingTasks(false);
                 })
                 .catch(() => {
-                    setTasks(INITIAL_TASKS);
+                    setTasks([]);
                     setIsLoadingTasks(false);
                 });
         };
@@ -340,16 +300,6 @@ const HQDashboard: React.FC = () => {
         setSelectedChats([]);
     };
 
-    const getAgentActionVerb = (status: string) => {
-        switch(status) {
-            case 'backlog': return 'ha localizado';
-            case 'todo': return 'tiene en cola';
-            case 'in_progress': return 'está procesando';
-            case 'done': return 'ha completado';
-            default: return 'está revisando';
-        }
-    };
-
     const handleDrop = async (e: React.DragEvent<HTMLDivElement>, newStatus: string) => {
         e.preventDefault();
         const taskId = e.dataTransfer.getData('text/plain');
@@ -365,19 +315,19 @@ const HQDashboard: React.FC = () => {
         });
         setTasks(updatedTasks);
 
-        // Map status change to UI verb in Activity feed implicitly via state
-        if (!taskId.startsWith('mock-')) {
-            try {
-                await fetch(`${API_BASE}/scout-grants/${taskId}/status`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status: newStatus })
-                });
+        try {
+            await fetch(`${API_BASE}/scout-grants/${taskId}/status`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: newStatus })
+            });
 
-                // Si se movió a IN PROGRESS, mandamos la petición a n8n
-                if (newStatus === 'in_progress' && taskToUpdate) {
-                    const webhookUrl = 'https://n8n-n8n.urnhq7.easypanel.host/webhook/whatsapp-copy-generator';
-                    fetch(webhookUrl, {
+            // Si se movió a IN PROGRESS, mandamos la petición a n8n
+            if (newStatus === 'in_progress' && taskToUpdate) {
+                const webhookUrl = 'https://n8n-n8n.urnhq7.easypanel.host/webhook/whatsapp-copy-generator';
+                fetch(webhookUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
@@ -526,9 +476,9 @@ const HQDashboard: React.FC = () => {
                                         <div className="flex justify-between items-center p-3 pb-0">
                                             <GripVertical className="w-4 h-4 text-gray-300" />
                                             <div className="flex items-center gap-0.5 opacity-50 group-hover:opacity-100 transition-opacity">
-                                                <button className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-[#013388] transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
-                                                <button className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-[#013388] transition-colors"><FileText className="w-3.5 h-3.5" /></button>
-                                                <button className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                                                <button onClick={(e) => { e.stopPropagation(); setSelectedTask(t); }} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-[#013388] transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
+                                                <button onClick={(e) => { e.stopPropagation(); setSelectedTask(t); }} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-[#013388] transition-colors"><FileText className="w-3.5 h-3.5" /></button>
+                                                <button onClick={(e) => handleDeleteTask(t.id, e)} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                                             </div>
                                         </div>
 
