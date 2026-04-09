@@ -25,20 +25,20 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [user, setUser] = useState<User | null>(null);
-    const [token, setToken] = useState<string | null>(null);
+    const [user, setUser] = useState<User | null>(() => {
+        const savedUser = localStorage.getItem('rotary_user');
+        return savedUser ? JSON.parse(savedUser) : null;
+    });
+    const [token, setToken] = useState<string | null>(() => {
+        return localStorage.getItem('rotary_token');
+    });
 
     useEffect(() => {
-        const savedToken = localStorage.getItem('rotary_token');
-        const savedUser = localStorage.getItem('rotary_user');
-        if (savedToken && savedUser) {
-            setToken(savedToken);
-            setUser(JSON.parse(savedUser));
-
-            // Validate token is still valid by hitting a lightweight endpoint
+        // Validate token is still valid by hitting a lightweight endpoint
+        if (token) {
             const apiUrl = import.meta.env.VITE_API_URL || '/api';
             fetch(`${apiUrl}/admin/stats`, {
-                headers: { Authorization: `Bearer ${savedToken}` },
+                headers: { Authorization: `Bearer ${token}` },
             }).then(r => {
                 if (r.status === 401) {
                     // Token expired — clear stale session
