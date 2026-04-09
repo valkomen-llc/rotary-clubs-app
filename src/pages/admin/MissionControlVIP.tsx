@@ -227,7 +227,6 @@ const HQDashboard: React.FC = () => {
 
     return () => clearInterval(intervalId);
   }, []);
-  const [showSettings, setShowSettings] = useState(false);
 
   // --- WHATSAPP BROADCAST MODAL (PREVIOUS FEATURE) ---
   const [showPublish, setShowPublish] = useState<any>(null);
@@ -500,12 +499,6 @@ const HQDashboard: React.FC = () => {
           >
             <Zap className="w-4 h-4" />
             EJECUTAR PIPELINE IA ⚡
-          </button>
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className="text-white hover:bg-white/10 p-2 rounded-lg transition-colors"
-          >
-            <Settings className="w-5 h-5" />
           </button>
           <button
             onClick={() => window.close()}
@@ -1199,131 +1192,6 @@ const HQDashboard: React.FC = () => {
                 className="px-6 py-3.5 bg-[#013388] text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-blue-800 transition-all shadow-[0_8px_20px_-6px_rgba(1,51,136,0.5)] disabled:opacity-50 disabled:shadow-none flex items-center gap-2 hover:scale-105 active:scale-95"
               >
                 Disparar Flujo
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SETTINGS MODAL (API KEYS) */}
-      {showSettings && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[10001] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-8 duration-300">
-            <div className="p-8 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-              <div className="flex items-center gap-3">
-                <Database className="w-5 h-5 text-[#013388]" />
-                <h3 className="font-black text-[#013388] uppercase tracking-widest text-xs">
-                  API Configuration
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowSettings(false)}
-                className="p-2 hover:bg-gray-200 rounded-xl transition-all"
-              >
-                <X className="w-5 h-5 text-gray-400" />
-              </button>
-            </div>
-            <div className="p-8 space-y-6">
-              <div className="space-y-4">
-                <h4 className="text-xs font-black text-gray-800 uppercase tracking-wider mb-2">
-                  Credenciales (API Keys)
-                </h4>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2">
-                    Apify API Key
-                  </label>
-                  <input
-                    type="password"
-                    placeholder="apify_proxy_..."
-                    className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-xs font-bold outline-none focus:border-[#013388]/30"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2">
-                    Perplexity API Key
-                  </label>
-                  <input
-                    type="password"
-                    placeholder="pplx-..."
-                    className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-xs font-bold outline-none focus:border-[#013388]/30"
-                  />
-                </div>
-
-                <div className="pt-4 border-t border-gray-100">
-                  <h4 className="text-xs font-black text-gray-800 uppercase tracking-wider mb-4">
-                    Autonomía de Agentes
-                  </h4>
-
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between bg-blue-50/50 p-4 rounded-2xl border border-blue-50 hover:border-blue-100 transition-all">
-                      <div>
-                        <p className="text-xs font-bold text-gray-800">
-                          Pipeline Autónomo
-                        </p>
-                        <p className="text-[10px] text-gray-500 mt-1">
-                          Mover tarjetas sin intervención humana
-                        </p>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          defaultChecked
-                          className="sr-only peer"
-                        />
-                        <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#013388]"></div>
-                      </label>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2">
-                          Frecuencia de Búsqueda (Scraper)
-                        </label>
-                        <span className="text-xs font-bold text-[#013388]">
-                          Cada 4 Horas
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min="1"
-                        max="24"
-                        defaultValue="4"
-                        className="w-full accent-[#013388]"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2">
-                          Pausa entre Valeria y Mateo
-                        </label>
-                        <span className="text-xs font-bold text-[#013388]">
-                          15 Minutos
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min="0"
-                        max="60"
-                        defaultValue="15"
-                        step="5"
-                        className="w-full accent-[#013388]"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-center gap-3">
-                <ShieldCheck className="w-5 h-5 text-[#013388]" />
-                <p className="text-[9px] font-bold text-[#013388] uppercase leading-relaxed">
-                  Las llaves se guardarán en tu entorno seguro de Club Platform.
-                </p>
-              </div>
-              <button
-                onClick={() => setShowSettings(false)}
-                className="w-full py-5 bg-[#013388] text-white rounded-[32px] font-black uppercase text-xs tracking-widest hover:brightness-110 shadow-xl transition-all"
-              >
-                Guardar Configuración
               </button>
             </div>
           </div>

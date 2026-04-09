@@ -67,6 +67,10 @@ const DashboardOverview: React.FC = () => {
     const [grantContext, setGrantContext] = useState('Busca oportunidades que encajen estrictamente con las Áreas de Interés de Rotary (Agua, Paz, Educación, Madre e Hijo, Economía, Medio Ambiente, Prevención de Enfermedades). Omite licitaciones de infraestructura pesada estatal. Traduce los TDRs a un lenguaje diplomático pero urgente.');
     const [attachedFiles, setAttachedFiles] = useState<string[]>(['Estatutos_Club_Rotary_2026.pdf']);
 
+    const [pipelineAutonomo, setPipelineAutonomo] = useState(true);
+    const [frecuenciaScraper, setFrecuenciaScraper] = useState(4);
+    const [pausaValeriaMateo, setPausaValeriaMateo] = useState(15);
+
     return (
         <div className="space-y-8 animate-in fade-in duration-500 relative">
             {/* TOP METRICS */}
@@ -203,6 +207,72 @@ const DashboardOverview: React.FC = () => {
                         </div>
                         
                         <div className="p-8 space-y-8 max-h-[60vh] overflow-y-auto">
+                            
+                            <div className="bg-[#F8FAFC] border border-blue-100 rounded-3xl p-6 space-y-6">
+                                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                                    Autonomía de Agentes
+                                </h4>
+
+                                <div className="flex items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                                    <div>
+                                        <p className="text-xs font-bold text-gray-800">
+                                            Pipeline Autónomo
+                                        </p>
+                                        <p className="text-[10px] text-gray-500 mt-0.5">
+                                            Mover tarjetas sin intervención humana
+                                        </p>
+                                    </div>
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={pipelineAutonomo}
+                                            onChange={(e) => setPipelineAutonomo(e.target.checked)}
+                                            className="sr-only peer"
+                                        />
+                                        <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#013388]"></div>
+                                    </label>
+                                </div>
+
+                                <div className="space-y-3 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                                    <div className="flex justify-between items-center">
+                                        <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2">
+                                            Frecuencia de Búsqueda (Scraper)
+                                        </label>
+                                        <span className="text-xs font-bold text-[#013388]">
+                                            Cada {frecuenciaScraper} Horas
+                                        </span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="1"
+                                        max="24"
+                                        value={frecuenciaScraper}
+                                        onChange={(e) => setFrecuenciaScraper(parseInt(e.target.value))}
+                                        className="w-full accent-[#013388]"
+                                    />
+                                </div>
+
+                                <div className="space-y-3 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                                    <div className="flex justify-between items-center">
+                                        <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2">
+                                            Pausa entre Valeria y Mateo
+                                        </label>
+                                        <span className="text-xs font-bold text-[#013388]">
+                                            {pausaValeriaMateo} Minutos
+                                        </span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="60"
+                                        step="5"
+                                        value={pausaValeriaMateo}
+                                        onChange={(e) => setPausaValeriaMateo(parseInt(e.target.value))}
+                                        className="w-full accent-[#013388]"
+                                    />
+                                </div>
+                            </div>
+
                             <div className="space-y-4">
                                 <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                                     <Calendar className="w-4 h-4 text-[#F7A81B]" /> Frecuencia de Búsqueda y Distribución
