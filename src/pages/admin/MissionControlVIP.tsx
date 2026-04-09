@@ -254,10 +254,10 @@ const HQDashboard: React.FC = () => {
   );
 
   const boardCols = {
-    Backlog: filteredTasks.filter((t) => ["backlog", "todo"].includes(t.status)),
-    "In Progress": filteredTasks.filter((t) => t.status === "in_progress"),
-    "Waiting Approval": filteredTasks.filter((t) => t.status === "done"),
-    Shared: filteredTasks.filter((t) => t.status === "verified"),
+    "Oportunidades": filteredTasks.filter((t) => ["backlog", "todo"].includes(t.status)),
+    "En Progreso": filteredTasks.filter((t) => t.status === "in_progress"),
+    "En Revisión": filteredTasks.filter((t) => t.status === "done"),
+    "Compartidos": filteredTasks.filter((t) => t.status === "verified"),
   };
 
   const fetchChats = async () => {
@@ -492,7 +492,7 @@ const HQDashboard: React.FC = () => {
           )}
           <div className="h-4 w-[1px] bg-white/20 mx-2 hidden sm:block shrink-0" />
           <span className="text-[10px] font-black text-white/50 uppercase tracking-widest mr-3 shrink-0">
-            Agents
+            Agentes
           </span>
           {AGENTS.map((agent) => (
             <div
@@ -536,7 +536,7 @@ const HQDashboard: React.FC = () => {
             <div className="flex items-center gap-2">
               <Target className="w-4 h-4 text-[#013388]" />
               <span className="text-[11px] font-black text-gray-400 tracking-widest">
-                Goals
+                Objetivos
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -558,7 +558,7 @@ const HQDashboard: React.FC = () => {
                     {goal.title}
                   </h4>
                   <div className="bg-blue-50 text-[#013388] text-[9px] font-black px-1.5 py-0.5 rounded uppercase shrink-0 ml-2">
-                    Active
+                    Activo
                   </div>
                 </div>
                 <p className="text-[10px] text-gray-500 mb-3 leading-tight line-clamp-2">
@@ -602,10 +602,10 @@ const HQDashboard: React.FC = () => {
               <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 group-hover:text-[#013388] transition-colors" />
               <input 
                 type="text" 
-                placeholder="Search features by keyword..." 
+                placeholder="Buscar oportunidad o contenido por palabra clave..." 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-12 py-2 bg-white border border-gray-200 rounded-xl text-[11px] font-bold text-gray-700 w-[260px] focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all shadow-sm"
+                className="pl-9 pr-12 py-2 bg-white border border-gray-200 rounded-xl text-[11px] font-bold text-gray-700 w-[300px] focus:outline-none focus:ring-2 focus:ring-[#013388]/20 focus:border-[#013388] transition-all shadow-sm"
               />
               <div className="absolute right-2 top-1/2 transform -translate-y-1/2 px-1.5 py-0.5 bg-gray-50 border border-gray-200 rounded text-[9px] font-black text-gray-400">/</div>
             </div>
@@ -666,7 +666,7 @@ const HQDashboard: React.FC = () => {
               <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-white">
                 <div className="flex items-center gap-2">
                   <div
-                    className={`w-2 h-2 rounded-full ${colName === "Backlog" ? "bg-gray-400" : colName === "In Progress" ? "bg-amber-500" : colName === "Waiting Approval" ? "bg-orange-500" : "bg-emerald-500"}`}
+                    className={`w-2 h-2 rounded-full ${colName === "Oportunidades" ? "bg-gray-400" : colName === "En Progreso" ? "bg-amber-500" : colName === "En Revisión" ? "bg-orange-500" : "bg-emerald-500"}`}
                   />
                   <span className="text-[12px] font-black text-slate-800 uppercase tracking-wide">
                     {colName}
@@ -757,7 +757,7 @@ const HQDashboard: React.FC = () => {
                             {AGENTS.find((a) => a.id === t.agentId)?.icon || "🤖"}
                           </span>
                           <span className="text-[10px] font-bold text-[#013388]">
-                            Agent{" "}
+                            Agente{" "}
                             {AGENTS.find((a) => a.id === t.agentId)?.name ||
                               "Opus 4.5"}
                           </span>
@@ -772,17 +772,17 @@ const HQDashboard: React.FC = () => {
                     {/* Action Buttons */}
                     {viewDensity !== 'compact' && (
                       <div className="p-3 pt-2 mt-auto">
-                        {colName === "Backlog" && (
+                        {colName === "Oportunidades" && (
                           <div className="flex gap-2">
                             <button className="flex-1 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-600 text-[10px] font-black uppercase tracking-wide hover:bg-gray-100 flex items-center justify-center gap-1.5 transition-colors">
-                              <Edit2 className="w-3 h-3" /> Edit
+                              <Edit2 className="w-3 h-3" /> Editar
                             </button>
                             <button className="flex-1 py-2 rounded-xl bg-blue-50 border border-blue-100 text-[#013388] text-[10px] font-black uppercase tracking-wide hover:bg-blue-100 flex items-center justify-center gap-1.5 transition-colors">
-                              <PlayCircle className="w-3 h-3" /> Make
+                              <PlayCircle className="w-3 h-3" /> Ejecutar
                             </button>
                           </div>
                         )}
-                        {colName === "In Progress" && (
+                        {colName === "En Progreso" && (
                           <div className="flex gap-2">
                             <button className="flex-1 py-2 rounded-xl bg-blue-50 border border-blue-100 text-[#013388] text-[10px] font-black uppercase tracking-wide hover:bg-blue-100 flex items-center justify-center gap-1.5 transition-colors">
                               <FileText className="w-3 h-3" /> Logs{" "}
@@ -795,10 +795,10 @@ const HQDashboard: React.FC = () => {
                             </button>
                           </div>
                         )}
-                        {colName === "Waiting Approval" && (
+                        {colName === "En Revisión" && (
                           <div className="flex gap-2">
                             <button className="flex-1 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-600 text-[10px] font-black uppercase tracking-wide hover:bg-gray-100 flex items-center justify-center gap-1.5 transition-colors">
-                              <Settings2 className="w-3 h-3" /> Refine
+                              <Settings2 className="w-3 h-3" /> Refinar
                             </button>
                             <button
                               onClick={(e) => {
@@ -811,13 +811,13 @@ const HQDashboard: React.FC = () => {
                             </button>
                           </div>
                         )}
-                        {colName === "Shared" && (
+                        {colName === "Compartidos" && (
                           <div className="flex gap-2">
                             <button className="flex-1 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-600 text-[10px] font-black uppercase tracking-wide hover:bg-gray-100 flex items-center justify-center gap-1.5 transition-colors">
                               <FileText className="w-3 h-3" /> Logs
                             </button>
                             <button className="flex-1 py-2 rounded-xl bg-[#013388] text-white text-[10px] font-black uppercase tracking-wide hover:bg-blue-800 flex items-center justify-center gap-1.5 shadow-[0_2px_10px_rgba(1,51,136,0.2)] transition-colors border border-transparent">
-                              <CheckCircle2 className="w-3 h-3" /> Complete
+                              <CheckCircle2 className="w-3 h-3" /> Completar
                             </button>
                           </div>
                         )}
@@ -841,13 +841,13 @@ const HQDashboard: React.FC = () => {
                 <span
                   className={`text-[9px] font-black px-2 py-0.5 rounded-full text-white uppercase ${selectedTask.priority === "High" ? "bg-red-600" : "bg-slate-400"}`}
                 >
-                  High
+                  Alta
                 </span>
                 <span className="bg-blue-50 text-[#013388] border border-blue-100 text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter">
                   {selectedTask.category}
                 </span>
                 <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">
-                  Peer Review
+                  Revisión de Pares
                 </span>
               </div>
               <button
