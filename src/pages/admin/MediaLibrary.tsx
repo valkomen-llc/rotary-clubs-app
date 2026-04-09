@@ -24,6 +24,46 @@ interface ClubFolder {
     count: number;
 }
 
+const compressImage = async (file: File): Promise<File> => {
+    return new Promise((resolve) => {
+        if (!file.type.startsWith('image/') || file.type.includes('svg') || file.type.includes('gif')) {
+            return resolve(file);
+        }
+        const img = new Image();
+        img.onload = () => {
+            URL.revokeObjectURL(img.src);
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            const max = 1600; // max width/height
+            if (width > height && width > max) {
+                height = Math.round(height * (max / width));
+                width = max;
+            } else if (height > max) {
+                width = Math.round(width * (max / height));
+                height = max;
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return resolve(file);
+            ctx.drawImage(img, 0, 0, width, height);
+            canvas.toBlob((blob) => {
+                if (!blob) return resolve(file);
+                // Si la original era png y requiere transparencia se pierde un poco, pero esto fuerza JPEG ligero.
+                // Para logos se sube desde ImageDistribution, acá es Media Library general.
+                const ext = file.name.split('.').pop() || 'jpg';
+                const newName = file.name.replace(new RegExp(`\\.${ext}$`, 'i'), '.jpg');
+                const compressed = new File([blob], newName, { type: 'image/jpeg' });
+                // Solo usar si realmente redujo tamaño
+                resolve(compressed.size < file.size ? compressed : file);
+            }, 'image/jpeg', 0.85);
+        };
+        img.onerror = () => resolve(file);
+        img.src = URL.createObjectURL(file);
+    });
+};
+
 const MediaLibrary: React.FC = () => {
     const { user } = useAuth();
     const [media, setMedia] = useState<MediaItem[]>([]);
@@ -101,10 +141,12 @@ const MediaLibrary: React.FC = () => {
         try {
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
-                toast.loading(`Subiendo ${i + 1} de ${files.length} archivos...`, { id: toastId });
+                toast.loading(`Optimizando y subiendo ${i + 1} de ${files.length}...`, { id: toastId });
+
+                const processedFile = await compressImage(file);
 
                 const formData = new FormData();
-                formData.append('file', file);
+                formData.append('file', processedFile);
                 formData.append('clubId', (isSuperAdmin ? selectedClubId : user?.clubId) || '');
 
                 const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/api/media/upload`, {
