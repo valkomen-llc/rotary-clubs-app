@@ -138,7 +138,7 @@ const Navbar = () => {
           <Link to="/" className="flex items-center gap-3">
             {club.logo ? (
               <div className="relative flex items-center" style={{ width: `${club.logoHeaderSize ?? 200}px` }}>
-                <img src={club.logo} alt={club.name} className="w-full h-auto object-contain max-h-[52px] object-left" />
+                <img src={club.logo} alt={club.name} className="h-[52px] w-auto max-w-full object-contain object-left" />
               </div>
             ) : (
               <>

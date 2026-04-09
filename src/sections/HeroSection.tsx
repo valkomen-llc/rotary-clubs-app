@@ -46,7 +46,7 @@ const HeroSection = () => {
           animation: zoomIn 5s ease-out forwards;
         }
       `}</style>
-      <section className="relative w-full h-[440px] md:h-[540px] overflow-hidden">
+      <section className="relative w-full h-[440px] md:h-[540px] overflow-hidden bg-rotary-dark">
         <div className="absolute inset-0">
           {slides.map((slide, index) => (
             <div
@@ -58,7 +58,7 @@ const HeroSection = () => {
               <img 
                 src={slide.image} 
                 alt={slide.alt} 
-                className={`w-full h-full object-contain ${index === currentSlide ? 'hero-slide-image' : ''}`}
+                className={`w-full h-full object-cover ${index === currentSlide ? 'hero-slide-image' : ''}`}
               />
             </div>
           ))}
