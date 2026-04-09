@@ -176,6 +176,8 @@ const HQDashboard: React.FC = () => {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [viewDensity, setViewDensity] = useState<'compact' | 'normal' | 'expanded'>('normal');
+  const [showCovers, setShowCovers] = useState(true);
 
   useEffect(() => {
     const fetchTasks = () => {
@@ -598,7 +600,9 @@ const HQDashboard: React.FC = () => {
 
             {/* Right Tools Group Component */}
             <div className="flex items-center gap-2">
-              <button className="p-2 bg-white flex items-center justify-center border border-gray-200 rounded-lg shadow-sm hover:border-[#013388] hover:bg-blue-50/30 hover:text-[#013388] text-gray-400 transition-all">
+              <button 
+                onClick={() => setShowCovers(!showCovers)}
+                className={`p-2 flex items-center justify-center border rounded-lg shadow-sm transition-all ${showCovers ? 'bg-blue-50 border-[#013388] text-[#013388]' : 'bg-white border-gray-200 text-gray-400 hover:border-[#013388] hover:bg-blue-50/30'}`}>
                 <Image className="w-4 h-4" />
               </button>
               <button className="p-2 bg-white flex items-center justify-center border border-gray-200 rounded-lg shadow-sm hover:border-[#013388] hover:bg-blue-50/30 hover:text-[#013388] text-gray-400 transition-all">
@@ -606,15 +610,21 @@ const HQDashboard: React.FC = () => {
               </button>
               
               <div className="flex rounded-lg shadow-sm ml-2 bg-white border border-gray-200 overflow-hidden">
-                <button className="p-2 flex items-center justify-center text-gray-400 hover:text-[#013388] hover:bg-blue-50/30 transition-all">
+                <button 
+                  onClick={() => setViewDensity('compact')}
+                  className={`p-2 flex items-center justify-center transition-all ${viewDensity === 'compact' ? 'bg-blue-50 text-[#013388]' : 'text-gray-400 hover:text-[#013388] hover:bg-blue-50/30'}`}>
                   <Minimize2 className="w-4 h-4" />
                 </button>
                 <div className="w-[1px] bg-gray-100" />
-                <button className="p-2 flex items-center justify-center text-gray-400 hover:text-[#013388] hover:bg-blue-50/30 transition-all">
+                <button 
+                  onClick={() => setViewDensity('normal')}
+                  className={`p-2 flex items-center justify-center transition-all ${viewDensity === 'normal' ? 'bg-blue-50 text-[#013388]' : 'text-gray-400 hover:text-[#013388] hover:bg-blue-50/30'}`}>
                   <Square className="w-4 h-4" />
                 </button>
                 <div className="w-[1px] bg-gray-100" />
-                <button className="p-2 flex items-center justify-center text-gray-400 hover:text-[#013388] hover:bg-blue-50/30 transition-all">
+                <button 
+                  onClick={() => setViewDensity('expanded')}
+                  className={`p-2 flex items-center justify-center transition-all ${viewDensity === 'expanded' ? 'bg-blue-50 text-[#013388]' : 'text-gray-400 hover:text-[#013388] hover:bg-blue-50/30'}`}>
                   <Maximize2 className="w-4 h-4" />
                 </button>
               </div>
@@ -700,86 +710,107 @@ const HQDashboard: React.FC = () => {
                       </div>
                     </div>
 
+                    {/* Optional Cover Image */}
+                    {showCovers && viewDensity !== 'compact' && (
+                      <div className="px-3">
+                        <div className={`w-full rounded-lg bg-gradient-to-tr from-blue-50 to-indigo-50/30 border border-blue-100/50 flex items-center justify-center ${viewDensity === 'expanded' ? 'h-32' : 'h-24'}`}>
+                          <Image className="w-6 h-6 text-blue-200" />
+                        </div>
+                      </div>
+                    )}
+
                     {/* Content */}
-                    <div className="px-5 py-2">
-                      <h5 className="text-[12px] font-bold text-gray-800 leading-snug mb-1.5 line-clamp-2">
+                    <div className={`px-5 ${viewDensity === 'compact' ? 'py-1 pb-3' : 'py-2'}`}>
+                      <h5 className={`font-bold text-gray-800 leading-snug mb-1.5 ${viewDensity === 'expanded' ? 'text-[14px]' : 'text-[12px] line-clamp-2'}`}>
                         {t.title}
                       </h5>
-                      <p className="text-[10px] text-gray-400 leading-tight block">
-                        ({t.category})
-                      </p>
+                      {viewDensity !== 'compact' && (
+                        <p className="text-[10px] text-gray-400 leading-tight block">
+                          ({t.category})
+                        </p>
+                      )}
+                      
+                      {viewDensity === 'expanded' && t.description && (
+                        <p className="text-[11px] text-gray-500 mt-2 leading-relaxed">
+                          {t.description}
+                        </p>
+                      )}
                     </div>
 
                     {/* Agent Status */}
-                    <div className="px-5 py-2 flex items-center justify-between mt-auto">
-                      <div className="flex items-center gap-1.5 opacity-90">
-                        <span className="text-[14px] leading-none">
-                          {AGENTS.find((a) => a.id === t.agentId)?.icon || "🤖"}
-                        </span>
-                        <span className="text-[10px] font-bold text-[#013388]">
-                          Agent{" "}
-                          {AGENTS.find((a) => a.id === t.agentId)?.name ||
-                            "Opus 4.5"}
-                        </span>
+                    {viewDensity !== 'compact' && (
+                      <div className="px-5 py-2 flex items-center justify-between mt-auto">
+                        <div className="flex items-center gap-1.5 opacity-90">
+                          <span className="text-[14px] leading-none">
+                            {AGENTS.find((a) => a.id === t.agentId)?.icon || "🤖"}
+                          </span>
+                          <span className="text-[10px] font-bold text-[#013388]">
+                            Agent{" "}
+                            {AGENTS.find((a) => a.id === t.agentId)?.name ||
+                              "Opus 4.5"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 text-[9px] font-bold text-gray-400">
+                          <Clock className="w-3 h-3" />{" "}
+                          {t.time.split(",")[1]?.substring(0, 6).trim() || ""}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1 text-[9px] font-bold text-gray-400">
-                        <Clock className="w-3 h-3" />{" "}
-                        {t.time.split(",")[1]?.substring(0, 6).trim() || ""}
-                      </div>
-                    </div>
+                    )}
 
                     {/* Action Buttons */}
-                    <div className="p-3 pt-2 mt-auto">
-                      {colName === "Backlog" && (
-                        <div className="flex gap-2">
-                          <button className="flex-1 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-600 text-[10px] font-black uppercase tracking-wide hover:bg-gray-100 flex items-center justify-center gap-1.5 transition-colors">
-                            <Edit2 className="w-3 h-3" /> Edit
-                          </button>
-                          <button className="flex-1 py-2 rounded-xl bg-blue-50 border border-blue-100 text-[#013388] text-[10px] font-black uppercase tracking-wide hover:bg-blue-100 flex items-center justify-center gap-1.5 transition-colors">
-                            <PlayCircle className="w-3 h-3" /> Make
-                          </button>
-                        </div>
-                      )}
-                      {colName === "In Progress" && (
-                        <div className="flex gap-2">
-                          <button className="flex-1 py-2 rounded-xl bg-blue-50 border border-blue-100 text-[#013388] text-[10px] font-black uppercase tracking-wide hover:bg-blue-100 flex items-center justify-center gap-1.5 transition-colors">
-                            <FileText className="w-3 h-3" /> Logs{" "}
-                            <span className="bg-blue-200/50 text-[#013388] px-1.5 rounded text-[9px] ml-0.5">
-                              1
-                            </span>
-                          </button>
-                          <button className="w-10 rounded-xl bg-red-50 border border-red-100 text-red-500 hover:bg-red-100 flex items-center justify-center transition-colors">
-                            <StopCircle className="w-4 h-4" />
-                          </button>
-                        </div>
-                      )}
-                      {colName === "Waiting Approval" && (
-                        <div className="flex gap-2">
-                          <button className="flex-1 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-600 text-[10px] font-black uppercase tracking-wide hover:bg-gray-100 flex items-center justify-center gap-1.5 transition-colors">
-                            <Settings2 className="w-3 h-3" /> Refine
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleShareGrant("whatsapp", t);
-                            }}
-                            className="flex-[1.5] py-2 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 text-[10px] font-black uppercase tracking-wide hover:bg-emerald-100 flex items-center justify-center gap-1.5 transition-colors shadow-sm"
-                          >
-                            <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
-                          </button>
-                        </div>
-                      )}
-                      {colName === "Shared" && (
-                        <div className="flex gap-2">
-                          <button className="flex-1 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-600 text-[10px] font-black uppercase tracking-wide hover:bg-gray-100 flex items-center justify-center gap-1.5 transition-colors">
-                            <FileText className="w-3 h-3" /> Logs
-                          </button>
-                          <button className="flex-1 py-2 rounded-xl bg-[#013388] text-white text-[10px] font-black uppercase tracking-wide hover:bg-blue-800 flex items-center justify-center gap-1.5 shadow-[0_2px_10px_rgba(1,51,136,0.2)] transition-colors border border-transparent">
-                            <CheckCircle2 className="w-3 h-3" /> Complete
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                    {viewDensity !== 'compact' && (
+                      <div className="p-3 pt-2 mt-auto">
+                        {colName === "Backlog" && (
+                          <div className="flex gap-2">
+                            <button className="flex-1 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-600 text-[10px] font-black uppercase tracking-wide hover:bg-gray-100 flex items-center justify-center gap-1.5 transition-colors">
+                              <Edit2 className="w-3 h-3" /> Edit
+                            </button>
+                            <button className="flex-1 py-2 rounded-xl bg-blue-50 border border-blue-100 text-[#013388] text-[10px] font-black uppercase tracking-wide hover:bg-blue-100 flex items-center justify-center gap-1.5 transition-colors">
+                              <PlayCircle className="w-3 h-3" /> Make
+                            </button>
+                          </div>
+                        )}
+                        {colName === "In Progress" && (
+                          <div className="flex gap-2">
+                            <button className="flex-1 py-2 rounded-xl bg-blue-50 border border-blue-100 text-[#013388] text-[10px] font-black uppercase tracking-wide hover:bg-blue-100 flex items-center justify-center gap-1.5 transition-colors">
+                              <FileText className="w-3 h-3" /> Logs{" "}
+                              <span className="bg-blue-200/50 text-[#013388] px-1.5 rounded text-[9px] ml-0.5">
+                                1
+                              </span>
+                            </button>
+                            <button className="w-10 rounded-xl bg-red-50 border border-red-100 text-red-500 hover:bg-red-100 flex items-center justify-center transition-colors">
+                              <StopCircle className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                        {colName === "Waiting Approval" && (
+                          <div className="flex gap-2">
+                            <button className="flex-1 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-600 text-[10px] font-black uppercase tracking-wide hover:bg-gray-100 flex items-center justify-center gap-1.5 transition-colors">
+                              <Settings2 className="w-3 h-3" /> Refine
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleShareGrant("whatsapp", t);
+                              }}
+                              className="flex-[1.5] py-2 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 text-[10px] font-black uppercase tracking-wide hover:bg-emerald-100 flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                            </button>
+                          </div>
+                        )}
+                        {colName === "Shared" && (
+                          <div className="flex gap-2">
+                            <button className="flex-1 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-600 text-[10px] font-black uppercase tracking-wide hover:bg-gray-100 flex items-center justify-center gap-1.5 transition-colors">
+                              <FileText className="w-3 h-3" /> Logs
+                            </button>
+                            <button className="flex-1 py-2 rounded-xl bg-[#013388] text-white text-[10px] font-black uppercase tracking-wide hover:bg-blue-800 flex items-center justify-center gap-1.5 shadow-[0_2px_10px_rgba(1,51,136,0.2)] transition-colors border border-transparent">
+                              <CheckCircle2 className="w-3 h-3" /> Complete
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
