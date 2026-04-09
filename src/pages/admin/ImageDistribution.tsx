@@ -61,6 +61,7 @@ const DEFAULTS = {
     rotex: { url: 'https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?w=1600&h=800&fit=crop', alt: 'ROTEX' },
     chatbotPublicAvatar: { url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face', alt: 'Avatar Público' },
     chatbotAdminAvatar: { url: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150&h=150&fit=crop&crop=face', alt: 'Avatar Admin' },
+    missionControl: { url: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=400&h=100&fit=crop', alt: 'Mission Control Logo' },
 };
 
 interface ImgSlot { url: string; alt: string; }
@@ -81,6 +82,7 @@ interface SiteImages {
     rotex?: ImgSlot;
     chatbotPublicAvatar?: ImgSlot;
     chatbotAdminAvatar?: ImgSlot;
+    missionControl?: ImgSlot;
     [key: string]: ImgSlot | ImgSlot[] | undefined;
 }
 
@@ -128,8 +130,14 @@ const ImageDistribution: React.FC = () => {
         if (c?.modules?.youthExchange) active.push({ key: 'yep', label: 'Intercambio de Jóvenes (YEP)', desc: 'Imágenes del slider para el portal YEP.', count: 3, aspect: '16/8' });
         if (c?.modules?.ngse) active.push({ key: 'ngse', label: 'Intercambios NGSE', desc: 'Imagen de portada para la directiva de NGSE.', count: 1, aspect: '16/8' });
         if (c?.modules?.rotex) active.push({ key: 'rotex', label: 'Red ROTEX', desc: 'Imagen de portada para los ex-intercambistas.', count: 1, aspect: '16/8' });
+        
+        // Superadmin feature
+        if (user?.role === 'administrator') {
+            active.push({ key: 'missionControl', label: 'Mission Control VIP', desc: 'Logotipo para el header del panel avanzado (Solo Global).', count: 1, aspect: 'auto' });
+        }
+        
         return active;
-    }, [club]);
+    }, [club, user]);
 
     const [images, setImages] = useState<SiteImages | null>(null);
     const [baseImages, setBaseImages] = useState<SiteImages | null>(null);

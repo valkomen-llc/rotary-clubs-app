@@ -178,8 +178,19 @@ const HQDashboard: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [viewDensity, setViewDensity] = useState<'compact' | 'normal' | 'expanded'>('normal');
   const [showCovers, setShowCovers] = useState(true);
+  const [missionControlLogo, setMissionControlLogo] = useState<string | null>(null);
 
   useEffect(() => {
+    // Fetch Global Setup Images
+    fetch(`${API_BASE}/clubs/_global/site-images`)
+      .then((r) => r.ok ? r.json() : {})
+      .then((d) => {
+        if (d.missionControl?.url && d.missionControl.url !== 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=400&h=100&fit=crop') {
+          setMissionControlLogo(d.missionControl.url);
+        }
+      })
+      .catch(() => {});
+
     const fetchTasks = () => {
       fetch(`${API_BASE}/scout-grants`)
         .then((res) => res.json())
@@ -472,7 +483,15 @@ const HQDashboard: React.FC = () => {
       {/* AGENT BAR (TOP) */}
       <div className="h-14 bg-[#013388] px-4 flex items-center justify-between shadow-md">
         <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide py-2">
-          <span className="text-[10px] font-black text-white/50 uppercase tracking-widest mr-3">
+          {missionControlLogo ? (
+            <img src={missionControlLogo} alt="Mission Control VIP" className="h-8 w-auto object-contain mr-3 shrink-0" />
+          ) : (
+            <span className="text-[10px] font-black text-white/50 uppercase tracking-widest mr-3 shrink-0">
+              Mission Control
+            </span>
+          )}
+          <div className="h-4 w-[1px] bg-white/20 mx-2 hidden sm:block shrink-0" />
+          <span className="text-[10px] font-black text-white/50 uppercase tracking-widest mr-3 shrink-0">
             Agents
           </span>
           {AGENTS.map((agent) => (
