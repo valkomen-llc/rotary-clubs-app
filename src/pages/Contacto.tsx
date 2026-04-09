@@ -82,8 +82,8 @@ const Contacto = () => {
     {
       icono: MapPin,
       titulo: 'Dirección',
-      contenido: club.contact?.address || 'Bogotá, Colombia',
-      subtitulo: club.city || ''
+      contenido: club.contact?.address?.trim() || club.city?.trim() || 'Falta dirección',
+      subtitulo: club.contact?.address?.trim() ? (club.city || '') : (club.country || '')
     },
     {
       icono: Phone,
@@ -663,7 +663,7 @@ const Contacto = () => {
                   style={{ border: 0, position: 'absolute', top: 0, left: 0 }}
                   loading="lazy"
                   allowFullScreen
-                  src={`https://maps.google.com/maps?q=${encodeURIComponent(`${club.contact?.address || ''} ${club.city || 'Bogotá, Colombia'}`.trim())}&t=${(club as any).mapStyle || 'm'}&z=14&ie=UTF8&iwloc=&output=embed`}
+                  src={`https://maps.google.com/maps?q=${encodeURIComponent([club.contact?.address?.trim(), club.city?.trim(), club.country?.trim()].filter(Boolean).join(', ') || 'Rotary International')}&t=${(club as any).mapStyle || 'm'}&z=14&ie=UTF8&iwloc=&output=embed`}
                 />
               </div>
 
