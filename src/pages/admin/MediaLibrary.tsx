@@ -88,34 +88,43 @@ const MediaLibrary: React.FC = () => {
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
 
         setIsUploading(true);
-        const formData = new FormData();
-        formData.append('file', file);
-        // Si es superadmin subiendo a una carpeta, usamos ese clubId
-        formData.append('clubId', (isSuperAdmin ? selectedClubId : user?.clubId) || '');
-
+        const token = localStorage.getItem('rotary_token');
+        
         try {
-            const token = localStorage.getItem('rotary_token');
-            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/api/media/upload`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: formData
+            const uploadPromises = files.map(async (file) => {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('clubId', (isSuperAdmin ? selectedClubId : user?.clubId) || '');
+
+                const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/api/media/upload`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+
+                return response.ok;
             });
 
-            if (response.ok) {
-                toast.success('Archivo subido con éxito');
+            const results = await Promise.all(uploadPromises);
+            const successCount = results.filter(Boolean).length;
+            const errorCount = results.length - successCount;
+
+            if (successCount > 0) {
+                toast.success(`${successCount} archivo(s) subido(s) con éxito`);
                 fetchMedia();
-            } else {
-                const data = await response.json();
-                toast.error(data.error || 'Error al subir archivo');
+            }
+            if (errorCount > 0) {
+                toast.error(`Error al subir ${errorCount} archivo(s)`);
             }
         } catch (error) {
-            toast.error('Error de conexión');
+            toast.error('Error de conexión al subir archivos');
         } finally {
             setIsUploading(false);
+            e.target.value = '';
         }
     };
 
@@ -197,7 +206,7 @@ const MediaLibrary: React.FC = () => {
                     <label className="flex items-center gap-2 bg-rotary-blue text-white px-5 py-2.5 rounded-xl hover:bg-sky-800 transition-all font-bold shadow-lg shadow-rotary-blue/20 cursor-pointer disabled:opacity-50">
                         {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
                         <span>{isUploading ? 'Subiendo...' : 'Subir Nuevo'}</span>
-                        <input type="file" className="hidden" onChange={handleFileUpload} disabled={isUploading} />
+                        <input type="file" multiple className="hidden" onChange={handleFileUpload} disabled={isUploading} />
                     </label>
                 )}
             </div>
