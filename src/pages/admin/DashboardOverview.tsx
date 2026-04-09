@@ -88,12 +88,14 @@ const DashboardOverview: React.FC = () => {
                             monitorear operaciones en vivo y revisar logs de red neuronal.
                         </p>
                      </div>
-                     <button
-                         onClick={() => navigate('/admin/mission-control-vip')}
-                         className="bg-white/10 hover:bg-white/20 border border-white/20 px-10 py-5 rounded-[24px] font-black uppercase text-xs tracking-widest transition-all backdrop-blur-md active:scale-95 flex items-center gap-3 cursor-pointer"
+                     <a
+                         href="#/admin/mission-control-vip"
+                         target="_blank"
+                         rel="noopener noreferrer"
+                         className="bg-white/10 hover:bg-white/20 border border-white/20 px-10 py-5 rounded-[24px] font-black uppercase text-xs tracking-widest transition-all backdrop-blur-md active:scale-95 flex items-center gap-3 cursor-pointer inline-flex"
                      >
                          Enter System [⌘+K] <ArrowUpRight className="w-5 h-5 text-[#F7A81B]" />
-                     </button>
+                     </a>
                  </div>
             </div>
 

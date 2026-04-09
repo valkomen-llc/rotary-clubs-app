@@ -659,7 +659,18 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                             <div className="h-8 w-[1px] bg-gray-100 mx-1" />
 
                             <div className="flex items-center gap-3 pl-1">
-                                {clubHostname && (
+                                {user?.role === 'administrator' ? (
+                                    <a
+                                        href="#/admin/mission-control-vip"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-[#013388] hover:bg-blue-900 text-white rounded-lg transition-all border border-[#013388] shadow-md group"
+                                    >
+                                        <Terminal className="w-3.5 h-3.5 text-[#F7A81B]" />
+                                        <span className="text-[10px] font-black uppercase tracking-wider">Enter System [⌘+K]</span>
+                                        <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                                    </a>
+                                ) : clubHostname ? (
                                     <a
                                         href={`https://${clubHostname}`}
                                         target="_blank"
@@ -670,8 +681,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                         <span className="text-[11px] font-bold">Ver mi Sitio</span>
                                         <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                                     </a>
-                                )}
-                                {!clubHostname && (
+                                ) : (
                                     <div className="text-right hidden sm:block">
                                         <p className="text-[10px] font-black text-gray-900 leading-none">Status</p>
                                         <p className="text-[9px] text-emerald-500 font-bold uppercase tracking-widest mt-1">Live Online</p>
