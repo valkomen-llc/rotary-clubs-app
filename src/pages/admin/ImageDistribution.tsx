@@ -289,7 +289,6 @@ const ImageDistribution: React.FC = () => {
         return newUrl;
     };
 
-    // ── Upload image directly from picker ──────────────────────────────────
     const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -301,6 +300,55 @@ const ImageDistribution: React.FC = () => {
                 setCropFile(file);
             };
             reader.readAsDataURL(file);
+            e.target.value = '';
+            return;
+        }
+
+        if (pickerTarget?.key === 'missionControl') {
+            setUploading(true);
+            try {
+                const img = new Image();
+                const url = URL.createObjectURL(file);
+                const croppedBlob = await new Promise<Blob>((resolve) => {
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.width; canvas.height = img.height;
+                        const ctx = canvas.getContext('2d')!;
+                        ctx.drawImage(img, 0, 0);
+                        URL.revokeObjectURL(url);
+                        const { data, width, height } = ctx.getImageData(0, 0, img.width, img.height);
+                        let top = height, bottom = 0, left = width, right = 0;
+                        for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+                            const idx = (y * width + x) * 4;
+                            if (data[idx + 3] > 10 && !(data[idx] > 225 && data[idx + 1] > 225 && data[idx + 2] > 225)) {
+                                top = Math.min(top, y); bottom = Math.max(bottom, y);
+                                left = Math.min(left, x); right = Math.max(right, x);
+                            }
+                        }
+                        const pad = 4;
+                        const cw = Math.min(width - 1, right + pad) - Math.max(0, left - pad) + 1;
+                        const ch = Math.min(height - 1, bottom + pad) - Math.max(0, top - pad) + 1;
+                        if (cw > 0 && ch > 0 && (cw < width || ch < height)) {
+                            const c2 = document.createElement('canvas');
+                            c2.width = cw; c2.height = ch;
+                            c2.getContext('2d')!.drawImage(canvas, Math.max(0, left - pad), Math.max(0, top - pad), cw, ch, 0, 0, cw, ch);
+                            c2.toBlob((b) => resolve(b || file), 'image/png');
+                        } else canvas.toBlob((b) => resolve(b || file), 'image/png');
+                    };
+                    img.onerror = () => resolve(file);
+                    img.src = url;
+                });
+                
+                const processFile = new File([croppedBlob], file.name.replace(/\.[^.]+$/, '.png'), { type: 'image/png' });
+                const uploadedData = await performUpload(processFile);
+                if (uploadedData && uploadedData.url) {
+                    selectMedia(uploadedData.url, processFile.name);
+                }
+            } catch (err) {
+                console.error("Smart crop error:", err);
+                toast.error("Error al procesar la imagen automáticamente.");
+                setUploading(false);
+            }
             e.target.value = '';
             return;
         }
