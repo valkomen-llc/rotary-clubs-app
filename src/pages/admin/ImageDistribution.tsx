@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Image as ImageIcon, Save, Loader2, Trash2, Upload, Plus,
@@ -154,8 +155,16 @@ const ImageDistribution: React.FC = () => {
 
     const token = () => localStorage.getItem('rotary_token');
     const isSuperAdmin = user?.role === 'administrator';
-    const viewClubId = (club as any)?.id; // always need a club context
-    const clubId = isSuperAdmin ? (viewClubId || null) : (user?.clubId || viewClubId);
+    
+    const location = useLocation();
+    const navigate = useNavigate();
+    const params = new URLSearchParams(location.search);
+    const urlClubId = params.get('clubId');
+    
+    // If we are in the main /admin/imagenes-sitio without a ?clubId, we assume it's _global for superadmin
+    const isGlobal = isSuperAdmin && !urlClubId;
+    const viewClubId = isGlobal ? null : (isSuperAdmin ? urlClubId : (user?.clubId || (club as any)?.id));
+    const clubId = viewClubId;
 
     // Build complete images object overlaying over DEFAULTS
     const buildImages = React.useCallback((src: any) => {
