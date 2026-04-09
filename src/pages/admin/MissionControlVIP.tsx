@@ -328,19 +328,16 @@ const HQDashboard: React.FC = () => {
                 fetch(webhookUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            id: taskId,
-                            title: taskToUpdate.title, 
-                            description: taskToUpdate.description,
-                            url: taskToUpdate.details?.link || '',
-                        })
-                    }).catch(console.error);
-                }
-            } catch (error) {
-                console.error("Error updating priority via API", error);
+                    body: JSON.stringify({ 
+                        id: taskId,
+                        title: taskToUpdate.title, 
+                        description: taskToUpdate.description,
+                        url: taskToUpdate.details?.link || '',
+                    })
+                }).catch(console.error);
             }
+        } catch (error) {
+            console.error("Error updating priority via API", error);
         }
     };
 
