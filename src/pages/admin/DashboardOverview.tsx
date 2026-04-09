@@ -73,24 +73,6 @@ const DashboardOverview: React.FC = () => {
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500 relative">
-            {/* TOP METRICS */}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
-                {[
-                    { label: 'Proyectos', val: '12', color: 'text-indigo-600' },
-                    { label: 'Socios', val: '45', color: 'text-blue-600' },
-                    { label: 'Eventos', val: '3', color: 'text-emerald-600' },
-                    { label: 'Finanzas', val: '$1.2k', color: 'text-amber-600' },
-                    { label: 'Ads', val: '5', color: 'text-rose-600' },
-                    { label: 'GA4', val: 'Online', color: 'text-emerald-500' },
-                    { label: 'Growth', val: '+12%', color: 'text-emerald-500' },
-                    { label: 'Revenue', val: '$0', color: 'text-slate-400' },
-                ].map((m, i) => (
-                    <div key={i} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{m.label}</p>
-                        <p className={`text-sm font-black ${m.color}`}>{m.val}</p>
-                    </div>
-                ))}
-            </div>
 
             {/* GATEWAY CONTROL PLANE (HERO) */}
             <div className="bg-[#013388] rounded-[48px] p-10 text-white relative overflow-hidden group shadow-2xl">
