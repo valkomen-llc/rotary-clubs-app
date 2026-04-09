@@ -81,24 +81,19 @@ app.use('/api/admin/districts', async (req, res, next) => (await getDistricts())
 app.use('/api/whatsapp', async (req, res, next) => (await getWhatsAppCRM())(req, res, next));
 app.use('/api/platform-config', async (req, res, next) => (await getPlatformConfig())(req, res, next));
 app.use('/api/documents', async (req, res, next) => (await getDocuments())(req, res, next));
-app.get('/api/scout-grants', async (req, res, next) => {
-    const { getGrants } = await import('../server/controllers/grantsController.js');
-    return getGrants(req, res, next);
+app.post('/api/debug-url', (req, res) => {
+    res.json({ url: req.url, originalUrl: req.originalUrl, path: req.path });
 });
 
-app.post('/api/scout-grants', async (req, res, next) => {
-    const { createGrant } = await import('../server/controllers/grantsController.js');
-    return createGrant(req, res, next);
-});
-
-app.put('/api/scout-grants/:id/status', async (req, res, next) => {
-    const { updateGrantStatus } = await import('../server/controllers/grantsController.js');
-    return updateGrantStatus(req, res, next);
-});
-
-app.patch('/api/scout-grants/:id/status', async (req, res, next) => {
-    const { updateGrantStatus } = await import('../server/controllers/grantsController.js');
-    return updateGrantStatus(req, res, next);
+app.use('/api/scout-grants', async (req, res, next) => {
+    try {
+        const { default: router } = await import('../server/routes/grants.js');
+        req.url = req.url.replace(/^\/api\/scout-grants/, '') || '/';
+        return router(req, res, next);
+    } catch (error) {
+        console.error('Error loading route /api/scout-grants:', error);
+        return res.status(500).json({ error: 'Internal Server Error' });
+    }
 });
 
 export default app;
