@@ -104,10 +104,13 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     // Skip setup gating if the club already has a published custom domain
     const hasPublishedDomain = isOnClubDomain;
 
-    // Hostname for GA4 filtering
-    const clubHostname: string | null = isOnClubDomain
+    // Hostname for GA4 filtering and Ver mi Sitio button
+    const safeDomain = (club as any)?.domain;
+    const cleanDomain = (typeof safeDomain === 'string' && safeDomain.trim() !== '' && !safeDomain.includes('localhost')) ? safeDomain.trim() : null;
+    
+    let clubHostname: string | null = isOnClubDomain
         ? currentHost
-        : ((club as any)?.domain || ((club as any)?.subdomain ? `${(club as any).subdomain}.clubplatform.org` : null));
+        : (cleanDomain || ((club as any)?.subdomain ? `${(club as any).subdomain}.clubplatform.org` : null));
 
     // Redirect to dashboard if trying to access locked route
     useEffect(() => {
