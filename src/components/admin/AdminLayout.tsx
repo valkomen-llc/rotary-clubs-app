@@ -114,9 +114,10 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         : (cleanDomain || ((club as any)?.subdomain ? `${(club as any).subdomain}.clubplatform.org` : null));
 
     // Link "Ver mi Sitio" (Fallback approach using ?club= to bypass DNS Wildcard issues)
+    const paramKey = (club as any)?.type === 'association' ? 'association' : ((club as any)?.type === 'district' ? 'district' : 'club');
     const verMiSitioUrl = cleanDomain 
         ? `https://${cleanDomain}` 
-        : ((club as any)?.subdomain ? `https://app.clubplatform.org/?club=${(club as any).subdomain}` : null);
+        : ((club as any)?.subdomain ? `https://app.clubplatform.org/?${paramKey}=${(club as any).subdomain}` : null);
 
     // Redirect to dashboard if trying to access locked route
     useEffect(() => {
