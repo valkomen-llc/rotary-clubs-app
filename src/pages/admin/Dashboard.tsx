@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import DashboardOverview from './DashboardOverview';
 import { useAuth } from '../../hooks/useAuth';
+import { useClub } from '../../contexts/ClubContext';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -31,10 +32,7 @@ const ClubAdminDashboard: React.FC = () => {
     const [gaConfigured, setGaConfigured] = useState(false);
     const [publishing, setPublishing] = useState(false);
 
-    const club = (() => {
-        try { return JSON.parse(localStorage.getItem('rotary_club') || '{}'); }
-        catch { return {}; }
-    })();
+    const { club } = useClub();
 
     useEffect(() => {
         const headers = { Authorization: `Bearer ${token}` };

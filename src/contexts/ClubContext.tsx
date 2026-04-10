@@ -40,8 +40,24 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const clubOverride = urlParams.get('club') || urlParams.get('asociacion') || urlParams.get('distrito');
 
                 const queryDomain = clubOverride || hostname;
+                let finalDomainQuery = queryDomain;
 
-                const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/clubs/by-domain?domain=${queryDomain}`);
+                // CRITICAL AESTHETIC FIX FOR DASHBOARD
+                // If a user is logged in, and we are on the base app domain with no override,
+                // we MUST fetch the data for the logged-in user's club instead of falling back to "origen"!
+                if (!clubOverride && (hostname === 'app.clubplatform.org' || hostname === 'localhost')) {
+                    try {
+                        const lsUserStr = localStorage.getItem('rotary_user');
+                        if (lsUserStr) {
+                            const lsUser = JSON.parse(lsUserStr);
+                            if (lsUser?.club?.subdomain) {
+                                finalDomainQuery = lsUser.club.subdomain;
+                            }
+                        }
+                    } catch (e) { }
+                }
+
+                const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/clubs/by-domain?domain=${finalDomainQuery}`);
 
                 if (response.ok) {
                     const data = await response.json();
