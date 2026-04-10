@@ -20,8 +20,8 @@ interface Club {
     };
 }
 
-const ClubsManagement: React.FC = () => {
-    const [clubs, setClubs] = useState<Club[]>([]);
+const AsociacionesManagement: React.FC = () => {
+    const [associations, setAssociations] = useState<Club[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingClub, setEditingClub] = useState<Club | null>(null);
@@ -49,21 +49,21 @@ const ClubsManagement: React.FC = () => {
     const [isFetchingDetails, setIsFetchingDetails] = useState(false);
 
     useEffect(() => {
-        fetchClubs();
+        fetchAssociations();
     }, []);
 
-    const fetchClubs = async () => {
+    const fetchAssociations = async () => {
         try {
             const token = localStorage.getItem('rotary_token');
-            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs?type=club`, {
+            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs?type=association`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (response.ok) {
                 const data = await response.json();
-                setClubs(data);
+                setAssociations(data);
             }
         } catch (error) {
-            toast.error('Error al cargar clubes');
+            toast.error('Error al cargar asociaciones');
         } finally {
             setLoading(false);
         }
@@ -81,6 +81,7 @@ const ClubsManagement: React.FC = () => {
                 subdomain: club.subdomain || '',
                 description: club.description || '',
                 status: club.status || 'active',
+                type: 'association',
                 moduleProjects: true, moduleEvents: true, moduleRotaract: false, moduleInteract: false,
                 moduleEcommerce: false, moduleDian: false, moduleYouthExchange: false, moduleNgse: false, moduleRotex: false,
             });
@@ -121,6 +122,7 @@ const ClubsManagement: React.FC = () => {
                 subdomain: '',
                 description: '',
                 status: 'active',
+                type: 'association',
                 moduleProjects: true, moduleEvents: true, moduleRotaract: false, moduleInteract: false,
                 moduleEcommerce: false, moduleDian: false, moduleYouthExchange: false, moduleNgse: false, moduleRotex: false,
             });
@@ -138,19 +140,21 @@ const ClubsManagement: React.FC = () => {
                 ? `${apiUrl}/admin/clubs/${editingClub.id}`
                 : `${apiUrl}/admin/clubs`;
 
+            const formDataWithType = { ...formData, type: 'association' };
+
             const response = await fetch(url, {
                 method: editingClub ? 'PUT' : 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify(formData)
+                body: JSON.stringify(formDataWithType)
             });
 
             if (response.ok) {
-                toast.success(editingClub ? 'Club actualizado' : 'Club creado con éxito');
+                toast.success(editingClub ? 'Asociación actualizada' : 'Asociación creada con éxito');
                 setIsModalOpen(false);
-                fetchClubs();
+                fetchAssociations();
             } else {
                 const data = await response.json();
                 throw new Error(data.error || 'Falla al procesar la solicitud');
@@ -163,7 +167,7 @@ const ClubsManagement: React.FC = () => {
     };
 
     const handleDelete = async (id: string, name: string) => {
-        if (!window.confirm(`¿Estás seguro de eliminar el club "${name}"? Esta acción no se puede deshacer.`)) return;
+        if (!window.confirm(`¿Estás seguro de eliminar la asociación "${name}"? Esta acción no se puede deshacer.`)) return;
 
         try {
             const token = localStorage.getItem('rotary_token');
@@ -173,10 +177,10 @@ const ClubsManagement: React.FC = () => {
             });
 
             if (response.ok) {
-                toast.success('Club eliminado');
-                fetchClubs();
+                toast.success('Asociación eliminada');
+                fetchAssociations();
             } else {
-                throw new Error('No se pudo eliminar el club');
+                throw new Error('No se pudo eliminar la asociación');
             }
         } catch (error: any) {
             toast.error(error.message);
@@ -212,14 +216,14 @@ const ClubsManagement: React.FC = () => {
         <AdminLayout>
             <div className="flex justify-between items-center mb-8">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800">Gestión de Clubes</h1>
-                    <p className="text-gray-500 text-sm">Administra todos los clubes de la plataforma.</p>
+                    <h1 className="text-2xl font-bold text-gray-800">Gestión de Asociaciones y Redes (LATIR)</h1>
+                    <p className="text-gray-500 text-sm">Administra redes multidistritales, EMAR, fondos y asociaciones.</p>
                 </div>
                 <button
                     onClick={() => handleOpenModal()}
                     className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2 rounded-lg hover:bg-sky-800 transition-colors"
                 >
-                    <Plus className="w-4 h-4" /> Nuevo Club
+                    <Plus className="w-4 h-4" /> Nueva Asociación
                 </button>
             </div>
 
@@ -227,7 +231,7 @@ const ClubsManagement: React.FC = () => {
                 <table className="w-full text-left">
                     <thead className="bg-gray-50 border-b border-gray-100">
                         <tr>
-                            <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Club</th>
+                            <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Asociación</th>
                             <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Ubicación</th>
                             <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Dominios</th>
                             <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Stats</th>
@@ -236,7 +240,7 @@ const ClubsManagement: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                        {clubs.map((club) => (
+                        {associations.map((club) => (
                             <tr key={club.id} className="hover:bg-gray-50 transition-colors">
                                 <td className="px-6 py-4">
                                     <div className="flex items-center gap-3">
@@ -306,9 +310,9 @@ const ClubsManagement: React.FC = () => {
                         ))}
                     </tbody>
                 </table>
-                {clubs.length === 0 && !loading && (
+                {associations.length === 0 && !loading && (
                     <div className="p-12 text-center text-gray-400">
-                        No hay clubes registrados actualmente.
+                        No hay asociaciones registradas actualmente.
                     </div>
                 )}
             </div>
@@ -319,7 +323,7 @@ const ClubsManagement: React.FC = () => {
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate-in zoom-in duration-200">
                         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                             <h2 className="text-lg font-bold text-gray-800">
-                                {editingClub ? 'Editar Club' : 'Nuevo Club'}
+                                {editingClub ? 'Editar Asociación' : 'Nueva Asociación'}
                             </h2>
                             <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
                                 <X className="w-6 h-6" />
@@ -329,14 +333,14 @@ const ClubsManagement: React.FC = () => {
                         <form onSubmit={handleSubmit} className="p-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="md:col-span-2">
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Nombre del Club</label>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Nombre de la Asociación</label>
                                     <input
                                         type="text"
                                         required
                                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all"
                                         value={formData.name}
                                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                        placeholder="Ej: Rotary Club Medellín"
+                                        placeholder="Ej: Red LATIR"
                                     />
                                 </div>
 
@@ -481,4 +485,4 @@ const ClubsManagement: React.FC = () => {
     );
 };
 
-export default ClubsManagement;
+export default AsociacionesManagement;

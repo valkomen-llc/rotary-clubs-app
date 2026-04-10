@@ -244,6 +244,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             items.push(
                 { icon: Network, label: 'Distritos', path: '/admin/distritos', category: 'Management', keywords: ['distrito', '4271', '4281'] },
                 { icon: Building2, label: 'Clubes', path: '/admin/clubes', category: 'Management', keywords: ['club', 'gestionar'] },
+                { icon: Globe, label: 'Asociaciones', path: '/admin/asociaciones', category: 'Management', keywords: ['latir', 'emar', 'red', 'asociacion', 'colrotarios'] },
                 { icon: Users, label: 'Super Users', path: '/admin/usuarios', category: 'Management', keywords: ['usuario', 'admin'] },
                 { icon: HeartHandshake, label: 'Donaciones Globales', path: '/admin/donaciones', category: 'Management', keywords: ['donacion', 'aportes'] },
                 { icon: Bell, label: 'CRM y Envíos Centrales', path: '/admin/crm', category: 'Management', keywords: ['crm', 'email', 'campana', 'whatsapp'] },

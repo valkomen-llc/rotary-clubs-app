@@ -6,13 +6,17 @@ const prisma = new PrismaClient();
 
 export const getAllClubs = async (req, res) => {
     try {
+        const { type } = req.query;
+        const condition = type ? `WHERE c.type = $1` : '';
+        const params = type ? [type] : [];
+        
         const result = await db.query(`
             SELECT c.*, 
                 (SELECT COUNT(*) FROM "User" u WHERE u."clubId" = c.id) as "userCount",
                 (SELECT COUNT(*) FROM "Project" p WHERE p."clubId" = c.id) as "projectCount",
                 (SELECT COUNT(*) FROM "Post" po WHERE po."clubId" = c.id) as "postCount"
-            FROM "Club" c ORDER BY c."createdAt" DESC
-        `);
+            FROM "Club" c ${condition} ORDER BY c."createdAt" DESC
+        `, params);
         res.json(result.rows);
     } catch (error) {
         console.error(error);
@@ -68,12 +72,12 @@ export const getClubById = async (req, res) => {
 };
 
 export const createClub = async (req, res) => {
-    const { name, city, country, district, domain, subdomain, description, status } = req.body;
+    const { name, city, country, district, domain, subdomain, description, status, type } = req.body;
     try {
         const result = await db.query(
-            `INSERT INTO "Club" (id, name, city, country, district, domain, subdomain, description, status, "createdAt", "updatedAt")
-             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW()) RETURNING *`,
-            [name, city, country, district, domain, subdomain, description, status || 'active']
+            `INSERT INTO "Club" (id, name, city, country, district, domain, subdomain, description, status, type, "createdAt", "updatedAt")
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()) RETURNING *`,
+            [name, city, country, district, domain, subdomain, description, status || 'active', type || 'club']
         );
 
         if (domain) {
@@ -90,7 +94,7 @@ export const createClub = async (req, res) => {
 export const updateClub = async (req, res) => {
     const { id } = req.params;
         const {
-            name, description, city, country, district, domain, subdomain,
+            name, description, city, country, district, domain, subdomain, type,
             email, phone, address, state, socialLinks, customSocialLinks, siteImages, galleryImages,
             primaryColor, secondaryColor, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, status,
             stripePublicKey, stripeSecretKey, useStripe,
@@ -110,7 +114,7 @@ export const updateClub = async (req, res) => {
 
             const params = [
                 name, description, city, country, district, domain, subdomain,
-                logo, footerLogo, endPolioLogo, favicon, status, id
+                logo, footerLogo, endPolioLogo, favicon, status, type, id
             ].map(val => val === undefined ? null : val);
 
             const result = await db.query(
@@ -127,8 +131,9 @@ export const updateClub = async (req, res) => {
                  "endPolioLogo"=COALESCE($10, "endPolioLogo"), 
                  favicon=COALESCE($11, favicon),
                  status=COALESCE($12, status), 
+                 type=COALESCE($13, type),
                  "updatedAt"=NOW()
-                 WHERE id=$13 RETURNING *`,
+                 WHERE id=$14 RETURNING *`,
                 params
             );
 

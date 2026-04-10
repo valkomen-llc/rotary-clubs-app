@@ -49,6 +49,7 @@ import { Toaster } from './components/ui/sonner';
 // ═══════════════════════════════════════════════════════════════
 const Dashboard = React.lazy(() => import('./pages/admin/Dashboard'));
 const ClubsManagement = React.lazy(() => import('./pages/admin/Clubs'));
+const AsociacionesManagement = React.lazy(() => import('./pages/admin/Asociaciones'));
 const DistrictsManagement = React.lazy(() => import('./pages/admin/Districts'));
 const ClubSettings = React.lazy(() => import('./pages/admin/ClubSettings'));
 const NewsManagement = React.lazy(() => import('./pages/admin/News'));
@@ -180,6 +181,26 @@ function SmartHome() {
           <DistritosSection />
           <SubvencionesSection />
           <JoinSection />
+          <CausesHexSection />
+          <NewsSection />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  // Association / Network site (LATIR, EMAR, Colrotarios)
+  if ((club as any)?.type === 'association') {
+    return (
+      <div className="min-h-screen bg-white">
+        <Navbar />
+        <main>
+          <HeroSection />
+          {/* As suggested in the plan: Custom stats, maps/programs, and family CTA instead of traditional Club join section */}
+          <StatsSection />
+          <ServiciosSection />
+          {/* For associations we show their involved districts/capabilities instead of a local club action section */}
+          <SubvencionesSection />
           <CausesHexSection />
           <NewsSection />
         </main>
@@ -366,6 +387,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <ClubsManagement />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/asociaciones"
+                  element={
+                    <PrivateRoute>
+                      <AsociacionesManagement />
                     </PrivateRoute>
                   }
                 />
