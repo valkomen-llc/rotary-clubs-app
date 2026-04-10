@@ -243,6 +243,13 @@ export const updateClub = async (req, res) => {
             });
         }
 
+        if (req.body.adminUserId) {
+            await db.query(
+                `UPDATE "User" SET "clubId" = $1 WHERE id = $2`,
+                [id, req.body.adminUserId]
+            );
+        }
+
         res.json(result.rows[0]);
     } catch (error) {
         console.error('Error updating club:', error);

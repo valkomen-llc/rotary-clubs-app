@@ -314,14 +314,13 @@ const DistrictsManagement: React.FC = () => {
                             <select
                                 className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none text-sm bg-white"
                                 value={formData.adminUserId} onChange={e => setFormData({ ...formData, adminUserId: e.target.value })}
-                                disabled={!!editingDistrict}
                             >
                                 <option value="">-- Seleccionar Administrador --</option>
                                 {superUsers.map(u => (
                                     <option key={u.id} value={u.id}>{u.email} ({u.role})</option>
                                 ))}
                             </select>
-                            {editingDistrict && <p className="text-[10px] text-orange-500 mt-1">El administrador original ya fue asignado. Se actualiza individualmente en los detalles del distrito.</p>}
+                            <p className="text-[10px] text-gray-400 mt-1">Si seleccionas un administrador, se asignará a este distrito. Puedes ajustarlo individualmente en "Usuarios".</p>
                         </div>
 
                         {/* Dominio propio — sección destacada */}

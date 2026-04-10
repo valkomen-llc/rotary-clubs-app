@@ -143,6 +143,13 @@ router.put('/:id', authMiddleware, superAdminOnly, async (req, res) => {
             }
         }
 
+        if (req.body.adminUserId) {
+            await db.query(
+                `UPDATE "User" SET "districtId" = $1 WHERE id = $2`,
+                [id, req.body.adminUserId]
+            );
+        }
+
         res.set('Cache-Control', 'no-store');
         res.json(result.rows[0]);
     } catch (error) {

@@ -426,14 +426,13 @@ const ClubsManagement: React.FC = () => {
                                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all bg-white"
                                         value={formData.adminUserId}
                                         onChange={(e) => setFormData({ ...formData, adminUserId: e.target.value })}
-                                        disabled={!!editingClub}
                                     >
                                         <option value="">-- Seleccionar Administrador --</option>
                                         {superUsers.map(u => (
                                             <option key={u.id} value={u.id}>{u.email} ({u.role})</option>
                                         ))}
                                     </select>
-                                    {editingClub && <p className="text-xs text-orange-500 mt-1">El administrador original ya fue asignado. Se actualiza individualmente en el menú de "Usuarios".</p>}
+                                    <p className="text-[10px] text-gray-400 mt-1">Si seleccionas un administrador, se asignará a este club. Puedes ajustarlo individualmente en "Usuarios".</p>
                                 </div>
                             </div>
 
