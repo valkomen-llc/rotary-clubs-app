@@ -72,7 +72,7 @@ export const getClubById = async (req, res) => {
 };
 
 export const createClub = async (req, res) => {
-    const { name, city, country, district, domain, subdomain, description, status, type } = req.body;
+    const { name, city, country, district, domain, subdomain, description, status, type, adminUserId } = req.body;
     try {
         const result = await db.query(
             `INSERT INTO "Club" (id, name, city, country, district, domain, subdomain, description, status, type, "createdAt", "updatedAt")
@@ -80,11 +80,21 @@ export const createClub = async (req, res) => {
             [name, city, country, district, domain, subdomain, description, status || 'active', type || 'club']
         );
 
+        const newClub = result.rows[0];
+
         if (domain) {
             await VercelService.addDomain(domain);
         }
 
-        res.status(201).json(result.rows[0]);
+        if (adminUserId) {
+            // Unifica el clubId en el usuario y asegura que tenga un rol de administración (club_admin o administrator)
+            await db.query(
+                `UPDATE "User" SET "clubId" = $1 WHERE id = $2`,
+                [newClub.id, adminUserId]
+            );
+        }
+
+        res.status(201).json(newClub);
     } catch (error) {
         console.error('Error creating club:', error);
         res.status(500).json({ error: 'Error creating club' });

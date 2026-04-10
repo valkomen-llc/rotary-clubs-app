@@ -35,7 +35,7 @@ interface DistrictAdmin { id: string; email: string; role: string; createdAt: st
 
 const emptyForm = {
     number: '', name: '', governor: '', governorEmail: '',
-    countries: '', website: '', subdomain: '', domain: '', description: '', status: 'active'
+    countries: '', website: '', subdomain: '', domain: '', description: '', status: 'active', adminUserId: ''
 };
 
 const DNS_IP = '76.76.21.21';
@@ -55,6 +55,7 @@ const DistrictsManagement: React.FC = () => {
     const [domainLoading, setDomainLoading] = useState(false);
     const [provisioning, setProvisioning] = useState(false);
     // New admin form
+    const [superUsers, setSuperUsers] = useState<any[]>([]);
     const [newAdminEmail, setNewAdminEmail] = useState('');
     const [newAdminPass, setNewAdminPass] = useState('');
     const [showPass, setShowPass] = useState(false);
@@ -69,8 +70,15 @@ const DistrictsManagement: React.FC = () => {
 
     const fetchDistricts = async () => {
         try {
-            const res = await fetch(`${API}/admin/districts?_t=${Date.now()}`, { headers: authH() });
-            if (res.ok) setDistricts(await res.json());
+            const [distRes, usersRes] = await Promise.all([
+                fetch(`${API}/admin/districts?_t=${Date.now()}`, { headers: authH() }),
+                fetch(`${API}/admin/users`, { headers: authH() })
+            ]);
+            if (distRes.ok) setDistricts(await distRes.json());
+            if (usersRes.ok) {
+                const usersData = await usersRes.json();
+                setSuperUsers(usersData.filter((u: any) => u.role === 'administrator' || u.role === 'club_admin' || u.role === 'district_admin'));
+            }
         } catch { toast.error('Error al cargar distritos'); }
         finally { setLoading(false); }
     };
@@ -154,7 +162,8 @@ const DistrictsManagement: React.FC = () => {
                 governor: dist.governor || '', governorEmail: dist.governorEmail || '',
                 countries: (dist.countries || []).join(', '), website: dist.website || '',
                 subdomain: dist.subdomain || '', domain: dist.domain || '',
-                description: dist.description || '', status: dist.status || 'active'
+                description: dist.description || '', status: dist.status || 'active',
+                adminUserId: ''
             });
         } else {
             setEditingDistrict(null);
@@ -298,6 +307,21 @@ const DistrictsManagement: React.FC = () => {
                                     value={formData.subdomain} onChange={e => setFormData({ ...formData, subdomain: e.target.value })} />
                                 <span className="bg-gray-100 border border-l-0 border-gray-200 px-3 py-2.5 rounded-r-xl text-xs text-gray-400 whitespace-nowrap">.clubplatform.org</span>
                             </div>
+                        </div>
+
+                        <div className="md:col-span-2">
+                            <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wider">Usuario Administrador (Opcional)</label>
+                            <select
+                                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none text-sm bg-white"
+                                value={formData.adminUserId} onChange={e => setFormData({ ...formData, adminUserId: e.target.value })}
+                                disabled={!!editingDistrict}
+                            >
+                                <option value="">-- Seleccionar Administrador --</option>
+                                {superUsers.map(u => (
+                                    <option key={u.id} value={u.id}>{u.email} ({u.role})</option>
+                                ))}
+                            </select>
+                            {editingDistrict && <p className="text-[10px] text-orange-500 mt-1">El administrador original ya fue asignado. Se actualiza individualmente en los detalles del distrito.</p>}
                         </div>
 
                         {/* Dominio propio — sección destacada */}

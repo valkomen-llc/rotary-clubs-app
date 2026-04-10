@@ -59,7 +59,7 @@ router.get('/:id', authMiddleware, superAdminOnly, async (req, res) => {
 
 // ── POST /api/admin/districts — crear nuevo distrito
 router.post('/', authMiddleware, superAdminOnly, async (req, res) => {
-    const { number, name, governor, governorEmail, countries, website, subdomain, domain, description, status } = req.body;
+    const { number, name, governor, governorEmail, countries, website, subdomain, domain, description, status, adminUserId } = req.body;
     if (!number || !name) return res.status(400).json({ error: 'Número y nombre son requeridos' });
 
     try {
@@ -74,12 +74,14 @@ router.post('/', authMiddleware, superAdminOnly, async (req, res) => {
         const district = result.rows[0];
 
         // 🟢 FIX: Create a mirror/shadow 'Club' for the district so it can use the website CMS platform correctly
+        let mirrorClubId = null;
         try {
-            await db.query(
+            const clubResult = await db.query(
                 `INSERT INTO "Club" (id, name, type, district, domain, subdomain, status, "createdAt", "updatedAt")
-                 VALUES (gen_random_uuid(), $1, 'district', $2, $3, $4, $5, NOW(), NOW())`,
+                 VALUES (gen_random_uuid(), $1, 'district', $2, $3, $4, $5, NOW(), NOW()) RETURNING id`,
                 [`Distrito ${number}`, String(number), domain || null, subdomain || null, status || 'active']
             );
+            mirrorClubId = clubResult.rows[0].id;
         } catch (e) {
             console.warn('⚠️ Error creating shadow club for district:', e.message);
         }
@@ -90,6 +92,14 @@ router.post('/', authMiddleware, superAdminOnly, async (req, res) => {
             if (!vercelResult.success) {
                 console.warn(`⚠️ Vercel domain provision for district: ${vercelResult.error}`);
             }
+        }
+
+        if (adminUserId) {
+            // Asignar el administrador al distrito y opcionalmente al club espejo
+            await db.query(
+                `UPDATE "User" SET "districtId" = $1, "clubId" = $2 WHERE id = $3`,
+                [district.id, mirrorClubId, adminUserId]
+            );
         }
 
         res.set('Cache-Control', 'no-store');

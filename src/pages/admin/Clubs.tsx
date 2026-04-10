@@ -22,6 +22,7 @@ interface Club {
 
 const ClubsManagement: React.FC = () => {
     const [clubs, setClubs] = useState<Club[]>([]);
+    const [superUsers, setSuperUsers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingClub, setEditingClub] = useState<Club | null>(null);
@@ -45,6 +46,7 @@ const ClubsManagement: React.FC = () => {
         moduleYouthExchange: false,
         moduleNgse: false,
         moduleRotex: false,
+        adminUserId: '',
     });
     const [isFetchingDetails, setIsFetchingDetails] = useState(false);
 
@@ -55,12 +57,18 @@ const ClubsManagement: React.FC = () => {
     const fetchClubs = async () => {
         try {
             const token = localStorage.getItem('rotary_token');
-            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs?type=club`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (response.ok) {
-                const data = await response.json();
+            const [clubsRes, usersRes] = await Promise.all([
+                fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs?type=club`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/users`, { headers: { 'Authorization': `Bearer ${token}` } })
+            ]);
+
+            if (clubsRes.ok) {
+                const data = await clubsRes.json();
                 setClubs(data);
+            }
+            if (usersRes.ok) {
+                const usersData = await usersRes.json();
+                setSuperUsers(usersData.filter((u: any) => u.role === 'administrator' || u.role === 'club_admin' || u.role === 'district_admin'));
             }
         } catch (error) {
             toast.error('Error al cargar clubes');
@@ -81,6 +89,7 @@ const ClubsManagement: React.FC = () => {
                 subdomain: club.subdomain || '',
                 description: club.description || '',
                 status: club.status || 'active',
+                adminUserId: '',
                 moduleProjects: true, moduleEvents: true, moduleRotaract: false, moduleInteract: false,
                 moduleEcommerce: false, moduleDian: false, moduleYouthExchange: false, moduleNgse: false, moduleRotex: false,
             });
@@ -121,6 +130,7 @@ const ClubsManagement: React.FC = () => {
                 subdomain: '',
                 description: '',
                 status: 'active',
+                adminUserId: '',
                 moduleProjects: true, moduleEvents: true, moduleRotaract: false, moduleInteract: false,
                 moduleEcommerce: false, moduleDian: false, moduleYouthExchange: false, moduleNgse: false, moduleRotex: false,
             });
@@ -408,6 +418,22 @@ const ClubsManagement: React.FC = () => {
                                         <option value="active">Activo</option>
                                         <option value="inactive">Inactivo</option>
                                     </select>
+                                </div>
+
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Usuario Administrador (Opcional)</label>
+                                    <select
+                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all bg-white"
+                                        value={formData.adminUserId}
+                                        onChange={(e) => setFormData({ ...formData, adminUserId: e.target.value })}
+                                        disabled={!!editingClub}
+                                    >
+                                        <option value="">-- Seleccionar Administrador --</option>
+                                        {superUsers.map(u => (
+                                            <option key={u.id} value={u.id}>{u.email} ({u.role})</option>
+                                        ))}
+                                    </select>
+                                    {editingClub && <p className="text-xs text-orange-500 mt-1">El administrador original ya fue asignado. Se actualiza individualmente en el menú de "Usuarios".</p>}
                                 </div>
                             </div>
 
