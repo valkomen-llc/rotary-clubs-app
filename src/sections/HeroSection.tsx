@@ -58,7 +58,7 @@ const HeroSection = () => {
               <img 
                 src={slide.image} 
                 alt={slide.alt} 
-                className={`w-full h-full object-cover ${index === currentSlide ? 'hero-slide-image' : ''}`}
+                className={`w-full h-full object-cover object-top ${index === currentSlide ? 'hero-slide-image' : ''}`}
               />
             </div>
           ))}
