@@ -199,10 +199,10 @@ const ClubProfile: React.FC = () => {
             <div className="mb-8 flex justify-between items-center">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800">
-                        {clubType === 'district' ? 'Mi Distrito' : 'Mi Club'}
+                        {clubType === 'district' ? 'Mi Distrito' : clubType === 'association' ? 'Mi Asociación' : 'Mi Club'}
                     </h1>
                     <p className="text-gray-500 text-sm">
-                        Personaliza la identidad y contacto de tu {clubType === 'district' ? 'distrito' : 'club'} en la plataforma.
+                        Personaliza la identidad y contacto de tu {clubType === 'district' ? 'distrito' : clubType === 'association' ? 'asociación' : 'club'} en la plataforma.
                     </p>
                 </div>
                 <button
@@ -222,7 +222,7 @@ const ClubProfile: React.FC = () => {
                             <Building2 className="w-5 h-5" />
                         </div>
                         <h2 className="text-lg font-bold text-gray-800">
-                            Identidad del {clubType === 'district' ? 'Distrito' : 'Club'}
+                            Identidad de{clubType === 'district' ? 'l Distrito' : clubType === 'association' ? ' la Asociación' : 'l Club'}
                         </h2>
                     </div>
 
@@ -230,7 +230,7 @@ const ClubProfile: React.FC = () => {
                         {/* Logo Upload */}
                         <div className="space-y-4">
                             <label className="text-sm font-bold text-gray-700 block text-center">
-                                Logo del {clubType === 'district' ? 'Distrito' : 'Club'} (Header)
+                                Logo de{clubType === 'district' ? 'l Distrito' : clubType === 'association' ? ' la Asociación' : 'l Club'} (Header)
                             </label>
                             <div className="relative group mx-auto w-40 h-40">
                                 <div className="w-40 h-40 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden transition-all group-hover:border-rotary-blue/40">
@@ -298,7 +298,7 @@ const ClubProfile: React.FC = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-1">
                                     <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                                        Nombre del {clubType === 'district' ? 'Distrito' : 'Club'}
+                                        Nombre de {clubType === 'district' ? 'l Distrito' : clubType === 'association' ? 'la Asociación' : 'l Club'}
                                     </label>
                                     <input
                                         type="text"
