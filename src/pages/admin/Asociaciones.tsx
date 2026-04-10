@@ -140,7 +140,9 @@ const AsociacionesManagement: React.FC = () => {
                 ? `${apiUrl}/admin/clubs/${editingClub.id}`
                 : `${apiUrl}/admin/clubs`;
 
-            const formDataWithType = { ...formData, type: 'association' };
+            // En Asociaciones el subdominio no es requerido, se generará pseudo-random si está vacío o se envía nulo
+            const finalSubdomain = formData.subdomain || `assoc-${Date.now().toString(36)}`;
+            const formDataWithType = { ...formData, type: 'association', subdomain: finalSubdomain };
 
             const response = await fetch(url, {
                 method: editingClub ? 'PUT' : 'POST',
@@ -365,20 +367,15 @@ const AsociacionesManagement: React.FC = () => {
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Subdominio</label>
-                                    <div className="flex items-center">
-                                        <input
-                                            type="text"
-                                            required
-                                            className="w-full px-4 py-2 border border-gray-200 rounded-l-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all"
-                                            value={formData.subdomain}
-                                            onChange={(e) => setFormData({ ...formData, subdomain: e.target.value })}
-                                            placeholder="ej-club"
-                                        />
-                                        <span className="bg-gray-100 border border-l-0 border-gray-200 px-3 py-2 rounded-r-lg text-xs text-gray-400">
-                                            .rotary.org
-                                        </span>
-                                    </div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Distritos Asociados (Opcional)</label>
+                                    <input
+                                        type="text"
+                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all"
+                                        value={formData.district}
+                                        onChange={(e) => setFormData({ ...formData, district: e.target.value })}
+                                        placeholder="Ej: 4271, 4281, 4290..."
+                                    />
+                                    <p className="text-xs text-gray-400 mt-1">Busca o agrega los distritos que pertenecen a esta asociación.</p>
                                 </div>
 
                                 <div className="md:col-span-2">
