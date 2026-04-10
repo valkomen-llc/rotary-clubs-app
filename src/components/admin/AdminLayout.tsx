@@ -251,10 +251,14 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: 'Management', keywords: ['contacto', 'lead', 'formulario'] },
             );
         } else {
+            const isAssoc = club?.type === 'association';
+            const isDistrict = club?.type === 'district';
+            const orgTypeLabel = isAssoc ? 'Asociación' : isDistrict ? 'Distrito' : 'Club';
+            
             items.push(
-                { icon: Building2, label: 'Mi Club', path: '/admin/mi-club', category: 'Club', keywords: ['logo', 'nombre', 'perfil', 'identidad', 'contacto', 'redes'] },
-                { icon: Users, label: 'Miembros del Club', path: '/admin/miembros', category: 'Club', keywords: ['socio', 'miembro', 'directorio'] },
-                { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: 'Club', keywords: ['contacto', 'lead', 'formulario'] },
+                { icon: Building2, label: `Mi ${orgTypeLabel}`, path: '/admin/mi-club', category: orgTypeLabel, keywords: ['logo', 'nombre', 'perfil', 'identidad', 'contacto', 'redes'] },
+                { icon: Users, label: `Miembros de${isAssoc ? ' la ' : 'l '}${orgTypeLabel}`, path: '/admin/miembros', category: orgTypeLabel, keywords: ['socio', 'miembro', 'directorio'] },
+                { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: orgTypeLabel, keywords: ['contacto', 'lead', 'formulario'] },
             );
         }
 

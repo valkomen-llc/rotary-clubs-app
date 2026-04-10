@@ -507,8 +507,10 @@ const ClubSettings: React.FC = () => {
     return (
         <AdminLayout>
             <div className="mb-8">
-                <h1 className="text-2xl font-bold text-gray-800">Configuración del Club</h1>
-                <p className="text-gray-500 text-sm">Gestiona la identidad y contacto de tu club.</p>
+                <h1 className="text-2xl font-bold text-gray-800">
+                    Configuración de{club?.type === 'association' ? ' la Asociación' : club?.type === 'district' ? 'l Distrito' : 'l Club'}
+                </h1>
+                <p className="text-gray-500 text-sm">Gestiona la identidad y contacto de tu organización.</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-8">
