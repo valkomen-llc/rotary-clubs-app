@@ -77,7 +77,17 @@ export const createClub = async (req, res) => {
         const result = await db.query(
             `INSERT INTO "Club" (id, name, city, country, district, domain, subdomain, description, status, type, "createdAt", "updatedAt")
              VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()) RETURNING *`,
-            [name, city, country, district, domain, subdomain, description, status || 'active', type || 'club']
+            [
+                name, 
+                city || null, 
+                country || null, 
+                district || null, 
+                domain || null, 
+                subdomain || null, 
+                description || null, 
+                status || 'active', 
+                type || 'club'
+            ]
         );
 
         const newClub = result.rows[0];
@@ -125,7 +135,7 @@ export const updateClub = async (req, res) => {
             const params = [
                 name, description, city, country, district, domain, subdomain,
                 logo, footerLogo, endPolioLogo, favicon, status, type, id
-            ].map(val => val === undefined ? null : val);
+            ].map(val => val === undefined || val === '' ? null : val);
 
             const result = await db.query(
                 `UPDATE "Club" SET 
