@@ -293,7 +293,7 @@ const ImageDistribution: React.FC = () => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        if (pickerTarget?.key.startsWith('chatbot')) {
+        if (pickerTarget?.key.startsWith('chatbot') || pickerTarget?.key === 'hero' || pickerTarget?.key === 'aboutHero' || pickerTarget?.key === 'causesHero') {
             const reader = new FileReader();
             reader.onload = () => {
                 setCropImageSrc(reader.result as string);
@@ -382,10 +382,10 @@ const ImageDistribution: React.FC = () => {
     };
 
     const handleMediaClick = (url: string, filename: string) => {
-        if (pickerTarget?.key.startsWith('chatbot')) {
+        if (pickerTarget?.key.startsWith('chatbot') || pickerTarget?.key === 'hero' || pickerTarget?.key === 'aboutHero' || pickerTarget?.key === 'causesHero') {
             setCropImageSrc(url);
             // Create a pseudo-file to carry over the original filename safely
-            setCropFile(new File([], filename || 'avatar.jpg'));
+            setCropFile(new File([], filename || 'image.jpg'));
             return;
         }
         selectMedia(url, filename);
@@ -693,7 +693,7 @@ const ImageDistribution: React.FC = () => {
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
                         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                             <h2 className="font-bold text-gray-800 flex items-center gap-2">
-                                <ImageIcon className="w-5 h-5 text-violet-500" /> Recortar Avatar
+                                <ImageIcon className="w-5 h-5 text-violet-500" /> Recortar y Posicionar Imagen
                             </h2>
                             <button onClick={() => { setCropImageSrc(null); setCropFile(null); }} className="text-gray-400 hover:text-gray-600 p-1">
                                 <X className="w-6 h-6" />
@@ -704,9 +704,14 @@ const ImageDistribution: React.FC = () => {
                                 image={cropImageSrc}
                                 crop={cropData}
                                 zoom={zoom}
-                                aspect={1}
-                                cropShape="round"
-                                showGrid={false}
+                                aspect={
+                                    pickerTarget?.key === 'hero' ? 16 / 7 :
+                                    pickerTarget?.key === 'aboutHero' ? 16 / 5 :
+                                    pickerTarget?.key === 'causesHero' ? 16 / 6 :
+                                    1
+                                }
+                                cropShape={pickerTarget?.key.startsWith('chatbot') ? 'round' : 'rect'}
+                                showGrid={!pickerTarget?.key.startsWith('chatbot')}
                                 onCropChange={setCropData}
                                 onCropComplete={(_, croppedAreaPixels) => setCroppedAreaPixels(croppedAreaPixels)}
                                 onZoomChange={setZoom}
