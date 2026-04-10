@@ -126,6 +126,17 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         }
     }, [location.pathname, setupComplete, isSuperAdmin, hasPublishedDomain]);
 
+    // Forcefully remove tracking/preview query parameters from the admin dashboard URL
+    // so they do not permanently pollute the club context.
+    useEffect(() => {
+        const search = window.location.search;
+        if (search.includes('club=') || search.includes('asociacion=') || search.includes('distrito=')) {
+            const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + window.location.hash;
+            window.history.replaceState(null, '', cleanUrl);
+            window.location.reload();
+        }
+    }, []);
+
     // Auto-dismiss locked toast
     useEffect(() => {
         if (lockedToast) {
