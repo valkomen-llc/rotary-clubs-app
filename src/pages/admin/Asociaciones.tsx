@@ -499,7 +499,7 @@ const AsociacionesManagement: React.FC = () => {
                                     disabled={isSubmitting || isFetchingDetails}
                                     className="bg-rotary-blue text-white px-8 py-2 rounded-full font-bold hover:bg-sky-800 transition-all disabled:opacity-50"
                                 >
-                                    {isSubmitting ? 'Guardando...' : (editingClub ? 'Guardar Cambios' : 'Crear Club')}
+                                    {isSubmitting ? 'Guardando...' : (editingClub ? 'Guardar Cambios' : 'Crear Asociación')}
                                 </button>
                             </div>
                         </form>

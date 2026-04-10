@@ -107,7 +107,7 @@ export const createClub = async (req, res) => {
         res.status(201).json(newClub);
     } catch (error) {
         console.error('Error creating club:', error);
-        res.status(500).json({ error: 'Error creating club' });
+        res.status(500).json({ error: 'Error creating club: ' + (error.detail || error.message) });
     }
 };
 
@@ -246,7 +246,7 @@ export const updateClub = async (req, res) => {
         res.json(result.rows[0]);
     } catch (error) {
         console.error('Error updating club:', error);
-        res.status(500).json({ error: 'Error updating club' });
+        res.status(500).json({ error: 'Error updating club: ' + (error.detail || error.message) });
     }
 };
 
