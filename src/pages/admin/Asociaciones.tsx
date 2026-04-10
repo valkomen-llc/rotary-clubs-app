@@ -412,6 +412,18 @@ const AsociacionesManagement: React.FC = () => {
                                 </div>
 
                                 <div className="md:col-span-2">
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Subdominio de Plataforma (Opcional)</label>
+                                    <input
+                                        type="text"
+                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all"
+                                        value={formData.subdomain || ''}
+                                        onChange={(e) => setFormData({ ...formData, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
+                                        placeholder="ej: latir"
+                                    />
+                                    <p className="text-[10px] text-gray-400 mt-1">Este será el prefijo que usará la plataforma si no configuras un Dominio Propio (ej: tunombre.clubplatform.org).</p>
+                                </div>
+
+                                <div className="md:col-span-2">
                                     <label className="block text-sm font-bold text-gray-700 mb-1">Estado</label>
                                     <select
                                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all"
