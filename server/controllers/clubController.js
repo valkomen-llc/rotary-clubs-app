@@ -132,30 +132,40 @@ export const updateClub = async (req, res) => {
             const currentClub = await db.query('SELECT * FROM "Club" WHERE id = $1', [id]);
             if (!currentClub.rows[0]) return res.status(404).json({ error: 'Club not found' });
 
-            const params = [
-                name, description, city, country, district, domain, subdomain,
-                logo, footerLogo, endPolioLogo, favicon, status, type, id
-            ].map(val => val === undefined || val === '' ? null : val);
+            // Construir la consulta dinámicamente para permitir setear a null si el frontend envía un string vacío
+            const updateFields = [];
+            const params = [];
+            let pIdx = 1;
 
-            const result = await db.query(
-                `UPDATE "Club" SET 
-                 name=COALESCE($1, name), 
-                 description=COALESCE($2, description), 
-                 city=COALESCE($3, city), 
-                 country=COALESCE($4, country), 
-                 district=COALESCE($5, district), 
-                 domain=COALESCE($6, domain), 
-                 subdomain=COALESCE($7, subdomain),
-                 logo=COALESCE($8, logo), 
-                 "footerLogo"=COALESCE($9, "footerLogo"), 
-                 "endPolioLogo"=COALESCE($10, "endPolioLogo"), 
-                 favicon=COALESCE($11, favicon),
-                 status=COALESCE($12, status), 
-                 type=COALESCE($13, type),
-                 "updatedAt"=NOW()
-                 WHERE id=$14 RETURNING *`,
-                params
-            );
+            const addField = (fieldName, val) => {
+                if (val !== undefined) {
+                    updateFields.push(`"${fieldName}" = $${pIdx++}`);
+                    params.push(val === '' ? null : val);
+                }
+            };
+
+            addField('name', name);
+            addField('description', description);
+            addField('city', city);
+            addField('country', country);
+            addField('district', district);
+            addField('domain', domain);
+            addField('subdomain', subdomain);
+            addField('logo', logo);
+            addField('footerLogo', footerLogo);
+            addField('endPolioLogo', endPolioLogo);
+            addField('favicon', favicon);
+            addField('status', status);
+            addField('type', type);
+
+            if (updateFields.length === 0) return res.status(400).json({ error: 'No fields to update' });
+
+            updateFields.push(`"updatedAt" = NOW()`);
+            params.push(id);
+
+            const query = `UPDATE "Club" SET ${updateFields.join(', ')} WHERE id = $${pIdx} RETURNING *`;
+            
+            const result = await db.query(query, params);
 
             // Vercel Auto-provision: If domain has changed or is being set
             const existingDomain = currentClub.rows[0].domain;
