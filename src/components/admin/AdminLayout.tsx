@@ -106,7 +106,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
     // Hostname for GA4 filtering and Ver mi Sitio button
     const safeDomain = (club as any)?.domain;
-    const cleanDomain = (typeof safeDomain === 'string' && safeDomain.trim() !== '' && !safeDomain.includes('localhost')) ? safeDomain.trim() : null;
+    // Treat "localhost" and "*.clubplatform.org" as non-custom domains so we properly fallback to the subdomain parameter query
+    const cleanDomain = (typeof safeDomain === 'string' && safeDomain.trim() !== '' && !safeDomain.includes('localhost') && !safeDomain.endsWith('clubplatform.org')) ? safeDomain.trim() : null;
     
     let clubHostname: string | null = isOnClubDomain
         ? currentHost
