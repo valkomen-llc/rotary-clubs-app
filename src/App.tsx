@@ -144,8 +144,13 @@ const OnboardingGate = () => {
 function SmartHome() {
   const { isMainPlatform, isAppPortal, isDraft, club } = useClub();
   const { isAuthenticated, user } = useAuth();
+  
+  // If the URL has a club override parameter, we want to preview the club site, NOT enter the admin dashboard.
+  const isPreviewingSite = window.location.search.includes('club=') || 
+                           window.location.search.includes('asociacion=') || 
+                           window.location.search.includes('distrito=');
 
-  if (isAppPortal) {
+  if (isAppPortal && !isPreviewingSite) {
     if (isAuthenticated) {
       // If club admin hasn't completed onboarding, send to wizard
       const lsClub = (() => { try { return JSON.parse(localStorage.getItem('rotary_club') || '{}'); } catch { return {}; } })();
