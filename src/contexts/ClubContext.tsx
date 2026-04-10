@@ -37,7 +37,7 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
             try {
                 const hostname = window.location.hostname;
                 const urlParams = new URLSearchParams(window.location.search);
-                const clubOverride = urlParams.get('club') || urlParams.get('association') || urlParams.get('district');
+                const clubOverride = urlParams.get('club') || urlParams.get('asociacion') || urlParams.get('distrito');
 
                 const queryDomain = clubOverride || hostname;
 

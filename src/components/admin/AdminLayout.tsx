@@ -114,7 +114,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         : (cleanDomain || ((club as any)?.subdomain ? `${(club as any).subdomain}.clubplatform.org` : null));
 
     // Link "Ver mi Sitio" (Fallback approach using ?club= to bypass DNS Wildcard issues)
-    const paramKey = (club as any)?.type === 'association' ? 'association' : ((club as any)?.type === 'district' ? 'district' : 'club');
+    const paramKey = (club as any)?.type === 'association' ? 'asociacion' : ((club as any)?.type === 'district' ? 'distrito' : 'club');
     const verMiSitioUrl = cleanDomain 
         ? `https://${cleanDomain}` 
         : ((club as any)?.subdomain ? `https://app.clubplatform.org/?${paramKey}=${(club as any).subdomain}` : null);
