@@ -112,6 +112,11 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         ? currentHost
         : (cleanDomain || ((club as any)?.subdomain ? `${(club as any).subdomain}.clubplatform.org` : null));
 
+    // Link "Ver mi Sitio" (Fallback approach using ?club= to bypass DNS Wildcard issues)
+    const verMiSitioUrl = cleanDomain 
+        ? `https://${cleanDomain}` 
+        : ((club as any)?.subdomain ? `https://app.clubplatform.org/?club=${(club as any).subdomain}` : null);
+
     // Redirect to dashboard if trying to access locked route
     useEffect(() => {
         if (!isSuperAdmin && !setupComplete && !hasPublishedDomain && !SETUP_ALLOWED_PATHS.includes(location.pathname)) {
@@ -678,9 +683,9 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                         <span className="text-[10px] font-black uppercase tracking-wider">Enter System [⌘+K]</span>
                                         <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                                     </a>
-                                ) : clubHostname ? (
+                                ) : verMiSitioUrl ? (
                                     <a
-                                        href={`https://${clubHostname}`}
+                                        href={verMiSitioUrl}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg transition-all border border-emerald-200 group"
