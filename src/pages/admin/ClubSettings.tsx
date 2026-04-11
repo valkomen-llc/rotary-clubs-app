@@ -634,8 +634,8 @@ const ClubSettings: React.FC = () => {
                                 }} disabled={uploading} />
                             </label>
 
-                            {/* Logo size slider — Super Admin only */}
-                            {isSuperAdmin && (
+                            {/* Logo size slider — Super Admin & Associations */}
+                            {(isSuperAdmin || club?.type === 'association') && (
                                 <div className="mt-4 pt-4 border-t border-gray-100">
                                     <div className="flex items-center justify-between mb-2">
                                         <label className="text-xs font-bold text-gray-400 uppercase">Tamaño del Logo en el Header</label>

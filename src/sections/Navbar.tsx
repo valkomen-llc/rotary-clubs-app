@@ -133,12 +133,12 @@ const Navbar = () => {
   return (
     <nav className="bg-white shadow-sm sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 cursor-default">
+        <div className="flex items-center justify-between min-h-[4rem] py-2 cursor-default">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-3">
             {club.logo ? (
-              <div className="relative flex items-center" style={{ width: `${club.logoHeaderSize ?? 200}px` }}>
-                <img src={club.logo} alt={club.name} className="h-[52px] w-auto max-w-full object-contain object-left" />
+              <div className="relative flex items-center" style={{ width: `${club.logoHeaderSize ?? 200}px`, maxWidth: '100%' }}>
+                <img src={club.logo} alt={club.name} className="w-full h-auto max-h-[100px] object-contain object-left" />
               </div>
             ) : (
               <>
@@ -162,7 +162,15 @@ const Navbar = () => {
           <div className="hidden md:flex items-center space-x-6">
             <Link to="/" className="text-rotary-blue font-medium text-sm hover:text-rotary-gold transition-colors"><T>Inicio</T></Link>
 
-            {!isDistrict && (
+            {(club as any)?.type === 'association' ? (
+              <>
+                <Link to="/quienes-somos" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Sobre Rotary</T></Link>
+                <Link to="/intercambio-jovenes" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Intercambios</T></Link>
+                <Link to="/rotex" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Rotex</T></Link>
+                <Link to="/eventos" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Eventos</T></Link>
+                <Link to="/blog" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Noticias</T></Link>
+              </>
+            ) : !isDistrict && (
               <>
                 {/* Sobre Nosotros Dropdown */}
                 <div className="relative" ref={sobreNosotrosRef}>
@@ -324,7 +332,15 @@ const Navbar = () => {
             <div className="flex flex-col space-y-3 font-medium">
               <Link to="/" className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Inicio</Link>
 
-              {!isDistrict && (
+              {(club as any)?.type === 'association' ? (
+                <>
+                  <Link to="/quienes-somos" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Sobre Rotary</Link>
+                  <Link to="/intercambio-jovenes" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Intercambios</Link>
+                  <Link to="/rotex" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Rotex</Link>
+                  <Link to="/eventos" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Eventos</Link>
+                  <Link to="/blog" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Noticias</Link>
+                </>
+              ) : !isDistrict && (
                 <>
                   {/* Sobre Nosotros en móvil */}
                   <div className="pl-4 border-l-2 border-gray-200 space-y-2">

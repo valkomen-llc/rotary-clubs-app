@@ -256,8 +256,8 @@ const ClubProfile: React.FC = () => {
                             </div>
                             <p className="text-[10px] text-gray-400 text-center font-medium">Recomendado: PNG fondo transparente, min 400x400px.</p>
 
-                            {/* Logo Size Slider — Foundation type only */}
-                            {clubType === 'foundation' && (
+                            {/* Logo Size Slider — Foundation and Association only */}
+                            {(clubType === 'foundation' || clubType === 'association') && (
                                 <div className="mt-4 pt-4 border-t border-gray-100">
                                     <div className="flex items-center justify-between mb-2">
                                         <label className="text-xs font-bold text-gray-500 uppercase">Tamaño del Logo</label>
