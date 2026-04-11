@@ -216,7 +216,6 @@ const Descargas = () => {
                       <span className="text-xs text-gray-400">
                         Actualizado: {doc.fechaSubida}
                       </span>
-                      </span>
 
                       <button
                         className="flex items-center gap-2 text-rotary-blue font-medium text-sm hover:underline"

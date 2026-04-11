@@ -17,13 +17,27 @@ router.get('/seo/sitemap.xml', getSitemap);
 
 import db from '../lib/db.js';
 
-router.get('/documents/:clubId', async (req, res) => {
+router.get('/documents/:clubIdOrSubdomain', async (req, res) => {
     try {
-        const { clubId } = req.params;
-        const result = await db.query(
+        const { clubIdOrSubdomain } = req.params;
+        // Search first by ID (UUID)
+        let result = await db.query(
             'SELECT id, "fileName", "fileUrl", "fileSize", category, "createdAt" FROM "ClubDocument" WHERE "clubId" = $1 ORDER BY "createdAt" DESC',
-            [clubId]
+            [clubIdOrSubdomain]
         );
+
+        // If no results, search by subdomain in 'Club' table
+        if (result.rows.length === 0) {
+            const clubRes = await db.query('SELECT id FROM "Club" WHERE subdomain = $1 OR domain = $1 LIMIT 1', [clubIdOrSubdomain]);
+            if (clubRes.rows.length > 0) {
+                const realId = clubRes.rows[0].id;
+                result = await db.query(
+                    'SELECT id, "fileName", "fileUrl", "fileSize", category, "createdAt" FROM "ClubDocument" WHERE "clubId" = $1 ORDER BY "createdAt" DESC',
+                    [realId]
+                );
+            }
+        }
+
         res.json(result.rows);
     } catch (error) {
         console.error('[Public Documents] Error:', error);
