@@ -54,10 +54,13 @@ const Footer = () => {
               <li><a href="#" className="hover:text-rotary-gold transition-colors">La Fundación Rotaria</a></li>
               <li><a href="#" className="hover:text-rotary-gold transition-colors">Proyectos</a></li>
               <li><a href="#" className="hover:text-rotary-gold transition-colors">My Rotary</a></li>
-              <li><a href="#" className="hover:text-rotary-gold transition-colors">Novedades</a></li>
-              <li><a href="#" className="hover:text-rotary-gold transition-colors">Rotary Brand Center</a></li>
-              <li><a href="#" className="hover:text-rotary-gold transition-colors">Rotary Club Central</a></li>
-              <li><a href="#" className="hover:text-rotary-gold transition-colors">Contacto</a></li>
+              <li><a href="#/novedades" className="hover:text-rotary-gold transition-colors">Novedades</a></li>
+              <li><a href="https://brandcenter.rotary.org" className="hover:text-rotary-gold transition-colors">Rotary Brand Center</a></li>
+              <li><a href="https://puzzler.rotary.org" className="hover:text-rotary-gold transition-colors">Rotary Club Central</a></li>
+              {(club.type === 'association' || club.name.toLowerCase().includes('rotaract') || club.subdomain?.toLowerCase().includes('latir')) && (
+                <li><a href="#/descargas" className="hover:text-rotary-gold transition-colors font-bold text-rotary-gold">Centro de Descargas</a></li>
+              )}
+              <li><a href="#/contacto" className="hover:text-rotary-gold transition-colors">Contacto</a></li>
             </ul>
           </div>
 

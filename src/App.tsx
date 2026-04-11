@@ -23,6 +23,7 @@ import Proyectos from './pages/Proyectos';
 import ProyectoDetalle from './pages/ProyectoDetalle';
 import Contacto from './pages/Contacto';
 import EstadosFinancieros from './pages/EstadosFinancieros';
+import Descargas from './pages/Descargas';
 import NuestrasCausas from './pages/NuestrasCausas';
 import ManerasDeContribuir from './pages/ManerasDeContribuir';
 import Rotaract from './pages/Rotaract';
@@ -335,6 +336,7 @@ function App() {
                 <Route path="/proyectos/:id" element={<ProyectoDetalle />} />
                 <Route path="/contacto" element={<Contacto />} />
                 <Route path="/estados-financieros" element={<EstadosFinancieros />} />
+                <Route path="/descargas" element={<Descargas />} />
                 <Route path="/rotaract" element={<Rotaract />} />
                 <Route path="/interact" element={<Interact />} />
                 <Route path="/rotex" element={<Rotex />} />
