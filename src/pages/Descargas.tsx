@@ -15,6 +15,8 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
+import { toast } from 'sonner';
+import { useEffect } from 'react';
 
 interface DocumentoDescarga {
   id: string;
@@ -43,11 +45,39 @@ const iconosTipo: Record<string, React.ElementType> = {
   otros: FileCode
 };
 
+const API = import.meta.env.VITE_API_URL || '/api';
+
 const Descargas = () => {
   const { club, isLoading: clubLoading } = useClub();
   const { sections, isLoading: cmsLoading } = useCMSContent('descargas', club?.id);
   const [filtroTipo, setFiltroTipo] = useState('todos');
   const [busqueda, setBusqueda] = useState('');
+  const [documentos, setDocumentos] = useState<DocumentoDescarga[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(true);
+
+  useEffect(() => {
+    if (club?.id) {
+      setLoadingDocs(true);
+      fetch(`${API}/public/documents/${club.id}`)
+        .then(r => r.json())
+        .then(data => {
+            if (Array.isArray(data)) {
+                const mapped = data.map((d: any) => ({
+                    id: d.id,
+                    nombre: d.fileName,
+                    tipo: d.category || 'pdf',
+                    categoria: (d.category === 'pdf' ? 'Branding' : d.category === 'word' ? 'Recurso' : d.category === 'excel' ? 'Plantilla' : d.category === 'presentation' ? 'Presentación' : 'Recurso'),
+                    fechaSubida: new Date(d.createdAt).toLocaleDateString(),
+                    tamano: (d.fileSize / 1024 / 1024).toFixed(2) + ' MB',
+                    url: d.fileUrl
+                }));
+                setDocumentos(mapped);
+            }
+        })
+        .catch(err => console.error('Error fetching docs:', err))
+        .finally(() => setLoadingDocs(false));
+    }
+  }, [club?.id]);
 
   const getC = (section: string, field: string, fallback: string) => {
     return sections[section]?.[field] || fallback;
@@ -61,32 +91,19 @@ const Descargas = () => {
     );
   }
 
-  const defaultDocumentos: DocumentoDescarga[] = [
-    {
-      id: '1',
-      nombre: 'Manual de Identidad Visual',
-      tipo: 'pdf',
-      categoria: 'Branding',
-      fechaSubida: '10/04/2026',
-      tamano: '5.2 MB'
-    },
-    {
-        id: '2',
-        nombre: 'Plantilla de Presentación Latir',
-        tipo: 'presentation',
-        categoria: 'Recursos',
-        fechaSubida: '11/04/2026',
-        tamano: '12.8 MB'
-    }
-  ];
-
-  const documentos: DocumentoDescarga[] = sections['list']?.items || defaultDocumentos;
-
   const documentosFiltrados = documentos.filter(doc => {
     const matchTipo = filtroTipo === 'todos' || doc.tipo === filtroTipo;
     const matchBusqueda = doc.nombre.toLowerCase().includes(busqueda.toLowerCase());
     return matchTipo && matchBusqueda;
   });
+
+  const handleDownload = (doc: DocumentoDescarga) => {
+    if (doc.url) {
+        window.open(doc.url, '_blank');
+    } else {
+        toast.error('URL de descarga no disponible');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-white">
@@ -192,9 +209,11 @@ const Descargas = () => {
                       <span className="text-xs text-gray-400">
                         Actualizado: {doc.fechaSubida}
                       </span>
+                      </span>
+
                       <button
                         className="flex items-center gap-2 text-rotary-blue font-medium text-sm hover:underline"
-                        onClick={() => alert(`Descargando: ${doc.nombre}`)}
+                        onClick={() => handleDownload(doc)}
                       >
                         <Download className="w-4 h-4" />
                         Descargar

@@ -15,6 +15,24 @@ import { getRobotsTxt, getSitemap } from '../controllers/seoController.js';
 router.get('/seo/robots.txt', getRobotsTxt);
 router.get('/seo/sitemap.xml', getSitemap);
 
+// --- PUBLIC DOCUMENTS ---
+import { PrismaClient } from '@prisma/client';
+const prisma = new PrismaClient();
+
+router.get('/documents/:clubId', async (req, res) => {
+    try {
+        const { clubId } = req.params;
+        const docs = await prisma.clubDocument.findMany({
+            where: { clubId },
+            orderBy: { createdAt: 'desc' }
+        });
+        res.json(docs);
+    } catch (error) {
+        console.error('[Public Documents] Error:', error);
+        res.status(500).json({ error: 'Error al obtener recursos' });
+    }
+});
+
 // --- DISTRICT MULTIMEDIA UPLOAD LOGIC ---
 const uploadDistrictMedia = multer({
     storage: multerS3({
