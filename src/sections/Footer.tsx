@@ -47,20 +47,36 @@ const Footer = () => {
           <div>
             <h3 className="font-semibold text-lg mb-4">Links de Interés</h3>
             <ul className="space-y-2 text-sm text-white/80">
-              <li><a href="#" className="hover:text-rotary-gold transition-colors">Acerca de Rotary</a></li>
-              <li><a href="#" className="hover:text-rotary-gold transition-colors">Historia de Rotary</a></li>
-              <li><a href="#" className="hover:text-rotary-gold transition-colors">Nuestra Estructura</a></li>
-              <li><a href="#" className="hover:text-rotary-gold transition-colors">Nuestras Causas</a></li>
-              <li><a href="#" className="hover:text-rotary-gold transition-colors">La Fundación Rotaria</a></li>
-              <li><a href="#" className="hover:text-rotary-gold transition-colors">Proyectos</a></li>
-              <li><a href="#" className="hover:text-rotary-gold transition-colors">My Rotary</a></li>
-              <li><a href="#/novedades" className="hover:text-rotary-gold transition-colors">Novedades</a></li>
-              <li><a href="https://brandcenter.rotary.org" className="hover:text-rotary-gold transition-colors">Rotary Brand Center</a></li>
-              <li><a href="https://puzzler.rotary.org" className="hover:text-rotary-gold transition-colors">Rotary Club Central</a></li>
-              {(club.type === 'association' || club.name.toLowerCase().includes('rotaract') || club.subdomain?.toLowerCase().includes('latir')) && (
-                <li><a href="#/descargas" className="hover:text-rotary-gold transition-colors font-bold text-rotary-gold">Centro de Descargas</a></li>
+              {(club.subdomain?.toLowerCase().includes('latir') || club.name.toLowerCase().includes('latir')) ? (
+                <>
+                  <li><a href="#/quienes-somos" className="hover:text-rotary-gold transition-colors">Acerca de Rotary</a></li>
+                  <li><a href="#/nuestra-historia" className="hover:text-rotary-gold transition-colors">Historia de Rotary</a></li>
+                  <li><a href="#/la-fundacion-rotaria" className="hover:text-rotary-gold transition-colors">La Fundación Rotaria</a></li>
+                  <li><a href="#/intercambio-jovenes" className="hover:text-rotary-gold transition-colors">Programa de Intercambios de Rotary</a></li>
+                  <li><a href="https://my.rotary.org" target="_blank" rel="noopener noreferrer" className="hover:text-rotary-gold transition-colors">My Rotary</a></li>
+                  <li><a href="#/eventos" className="hover:text-rotary-gold transition-colors">Nuestros Eventos</a></li>
+                  <li><a href="#/blog" className="hover:text-rotary-gold transition-colors">Novedades</a></li>
+                  <li><a href="#/descargas" className="hover:text-rotary-gold transition-colors font-bold text-rotary-gold">Centro de Descargas</a></li>
+                  <li><a href="#/contacto" className="hover:text-rotary-gold transition-colors">Contacto</a></li>
+                </>
+              ) : (
+                <>
+                  <li><a href="#" className="hover:text-rotary-gold transition-colors">Acerca de Rotary</a></li>
+                  <li><a href="#" className="hover:text-rotary-gold transition-colors">Historia de Rotary</a></li>
+                  <li><a href="#" className="hover:text-rotary-gold transition-colors">Nuestra Estructura</a></li>
+                  <li><a href="#" className="hover:text-rotary-gold transition-colors">Nuestras Causas</a></li>
+                  <li><a href="#" className="hover:text-rotary-gold transition-colors">La Fundación Rotaria</a></li>
+                  <li><a href="#" className="hover:text-rotary-gold transition-colors">Proyectos</a></li>
+                  <li><a href="#" className="hover:text-rotary-gold transition-colors">My Rotary</a></li>
+                  <li><a href="#/novedades" className="hover:text-rotary-gold transition-colors">Novedades</a></li>
+                  <li><a href="https://brandcenter.rotary.org" className="hover:text-rotary-gold transition-colors">Rotary Brand Center</a></li>
+                  <li><a href="https://puzzler.rotary.org" className="hover:text-rotary-gold transition-colors">Rotary Club Central</a></li>
+                  {(club.type === 'association' || club.name.toLowerCase().includes('rotaract') || club.subdomain?.toLowerCase().includes('latir')) && (
+                    <li><a href="#/descargas" className="hover:text-rotary-gold transition-colors font-bold text-rotary-gold">Centro de Descargas</a></li>
+                  )}
+                  <li><a href="#/contacto" className="hover:text-rotary-gold transition-colors">Contacto</a></li>
+                </>
               )}
-              <li><a href="#/contacto" className="hover:text-rotary-gold transition-colors">Contacto</a></li>
             </ul>
           </div>
 
