@@ -6,6 +6,7 @@ import { Users, Globe, Zap, Sparkles } from 'lucide-react';
 
 const Rotex = () => {
     const { club, isLoading } = useClub();
+    // For now we use global rotex content and club fallback
     const { sections } = useCMSContent('rotex', club?.id);
 
     const getC = (section: string, field: string, fallback: string) => {
@@ -95,7 +96,7 @@ const Rotex = () => {
                         </p>
                     </div>
 
-                    {/* Video Player */}
+                    {/* Video Player — Reusing the same video logic as Interact */}
                     <div className="relative rounded-3xl overflow-hidden shadow-2xl mb-16 group bg-black max-w-4xl mx-auto">
                         <video 
                             controls
@@ -167,7 +168,7 @@ const Rotex = () => {
 
             <Footer />
 
-            <style>{\`
+            <style>{`
                 @keyframes subtle-zoom {
                     from { transform: scale(1.05); }
                     to { transform: scale(1.15); }
@@ -198,8 +199,7 @@ const Rotex = () => {
                     animation: fade-in 1.2s ease-out 0.2s forwards;
                     opacity: 0;
                 }
-
-            \`}</style>
+            `}</style>
         </div>
     );
 };
