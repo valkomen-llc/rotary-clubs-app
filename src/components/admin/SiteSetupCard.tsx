@@ -101,6 +101,15 @@ const SiteSetupCard: React.FC<Props> = ({ stats, onOpenWizard }) => {
             category: 'Integraciones',
             weight: 10,
         },
+        {
+            id: 'downloads',
+            label: 'Centro de Descargas',
+            desc: 'Sube manuales, plantillas o presentaciones oficiales',
+            done: (stats?.documents || 0) > 0,
+            href: '/admin/descargas',
+            category: 'Contenido',
+            weight: 10,
+        },
     ];
 
 

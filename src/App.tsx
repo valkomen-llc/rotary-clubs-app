@@ -81,6 +81,7 @@ const MembersPage = React.lazy(() => import('./pages/admin/MembersPage'));
 const RotaractPage = React.lazy(() => import('./pages/admin/RotaractPage'));
 const InteractPage = React.lazy(() => import('./pages/admin/InteractPage'));
 const FinancialPage = React.lazy(() => import('./pages/admin/FinancialPage'));
+const DownloadsManagement = React.lazy(() => import('./pages/admin/DownloadsPage'));
 const YouthExchangePage = React.lazy(() => import('./pages/admin/YouthExchangePage'));
 const NGSEPage = React.lazy(() => import('./pages/admin/NGSEPage'));
 const RotexPage = React.lazy(() => import('./pages/admin/RotexPage'));
@@ -524,6 +525,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <FinancialPage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/descargas"
+                  element={
+                    <PrivateRoute>
+                      <DownloadsManagement />
                     </PrivateRoute>
                   }
                 />
