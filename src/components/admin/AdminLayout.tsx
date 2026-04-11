@@ -298,10 +298,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             { icon: ImageIcon, label: 'Multimedia', path: '/admin/media', category: 'Content', keywords: ['foto', 'video', 'imagen', 'galeria', 'archivo'] },
             { icon: Palette, label: 'Imágenes del Sitio', path: '/admin/imagenes-sitio', category: 'Content', keywords: ['hero', 'banner', 'portada', 'diseno'] },
             { icon: HelpCircle, label: 'Preguntas Frecuentes', path: '/admin/faqs', category: 'Content', keywords: ['faq', 'pregunta', 'ayuda'] },
+            { icon: Upload, label: 'Centro de Descargas', path: '/admin/descargas', category: 'Content', keywords: ['descargas', 'archivos', 'manuales', 'plantillas'] },
         );
-        if (isSuperAdmin || (club as any)?.type === 'association' || (club as any)?.name?.toLowerCase().includes('latir')) {
-            items.push({ icon: Upload, label: 'Centro de Descargas', path: '/admin/descargas', category: 'Content', keywords: ['descargas', 'archivos', 'manuales', 'plantillas'] });
-        }
 
         if (isSuperAdmin) {
             items.push({ icon: BookOpen, label: 'Base IA', path: '/admin/conocimiento', category: 'Content' });

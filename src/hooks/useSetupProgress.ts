@@ -33,6 +33,7 @@ export const SETUP_ALLOWED_PATHS = [
     '/admin/media',
     '/admin/faqs',
     '/admin/integraciones',
+    '/admin/descargas',
     '/admin/configuracion-sitio',
 ];
 

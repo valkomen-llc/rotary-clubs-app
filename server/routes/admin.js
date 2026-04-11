@@ -26,7 +26,7 @@ router.get('/stats', async (req, res) => {
         const whereClub = clubId ? `WHERE "clubId" = $1` : '';
         const params = clubId ? [clubId] : [];
 
-        const [users, posts, projects, media, publications, knowledge, clubInfo, platformPaymentsSum, payoutRequestsSum, activeClubsCount, donationsSum, products] = await Promise.all([
+        const results = await Promise.all([
             db.query(`SELECT COUNT(*) FROM "User" ${whereClub}`, params),
             db.query(`SELECT COUNT(*) FROM "Post" ${whereClub}`, params),
             db.query(`SELECT COUNT(*) FROM "Project" ${whereClub}`, params),
@@ -39,7 +39,10 @@ router.get('/stats', async (req, res) => {
             db.query(`SELECT COUNT(*) FROM "Club" WHERE status = 'active'`),
             db.query(`SELECT SUM(amount) FROM "Donation" ${whereClub}`, params),
             db.query(`SELECT COUNT(*) FROM "Product" ${whereClub}`, params),
+            db.query(`SELECT COUNT(*) FROM "ClubDocument" ${whereClub}`, params),
         ]);
+
+        const [users, posts, projects, media, publications, knowledge, clubInfo, platformPaymentsSum, payoutRequestsSum, activeClubsCount, donationsSum, products, documents] = results;
 
         // Lead table may not exist yet on first deploy
         let leadsCount = 0;
@@ -69,6 +72,7 @@ router.get('/stats', async (req, res) => {
             activeClubs: parseInt(activeClubsCount.rows[0].count),
             donations,
             products: parseInt(products.rows[0].count),
+            documents: parseInt(documents?.rows[0]?.count || 0),
             leads: leadsCount,
         });
     } catch (error) {
