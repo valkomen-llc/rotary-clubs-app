@@ -39,7 +39,8 @@ import {
     Award,
     Terminal,
     QrCode,
-    ShieldCheck
+    ShieldCheck,
+    Upload
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
