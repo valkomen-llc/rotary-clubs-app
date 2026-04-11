@@ -5,11 +5,19 @@ import { useClub } from '../contexts/ClubContext';
 import { Users, Globe, Zap, Sparkles } from 'lucide-react';
 
 const Rotex = () => {
-    const { club } = useClub();
-    const { sections } = useCMSContent('rotex', club.id);
+    const { club, isLoading } = useClub();
+    const { sections } = useCMSContent('rotex', club?.id);
 
     const getC = (section: string, field: string, fallback: string) => {
         return sections[section]?.[field] || fallback;
+    }
+
+    if (isLoading || !club) {
+        return (
+            <div className="min-h-screen bg-white flex items-center justify-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-rotary-blue"></div>
+            </div>
+        );
     }
 
     return (
