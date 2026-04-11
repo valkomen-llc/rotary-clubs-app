@@ -27,6 +27,7 @@ import NuestrasCausas from './pages/NuestrasCausas';
 import ManerasDeContribuir from './pages/ManerasDeContribuir';
 import Rotaract from './pages/Rotaract';
 import Interact from './pages/Interact';
+import Rotex from './pages/Rotex';
 import FundacionRotaria from './pages/FundacionRotaria';
 import Involucrate from './pages/Involucrate';
 import Eventos from './pages/Eventos';
@@ -336,6 +337,7 @@ function App() {
                 <Route path="/estados-financieros" element={<EstadosFinancieros />} />
                 <Route path="/rotaract" element={<Rotaract />} />
                 <Route path="/interact" element={<Interact />} />
+                <Route path="/rotex" element={<Rotex />} />
                 <Route path="/la-fundacion-rotaria" element={<FundacionRotaria />} />
                 <Route path="/involucrate" element={<Involucrate />} />
                 <Route path="/eventos" element={<Eventos />} />
