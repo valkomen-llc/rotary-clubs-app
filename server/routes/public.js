@@ -15,18 +15,16 @@ import { getRobotsTxt, getSitemap } from '../controllers/seoController.js';
 router.get('/seo/robots.txt', getRobotsTxt);
 router.get('/seo/sitemap.xml', getSitemap);
 
-// --- PUBLIC DOCUMENTS ---
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
+import db from '../lib/db.js';
 
 router.get('/documents/:clubId', async (req, res) => {
     try {
         const { clubId } = req.params;
-        const docs = await prisma.clubDocument.findMany({
-            where: { clubId },
-            orderBy: { createdAt: 'desc' }
-        });
-        res.json(docs);
+        const result = await db.query(
+            'SELECT id, "fileName", "fileUrl", "fileSize", category, "createdAt" FROM "ClubDocument" WHERE "clubId" = $1 ORDER BY "createdAt" DESC',
+            [clubId]
+        );
+        res.json(result.rows);
     } catch (error) {
         console.error('[Public Documents] Error:', error);
         res.status(500).json({ error: 'Error al obtener recursos' });

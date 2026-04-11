@@ -58,9 +58,10 @@ const Descargas = () => {
   useEffect(() => {
     if (club?.id) {
       setLoadingDocs(true);
-      fetch(`${API}/public/documents/${club.id}`)
+      fetch(`${API}/public/documents/${club.id}?t=${Date.now()}`)
         .then(r => r.json())
         .then(data => {
+            console.log('[Descargas] Data fetched:', data);
             if (Array.isArray(data)) {
                 const mapped = data.map((d: any) => ({
                     id: d.id,
@@ -177,11 +178,17 @@ const Descargas = () => {
             </h2>
           </div>
 
-          {documentosFiltrados.length === 0 ? (
+          {loadingDocs ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-pulse">
+                {[1,2,3].map(i => (
+                    <div key={i} className="bg-gray-100 h-64 rounded-xl"></div>
+                ))}
+            </div>
+          ) : documentosFiltrados.length === 0 ? (
             <div className="text-center py-16 bg-gray-50 rounded-xl">
               <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No se encontraron archivos</h3>
-              <p className="text-gray-500">Intenta con otros términos de búsqueda</p>
+              <p className="text-gray-500">Aún no hay recursos publicados en esta sección</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
