@@ -1,6 +1,7 @@
-import { Globe, Users, DollarSign } from 'lucide-react';
+import { Globe, Users, DollarSign, Heart } from 'lucide-react';
+import { useClub } from '../contexts/ClubContext';
 
-const stats = [
+const defaultStats = [
   {
     icon: Globe,
     value: '+1.2M',
@@ -21,7 +22,34 @@ const stats = [
   }
 ];
 
+const latirStats = [
+  {
+    icon: Globe,
+    value: '44',
+    title: 'Cuarenta y cuatro distritos rotarios se dan cita en Cali para LATIR al unísono, compartiendo experiencias, estrategias y compromiso por el intercambio juvenil.',
+    color: 'text-rotary-blue'
+  },
+  {
+    icon: Users,
+    value: '+175',
+    title: 'Delegaciones de toda Latinoamérica construyendo puentes culturales, derribando fronteras y celebrando la diversidad que nos fortalece.',
+    color: 'text-purple-600'
+  },
+  {
+    icon: Heart,
+    value: '14',
+    title: 'Jóvenes, líderes y voluntarios de 14 paises reunidos por una causa común: transformar vidas a través del Programa de Intercambio de Jóvenes de Rotary.',
+    color: 'text-rotary-gold'
+  }
+];
+
 const StatsSection = () => {
+  const { club } = useClub();
+  
+  const isLatir = club?.name?.toLowerCase().includes('latir') || club?.subdomain === 'latir' || club?.subdomain?.includes('latir');
+  
+  const stats = isLatir ? latirStats : defaultStats;
+
   return (
     <section className="py-16 md:py-20 bg-rotary-concrete">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
