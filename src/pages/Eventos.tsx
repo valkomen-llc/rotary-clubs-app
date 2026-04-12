@@ -52,7 +52,11 @@ const defaultImage = 'https://images.unsplash.com/photo-1517457373958-b7bdd45872
 
 const Eventos = () => {
     const { club } = useClub();
-    useCMSContent('eventos', club.id);
+    const { sections } = useCMSContent('eventos', club.id);
+
+    const getC = (section: string, field: string, fallback: string) => {
+        return sections[section]?.[field] || fallback;
+    };
 
     useSEO({
         title: 'Eventos',
@@ -136,10 +140,10 @@ const Eventos = () => {
                 <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
                     <div className="text-center max-w-3xl mx-auto">
                         <h1 className="text-3xl md:text-5xl text-white mb-6">
-                            Calendario de Eventos
+                            {getC('header', 'title', "Calendario de Eventos")}
                         </h1>
                         <p className="text-white/80 text-lg md:text-xl">
-                            Descubre de qué manera nos mantenemos activos sirviendo e integrando a la comunidad.
+                            {getC('header', 'description', "Descubre de qué manera nos mantenemos activos sirviendo e integrando a la comunidad.")}
                         </p>
                     </div>
                 </div>
