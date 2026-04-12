@@ -808,7 +808,7 @@ const BlogPost = () => {
 
           {/* Contenido */}
           <div
-            className="prose prose-lg max-w-none mb-12"
+            className="prose max-w-none mb-12"
             dangerouslySetInnerHTML={{ __html: articulo.contenido }}
           />
 
