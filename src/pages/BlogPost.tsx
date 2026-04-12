@@ -662,34 +662,47 @@ const BlogPost = () => {
   const { club } = useClub();
   
   const [articulo, setArticulo] = useState<any>(null);
+  const [otrosArticulos, setOtrosArticulos] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
 
   const articuloIdNumeric = parseInt(id || '');
 
   useEffect(() => {
-    const fetchArticulo = async () => {
-      // 1. Check static data first if it's a numeric ID
-      if (!isNaN(articuloIdNumeric) && articulosData[articuloIdNumeric]) {
-        setArticulo(articulosData[articuloIdNumeric]);
-        setIsLoading(false);
-        return;
-      }
-
-      // 2. Otherwise, fetch from API
+    const fetchData = async () => {
+      setIsLoading(true);
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/clubs/${club.id}/posts/${id}`);
-        if (response.ok) {
-          const data = await response.json();
-          setArticulo({
-            ...data,
-            titulo: data.title,
-            contenido: data.content,
-            imagen: data.image,
-            fecha: new Date(data.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }),
-            autor: 'Rotary Club',
-            tiempoLectura: '5 min'
-          });
+        // 1. Fetch current post
+        let currentPost: any = null;
+        if (!isNaN(articuloIdNumeric) && articulosData[articuloIdNumeric]) {
+          currentPost = articulosData[articuloIdNumeric];
+        } else {
+          const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/clubs/${club.id}/posts/${id}`);
+          if (response.ok) {
+            const data = await response.json();
+            currentPost = {
+              ...data,
+              titulo: data.title,
+              contenido: data.content,
+              imagen: data.image,
+              fecha: new Date(data.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }),
+              autor: 'Rotary Club',
+              tiempoLectura: '5 min'
+            };
+          }
+        }
+
+        if (currentPost) {
+          setArticulo(currentPost);
+          
+          // 2. Fetch other posts for 'Related' section
+          const relatedResponse = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/clubs/${club.id}/posts?limit=6`);
+          if (relatedResponse.ok) {
+            const posts = await relatedResponse.json();
+            // Filtrar el actual
+            const filtered = posts.filter((p: any) => p.id !== id && p.id !== articuloIdNumeric);
+            setOtrosArticulos(filtered);
+          }
         } else {
           setError(true);
         }
@@ -700,7 +713,9 @@ const BlogPost = () => {
       }
     };
 
-    fetchArticulo();
+    if (club.id) {
+      fetchData();
+    }
     window.scrollTo(0, 0);
   }, [id, club.id]);
 
@@ -842,44 +857,45 @@ const BlogPost = () => {
         </div>
       </article>
 
-      {/* Artículos Relacionados */}
-      <section className="py-12 md:py-16 bg-rotary-concrete">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-8">Artículos relacionados</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {articulosRelacionados
-              .filter(a => a.id !== articuloIdNumeric)
-              .slice(0, 3)
-              .map((relacionado) => (
-                <Link
-                  key={relacionado.id}
-                  to={`/blog/${relacionado.id}`}
-                  className="group bg-white rounded-xl overflow-hidden shadow-md hover:shadow-lg transition-all"
-                >
-                  <div className="relative aspect-[16/10] overflow-hidden">
-                    <img
-                      src={relacionado.imagen}
-                      alt={relacionado.titulo}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
-                    <span className="absolute top-3 left-3 bg-rotary-gold text-white text-xs font-semibold px-2 py-1 rounded">
-                      {relacionado.categoria}
-                    </span>
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-semibold text-gray-900 line-clamp-2 group-hover:text-rotary-blue transition-colors">
-                      {relacionado.titulo}
-                    </h3>
-                    <span className="flex items-center gap-1 text-rotary-blue text-sm mt-2 group-hover:underline">
-                      Leer más
-                      <ChevronRight className="w-4 h-4" />
-                    </span>
-                  </div>
-                </Link>
-              ))}
+      {/* Artículos Relacionados - Solo mostrar si hay al menos 4 otros artículos (total 5) */}
+      {otrosArticulos.length >= 4 && (
+        <section className="py-12 md:py-16 bg-rotary-concrete">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 className="text-2xl font-bold text-gray-900 mb-8">Artículos relacionados</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {otrosArticulos
+                .slice(0, 3)
+                .map((relacionado) => (
+                  <Link
+                    key={relacionado.id}
+                    to={`/blog/${relacionado.id}`}
+                    className="group bg-white rounded-xl overflow-hidden shadow-md hover:shadow-lg transition-all"
+                  >
+                    <div className="relative aspect-[16/10] overflow-hidden">
+                      <img
+                        src={relacionado.image || relacionado.imagen}
+                        alt={relacionado.title || relacionado.titulo}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                      <span className="absolute top-3 left-3 bg-rotary-gold text-white text-xs font-semibold px-2 py-1 rounded">
+                        {relacionado.category || relacionado.categoria}
+                      </span>
+                    </div>
+                    <div className="p-4">
+                      <h3 className="font-semibold text-gray-900 line-clamp-2 group-hover:text-rotary-blue transition-colors">
+                        {relacionado.title || relacionado.titulo}
+                      </h3>
+                      <span className="flex items-center gap-1 text-rotary-blue text-sm mt-2 group-hover:underline">
+                        Leer más
+                        <ChevronRight className="w-4 h-4" />
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       <Footer />
     </div>
