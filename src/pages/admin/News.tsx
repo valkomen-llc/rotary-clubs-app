@@ -63,7 +63,9 @@ const NewsManagement: React.FC = () => {
 
     const fetchPosts = async () => {
         setSelectedIds(new Set()); // Reset selection on refresh
-        const staticMapped: Post[] = [...articulosDestacados, ...articulosEstaticos].map(art => ({
+        const hideSamples = (club as any)?.settings?.hide_sample_news === true;
+
+        const staticMapped: Post[] = hideSamples ? [] : [...articulosDestacados, ...articulosEstaticos].map(art => ({
             id: `static-${art.id}`,
             title: art.titulo,
             content: art.resumen,
@@ -244,38 +246,58 @@ const NewsManagement: React.FC = () => {
     const handleBulkDelete = async () => {
         const total = selectedIds.size;
         const dbIds = Array.from(selectedIds).filter(id => !id.startsWith('static-'));
-        const staticCount = total - dbIds.length;
+        const hasStatic = total > dbIds.length;
 
         if (total === 0) return;
         
         let confirmMsg = `¿Eliminar de forma masiva ${total} noticias seleccionadas?`;
-        if (staticCount > 0) {
-            confirmMsg += `\nNota: ${staticCount} noticias estáticas no se pueden borrar de la base de datos y serán ignoradas.`;
+        if (hasStatic) {
+            confirmMsg += `\n\nNota: Has seleccionado noticias de ejemplo. Estas se ocultarán permanentemente de tu club.`;
         }
         
         if (!window.confirm(confirmMsg)) return;
 
-        if (dbIds.length === 0) {
-            toast.info('No hay noticias de la base de datos para borrar.');
-            setSelectedIds(new Set());
-            return;
-        }
-
         try {
             setIsSubmitting(true);
             const token = localStorage.getItem('rotary_token');
-            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/posts/bulk-delete`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ ids: dbIds })
-            });
 
-            if (response.ok) {
-                toast.success(`${dbIds.length} noticias eliminadas correctamente`);
-                fetchPosts();
+            if (hasStatic) {
+                // Save setting to hide samples
+                await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs/${club.id}/settings/hide_sample_news`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ value: 'true' })
+                });
+                // Note: We'll force a reload or just rely on fetchPosts if we can mock the setting update
+                // But since club context is global, a reload is safer for visibility everywhere
+                if (dbIds.length === 0) {
+                    toast.success('Noticias de ejemplo ocultadas');
+                    window.location.reload();
+                    return;
+                }
+            }
+
+            if (dbIds.length > 0) {
+                const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/posts/bulk-delete`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ ids: dbIds })
+                });
+
+                if (response.ok) {
+                    toast.success(`${dbIds.length} noticias eliminadas correctamente`);
+                    if (hasStatic) {
+                        window.location.reload();
+                    } else {
+                        fetchPosts();
+                    }
+                }
             }
         } catch (error) {
             toast.error('Error en el borrado masivo');

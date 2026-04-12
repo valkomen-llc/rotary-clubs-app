@@ -42,7 +42,8 @@ const Blog = () => {
     const fetchPosts = async () => {
       try {
         const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/clubs/${club.id}/posts`);
-        const staticMapped = [...articulosDestacados, ...articulos].map(art => ({
+        const hideSamples = (club as any)?.settings?.hide_sample_news === true;
+        const staticMapped = hideSamples ? [] : [...articulosDestacados, ...articulos].map(art => ({
           id: `static-${art.id}`,
           title: art.titulo,
           summary: art.resumen,

@@ -246,6 +246,25 @@ router.patch('/clubs/:id/complete-onboarding', roleMiddleware(adminRoles), async
         res.status(500).json({ error: 'Error completing onboarding' });
     }
 });
+
+// Generic setting update
+router.patch('/clubs/:id/settings/:key', roleMiddleware(adminRoles), async (req, res) => {
+    try {
+        const { id, key } = req.params;
+        const { value } = req.body;
+        if (req.user.role !== 'administrator' && req.user.clubId !== id) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+        await db.query(
+            `INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt") VALUES (gen_random_uuid(), $1, $2, $3, NOW())
+             ON CONFLICT ("clubId", key) DO UPDATE SET value = $2, "updatedAt" = NOW()`,
+            [key, String(value), id]
+        );
+        res.json({ ok: true, key, value });
+    } catch (error) {
+        res.status(500).json({ error: 'Error saving setting' });
+    }
+});
 // Save Club Archetype Strategy
 router.patch('/:id/save-archetype', roleMiddleware(['administrator', 'club_admin', 'district_admin']), async (req, res) => {
     try {

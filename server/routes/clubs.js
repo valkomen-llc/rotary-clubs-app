@@ -136,6 +136,7 @@ router.get('/by-domain', async (req, res) => {
                 rotaract_logo: settings['rotaract_logo'] || masterSettings['rotaract_logo'] || null,
                 interact_logo: settings['interact_logo'] || masterSettings['interact_logo'] || null,
                 youth_exchange_logo: settings['youth_exchange_logo'] || masterSettings['youth_exchange_logo'] || null,
+                hide_sample_news: settings['hide_sample_news'] === 'true'
             }
         };
 
