@@ -23,31 +23,30 @@ model User {
   phoneCountry       String?
   verificationCode   String?
   verificationExpiry DateTime?
+  districtId         String?
   uploadedDocuments  ClubDocument[]
   communicationLogs  CommunicationLog[]
   orders             Order[]
   club               Club?              @relation(fields: [clubId], references: [id])
-  districtId         String?
   district           District?          @relation(fields: [districtId], references: [id])
 }
 
 model District {
-  id             String    @id @default(uuid())
-  number         Int?
-  name           String
-  governor       String?
-  governorEmail  String?
-  countries      String[]  @default([])
-  website        String?
-  subdomain      String?   @unique
-  domain         String?   @unique
-  description    String?
-  status         String    @default("active")
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  clubs          Club[]
-  admins         User[]
+  id            String   @id @default(uuid())
+  number        Int?
+  name          String
+  governor      String?
+  governorEmail String?
+  countries     String[] @default([])
+  website       String?
+  subdomain     String?  @unique
+  domain        String?  @unique
+  description   String?
+  status        String   @default("active")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  clubs         Club[]
+  admins        User[]
 }
 
 model Club {
@@ -67,7 +66,9 @@ model Club {
   updatedAt              DateTime                @updatedAt
   favicon                String?
   type                   String                  @default("club")
+  districtId             String?
   events                 CalendarEvent[]
+  affiliatedDistrict     District?               @relation(fields: [districtId], references: [id])
   documents              ClubDocument[]
   members                ClubMember[]
   communicationLogs      CommunicationLog[]
@@ -77,6 +78,7 @@ model Club {
   exchangeHostFamilies   ExchangeHostFamily[]
   exchangeStudents       ExchangeStudent[]
   financialReports       FinancialReport[]
+  fundingOpportunities   FundingOpportunity[]
   knowledge              KnowledgeSource[]
   ngseHostFamilies       NgseHostFamily[]
   ngseParticipants       NgseParticipant[]
@@ -101,9 +103,6 @@ model Club {
   whatsAppLists          WhatsAppContactList[]
   WhatsAppCustomField    WhatsAppCustomField[]
   whatsAppTemplates      WhatsAppTemplate[]
-  fundingOpportunities   FundingOpportunity[]
-  districtId             String?
-  affiliatedDistrict     District?               @relation(fields: [districtId], references: [id])
 }
 
 model ClubDocument {
@@ -177,6 +176,7 @@ model Post {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   club           Club?    @relation(fields: [clubId], references: [id])
+  comments       Comment[]
 }
 
 model Donation {
@@ -852,20 +852,36 @@ model WhatsAppCustomField {
 }
 
 model FundingOpportunity {
-  id              String   @id @default(uuid())
-  title           String
-  description     String
-  matchCategory   String?
-  sourceUrl       String?
-  sourceName      String?
-  deadline        DateTime?
-  amount          Float?
-  status          String   @default("backlog")
-  priority        String   @default("Medium")
-  metadata        Json?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  clubId          String?
-  agentId         String?  @default("rafael")
-  club            Club?    @relation(fields: [clubId], references: [id])
+  id            String    @id @default(uuid())
+  title         String
+  description   String
+  matchCategory String?
+  sourceUrl     String?
+  sourceName    String?
+  deadline      DateTime?
+  amount        Float?
+  status        String    @default("backlog")
+  priority      String    @default("Medium")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  clubId        String?
+  agentId       String?   @default("rafael")
+  metadata      Json?
+  club          Club?     @relation(fields: [clubId], references: [id])
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  postId    String
+  firstName String
+  lastName  String
+  email     String
+  phone     String?
+  country   String?
+  rating    Int      @default(5)
+  text      String
+  approved  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
 }

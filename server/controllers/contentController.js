@@ -467,11 +467,50 @@ export const permanentDeleteTestimonial = async (req, res) => {
     }
 };
 
+// Public: Get comments for a post
+export const getPostComments = async (req, res) => {
+    const { postId } = req.params;
+    try {
+        const comments = await prisma.comment.findMany({
+            where: { postId, approved: true },
+            orderBy: { createdAt: 'desc' }
+        });
+        res.json(comments);
+    } catch (error) {
+        res.status(500).json({ error: 'Error fetching comments' });
+    }
+};
+
+// Public: Create a comment
+export const createPostComment = async (req, res) => {
+    const { postId } = req.params;
+    const { firstName, lastName, email, phone, country, rating, text } = req.body;
+    try {
+        const comment = await prisma.comment.create({
+            data: {
+                postId,
+                firstName,
+                lastName,
+                email,
+                phone,
+                country,
+                rating: parseInt(rating) || 5,
+                text,
+                approved: true // Auto-approve for now
+            }
+        });
+        res.status(201).json(comment);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error creating comment' });
+    }
+};
+
 export default {
     getPublicPosts, getPublicPostById, getPublicProjects, getPublicProjectById, getClubPosts, createPost, updatePost, deletePost, bulkDeletePosts,
     getClubProjects, getTrashedProjects, createProject, updateProject,
     deleteProject, bulkDeleteProjects, restoreProject, permanentDeleteProject,
     getTestimonials, getPublicTestimonials, createTestimonial, updateTestimonial,
     deleteTestimonial, permanentDeleteTestimonial,
-    getClubAgentContext
+    getClubAgentContext, getPostComments, createPostComment
 };

@@ -1,0 +1,965 @@
+{
+  "data": {
+    "updatedAt": "2026-04-08T21:52:52.322Z",
+    "createdAt": "2026-04-08T13:47:07.812Z",
+    "id": "TfUMwRp7i585S6L7",
+    "name": "Grand Scope Engine",
+    "description": null,
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {},
+        "id": "4e8073d3-fd82-4409-b90d-ff653fc22de3",
+        "name": "Manual Trigger",
+        "type": "n8n-nodes-base.manualTrigger",
+        "typeVersion": 1,
+        "position": [
+          2880,
+          352
+        ]
+      },
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "minutes"
+              }
+            ]
+          }
+        },
+        "id": "e7b13a9a-19e1-4718-b855-2c06713b5407",
+        "name": "Cron (Cada 4 Horas)",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.1,
+        "position": [
+          2880,
+          560
+        ]
+      },
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "trigger-orchestrator",
+          "responseMode": "lastNode",
+          "options": {}
+        },
+        "id": "445f66a9-a2e0-4929-91d2-f4500cc891ec",
+        "name": "Webhook (Run Now UI)",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 1.1,
+        "position": [
+          2880,
+          752
+        ],
+        "webhookId": "2ff81199-7a69-4c94-b5d4-0dfb5ee86c68"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://api.perplexity.ai/chat/completions",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "Bearer REDACTED"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "bodyParameters": {
+            "parameters": [
+              {
+                "name": "model",
+                "value": "sonar"
+              },
+              {
+                "name": "messages",
+                "value": "={{ [ { \"role\": \"system\", \"content\": \"Returns ONLY a valid JSON array containing exactly 1 active social impact grant. Strict Rules: 1. The grant MUST be from the current year (2026). 2. The grant MUST be currently OPEN, available, and NOT expired. Do not include past or closed calls. 3. Format: [{ 'title':'..', 'description':'..', 'sourceUrl':'..' }]\" }, { \"role\": \"user\", \"content\": \"Find exactly one currently open grant for NGOs in Latin America for the year 2026.\" } ] }}"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "26721d42-86c7-43c3-bb60-9bddda59cae4",
+        "name": "Perplexity API",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.1,
+        "position": [
+          3152,
+          352
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "let rawString = $input.all()[0].json.choices[0].message.content;\nrawString = rawString.replace(/^```json/, '').replace(/```$/, '').trim();\ntry {\n  let arr = JSON.parse(rawString);\n  return [ { json: arr[0] } ];\n} catch (e) {\n  return [{ json: { error: 'Failed to parse', content: rawString } }];\n}"
+        },
+        "id": "c31a66db-f842-43cf-ae02-a8d965c0cd1c",
+        "name": "Parsear Array JSON",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3344,
+          352
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://app.clubplatform.org/vps/scout-grants",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "bodyParameters": {
+            "parameters": [
+              {
+                "name": "title",
+                "value": "={{ $json.title }}"
+              },
+              {
+                "name": "description",
+                "value": "={{ $json.description }}"
+              },
+              {
+                "name": "sourceUrl",
+                "value": "={{ $json.sourceUrl }}"
+              },
+              {
+                "name": "matchCategory",
+                "value": "Scouting"
+              },
+              {
+                "name": "priority",
+                "value": "High"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "fa84e9a6-8a78-4339-9bab-d20074c3e604",
+        "name": "1. Backlog (Crear Vercel)",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.1,
+        "position": [
+          3568,
+          352
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "await new Promise(r => setTimeout(r, 5000));\nreturn $input.all();"
+        },
+        "id": "642b3347-492b-442d-baca-48d84dc06448",
+        "name": "Pausa de Análisis (Valeria)",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3792,
+          352
+        ]
+      },
+      {
+        "parameters": {
+          "method": "PUT",
+          "url": "={{ 'https://app.clubplatform.org/vps/scout-grants/' + $json.id + '/status' }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "bodyParameters": {
+            "parameters": [
+              {
+                "name": "status",
+                "value": "in_progress"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "74a7acdb-62b8-4f75-8151-26649fbe8ca5",
+        "name": "2. In Progress (Valeria Aprueba)",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.1,
+        "position": [
+          4000,
+          352
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "await new Promise(r => setTimeout(r, 7000));\nreturn $input.all();"
+        },
+        "id": "688f5d22-196a-455c-97d7-e526164e59fc",
+        "name": "Pausa de Redacción (Mateo)",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          4208,
+          352
+        ]
+      },
+      {
+        "parameters": {
+          "prompt": "=Eres Mateo, un experto copywriter para Rotary. Escribe un mensaje de WhatsApp sobre esta subvención en ESPAÑOL. DEBES SEGUIR ESTRICTAMENTE ESTA ESTRUCTURA DE PLANTILLA:\n\n¿[Pregunta de Gancho o Título Atractivo]? [Emoji]\n\n[Breve introducción]. Esta subvención ayuda a *[palabra clave 1 en negrita]* [acción], *[palabra clave 2 en negrita]* [acción] y *[palabra clave 3 en negrita]* [acción]. [Emoji] '[Una cita corta inspiradora sobre el impacto de la subvención]'.\n\nDescubre más: [URL]\n\nInformación de la subvención:\nTítulo:\n{{ $json.title }}\nDescripción:\n{{ $json.description }}\n\nREGLAS CRÍTICAS DE SALIDA:\n- NUNCA generes texto conversacional de introducción ni de despedida (ej. no digas '¡Claro!', 'Aquí tienes el mensaje', etc). Escupe ÚNICAMENTE el mensaje final.\n- NO uses dobles asteriscos. Usa siempre un asterisco simple para las negritas de WhatsApp (*texto*).\n- AL ESTRUCTURAR EL MENSAJE usa exactamente este formato:\n(Gancho)\n(Espacio)\n(Contexto con 3 acciones en negrita, seguido de una Cita/Quote)\n(Espacio)\nDescubre más: [URL]\n- IMPORTANTE SOBRE LA CITA: NUNCA inventes nombres de socios rotarios falsos (ej. prohibido usar 'dice Javier Mendoza, Socio de Rotary'). La cita debe ser atribuida a la alianza o de forma general (ej. sin firmante o firmada como 'Nuestra alianza...')."
+        },
+        "id": "28d5647f-edba-4a5b-b84c-467d036b5042",
+        "name": "Agente Mateo Lógico",
+        "type": "@n8n/n8n-nodes-langchain.chainLlm",
+        "typeVersion": 1,
+        "position": [
+          4432,
+          352
+        ]
+      },
+      {
+        "parameters": {
+          "modelName": "models/gemini-2.5-pro",
+          "options": {}
+        },
+        "id": "b46d6e62-f184-4358-8052-515f8cdd655d",
+        "name": "Gemini Model",
+        "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+        "typeVersion": 1,
+        "position": [
+          4432,
+          576
+        ],
+        "credentials": {
+          "googlePalmApi": {
+            "id": "Pw9IkpMzIduUXRAy",
+            "name": "Google Gemini(PaLM) Api account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "options": {}
+        },
+        "id": "71fede14-726f-40c4-affe-abfd469d1d75",
+        "name": "Ensamblar Metadatos",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.2,
+        "position": [
+          4768,
+          352
+        ]
+      },
+      {
+        "parameters": {
+          "method": "PUT",
+          "url": "={{ 'https://app.clubplatform.org/vps/scout-grants/' + $('1. Backlog (Crear Vercel)').all()[0].json.id + '/status' }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "bodyParameters": {
+            "parameters": [
+              {
+                "name": "status",
+                "value": "done"
+              },
+              {
+                "name": "metadata",
+                "value": "={{ JSON.stringify({ final_whatsapp_message: $json.text, link: $('1. Backlog (Crear Vercel)').all()[0].json.sourceUrl }) }}"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "e293cc16-12f6-4d67-96a7-ac6c93faeb94",
+        "name": "3. DONE (Concluir)",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.1,
+        "position": [
+          4992,
+          352
+        ]
+      }
+    ],
+    "connections": {
+      "Manual Trigger": {
+        "main": [
+          [
+            {
+              "node": "Perplexity API",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Cron (Cada 4 Horas)": {
+        "main": [
+          [
+            {
+              "node": "Perplexity API",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Webhook (Run Now UI)": {
+        "main": [
+          [
+            {
+              "node": "Perplexity API",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Perplexity API": {
+        "main": [
+          [
+            {
+              "node": "Parsear Array JSON",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parsear Array JSON": {
+        "main": [
+          [
+            {
+              "node": "1. Backlog (Crear Vercel)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "1. Backlog (Crear Vercel)": {
+        "main": [
+          [
+            {
+              "node": "Pausa de Análisis (Valeria)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Pausa de Análisis (Valeria)": {
+        "main": [
+          [
+            {
+              "node": "2. In Progress (Valeria Aprueba)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "2. In Progress (Valeria Aprueba)": {
+        "main": [
+          [
+            {
+              "node": "Pausa de Redacción (Mateo)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Pausa de Redacción (Mateo)": {
+        "main": [
+          [
+            {
+              "node": "Agente Mateo Lógico",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Agente Mateo Lógico": {
+        "main": [
+          [
+            {
+              "node": "Ensamblar Metadatos",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Gemini Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "Agente Mateo Lógico",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Ensamblar Metadatos": {
+        "main": [
+          [
+            {
+              "node": "3. DONE (Concluir)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "binaryMode": "separate",
+      "availableInMCP": false,
+      "timeSavedMode": "fixed",
+      "callerPolicy": "workflowsFromSameOwner",
+      "timeSavedPerExecution": 1,
+      "timezone": "America/Bogota",
+      "saveDataErrorExecution": "all",
+      "saveDataSuccessExecution": "all",
+      "saveExecutionProgress": true,
+      "saveManualExecutions": true
+    },
+    "staticData": {
+      "node:Cron (Cada 4 Horas)": {
+        "recurrenceRules": [
+          12
+        ]
+      }
+    },
+    "meta": {
+      "templateCredsSetupCompleted": true
+    },
+    "pinData": {
+      "Manual Trigger": [
+        {
+          "json": {
+            "name": "First item",
+            "code": 1
+          }
+        },
+        {
+          "json": {
+            "name": "Second item",
+            "code": 2
+          }
+        }
+      ]
+    },
+    "versionId": "e18ff168-5421-4cd1-ad9f-77b648b84014",
+    "activeVersionId": "e18ff168-5421-4cd1-ad9f-77b648b84014",
+    "versionCounter": 79,
+    "triggerCount": 2,
+    "shared": [
+      {
+        "updatedAt": "2026-04-08T13:47:07.815Z",
+        "createdAt": "2026-04-08T13:47:07.815Z",
+        "role": "workflow:owner",
+        "workflowId": "TfUMwRp7i585S6L7",
+        "projectId": "HKVjz8WWWQtddLVW",
+        "project": {
+          "updatedAt": "2025-09-13T06:01:27.547Z",
+          "createdAt": "2025-09-13T05:58:31.494Z",
+          "id": "HKVjz8WWWQtddLVW",
+          "name": "Valkomen LLC <dyazo@valkomen.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "creatorId": "92809ddc-65b1-4668-8519-10c3bbd38dfa"
+        }
+      }
+    ],
+    "tags": [],
+    "parentFolder": null,
+    "activeVersion": {
+      "updatedAt": "2026-04-08T21:53:21.000Z",
+      "createdAt": "2026-04-08T21:52:52.323Z",
+      "versionId": "e18ff168-5421-4cd1-ad9f-77b648b84014",
+      "workflowId": "TfUMwRp7i585S6L7",
+      "nodes": [
+        {
+          "parameters": {},
+          "id": "4e8073d3-fd82-4409-b90d-ff653fc22de3",
+          "name": "Manual Trigger",
+          "type": "n8n-nodes-base.manualTrigger",
+          "typeVersion": 1,
+          "position": [
+            2880,
+            352
+          ]
+        },
+        {
+          "parameters": {
+            "rule": {
+              "interval": [
+                {
+                  "field": "minutes"
+                }
+              ]
+            }
+          },
+          "id": "e7b13a9a-19e1-4718-b855-2c06713b5407",
+          "name": "Cron (Cada 4 Horas)",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "typeVersion": 1.1,
+          "position": [
+            2880,
+            560
+          ]
+        },
+        {
+          "parameters": {
+            "httpMethod": "POST",
+            "path": "trigger-orchestrator",
+            "responseMode": "lastNode",
+            "options": {}
+          },
+          "id": "445f66a9-a2e0-4929-91d2-f4500cc891ec",
+          "name": "Webhook (Run Now UI)",
+          "type": "n8n-nodes-base.webhook",
+          "typeVersion": 1.1,
+          "position": [
+            2880,
+            752
+          ],
+          "webhookId": "2ff81199-7a69-4c94-b5d4-0dfb5ee86c68"
+        },
+        {
+          "parameters": {
+            "method": "POST",
+            "url": "https://api.perplexity.ai/chat/completions",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "Authorization",
+                  "value": "Bearer REDACTED"
+                },
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                }
+              ]
+            },
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                {
+                  "name": "model",
+                  "value": "sonar"
+                },
+                {
+                  "name": "messages",
+                  "value": "={{ [ { \"role\": \"system\", \"content\": \"Returns ONLY a valid JSON array containing exactly 1 active social impact grant. Strict Rules: 1. The grant MUST be from the current year (2026). 2. The grant MUST be currently OPEN, available, and NOT expired. Do not include past or closed calls. 3. Format: [{ 'title':'..', 'description':'..', 'sourceUrl':'..' }]\" }, { \"role\": \"user\", \"content\": \"Find exactly one currently open grant for NGOs in Latin America for the year 2026.\" } ] }}"
+                }
+              ]
+            },
+            "options": {}
+          },
+          "id": "26721d42-86c7-43c3-bb60-9bddda59cae4",
+          "name": "Perplexity API",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.1,
+          "position": [
+            3152,
+            352
+          ]
+        },
+        {
+          "parameters": {
+            "jsCode": "let rawString = $input.all()[0].json.choices[0].message.content;\nrawString = rawString.replace(/^```json/, '').replace(/```$/, '').trim();\ntry {\n  let arr = JSON.parse(rawString);\n  return [ { json: arr[0] } ];\n} catch (e) {\n  return [{ json: { error: 'Failed to parse', content: rawString } }];\n}"
+          },
+          "id": "c31a66db-f842-43cf-ae02-a8d965c0cd1c",
+          "name": "Parsear Array JSON",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [
+            3344,
+            352
+          ]
+        },
+        {
+          "parameters": {
+            "method": "POST",
+            "url": "https://app.clubplatform.org/vps/scout-grants",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                }
+              ]
+            },
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                {
+                  "name": "title",
+                  "value": "={{ $json.title }}"
+                },
+                {
+                  "name": "description",
+                  "value": "={{ $json.description }}"
+                },
+                {
+                  "name": "sourceUrl",
+                  "value": "={{ $json.sourceUrl }}"
+                },
+                {
+                  "name": "matchCategory",
+                  "value": "Scouting"
+                },
+                {
+                  "name": "priority",
+                  "value": "High"
+                }
+              ]
+            },
+            "options": {}
+          },
+          "id": "fa84e9a6-8a78-4339-9bab-d20074c3e604",
+          "name": "1. Backlog (Crear Vercel)",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.1,
+          "position": [
+            3568,
+            352
+          ]
+        },
+        {
+          "parameters": {
+            "jsCode": "await new Promise(r => setTimeout(r, 5000));\nreturn $input.all();"
+          },
+          "id": "642b3347-492b-442d-baca-48d84dc06448",
+          "name": "Pausa de Análisis (Valeria)",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [
+            3792,
+            352
+          ]
+        },
+        {
+          "parameters": {
+            "method": "PUT",
+            "url": "={{ 'https://app.clubplatform.org/vps/scout-grants/' + $json.id + '/status' }}",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                }
+              ]
+            },
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                {
+                  "name": "status",
+                  "value": "in_progress"
+                }
+              ]
+            },
+            "options": {}
+          },
+          "id": "74a7acdb-62b8-4f75-8151-26649fbe8ca5",
+          "name": "2. In Progress (Valeria Aprueba)",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.1,
+          "position": [
+            4000,
+            352
+          ]
+        },
+        {
+          "parameters": {
+            "jsCode": "await new Promise(r => setTimeout(r, 7000));\nreturn $input.all();"
+          },
+          "id": "688f5d22-196a-455c-97d7-e526164e59fc",
+          "name": "Pausa de Redacción (Mateo)",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [
+            4208,
+            352
+          ]
+        },
+        {
+          "parameters": {
+            "prompt": "=Eres Mateo, un experto copywriter para Rotary. Escribe un mensaje de WhatsApp sobre esta subvención en ESPAÑOL. DEBES SEGUIR ESTRICTAMENTE ESTA ESTRUCTURA DE PLANTILLA:\n\n¿[Pregunta de Gancho o Título Atractivo]? [Emoji]\n\n[Breve introducción]. Esta subvención ayuda a *[palabra clave 1 en negrita]* [acción], *[palabra clave 2 en negrita]* [acción] y *[palabra clave 3 en negrita]* [acción]. [Emoji] '[Una cita corta inspiradora sobre el impacto de la subvención]'.\n\nDescubre más: [URL]\n\nInformación de la subvención:\nTítulo:\n{{ $json.title }}\nDescripción:\n{{ $json.description }}\n\nREGLAS CRÍTICAS DE SALIDA:\n- NUNCA generes texto conversacional de introducción ni de despedida (ej. no digas '¡Claro!', 'Aquí tienes el mensaje', etc). Escupe ÚNICAMENTE el mensaje final.\n- NO uses dobles asteriscos. Usa siempre un asterisco simple para las negritas de WhatsApp (*texto*).\n- AL ESTRUCTURAR EL MENSAJE usa exactamente este formato:\n(Gancho)\n(Espacio)\n(Contexto con 3 acciones en negrita, seguido de una Cita/Quote)\n(Espacio)\nDescubre más: [URL]\n- IMPORTANTE SOBRE LA CITA: NUNCA inventes nombres de socios rotarios falsos (ej. prohibido usar 'dice Javier Mendoza, Socio de Rotary'). La cita debe ser atribuida a la alianza o de forma general (ej. sin firmante o firmada como 'Nuestra alianza...')."
+          },
+          "id": "28d5647f-edba-4a5b-b84c-467d036b5042",
+          "name": "Agente Mateo Lógico",
+          "type": "@n8n/n8n-nodes-langchain.chainLlm",
+          "typeVersion": 1,
+          "position": [
+            4432,
+            352
+          ]
+        },
+        {
+          "parameters": {
+            "modelName": "models/gemini-2.5-pro",
+            "options": {}
+          },
+          "id": "b46d6e62-f184-4358-8052-515f8cdd655d",
+          "name": "Gemini Model",
+          "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+          "typeVersion": 1,
+          "position": [
+            4432,
+            576
+          ],
+          "credentials": {
+            "googlePalmApi": {
+              "id": "Pw9IkpMzIduUXRAy",
+              "name": "Google Gemini(PaLM) Api account"
+            }
+          }
+        },
+        {
+          "parameters": {
+            "options": {}
+          },
+          "id": "71fede14-726f-40c4-affe-abfd469d1d75",
+          "name": "Ensamblar Metadatos",
+          "type": "n8n-nodes-base.set",
+          "typeVersion": 3.2,
+          "position": [
+            4768,
+            352
+          ]
+        },
+        {
+          "parameters": {
+            "method": "PUT",
+            "url": "={{ 'https://app.clubplatform.org/vps/scout-grants/' + $('1. Backlog (Crear Vercel)').all()[0].json.id + '/status' }}",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                }
+              ]
+            },
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                {
+                  "name": "status",
+                  "value": "done"
+                },
+                {
+                  "name": "metadata",
+                  "value": "={{ JSON.stringify({ final_whatsapp_message: $json.text, link: $('1. Backlog (Crear Vercel)').all()[0].json.sourceUrl }) }}"
+                }
+              ]
+            },
+            "options": {}
+          },
+          "id": "e293cc16-12f6-4d67-96a7-ac6c93faeb94",
+          "name": "3. DONE (Concluir)",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.1,
+          "position": [
+            4992,
+            352
+          ]
+        }
+      ],
+      "connections": {
+        "Manual Trigger": {
+          "main": [
+            [
+              {
+                "node": "Perplexity API",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Cron (Cada 4 Horas)": {
+          "main": [
+            [
+              {
+                "node": "Perplexity API",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Webhook (Run Now UI)": {
+          "main": [
+            [
+              {
+                "node": "Perplexity API",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Perplexity API": {
+          "main": [
+            [
+              {
+                "node": "Parsear Array JSON",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Parsear Array JSON": {
+          "main": [
+            [
+              {
+                "node": "1. Backlog (Crear Vercel)",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "1. Backlog (Crear Vercel)": {
+          "main": [
+            [
+              {
+                "node": "Pausa de Análisis (Valeria)",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Pausa de Análisis (Valeria)": {
+          "main": [
+            [
+              {
+                "node": "2. In Progress (Valeria Aprueba)",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "2. In Progress (Valeria Aprueba)": {
+          "main": [
+            [
+              {
+                "node": "Pausa de Redacción (Mateo)",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Pausa de Redacción (Mateo)": {
+          "main": [
+            [
+              {
+                "node": "Agente Mateo Lógico",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Agente Mateo Lógico": {
+          "main": [
+            [
+              {
+                "node": "Ensamblar Metadatos",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Gemini Model": {
+          "ai_languageModel": [
+            [
+              {
+                "node": "Agente Mateo Lógico",
+                "type": "ai_languageModel",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Ensamblar Metadatos": {
+          "main": [
+            [
+              {
+                "node": "3. DONE (Concluir)",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      },
+      "authors": "Valkomen LLC",
+      "name": "Update Mateo prompt logic and formatting rules.",
+      "description": "",
+      "autosaved": true,
+      "workflowPublishHistory": [
+        {
+          "createdAt": "2026-04-08T21:53:21.391Z",
+          "id": 143,
+          "workflowId": "TfUMwRp7i585S6L7",
+          "versionId": "e18ff168-5421-4cd1-ad9f-77b648b84014",
+          "event": "activated",
+          "userId": "92809ddc-65b1-4668-8519-10c3bbd38dfa"
+        }
+      ]
+    },
+    "scopes": [
+      "workflow:create",
+      "workflow:delete",
+      "workflow:execute",
+      "workflow:execute-chat",
+      "workflow:list",
+      "workflow:move",
+      "workflow:publish",
+      "workflow:read",
+      "workflow:share",
+      "workflow:unpublish",
+      "workflow:update"
+    ],
+    "checksum": "75fbd6f53e8b11d428104e9504c7cc08b4efc5e90847ea612a7433b974abf15b"
+  }
+}

@@ -1,0 +1,134 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-copy-generator",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "1d8eb699-1a55-4e78-9e1e-2e2e9c20a8fe",
+      "name": "Webhook (Receptor de Misión)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        180,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "model": "gemini-1.5-pro",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=Eres un Campaign Concierge de alto nivel para Rotary International. Tu misión es tomar la información de la subvención y crear un copy altamente persuasivo para enviarlo a Gobernadores.\n\nReglas:\n1. Debe tener un GANCHO (💥) al inicio.\n2. Luego el CONTEXTO (📊) resumido y profesional.\n3. Por último el LLAMADO A LA ACCIÓN (🚀) claro.\n\nTítulo de la Subvención: {{$json.body.title}}\nDescripción: {{$json.body.description}}\n"
+            }
+          ]
+        }
+      },
+      "id": "9218d6a8-bf64-42b4-82ea-b82ea5e6698a",
+      "name": "Gemini (Redactor)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        460,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "final_whatsapp_message",
+              "value": "={{ $json.message.content }}\n\nEnlace oficial: {{ $('Webhook (Receptor de Misión)').item.json.body.url || 'No disponible' }}\nImagen de Referencia: {{ $('Webhook (Receptor de Misión)').item.json.body.imageUrl || 'No disponible' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "99f34fcc-4ef7-4148-9366-eb1f4dfd5353",
+      "name": "Ensamblar Mensaje y Link",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [
+        780,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rotary4271.org/api/whatsapp-qr/send-message",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer TU_TOKEN_DE_ADMIN"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "targetChatId",
+              "value": "={{ $('Webhook (Receptor de Misión)').item.json.body.chatId }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.final_whatsapp_message }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "067160cb-da36-4191-bcb0-bd0feea42301",
+      "name": "Enviar a WhatsApp Web",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1060,
+        240
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook (Receptor de Misión)": {
+      "main": [
+        [
+          {
+            "node": "Gemini (Redactor)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini (Redactor)": {
+      "main": [
+        [
+          {
+            "node": "Ensamblar Mensaje y Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ensamblar Mensaje y Link": {
+      "main": [
+        [
+          {
+            "node": "Enviar a WhatsApp Web",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

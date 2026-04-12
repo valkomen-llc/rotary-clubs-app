@@ -85,15 +85,8 @@ app.post('/api/debug-url', (req, res) => {
     res.json({ url: req.url, originalUrl: req.originalUrl, path: req.path });
 });
 
-app.use('/api/scout-grants', async (req, res, next) => {
-    try {
-        const { default: router } = await import('../server/routes/grants.js');
-        req.url = req.url.replace(/^\/api\/scout-grants/, '') || '/';
-        return router(req, res, next);
-    } catch (error) {
-        console.error('Error loading route /api/scout-grants:', error);
-        return res.status(500).json({ error: 'Internal Server Error' });
-    }
-});
+let _scoutGrants;
+const getScoutGrants = async () => _scoutGrants || (({ default: _scoutGrants } = await import('../server/routes/grants.js')), _scoutGrants);
+app.use('/api/scout-grants', async (req, res, next) => (await getScoutGrants())(req, res, next));
 
 export default app;

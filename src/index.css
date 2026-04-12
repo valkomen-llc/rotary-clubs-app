@@ -160,6 +160,8 @@
     color: #374151; /* gray-700 */
     line-height: 1.6;
     font-size: 14px;
+    word-break: break-word;
+    overflow-wrap: break-word;
   }
   .prose p {
     margin-top: 1em;

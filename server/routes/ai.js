@@ -5,11 +5,14 @@ import { getToolsForAgent, getToolsSummary, executeTool, getWorkflowSuggestions 
 // Generate social media suggestions based on month and knowledge base
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
+import { proxyPerplexity } from '../controllers/aiController.js';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 15 } });
 
 const router = express.Router();
+
+router.post('/perplexity-proxy', proxyPerplexity);
 
 // ── auto-create ai_model_configs table ───────────────────────────────────────
 let modelsTableReady = false;

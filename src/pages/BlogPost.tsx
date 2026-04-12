@@ -1,11 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useClub } from '../contexts/ClubContext';
-import { Calendar, User, Clock, ArrowLeft, Share2, Facebook, Twitter, Linkedin, Tag, ChevronRight } from 'lucide-react';
+import { 
+  Calendar, User, Clock, ArrowLeft, Share2, Facebook, Twitter, 
+  Linkedin, Tag, ChevronRight, Star, Send, CheckCircle, MessageSquare
+} from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 
+interface Comment {
+  id: string;
+  firstName: string;
+  lastName: string;
+  text: string;
+  rating: number;
+  createdAt: string;
+}
+
 const articulosData: Record<number, {
+// ... existing articulosData (truncated for brevity in this replace call, but I will keep it)
   id: number;
   titulo: string;
   contenido: string;
@@ -666,7 +679,69 @@ const BlogPost = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
 
+  // Comentarios
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [loadingComments, setLoadingComments] = useState(true);
+  const [submittingComment, setSubmittingComment] = useState(false);
+  const [commentSuccess, setCommentSuccess] = useState(false);
+  const [commentForm, setCommentForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    country: 'Colombia',
+    rating: 5,
+    text: ''
+  });
+
   const articuloIdNumeric = parseInt(id || '');
+
+  const fetchComments = async (postId: string) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/clubs/${club.id}/posts/${postId}/comments`);
+      if (response.ok) {
+        const data = await response.json();
+        setComments(data);
+      }
+    } catch (error) {
+      console.error('Error fetching comments:', error);
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  const handleCommentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!articulo?.id) return;
+    
+    setSubmittingComment(true);
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/clubs/${club.id}/posts/${articulo.id}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(commentForm)
+      });
+      if (response.ok) {
+        const newComment = await response.json();
+        setComments(prev => [newComment, ...prev]);
+        setCommentSuccess(true);
+        setCommentForm({
+          firstName: '',
+          lastName: '',
+          email: '',
+          phone: '',
+          country: 'Colombia',
+          rating: 5,
+          text: ''
+        });
+        setTimeout(() => setCommentSuccess(false), 5000);
+      }
+    } catch (error) {
+      console.error('Error submitting comment:', error);
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -694,6 +769,7 @@ const BlogPost = () => {
 
         if (currentPost) {
           setArticulo(currentPost);
+          fetchComments(currentPost.id);
           
           // 2. Fetch other posts for 'Related' section
           const relatedResponse = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/clubs/${club.id}/posts?limit=6`);
@@ -874,6 +950,190 @@ const BlogPost = () => {
           </div>
         </div>
       </article>
+
+      {/* Comentarios y Calificaciones */}
+      <section className="py-12 md:py-16 bg-white border-t border-gray-100">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-3 mb-10">
+            <MessageSquare className="w-6 h-6 text-rotary-blue" />
+            <h2 className="text-2xl font-bold text-gray-900">Comentarios y Calificaciones</h2>
+            <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-sm font-medium">
+              {comments.length}
+            </span>
+          </div>
+
+          {/* Lista de Comentarios */}
+          <div className="space-y-8 mb-16">
+            {loadingComments ? (
+               <div className="text-center py-10">
+                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-rotary-blue mx-auto"></div>
+               </div>
+            ) : comments.length > 0 ? (
+              comments.map((comment) => (
+                <div key={comment.id} className="bg-gray-50 rounded-2xl p-6 border border-gray-100 transition-all hover:shadow-md">
+                   <div className="flex justify-between items-start mb-4">
+                     <div className="flex items-center gap-3">
+                       <div className="w-10 h-10 bg-rotary-blue/10 rounded-full flex items-center justify-center text-rotary-blue font-bold text-sm">
+                         {comment.firstName?.[0] || 'U'}{comment.lastName?.[0] || ''}
+                       </div>
+                       <div>
+                         <h4 className="font-semibold text-gray-900">{comment.firstName} {comment.lastName}</h4>
+                         <p className="text-xs text-gray-500">
+                           {new Date(comment.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
+                         </p>
+                       </div>
+                     </div>
+                     <div className="flex gap-0.5">
+                       {[...Array(5)].map((_, i) => (
+                         <Star 
+                           key={i} 
+                           className={`w-4 h-4 ${i < comment.rating ? 'fill-rotary-gold text-rotary-gold' : 'text-gray-300'}`} 
+                         />
+                       ))}
+                     </div>
+                   </div>
+                   <p className="text-gray-700 leading-relaxed text-sm whitespace-pre-line">
+                     {comment.text}
+                   </p>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-10 bg-gray-50 rounded-2xl border border-dashed border-gray-200 text-gray-500">
+                Aún no hay comentarios. ¡Sé el primero en compartir tu opinión!
+              </div>
+            )}
+          </div>
+
+          {/* Formulario */}
+          <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-xl">
+             <h3 className="text-xl font-bold text-gray-900 mb-6 font-rotary leading-tight">Deja un comentario</h3>
+             
+             {commentSuccess ? (
+               <div className="bg-green-50 text-green-700 p-6 rounded-2xl flex items-center gap-4 mb-6 animate-in fade-in slide-in-from-top-4">
+                 <CheckCircle className="w-8 h-8 flex-shrink-0" />
+                 <div>
+                   <p className="font-bold">¡Comentario enviado con éxito!</p>
+                   <p className="text-sm">Gracias por tu opinión y calificación.</p>
+                 </div>
+               </div>
+             ) : null}
+
+             <form onSubmit={handleCommentSubmit} className="space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                   <div className="space-y-2">
+                     <label className="text-sm font-medium text-gray-700">Nombre</label>
+                     <input 
+                       required 
+                       type="text" 
+                       value={commentForm.firstName}
+                       onChange={(e) => setCommentForm({...commentForm, firstName: e.target.value})}
+                       className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
+                       placeholder="Escribre tu nombre"
+                     />
+                   </div>
+                   <div className="space-y-2">
+                     <label className="text-sm font-medium text-gray-700">Apellidos</label>
+                     <input 
+                       required 
+                       type="text" 
+                       value={commentForm.lastName}
+                       onChange={(e) => setCommentForm({...commentForm, lastName: e.target.value})}
+                       className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
+                       placeholder="Escribe tus apellidos"
+                     />
+                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                   <div className="space-y-2">
+                     <label className="text-sm font-medium text-gray-700">Correo electrónico</label>
+                     <input 
+                       required 
+                       type="email" 
+                       value={commentForm.email}
+                       onChange={(e) => setCommentForm({...commentForm, email: e.target.value})}
+                       className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
+                       placeholder="ejemplo@correo.com"
+                     />
+                   </div>
+                   <div className="space-y-2">
+                     <label className="text-sm font-medium text-gray-700">Número de celular</label>
+                     <input 
+                       type="tel" 
+                       value={commentForm.phone}
+                       onChange={(e) => setCommentForm({...commentForm, phone: e.target.value})}
+                       className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
+                       placeholder="+57 300 000 0000"
+                     />
+                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                   <div className="space-y-2">
+                     <label className="text-sm font-medium text-gray-700">País</label>
+                     <select 
+                       value={commentForm.country}
+                       onChange={(e) => setCommentForm({...commentForm, country: e.target.value})}
+                       className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
+                     >
+                       <option value="Colombia">Colombia</option>
+                       <option value="Argentina">Argentina</option>
+                       <option value="México">México</option>
+                       <option value="España">España</option>
+                       <option value="Estados Unidos">Estados Unidos</option>
+                       <option value="Chile">Chile</option>
+                       <option value="Perú">Perú</option>
+                       <option value="Ecuador">Ecuador</option>
+                       <option value="Otro">Otro</option>
+                     </select>
+                   </div>
+                   <div className="space-y-2">
+                     <label className="text-sm font-medium text-gray-700">Calificación</label>
+                     <div className="flex gap-2 py-3">
+                        {[1,2,3,4,5].map((star) => (
+                           <button
+                             type="button"
+                             key={star}
+                             onClick={() => setCommentForm({...commentForm, rating: star})}
+                             className="transition-transform hover:scale-110"
+                           >
+                             <Star className={`w-6 h-6 ${commentForm.rating >= star ? 'fill-rotary-gold text-rotary-gold' : 'text-gray-300'}`} />
+                           </button>
+                        ))}
+                     </div>
+                   </div>
+                </div>
+
+                <div className="space-y-2">
+                   <label className="text-sm font-medium text-gray-700">Tu comentario</label>
+                   <textarea 
+                     required 
+                     rows={4}
+                     value={commentForm.text}
+                     onChange={(e) => setCommentForm({...commentForm, text: e.target.value})}
+                     className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all resize-none"
+                     placeholder="Comparte tu experiencia..."
+                   />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={submittingComment}
+                  className="w-full bg-rotary-blue text-white font-bold py-4 rounded-xl hover:bg-rotary-blue/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-rotary-blue/20"
+                >
+                  {submittingComment ? (
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  ) : (
+                    <>
+                      <Send className="w-5 h-5" />
+                      Enviar Comentario
+                    </>
+                  )}
+                </button>
+             </form>
+          </div>
+        </div>
+      </section>
 
       {/* Artículos Relacionados - Solo mostrar si hay al menos 4 otros artículos (total 5) */}
       {otrosArticulos.length >= 4 && (

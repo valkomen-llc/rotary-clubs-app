@@ -1,0 +1,71 @@
+Retrieving project…
+Deploying valkomen/rotary-clubs-website
+Uploading [--------------------] (0.0B/62B)
+Uploading [====================] (62.0B/62B)
+Inspect: https://vercel.com/valkomen/rotary-clubs-website/6qjYbGSRNfnLSZVh1gjfDQAi1Ajx [6s]
+Production: https://rotary-clubs-website-eo850z5gl-valkomen.vercel.app [6s]
+https://rotary-clubs-website-eo850z5gl-valkomen.vercel.appBuilding...
+Building...
+Building: Running build in Washington, D.C., USA (East) – iad1 (Turbo Build Machine)
+Building: Build machine configuration: 30 cores, 60 GB
+Building: Retrieving list of deployment files...
+Building: Downloading 5608 deployment files...
+Building: Restored build cache from previous deployment (BX1v18saUGhjsq7fBNW39MYUNRA2)
+Building: Running "vercel build"
+Building: Vercel CLI 50.38.2
+Building: Installing dependencies...
+Building: > my-app@0.0.0 postinstall
+Building: > npx prisma generate --schema=./server/prisma/schema.prisma
+Building: Environment variables loaded from .env
+Building: Prisma schema loaded from server/prisma/schema.prisma
+Building: ✔ Generated Prisma Client (v5.22.0) to ./node_modules/@prisma/client in 516ms
+Building: Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+Building: Tip: Interested in query caching in just a few lines of code? Try Accelerate today! https://pris.ly/tip-3-accelerate
+Building: up to date in 3s
+Building: 107 packages are looking for funding
+Building: run `npm fund` for details
+Building: Running "npm run build"
+Building: > my-app@0.0.0 build
+Building: > npx prisma generate --schema=./server/prisma/schema.prisma && vite build
+Building: Environment variables loaded from .env
+Building: Prisma schema loaded from server/prisma/schema.prisma
+Building: ✔ Generated Prisma Client (v5.22.0) to ./node_modules/@prisma/client in 382ms
+Building: Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+Building: Help us improve the Prisma ORM for everyone. Share your feedback in a short 2-min survey: https://pris.ly/orm/survey/release-5-22
+Building: ┌─────────────────────────────────────────────────────────┐
+Building: │  Update available 5.22.0 -> 7.7.0                       │
+Building: │                                                         │
+Building: │  This is a major update - please follow the guide at    │
+Building: │  https://pris.ly/d/major-version-upgrade                │
+Building: │                                                         │
+Building: │  Run the following to update                            │
+Building: │    npm i --save-dev prisma@latest                       │
+Building: │    npm i @prisma/client@latest                          │
+Building: └─────────────────────────────────────────────────────────┘
+Building: vite v5.4.21 building for production...
+Building: transforming...
+Building: ✓ 49 modules transformed.
+Building: x Build failed in 1.56s
+Building: error during build:
+Building: [vite:esbuild] Transform failed with 1 error:
+Building: /vercel/path0/src/pages/admin/MissionControlVIP.tsx:861:0: ERROR: Unexpected "}"
+Building: file: /vercel/path0/src/pages/admin/MissionControlVIP.tsx:861:0
+Building: Unexpected "}"
+Building: 859|          </div>
+Building: 860|      );
+Building: 861|  };
+Building: |  ^
+Building: 862|
+Building: 863|  export default HQDashboard;
+Building: at failureErrorWithLog (/vercel/path0/node_modules/esbuild/lib/main.js:1472:15)
+Building: at /vercel/path0/node_modules/esbuild/lib/main.js:755:50
+Building: at responseCallbacks.<computed> (/vercel/path0/node_modules/esbuild/lib/main.js:622:9)
+Building: at handleIncomingPacket (/vercel/path0/node_modules/esbuild/lib/main.js:677:12)
+Building: at Socket.readFromStdout (/vercel/path0/node_modules/esbuild/lib/main.js:600:7)
+Building: at Socket.emit (node:events:524:28)
+Building: at addChunk (node:internal/streams/readable:561:12)
+Building: at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+Building: at Readable.push (node:internal/streams/readable:392:5)
+Building: at Pipe.onStreamRead (node:internal/stream_base_commons:191:23)
+Building: Error: Command "npm run build" exited with 1
+Error: Command "npm run build" exited with 1
