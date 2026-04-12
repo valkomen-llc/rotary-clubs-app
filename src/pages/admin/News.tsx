@@ -37,6 +37,7 @@ const NewsManagement: React.FC = () => {
     const [uploading, setUploading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<'content' | 'gallery' | 'seo'>('content');
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
     const [formData, setFormData] = useState({
         title: '',
