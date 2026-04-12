@@ -136,7 +136,7 @@ const Eventos = () => {
                 <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
                     <div className="text-center max-w-3xl mx-auto">
                         <h1 className="text-3xl md:text-5xl text-white mb-6">
-                            Nuestro Calendario de Eventos
+                            Calendario de Eventos
                         </h1>
                         <p className="text-white/80 text-lg md:text-xl">
                             Descubre de qué manera nos mantenemos activos sirviendo e integrando a la comunidad.
