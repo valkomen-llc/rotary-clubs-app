@@ -122,7 +122,7 @@ const Descargas = () => {
           backgroundSize: '71px 85px'
         }}
       >
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-20">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
           <div className="text-center max-w-3xl mx-auto">
             <h1 className="text-3xl md:text-5xl text-white mb-6">
               {getC('header', 'title', "Centro de Descargas")}
