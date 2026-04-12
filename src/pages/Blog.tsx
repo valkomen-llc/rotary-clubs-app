@@ -107,7 +107,7 @@ const Blog = () => {
 
       {/* Hero Section */}
       <section
-        className="py-16 md:py-20"
+        className="relative overflow-hidden"
         style={{
           backgroundColor: '#0c3c7c',
           backgroundImage: "url('/geo-darkblue.png')",
@@ -116,13 +116,15 @@ const Blog = () => {
           backgroundSize: '71px 85px'
         }}
       >
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-6">
-            {getC('header', 'title', "Noticias y Blog")}
-          </h1>
-          <p className="text-white/90 text-lg max-w-2xl mx-auto">
-            {getC('header', 'description', "Actualizaciones del Rotary Club. Mantente informado sobre nuestros proyectos.")}
-          </p>
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
+          <div className="text-center max-w-3xl mx-auto">
+            <h1 className="text-3xl md:text-5xl text-white mb-6">
+              {getC('header', 'title', "Noticias y Blog")}
+            </h1>
+            <p className="text-white/80 text-lg md:text-xl">
+              {getC('header', 'description', "Actualizaciones del Rotary Club. Mantente informado sobre nuestros proyectos.")}
+            </p>
+          </div>
         </div>
       </section>
 
