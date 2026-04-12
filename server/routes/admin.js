@@ -4,7 +4,7 @@ import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
 import { getSections, updateSection, createSection, batchUpsertSections } from '../controllers/cmsController.js';
 import { getAllClubs, getClubById, createClub, updateClub, deleteClub, batchUpsertMembers } from '../controllers/clubController.js';
 import {
-    getClubPosts, createPost, updatePost, deletePost,
+    getClubPosts, createPost, updatePost, deletePost, bulkDeletePosts,
     getClubProjects, getTrashedProjects, createProject, updateProject, deleteProject,
     bulkDeleteProjects, restoreProject, permanentDeleteProject,
     getTestimonials, createTestimonial, updateTestimonial, deleteTestimonial, permanentDeleteTestimonial,
@@ -153,6 +153,7 @@ router.get('/posts', roleMiddleware(adminRoles), getClubPosts);
 router.post('/posts', roleMiddleware(adminRoles), createPost);
 router.put('/posts/:id', roleMiddleware(adminRoles), updatePost);
 router.delete('/posts/:id', roleMiddleware(adminRoles), deletePost);
+router.post('/posts/bulk-delete', roleMiddleware(adminRoles), bulkDeletePosts);
 
 router.get('/projects', roleMiddleware(adminRoles), getClubProjects);
 router.post('/projects', roleMiddleware(adminRoles), createProject);

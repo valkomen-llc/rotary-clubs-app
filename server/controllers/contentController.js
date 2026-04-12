@@ -131,6 +131,26 @@ export const deletePost = async (req, res) => {
     }
 };
 
+// Bulk delete posts
+export const bulkDeletePosts = async (req, res) => {
+    const { ids } = req.body;
+    try {
+        if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids[] required' });
+        
+        await prisma.post.deleteMany({
+            where: {
+                id: { in: ids },
+                ...(req.user.role !== 'administrator' ? { clubId: req.user.clubId } : {})
+            }
+        });
+        
+        res.json({ message: `${ids.length} posts deleted` });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error bulk deleting posts' });
+    }
+};
+
 export const getClubProjects = async (req, res) => {
     try {
         const clubId = req.user.role === 'administrator'
@@ -426,7 +446,7 @@ export const permanentDeleteTestimonial = async (req, res) => {
 };
 
 export default {
-    getPublicPosts, getPublicProjects, getPublicProjectById, getClubPosts, createPost, updatePost, deletePost,
+    getPublicPosts, getPublicProjects, getPublicProjectById, getClubPosts, createPost, updatePost, deletePost, bulkDeletePosts,
     getClubProjects, getTrashedProjects, createProject, updateProject,
     deleteProject, bulkDeleteProjects, restoreProject, permanentDeleteProject,
     getTestimonials, getPublicTestimonials, createTestimonial, updateTestimonial,

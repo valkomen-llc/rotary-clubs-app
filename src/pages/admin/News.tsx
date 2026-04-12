@@ -61,6 +61,7 @@ const NewsManagement: React.FC = () => {
     }, [club?.id]);
 
     const fetchPosts = async () => {
+        setSelectedIds(new Set()); // Reset selection on refresh
         const staticMapped: Post[] = [...articulosDestacados, ...articulosEstaticos].map(art => ({
             id: `static-${art.id}`,
             title: art.titulo,
@@ -221,6 +222,53 @@ const NewsManagement: React.FC = () => {
         }
     };
 
+    const handleSelectAll = () => {
+        const selectable = filteredPosts.filter(p => !p.isStatic);
+        if (selectedIds.size === selectable.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(selectable.map(p => p.id)));
+        }
+    };
+
+    const handleSelectOne = (id: string) => {
+        const newSelected = new Set(selectedIds);
+        if (newSelected.has(id)) {
+            newSelected.delete(id);
+        } else {
+            newSelected.add(id);
+        }
+        setSelectedIds(newSelected);
+    };
+
+    const handleBulkDelete = async () => {
+        const count = selectedIds.size;
+        if (count === 0) return;
+        if (!window.confirm(`¿Eliminar de forma masiva ${count} noticias seleccionadas?`)) return;
+
+        try {
+            setIsSubmitting(true);
+            const token = localStorage.getItem('rotary_token');
+            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/posts/bulk-delete`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ ids: Array.from(selectedIds) })
+            });
+
+            if (response.ok) {
+                toast.success(`${count} noticias eliminadas correctamente`);
+                fetchPosts();
+            }
+        } catch (error) {
+            toast.error('Error en el borrado masivo');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     const handleAddTag = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && tagInput.trim()) {
             e.preventDefault();
@@ -264,7 +312,7 @@ const NewsManagement: React.FC = () => {
                 </button>
             </div>
 
-            <div className="mb-6 flex gap-4">
+            <div className="mb-6 flex items-center gap-4">
                 <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
@@ -275,12 +323,32 @@ const NewsManagement: React.FC = () => {
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
                 </div>
+                {selectedIds.size > 0 && (
+                    <div className="flex items-center gap-3 bg-red-50 border border-red-100 px-4 py-2 rounded-xl animate-in fade-in slide-in-from-top-2 duration-200">
+                        <span className="text-xs font-bold text-red-700">{selectedIds.size} seleccionadas</span>
+                        <div className="w-px h-4 bg-red-200 mx-1" />
+                        <button
+                            onClick={handleBulkDelete}
+                            className="flex items-center gap-1.5 text-xs font-bold text-red-600 hover:text-red-700 transition-colors"
+                        >
+                            <Trash2 className="w-4 h-4" /> Borrar todo
+                        </button>
+                    </div>
+                )}
             </div>
 
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                 <table className="w-full text-left">
                     <thead className="bg-gray-50/50 border-b border-gray-100">
                         <tr>
+                            <th className="px-6 py-4 w-10">
+                                <input
+                                    type="checkbox"
+                                    className="rounded border-gray-300 text-rotary-blue focus:ring-rotary-blue cursor-pointer"
+                                    checked={selectedIds.size > 0 && selectedIds.size === filteredPosts.filter(p => !p.isStatic).length}
+                                    onChange={handleSelectAll}
+                                />
+                            </th>
                             <th className="px-6 py-4 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Noticia</th>
                             <th className="px-6 py-4 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Fecha</th>
                             <th className="px-6 py-4 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Estado</th>
@@ -289,7 +357,17 @@ const NewsManagement: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                         {filteredPosts.map((post) => (
-                            <tr key={post.id} className="hover:bg-gray-50/50 transition-colors">
+                            <tr key={post.id} className={`hover:bg-gray-50/50 transition-colors ${selectedIds.has(post.id) ? 'bg-rotary-blue/5' : ''}`}>
+                                <td className="px-6 py-4">
+                                    {!post.isStatic && (
+                                        <input
+                                            type="checkbox"
+                                            className="rounded border-gray-300 text-rotary-blue focus:ring-rotary-blue cursor-pointer"
+                                            checked={selectedIds.has(post.id)}
+                                            onChange={() => handleSelectOne(post.id)}
+                                        />
+                                    )}
+                                </td>
                                 <td className="px-6 py-4">
                                     <div className="flex items-center gap-4">
                                         <div className="w-14 h-14 rounded-xl bg-gray-100 overflow-hidden flex-shrink-0 border border-gray-200">
