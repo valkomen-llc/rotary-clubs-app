@@ -122,23 +122,26 @@ const Eventos = () => {
         <div className="min-h-screen bg-white">
             <Navbar />
 
-            {/* Hero Section — Minimal & Impactful */}
-            <section className="relative h-[40vh] min-h-[400px] flex items-center bg-gray-900 overflow-hidden">
-                <div className="absolute inset-0 opacity-40">
-                    <img
-                        src="https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=1600"
-                        alt="Eventos Background"
-                        className="w-full h-full object-cover grayscale"
-                        loading="lazy"
-                    />
-                </div>
-                <div className="relative z-10 max-w-7xl mx-auto px-6 w-full">
-                    <h1 className="text-5xl md:text-7xl font-black text-white mb-4 animate-slide-up">
-                        Nuestro <span className="text-rotary-gold">Calendario</span>
-                    </h1>
-                    <p className="text-xl text-white/70 max-w-xl font-light">
-                        Descubre de qué manera nos mantenemos activos sirviendo e integrando a la comunidad.
-                    </p>
+            {/* Hero Section */}
+            <section
+                className="relative overflow-hidden"
+                style={{
+                    backgroundColor: '#0c3c7c',
+                    backgroundImage: "url('/geo-darkblue.png')",
+                    backgroundPosition: '50% 0',
+                    backgroundRepeat: 'repeat',
+                    backgroundSize: '71px 85px'
+                }}
+            >
+                <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
+                    <div className="text-center max-w-3xl mx-auto">
+                        <h1 className="text-3xl md:text-5xl text-white mb-6">
+                            Nuestro Calendario de Eventos
+                        </h1>
+                        <p className="text-white/80 text-lg md:text-xl">
+                            Descubre de qué manera nos mantenemos activos sirviendo e integrando a la comunidad.
+                        </p>
+                    </div>
                 </div>
             </section>
 
