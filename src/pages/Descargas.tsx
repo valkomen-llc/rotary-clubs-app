@@ -242,25 +242,6 @@ const Descargas = () => {
         </div>
       </section>
 
-      {/* Footer Info */}
-      <section className="py-12 md:py-16">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <div className="inline-flex items-center justify-center p-3 bg-rotary-blue/5 rounded-full mb-6 text-rotary-blue">
-            <ArrowRight className="w-6 h-6" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">
-             ¿No encuentras lo que buscas?
-          </h2>
-          <p className="text-gray-600 mb-8 max-w-lg mx-auto">
-            Si necesitas un formato específico o material de prensa, por favor contáctanos para asistirte a la brevedad.
-          </p>
-          <a
-            href="/contacto"
-            className="inline-flex items-center justify-center gap-2 bg-rotary-blue text-white px-8 py-3 rounded-full font-semibold hover:bg-rotary-dark-blue transition-colors shadow-lg"
-          >
-            Soporte Técnico
-          </a>
-        </div>
       </section>
 
       <Footer />
