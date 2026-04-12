@@ -1,4 +1,6 @@
+import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useClub } from '../contexts/ClubContext';
 import { Calendar, User, Clock, ArrowLeft, Share2, Facebook, Twitter, Linkedin, Tag, ChevronRight } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
@@ -657,14 +659,69 @@ const articulosRelacionados = [
 const BlogPost = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const articuloId = parseInt(id || '1');
-  const articulo = articulosData[articuloId];
+  const { club } = useClub();
+  
+  const [articulo, setArticulo] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(false);
 
-  if (!articulo) {
+  const articuloIdNumeric = parseInt(id || '');
+
+  useEffect(() => {
+    const fetchArticulo = async () => {
+      // 1. Check static data first if it's a numeric ID
+      if (!isNaN(articuloIdNumeric) && articulosData[articuloIdNumeric]) {
+        setArticulo(articulosData[articuloIdNumeric]);
+        setIsLoading(false);
+        return;
+      }
+
+      // 2. Otherwise, fetch from API
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/clubs/${club.id}/posts/${id}`);
+        if (response.ok) {
+          const data = await response.json();
+          setArticulo({
+            ...data,
+            titulo: data.title,
+            contenido: data.content,
+            imagen: data.image,
+            fecha: new Date(data.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }),
+            autor: 'Rotary Club',
+            tiempoLectura: '5 min'
+          });
+        } else {
+          setError(true);
+        }
+      } catch (err) {
+        setError(true);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchArticulo();
+    window.scrollTo(0, 0);
+  }, [id, club.id]);
+
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-white">
         <Navbar />
-        <div className="py-20 text-center">
+        <div className="py-40 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-rotary-blue mx-auto mb-4"></div>
+          <p className="text-gray-500">Cargando artículo...</p>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (error || !articulo) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Navbar />
+        <div className="py-20 text-center px-4">
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Artículo no encontrado</h1>
           <p className="text-gray-600 mb-6">El artículo que buscas no existe o ha sido eliminado.</p>
           <Link to="/blog" className="text-rotary-blue hover:underline">
@@ -776,7 +833,7 @@ const BlogPost = () => {
           <h2 className="text-2xl font-bold text-gray-900 mb-8">Artículos relacionados</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {articulosRelacionados
-              .filter(a => a.id !== articuloId)
+              .filter(a => a.id !== articuloIdNumeric)
               .slice(0, 3)
               .map((relacionado) => (
                 <Link

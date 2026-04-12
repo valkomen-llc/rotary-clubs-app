@@ -19,6 +19,24 @@ export const getPublicPosts = async (req, res) => {
     }
 };
 
+// Public: Get a single post by ID
+export const getPublicPostById = async (req, res) => {
+    const { clubId, postId } = req.params;
+    try {
+        const result = await db.query(
+            `SELECT * FROM "Post" WHERE id = $1 AND ("clubId" = $2 OR "clubId" IS NULL) AND published = true`,
+            [postId, clubId]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Noticia no encontrada' });
+        }
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Error fetching post:', error);
+        res.status(500).json({ error: 'Error fetching post' });
+    }
+};
+
 // Public: Get projects for a specific club
 export const getPublicProjects = async (req, res) => {
     const { clubId } = req.params;
@@ -450,7 +468,7 @@ export const permanentDeleteTestimonial = async (req, res) => {
 };
 
 export default {
-    getPublicPosts, getPublicProjects, getPublicProjectById, getClubPosts, createPost, updatePost, deletePost, bulkDeletePosts,
+    getPublicPosts, getPublicPostById, getPublicProjects, getPublicProjectById, getClubPosts, createPost, updatePost, deletePost, bulkDeletePosts,
     getClubProjects, getTrashedProjects, createProject, updateProject,
     deleteProject, bulkDeleteProjects, restoreProject, permanentDeleteProject,
     getTestimonials, getPublicTestimonials, createTestimonial, updateTestimonial,
