@@ -67,10 +67,14 @@ export const getClubPosts = async (req, res) => {
     try {
         const clubId = req.user.role === 'administrator' ? req.query.clubId : req.user.clubId;
         if (!clubId) return res.status(400).json({ error: 'clubId is required' });
-        const result = await db.query(
-            `SELECT * FROM "Post" WHERE "clubId" = $1 OR "clubId" IS NULL ORDER BY "createdAt" DESC`,
-            [clubId]
-        );
+        
+        // Solo incluimos noticias globales (NULL) si eres super admin, 
+        // para evitar que los clubes vean noticias que no pueden borrar.
+        const query = req.user.role === 'administrator' 
+            ? `SELECT * FROM "Post" WHERE "clubId" = $1 OR "clubId" IS NULL ORDER BY "createdAt" DESC`
+            : `SELECT * FROM "Post" WHERE "clubId" = $1 ORDER BY "createdAt" DESC`;
+
+        const result = await db.query(query, [clubId]);
         res.json(result.rows);
     } catch (error) {
         res.status(500).json({ error: 'Error fetching club posts' });

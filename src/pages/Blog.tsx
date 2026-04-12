@@ -59,10 +59,15 @@ const Blog = () => {
         if (response.ok) {
           const data = await response.json();
           // The API returns 'content' containing HTML, frontend uses 'summary' for preview
-          const dbMapped = data.map((p: any) => ({
-            ...p,
-            summary: p.summary || p.content?.replace(/<[^>]*>?/gm, '').substring(0, 150) + '...'
-          }));
+          const dbMapped = data.map((p: any) => {
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = p.content || '';
+            const textContent = tempDiv.textContent || tempDiv.innerText || '';
+            return {
+              ...p,
+              summary: p.summary || textContent.substring(0, 150) + '...'
+            };
+          });
           setPosts([...dbMapped, ...staticMapped]);
         } else {
           setPosts(staticMapped);
