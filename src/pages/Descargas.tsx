@@ -9,7 +9,8 @@ import {
   FileCheck,
   Monitor,
   FileCode,
-  ArrowRight
+  ArrowRight,
+  Eye
 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
@@ -212,13 +213,21 @@ const Descargas = () => {
                       <span>{doc.tamano}</span>
                     </div>
 
-                    <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                      <span className="text-xs text-gray-400">
+                    <div className="flex items-center gap-4 pt-4 border-t border-gray-100">
+                      <span className="text-xs text-gray-400 mr-auto">
                         Actualizado: {doc.fechaSubida}
                       </span>
 
                       <button
-                        className="flex items-center gap-2 text-rotary-blue font-medium text-sm hover:underline"
+                        className="flex items-center gap-1.5 text-gray-500 font-medium text-sm hover:text-rotary-blue transition-colors"
+                        onClick={() => window.open(doc.url, '_blank')}
+                      >
+                        <Eye className="w-4 h-4" />
+                        Ver
+                      </button>
+
+                      <button
+                        className="flex items-center gap-1.5 text-rotary-blue font-bold text-sm hover:underline"
                         onClick={() => handleDownload(doc)}
                       >
                         <Download className="w-4 h-4" />
