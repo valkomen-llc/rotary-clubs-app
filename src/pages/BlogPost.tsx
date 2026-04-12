@@ -796,11 +796,11 @@ const BlogPost = () => {
 
       {/* Contenido del Artículo */}
       <article className="py-12 md:py-16">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Botón volver */}
           <button
             onClick={() => navigate('/blog')}
-            className="flex items-center gap-2 text-gray-600 hover:text-rotary-blue transition-colors mb-8"
+            className="flex items-center gap-2 text-gray-600 hover:text-rotary-blue transition-colors mb-10"
           >
             <ArrowLeft className="w-4 h-4" />
             Volver al blog
@@ -815,7 +815,7 @@ const BlogPost = () => {
           {/* Video si existe */}
           {articulo.videoUrl && (
             <div className="mt-12 mb-16">
-              <h3 className="text-xl font-bold text-gray-900 mb-6">Video relacionado</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">Video relacionado</h3>
               <div className="aspect-video rounded-2xl overflow-hidden shadow-2xl border border-gray-100">
                 <iframe
                   src={`https://www.youtube.com/embed/${articulo.videoUrl.split('v=')[1]?.split('&')[0] || articulo.videoUrl.split('/').pop()}`}
@@ -830,14 +830,14 @@ const BlogPost = () => {
           {/* Galería si existe */}
           {articulo.images && articulo.images.length > 0 && (
             <div className="mt-12 mb-16">
-              <h3 className="text-xl font-bold text-gray-900 mb-6">Galería de imágenes</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">Galería de imágenes</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 {articulo.images.map((img: string, index: number) => (
-                  <div key={index} className="aspect-[4/3] rounded-xl overflow-hidden shadow-lg border border-gray-100">
+                  <div key={index} className="aspect-[4/3] rounded-xl overflow-hidden shadow-lg border border-gray-100 group">
                     <img
                       src={img}
                       alt={`Imagen ${index + 1}`}
-                      className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                     />
                   </div>
                 ))}
@@ -847,7 +847,7 @@ const BlogPost = () => {
 
           {/* Compartir */}
           <div className="mt-12 pt-8 border-t border-gray-200">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
               <div>
                 <span className="flex items-center gap-2 text-gray-600 font-medium mb-3">
                   <Share2 className="w-4 h-4" />
