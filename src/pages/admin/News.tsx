@@ -224,11 +224,10 @@ const NewsManagement: React.FC = () => {
     };
 
     const handleSelectAll = () => {
-        const selectable = filteredPosts.filter(p => !p.isStatic);
-        if (selectedIds.size === selectable.length) {
+        if (selectedIds.size === filteredPosts.length) {
             setSelectedIds(new Set());
         } else {
-            setSelectedIds(new Set(selectable.map(p => p.id)));
+            setSelectedIds(new Set(filteredPosts.map(p => p.id)));
         }
     };
 
@@ -243,9 +242,24 @@ const NewsManagement: React.FC = () => {
     };
 
     const handleBulkDelete = async () => {
-        const count = selectedIds.size;
-        if (count === 0) return;
-        if (!window.confirm(`¿Eliminar de forma masiva ${count} noticias seleccionadas?`)) return;
+        const total = selectedIds.size;
+        const dbIds = Array.from(selectedIds).filter(id => !id.startsWith('static-'));
+        const staticCount = total - dbIds.length;
+
+        if (total === 0) return;
+        
+        let confirmMsg = `¿Eliminar de forma masiva ${total} noticias seleccionadas?`;
+        if (staticCount > 0) {
+            confirmMsg += `\nNota: ${staticCount} noticias estáticas no se pueden borrar de la base de datos y serán ignoradas.`;
+        }
+        
+        if (!window.confirm(confirmMsg)) return;
+
+        if (dbIds.length === 0) {
+            toast.info('No hay noticias de la base de datos para borrar.');
+            setSelectedIds(new Set());
+            return;
+        }
 
         try {
             setIsSubmitting(true);
@@ -256,11 +270,11 @@ const NewsManagement: React.FC = () => {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ ids: Array.from(selectedIds) })
+                body: JSON.stringify({ ids: dbIds })
             });
 
             if (response.ok) {
-                toast.success(`${count} noticias eliminadas correctamente`);
+                toast.success(`${dbIds.length} noticias eliminadas correctamente`);
                 fetchPosts();
             }
         } catch (error) {
@@ -360,14 +374,12 @@ const NewsManagement: React.FC = () => {
                         {filteredPosts.map((post) => (
                             <tr key={post.id} className={`hover:bg-gray-50/50 transition-colors ${selectedIds.has(post.id) ? 'bg-rotary-blue/5' : ''}`}>
                                 <td className="px-6 py-4">
-                                    {!post.isStatic && (
-                                        <input
-                                            type="checkbox"
-                                            className="rounded border-gray-300 text-rotary-blue focus:ring-rotary-blue cursor-pointer"
-                                            checked={selectedIds.has(post.id)}
-                                            onChange={() => handleSelectOne(post.id)}
-                                        />
-                                    )}
+                                    <input
+                                        type="checkbox"
+                                        className="rounded border-gray-300 text-rotary-blue focus:ring-rotary-blue cursor-pointer"
+                                        checked={selectedIds.has(post.id)}
+                                        onChange={() => handleSelectOne(post.id)}
+                                    />
                                 </td>
                                 <td className="px-6 py-4">
                                     <div className="flex items-center gap-4">
