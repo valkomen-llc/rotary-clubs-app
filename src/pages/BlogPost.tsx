@@ -793,9 +793,24 @@ const BlogPost = () => {
 
           {/* Contenido */}
           <div
-            className="prose prose-lg max-w-none"
+            className="prose prose-lg max-w-none mb-12"
             dangerouslySetInnerHTML={{ __html: articulo.contenido }}
           />
+
+          {/* Video si existe */}
+          {articulo.videoUrl && (
+            <div className="mt-12 mb-16">
+              <h3 className="text-xl font-bold text-gray-900 mb-6">Video relacionado</h3>
+              <div className="aspect-video rounded-2xl overflow-hidden shadow-2xl border border-gray-100">
+                <iframe
+                  src={`https://www.youtube.com/embed/${articulo.videoUrl.split('v=')[1]?.split('&')[0] || articulo.videoUrl.split('/').pop()}`}
+                  className="w-full h-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                ></iframe>
+              </div>
+            </div>
+          )}
 
           {/* Compartir */}
           <div className="mt-12 pt-8 border-t border-gray-200">
