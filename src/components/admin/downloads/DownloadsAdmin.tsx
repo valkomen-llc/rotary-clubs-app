@@ -237,26 +237,57 @@ const UploadForm = ({ onClose, onSave, token, clubId }: any) => {
 
         setUploading(true);
         try {
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('category', category);
-            formData.append('clubId', clubId);
+            // 1. Obtener URL firmada para subida directa
+            const urlRes = await fetch(`${API}/documents/presigned-url?fileName=${encodeURIComponent(file.name)}&fileType=${encodeURIComponent(file.type)}&clubId=${clubId}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            
+            if (!urlRes.ok) {
+                const errData = await urlRes.json();
+                throw new Error(errData.error || 'No se pudo generar la URL de subida');
+            }
+            
+            const { uploadUrl, fileUrl, key } = await urlRes.json();
 
-            const res = await fetch(`${API}/documents/upload`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
-                body: formData
+            // 2. Subir directamente a S3 (Bypass Vercel limit)
+            const s3Res = await fetch(uploadUrl, {
+                method: 'PUT',
+                body: file,
+                headers: {
+                    'Content-Type': file.type
+                }
             });
 
-            if (res.ok) {
+            if (!s3Res.ok) throw new Error('Error al subir el archivo a S3');
+
+            // 3. Guardar registro en la base de datos
+            const saveRes = await fetch(`${API}/documents/save`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}` 
+                },
+                body: JSON.stringify({
+                    clubId,
+                    fileName: file.name,
+                    fileUrl,
+                    s3Key: key,
+                    fileType: file.type,
+                    fileSize: file.size,
+                    category
+                })
+            });
+
+            if (saveRes.ok) {
                 toast.success('¡Archivo subido con éxito!');
                 onSave();
             } else {
-                const data = await res.json();
-                toast.error(data.error || 'Error al subir el archivo');
+                const saveErr = await saveRes.json();
+                toast.error(saveErr.error || 'Error al registrar el archivo');
             }
-        } catch (error) {
-            toast.error('Error de red al intentar subir');
+        } catch (error: any) {
+            console.error('Upload error:', error);
+            toast.error(error.message || 'Error de red al intentar subir');
         } finally {
             setUploading(false);
         }

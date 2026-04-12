@@ -82,7 +82,7 @@ export const uploadDocuments = multer({
         if (mimetype || extname) return cb(null, true);
         cb(new Error("Error: Formato no admitido. Acepta PDF, Word, TXT, CSV, Excel."));
     },
-    limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+    limits: { fileSize: 100 * 1024 * 1024 } // 100MB
 });
 
 // WA Media for CRM (Images, Videos, Documents, Audios)
@@ -110,7 +110,7 @@ export const uploadWAMedia = multer({
         }
         cb(new Error("Error: Formato multimedia no admitido."));
     },
-    limits: { fileSize: 16 * 1024 * 1024 } // 16MB Meta limit
+    limits: { fileSize: 100 * 1024 * 1024 } // 100MB
 });
 
 export default { s3, upload, uploadMemory, uploadDocuments, uploadWAMedia };

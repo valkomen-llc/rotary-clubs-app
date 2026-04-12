@@ -7,7 +7,63 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 const router = express.Router();
 
-// ── POST /api/documents/upload — Upload document to S3 + save to ClubDocument ──
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
+
+// ── GET /api/documents/presigned-url — Generate direct upload URL ──
+router.get('/presigned-url', authMiddleware, async (req, res) => {
+    try {
+        const { fileName, fileType, clubId } = req.query;
+        if (!fileName || !fileType || !clubId) {
+            return res.status(400).json({ error: 'Faltan parámetros' });
+        }
+
+        const key = `clubs/${clubId}/documents/${Date.now()}-${fileName.replace(/\s+/g, '_')}`;
+        const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
+
+        const command = new PutObjectCommand({
+            Bucket: bucket,
+            Key: key,
+            ContentType: fileType
+        });
+
+        const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
+        const encodedKey = key.split('/').map(segment => encodeURIComponent(segment)).join('/');
+        const fileUrl = `https://${bucket}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${encodedKey}`;
+
+        res.json({ uploadUrl, fileUrl, key });
+    } catch (error) {
+        console.error('[Documents] Presigned URL error:', error);
+        res.status(500).json({ error: 'Error al generar URL de subida' });
+    }
+});
+
+// ── POST /api/documents/save — Save document record after direct S3 upload ──
+router.post('/save', authMiddleware, async (req, res) => {
+    try {
+        const { clubId, fileName, fileUrl, s3Key, fileType, fileSize, category } = req.body;
+        
+        const doc = await prisma.clubDocument.create({
+            data: {
+                clubId,
+                fileName,
+                fileUrl,
+                s3Key,
+                fileType,
+                fileSize,
+                category: category || 'general',
+                uploadedById: req.user.id,
+            }
+        });
+
+        res.json(doc);
+    } catch (error) {
+        console.error('[Documents] Save error:', error);
+        res.status(500).json({ error: 'Error al guardar el registro del documento' });
+    }
+});
+
+// ── POST /api/documents/upload — Legacy Upload document via server (4.5MB limit on Vercel) ──
 router.post('/upload', authMiddleware, (req, res) => {
     uploadDocuments.single('file')(req, res, async (err) => {
         if (err) return res.status(400).json({ error: err.message });
