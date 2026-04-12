@@ -242,8 +242,6 @@ const Descargas = () => {
         </div>
       </section>
 
-      </section>
-
       <Footer />
     </div>
   );
