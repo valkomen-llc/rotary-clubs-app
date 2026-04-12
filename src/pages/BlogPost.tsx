@@ -808,7 +808,7 @@ const BlogPost = () => {
 
           {/* Contenido */}
           <div
-            className="prose max-w-none mb-12"
+            className="prose max-w-none mb-12 w-full break-words"
             dangerouslySetInnerHTML={{ __html: articulo.contenido }}
           />
 
@@ -823,6 +823,24 @@ const BlogPost = () => {
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
                 ></iframe>
+              </div>
+            </div>
+          )}
+
+          {/* Galería si existe */}
+          {articulo.images && articulo.images.length > 0 && (
+            <div className="mt-12 mb-16">
+              <h3 className="text-xl font-bold text-gray-900 mb-6">Galería de imágenes</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {articulo.images.map((img: string, index: number) => (
+                  <div key={index} className="aspect-[4/3] rounded-xl overflow-hidden shadow-lg border border-gray-100">
+                    <img
+                      src={img}
+                      alt={`Imagen ${index + 1}`}
+                      className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
+                    />
+                  </div>
+                ))}
               </div>
             </div>
           )}
