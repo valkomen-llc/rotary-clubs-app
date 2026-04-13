@@ -50,7 +50,7 @@ const Footer = () => {
               {(club.subdomain?.toLowerCase().includes('latir') || club.name.toLowerCase().includes('latir')) ? (
                 <>
                   <li><a href="#/quienes-somos" className="hover:text-rotary-gold transition-colors">Acerca de Rotary</a></li>
-                  <li><a href="#/nuestra-historia" className="hover:text-rotary-gold transition-colors">Historia de Rotary</a></li>
+                  <li><a href="#/nuestra-historia" className="hover:text-rotary-gold transition-colors">Historia de Rotary LATIR</a></li>
                   <li><a href="#/la-fundacion-rotaria" className="hover:text-rotary-gold transition-colors">La Fundación Rotaria</a></li>
                   <li><a href="#/intercambio-jovenes" className="hover:text-rotary-gold transition-colors">Programa de Intercambios de Rotary</a></li>
                   <li><a href="https://my.rotary.org" target="_blank" rel="noopener noreferrer" className="hover:text-rotary-gold transition-colors">My Rotary</a></li>
