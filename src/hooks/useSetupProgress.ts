@@ -31,6 +31,8 @@ export const SETUP_ALLOWED_PATHS = [
     '/admin/proyectos',
     '/admin/calendario',
     '/admin/miembros',
+    '/admin/leads',
+    '/admin/crm',
     '/admin/usuarios',
     '/admin/media',
     '/admin/faqs',
