@@ -23,6 +23,17 @@ interface UpdateItem {
 
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.3.4",
+        date: "13 Abril 2026",
+        title: "Editable UI Labels & Unified AI Core",
+        type: "update",
+        changes: [
+            { type: "added", text: "Mejora del dashboard: Campos de texto editables para los títulos de imágenes en Áreas de Interés y Causas." },
+            { type: "added", text: "Unificación de la IA Antigravity dentro de ClubAssist para soporte integral." },
+            { type: "fixed", text: "Resolución de error de pantalla blanca tras despliegue de componentes avanzados." }
+        ]
+    },
+    {
         version: "v4.3.0",
         date: "13 Abril 2026",
         title: "Antigravity AI Core & System Support",
