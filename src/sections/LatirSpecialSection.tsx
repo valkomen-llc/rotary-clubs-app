@@ -1,5 +1,6 @@
 import React from 'react';
-import { Plane, Calendar, Search, Users, Globe } from 'lucide-react';
+import { Plane, Calendar, Search, Users, Globe, ArrowRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 const LatirSpecialSection = () => {
   return (
@@ -7,7 +8,7 @@ const LatirSpecialSection = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Modalidades de Intercambio */}
         <div className="text-center mb-16">
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">Modalidades de Intercambio</h2>
+          <h2 className="text-3xl font-bold text-gray-900 mb-4 tracking-tight">Modalidades de Intercambio</h2>
           <div className="w-24 h-1 bg-rotary-blue mx-auto mb-12"></div>
         </div>
 
@@ -71,7 +72,7 @@ const LatirSpecialSection = () => {
                 La Asociación Latinoamericana LATIR comprende 18 distritos de todos los países de habla hispana en América del Sur.
               </p>
 
-              <div className="grid grid-cols-2 gap-y-4">
+              <div className="grid grid-cols-2 gap-y-6">
                 {[
                   { name: 'ARGENTINA', flag: '🇦🇷' },
                   { name: 'BOLIVIA', flag: '🇧🇴' },
@@ -83,9 +84,9 @@ const LatirSpecialSection = () => {
                   { name: 'URUGUAY', flag: '🇺🇾' },
                   { name: 'VENEZUELA', flag: '🇻🇪' },
                 ].map((country) => (
-                  <div key={country.name} className="flex items-center gap-3">
-                    <span className="grayscale brightness-125">{country.flag}</span>
-                    <span className="text-[11px] font-bold tracking-wider text-gray-400">{country.name}</span>
+                  <div key={country.name} className="flex items-center gap-4">
+                    <span className="text-2xl drop-shadow-sm">{country.flag}</span>
+                    <span className="text-[11px] font-bold tracking-widest text-gray-400 group-hover:text-white transition-colors uppercase">{country.name}</span>
                   </div>
                 ))}
               </div>
@@ -100,18 +101,30 @@ const LatirSpecialSection = () => {
 
             <h3 className="text-2xl font-bold text-gray-900 mb-6 font-display">Conferencia LATIR</h3>
             
-            <p className="text-sm text-gray-600 leading-relaxed mb-6">
-              <span className="font-bold text-gray-900">Encuentro Anual (Abril):</span> Una experiencia única que vivencia la magia de RYE, reuniendo a Chairpersons, equipos de trabajo, gobernadores y jóvenes ROTEX.
-            </p>
+            <div className="space-y-4 mb-10">
+              <p className="text-sm text-gray-600 leading-relaxed">
+                <span className="font-bold text-gray-900">Encuentro Anual (Abril):</span> Una experiencia única que vivencia la magia de RYE, reuniendo a Chairpersons, equipos de trabajo, gobernadores y jóvenes ROTEX.
+              </p>
 
-            <p className="text-sm text-gray-600 leading-relaxed mb-10">
-              Incluye la <span className="font-bold text-gray-900">Asamblea de la Asociación</span> y la célebre <span className="font-bold text-gray-900">Noche de los Sabores del Latir</span>, un festival de interculturalidad único.
-            </p>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                Incluye la <span className="font-bold text-gray-900">Asamblea de la Asociación</span> y la célebre <span className="font-bold text-gray-900">Noche de los Sabores del Latir</span>, un festival de interculturalidad único.
+              </p>
+            </div>
 
-            <div className="mt-auto bg-gray-50 p-6 rounded-3xl border border-gray-100">
+            <div className="bg-gray-50 p-6 rounded-3xl border border-gray-100 mb-8">
               <p className="text-sm italic text-gray-600 leading-relaxed border-l-4 border-yellow-500 pl-4">
                 "Un espacio de capacitación, compañerismo y planificación donde se generan lazos indestructibles."
               </p>
+            </div>
+
+            <div className="mt-auto">
+              <Button 
+                onClick={() => window.location.hash = '#/eventos'}
+                className="w-full sm:w-auto bg-rotary-blue hover:bg-[#0c3c7c] text-white font-bold py-6 px-8 rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-95 shadow-lg shadow-blue-900/10"
+              >
+                Ver más sobre la Conferencia LATIR
+                <ArrowRight className="w-5 h-5" />
+              </Button>
             </div>
           </div>
         </div>
