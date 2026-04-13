@@ -71,16 +71,69 @@ const DEFAULTS = {
 
 export function useSiteImages(): SiteImages & { _loading?: boolean } {
     const { club } = useClub();
-    const [images, setImages] = useState<SiteImages & { _loading?: boolean }>({ _loading: true });
+    
+    // PRE-MERGE: Initialize state with DEFAULTS + whatever we have in the club object from the first fetch
+    // This prevents the "flash" of default images while the authoritative merge fetch happens below.
+    const [images, setImages] = useState<SiteImages & { _loading?: boolean }>(() => {
+        const initial = { ...DEFAULTS, _loading: true };
+        const clubSiteImages = (club as any)?.siteImages || {};
+        
+        // Merge simple keys
+        if (clubSiteImages.hero) initial.hero = clubSiteImages.hero;
+        if (clubSiteImages.join) initial.join = clubSiteImages.join;
+        
+        // Merge array keys safely
+        const arrayKeys = ['hero', 'aboutCarousel', 'history', 'yep', 'rotexCarousel', 'causes'];
+        arrayKeys.forEach(key => {
+            if (Array.isArray(clubSiteImages[key]) && clubSiteImages[key].length > 0) {
+                // We use the club's array but pad it with defaults if needed
+                const clubArray = clubSiteImages[key];
+                const defaultArray = (DEFAULTS as any)[key] || [];
+                const merged = [...clubArray];
+                for (let i = merged.length; i < defaultArray.length; i++) {
+                    merged.push(defaultArray[i]);
+                }
+                (initial as any)[key] = merged;
+            }
+        });
+        
+        return initial as any;
+    });
+
     const clubId = (club as any)?.id;
 
     useEffect(() => {
         if (!clubId) return;
+
+        // Immediate sync from club object if available (avoids flash)
+        const clubSiteImages = (club as any)?.siteImages;
+        if (clubSiteImages) {
+            setImages(prev => {
+                const updated = { ...prev };
+                const arrayKeys = ['hero', 'aboutCarousel', 'history', 'yep', 'rotexCarousel', 'causes'];
+                
+                if (clubSiteImages.hero) updated.hero = clubSiteImages.hero;
+                if (clubSiteImages.join) updated.join = clubSiteImages.join;
+                
+                arrayKeys.forEach(key => {
+                    if (Array.isArray(clubSiteImages[key]) && clubSiteImages[key].length > 0) {
+                        const clubArray = clubSiteImages[key];
+                        const defaultArray = (DEFAULTS as any)[key] || [];
+                        const merged = [...clubArray];
+                        for (let i = merged.length; i < defaultArray.length; i++) {
+                            merged.push(defaultArray[i]);
+                        }
+                        (updated as any)[key] = merged;
+                    }
+                });
+                return updated;
+            });
+        }
+
         const API = import.meta.env.VITE_API_URL || '/api';
         fetch(`${API}/clubs/${clubId}/site-images?_t=${Date.now()}`)
             .then(r => r.ok ? r.json() : {})
             .then(data => {
-                // Ensure array keys like 'yep' are expanded to their expected count
                 const arrayKeyConfigs = [
                     { key: 'hero', count: 5 },
                     { key: 'aboutCarousel', count: 3 },
@@ -89,7 +142,7 @@ export function useSiteImages(): SiteImages & { _loading?: boolean } {
                     { key: 'rotexCarousel', count: 5 },
                     { key: 'causes', count: 7 }
                 ];
-                
+
                 arrayKeyConfigs.forEach(conf => {
                     const key = conf.key as keyof typeof DEFAULTS;
                     if (data[conf.key] && Array.isArray(data[conf.key])) {
@@ -101,8 +154,8 @@ export function useSiteImages(): SiteImages & { _loading?: boolean } {
 
                 setImages({ ...data, _loading: false });
             })
-            .catch(() => setImages({ _loading: false }));
-    }, [clubId]);
+            .catch(() => setImages(prev => ({ ...prev, _loading: false })));
+    }, [clubId, club]);
 
     return images;
 }
