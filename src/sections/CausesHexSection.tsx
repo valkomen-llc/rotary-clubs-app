@@ -427,10 +427,18 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const carouselRef = useRef<HTMLDivElement>(null);
 
-  // Override images with custom ones from siteImages.causes
+  // Override images and titles with custom ones from siteImages.causes
   const finalAreas = areas.map((area, i) => {
     const custom = siteImages.causes?.[i];
-    return custom?.url ? { ...area, image: custom.url, alt: custom.alt || area.alt } : area;
+    if (custom) {
+      return { 
+        ...area, 
+        image: custom.url || area.image, 
+        title: custom.alt || area.title, // Use the custom label as the visible title
+        alt: custom.alt || area.alt 
+      };
+    }
+    return area;
   });
 
   const areasByColumn = {

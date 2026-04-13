@@ -450,6 +450,21 @@ const ImageDistribution: React.FC = () => {
         setPickerOpen(false);
     };
 
+    // Handle updating just the label (alt text)
+    const updateAlt = (key: string, index: number, alt: string) => {
+        if (!images) return;
+        const newImages: any = { ...images };
+        const def = (DEFAULTS as any)[key];
+        if (Array.isArray(def)) {
+            newImages[key] = [...newImages[key]];
+            newImages[key][index] = { ...newImages[key][index], alt };
+        } else {
+            newImages[key] = { ...newImages[key], alt };
+        }
+        setImages(newImages as SiteImages);
+        setDirty(true);
+    };
+
     // Handle entering a custom URL
     const handleCustomUrl = (key: string, index: number, url: string) => {
         if (!images) return;
@@ -645,9 +660,21 @@ const ImageDistribution: React.FC = () => {
                                                                     )}
                                                                 </div>
 
-                                                                {/* Alt text / label */}
-                                                                <div className="p-2 bg-white">
-                                                                    <p className="text-[11px] text-gray-500 truncate font-medium">{slot.alt}</p>
+                                                                {/* Alt text / label — Now Editable! */}
+                                                                <div className="p-2.5 bg-white space-y-1.5">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Etiqueta / Título</p>
+                                                                        {slot.alt !== ((baseImages || DEFAULTS) as any)[group.key]?.[idx]?.alt && (
+                                                                            <span className="w-1 h-1 rounded-full bg-violet-500 animate-pulse" />
+                                                                        )}
+                                                                    </div>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={slot.alt}
+                                                                        onChange={(e) => updateAlt(group.key, idx, e.target.value)}
+                                                                        placeholder="Ej: Promoción de la Paz..."
+                                                                        className="w-full text-[10px] font-bold text-gray-700 bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-1.5 outline-none focus:border-violet-300 focus:bg-white focus:ring-4 focus:ring-violet-500/5 transition-all"
+                                                                    />
                                                                 </div>
                                                             </div>
                                                         );
