@@ -268,40 +268,37 @@ router.get('/:clubId/site-images', async (req, res) => {
         // Merge: start with global defaults, then overlay club-specific images
         const merged = { ...globalImages };
 
-        // For single-value keys (foundation, join, aboutHero), overlay if club has custom
+        // Overlay club images
         for (const key of Object.keys(clubImages)) {
-            if (['causes', 'hero', 'aboutCarousel', 'yep', 'history'].includes(key)) continue; // handled below
             const clubVal = clubImages[key];
-            if (clubVal && !isDefault(clubVal.url)) {
-                merged[key] = clubVal;
-            } else if (!merged[key]) {
-                merged[key] = clubVal;
-            }
-        }
+            const globalVal = globalImages[key];
 
-        // For array slots (causes, hero, aboutCarousel, yep, history) — merge per-slot:
-        // Only use club slot if it's a real custom upload (not Unsplash default)
-        const arrayKeys = ['causes', 'hero', 'aboutCarousel', 'yep', 'history'];
-        for (const key of arrayKeys) {
-            const globalArr = (globalImages[key] && Array.isArray(globalImages[key])) ? globalImages[key] : [];
-            const clubArr = (clubImages[key] && Array.isArray(clubImages[key])) ? clubImages[key] : [];
-            
-            if (globalArr.length > 0) {
-                merged[key] = globalArr.map((globalSlot, i) => {
-                    const clubSlot = clubArr[i];
-                    // Use club slot ONLY if it has a real custom URL (not Unsplash)
-                    return (clubSlot && clubSlot.url && !isDefault(clubSlot.url)) ? clubSlot : globalSlot;
-                });
-                // If club has more slots than global, append custom ones
-                if (clubArr.length > globalArr.length) {
-                    for (let i = globalArr.length; i < clubArr.length; i++) {
-                        if (clubArr[i] && !isDefault(clubArr[i].url)) {
-                            merged[key].push(clubArr[i]);
+            if (Array.isArray(clubVal)) {
+                // Handle Array merging (hero, causes, history, rotexCarousel, rotexHero, etc.)
+                const globalArr = Array.isArray(globalVal) ? globalVal : [];
+                
+                // Map over global array if it exists to preserve slot order, else take club array
+                if (globalArr.length > 0) {
+                    merged[key] = globalArr.map((globalSlot, i) => {
+                        const clubSlot = clubVal[i];
+                        return (clubSlot && clubSlot.url) ? clubSlot : globalSlot;
+                    });
+                    // Append extra slots from club if they exist
+                    if (clubVal.length > globalArr.length) {
+                        for (let i = globalArr.length; i < clubVal.length; i++) {
+                            if (clubVal[i] && clubVal[i].url) {
+                                merged[key].push(clubVal[i]);
+                            }
                         }
                     }
+                } else {
+                    merged[key] = clubVal;
                 }
-            } else if (clubArr.length > 0) {
-                merged[key] = clubArr;
+            } else if (clubVal && typeof clubVal === 'object') {
+                // Handle Single Object merging (older format if any)
+                if (clubVal.url) {
+                    merged[key] = clubVal;
+                }
             }
         }
 

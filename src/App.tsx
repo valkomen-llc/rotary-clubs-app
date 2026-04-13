@@ -185,9 +185,9 @@ function SmartHome() {
         <main>
           <HeroSection />
           <StatsSection />
-          <ServiciosSection />
+          {club?.subdomain !== 'latir' && <ServiciosSection />}
           <DistritosSection />
-          <SubvencionesSection />
+          {club?.subdomain !== 'latir' && <SubvencionesSection />}
           <JoinSection />
           <CausesHexSection />
           <NewsSection />
@@ -206,9 +206,7 @@ function SmartHome() {
           <HeroSection />
           {/* As suggested in the plan: Custom stats, maps/programs, and family CTA instead of traditional Club join section */}
           <StatsSection />
-          <ServiciosSection />
           {/* For associations we show their involved districts/capabilities instead of a local club action section */}
-          <SubvencionesSection />
           <CausesHexSection />
           <NewsSection />
         </main>

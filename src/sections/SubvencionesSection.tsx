@@ -1,4 +1,5 @@
 import { CheckCircle2, ArrowRight, DollarSign, Globe, Award } from 'lucide-react';
+import { useClub } from '../contexts/ClubContext';
 
 const grantTypes = [
     {
@@ -30,6 +31,11 @@ const steps = [
 ];
 
 const SubvencionesSection = () => {
+    const { club } = useClub();
+    const isLatir = club?.subdomain === 'latir' || club?.name?.toLowerCase().includes('latir') || window.location.search.includes('latir');
+
+    if (isLatir) return null;
+
     return (
         <section className="py-20 bg-white">
             <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
