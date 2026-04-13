@@ -206,6 +206,7 @@ function SmartHome() {
           <HeroSection />
           {/* As suggested in the plan: Custom stats, maps/programs, and family CTA instead of traditional Club join section */}
           <StatsSection />
+          <JoinSection />
           {/* For associations we show their involved districts/capabilities instead of a local club action section */}
           <CausesHexSection />
           <NewsSection />
