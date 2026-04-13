@@ -694,7 +694,8 @@ const BlogPost = () => {
     text: ''
   });
 
-  const articuloIdNumeric = parseInt(id || '');
+  const isStatic = id?.startsWith('static-');
+  const articuloIdNumeric = isStatic ? parseInt(id!.replace('static-', '')) : (id && /^\d+$/.test(id) ? parseInt(id) : NaN);
 
   const fetchComments = async (postId: string) => {
     try {
