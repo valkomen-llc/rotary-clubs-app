@@ -471,11 +471,27 @@ const ImageDistribution: React.FC = () => {
         return val?.url === groupDef?.url;
     };
 
-    const getSlots = (key: string): ImgSlot[] => {
+    const getSlots = (key: string, expectedCount?: number): ImgSlot[] => {
         if (!images) return [];
         const val = (images as any)[key];
-        if (Array.isArray(val)) return val;
-        return val ? [val] : [];
+        let slots: ImgSlot[] = [];
+        
+        if (Array.isArray(val)) {
+            slots = [...val];
+        } else if (val) {
+            slots = [val];
+        }
+
+        // Defensive padding: if we expect more slots than we have, pad with defaults
+        if (expectedCount && slots.length < expectedCount) {
+            const defs = (DEFAULTS as any)[key];
+            const defArray = Array.isArray(defs) ? defs : [defs];
+            for (let i = slots.length; i < expectedCount; i++) {
+                slots.push(defArray[i] || defArray[0]);
+            }
+        }
+        
+        return slots;
     };
 
     const filteredMedia = mediaItems.filter(m =>
@@ -517,7 +533,7 @@ const ImageDistribution: React.FC = () => {
                     const subGroups = container.groups || [{ key: container.key, subLabel: '', count: container.count, aspect: container.aspect }];
                     const totalCount = subGroups.reduce((sum: number, g: SubGroup) => sum + g.count, 0);
                     const totalCustom = subGroups.reduce((sum: number, g: SubGroup) => {
-                        const s = getSlots(g.key);
+                        const s = getSlots(g.key, g.count);
                         return sum + s.filter((_, i) => !isDefault(g.key, i)).length;
                     }, 0);
                     
@@ -550,7 +566,7 @@ const ImageDistribution: React.FC = () => {
                             {isOpen && (
                                 <div className="px-6 pb-6 border-t border-gray-100 pt-4 space-y-6">
                                     {subGroups.map(group => {
-                                        const slots = getSlots(group.key);
+                                        const slots = getSlots(group.key, group.count);
                                         return (
                                             <div key={group.key}>
                                                 {/* Sub-label only for grouped containers */}
