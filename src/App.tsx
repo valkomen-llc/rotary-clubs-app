@@ -9,6 +9,7 @@ import FoundationSection from './sections/FoundationSection';
 import CausesHexSection from './sections/CausesHexSection';
 import NewsSection from './sections/NewsSection';
 import Footer from './sections/Footer';
+import LatirSpecialSection from './sections/LatirSpecialSection';
 import ServiciosSection from './sections/ServiciosSection';
 import DistritosSection from './sections/DistritosSection';
 import SubvencionesSection from './sections/SubvencionesSection';
@@ -208,6 +209,7 @@ function SmartHome() {
           {/* As suggested in the plan: Custom stats, maps/programs, and family CTA instead of traditional Club join section */}
           <StatsSection />
           <JoinSection />
+          {(club?.subdomain?.toLowerCase().includes('latir') || club?.name?.toLowerCase().includes('latir')) && <LatirSpecialSection />}
           <SubvencionesSection />
           {/* For associations we show their involved districts/capabilities instead of a local club action section */}
           <CausesHexSection />
