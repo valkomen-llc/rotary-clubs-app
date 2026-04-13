@@ -20,6 +20,7 @@ interface Lead {
     source: string;
     status: string;
     notes: string | null;
+    metadata?: any;
     createdAt: string;
 }
 
@@ -34,6 +35,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
 
 const SOURCE_LABELS: Record<string, string> = {
     contact_form: 'Formulario Contacto',
+    district_multimedia_form: 'Galería Multimedia',
     newsletter: 'Newsletter',
     chatbot: 'ChatBot',
     manual: 'Manual',
@@ -319,6 +321,27 @@ const LeadsManagement: React.FC = () => {
                             )}
                         </div>
 
+                        {/* Metadata: Club & Role */}
+                        {selectedLead.metadata && (typeof selectedLead.metadata === 'object' || typeof selectedLead.metadata === 'string') && (() => {
+                            const meta = typeof selectedLead.metadata === 'string' ? JSON.parse(selectedLead.metadata) : selectedLead.metadata;
+                            return (
+                                <div className="grid grid-cols-2 gap-3 mb-6">
+                                    {meta.clubName && (
+                                        <div className="bg-blue-50/50 p-3 rounded-xl border border-blue-100">
+                                            <p className="text-[9px] font-black text-blue-400 uppercase tracking-wider mb-1">Club Rotario</p>
+                                            <p className="text-xs font-bold text-blue-900">{meta.clubName}</p>
+                                        </div>
+                                    )}
+                                    {meta.role && (
+                                        <div className="bg-violet-50/50 p-3 rounded-xl border border-violet-100">
+                                            <p className="text-[9px] font-black text-violet-400 uppercase tracking-wider mb-1">Cargo / Rol</p>
+                                            <p className="text-xs font-bold text-violet-900">{meta.role}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
+
                         {/* Subject */}
                         {selectedLead.subject && (
                             <div className="mb-4">
@@ -331,11 +354,42 @@ const LeadsManagement: React.FC = () => {
                         {selectedLead.message && (
                             <div className="mb-6">
                                 <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Mensaje</p>
-                                <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-700 leading-relaxed max-h-40 overflow-y-auto">
-                                    {selectedLead.message}
+                                <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-700 leading-relaxed max-h-40 overflow-y-auto border border-gray-100 italic">
+                                    "{selectedLead.message}"
                                 </div>
                             </div>
                         )}
+
+                        {/* Files / Attachments */}
+                        {selectedLead.metadata && (() => {
+                            const meta = typeof selectedLead.metadata === 'string' ? JSON.parse(selectedLead.metadata) : selectedLead.metadata;
+                            const files = meta.files || [];
+                            if (files.length === 0) return null;
+                            return (
+                                <div className="mb-6">
+                                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Archivos Adjuntos ({files.length})</p>
+                                    <div className="space-y-2">
+                                        {files.map((file: any, idx: number) => (
+                                            <a 
+                                                key={idx} 
+                                                href={file.url} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer"
+                                                className="flex items-center gap-3 p-2.5 bg-white border border-gray-100 rounded-xl hover:bg-gray-50 hover:border-blue-200 transition-all group"
+                                            >
+                                                <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 group-hover:bg-blue-50 group-hover:text-blue-500">
+                                                    {file.mimetype?.includes('video') ? <ArrowUpRight className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-[11px] font-bold text-gray-700 truncate">{file.originalName}</p>
+                                                    <p className="text-[9px] text-gray-400">{(file.size / 1024 / 1024).toFixed(2)} MB · {file.mimetype?.split('/')[1]?.toUpperCase()}</p>
+                                                </div>
+                                            </a>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })()}
 
                         {/* Status */}
                         <div className="mb-6">

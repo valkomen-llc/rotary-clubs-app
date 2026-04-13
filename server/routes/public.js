@@ -104,7 +104,7 @@ router.post('/district-media', (req, res, next) => {
             files: fileData
         };
 
-        // Guardar metadata en S3 como archivo JSON
+        // 1. Guardar metadata en S3 como archivo JSON (Respaldo)
         const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
         const date = new Date().toISOString().split('T')[0];
         const s3Key = `district-submissions/${date}/${req.submissionId}/metadata.json`;
@@ -115,6 +115,30 @@ router.post('/district-media', (req, res, next) => {
             Body: JSON.stringify(metadataPayload, null, 2),
             ContentType: 'application/json'
         }));
+
+        // 2. persistir en la base de datos como un Lead para que sea visible en el Dashboard
+        // Buscamos el ID del distrito 4271 para asociarlo, si no, lo dejamos huérfano o asociado a la plataforma
+        const districtRes = await db.query('SELECT id FROM "Club" WHERE subdomain = $1 OR domain = $1 LIMIT 1', ['4271']);
+        const clubId = districtRes.rows[0]?.id || null;
+
+        await db.query(
+            `INSERT INTO "Lead" (name, email, phone, subject, message, "clubId", source, metadata)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [
+                `${firstName} ${lastName}`,
+                email,
+                phone,
+                `Multimedia: ${clubName}`,
+                message,
+                clubId,
+                'district_multimedia_form',
+                JSON.stringify({ 
+                    ...metadataPayload.user,
+                    files: fileData,
+                    s3MetadataKey: s3Key 
+                })
+            ]
+        );
 
         res.json({ success: true, submissionId: req.submissionId, filesCount: files.length });
     } catch (error) {
