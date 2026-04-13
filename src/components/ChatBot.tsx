@@ -189,14 +189,11 @@ const ChatBot: React.FC = () => {
     };
 
     // ── Voice: Speech-to-Text ────────────────────────────────────────────
-
-
     const stopRecording = () => {
         mediaRecorderRef.current?.stop();
         setIsRecording(false);
     };
 
-    // Use direct SpeechRecognition for real-time STT
     const toggleVoiceInput = () => {
         if (isRecording) {
             stopRecording();
@@ -232,6 +229,7 @@ const ChatBot: React.FC = () => {
         );
     };
 
+    const quickItems = isClubAdmin ? ADMIN_ACTIONS : PUBLIC_QUESTIONS;
     const isAntigravity = activeAgent === 'Antigravity AI';
     
     const headerGradient = isAntigravity
@@ -277,8 +275,8 @@ const ChatBot: React.FC = () => {
                                 {isAntigravity && <Sparkles className="w-3 h-3 text-purple-400 animate-pulse" />}
                             </p>
                             <div className="flex items-center gap-1.5 mt-0.5">
-                                <span className={`w-1.5 h-1.5 ${isClubAdmin ? 'bg-emerald-400' : 'bg-emerald-400'} rounded-full animate-pulse`} />
-                                <p className={`${isClubAdmin ? 'text-gray-400' : 'text-sky-200'} text-[10px] font-medium`}>{headerSubtitle}</p>
+                                <span className={`w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse`} />
+                                <p className={`text-sky-200 text-[10px] font-medium`}>{headerSubtitle}</p>
                             </div>
                         </div>
                         <div className="flex items-center gap-1">
@@ -288,7 +286,7 @@ const ChatBot: React.FC = () => {
                                     onClick={(e) => { 
                                         e.stopPropagation(); 
                                         setActiveAgent(activeAgent === 'ClubAssist' ? 'Antigravity AI' : 'ClubAssist');
-                                        setMessages([]); // Refresh greeting
+                                        setMessages([]); // Initial greeting
                                     }}
                                     className={`p-1.5 rounded-lg transition-all border ${
                                         isAntigravity 
@@ -300,7 +298,7 @@ const ChatBot: React.FC = () => {
                                     <Layers className="w-4 h-4" />
                                 </button>
                             )}
-
+                            
                             {/* Voice toggle — admin only */}
                             {isClubAdmin && (
                                 <button
@@ -311,6 +309,7 @@ const ChatBot: React.FC = () => {
                                     {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
                                 </button>
                             )}
+
                             <button onClick={(e) => { e.stopPropagation(); setIsMinimized(!isMinimized); }} className="p-1.5 hover:bg-white/10 rounded-lg transition-all">
                                 <ChevronDown className={`w-4 h-4 text-white transition-transform ${isMinimized ? 'rotate-180' : ''}`} />
                             </button>
@@ -339,41 +338,17 @@ const ChatBot: React.FC = () => {
                                                 {renderText(msg.text)}
                                             </div>
 
-                                            {/* Action Card for tool executions */}
+                                            {/* Action Card */}
                                             {msg.toolExecuted && (
-                                                <div className={`mt-2 px-3 py-2.5 rounded-xl border ${msg.toolExecuted.success
-                                                    ? 'bg-gradient-to-r from-emerald-50 to-green-50 border-emerald-200'
-                                                    : 'bg-gradient-to-r from-red-50 to-orange-50 border-red-200'
-                                                    }`}>
+                                                <div className={`mt-2 px-3 py-2.5 rounded-xl border ${msg.toolExecuted.success ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-lg">{msg.toolExecuted.emoji}</span>
                                                         <div className="flex-1 min-w-0">
-                                                            <p className="text-[10px] font-black uppercase text-gray-500 tracking-wide">{msg.toolExecuted.label}</p>
+                                                            <p className="text-[10px] font-black uppercase text-gray-400 tracking-wide">{msg.toolExecuted.label}</p>
                                                             <p className="text-[11px] font-bold text-gray-700 mt-0.5">{msg.toolExecuted.message}</p>
                                                         </div>
-                                                        {msg.toolExecuted.success
-                                                            ? <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
-                                                            : <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
-                                                        }
+                                                        {msg.toolExecuted.success ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : <AlertCircle className="w-5 h-5 text-red-400" />}
                                                     </div>
-                                                </div>
-                                            )}
-
-                                            {/* Workflow suggestions */}
-                                            {msg.suggestions && msg.suggestions.length > 0 && (
-                                                <div className="mt-2 space-y-1">
-                                                    <p className="text-[8px] font-black text-gray-400 uppercase tracking-wider px-1">⚡ Siguiente paso</p>
-                                                    {msg.suggestions.slice(0, 2).map((sug, si) => (
-                                                        <button
-                                                            key={si}
-                                                            onClick={() => sendMessage(sug.action)}
-                                                            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-white border border-gray-100 hover:border-blue-200 hover:bg-blue-50/30 transition-all text-left"
-                                                        >
-                                                            <span className="text-[10px]">{sug.emoji}</span>
-                                                            <span className="text-[10px] font-bold text-gray-500 flex-1 truncate">{sug.action}</span>
-                                                            <span className="text-[9px] text-gray-300">→</span>
-                                                        </button>
-                                                    ))}
                                                 </div>
                                             )}
 
@@ -384,11 +359,10 @@ const ChatBot: React.FC = () => {
                                     </div>
                                 ))}
 
-                                {/* Typing indicator */}
                                 {isTyping && (
                                     <div className="flex gap-2.5">
                                         <div className={`w-8 h-8 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0 shadow-sm border border-gray-200`}>
-                                            <img src={isClubAdmin ? ADMIN_AVATAR : PUBLIC_AVATAR} alt="Avatar" className="w-full h-full object-cover" />
+                                            <img src={CURRENT_AVATAR} alt="Avatar" className="w-full h-full object-cover" />
                                         </div>
                                         <div className="bg-white px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm border border-gray-100">
                                             <div className="flex gap-1 items-center h-4">
@@ -402,17 +376,14 @@ const ChatBot: React.FC = () => {
                                 <div ref={messagesEndRef} />
                             </div>
 
-                            {/* Quick questions / actions */}
+                            {/* Quick items */}
                             {messages.length <= 1 && (
                                 <div className="px-4 pt-2 pb-1 flex flex-wrap gap-1.5 bg-gray-50/50 border-t border-gray-100">
                                     {quickItems.map(q => (
                                         <button
                                             key={q}
                                             onClick={() => sendMessage(q)}
-                                            className={`px-3 py-1.5 border text-[10px] font-bold rounded-full transition-all ${isClubAdmin
-                                                ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300'
-                                                : 'bg-white border-rotary-blue/20 text-rotary-blue hover:bg-sky-50'
-                                                }`}
+                                            className={`px-3 py-1.5 border text-[10px] font-bold rounded-full transition-all bg-white hover:bg-gray-50 ${isAntigravity ? 'border-purple-200 text-purple-700' : 'border-gray-200'}`}
                                         >
                                             {q}
                                         </button>
@@ -420,18 +391,13 @@ const ChatBot: React.FC = () => {
                                 </div>
                             )}
 
-                            {/* Input Area */}
+                            {/* Input */}
                             <form onSubmit={handleSubmit} className="px-4 py-3 bg-white border-t border-gray-100 flex items-center gap-2">
-                                {/* Mic button — admin only */}
                                 {isClubAdmin && (
                                     <button
                                         type="button"
                                         onClick={toggleVoiceInput}
-                                        className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${isRecording
-                                            ? 'bg-red-500 text-white animate-pulse'
-                                            : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
-                                            }`}
-                                        title={isRecording ? 'Detener grabación' : 'Hablar'}
+                                        className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
                                     >
                                         {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                                     </button>
@@ -441,31 +407,22 @@ const ChatBot: React.FC = () => {
                                     type="text"
                                     value={input}
                                     onChange={e => setInput(e.target.value)}
-                                    placeholder={isAntigravity ? 'Consulta técnica...' : (isClubAdmin ? 'Escribe o habla...' : 'Escribe tu mensaje...')}
-                                    className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-rotary-blue/20 focus:bg-white transition-all placeholder:text-gray-400"
+                                    placeholder={isAntigravity ? 'Consulta técnica...' : 'Escribe tu mensaje...'}
+                                    className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-rotary-blue/10 focus:bg-white"
                                     disabled={isTyping}
                                 />
                                 <button
                                     type="submit"
                                     disabled={!input.trim() || isTyping}
-                                    className={`w-10 h-10 rounded-xl flex items-center justify-center text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all flex-shrink-0 ${isAntigravity
-                                        ? 'bg-indigo-700 hover:bg-indigo-800 shadow-lg shadow-indigo-200'
-                                        : isClubAdmin
-                                            ? 'bg-slate-800 hover:bg-slate-700'
-                                            : 'bg-rotary-blue hover:bg-sky-800'
-                                        }`}
+                                    className={`w-10 h-10 rounded-xl flex items-center justify-center text-white transition-all ${isAntigravity ? 'bg-indigo-700 shadow-lg shadow-indigo-200' : 'bg-rotary-blue'} disabled:opacity-40`}
                                 >
-                                    {isTyping
-                                        ? <Loader2 className="w-4 h-4 animate-spin" />
-                                        : <Send className="w-4 h-4" />
-                                    }
+                                    {isTyping ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                                 </button>
                             </form>
 
-                            {/* Powered by */}
                             <div className="text-center py-2 bg-white border-t border-gray-50">
-                                <p className="text-[9px] text-gray-300 font-medium">
-                                    {isClubAdmin ? 'ClubAssist · Asistente IA de gestión' : 'Asistente IA · Rotary Platform'}
+                                <p className="text-[9px] text-gray-300 font-medium tracking-wide">
+                                    {isAntigravity ? 'Antigravity AI · Soporte Técnico' : 'Asistente IA · Club Platform'}
                                 </p>
                             </div>
                         </>
@@ -473,55 +430,27 @@ const ChatBot: React.FC = () => {
                 </div>
             )}
 
-            {/* Floating Button Container */}
-            <div className="fixed bottom-6 right-4 sm:right-8 z-50 flex items-center justify-center">
-                
-                {/* Ping animation aura (only when closed) to feel alive/online */}
+            {/* Floating Button */}
+            <div className="fixed bottom-6 right-4 sm:right-8 z-50">
                 {!isOpen && (
-                    <div className={`absolute -inset-1 md:-inset-2 rounded-full animate-[ping_3s_ease-in-out_infinite] opacity-60 ${
-                        isClubAdmin ? 'bg-emerald-400' : 'bg-rotary-blue'
-                    }`}></div>
+                    <div className={`absolute -inset-1 md:-inset-2 rounded-full animate-[ping_3s_ease-in-out_infinite] opacity-60 ${isClubAdmin ? 'bg-emerald-400' : 'bg-rotary-blue'}`}></div>
                 )}
-
                 <button
                     onClick={() => { setIsOpen(!isOpen); setUnread(0); }}
-                    className={`relative w-[60px] h-[60px] rounded-full shadow-2xl transition-all duration-300 hover:scale-[1.05] active:scale-95 flex-shrink-0 ${
-                        isOpen
-                            ? 'bg-gray-900 flex items-center justify-center'
-                            : isClubAdmin
-                                ? 'border-2 border-emerald-400 p-[2px] bg-slate-900'
-                                : 'border-2 border-rotary-blue p-[2px] bg-white'
+                    className={`relative w-[60px] h-[60px] rounded-full shadow-2xl transition-all duration-300 hover:scale-[1.05] active:scale-95 flex items-center justify-center ${
+                      isOpen ? 'bg-gray-900' : (isClubAdmin ? 'bg-slate-900 border-2 border-emerald-400' : 'bg-white border-2 border-rotary-blue')
                     }`}
-                    style={{
-                        boxShadow: isOpen
-                            ? '0 15px 30px rgba(0,0,0,0.3)'
-                            : isClubAdmin
-                                ? '0 15px 35px rgba(30,41,59,0.5)'
-                                : '0 15px 35px rgba(12, 60, 124, 0.4)'
-                    }}
-                    aria-label="Abrir asistente"
                 >
-                    <div className="relative w-full h-full flex items-center justify-center">
-                        {isOpen
-                            ? <X className="w-6 h-6 text-white relative z-10" />
-                            : <img src={isClubAdmin ? (isAntigravity ? ANTIGRAVITY_AVATAR : ADMIN_AVATAR) : PUBLIC_AVATAR} alt="Chat Avatar" className="w-full h-full object-cover rounded-full relative z-10 bg-white" />
-                        }
-
-                        {/* Unread badge placed outside */}
-                        {!isOpen && unread > 0 && (
-                            <span className="absolute -top-3 -right-3 w-6 h-6 bg-red-500 text-white text-xs font-black rounded-full flex items-center justify-center shadow-lg ring-2 ring-white z-20">
-                                {unread}
-                            </span>
-                        )}
-
-                        {/* Online status indicator */}
-                        {!isOpen && (
-                            <span 
-                                className={`absolute -bottom-1 -right-1 w-4 h-4 ${isAntigravity ? 'bg-purple-500' : 'bg-green-500'} rounded-full border-2 border-white z-20`}
-                                title="Online"
-                            ></span>
-                        )}
-                    </div>
+                    {isOpen ? (
+                        <X className="w-6 h-6 text-white" />
+                    ) : (
+                        <div className="w-full h-full p-1">
+                            <img src={isClubAdmin ? (isAntigravity ? ANTIGRAVITY_AVATAR : ADMIN_AVATAR) : PUBLIC_AVATAR} alt="Avatar" className="w-full h-full object-cover rounded-full" />
+                        </div>
+                    )}
+                    {!isOpen && (
+                        <span className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${isAntigravity ? 'bg-purple-500' : 'bg-green-500'}`}></span>
+                    )}
                 </button>
             </div>
         </>
