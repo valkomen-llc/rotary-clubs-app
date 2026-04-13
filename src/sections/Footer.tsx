@@ -5,7 +5,9 @@ import { useClub } from '../contexts/ClubContext';
 
 const Footer = () => {
   const { club } = useClub();
-  const rotaryLogo = "https://rotary-platform-assets.s3.amazonaws.com/logos/rotary-logo-white-main.png";
+  
+  // Official Rotary Assets URLs for White/Gold version
+  const rotaryLogo = "https://rotary-platform-assets.s3.amazonaws.com/logos/rotary-logo-white.png";
   const endPolioLogo = "https://rotary-platform-assets.s3.amazonaws.com/logos/end-polio-now.png";
 
   return (
@@ -16,16 +18,18 @@ const Footer = () => {
           <div className="space-y-8">
             <div className="flex items-center">
               <img
-                src={rotaryLogo}
+                src={club.footerLogo || rotaryLogo}
                 alt="Rotary International"
-                className="h-12 w-auto object-contain"
+                className="h-14 w-auto object-contain"
+                onError={(e) => { (e.target as HTMLImageElement).src = rotaryLogo; }}
               />
             </div>
             <div>
               <img 
-                src={endPolioLogo} 
+                src={club.endPolioLogo || endPolioLogo} 
                 alt="End Polio Now" 
-                className="h-16 w-auto object-contain bg-[#E21E2F] p-1.5 rounded-sm" 
+                className="h-16 w-auto object-contain"
+                onError={(e) => { (e.target as HTMLImageElement).src = endPolioLogo; }}
               />
             </div>
             {/* Redes Sociales */}
@@ -40,8 +44,8 @@ const Footer = () => {
 
           {/* Links de Interés */}
           <div>
-            <h3 className="font-bold text-lg mb-6">Links de Interés</h3>
-            <ul className="space-y-3 text-sm text-white/90">
+            <h3 className="font-bold text-lg mb-6 tracking-tight">Links de Interés</h3>
+            <ul className="space-y-3 text-sm text-white/80">
               <li><a href="#/quienes-somos" className="hover:text-yellow-400 transition-colors">Acerca de Rotary</a></li>
               <li><a href="#/nuestra-historia" className="hover:text-yellow-400 transition-colors">Historia de Rotary LATIR</a></li>
               <li><a href="#/la-fundacion-rotaria" className="hover:text-yellow-400 transition-colors">La Fundación Rotaria</a></li>
@@ -49,29 +53,29 @@ const Footer = () => {
               <li><a href="https://my.rotary.org" target="_blank" rel="noopener noreferrer" className="hover:text-yellow-400 transition-colors">My Rotary</a></li>
               <li><a href="#/eventos" className="hover:text-yellow-400 transition-colors">Nuestros Eventos</a></li>
               <li><a href="#/blog" className="hover:text-yellow-400 transition-colors">Novedades</a></li>
-              <li><a href="#/descargas" className="hover:text-yellow-400 transition-colors">Centro de Descargas</a></li>
+              <li><a href="#/descargas" className="hover:text-yellow-400 transition-colors font-bold text-yellow-500 underline decoration-yellow-500/30 underline-offset-4">Centro de Descargas</a></li>
               <li><a href="#/contacto" className="hover:text-yellow-400 transition-colors">Contacto</a></li>
             </ul>
           </div>
 
           {/* Realiza una Acción */}
           <div>
-            <h3 className="font-bold text-lg mb-6">Realiza una Acción</h3>
-            <ul className="space-y-4 text-sm text-white/90">
+            <h3 className="font-bold text-lg mb-6 tracking-tight">Realiza una Acción</h3>
+            <ul className="space-y-4 text-sm text-white/80">
               <li className="flex items-center gap-2">
-                <span className="text-yellow-500">•</span>
+                <span className="text-[#FAA51A]">•</span>
                 <a href="#" className="hover:text-yellow-400 transition-colors">Aporte Voluntario</a>
               </li>
               <li className="flex items-center gap-2">
-                <span className="text-yellow-500">•</span>
+                <span className="text-[#FAA51A]">•</span>
                 <a href="#" className="hover:text-yellow-400 transition-colors">Comunícate con nosotros</a>
               </li>
               <li className="flex items-center gap-2">
-                <span className="text-yellow-500">•</span>
+                <span className="text-[#FAA51A]">•</span>
                 <a href="https://rotary.org" target="_blank" rel="noopener noreferrer" className="hover:text-yellow-400 transition-colors">Rotary.org</a>
               </li>
               <li className="flex items-center gap-2">
-                <span className="text-yellow-500">•</span>
+                <span className="text-[#FAA51A]">•</span>
                 <a href="https://endpolio.org" target="_blank" rel="noopener noreferrer" className="hover:text-yellow-400 transition-colors">Pongamos Fin a la Polio</a>
               </li>
             </ul>
@@ -79,14 +83,14 @@ const Footer = () => {
 
           {/* Newsletter */}
           <div>
-            <h3 className="font-bold text-lg mb-6">Suscríbete a nuestro Newsletter</h3>
+            <h3 className="font-bold text-lg mb-6 tracking-tight">Suscríbete a nuestro Newsletter</h3>
             <div className="flex gap-2">
               <Input
                 type="email"
                 placeholder="Dirección de email"
                 className="bg-white/10 border-transparent text-white placeholder:text-white/50 flex-1 h-12"
               />
-              <Button className="bg-[#FAA51A] hover:bg-yellow-500 text-[#0C3C7C] font-bold h-12 px-5">
+              <Button className="bg-[#FAA51A] hover:bg-yellow-500 text-[#0C3C7C] font-black h-12 px-5 text-xl">
                 →
               </Button>
             </div>
@@ -95,19 +99,19 @@ const Footer = () => {
       </div>
 
       {/* Bottom Bar */}
-      <div className="border-t border-white/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="border-t border-white/5">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="text-white/60 text-[10px] font-medium tracking-wide">
+            <div className="text-white/50 text-[10px] uppercase font-bold tracking-widest">
               © {new Date().getFullYear()} {club.name}. Todos los derechos reservados. | Powered by{' '}
               <a href="https://valkomen.com" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Valkomen</a>
               {' · '}
-              <a href="https://my.rotary.org/privacy-policy" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Política de privacidad</a>
+              <a href="https://my.rotary.org/privacy-policy" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Privacidad</a>
               {' · '}
-              <a href="https://my.rotary.org/terms-of-use" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Condiciones de uso</a>
+              <a href="https://my.rotary.org/terms-of-use" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Términos</a>
             </div>
             <div className="flex items-center gap-4">
-                <Twitter className="w-4 h-4 text-white/60" />
+                <Twitter className="w-4 h-4 text-white/40 hover:text-white transition-colors" />
             </div>
           </div>
         </div>
