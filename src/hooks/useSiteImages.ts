@@ -19,7 +19,7 @@ export interface SiteImages {
     yepBanner?: ImgSlot;
     ngse?: ImgSlot;
     rotexHero?: ImgSlot;
-    rotexPoster?: ImgSlot;
+    rotexCarousel?: ImgSlot[];
     chatbotPublicAvatar?: ImgSlot;
     chatbotAdminAvatar?: ImgSlot;
 }
@@ -31,6 +31,13 @@ const DEFAULTS = {
         { url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes 3' },
         { url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes 4' },
         { url: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes 5' }
+    ],
+    rotexCarousel: [
+        { url: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1200&h=675&fit=crop', alt: 'Actividad Rotex 1' },
+        { url: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1200&h=675&fit=crop', alt: 'Actividad Rotex 2' },
+        { url: 'https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?w=1200&h=675&fit=crop', alt: 'Actividad Rotex 3' },
+        { url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1200&h=675&fit=crop', alt: 'Actividad Rotex 4' },
+        { url: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=1200&h=675&fit=crop', alt: 'Actividad Rotex 5' }
     ]
 };
 
@@ -46,12 +53,20 @@ export function useSiteImages(): SiteImages & { _loading?: boolean } {
             .then(r => r.ok ? r.json() : {})
             .then(data => {
                 // Ensure array keys like 'yep' are expanded to their expected count
-                if (data.yep && Array.isArray(data.yep)) {
-                    const expandedYep = DEFAULTS.yep.map((def, i) => data.yep[i] || def);
-                    data.yep = expandedYep;
-                } else if (!data.yep) {
-                    data.yep = DEFAULTS.yep;
-                }
+                const arrayKeyConfigs = [
+                    { key: 'yep', count: 5 },
+                    { key: 'rotexCarousel', count: 5 }
+                ];
+                
+                arrayKeyConfigs.forEach(conf => {
+                    const key = conf.key as keyof typeof DEFAULTS;
+                    if (data[conf.key] && Array.isArray(data[conf.key])) {
+                        data[conf.key] = (DEFAULTS[key] as any[]).map((def, i) => data[conf.key][i] || def);
+                    } else if (!data[conf.key]) {
+                        data[conf.key] = DEFAULTS[key];
+                    }
+                });
+
                 setImages({ ...data, _loading: false });
             })
             .catch(() => setImages({ _loading: false }));

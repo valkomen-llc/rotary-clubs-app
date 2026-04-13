@@ -63,7 +63,13 @@ const DEFAULTS = {
     yepBanner: { url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=800&fit=crop', alt: 'Banner de Intercambio' },
     ngse: { url: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=1600&h=800&fit=crop', alt: 'NGSE' },
     rotexHero: { url: 'https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?w=1600&h=800&fit=crop', alt: 'ROTEX Banner' },
-    rotexPoster: { url: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1200&h=675&fit=crop', alt: 'ROTEX Video Poster' },
+    rotexCarousel: [
+        { url: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1200&h=675&fit=crop', alt: 'Actividad Rotex 1' },
+        { url: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1200&h=675&fit=crop', alt: 'Actividad Rotex 2' },
+        { url: 'https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?w=1200&h=675&fit=crop', alt: 'Actividad Rotex 3' },
+        { url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1200&h=675&fit=crop', alt: 'Actividad Rotex 4' },
+        { url: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=1200&h=675&fit=crop', alt: 'Actividad Rotex 5' }
+    ],
     chatbotPublicAvatar: { url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face', alt: 'Avatar Público' },
     chatbotAdminAvatar: { url: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150&h=150&fit=crop&crop=face', alt: 'Avatar Admin' },
     missionControl: { url: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=400&h=100&fit=crop', alt: 'Mission Control Logo' },
@@ -156,7 +162,7 @@ const ImageDistribution: React.FC = () => {
                 aspect: '16/6',
                 groups: [
                     { key: 'rotexHero', subLabel: 'Hero — Banner', desc: 'Imagen de portada superior.', count: 1, aspect: '16/6' },
-                    { key: 'rotexPoster', subLabel: 'Portada de Video', desc: 'Imagen de previsualización para el video promocional.', count: 1, aspect: '16/9' }
+                    { key: 'rotexCarousel', subLabel: 'Carrusel de Imágenes', desc: '5 imágenes que muestran las actividades de la red.', count: 5, aspect: '16/9' }
                 ]
             });
         }
@@ -328,7 +334,7 @@ const ImageDistribution: React.FC = () => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        if (pickerTarget?.key.startsWith('chatbot') || ['hero', 'aboutHero', 'causesHero', 'yep', 'yepExperience', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotexHero', 'rotexPoster', 'foundation', 'polio', 'history'].includes(pickerTarget?.key || '')) {
+        if (pickerTarget?.key.startsWith('chatbot') || ['hero', 'aboutHero', 'causesHero', 'yep', 'yepExperience', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotexHero', 'rotexCarousel', 'foundation', 'polio', 'history'].includes(pickerTarget?.key || '')) {
             const reader = new FileReader();
             reader.onload = () => {
                 setCropImageSrc(reader.result as string);
@@ -418,7 +424,7 @@ const ImageDistribution: React.FC = () => {
     };
 
     const handleMediaClick = (url: string, filename: string) => {
-        if (pickerTarget?.key.startsWith('chatbot') || ['hero', 'aboutHero', 'causesHero', 'yep', 'yepExperience', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotexHero', 'rotexPoster', 'foundation', 'polio', 'history'].includes(pickerTarget?.key || '')) {
+        if (pickerTarget?.key.startsWith('chatbot') || ['hero', 'aboutHero', 'causesHero', 'yep', 'yepExperience', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotexHero', 'rotexCarousel', 'foundation', 'polio', 'history'].includes(pickerTarget?.key || '')) {
             setCropImageSrc(url);
             // Create a pseudo-file to carry over the original filename safely
             setCropFile(new File([], filename || 'image.jpg'));
@@ -763,7 +769,7 @@ const ImageDistribution: React.FC = () => {
                                     pickerTarget?.key === 'yepExperience' || pickerTarget?.key === 'polio' ? 4 / 3 :
                                     pickerTarget?.key === 'history' ? 16 / 9 :
                                     (['yep', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotexHero', 'foundation'].includes(pickerTarget?.key || '')) ? 16 / 8 :
-                                    pickerTarget?.key === 'rotexPoster' ? 16 / 9 :
+                                    pickerTarget?.key === 'rotexCarousel' ? 16 / 9 :
                                     1
                                 }
                                 cropShape={pickerTarget?.key.startsWith('chatbot') ? 'round' : 'rect'}

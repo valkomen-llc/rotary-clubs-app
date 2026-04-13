@@ -1,19 +1,33 @@
+import { useState } from 'react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
 import { useSiteImages } from '../hooks/useSiteImages';
-import { Users, Globe, Zap, Sparkles } from 'lucide-react';
+import { Users, Globe, Zap, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const Rotex = () => {
     const { club, isLoading } = useClub();
     const siteImages = useSiteImages();
+    const [currentImage, setCurrentImage] = useState(0);
     // For now we use global rotex content and club fallback
     const { sections } = useCMSContent('rotex', club?.id);
 
     const getC = (section: string, field: string, fallback: string) => {
         return sections[section]?.[field] || fallback;
     }
+
+    const nextImage = () => {
+        if (siteImages.rotexCarousel) {
+            setCurrentImage((prev) => (prev + 1) % siteImages.rotexCarousel!.length);
+        }
+    };
+
+    const prevImage = () => {
+        if (siteImages.rotexCarousel) {
+            setCurrentImage((prev) => (prev - 1 + siteImages.rotexCarousel!.length) % siteImages.rotexCarousel!.length);
+        }
+    };
 
     if (isLoading || !club) {
         return (
@@ -98,16 +112,50 @@ const Rotex = () => {
                         </p>
                     </div>
 
-                    {/* Video Player — Reusing the same video logic as Interact */}
-                    <div className="relative rounded-3xl overflow-hidden shadow-2xl mb-16 group bg-black max-w-4xl mx-auto">
-                        <video 
-                            controls
-                            className="w-full aspect-video object-cover opacity-90 group-hover:opacity-100 transition-opacity duration-500"
-                            poster={siteImages.rotexPoster?.url || "https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1200&h=675&fit=crop"}
-                        >
-                            <source src="https://cdn1-originals.webdamdb.com/13799_163692035?cache=1753396207&response-content-disposition=inline;filename=2025_092_Interact_Promo_ES_Subs.mp4&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cCo6Ly9jZG4xLW9yaWdpbmFscy53ZWJkYW1kYi5jb20vMTM3OTlfMTYzNjkyMDM1P2NhY2hlPTE3NTMzOTYyMDcmcmVzcG9uc2UtY29udGVudC1kaXNwb3NpdGlvbj1pbmxpbmU7ZmlsZW5hbWU9MjAyNV8wOTJfSW50ZXJhY3RfUHJvbW9fRVNfU3Vicy5tcDQiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjIxNDc0MTQ0MDB9fX1dfQ__&Signature=m5S7TTDhzmSZKnwoJogLXdovn0My2CinJesVkqiHSDKeQfY4xFEX8hNmjwcduZdtwKseK~Cmv0bv9wyvkclsUxbPnJAUy6t0ywM-k9X43bNzoNoTlgZOB5WWv4e~qBoe2VvZXOK1L-C1RPlH3Rufi9uQJoyOswvNf77tqmTlUXKbETZyEtmnb-AeSsKnrqecGvx8F0f4U~GW4s~cXk04~9VepR2NG07crz1sSBZ7GAJ9VbzYdTbXegmhjsIYjFTrFpamct-H0uECvHZrzSurgQuxEPFG5~ZKFKWE9Owt5aDDxxVcLgO7mUJYo2Qmtzp3fhryfbN3IHZmsQ3wGLrxjQ__&Key-Pair-Id=APKAI2ASI2IOLRFF2RHA" type="video/mp4" />
-                            Tu navegador no soporta la etiqueta de video.
-                        </video>
+                    {/* Image Gallery Slider */}
+                    <div className="max-w-4xl mx-auto mb-16">
+                        <div className="relative aspect-video rounded-3xl overflow-hidden shadow-2xl ring-1 ring-gray-200 bg-black group">
+                            {siteImages.rotexCarousel && siteImages.rotexCarousel.length > 0 && (
+                                <>
+                                    <img
+                                        src={siteImages.rotexCarousel[currentImage]?.url}
+                                        alt={`Galería Rotex ${currentImage + 1}`}
+                                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                                    />
+
+                                    {/* Navigation Buttons */}
+                                    <button
+                                        onClick={prevImage}
+                                        className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/90 hover:bg-white rounded-full shadow-lg flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 z-10"
+                                        aria-label="Imagen anterior"
+                                    >
+                                        <ChevronLeft className="w-6 h-6 text-rotary-blue" />
+                                    </button>
+                                    <button
+                                        onClick={nextImage}
+                                        className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/90 hover:bg-white rounded-full shadow-lg flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 z-10"
+                                        aria-label="Siguiente imagen"
+                                    >
+                                        <ChevronRight className="w-6 h-6 text-rotary-blue" />
+                                    </button>
+                                </>
+                            )}
+                        </div>
+
+                        {/* Pagination Dots */}
+                        <div className="flex justify-center gap-2 mt-6">
+                            {(siteImages.rotexCarousel || []).map((_: any, index: number) => (
+                                <button
+                                    key={index}
+                                    onClick={() => setCurrentImage(index)}
+                                    className={`
+                                        w-2.5 h-2.5 rounded-full transition-all duration-300
+                                        ${index === currentImage ? 'bg-rotary-blue w-8' : 'bg-gray-300 hover:bg-gray-400'}
+                                    `}
+                                    aria-label={`Ir a imagen ${index + 1}`}
+                                />
+                            ))}
+                        </div>
                     </div>
 
                     {/* Features Sections */}
