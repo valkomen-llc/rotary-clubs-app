@@ -660,7 +660,7 @@ function App() {
               </Routes>
               </Suspense>
             </Router>
-            <ChatBot />
+            {/* <ChatBot /> */}
             <Toaster position="top-right" richColors />
             <div dangerouslySetInnerHTML={{__html: '<style>#sonner-toaster { z-index: 999999 !important; }</style>'}} />
           </CartProvider>
