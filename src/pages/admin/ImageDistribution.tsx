@@ -57,6 +57,8 @@ const DEFAULTS = {
         { url: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes 2' },
         { url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes 3' }
     ],
+    yepExperience: { url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&h=600&fit=crop', alt: 'Experiencia Internacional' },
+    yepBanner: { url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=800&fit=crop', alt: 'Banner de Intercambio' },
     ngse: { url: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=1600&h=800&fit=crop', alt: 'NGSE' },
     rotex: { url: 'https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?w=1600&h=800&fit=crop', alt: 'ROTEX' },
     chatbotPublicAvatar: { url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face', alt: 'Avatar Público' },
@@ -127,7 +129,20 @@ const ImageDistribution: React.FC = () => {
         const c = club as any;
         if (c?.modules?.rotaract) active.push({ key: 'rotaract', label: 'Club Rotaract', desc: 'Imagen de portada para la sección Rotaract.', count: 1, aspect: '16/8' });
         if (c?.modules?.interact) active.push({ key: 'interact', label: 'Club Interact', desc: 'Imagen de portada para la sección Interact.', count: 1, aspect: '16/8' });
-        if (c?.modules?.youthExchange) active.push({ key: 'yep', label: 'Intercambio de Jóvenes (YEP)', desc: 'Imágenes del slider para el portal YEP.', count: 3, aspect: '16/8' });
+        if (c?.modules?.youthExchange) {
+            active.push({
+                key: 'yep',
+                label: 'Intercambio de Jóvenes (YEP)',
+                desc: 'Configuración de imágenes para el portal de intercambios.',
+                count: 5,
+                aspect: '16/8',
+                groups: [
+                    { key: 'yep', subLabel: 'Slider Principal', desc: '3 imágenes para el carrusel superior del portal.', count: 3, aspect: '16/8' },
+                    { key: 'yepExperience', subLabel: 'Sección de Experiencia', desc: 'Imagen lateral para la sección de intercambio internacional.', count: 1, aspect: '4/3' },
+                    { key: 'yepBanner', subLabel: 'Banner Inferior', desc: 'Imagen de fondo para el banner de cierre.', count: 1, aspect: '16/8' }
+                ]
+            });
+        }
         if (c?.modules?.ngse) active.push({ key: 'ngse', label: 'Intercambios NGSE', desc: 'Imagen de portada para la directiva de NGSE.', count: 1, aspect: '16/8' });
         if (c?.modules?.rotex) active.push({ key: 'rotex', label: 'Red ROTEX', desc: 'Imagen de portada para los ex-intercambistas.', count: 1, aspect: '16/8' });
         
@@ -293,7 +308,7 @@ const ImageDistribution: React.FC = () => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        if (pickerTarget?.key.startsWith('chatbot') || ['hero', 'aboutHero', 'causesHero', 'yep', 'rotaract', 'interact', 'ngse', 'rotex', 'foundation', 'polio', 'history'].includes(pickerTarget?.key || '')) {
+        if (pickerTarget?.key.startsWith('chatbot') || ['hero', 'aboutHero', 'causesHero', 'yep', 'yepExperience', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotex', 'foundation', 'polio', 'history'].includes(pickerTarget?.key || '')) {
             const reader = new FileReader();
             reader.onload = () => {
                 setCropImageSrc(reader.result as string);
@@ -383,7 +398,7 @@ const ImageDistribution: React.FC = () => {
     };
 
     const handleMediaClick = (url: string, filename: string) => {
-        if (pickerTarget?.key.startsWith('chatbot') || ['hero', 'aboutHero', 'causesHero', 'yep', 'rotaract', 'interact', 'ngse', 'rotex', 'foundation', 'polio', 'history'].includes(pickerTarget?.key || '')) {
+        if (pickerTarget?.key.startsWith('chatbot') || ['hero', 'aboutHero', 'causesHero', 'yep', 'yepExperience', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotex', 'foundation', 'polio', 'history'].includes(pickerTarget?.key || '')) {
             setCropImageSrc(url);
             // Create a pseudo-file to carry over the original filename safely
             setCropFile(new File([], filename || 'image.jpg'));
@@ -709,9 +724,9 @@ const ImageDistribution: React.FC = () => {
                                     pickerTarget?.key === 'hero' ? 16 / 7 :
                                     pickerTarget?.key === 'aboutHero' ? 16 / 5 :
                                     pickerTarget?.key === 'causesHero' ? 16 / 6 :
-                                    pickerTarget?.key === 'polio' ? 4 / 3 :
+                                    pickerTarget?.key === 'yepExperience' || pickerTarget?.key === 'polio' ? 4 / 3 :
                                     pickerTarget?.key === 'history' ? 16 / 9 :
-                                    (['yep', 'rotaract', 'interact', 'ngse', 'rotex', 'foundation'].includes(pickerTarget?.key || '')) ? 16 / 8 :
+                                    (['yep', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotex', 'foundation'].includes(pickerTarget?.key || '')) ? 16 / 8 :
                                     1
                                 }
                                 cropShape={pickerTarget?.key.startsWith('chatbot') ? 'round' : 'rect'}

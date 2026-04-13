@@ -14,9 +14,11 @@ import Footer from '../sections/Footer';
 import YEPHero from '../sections/YEPHero';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
+import { useSiteImages } from '../hooks/useSiteImages';
 
 const IntercambioJovenes = () => {
   const { club } = useClub();
+  const siteImages = useSiteImages();
   const { sections } = useCMSContent('intercambio-jovenes', club.id);
 
   const getC = (section: string, field: string, fallback: string) => {
@@ -125,7 +127,7 @@ const IntercambioJovenes = () => {
               <div className="absolute -inset-4 bg-gradient-to-tr from-rotary-blue/20 to-transparent rounded-[3rem] transform rotate-3 scale-105 z-0" />
               <div className="absolute -inset-4 bg-gradient-to-bl from-rotary-gold/20 to-transparent rounded-[3rem] transform -rotate-3 scale-105 z-0" />
               <img
-                src={getC('experience', 'image', "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&h=600&fit=crop")}
+                src={siteImages.yepExperience?.url || getC('experience', 'image', "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&h=600&fit=crop")}
                 alt="Jóvenes en intercambio"
                 className="relative z-10 rounded-[2rem] shadow-2xl w-full h-[400px] md:h-[550px] object-cover ring-1 ring-black/5"
                 loading="lazy"
@@ -193,7 +195,7 @@ const IntercambioJovenes = () => {
       <section className="relative py-32 md:py-48 bg-rotary-navy overflow-hidden">
         <div className="absolute inset-0">
           <img
-            src={getC('banner', 'image', "https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=800&fit=crop")}
+            src={siteImages.yepBanner?.url || getC('banner', 'image', "https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=800&fit=crop")}
             alt="Conectando"
             className="w-full h-full object-cover object-center scale-105"
             loading="lazy"
