@@ -55,7 +55,9 @@ const DEFAULTS = {
     yep: [
         { url: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes 1' },
         { url: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes 2' },
-        { url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes 3' }
+        { url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes 3' },
+        { url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes 4' },
+        { url: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes 5' }
     ],
     yepExperience: { url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&h=600&fit=crop', alt: 'Experiencia Internacional' },
     yepBanner: { url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=800&fit=crop', alt: 'Banner de Intercambio' },
@@ -137,7 +139,7 @@ const ImageDistribution: React.FC = () => {
                 count: 5,
                 aspect: '16/8',
                 groups: [
-                    { key: 'yep', subLabel: 'Slider Principal', desc: '3 imágenes para el carrusel superior del portal.', count: 3, aspect: '16/8' },
+                    { key: 'yep', subLabel: 'Slider Principal', desc: '5 imágenes para el carrusel superior del portal.', count: 5, aspect: '16/8' },
                     { key: 'yepExperience', subLabel: 'Sección de Experiencia', desc: 'Imagen lateral para la sección de intercambio internacional.', count: 1, aspect: '4/3' },
                     { key: 'yepBanner', subLabel: 'Banner Inferior', desc: 'Imagen de fondo para el banner de cierre.', count: 1, aspect: '16/8' }
                 ]
