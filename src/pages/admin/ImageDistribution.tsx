@@ -147,7 +147,7 @@ const ImageDistribution: React.FC = () => {
             });
         }
         if (c?.modules?.ngse) active.push({ key: 'ngse', label: 'Intercambios NGSE', desc: 'Imagen de portada para la directiva de NGSE.', count: 1, aspect: '16/8' });
-        if (c?.modules?.rotex) {
+        if (c?.modules?.rotex || c?.name?.toLowerCase().includes('latir') || c?.subdomain?.toLowerCase().includes('latir')) {
             active.push({
                 key: 'rotex',
                 label: 'Red ROTEX',
