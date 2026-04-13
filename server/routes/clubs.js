@@ -270,7 +270,7 @@ router.get('/:clubId/site-images', async (req, res) => {
 
         // For single-value keys (foundation, join, aboutHero), overlay if club has custom
         for (const key of Object.keys(clubImages)) {
-            if (['causes', 'hero', 'aboutCarousel'].includes(key)) continue; // handled below
+            if (['causes', 'hero', 'aboutCarousel', 'yep', 'history'].includes(key)) continue; // handled below
             const clubVal = clubImages[key];
             if (clubVal && !isDefault(clubVal.url)) {
                 merged[key] = clubVal;
@@ -279,9 +279,9 @@ router.get('/:clubId/site-images', async (req, res) => {
             }
         }
 
-        // For array slots (causes, hero, aboutCarousel) — merge per-slot:
+        // For array slots (causes, hero, aboutCarousel, yep, history) — merge per-slot:
         // Only use club slot if it's a real custom upload (not Unsplash default)
-        const arrayKeys = ['causes', 'hero', 'aboutCarousel'];
+        const arrayKeys = ['causes', 'hero', 'aboutCarousel', 'yep', 'history'];
         for (const key of arrayKeys) {
             const globalArr = (globalImages[key] && Array.isArray(globalImages[key])) ? globalImages[key] : [];
             const clubArr = (clubImages[key] && Array.isArray(clubImages[key])) ? clubImages[key] : [];

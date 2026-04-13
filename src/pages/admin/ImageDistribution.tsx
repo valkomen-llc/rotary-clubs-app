@@ -356,6 +356,7 @@ const ImageDistribution: React.FC = () => {
         const data = await performUpload(file);
         if (data && data.url) {
             selectMedia(data.url, file.name);
+            toast.success('Imagen recortada y actualizada con éxito');
         }
         e.target.value = '';
     };
