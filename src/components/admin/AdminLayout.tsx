@@ -40,8 +40,10 @@ import {
     Terminal,
     QrCode,
     ShieldCheck,
-    Upload
+    Upload,
+    MessageSquare
 } from 'lucide-react';
+import SuperAssistantDrawer from './SuperAssistantDrawer';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import { useSetupProgress, SETUP_ALLOWED_PATHS } from '../../hooks/useSetupProgress';
@@ -249,6 +251,18 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         const isSuperAdmin = user?.role === 'administrator';
         const items: any[] = [];
 
+        // FIRST OPTION: Asistencia Chat (ONLY FOR SUPER ADMINS)
+        if (isSuperAdmin) {
+            items.push({ 
+                icon: MessageSquare, 
+                label: 'Asistencia Chat', 
+                path: '/admin/asistencia', 
+                category: 'General', 
+                keywords: ['ayuda', 'soporte', 'chat', 'ia', 'antigravity'],
+                badge: 'ia'
+            });
+        }
+
         items.push(
             { icon: LayoutDashboard, label: 'Overview', path: '/admin/dashboard', category: 'General', keywords: ['inicio', 'panel', 'dashboard', 'resumen'] },
             { icon: PieChart, label: 'Analytics', path: '/admin/analytics', category: 'General', keywords: ['estadisticas', 'visitas', 'trafico', 'ga4'] },
@@ -258,7 +272,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             items.push(
                 { icon: Terminal, label: 'Mission Control VIP', path: '/admin/mission-control-vip', category: 'General', keywords: ['agentes', 'mission control', 'gateway', 'vip'] },
                 { icon: QrCode, label: 'WhatsApp QR Gateway', path: '/admin/whatsapp-qr', category: 'General', keywords: ['whatsapp', 'qr', 'web', 'grupos'] },
-                { icon: ShieldCheck, label: 'System Updates', path: '/admin/system-updates', category: 'General', keywords: ['updates', 'versiones', 'changelog', 'sistema'] }
+                { icon: ShieldCheck, label: 'System Updates', path: '/admin/system-updates', category: 'General', keywords: ['updates', 'versiones', 'changelog', 'sistema'] },
             );
         }
 
@@ -737,6 +751,9 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     )}
                 </main>
             </div>
+            
+            {/* Global Super AI Assistant */}
+            <SuperAssistantDrawer />
         </div >
     );
 };

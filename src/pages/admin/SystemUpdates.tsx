@@ -23,6 +23,17 @@ interface UpdateItem {
 
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.3.0",
+        date: "13 Abril 2026",
+        title: "Antigravity AI Core & System Support",
+        type: "feature",
+        changes: [
+            { type: "added", text: "Implementación del núcleo de IA 'Antigravity' especializado en arquitectura y soporte técnico de la plataforma." },
+            { type: "added", text: "Nueva sección 'Asistencia Chat' exclusiva para Super Administradores en la barra lateral." },
+            { type: "changed", text: "Optimización de la lógica de aislamiento multitenancy para mayor seguridad en el acceso a datos." }
+        ]
+    },
+    {
         version: "v4.2.2",
         date: "07 Abril 2026",
         title: "Restauración de Mission Control Kanban & Sistema de Versiones",

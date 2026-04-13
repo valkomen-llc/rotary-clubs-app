@@ -86,6 +86,7 @@ const YouthExchangePage = React.lazy(() => import('./pages/admin/YouthExchangePa
 const NGSEPage = React.lazy(() => import('./pages/admin/NGSEPage'));
 const RotexPage = React.lazy(() => import('./pages/admin/RotexPage'));
 const WhatsAppQR = React.lazy(() => import('./pages/admin/WhatsAppQR'));
+const SuperAssistantChat = React.lazy(() => import('./pages/admin/SuperAssistantChat'));
 import ClubPreview from './pages/ClubPreview';
 import ChatBot from './components/ChatBot';
 import LandingPage from './pages/LandingPage';
@@ -581,6 +582,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <AIAssistant />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/asistencia"
+                  element={
+                    <PrivateRoute>
+                      <SuperAssistantChat />
                     </PrivateRoute>
                   }
                 />
