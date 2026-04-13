@@ -2,10 +2,12 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
+import { useSiteImages } from '../hooks/useSiteImages';
 import { Users, Globe, Zap, Sparkles } from 'lucide-react';
 
 const Rotex = () => {
     const { club, isLoading } = useClub();
+    const siteImages = useSiteImages();
     // For now we use global rotex content and club fallback
     const { sections } = useCMSContent('rotex', club?.id);
 
@@ -29,7 +31,7 @@ const Rotex = () => {
             <section className="relative w-full h-[60vh] min-h-[500px] flex items-center justify-center overflow-hidden">
                 <div className="absolute inset-0">
                     <img
-                        src={getC('hero', 'image', "https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1600&h=600&fit=crop")}
+                        src={siteImages.rotexHero?.url || getC('hero', 'image', "https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1600&h=600&fit=crop")}
                         alt="Rotex banner"
                         className="w-full h-full object-cover scale-105 animate-subtle-zoom"
                         loading="lazy"
@@ -101,7 +103,7 @@ const Rotex = () => {
                         <video 
                             controls
                             className="w-full aspect-video object-cover opacity-90 group-hover:opacity-100 transition-opacity duration-500"
-                            poster="https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1200&h=675&fit=crop"
+                            poster={siteImages.rotexPoster?.url || "https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1200&h=675&fit=crop"}
                         >
                             <source src="https://cdn1-originals.webdamdb.com/13799_163692035?cache=1753396207&response-content-disposition=inline;filename=2025_092_Interact_Promo_ES_Subs.mp4&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cCo6Ly9jZG4xLW9yaWdpbmFscy53ZWJkYW1kYi5jb20vMTM3OTlfMTYzNjkyMDM1P2NhY2hlPTE3NTMzOTYyMDcmcmVzcG9uc2UtY29udGVudC1kaXNwb3NpdGlvbj1pbmxpbmU7ZmlsZW5hbWU9MjAyNV8wOTJfSW50ZXJhY3RfUHJvbW9fRVNfU3Vicy5tcDQiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjIxNDc0MTQ0MDB9fX1dfQ__&Signature=m5S7TTDhzmSZKnwoJogLXdovn0My2CinJesVkqiHSDKeQfY4xFEX8hNmjwcduZdtwKseK~Cmv0bv9wyvkclsUxbPnJAUy6t0ywM-k9X43bNzoNoTlgZOB5WWv4e~qBoe2VvZXOK1L-C1RPlH3Rufi9uQJoyOswvNf77tqmTlUXKbETZyEtmnb-AeSsKnrqecGvx8F0f4U~GW4s~cXk04~9VepR2NG07crz1sSBZ7GAJ9VbzYdTbXegmhjsIYjFTrFpamct-H0uECvHZrzSurgQuxEPFG5~ZKFKWE9Owt5aDDxxVcLgO7mUJYo2Qmtzp3fhryfbN3IHZmsQ3wGLrxjQ__&Key-Pair-Id=APKAI2ASI2IOLRFF2RHA" type="video/mp4" />
                             Tu navegador no soporta la etiqueta de video.

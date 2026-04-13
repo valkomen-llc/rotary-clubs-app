@@ -18,7 +18,8 @@ export interface SiteImages {
     yepExperience?: ImgSlot;
     yepBanner?: ImgSlot;
     ngse?: ImgSlot;
-    rotex?: ImgSlot;
+    rotexHero?: ImgSlot;
+    rotexPoster?: ImgSlot;
     chatbotPublicAvatar?: ImgSlot;
     chatbotAdminAvatar?: ImgSlot;
 }
