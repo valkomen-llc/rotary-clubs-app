@@ -56,7 +56,7 @@ const SubvencionesSection = () => {
                         {grantTypes.map((g, i) => (
                             <div
                                 key={i}
-                                className="flex gap-4 p-5 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-lg hover:border-[#0c3c7c]/10 transition-all duration-300"
+                                className="flex gap-4 p-5 bg-gray-50 rounded-3xl border border-gray-100 hover:bg-white hover:shadow-lg hover:border-[#0c3c7c]/10 transition-all duration-300"
                             >
                                 <div className="w-12 h-12 rounded-xl bg-[#0c3c7c]/5 flex items-center justify-center text-[#0c3c7c] flex-shrink-0">
                                     {g.icon}
@@ -73,7 +73,7 @@ const SubvencionesSection = () => {
                     </div>
 
                     {/* Process steps */}
-                    <div className="bg-[#0c3c7c] rounded-2xl p-8 text-white">
+                    <div className="bg-[#0c3c7c] rounded-3xl p-8 text-white">
                         <h3 className="text-lg font-black mb-6 flex items-center gap-2">
                             <ArrowRight className="w-5 h-5 text-[#E29C00]" />
                             Proceso de Solicitud

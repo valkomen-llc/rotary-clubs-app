@@ -32,7 +32,7 @@ const JoinSection = () => {
             <img
               src={imgUrl}
               alt={imgAlt}
-              className="rounded-2xl shadow-xl w-full h-auto object-cover"
+              className="rounded-3xl shadow-xl w-full h-auto object-cover"
             />
           </div>
         </div>
