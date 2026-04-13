@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Send, Loader2, ChevronDown, Mic, MicOff, Volume2, VolumeX, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Send, Loader2, ChevronDown, Mic, MicOff, Volume2, VolumeX, CheckCircle2, AlertCircle, Layers, Sparkles } from 'lucide-react';
 import { useClub } from '../contexts/ClubContext';
 import { useAuth } from '../hooks/useAuth';
 import { useSiteImages } from '../hooks/useSiteImages';
