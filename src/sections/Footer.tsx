@@ -6,7 +6,7 @@ import { useClub } from '../contexts/ClubContext';
 const Footer = () => {
   const { club } = useClub();
   return (
-    <footer className="text-white" style={{ backgroundColor: '#0c3c7c' }}>
+    <footer className="bg-[#0C3C7C] text-white" style={{ backgroundColor: '#0C3C7C' }}>
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           {/* Logo & End Polio */}
