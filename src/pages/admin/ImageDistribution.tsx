@@ -196,8 +196,13 @@ const ImageDistribution: React.FC = () => {
         const result: any = {};
         for (const key of Object.keys(DEFAULTS)) {
             const def = (DEFAULTS as any)[key];
-            if (Array.isArray(def)) result[key] = src?.[key] || def.map((d: any) => ({ ...d }));
-            else result[key] = src?.[key] || { ...def };
+            if (Array.isArray(def)) {
+                // Merge existing array items with defaults for any new slots
+                const clubArr = Array.isArray(src?.[key]) ? src[key] : [];
+                result[key] = def.map((d: any, i: number) => clubArr[i] || { ...d });
+            } else {
+                result[key] = src?.[key] || { ...def };
+            }
         }
         return result as SiteImages;
     }, []);
