@@ -25,9 +25,9 @@ const JoinSection = () => {
                 </h2>
                 <div className="space-y-6">
                   <p className="text-lg text-white/90 leading-relaxed font-medium">
-                    Construyamos juntos un futuro de servicio, liderazgo y amistad, donde la juventud es protagonista del cambio y la diversidad nuestra mayor fortaleza. Resolver los desafíos más urgentes de nuestra región y del mundo requiere visión, acción y unión. En **LATIR**, creemos que cada joven tiene el poder de generar impacto a través del entendimiento cultural y el servicio voluntario.
+                    Construyamos juntos un futuro de servicio, liderazgo y amistad, donde la juventud es protagonista del cambio y la diversidad nuestra mayor fortaleza. Resolver los desafíos más urgentes de nuestra región y del mundo requiere visión, acción y unión. En LATIR, creemos que cada joven tiene el poder de generar impacto a través del entendimiento cultural y el servicio voluntario.
                   </p>
-                  <p className="text-xl font-bold leading-relaxed pt-4">
+                  <p className="text-xl leading-relaxed pt-4">
                     Conectamos a 44 distritos de 14 países, inspirando a más de 175 participantes a LATIR juntos por un futuro de paz y cooperación.
                   </p>
                 </div>
