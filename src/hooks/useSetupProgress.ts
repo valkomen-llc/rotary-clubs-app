@@ -29,12 +29,23 @@ export const SETUP_ALLOWED_PATHS = [
     '/admin/imagenes-sitio',
     '/admin/noticias',
     '/admin/proyectos',
+    '/admin/calendario',
+    '/admin/miembros',
     '/admin/usuarios',
     '/admin/media',
     '/admin/faqs',
     '/admin/integraciones',
     '/admin/descargas',
     '/admin/configuracion-sitio',
+    '/admin/rotaract',
+    '/admin/interact',
+    '/admin/intercambios-jovenes',
+    '/admin/ngse',
+    '/admin/rotex',
+    '/admin/tienda',
+    '/admin/ordenes',
+    '/admin/boveda',
+    '/admin/estados-financieros',
 ];
 
 export function useSetupProgress(): SetupProgress {
