@@ -43,7 +43,6 @@ import {
     Upload,
     MessageSquare
 } from 'lucide-react';
-import SuperAssistantDrawer from './SuperAssistantDrawer';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import { useSetupProgress, SETUP_ALLOWED_PATHS } from '../../hooks/useSetupProgress';
@@ -752,9 +751,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 </main>
             </div>
             
-            {/* Global Super AI Assistant */}
-            <SuperAssistantDrawer />
-        </div >
+        </div>
     );
 };
 

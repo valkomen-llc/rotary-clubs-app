@@ -42,9 +42,12 @@ const ChatBot: React.FC = () => {
     const { club } = useClub();
     const { user, token, isAuthenticated } = useAuth();
     const isClubAdmin = isAuthenticated && (user?.role === 'club_admin' || user?.role === 'administrator');
+    const isSuperAdmin = isAuthenticated && user?.role === 'administrator';
+    const [activeAgent, setActiveAgent] = useState<'ClubAssist' | 'Antigravity AI'>('ClubAssist');
     const siteImages = useSiteImages();
 
     // Avatars
+    const ANTIGRAVITY_AVATAR = "https://images.unsplash.com/photo-1675244502909-0f40d7e7925e?w=150&h=150&fit=crop";
     const defaultPublic = "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face";
     const defaultAdmin = "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150&h=150&fit=crop&crop=face";
     
@@ -55,6 +58,8 @@ const ChatBot: React.FC = () => {
     const ADMIN_AVATAR = (siteImages.chatbotAdminAvatar && !Array.isArray(siteImages.chatbotAdminAvatar))
         ? siteImages.chatbotAdminAvatar.url
         : defaultAdmin;
+
+    const CURRENT_AVATAR = activeAgent === 'Antigravity AI' ? ANTIGRAVITY_AVATAR : (isClubAdmin ? ADMIN_AVATAR : PUBLIC_AVATAR);
 
     const [isOpen, setIsOpen] = useState(false);
     const [isMinimized, setIsMinimized] = useState(false);
@@ -78,14 +83,16 @@ const ChatBot: React.FC = () => {
 
     // Initialize greeting
     useEffect(() => {
-        const greeting = isClubAdmin
-            ? `¡Hola${user?.email ? '' : ''}! 🔧 Soy **ClubAssist**, tu asistente de gestión. Puedo ayudarte a crear noticias, proyectos, eventos, programar publicaciones y configurar tu sitio web. ¿Qué necesitas hoy?`
-            : `¡Hola! 👋 Soy el asistente virtual de **${club.name}**. Estoy aquí para ayudarte con información sobre Rotary, nuestros proyectos y programas. ¿En qué puedo ayudarte?`;
+        const greeting = activeAgent === 'Antigravity AI'
+            ? `¡Hola! ⚡ Soy **Antigravity AI**, el núcleo de soporte técnico y arquitectura. Puedo ayudarte con dudas profundas sobre multitenancy, despliegue, seguridad y el diseño del sistema. ¿En qué puedo apoyarte hoy?`
+            : isClubAdmin
+                ? `¡Hola! 🔧 Soy **ClubAssist**, tu asistente de gestión. Puedo ayudarte a crear noticias, proyectos, eventos, programar publicaciones y configurar tu sitio web. ¿Qué necesitas hoy?`
+                : `¡Hola! 👋 Soy el asistente virtual de **${club.name}**. Estoy aquí para ayudarte con información sobre Rotary, nuestros proyectos y programas. ¿En qué puedo ayudarte?`;
 
         setMessages([{
             id: '0', role: 'bot', text: greeting, timestamp: new Date(),
         }]);
-    }, [isClubAdmin, club.name]);
+    }, [isClubAdmin, club.name, activeAgent]);
 
     useEffect(() => {
         if (isOpen) { setUnread(0); setTimeout(() => inputRef.current?.focus(), 300); }
@@ -108,17 +115,29 @@ const ChatBot: React.FC = () => {
         setIsTyping(true);
 
         try {
-            const endpoint = isClubAdmin ? '/ai/assistant-chat' : '/ai/chat';
-            const body = isClubAdmin
+            const isAntigravity = activeAgent === 'Antigravity AI';
+            const endpoint = isAntigravity ? '/ai/agent-chat' : (isClubAdmin ? '/ai/assistant-chat' : '/ai/chat');
+            
+            const body = isAntigravity
                 ? {
                     message: text,
+                    agentId: 'Antigravity AI',
                     history: messages.filter(m => m.id !== '0').map(m => ({
                         role: m.role === 'bot' ? 'assistant' : 'user',
                         text: m.text,
                     })),
                     hostname: window.location.hostname,
                 }
-                : { message: text, clubId: club.id };
+                : isClubAdmin
+                    ? {
+                        message: text,
+                        history: messages.filter(m => m.id !== '0').map(m => ({
+                            role: m.role === 'bot' ? 'assistant' : 'user',
+                            text: m.text,
+                        })),
+                        hostname: window.location.hostname,
+                    }
+                    : { message: text, clubId: club.id };
 
             const response = await fetch(`${API_URL}${endpoint}`, {
                 method: 'POST',
@@ -213,14 +232,20 @@ const ChatBot: React.FC = () => {
         );
     };
 
-    const quickItems = isClubAdmin ? ADMIN_ACTIONS : PUBLIC_QUESTIONS;
-    const headerGradient = isClubAdmin
-        ? 'from-slate-800 via-slate-900 to-gray-900'
-        : 'from-[#0C3C7C] to-sky-700';
-    const headerTitle = isClubAdmin ? 'ClubAssist' : 'Asistente Rotary';
-    const headerSubtitle = isClubAdmin
-        ? 'Tu asistente de gestión inteligente'
-        : 'En línea · Responde al instante';
+    const isAntigravity = activeAgent === 'Antigravity AI';
+    
+    const headerGradient = isAntigravity
+        ? 'from-indigo-900 via-purple-950 to-indigo-950'
+        : isClubAdmin
+            ? 'from-slate-800 via-slate-900 to-gray-900'
+            : 'from-[#0C3C7C] to-sky-700';
+
+    const headerTitle = isAntigravity ? 'Antigravity AI' : (isClubAdmin ? 'ClubAssist' : 'Asistente Rotary');
+    const headerSubtitle = isAntigravity
+        ? 'Soporte Técnico & Arquitectura'
+        : isClubAdmin
+            ? 'Tu asistente de gestión inteligente'
+            : 'En línea · Responde al instante';
 
     if (siteImages._loading) return null;
 
@@ -235,20 +260,47 @@ const ChatBot: React.FC = () => {
                 >
                     {/* Header */}
                     <div
-                        className={`bg-gradient-to-r ${headerGradient} px-5 py-4 flex items-center gap-3 cursor-pointer flex-shrink-0`}
+                        className={`bg-gradient-to-r ${headerGradient} px-5 py-4 flex items-center gap-3 cursor-pointer flex-shrink-0 relative overflow-hidden`}
                         onClick={() => setIsMinimized(!isMinimized)}
                     >
-                        <div className={`w-10 h-10 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0 border-2 border-white/20 shadow-sm`}>
-                            <img src={isClubAdmin ? ADMIN_AVATAR : PUBLIC_AVATAR} alt="Avatar" className="w-full h-full object-cover" />
+                        {/* Background Decoration for Antigravity */}
+                        {isAntigravity && (
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/20 rounded-full -mr-16 -mt-16 blur-2xl" />
+                        )}
+
+                        <div className={`w-10 h-10 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0 border-2 ${isAntigravity ? 'border-purple-400/50' : 'border-white/20'} shadow-sm`}>
+                            <img src={CURRENT_AVATAR} alt="Avatar" className="w-full h-full object-cover" />
                         </div>
                         <div className="flex-1 min-w-0">
-                            <p className="text-white font-bold text-sm leading-tight">{headerTitle}</p>
+                            <p className="text-white font-bold text-sm leading-tight flex items-center gap-1.5">
+                                {headerTitle}
+                                {isAntigravity && <Sparkles className="w-3 h-3 text-purple-400 animate-pulse" />}
+                            </p>
                             <div className="flex items-center gap-1.5 mt-0.5">
                                 <span className={`w-1.5 h-1.5 ${isClubAdmin ? 'bg-emerald-400' : 'bg-emerald-400'} rounded-full animate-pulse`} />
                                 <p className={`${isClubAdmin ? 'text-gray-400' : 'text-sky-200'} text-[10px] font-medium`}>{headerSubtitle}</p>
                             </div>
                         </div>
                         <div className="flex items-center gap-1">
+                            {/* Mode Toggle — Super Admin only */}
+                            {isSuperAdmin && !isMinimized && (
+                                <button
+                                    onClick={(e) => { 
+                                        e.stopPropagation(); 
+                                        setActiveAgent(activeAgent === 'ClubAssist' ? 'Antigravity AI' : 'ClubAssist');
+                                        setMessages([]); // Refresh greeting
+                                    }}
+                                    className={`p-1.5 rounded-lg transition-all border ${
+                                        isAntigravity 
+                                            ? 'bg-purple-600/30 border-purple-500/50 text-purple-300' 
+                                            : 'hover:bg-white/10 border-white/10 text-gray-400'
+                                    }`}
+                                    title={isAntigravity ? 'Volver a ClubAssist' : 'Cambiar a Modo Antigravity'}
+                                >
+                                    <Layers className="w-4 h-4" />
+                                </button>
+                            )}
+
                             {/* Voice toggle — admin only */}
                             {isClubAdmin && (
                                 <button
@@ -275,13 +327,13 @@ const ChatBot: React.FC = () => {
                                 {messages.map((msg) => (
                                     <div key={msg.id} className={`flex gap-2.5 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                                         {msg.role === 'bot' && (
-                                            <div className={`w-8 h-8 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0 mt-1 shadow-sm border border-gray-200`}>
-                                                <img src={isClubAdmin ? ADMIN_AVATAR : PUBLIC_AVATAR} alt="Avatar" className="w-full h-full object-cover" />
+                                            <div className={`w-8 h-8 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0 mt-1 shadow-sm border ${isAntigravity ? 'border-purple-100 bg-purple-50' : 'border-gray-200 bg-white'}`}>
+                                                <img src={CURRENT_AVATAR} alt="Avatar" className="w-full h-full object-cover" />
                                             </div>
                                         )}
                                         <div className="max-w-[80%] group">
                                             <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === 'user'
-                                                ? `${isClubAdmin ? 'bg-slate-800' : 'bg-rotary-blue'} text-white rounded-tr-sm`
+                                                ? `${isAntigravity ? 'bg-indigo-700' : (isClubAdmin ? 'bg-slate-800' : 'bg-rotary-blue')} text-white rounded-tr-sm`
                                                 : 'bg-white text-gray-700 rounded-tl-sm shadow-sm border border-gray-100'
                                                 }`}>
                                                 {renderText(msg.text)}
@@ -389,16 +441,18 @@ const ChatBot: React.FC = () => {
                                     type="text"
                                     value={input}
                                     onChange={e => setInput(e.target.value)}
-                                    placeholder={isClubAdmin ? 'Escribe o habla...' : 'Escribe tu mensaje...'}
+                                    placeholder={isAntigravity ? 'Consulta técnica...' : (isClubAdmin ? 'Escribe o habla...' : 'Escribe tu mensaje...')}
                                     className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-rotary-blue/20 focus:bg-white transition-all placeholder:text-gray-400"
                                     disabled={isTyping}
                                 />
                                 <button
                                     type="submit"
                                     disabled={!input.trim() || isTyping}
-                                    className={`w-10 h-10 rounded-xl flex items-center justify-center text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all flex-shrink-0 ${isClubAdmin
-                                        ? 'bg-slate-800 hover:bg-slate-700'
-                                        : 'bg-rotary-blue hover:bg-sky-800'
+                                    className={`w-10 h-10 rounded-xl flex items-center justify-center text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all flex-shrink-0 ${isAntigravity
+                                        ? 'bg-indigo-700 hover:bg-indigo-800 shadow-lg shadow-indigo-200'
+                                        : isClubAdmin
+                                            ? 'bg-slate-800 hover:bg-slate-700'
+                                            : 'bg-rotary-blue hover:bg-sky-800'
                                         }`}
                                 >
                                     {isTyping
@@ -450,7 +504,7 @@ const ChatBot: React.FC = () => {
                     <div className="relative w-full h-full flex items-center justify-center">
                         {isOpen
                             ? <X className="w-6 h-6 text-white relative z-10" />
-                            : <img src={isClubAdmin ? ADMIN_AVATAR : PUBLIC_AVATAR} alt="Chat Avatar" className="w-full h-full object-cover rounded-full relative z-10 bg-white" />
+                            : <img src={isClubAdmin ? (isAntigravity ? ANTIGRAVITY_AVATAR : ADMIN_AVATAR) : PUBLIC_AVATAR} alt="Chat Avatar" className="w-full h-full object-cover rounded-full relative z-10 bg-white" />
                         }
 
                         {/* Unread badge placed outside */}
@@ -460,10 +514,10 @@ const ChatBot: React.FC = () => {
                             </span>
                         )}
 
-                        {/* Online green indicator dot placed slightly outside */}
+                        {/* Online status indicator */}
                         {!isOpen && (
                             <span 
-                                className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white z-20"
+                                className={`absolute -bottom-1 -right-1 w-4 h-4 ${isAntigravity ? 'bg-purple-500' : 'bg-green-500'} rounded-full border-2 border-white z-20`}
                                 title="Online"
                             ></span>
                         )}
