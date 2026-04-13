@@ -57,7 +57,7 @@ const StatsSection = () => {
           {stats.map((stat, index) => (
             <div
               key={index}
-              className="bg-white rounded-lg shadow-md p-8 text-center hover:shadow-lg transition-shadow"
+              className="bg-white rounded-2xl border border-gray-100 shadow-md p-8 text-center hover:shadow-lg transition-shadow"
             >
               <div className="flex justify-center mb-4">
                 <stat.icon className={`w-10 h-10 ${stat.color}`} />
