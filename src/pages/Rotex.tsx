@@ -45,8 +45,8 @@ const Rotex = () => {
             <section className="relative w-full h-[60vh] min-h-[500px] flex items-center justify-center overflow-hidden">
                 <div className="absolute inset-0">
                     <img
-                        src={siteImages.rotexHero?.url || getC('hero', 'image', "https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1600&h=600&fit=crop")}
-                        alt="Rotex banner"
+                        src={siteImages.rotexHero?.url || getC('hero', 'image', "")}
+                        alt={siteImages.rotexHero?.alt || "Rotex banner"}
                         className="w-full h-full object-cover scale-105 animate-subtle-zoom"
                         loading="lazy"
                     />
@@ -61,7 +61,7 @@ const Rotex = () => {
                         <span className="block text-5xl md:text-7xl font-extrabold text-white mb-2">
                             Rotex
                         </span>
-                        <span className="block text-4xl md:text-6xl font-extrabold text-interact">
+                        <span className="block text-4xl md:text-6xl font-extrabold text-white">
                             {club.name.replace(/Rotary Club de |Rotary Club |Rotary /gi, '')}
                         </span>
                     </h1>

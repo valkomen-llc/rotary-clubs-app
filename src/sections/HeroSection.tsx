@@ -14,9 +14,10 @@ const HeroSection = () => {
   const siteImages = useSiteImages();
 
   // Build slides from siteImages or defaults
+  const hasCustomHero = siteImages.hero && siteImages.hero.length > 0 && !siteImages.hero[0].url.includes('unsplash.com');
   const slides = (siteImages.hero && siteImages.hero.length > 0)
     ? siteImages.hero.map((img, i) => ({ id: i + 1, image: img.url, alt: img.alt }))
-    : defaultSlides;
+    : (siteImages._loading ? [] : defaultSlides);
 
   useEffect(() => {
     if (siteImages._loading) return; // Wait for initial images

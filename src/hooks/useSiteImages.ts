@@ -73,25 +73,35 @@ export function useSiteImages(): SiteImages & { _loading?: boolean } {
     const { club } = useClub();
     
     // PRE-MERGE: Initialize state with DEFAULTS + whatever we have in the club object from the first fetch
-    // This prevents the "flash" of default images while the authoritative merge fetch happens below.
     const [images, setImages] = useState<SiteImages & { _loading?: boolean }>(() => {
-        const initial = { ...DEFAULTS, _loading: true };
         const clubSiteImages = (club as any)?.siteImages || {};
         
-        // Merge simple keys
-        if (clubSiteImages.hero) initial.hero = clubSiteImages.hero;
-        if (clubSiteImages.join) initial.join = clubSiteImages.join;
+        // Start with a clean slate based on DEFAULTS
+        const initial = { ...DEFAULTS, _loading: true };
         
-        // Merge array keys safely
+        // Standalone keys
+        const simpleKeys = [
+            'foundation', 'join', 'aboutHero', 'causesHero', 'polio', 
+            'rotaract', 'interact', 'yepExperience', 'yepBanner', 'ngse', 
+            'rotexHero', 'chatbotPublicAvatar', 'chatbotAdminAvatar'
+        ];
+        
+        simpleKeys.forEach(key => {
+            if (clubSiteImages[key]) (initial as any)[key] = clubSiteImages[key];
+        });
+        
+        // Array keys
         const arrayKeys = ['hero', 'aboutCarousel', 'history', 'yep', 'rotexCarousel', 'causes'];
         arrayKeys.forEach(key => {
             if (Array.isArray(clubSiteImages[key]) && clubSiteImages[key].length > 0) {
-                // We use the club's array but pad it with defaults if needed
                 const clubArray = clubSiteImages[key];
                 const defaultArray = (DEFAULTS as any)[key] || [];
+                // If the club array has content, use it to override/pad defaults
                 const merged = [...clubArray];
-                for (let i = merged.length; i < defaultArray.length; i++) {
-                    merged.push(defaultArray[i]);
+                if (merged.length < defaultArray.length) {
+                    for (let i = merged.length; i < defaultArray.length; i++) {
+                        merged.push(defaultArray[i]);
+                    }
                 }
                 (initial as any)[key] = merged;
             }
@@ -110,11 +120,19 @@ export function useSiteImages(): SiteImages & { _loading?: boolean } {
         if (clubSiteImages) {
             setImages(prev => {
                 const updated = { ...prev };
-                const arrayKeys = ['hero', 'aboutCarousel', 'history', 'yep', 'rotexCarousel', 'causes'];
+                const simpleKeys = [
+                    'foundation', 'join', 'aboutHero', 'causesHero', 'polio', 
+                    'rotaract', 'interact', 'yepExperience', 'yepBanner', 'ngse', 
+                    'rotexHero', 'chatbotPublicAvatar', 'chatbotAdminAvatar'
+                ];
                 
+                simpleKeys.forEach(key => {
+                    if (clubSiteImages[key]) (updated as any)[key] = clubSiteImages[key];
+                });
+
                 if (clubSiteImages.hero) updated.hero = clubSiteImages.hero;
-                if (clubSiteImages.join) updated.join = clubSiteImages.join;
                 
+                const arrayKeys = ['hero', 'aboutCarousel', 'history', 'yep', 'rotexCarousel', 'causes'];
                 arrayKeys.forEach(key => {
                     if (Array.isArray(clubSiteImages[key]) && clubSiteImages[key].length > 0) {
                         const clubArray = clubSiteImages[key];
