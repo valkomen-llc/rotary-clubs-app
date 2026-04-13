@@ -293,7 +293,7 @@ const ImageDistribution: React.FC = () => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        if (pickerTarget?.key.startsWith('chatbot') || pickerTarget?.key === 'hero' || pickerTarget?.key === 'aboutHero' || pickerTarget?.key === 'causesHero') {
+        if (pickerTarget?.key.startsWith('chatbot') || ['hero', 'aboutHero', 'causesHero', 'yep', 'rotaract', 'interact', 'ngse', 'rotex', 'foundation', 'polio', 'history'].includes(pickerTarget?.key || '')) {
             const reader = new FileReader();
             reader.onload = () => {
                 setCropImageSrc(reader.result as string);
@@ -382,7 +382,7 @@ const ImageDistribution: React.FC = () => {
     };
 
     const handleMediaClick = (url: string, filename: string) => {
-        if (pickerTarget?.key.startsWith('chatbot') || pickerTarget?.key === 'hero' || pickerTarget?.key === 'aboutHero' || pickerTarget?.key === 'causesHero') {
+        if (pickerTarget?.key.startsWith('chatbot') || ['hero', 'aboutHero', 'causesHero', 'yep', 'rotaract', 'interact', 'ngse', 'rotex', 'foundation', 'polio', 'history'].includes(pickerTarget?.key || '')) {
             setCropImageSrc(url);
             // Create a pseudo-file to carry over the original filename safely
             setCropFile(new File([], filename || 'image.jpg'));
@@ -708,6 +708,9 @@ const ImageDistribution: React.FC = () => {
                                     pickerTarget?.key === 'hero' ? 16 / 7 :
                                     pickerTarget?.key === 'aboutHero' ? 16 / 5 :
                                     pickerTarget?.key === 'causesHero' ? 16 / 6 :
+                                    pickerTarget?.key === 'polio' ? 4 / 3 :
+                                    pickerTarget?.key === 'history' ? 16 / 9 :
+                                    (['yep', 'rotaract', 'interact', 'ngse', 'rotex', 'foundation'].includes(pickerTarget?.key || '')) ? 16 / 8 :
                                     1
                                 }
                                 cropShape={pickerTarget?.key.startsWith('chatbot') ? 'round' : 'rect'}
