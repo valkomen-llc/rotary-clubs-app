@@ -50,10 +50,12 @@ const Footer = () => {
           <div className="md:pl-6">
             <h3 className="font-bold text-lg mb-6 tracking-tight">Links de Interés</h3>
             <ul className="space-y-3 text-[14px] font-medium text-white/80">
-              <li><a href="#/quienes-somos" className="hover:text-yellow-400 transition-colors">Acerca de Rotary</a></li>
+               <li><a href="#/quienes-somos" className="hover:text-yellow-400 transition-colors">Acerca de Rotary</a></li>
               <li><a href="#/nuestra-historia" className="hover:text-yellow-400 transition-colors">Historia de Rotary LATIR</a></li>
               <li><a href="#/nuestra-junta-directiva" className="hover:text-yellow-400 transition-colors">Junta Directiva Rotary LATIR</a></li>
-              <li><a href="#/la-fundacion-rotaria" className="hover:text-yellow-400 transition-colors">La Fundación Rotaria</a></li>
+              {!(club?.subdomain?.toLowerCase().includes('latir') || club?.name?.toLowerCase().includes('latir')) && (
+                <li><a href="#/la-fundacion-rotaria" className="hover:text-yellow-400 transition-colors">La Fundación Rotaria</a></li>
+              )}
               <li><a href="#/intercambio-jovenes" className="hover:text-yellow-400 transition-colors">Programa de Intercambios de Rotary</a></li>
               <li><a href="https://my.rotary.org" target="_blank" rel="noopener noreferrer" className="hover:text-yellow-400 transition-colors">My Rotary</a></li>
               <li><a href="#/eventos" className="hover:text-yellow-400 transition-colors">Nuestros Eventos</a></li>
@@ -69,7 +71,7 @@ const Footer = () => {
             <ul className="space-y-4 text-[14px] font-medium text-white/80">
               <li className="flex items-center gap-2">
                 <span className="text-yellow-500 text-lg select-none">•</span>
-                <a href="#" className="hover:text-yellow-400 transition-colors">Aporte Voluntario</a>
+                <a href="#/maneras-de-contribuir" className="hover:text-yellow-400 transition-colors">Aporte Voluntario</a>
               </li>
               <li className="flex items-center gap-2">
                 <span className="text-yellow-500 text-lg select-none">•</span>
