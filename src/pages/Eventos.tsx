@@ -6,40 +6,6 @@ import { useClub } from '../contexts/ClubContext';
 import { Calendar, MapPin, Clock, ChevronRight } from 'lucide-react';
 import { useSEO } from '../hooks/useSEO';
 
-// Fallback mock events when no real data exists
-const mockEvents = [
-    {
-        id: 'mock-1',
-        title: "Reunión Semanal de Socios",
-        startDate: "2026-03-12T19:00:00Z",
-        endDate: null,
-        location: "Sede Social / Zoom",
-        type: "Fija",
-        description: "Espacio de integración y planificación entre los socios del club.",
-        image: "https://images.unsplash.com/photo-1517457373958-b7bdd4587205?w=600&h=400&fit=crop"
-    },
-    {
-        id: 'mock-2',
-        title: "Jornada de Salud Comunitaria",
-        startDate: "2026-03-25T08:00:00Z",
-        endDate: null,
-        location: "Barrio San Alberto",
-        type: "Servicio",
-        description: "Atención médica gratuita para familias de la comunidad.",
-        image: "https://images.unsplash.com/photo-1532938911079-1b06ac7ceec7?w=600&h=400&fit=crop"
-    },
-    {
-        id: 'mock-3',
-        title: "Cena de Gala Benéfica",
-        startDate: "2026-04-10T20:00:00Z",
-        endDate: null,
-        location: "Hotel Grand Rotary",
-        type: "Fundraising",
-        description: "Evento de recaudación con cena, música en vivo y subasta.",
-        image: "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=600&h=400&fit=crop"
-    }
-];
-
 // Category images by event type
 const typeImages: Record<string, string> = {
     'Servicio': 'https://images.unsplash.com/photo-1532938911079-1b06ac7ceec7?w=600&h=400&fit=crop',
@@ -78,22 +44,17 @@ const Eventos = () => {
                 );
                 if (response.ok) {
                     const data = await response.json();
-                    if (data.length > 0) {
-                        // Map API data to component format, adding image fallback
-                        const mapped = data.map((e: any) => ({
-                            ...e,
-                            image: e.image || typeImages[e.type] || defaultImage,
-                        }));
-                        setEvents(mapped);
-                    } else {
-                        setEvents(mockEvents);
-                    }
+                    const mapped = data.map((e: any) => ({
+                        ...e,
+                        image: e.image || typeImages[e.type] || defaultImage,
+                    }));
+                    setEvents(mapped);
                 } else {
-                    setEvents(mockEvents);
+                    setEvents([]);
                 }
             } catch (error) {
                 console.error('Error fetching events:', error);
-                setEvents(mockEvents);
+                setEvents([]);
             } finally {
                 setLoading(false);
             }
