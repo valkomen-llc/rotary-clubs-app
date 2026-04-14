@@ -470,9 +470,14 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
   }, []);
 
   const handleImageClick = (e: React.MouseEvent, area: any) => {
+    e.preventDefault();
     if (isLatir) {
-      e.preventDefault();
       setSelectedImage({ url: area.image, title: area.title });
+    } else {
+      const element = document.getElementById(area.id);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     }
   };
 
@@ -502,7 +507,7 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
             {areasByColumn.left.map((area) => (
               <a
                 key={area.id}
-                href={isLatir ? undefined : `#${area.id}`}
+                href="#"
                 onClick={(e) => handleImageClick(e, area)}
                 className="area-item"
                 role="listitem"
@@ -528,7 +533,7 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
             {areasByColumn.center.map((area) => (
               <a
                 key={area.id}
-                href={isLatir ? undefined : `#${area.id}`}
+                href="#"
                 onClick={(e) => handleImageClick(e, area)}
                 className="area-item"
                 role="listitem"
@@ -554,7 +559,7 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
             {areasByColumn.right.map((area) => (
               <a
                 key={area.id}
-                href={isLatir ? undefined : `#${area.id}`}
+                href="#"
                 onClick={(e) => handleImageClick(e, area)}
                 className="area-item"
                 role="listitem"
