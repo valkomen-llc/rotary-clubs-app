@@ -57,7 +57,7 @@ const Footer = () => {
               <li><a href="https://my.rotary.org" target="_blank" rel="noopener noreferrer" className="hover:text-yellow-400 transition-colors">My Rotary</a></li>
               <li><a href="#/eventos" className="hover:text-yellow-400 transition-colors">Nuestros Eventos</a></li>
               <li><a href="#/blog" className="hover:text-yellow-400 transition-colors">Novedades</a></li>
-              <li><a href="#/descargas" className="hover:text-yellow-400 transition-colors font-bold text-yellow-500">Centro de Descargas</a></li>
+              <li><a href="#/descargas" className="hover:text-yellow-400 transition-colors">Centro de Descargas</a></li>
               <li><a href="#/contacto" className="hover:text-yellow-400 transition-colors">Contacto</a></li>
             </ul>
           </div>
