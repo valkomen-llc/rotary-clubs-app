@@ -55,7 +55,7 @@ const EventsManagement = () => {
     const [newEvent, setNewEvent] = useState(emptyForm);
 
     const API = import.meta.env.VITE_API_URL || '/api';
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('rotary_token');
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
     const fetchEvents = async () => {
