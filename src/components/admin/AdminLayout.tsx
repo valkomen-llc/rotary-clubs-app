@@ -305,7 +305,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             { icon: Newspaper, label: 'Noticias', path: '/admin/noticias', category: 'Content', keywords: ['noticia', 'articulo', 'blog', 'publicacion'] },
         );
         if (isSuperAdmin || mod.events) {
-            items.push({ icon: Calendar, label: 'Eventos', path: '/admin/calendario', category: 'Content', keywords: ['evento', 'calendario', 'reunion', 'fecha'] });
+            items.push({ icon: Calendar, label: 'Eventos', path: '/admin/eventos', category: 'Content', keywords: ['evento', 'calendario', 'reunion', 'fecha'] });
         }
         items.push(
             { icon: ImageIcon, label: 'Multimedia', path: '/admin/media', category: 'Content', keywords: ['foto', 'video', 'imagen', 'galeria', 'archivo'] },

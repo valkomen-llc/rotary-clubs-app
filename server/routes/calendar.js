@@ -55,6 +55,41 @@ router.post('/events', authMiddleware, async (req, res) => {
     }
 });
 
+router.put('/events/:id', authMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const event = await db.query('SELECT * FROM "CalendarEvent" WHERE id = $1', [id]);
+        if (!event.rows[0]) return res.status(404).json({ error: 'Evento no encontrado' });
+        if (req.user.role !== 'administrator' && event.rows[0].clubId !== req.user.clubId) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+        const { title, description, startDate, endDate, location, type } = req.body;
+        const result = await db.query(
+            `UPDATE "CalendarEvent" SET title=$1, description=$2, "startDate"=$3, "endDate"=$4, location=$5, type=$6
+             WHERE id=$7 RETURNING *`,
+            [title, description, new Date(startDate), endDate ? new Date(endDate) : null, location, type, id]
+        );
+        res.json(result.rows[0]);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al actualizar el evento' });
+    }
+});
+
+router.delete('/events/:id', authMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const event = await db.query('SELECT * FROM "CalendarEvent" WHERE id = $1', [id]);
+        if (!event.rows[0]) return res.status(404).json({ error: 'Evento no encontrado' });
+        if (req.user.role !== 'administrator' && event.rows[0].clubId !== req.user.clubId) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+        await db.query('DELETE FROM "CalendarEvent" WHERE id = $1', [id]);
+        res.json({ message: 'Evento eliminado' });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al eliminar el evento' });
+    }
+});
+
 router.delete('/publications/:id', authMiddleware, async (req, res) => {
     try {
         const { id } = req.params;

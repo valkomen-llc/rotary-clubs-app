@@ -86,6 +86,7 @@ const DownloadsManagement = React.lazy(() => import('./pages/admin/DownloadsPage
 const YouthExchangePage = React.lazy(() => import('./pages/admin/YouthExchangePage'));
 const NGSEPage = React.lazy(() => import('./pages/admin/NGSEPage'));
 const RotexPage = React.lazy(() => import('./pages/admin/RotexPage'));
+const EventsManagement = React.lazy(() => import('./pages/admin/Events'));
 const WhatsAppQR = React.lazy(() => import('./pages/admin/WhatsAppQR'));
 const SuperAssistantChat = React.lazy(() => import('./pages/admin/SuperAssistantChat'));
 import ClubPreview from './pages/ClubPreview';
@@ -571,6 +572,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <ContentCalendar />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/eventos"
+                  element={
+                    <PrivateRoute>
+                      <EventsManagement />
                     </PrivateRoute>
                   }
                 />
