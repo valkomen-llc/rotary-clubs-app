@@ -52,6 +52,7 @@ const Footer = () => {
             <ul className="space-y-3 text-[13px] font-medium text-white/80">
               <li><a href="#/quienes-somos" className="hover:text-yellow-400 transition-colors">Acerca de Rotary</a></li>
               <li><a href="#/nuestra-historia" className="hover:text-yellow-400 transition-colors">Historia de Rotary LATIR</a></li>
+              <li><a href="#/nuestra-junta-directiva" className="hover:text-yellow-400 transition-colors">Junta Directiva Rotary LATIR</a></li>
               <li><a href="#/la-fundacion-rotaria" className="hover:text-yellow-400 transition-colors">La Fundación Rotaria</a></li>
               <li><a href="#/intercambio-jovenes" className="hover:text-yellow-400 transition-colors">Programa de Intercambios de Rotary</a></li>
               <li><a href="https://my.rotary.org" target="_blank" rel="noopener noreferrer" className="hover:text-yellow-400 transition-colors">My Rotary</a></li>
