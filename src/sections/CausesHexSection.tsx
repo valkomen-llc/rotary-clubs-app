@@ -424,7 +424,9 @@ const areas = [
 const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
   const { club } = useClub();
   const siteImages = useSiteImages();
+  const [currentSlide, setCurrentSlide] = useState(0);
   const [selectedImage, setSelectedImage] = useState<{ url: string, title: string } | null>(null);
+  const carouselRef = useRef<HTMLDivElement>(null);
   const isLatir = club?.subdomain?.toLowerCase().includes('latir') || club?.name?.toLowerCase().includes('latir');
 
   // Override images and titles with custom ones from siteImages.causes
