@@ -49,7 +49,7 @@ const Footer = () => {
           {/* Links de Interés */}
           <div className="md:pl-6">
             <h3 className="font-bold text-lg mb-6 tracking-tight">Links de Interés</h3>
-            <ul className="space-y-3 text-[13px] font-medium text-white/80">
+            <ul className="space-y-3 text-[14px] font-medium text-white/80">
               <li><a href="#/quienes-somos" className="hover:text-yellow-400 transition-colors">Acerca de Rotary</a></li>
               <li><a href="#/nuestra-historia" className="hover:text-yellow-400 transition-colors">Historia de Rotary LATIR</a></li>
               <li><a href="#/nuestra-junta-directiva" className="hover:text-yellow-400 transition-colors">Junta Directiva Rotary LATIR</a></li>
@@ -66,7 +66,7 @@ const Footer = () => {
           {/* Realiza una Acción */}
           <div>
             <h3 className="font-bold text-lg mb-6 tracking-tight">Realiza una Acción</h3>
-            <ul className="space-y-4 text-[13px] font-medium text-white/80">
+            <ul className="space-y-4 text-[14px] font-medium text-white/80">
               <li className="flex items-center gap-2">
                 <span className="text-yellow-500 text-lg select-none">•</span>
                 <a href="#" className="hover:text-yellow-400 transition-colors">Aporte Voluntario</a>
