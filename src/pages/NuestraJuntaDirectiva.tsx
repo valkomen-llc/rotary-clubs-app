@@ -102,7 +102,7 @@ const NuestraJuntaDirectiva = () => {
       {/* CTA Section */}
       <section className="py-12 md:py-16 bg-white">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-2xl md:text-3xl font-bold text-rotary-blue mb-6">
+          <h2 className="text-2xl md:text-3xl text-rotary-blue mb-6">
             {getC('cta', 'title', "¿Quieres ser parte de nuestro equipo de liderazgo?")}
           </h2>
           <button
