@@ -10,7 +10,7 @@ const LatirSpecialSection = () => {
           <div className="w-24 h-1 bg-rotary-blue mx-auto mb-12"></div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-24">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
           <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 hover:shadow-md transition-all group">
             <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center mb-6 group-hover:bg-rotary-blue transition-colors">
               <Plane className="w-6 h-6 text-rotary-blue group-hover:text-white" />
