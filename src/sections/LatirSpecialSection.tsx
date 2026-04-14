@@ -1,6 +1,5 @@
 import React from 'react';
 import { Plane, Calendar, Search, Users, Globe, ArrowRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 
 const LatirSpecialSection = () => {
   return (
@@ -118,13 +117,13 @@ const LatirSpecialSection = () => {
             </div>
 
             <div className="mt-auto">
-              <Button
+              <button
                 onClick={() => window.location.hash = '#/eventos'}
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
               >
-                Ver más sobre la Conferencia LATIR
                 <ArrowRight className="w-5 h-5" />
-              </Button>
+                Ver más sobre la Conferencia LATIR
+              </button>
             </div>
           </div>
         </div>
