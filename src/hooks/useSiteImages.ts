@@ -170,7 +170,19 @@ export function useSiteImages(): SiteImages & { _loading?: boolean } {
                     }
                 });
 
-                setImages({ ...data, _loading: false });
+                // Normalize single-slot keys: stored as arrays in DB but expected as objects
+                const d = data as any;
+                const singleKeys = [
+                    'foundation', 'join', 'aboutHero', 'causesHero', 'polio',
+                    'rotaract', 'interact', 'yepExperience', 'yepBanner', 'ngse',
+                    'rotexHero', 'chatbotPublicAvatar', 'chatbotAdminAvatar'
+                ];
+                singleKeys.forEach(key => {
+                    if (Array.isArray(d[key]) && d[key].length > 0) {
+                        d[key] = d[key][0];
+                    }
+                });
+                setImages({ ...d, _loading: false });
             })
             .catch(() => setImages(prev => ({ ...prev, _loading: false })));
     }, [clubId, club]);
