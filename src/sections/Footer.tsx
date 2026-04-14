@@ -26,11 +26,13 @@ const Footer = () => {
             </div>
             <div>
               <img 
-                src={club.endPolioLogo || endPolioLogo} 
-                alt="End Polio Now" 
+                src={club.settings?.youth_exchange_logo || club.endPolioLogo || endPolioLogo} 
+                alt={club.settings?.youth_exchange_logo ? "Rotary Youth Exchange" : "End Polio Now"} 
                 className="h-16 w-auto object-contain"
                 style={{ filter: 'brightness(1.1)' }}
-                onError={(e) => { (e.target as HTMLImageElement).src = endPolioLogo; }}
+                onError={(e) => { 
+                  (e.target as HTMLImageElement).src = club.settings?.youth_exchange_logo ? club.settings.youth_exchange_logo : endPolioLogo; 
+                }}
               />
             </div>
             {/* Redes Sociales */}

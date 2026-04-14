@@ -819,7 +819,7 @@ const ClubSettings: React.FC = () => {
                             </div>
                             <div className="flex-1 space-y-4">
                                 <p className="text-sm text-gray-500">
-                                    Sube el logo oficial del programa Intercambio de Jóvenes del distrito/club. Se mostrará en su respectiva sección sustituyendo al texto de presentación.
+                                    Sube el logo oficial del programa Intercambio de Jóvenes. <strong>Nota:</strong> En sitios de intercambio (como Rotary LATIR), este logo reemplazará automáticamente al logo de "End Polio Now" en el footer para mantener la identidad del programa.
                                 </p>
                                 <label className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2.5 rounded-full font-bold cursor-pointer transition-colors">
                                     <Upload className="w-4 h-4" />
