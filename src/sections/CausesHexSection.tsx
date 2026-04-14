@@ -424,8 +424,8 @@ const areas = [
 const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
   const { club } = useClub();
   const siteImages = useSiteImages();
-  const [currentSlide, setCurrentSlide] = useState(0);
-  const carouselRef = useRef<HTMLDivElement>(null);
+  const [selectedImage, setSelectedImage] = useState<{ url: string, title: string } | null>(null);
+  const isLatir = club?.subdomain?.toLowerCase().includes('latir') || club?.name?.toLowerCase().includes('latir');
 
   // Override images and titles with custom ones from siteImages.causes
   const finalAreas = areas.map((area, i) => {
@@ -467,6 +467,13 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
     return () => clearInterval(interval);
   }, []);
 
+  const handleImageClick = (e: React.MouseEvent, area: any) => {
+    if (isLatir) {
+      e.preventDefault();
+      setSelectedImage({ url: area.image, title: area.title });
+    }
+  };
+
   return (
     <>
       <style>{styles}</style>
@@ -493,10 +500,12 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
             {areasByColumn.left.map((area) => (
               <a
                 key={area.id}
-                href={`#${area.id}`}
+                href={isLatir ? undefined : `#${area.id}`}
+                onClick={(e) => handleImageClick(e, area)}
                 className="area-item"
                 role="listitem"
                 aria-label={`Área de interés: ${area.title}`}
+                style={{ cursor: isLatir ? 'zoom-in' : 'pointer' }}
               >
                 <div className="area-item__circle">
                   <img
@@ -517,10 +526,12 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
             {areasByColumn.center.map((area) => (
               <a
                 key={area.id}
-                href={`#${area.id}`}
+                href={isLatir ? undefined : `#${area.id}`}
+                onClick={(e) => handleImageClick(e, area)}
                 className="area-item"
                 role="listitem"
                 aria-label={`Área de interés: ${area.title}`}
+                style={{ cursor: isLatir ? 'zoom-in' : 'pointer' }}
               >
                 <div className="area-item__circle">
                   <img
@@ -541,10 +552,12 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
             {areasByColumn.right.map((area) => (
               <a
                 key={area.id}
-                href={`#${area.id}`}
+                href={isLatir ? undefined : `#${area.id}`}
+                onClick={(e) => handleImageClick(e, area)}
                 className="area-item"
                 role="listitem"
                 aria-label={`Área de interés: ${area.title}`}
+                style={{ cursor: isLatir ? 'zoom-in' : 'pointer' }}
               >
                 <div className="area-item__circle">
                   <img
@@ -573,9 +586,10 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
 
           <div className="areas-carousel__container">
             <div
-              className="areas-carousel__track"
+              className={`areas-carousel__track ${isLatir ? 'cursor-zoom-in' : ''}`}
               ref={carouselRef}
               style={{ transform: `translateX(-${currentSlide * 100}%)` }}
+              onClick={() => isLatir && setSelectedImage({ url: finalAreas[currentSlide].image, title: finalAreas[currentSlide].title })}
             >
               {finalAreas.map((area) => (
                 <div key={area.id} className="areas-carousel__slide">
@@ -621,6 +635,32 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
             Nuestras Áreas de Interés
           </Link>
         </div>
+
+        {/* Lightbox Overlay */}
+        {selectedImage && (
+          <div 
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-4 md:p-10 animate-in fade-in duration-300"
+            onClick={() => setSelectedImage(null)}
+          >
+            <button 
+              className="absolute top-6 right-6 text-white/50 hover:text-white transition-all p-2 bg-white/5 rounded-full hover:bg-white/10"
+              onClick={() => setSelectedImage(null)}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+            
+            <div className="max-w-5xl w-full flex flex-col items-center gap-6">
+              <img 
+                src={selectedImage.url} 
+                alt={selectedImage.title} 
+                className="max-h-[80vh] w-auto object-contain rounded-xl shadow-2xl animate-in zoom-in-95 duration-300"
+                onClick={(e) => e.stopPropagation()}
+              />
+              <h3 className="text-white text-xl md:text-2xl font-bold tracking-tight text-center">{selectedImage.title}</h3>
+              <p className="text-white/40 text-[10px] uppercase tracking-widest font-bold">Haz clic fuera para cerrar</p>
+            </div>
+          </div>
+        )}
       </section>
     </>
   );
