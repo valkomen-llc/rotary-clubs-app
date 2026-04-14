@@ -105,7 +105,7 @@ const Footer = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="text-white/50 text-[11px] leading-loose no-uppercase">
-              © {new Date().getFullYear()} {club.name}. Texto de prueba en minúsculas. | Powered by{' '}
+              © {new Date().getFullYear()} {club.name}. Reservados todos los derechos. | Powered by{' '}
               <a href="https://valkomen.com" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Valkomen</a>
               {' · '}
               <a href="https://my.rotary.org/privacy-policy" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Privacidad</a>
