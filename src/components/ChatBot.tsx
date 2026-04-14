@@ -437,7 +437,7 @@ const ChatBot: React.FC = () => {
                 )}
                 <button
                     onClick={() => { setIsOpen(!isOpen); setUnread(0); }}
-                    className={`relative w-[60px] h-[60px] rounded-full shadow-2xl transition-all duration-300 hover:scale-[1.05] active:scale-95 flex items-center justify-center ${
+                    className={`relative w-[70px] h-[70px] rounded-full shadow-2xl transition-all duration-300 hover:scale-[1.05] active:scale-95 flex items-center justify-center ${
                       isOpen ? 'bg-gray-900' : (isClubAdmin ? 'bg-slate-900 border-2 border-emerald-400' : 'bg-white border-2 border-rotary-blue')
                     }`}
                 >
