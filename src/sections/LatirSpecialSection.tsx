@@ -1,9 +1,8 @@
-import React from 'react';
 import { Plane, Calendar, Search, Users, Globe, ArrowRight } from 'lucide-react';
 
 const LatirSpecialSection = () => {
   return (
-    <section className="py-20 bg-gray-50/50">
+    <section className="py-20 bg-rotary-concrete">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Modalidades de Intercambio */}
         <div className="text-center mb-16">
