@@ -207,6 +207,24 @@ router.get('/:clubId/projects/:projectId', getPublicProjectById);
 router.get('/:clubId/testimonials', getPublicTestimonials);
 router.get('/:clubId/sections', getPublicSections);
 
+// Public single event endpoint
+router.get('/:clubId/events/:id', async (req, res) => {
+    try {
+        const { clubId, id } = req.params;
+        const result = await db.query(
+            `SELECT id, title, description, "startDate", "endDate", location, type, "createdAt"
+             FROM "CalendarEvent"
+             WHERE id = $1 AND "clubId" = $2`,
+            [id, clubId]
+        );
+        if (!result.rows[0]) return res.status(404).json({ error: 'Evento no encontrado' });
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Public event detail error:', error.message);
+        res.status(500).json({ error: 'Error al cargar el evento' });
+    }
+});
+
 // Public events endpoint — returns CalendarEvent records for public pages
 router.get('/:clubId/events', async (req, res) => {
     try {

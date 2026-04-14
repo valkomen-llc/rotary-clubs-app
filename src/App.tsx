@@ -33,6 +33,7 @@ import Rotex from './pages/Rotex';
 import FundacionRotaria from './pages/FundacionRotaria';
 import Involucrate from './pages/Involucrate';
 import Eventos from './pages/Eventos';
+import EventoDetalle from './pages/EventoDetalle';
 import Aportes from './pages/Aportes';
 import Checkout from './pages/Checkout';
 import OrderSuccess from './pages/OrderSuccess';
@@ -351,6 +352,7 @@ function App() {
                 <Route path="/la-fundacion-rotaria" element={<FundacionRotaria />} />
                 <Route path="/involucrate" element={<Involucrate />} />
                 <Route path="/eventos" element={<Eventos />} />
+                <Route path="/eventos/:id" element={<EventoDetalle />} />
                 <Route path="/aportes" element={<Aportes />} />
                 <Route path="/checkout" element={<Checkout />} />
                 <Route path="/order/success" element={<OrderSuccess />} />

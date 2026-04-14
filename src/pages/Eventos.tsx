@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
@@ -172,9 +173,9 @@ const Eventos = () => {
                                         <div className="flex items-center gap-2 text-gray-500 text-sm mb-8 font-light italic">
                                             <MapPin className="w-4 h-4" /> {event.location || 'Por confirmar'}
                                         </div>
-                                        <button className="flex items-center gap-2 text-xs font-bold text-indigo-900 group/btn">
+                                        <Link to={`/eventos/${event.id}`} className="flex items-center gap-2 text-xs font-bold text-indigo-900 group/btn">
                                             MÁS DETALLES <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
-                                        </button>
+                                        </Link>
                                     </div>
                                 </div>
                             ))}
