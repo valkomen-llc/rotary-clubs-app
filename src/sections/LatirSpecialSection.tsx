@@ -118,9 +118,9 @@ const LatirSpecialSection = () => {
             </div>
 
             <div className="mt-auto">
-              <Button 
+              <Button
                 onClick={() => window.location.hash = '#/eventos'}
-                className="w-full sm:w-auto bg-rotary-blue hover:bg-[#0c3c7c] text-white font-bold py-6 px-8 rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-95 shadow-lg shadow-blue-900/10"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
               >
                 Ver más sobre la Conferencia LATIR
                 <ArrowRight className="w-5 h-5" />

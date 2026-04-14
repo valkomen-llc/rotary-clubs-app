@@ -44,7 +44,7 @@ const JoinSection = () => {
             )}
             
             <button
-              className="mt-6 inline-flex items-center gap-2 bg-white hover:bg-gray-100 text-[#0C3C7C] font-semibold px-10 py-4 rounded-2xl transition-all duration-300 shadow-xl active:scale-95"
+              className="mt-6 inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
             >
               <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
               Involúcrate en Rotary
