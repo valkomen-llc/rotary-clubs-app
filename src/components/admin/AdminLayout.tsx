@@ -644,7 +644,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                             <h2 className="text-sm font-bold text-gray-900">{currentPageTitle}</h2>
                             <div className="h-4 w-[1px] bg-gray-200 hidden sm:block" />
                             <p className="text-xs text-gray-400 font-medium hidden sm:block">
-                                {user?.role === 'administrator' ? 'Sistema Central' : (setupComplete || hasPublishedDomain) ? 'Gestión de Club' : `Configuración · ${setupPctHook}% completado`}
+                                {user?.role === 'administrator' ? 'Sistema Central' : (setupComplete || hasPublishedDomain) ? 'Gestión de Sitio' : `Configuración · ${setupPctHook}% completado`}
                             </p>
                         </div>
 

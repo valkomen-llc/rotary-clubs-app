@@ -470,6 +470,7 @@ const ClubProfile: React.FC = () => {
                 </div>
 
                 {/* Sección: Dominio Personalizado e Instrucciones DNS */}
+                {user?.role !== 'editor' && (
                 <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
                     <div className="flex items-center gap-3 mb-6">
                         <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
@@ -524,8 +525,10 @@ const ClubProfile: React.FC = () => {
                         )}
                     </div>
                 </div>
+                )}
 
                 {/* Configuración de Plataforma */}
+                {user?.role !== 'editor' && (
                 <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
                     <div className="flex items-center gap-3 mb-6">
                         <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
@@ -553,6 +556,7 @@ const ClubProfile: React.FC = () => {
                         </label>
                     </div>
                 </div>
+                )}
 
                 <div className="bg-amber-50 rounded-2xl p-6 border border-amber-100 flex gap-4">
                     <div className="p-2 bg-amber-100 text-amber-600 rounded-full h-fit">
