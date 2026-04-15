@@ -482,6 +482,7 @@ const GalleryManager = ({
     onChange: (imgs: string[]) => void;
 }) => {
     const [uploading, setUploading] = useState(false);
+    const [urlInput, setUrlInput] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
     const API = import.meta.env.VITE_API_URL || '/api';
     const token = localStorage.getItem('rotary_token');
@@ -513,6 +514,12 @@ const GalleryManager = ({
         onChange(images.filter((_, i) => i !== idx));
     };
 
+    const addByUrl = () => {
+        if (!urlInput.trim()) return;
+        onChange([...images, urlInput.trim()]);
+        setUrlInput('');
+    };
+
     return (
         <div className="space-y-3">
             <label className="block text-sm font-semibold text-gray-700">
@@ -541,7 +548,7 @@ const GalleryManager = ({
             {/* Upload zone */}
             <div
                 onClick={() => inputRef.current?.click()}
-                className="border-2 border-dashed border-gray-300 hover:border-blue-400 rounded-xl p-5 text-center cursor-pointer transition-colors group"
+                className="border-2 border-dashed border-gray-300 hover:border-blue-400 rounded-xl p-5 text-center cursor-pointer transition-colors group mb-3"
             >
                 <input
                     ref={inputRef}
@@ -559,9 +566,29 @@ const GalleryManager = ({
                 ) : (
                     <div className="flex items-center justify-center gap-2">
                         <Upload className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-colors" />
-                        <p className="text-sm text-gray-500">Agrega más imágenes (selección múltiple)</p>
+                        <p className="text-sm text-gray-500">Haz clic para buscar imágenes en tu dispositivo (selección múltiple)</p>
                     </div>
                 )}
+            </div>
+
+            {/* URL URL Input */}
+            <div className="flex gap-2">
+                <input
+                    type="url"
+                    value={urlInput}
+                    onChange={e => setUrlInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addByUrl()}
+                    placeholder="https://ejemplo.com/imagen.jpg (Agregar por enlace)"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                />
+                <button
+                    type="button"
+                    onClick={addByUrl}
+                    disabled={!urlInput.trim()}
+                    className="px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-200 disabled:opacity-50 transition-colors"
+                >
+                    + Agregar
+                </button>
             </div>
         </div>
     );
