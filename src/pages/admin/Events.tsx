@@ -288,11 +288,13 @@ const ImageUploader = ({
     currentUrl,
     onUploaded,
     onUrlChange,
+    noCrop,
 }: {
     label: string;
     currentUrl: string;
     onUploaded: (url: string) => void;
     onUrlChange: (url: string) => void;
+    noCrop?: boolean;
 }) => {
     const [uploading, setUploading] = useState(false);
     const [tab, setTab] = useState<'upload' | 'url'>('upload');
@@ -301,22 +303,11 @@ const ImageUploader = ({
     const API = import.meta.env.VITE_API_URL || '/api';
     const token = localStorage.getItem('rotary_token');
 
-    // Step 1: file selected → open crop modal
-    const handleFileSelected = (file: File) => {
-        const reader = new FileReader();
-        reader.onload = () => setCropSrc(reader.result as string);
-        reader.readAsDataURL(file);
-        // Reset input so same file can be re-selected
-        if (inputRef.current) inputRef.current.value = '';
-    };
-
-    // Step 2: crop confirmed → upload blob to S3
-    const handleCropConfirmed = async (blob: Blob) => {
-        setCropSrc(null);
+    const handleUploadAction = async (blobOrFile: Blob | File) => {
         setUploading(true);
         try {
             const form = new FormData();
-            form.append('image', blob, 'portada-evento.jpg');
+            form.append('image', blobOrFile, 'upload.jpg');
             const res = await fetch(`${API}/calendar/events/upload-image`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },
@@ -329,6 +320,25 @@ const ImageUploader = ({
         } finally {
             setUploading(false);
         }
+    };
+
+    // Step 1: file selected → open crop modal OR upload directly
+    const handleFileSelected = (file: File) => {
+        if (noCrop) {
+            handleUploadAction(file);
+        } else {
+            const reader = new FileReader();
+            reader.onload = () => setCropSrc(reader.result as string);
+            reader.readAsDataURL(file);
+        }
+        // Reset input so same file can be re-selected
+        if (inputRef.current) inputRef.current.value = '';
+    };
+
+    // Step 2: crop confirmed → upload blob to S3
+    const handleCropConfirmed = async (blob: Blob) => {
+        setCropSrc(null);
+        await handleUploadAction(blob);
     };
 
     return (
@@ -352,7 +362,7 @@ const ImageUploader = ({
                         onClick={() => setTab('upload')}
                         className={`text-xs font-medium px-3 py-1.5 rounded-md transition-all ${tab === 'upload' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                     >
-                        <Upload className="w-3 h-3 inline mr-1" />Subir y recortar
+                        <Upload className="w-3 h-3 inline mr-1" />{noCrop ? 'Subir imagen' : 'Subir y recortar'}
                     </button>
                     <button
                         type="button"
@@ -378,16 +388,16 @@ const ImageUploader = ({
                         {uploading ? (
                             <div className="flex flex-col items-center gap-2">
                                 <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                                <p className="text-sm text-gray-500">Subiendo portada recortada...</p>
+                                <p className="text-sm text-gray-500">{noCrop ? 'Subiendo imagen...' : 'Subiendo portada recortada...'}</p>
                             </div>
                         ) : (
                             <div className="flex flex-col items-center gap-2">
                                 <div className="flex gap-3 justify-center">
                                     <ImagePlus className="w-8 h-8 text-gray-300 group-hover:text-blue-400 transition-colors" />
-                                    <Crop className="w-8 h-8 text-gray-300 group-hover:text-blue-400 transition-colors" />
+                                    {!noCrop && <Crop className="w-8 h-8 text-gray-300 group-hover:text-blue-400 transition-colors" />}
                                 </div>
-                                <p className="text-sm text-gray-500">Haz clic para seleccionar y recortar</p>
-                                <p className="text-xs text-gray-400">Se abrirá el editor de recorte · Salida 1920×1080 · JPG, PNG, WEBP</p>
+                                <p className="text-sm text-gray-500">Haz clic para seleccionar {noCrop ? 'una imagen' : 'y recortar'}</p>
+                                {!noCrop && <p className="text-xs text-gray-400">Se abrirá el editor de recorte · Salida 1920×1080 (o 1920x520) · JPG, PNG, WEBP</p>}
                             </div>
                         )}
                     </div>
@@ -423,32 +433,30 @@ const ImageUploader = ({
                         >
                             <X className="w-3 h-3" />
                         </button>
-                        {/* Re-crop button */}
-                        <button
-                            type="button"
-                            onClick={async () => {
-                                // For external URLs: route through backend proxy to avoid S3 CORS
-                                if (currentUrl.startsWith('data:')) {
-                                    setCropSrc(currentUrl);
-                                    return;
-                                }
-                                try {
-                                    const API = import.meta.env.VITE_API_URL || '/api';
-                                    const token = localStorage.getItem('rotary_token');
-                                    const proxyUrl = `${API}/calendar/events/image-proxy?url=${encodeURIComponent(currentUrl)}`;
-                                    const res = await fetch(proxyUrl, { headers: { Authorization: `Bearer ${token}` } });
-                                    const blob = await res.blob();
-                                    const reader = new FileReader();
-                                    reader.onload = () => setCropSrc(reader.result as string);
-                                    reader.readAsDataURL(blob);
-                                } catch {
-                                    alert('No se pudo cargar la imagen para recortar. Sube la imagen de nuevo.');
-                                }
-                            }}
-                            className="absolute top-2 left-2 flex items-center gap-1 px-2.5 py-1.5 bg-black/60 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80"
-                        >
-                            <Crop className="w-3 h-3" /> Recortar de nuevo
-                        </button>
+                        {/* Re-crop button (only if it has crop enabled) */}
+                        {!noCrop && currentUrl.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    if (currentUrl.startsWith('data:')) {
+                                        setCropSrc(currentUrl);
+                                        return;
+                                    }
+                                    try {
+                                        const res = await fetch(`${API}/calendar/events/image-proxy?url=${encodeURIComponent(currentUrl)}`, { headers: { Authorization: `Bearer ${token}` } });
+                                        const blob = await res.blob();
+                                        const reader = new FileReader();
+                                        reader.onload = () => setCropSrc(reader.result as string);
+                                        reader.readAsDataURL(blob);
+                                    } catch {
+                                        alert('No se pudo cargar la imagen para recortar. Sube la imagen de nuevo.');
+                                    }
+                                }}
+                                className="absolute top-2 left-2 flex items-center gap-1 px-2.5 py-1.5 bg-black/60 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80"
+                            >
+                                <Crop className="w-3 h-3" /> Recortar de nuevo
+                            </button>
+                        )}
                     </div>
                 )}
             </div>
@@ -984,6 +992,7 @@ const EventsManagement = () => {
                                                             currentUrl={event.metadata?.latir?.footerImage || ''}
                                                             onUploaded={url => updateEventField(event.id, 'metadata', { ...event.metadata, latir: { ...event.metadata?.latir, footerImage: url } })}
                                                             onUrlChange={url => updateEventField(event.id, 'metadata', { ...event.metadata, latir: { ...event.metadata?.latir, footerImage: url } })}
+                                                            noCrop={true}
                                                         />
                                                     </div>
                                                 )}
