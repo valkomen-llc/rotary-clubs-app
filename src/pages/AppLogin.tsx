@@ -11,17 +11,22 @@ export default function AppLogin() {
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const [platformLogo, setPlatformLogo] = useState<string | null>(null);
-    const [platformLogoSize, setPlatformLogoSize] = useState<number>(48);
-    const [logoReady, setLogoReady] = useState(false);
+    const LOGO_CACHE_KEY = 'cp_platform_logo';
+    const cached = (() => { try { return JSON.parse(localStorage.getItem(LOGO_CACHE_KEY) || 'null'); } catch { return null; } })();
+    const [platformLogo, setPlatformLogo] = useState<string | null>(cached?.url || null);
+    const [platformLogoSize, setPlatformLogoSize] = useState<number>(cached?.size || 48);
+    const [logoReady, setLogoReady] = useState(!!cached);
 
     useEffect(() => {
         const apiUrl = import.meta.env.VITE_API_URL || '/api';
         fetch(`${apiUrl}/platform-config/logo`.replace(/\/+/g, '/').replace(':/', '://'))
             .then(r => r.json())
             .then(data => {
-                if (data.url) setPlatformLogo(data.url);
-                if (data.size) setPlatformLogoSize(data.size);
+                const url = data.url || null;
+                const size = data.size || 48;
+                setPlatformLogo(url);
+                setPlatformLogoSize(size);
+                try { localStorage.setItem(LOGO_CACHE_KEY, JSON.stringify({ url, size })); } catch { }
             })
             .catch(() => {})
             .finally(() => setLogoReady(true));
