@@ -101,21 +101,46 @@ const DistrictMultimediaGallery: React.FC = () => {
         setIsSubmitting(true);
         setError('');
 
-        const d = new FormData();
-        d.append('firstName', formData.firstName);
-        d.append('lastName', formData.lastName);
-        d.append('email', formData.email);
-        d.append('phone', `${formData.phoneCode} ${formData.phone}`);
-        d.append('clubName', formData.clubName);
-        d.append('role', formData.role);
-        d.append('message', formData.message);
-
-        files.forEach(f => d.append('files', f));
-
         try {
+            const uploadedFiles = [];
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                // 1. Obtener Presigned URL
+                const presignRes = await fetch(`${API}/public/district-media/presign?fileName=${encodeURIComponent(file.name)}&fileType=${encodeURIComponent(file.type)}`);
+                if (!presignRes.ok) throw new Error(`Error al preparar el archivo: ${file.name}`);
+                const { uploadUrl, url } = await presignRes.json();
+                
+                // 2. Subir directo a S3
+                const uploadRes = await fetch(uploadUrl, {
+                    method: 'PUT',
+                    body: file,
+                    headers: { 'Content-Type': file.type }
+                });
+                
+                if (!uploadRes.ok) throw new Error(`Error de conexión al subir: ${file.name}`);
+                
+                uploadedFiles.push({
+                    originalName: file.name,
+                    url,
+                    size: file.size,
+                    mimetype: file.type
+                });
+            }
+
+            // 3. Enviar Formulario Final (JSON Payload Ligero)
             const res = await fetch(`${API}/public/district-media`, {
                 method: 'POST',
-                body: d
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    firstName: formData.firstName,
+                    lastName: formData.lastName,
+                    email: formData.email,
+                    phone: `${formData.phoneCode} ${formData.phone}`,
+                    clubName: formData.clubName,
+                    role: formData.role,
+                    message: formData.message,
+                    uploadedFiles
+                })
             });
 
             const data = await res.json();

@@ -4,6 +4,7 @@ import multer from 'multer';
 import multerS3 from 'multer-s3';
 import { s3 } from '../lib/storage.js';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
 
 const router = express.Router();
@@ -46,51 +47,42 @@ router.get('/documents/:clubIdOrSubdomain', async (req, res) => {
 });
 
 // --- DISTRICT MULTIMEDIA UPLOAD LOGIC ---
-const uploadDistrictMedia = multer({
-    storage: multerS3({
-        s3: s3,
-        bucket: process.env.AWS_BUCKET_NAME || 'rotary-platform-assets',
-        contentType: multerS3.AUTO_CONTENT_TYPE,
-        key: function (req, file, cb) {
-            const date = new Date().toISOString().split('T')[0];
-            if (!req.submissionId) req.submissionId = randomUUID();
-            const fileName = `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '')}`;
-            cb(null, `district-submissions/${date}/${req.submissionId}/${fileName}`);
-        }
-    }),
-    fileFilter: (req, file, cb) => {
-        const filetypes = /jpeg|jpg|png|webp|heic|mp4|mov|quicktime|x-m4v|m4v/i;
-        const mimetype = filetypes.test(file.mimetype) || file.mimetype.startsWith('video/');
-        const nameMatch = filetypes.test(file.originalname);
-        if (mimetype || nameMatch) return cb(null, true);
-        cb(new Error("Formato no compatible. Solo JPG, PNG, WEBP y videos MP4/MOV."));
-    },
-    limits: { fileSize: 80 * 1024 * 1024 } // max 80MB per file (generous for standard mobile videos)
+
+// 1. Endpoint para pre-firmar la carga directa a S3 desde el cliente (evita timeout y max-body en Vercel)
+router.get('/district-media/presign', async (req, res) => {
+    try {
+        const { fileName, fileType } = req.query;
+        if (!fileName || !fileType) return res.status(400).json({ error: 'Faltan parámetros' });
+
+        const submissionId = randomUUID();
+        const date = new Date().toISOString().split('T')[0];
+        const safeName = fileName.replace(/[^a-zA-Z0-9.\-_]/g, '');
+        const key = `district-submissions/${date}/${submissionId}/${Date.now()}-${safeName}`;
+        
+        const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
+        const command = new PutObjectCommand({ Bucket: bucket, Key: key, ContentType: fileType });
+        const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
+        
+        const encodedKey = key.split('/').map(seg => encodeURIComponent(seg)).join('/');
+        const url = `https://${bucket}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${encodedKey}`;
+        
+        res.json({ uploadUrl, url, s3Key: key });
+    } catch (e) {
+        console.error('Error presigning S3 URL:', e);
+        res.status(500).json({ error: 'Error presigning' });
+    }
 });
 
-router.post('/district-media', (req, res, next) => {
-    // We expect an array of files up to 13 total (10 imgs + 3 videos)
-    uploadDistrictMedia.array('files', 15)(req, res, (err) => {
-        if (err) {
-            console.error('District Upload Error:', err);
-            return res.status(400).json({ error: err.message });
-        }
-        next();
-    });
-}, async (req, res) => {
+// 2. Endpoint final para guardar la Metadata en BD y S3 (payload liviano JSON)
+router.post('/district-media', express.json(), async (req, res) => {
     try {
-        const { firstName, lastName, email, phone, clubName, role, message } = req.body;
-        const files = req.files || [];
-
-        const fileData = files.map(f => ({
-            originalName: f.originalname,
-            url: f.location,
-            size: f.size,
-            mimetype: f.mimetype
-        }));
+        const { firstName, lastName, email, phone, clubName, role, message, uploadedFiles } = req.body;
+        
+        const fileData = uploadedFiles || [];
+        const submissionId = randomUUID();
 
         const metadataPayload = {
-            submissionId: req.submissionId,
+            submissionId: submissionId,
             timestamp: new Date().toISOString(),
             user: {
                 firstName,
@@ -107,7 +99,7 @@ router.post('/district-media', (req, res, next) => {
         // 1. Guardar metadata en S3 como archivo JSON (Respaldo)
         const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
         const date = new Date().toISOString().split('T')[0];
-        const s3Key = `district-submissions/${date}/${req.submissionId}/metadata.json`;
+        const s3Key = `district-submissions/${date}/${submissionId}/metadata.json`;
 
         await s3.send(new PutObjectCommand({
             Bucket: bucket,
@@ -140,7 +132,7 @@ router.post('/district-media', (req, res, next) => {
             ]
         );
 
-        res.json({ success: true, submissionId: req.submissionId, filesCount: files.length });
+        res.json({ success: true, submissionId: submissionId, filesCount: fileData.length });
     } catch (error) {
         console.error('Error procesando metadata del distrito:', error);
         res.status(500).json({ error: error.message || 'Error finalizando el envío de multimedia.' });
