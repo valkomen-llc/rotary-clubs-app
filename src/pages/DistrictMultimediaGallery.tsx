@@ -59,8 +59,8 @@ const DistrictMultimediaGallery: React.FC = () => {
             if (isImage && file.size > 10 * 1024 * 1024) {
                 errorMessages.push(`La imagen ${file.name} supera los 10MB.`);
             }
-            if (isVideo && file.size > 80 * 1024 * 1024) {
-                errorMessages.push(`El video ${file.name} supera los 80MB.`);
+            if (isVideo && file.size > 200 * 1024 * 1024) {
+                errorMessages.push(`El video ${file.name} supera los 200MB.`);
             }
         });
 
