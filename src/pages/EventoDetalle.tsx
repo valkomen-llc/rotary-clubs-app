@@ -119,18 +119,18 @@ const EventoDetalle = () => {
                     className="w-full h-full object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-                <div className="absolute bottom-0 left-0 right-0 px-6 pb-10 max-w-4xl mx-auto">
+                <div className="absolute bottom-0 left-0 right-0 px-6 pb-10 max-w-7xl mx-auto">
                     <span className="inline-block bg-white/20 backdrop-blur-md text-white text-[11px] font-black uppercase tracking-widest px-3 py-1 rounded-full mb-4">
                         {TYPE_LABELS[event.type] || event.type || 'Evento'}
                     </span>
-                    <h1 className="text-3xl md:text-5xl font-black text-white leading-tight">
+                    <h1 className="text-3xl md:text-5xl font-black text-white leading-tight max-w-4xl">
                         {event.title}
                     </h1>
                 </div>
             </div>
 
             {/* Content */}
-            <div className="max-w-4xl mx-auto px-6 py-12">
+            <div className="max-w-7xl mx-auto px-6 py-12">
 
                 {/* Back */}
                 <Link
