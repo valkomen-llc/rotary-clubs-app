@@ -105,39 +105,40 @@ const HtmlEditor = ({
 const HERO_W = 1920;
 const HERO_H = 520;
 
-// ── Canvas crop helper ────────────────────────────────────────────────────────
-const getCroppedBlob = (imageSrc: string, pixelCrop: Area): Promise<Blob> =>
-    new Promise((resolve, reject) => {
-        const image = new window.Image();
-        // crossOrigin must NOT be set for data: URLs — it breaks canvas in some browsers
-        if (!imageSrc.startsWith('data:')) {
-            image.crossOrigin = 'anonymous';
-        }
-        image.onload = () => {
-            const canvas = document.createElement('canvas');
-            // Output matches the exact hero dimensions
-            canvas.width = HERO_W;
-            canvas.height = HERO_H;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return reject(new Error('Canvas context not available'));
-            ctx.drawImage(
-                image,
-                pixelCrop.x, pixelCrop.y,
-                pixelCrop.width, pixelCrop.height,
-                0, 0, HERO_W, HERO_H
-            );
-            canvas.toBlob(
-                blob => blob ? resolve(blob) : reject(new Error('Canvas toBlob returned null')),
-                'image/jpeg',
-                0.92
-            );
-        };
-        image.onerror = (e) => {
-            console.error('Image load error in cropper:', e);
-            reject(new Error('No se pudo cargar la imagen para recortar'));
-        };
-        image.src = imageSrc;
+// ── Canvas crop helper (uses createImageBitmap — no CORS taint issues) ───────────────
+const getCroppedBlob = async (imageSrc: string, pixelCrop: Area): Promise<Blob> => {
+    // Validate dimensions first
+    if (!pixelCrop || pixelCrop.width <= 0 || pixelCrop.height <= 0) {
+        throw new Error('El área de recorte es inválida — mueve o haz zoom en la imagen y vuelve a intentarlo');
+    }
+
+    // createImageBitmap with blob source never taints the canvas, regardless of origin
+    const resp = await fetch(imageSrc);
+    const blob = await resp.blob();
+    const bitmap = await createImageBitmap(blob);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = HERO_W;
+    canvas.height = HERO_H;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2D context no disponible');
+
+    ctx.drawImage(
+        bitmap,
+        pixelCrop.x, pixelCrop.y,
+        pixelCrop.width, pixelCrop.height,
+        0, 0, HERO_W, HERO_H,
+    );
+    bitmap.close();
+
+    return new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+            b => b ? resolve(b) : reject(new Error('Error al generar la imagen final')),
+            'image/jpeg',
+            0.92
+        );
     });
+};
 
 
 // ── Crop Modal ────────────────────────────────────────────────────────────────
@@ -161,13 +162,18 @@ const CropModal = ({
     }, []);
 
     const handleConfirm = async () => {
-        if (!croppedArea) return;
+        if (!croppedArea || croppedArea.width <= 0 || croppedArea.height <= 0) {
+            alert('Ajusta el área de recorte antes de confirmar');
+            return;
+        }
         setProcessing(true);
         try {
             const blob = await getCroppedBlob(src, croppedArea);
             onConfirm(blob);
-        } catch {
-            alert('Error al procesar el recorte');
+        } catch (err) {
+            console.error('Crop error:', err);
+            const msg = err instanceof Error ? err.message : 'Error desconocido';
+            alert(`Error al recortar: ${msg}`);
         } finally {
             setProcessing(false);
         }
@@ -420,9 +426,24 @@ const ImageUploader = ({
                         {/* Re-crop button */}
                         <button
                             type="button"
-                            onClick={() => {
-                                // Open URL in cropper (re-crop existing image)
-                                setCropSrc(currentUrl);
+                            onClick={async () => {
+                                // For external URLs: route through backend proxy to avoid S3 CORS
+                                if (currentUrl.startsWith('data:')) {
+                                    setCropSrc(currentUrl);
+                                    return;
+                                }
+                                try {
+                                    const API = import.meta.env.VITE_API_URL || '/api';
+                                    const token = localStorage.getItem('rotary_token');
+                                    const proxyUrl = `${API}/calendar/events/image-proxy?url=${encodeURIComponent(currentUrl)}`;
+                                    const res = await fetch(proxyUrl, { headers: { Authorization: `Bearer ${token}` } });
+                                    const blob = await res.blob();
+                                    const reader = new FileReader();
+                                    reader.onload = () => setCropSrc(reader.result as string);
+                                    reader.readAsDataURL(blob);
+                                } catch {
+                                    alert('No se pudo cargar la imagen para recortar. Sube la imagen de nuevo.');
+                                }
                             }}
                             className="absolute top-2 left-2 flex items-center gap-1 px-2.5 py-1.5 bg-black/60 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80"
                         >
