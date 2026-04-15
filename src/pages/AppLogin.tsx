@@ -13,6 +13,7 @@ export default function AppLogin() {
     const [error, setError] = useState('');
     const [platformLogo, setPlatformLogo] = useState<string | null>(null);
     const [platformLogoSize, setPlatformLogoSize] = useState<number>(48);
+    const [logoReady, setLogoReady] = useState(false);
 
     useEffect(() => {
         const apiUrl = import.meta.env.VITE_API_URL || '/api';
@@ -22,7 +23,8 @@ export default function AppLogin() {
                 if (data.url) setPlatformLogo(data.url);
                 if (data.size) setPlatformLogoSize(data.size);
             })
-            .catch(() => {});
+            .catch(() => {})
+            .finally(() => setLogoReady(true));
     }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -55,8 +57,8 @@ export default function AppLogin() {
             <div className="w-full max-w-md">
                 {/* Header */}
                 <div className="text-center mb-8">
-                    <div className="flex items-center justify-center gap-2.5 mb-4">
-                        {platformLogo ? (
+                    <div className="flex items-center justify-center gap-2.5 mb-4" style={{ minHeight: '40px' }}>
+                        {logoReady && (platformLogo ? (
                             <img src={platformLogo} alt="ClubPlatform" style={{ height: platformLogoSize + 'px', width: 'auto', maxWidth: '320px' }} />
                         ) : (
                             <>
@@ -65,7 +67,7 @@ export default function AppLogin() {
                                 </div>
                                 <span className="font-black text-gray-900 text-xl">ClubPlatform</span>
                             </>
-                        )}
+                        ))}
                     </div>
                     <h1 className="text-3xl font-normal text-gray-900 mb-2">Panel de Administración</h1>
                     <p className="text-gray-500">Accede al panel de tu club rotario</p>
