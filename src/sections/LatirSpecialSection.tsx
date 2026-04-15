@@ -2,7 +2,7 @@ import { Plane, Calendar, Search, Users, Globe, ArrowRight, Sparkles, MapPin, Aw
 
 const LatirSpecialSection = () => {
   return (
-    <section className="py-24 bg-white relative overflow-hidden">
+    <section className="py-24 bg-rotary-concrete relative overflow-hidden">
       {/* Background Decorative Elements */}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-40">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-100 rounded-full blur-[120px]"></div>
@@ -16,8 +16,8 @@ const LatirSpecialSection = () => {
             <Sparkles className="w-4 h-4 text-rotary-blue animate-pulse" />
             <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-rotary-blue">Programas de Intercambio</span>
           </div>
-          <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6 tracking-tight">
-            Modalidades del <span className="text-transparent bg-clip-text bg-gradient-to-r from-rotary-blue to-sky-500">Programa RYE</span>
+          <h2 className="text-4xl md:text-5xl text-[#0a1628] mb-6 tracking-tight">
+            Modalidades del Programa RYE
           </h2>
           <p className="max-w-2xl mx-auto text-gray-500 text-lg leading-relaxed">
             Descubre las diferentes formas en las que puedes vivir una experiencia internacional transformadora con Rotary.
