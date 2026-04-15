@@ -212,7 +212,7 @@ router.get('/:clubId/events/:id', async (req, res) => {
     try {
         const { clubId, id } = req.params;
         const result = await db.query(
-            `SELECT id, title, description, "htmlContent", "startDate", "endDate", location, type, image, images, "createdAt"
+            `SELECT id, title, description, "htmlContent", "startDate", "endDate", location, type, image, images, metadata, "createdAt"
              FROM "CalendarEvent"
              WHERE id = $1 AND "clubId" = $2`,
             [id, clubId]
@@ -230,7 +230,7 @@ router.get('/:clubId/events', async (req, res) => {
     try {
         const { clubId } = req.params;
         const result = await db.query(
-            `SELECT id, title, description, "htmlContent", "startDate", "endDate", location, type, image, images, "createdAt"
+            `SELECT id, title, description, "htmlContent", "startDate", "endDate", location, type, image, images, metadata, "createdAt"
              FROM "CalendarEvent"
              WHERE "clubId" = $1
              ORDER BY "startDate" ASC`,
