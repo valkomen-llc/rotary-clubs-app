@@ -21,8 +21,10 @@ router.post('/upload', authMiddleware, (req, res) => {
         try {
             const targetClubId = (req.user.role === 'administrator') ? (req.query.clubId || req.body.clubId || req.user.clubId) : req.user.clubId;
             
+            const fileTypeLocal = getMediaType(req.file.mimetype);
+            const folderStr = fileTypeLocal === 'image' ? 'images' : fileTypeLocal === 'video' ? 'videos' : 'documents';
             const fileName = `${Date.now()}-${req.file.originalname.replace(/\s+/g, '_')}`;
-            const s3Key = `clubs/${targetClubId}/images/${fileName}`;
+            const s3Key = `clubs/${targetClubId}/${folderStr}/${fileName}`;
             const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
 
             await s3.send(new PutObjectCommand({

@@ -47,17 +47,16 @@ export const upload = multer({
     limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
 
-// In-memory multer for image processing (auto-crop) before S3 upload
 export const uploadMemory = multer({
     storage: multer.memoryStorage(),
     fileFilter: (req, file, cb) => {
-        const filetypes = /jpeg|jpg|png|webp/;
-        const mimetype = filetypes.test(file.mimetype);
+        const filetypes = /jpeg|jpg|png|webp|pdf|doc|docx|csv|xlsx|xls/;
+        const mimetype = filetypes.test(file.mimetype) || file.mimetype.startsWith('image/') || file.mimetype.startsWith('application/') || file.mimetype.startsWith('video/');
         const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
         if (mimetype || extname) return cb(null, true);
-        cb(new Error("Error: Solo se permiten imágenes (jpg, png, webp)."));
+        cb(new Error("Error: Archivo no admitido (Formatos permitidos: imágenes, PDF, doc, videos pequeños)."));
     },
-    limits: { fileSize: 5 * 1024 * 1024 }
+    limits: { fileSize: 15 * 1024 * 1024 }
 });
 
 export const uploadDocuments = multer({
