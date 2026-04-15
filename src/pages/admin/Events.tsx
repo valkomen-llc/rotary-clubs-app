@@ -102,6 +102,9 @@ const HtmlEditor = ({
     );
 };
 
+const HERO_W = 1920;
+const HERO_H = 520;
+
 // ── Canvas crop helper ────────────────────────────────────────────────────────
 const getCroppedBlob = (imageSrc: string, pixelCrop: Area): Promise<Blob> =>
     new Promise((resolve, reject) => {
@@ -112,16 +115,16 @@ const getCroppedBlob = (imageSrc: string, pixelCrop: Area): Promise<Blob> =>
         }
         image.onload = () => {
             const canvas = document.createElement('canvas');
-            // Output at 1920×1080 regardless of source size
-            canvas.width = 1920;
-            canvas.height = 1080;
+            // Output matches the exact hero dimensions
+            canvas.width = HERO_W;
+            canvas.height = HERO_H;
             const ctx = canvas.getContext('2d');
             if (!ctx) return reject(new Error('Canvas context not available'));
             ctx.drawImage(
                 image,
                 pixelCrop.x, pixelCrop.y,
                 pixelCrop.width, pixelCrop.height,
-                0, 0, 1920, 1080
+                0, 0, HERO_W, HERO_H
             );
             canvas.toBlob(
                 blob => blob ? resolve(blob) : reject(new Error('Canvas toBlob returned null')),
@@ -183,7 +186,7 @@ const CropModal = ({
                         <Crop className="w-5 h-5 text-blue-600" />
                         <div>
                             <h3 className="font-bold text-gray-900">Recortar portada</h3>
-                            <p className="text-xs text-gray-400">Formato 16:9 · Salida 1920×1080px</p>
+                            <p className="text-xs text-gray-400">Banner panorámico · Salida {HERO_W}×{HERO_H}px (ratio exacto del sitio)</p>
                         </div>
                     </div>
                     <button onClick={onCancel} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
@@ -198,7 +201,7 @@ const CropModal = ({
                         crop={crop}
                         zoom={zoom}
                         rotation={rotation}
-                        aspect={16 / 9}
+                        aspect={HERO_W / HERO_H}
                         onCropChange={setCrop}
                         onZoomChange={setZoom}
                         onCropComplete={onCropComplete}
@@ -402,10 +405,10 @@ const ImageUploader = ({
 
                 {/* Preview with aspect ratio matching the hero */}
                 {currentUrl && (
-                    <div className="relative w-full overflow-hidden rounded-xl border border-gray-200 group" style={{ aspectRatio: '16/9' }}>
+                    <div className="relative w-full overflow-hidden rounded-xl border border-gray-200 group" style={{ aspectRatio: `${HERO_W}/${HERO_H}` }}>
                         <img src={currentUrl} alt="preview" className="w-full h-full object-cover" />
                         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-3">
-                            <p className="text-xs text-white/80">Vista previa de portada (16:9)</p>
+                            <p className="text-xs text-white/80">Vista previa — ratio exacto del sitio ({HERO_W}×{HERO_H}px)</p>
                         </div>
                         <button
                             type="button"
