@@ -55,7 +55,7 @@ const LatirSpecialSidebar = ({ startDate, metadata }: { startDate: string, metad
                 {latirConfig.headerLogo && (
                     <img src={latirConfig.headerLogo} alt="Logo del Evento" className="w-full max-w-[320px] h-auto max-h-[140px] mb-6 object-contain object-left" />
                 )}
-                <h2 className="text-[2.2rem] leading-[1.1] font-black text-[#1B2B4D]" style={{ whiteSpace: 'pre-line' }}>
+                <h2 className="text-[2.2rem] leading-[1.1] font-normal text-[#1B2B4D]" style={{ whiteSpace: 'pre-line' }}>
                     {latirConfig.title || 'Distrito 4921,\nPatagonia\nArgentina'}
                 </h2>
                 <p className="text-[#475569] text-[1.15rem] mt-3 leading-snug" style={{ whiteSpace: 'pre-line' }}>
@@ -66,13 +66,13 @@ const LatirSpecialSidebar = ({ startDate, metadata }: { startDate: string, metad
             {/* Countdown */}
             <div className="flex gap-1 mt-8 mb-6 justify-center w-full">
                 {[
-                    { label: 'Days', val: timeLeft.days },
-                    { label: 'Hours', val: timeLeft.hours },
-                    { label: 'Minutes', val: timeLeft.minutes },
-                    { label: 'Seconds', val: timeLeft.seconds }
+                    { label: 'Días', val: timeLeft.days },
+                    { label: 'Horas', val: timeLeft.hours },
+                    { label: 'Minutos', val: timeLeft.minutes },
+                    { label: 'Segundos', val: timeLeft.seconds }
                 ].map(item => (
                     <div key={item.label} className="bg-[#D57D2C] text-white flex flex-col items-center justify-center py-2.5 px-0.5 w-[4.5rem] rounded-md shadow-sm">
-                        <span className="text-[2.25rem] font-normal leading-none tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>{formatNum(item.val)}</span>
+                        <span className="text-[2.25rem] font-bold leading-none tracking-tight" style={{ fontFamily: '"Open Sans", sans-serif' }}>{formatNum(item.val)}</span>
                         <span className="text-[11px] font-bold mt-1.5 capitalize">{item.label}</span>
                     </div>
                 ))}
