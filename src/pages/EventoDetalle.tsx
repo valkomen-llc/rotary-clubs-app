@@ -103,6 +103,10 @@ const EventoDetalle = () => {
         ? event.description.split(/\n\n+/).map((p: string) => p.trim()).filter(Boolean)
         : [];
 
+    const hasImages = event.images && event.images.length > 0;
+    const hasCover = !!(event.image || (event.images && event.images[0]));
+    const coverImg = event.image || (event.images && event.images[0]) || null;
+
     return (
         <div className="min-h-screen bg-white">
             <Navbar />
@@ -110,7 +114,7 @@ const EventoDetalle = () => {
             {/* Hero */}
             <div className="relative h-[420px] md:h-[520px] overflow-hidden">
                 <img
-                    src={coverImage}
+                    src={coverImg || (typeImages[event.type] || defaultImage)}
                     alt={event.title}
                     className="w-full h-full object-cover"
                 />
@@ -139,7 +143,7 @@ const EventoDetalle = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
 
                     {/* Main content */}
-                    <div className="lg:col-span-2">
+                    <div className="lg:col-span-2 space-y-6">
                         {descriptionParagraphs.length > 0 ? (
                             <div className="space-y-5 text-gray-700 text-lg leading-relaxed">
                                 {descriptionParagraphs.map((p: string, i: number) => (
@@ -147,7 +151,30 @@ const EventoDetalle = () => {
                                 ))}
                             </div>
                         ) : (
-                            <p className="text-gray-400 italic">Sin descripción disponible.</p>
+                            !event.htmlContent && <p className="text-gray-400 italic">Sin descripción disponible.</p>
+                        )}
+
+                        {/* Rich HTML content */}
+                        {event.htmlContent && (
+                            <div
+                                className="prose prose-blue max-w-none text-gray-700"
+                                dangerouslySetInnerHTML={{ __html: event.htmlContent }}
+                            />
+                        )}
+
+                        {/* Image gallery */}
+                        {hasImages && (
+                            <div className="mt-8">
+                                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Galería</h3>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                    {event.images.map((url: string, i: number) => (
+                                        <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                                            className="block aspect-square rounded-xl overflow-hidden border border-gray-100 hover:opacity-90 transition-opacity">
+                                            <img src={url} alt={`gallery-${i}`} className="w-full h-full object-cover" />
+                                        </a>
+                                    ))}
+                                </div>
+                            </div>
                         )}
                     </div>
 

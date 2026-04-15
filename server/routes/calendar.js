@@ -1,25 +1,54 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import db from '../lib/db.js';
+import multer from 'multer';
+import multerS3 from 'multer-s3';
+import { s3 } from '../lib/storage.js';
 
 const router = express.Router();
 
-// Get all publications and events for the club
+// ── S3 Upload for event cover image ──────────────────────────────────────────
+const uploadEventImage = multer({
+    storage: multerS3({
+        s3,
+        bucket: process.env.AWS_BUCKET_NAME || 'rotary-platform-assets',
+        contentType: multerS3.AUTO_CONTENT_TYPE,
+        key: (req, file, cb) => {
+            const safe = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '');
+            cb(null, `events/${Date.now()}-${safe}`);
+        },
+    }),
+    fileFilter: (req, file, cb) => {
+        if (/image\/(jpeg|jpg|png|webp|gif)/.test(file.mimetype)) return cb(null, true);
+        cb(new Error('Solo se permiten imágenes JPG, PNG, WEBP o GIF'));
+    },
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+});
+
+// POST /api/calendar/events/upload-image — sube portada o imagen a galería
+router.post('/events/upload-image', authMiddleware, (req, res, next) => {
+    uploadEventImage.single('image')(req, res, (err) => {
+        if (err) return res.status(400).json({ error: err.message });
+        next();
+    });
+}, (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'No se recibió imagen' });
+    res.json({ url: req.file.location });
+});
+
+// ── Publications ──────────────────────────────────────────────────────────────
 router.get('/', authMiddleware, async (req, res) => {
     try {
         const clubId = req.user.role === 'administrator' ? req.query.clubId : req.user.clubId;
         if (!clubId && req.user.role !== 'administrator') {
             return res.status(400).json({ error: 'Club ID is required' });
         }
-
         const whereClause = clubId ? `WHERE "clubId" = $1` : '';
         const params = clubId ? [clubId] : [];
-
         const [publications, events] = await Promise.all([
             db.query(`SELECT * FROM "Publication" ${whereClause} ORDER BY "publishDate" ASC`, params),
             db.query(`SELECT * FROM "CalendarEvent" ${whereClause} ORDER BY "startDate" ASC`, params)
         ]);
-
         res.json({ publications: publications.rows, events: events.rows });
     } catch (error) {
         console.error('Calendar Fetch Error:', error);
@@ -41,16 +70,18 @@ router.post('/publications', authMiddleware, async (req, res) => {
     }
 });
 
+// ── Events ────────────────────────────────────────────────────────────────────
 router.post('/events', authMiddleware, async (req, res) => {
     try {
-        const { title, description, startDate, endDate, location, type } = req.body;
+        const { title, description, htmlContent, startDate, endDate, location, type, image, images } = req.body;
         const result = await db.query(
-            `INSERT INTO "CalendarEvent" (id, title, description, "startDate", "endDate", location, type, "clubId", "createdAt")
-             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, NOW()) RETURNING *`,
-            [title, description, new Date(startDate), endDate ? new Date(endDate) : null, location, type, req.user.clubId]
+            `INSERT INTO "CalendarEvent" (id, title, description, "htmlContent", "startDate", "endDate", location, type, image, images, "clubId", "createdAt")
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW()) RETURNING *`,
+            [title, description, htmlContent || null, new Date(startDate), endDate ? new Date(endDate) : null, location, type, image || null, images || [], req.user.clubId]
         );
         res.json(result.rows[0]);
     } catch (error) {
+        console.error(error);
         res.status(500).json({ error: 'Error al crear el evento' });
     }
 });
@@ -63,14 +94,17 @@ router.put('/events/:id', authMiddleware, async (req, res) => {
         if (req.user.role !== 'administrator' && event.rows[0].clubId !== req.user.clubId) {
             return res.status(403).json({ error: 'No autorizado' });
         }
-        const { title, description, startDate, endDate, location, type } = req.body;
+        const { title, description, htmlContent, startDate, endDate, location, type, image, images } = req.body;
         const result = await db.query(
-            `UPDATE "CalendarEvent" SET title=$1, description=$2, "startDate"=$3, "endDate"=$4, location=$5, type=$6
-             WHERE id=$7 RETURNING *`,
-            [title, description, new Date(startDate), endDate ? new Date(endDate) : null, location, type, id]
+            `UPDATE "CalendarEvent"
+             SET title=$1, description=$2, "htmlContent"=$3, "startDate"=$4, "endDate"=$5,
+                 location=$6, type=$7, image=$8, images=$9
+             WHERE id=$10 RETURNING *`,
+            [title, description, htmlContent || null, new Date(startDate), endDate ? new Date(endDate) : null, location, type, image || null, images || [], id]
         );
         res.json(result.rows[0]);
     } catch (error) {
+        console.error(error);
         res.status(500).json({ error: 'Error al actualizar el evento' });
     }
 });
@@ -106,3 +140,5 @@ router.delete('/publications/:id', authMiddleware, async (req, res) => {
 });
 
 export default router;
+
+

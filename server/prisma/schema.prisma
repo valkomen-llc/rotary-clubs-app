@@ -239,10 +239,13 @@ model CalendarEvent {
   id          String    @id @default(uuid())
   title       String
   description String?
+  htmlContent String?
   startDate   DateTime
   endDate     DateTime?
   location    String?
   type        String    @default("meeting")
+  image       String?
+  images      String[]  @default([])
   clubId      String
   createdAt   DateTime  @default(now())
   club        Club      @relation(fields: [clubId], references: [id])
