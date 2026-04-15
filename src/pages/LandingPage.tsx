@@ -90,6 +90,20 @@ export default function LandingPage() {
     const [scrolled, setScrolled] = useState(false);
     const [activeFeature, setActiveFeature] = useState(0);
 
+    // Super Admin Config: redirect if saas_redirect is enabled
+    useEffect(() => {
+        const checkRedirect = async () => {
+            try {
+                const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/platform-config/logo`);
+                const data = await res.json();
+                if (data?.saasRedirect) {
+                    window.location.replace('https://app.clubplatform.org');
+                }
+            } catch (e) {}
+        };
+        checkRedirect();
+    }, []);
+
     useEffect(() => {
         const onScroll = () => setScrolled(window.scrollY > 20);
         window.addEventListener('scroll', onScroll);

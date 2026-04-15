@@ -11,16 +11,17 @@ const router = express.Router();
 router.get('/logo', async (_req, res) => {
     try {
         const result = await db.query(
-            `SELECT key, value FROM "PlatformConfig" WHERE key IN ('platform_logo', 'platform_logo_size')`
+            `SELECT key, value FROM "PlatformConfig" WHERE key IN ('platform_logo', 'platform_logo_size', 'saas_redirect')`
         );
         const map = {};
         result.rows.forEach(r => { map[r.key] = r.value; });
         res.json({
             url: map['platform_logo'] || null,
             size: map['platform_logo_size'] ? parseInt(map['platform_logo_size'], 10) : 48,
+            saasRedirect: map['saas_redirect'] === 'true'
         });
     } catch {
-        res.json({ url: null, size: 48 });
+        res.json({ url: null, size: 48, saasRedirect: false });
     }
 });
 
@@ -85,6 +86,23 @@ router.post('/logo/size', async (req, res) => {
     } catch (error) {
         console.error('[PlatformConfig] Logo size error:', error);
         res.status(500).json({ error: 'Error al guardar el tamaño' });
+    }
+});
+
+// ── Save platform redirect config ──────────────────────────────
+router.post('/redirect', async (req, res) => {
+    const { active } = req.body;
+    try {
+        await db.query(
+            `INSERT INTO "PlatformConfig" (id, key, value, "updatedAt")
+             VALUES (gen_random_uuid(), 'saas_redirect', $1, NOW())
+             ON CONFLICT (key) DO UPDATE SET value = $1, "updatedAt" = NOW()`,
+            [active ? 'true' : 'false']
+        );
+        res.json({ active: !!active });
+    } catch (error) {
+        console.error('[PlatformConfig] Redirect save error:', error);
+        res.status(500).json({ error: 'Error al actualizar redirección' });
     }
 });
 
