@@ -10,10 +10,17 @@ const router = express.Router();
 // ── Public: no auth required ──────────────────────────────────
 router.get('/logo', async (_req, res) => {
     try {
-        const result = await db.query(`SELECT value FROM "PlatformConfig" WHERE key = 'platform_logo'`);
-        res.json({ url: result.rows[0]?.value || null });
+        const result = await db.query(
+            `SELECT key, value FROM "PlatformConfig" WHERE key IN ('platform_logo', 'platform_logo_size')`
+        );
+        const map = {};
+        result.rows.forEach(r => { map[r.key] = r.value; });
+        res.json({
+            url: map['platform_logo'] || null,
+            size: map['platform_logo_size'] ? parseInt(map['platform_logo_size'], 10) : 48,
+        });
     } catch {
-        res.json({ url: null });
+        res.json({ url: null, size: 48 });
     }
 });
 
@@ -59,6 +66,26 @@ router.post('/logo/upload', (req, res) => {
             res.status(500).json({ error: 'Error al subir el logo' });
         }
     });
+});
+
+// ── Save platform logo size ───────────────────────────────────
+router.post('/logo/size', async (req, res) => {
+    const size = parseInt(req.body.size, 10);
+    if (!size || size < 24 || size > 200) {
+        return res.status(400).json({ error: 'Tamaño inválido (24–200px)' });
+    }
+    try {
+        await db.query(
+            `INSERT INTO "PlatformConfig" (id, key, value, "updatedAt")
+             VALUES (gen_random_uuid(), 'platform_logo_size', $1, NOW())
+             ON CONFLICT (key) DO UPDATE SET value = $1, "updatedAt" = NOW()`,
+            [String(size)]
+        );
+        res.json({ size });
+    } catch (error) {
+        console.error('[PlatformConfig] Logo size error:', error);
+        res.status(500).json({ error: 'Error al guardar el tamaño' });
+    }
 });
 
 export default router;

@@ -52,13 +52,18 @@ const ClubSettings: React.FC = () => {
 
     const [platformLogo, setPlatformLogo] = useState<string>('');
     const [uploadingPlatformLogo, setUploadingPlatformLogo] = useState(false);
+    const [platformLogoSize, setPlatformLogoSize] = useState<number>(48);
+    const [savingLogoSize, setSavingLogoSize] = useState(false);
 
     useEffect(() => {
         if (isSuperAdmin) {
             const apiUrl = import.meta.env.VITE_API_URL || '/api';
             fetch(`${apiUrl}/platform-config/logo`.replace(/\/+/g, '/').replace(':/', '://'))
                 .then(r => r.json())
-                .then(data => { if (data.url) setPlatformLogo(data.url); })
+                .then(data => {
+                    if (data.url) setPlatformLogo(data.url);
+                    if (data.size) setPlatformLogoSize(data.size);
+                })
                 .catch(() => {});
         }
     }, [isSuperAdmin]);
@@ -497,6 +502,28 @@ const ClubSettings: React.FC = () => {
         } finally {
             setUploadingPlatformLogo(false);
             if (e.target) e.target.value = '';
+        }
+    };
+
+    const handleSaveLogoSize = async () => {
+        setSavingLogoSize(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const apiUrl = import.meta.env.VITE_API_URL || '/api';
+            const res = await fetch(`${apiUrl}/platform-config/logo/size`.replace(/\/+/g, '/').replace(':/', '://'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ size: platformLogoSize }),
+            });
+            if (res.ok) {
+                toast.success('Tamaño del logo guardado');
+            } else {
+                toast.error('Error al guardar el tamaño');
+            }
+        } catch {
+            toast.error('Error de conexión');
+        } finally {
+            setSavingLogoSize(false);
         }
     };
 
@@ -1154,19 +1181,50 @@ const ClubSettings: React.FC = () => {
                                     Logo que aparece en la pantalla de inicio de sesión de ClubPlatform. Si no se configura, se muestra el ícono y nombre por defecto.
                                 </p>
                             </div>
-                            <div className="md:w-2/3 flex items-center gap-5">
-                                {platformLogo ? (
-                                    <img src={platformLogo} alt="Logo actual" className="h-14 max-w-[160px] object-contain rounded-lg border border-gray-200 bg-white p-2" />
-                                ) : (
-                                    <div className="w-14 h-14 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center bg-white">
-                                        <Upload className="w-5 h-5 text-gray-300" />
+                            <div className="md:w-2/3 flex flex-col gap-4">
+                                <div className="flex items-center gap-5">
+                                    {platformLogo ? (
+                                        <img src={platformLogo} alt="Logo actual" style={{ height: platformLogoSize + 'px' }} className="max-w-[160px] object-contain rounded-lg border border-gray-200 bg-white p-2" />
+                                    ) : (
+                                        <div className="w-14 h-14 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center bg-white">
+                                            <Upload className="w-5 h-5 text-gray-300" />
+                                        </div>
+                                    )}
+                                    <label className={`cursor-pointer inline-flex items-center gap-2 bg-white border border-emerald-200 hover:bg-emerald-50 text-emerald-700 font-bold text-sm px-4 py-2.5 rounded-lg transition-colors ${uploadingPlatformLogo ? 'opacity-50 pointer-events-none' : ''}`}>
+                                        <Upload className="w-4 h-4" />
+                                        {uploadingPlatformLogo ? 'Subiendo...' : platformLogo ? 'Cambiar logo' : 'Subir logo'}
+                                        <input type="file" accept="image/*" className="hidden" onChange={handlePlatformLogoUpload} disabled={uploadingPlatformLogo} />
+                                    </label>
+                                </div>
+                                {platformLogo && (
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex-1">
+                                            <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                                                Tamaño — {platformLogoSize}px
+                                            </label>
+                                            <input
+                                                type="range"
+                                                min={24}
+                                                max={200}
+                                                value={platformLogoSize}
+                                                onChange={e => setPlatformLogoSize(Number(e.target.value))}
+                                                className="w-full accent-emerald-600"
+                                            />
+                                            <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+                                                <span>24px</span><span>200px</span>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={handleSaveLogoSize}
+                                            disabled={savingLogoSize}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg flex items-center gap-2 font-bold text-sm transition-colors disabled:opacity-50 shrink-0"
+                                        >
+                                            <Save className="w-4 h-4" />
+                                            {savingLogoSize ? 'Guardando...' : 'Aplicar'}
+                                        </button>
                                     </div>
                                 )}
-                                <label className={`cursor-pointer inline-flex items-center gap-2 bg-white border border-emerald-200 hover:bg-emerald-50 text-emerald-700 font-bold text-sm px-4 py-2.5 rounded-lg transition-colors ${uploadingPlatformLogo ? 'opacity-50 pointer-events-none' : ''}`}>
-                                    <Upload className="w-4 h-4" />
-                                    {uploadingPlatformLogo ? 'Subiendo...' : platformLogo ? 'Cambiar logo' : 'Subir logo'}
-                                    <input type="file" accept="image/*" className="hidden" onChange={handlePlatformLogoUpload} disabled={uploadingPlatformLogo} />
-                                </label>
                             </div>
                         </div>
 

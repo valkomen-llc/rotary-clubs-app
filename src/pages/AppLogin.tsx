@@ -12,12 +12,16 @@ export default function AppLogin() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [platformLogo, setPlatformLogo] = useState<string | null>(null);
+    const [platformLogoSize, setPlatformLogoSize] = useState<number>(48);
 
     useEffect(() => {
         const apiUrl = import.meta.env.VITE_API_URL || '/api';
         fetch(`${apiUrl}/platform-config/logo`.replace(/\/+/g, '/').replace(':/', '://'))
             .then(r => r.json())
-            .then(data => { if (data.url) setPlatformLogo(data.url); })
+            .then(data => {
+                if (data.url) setPlatformLogo(data.url);
+                if (data.size) setPlatformLogoSize(data.size);
+            })
             .catch(() => {});
     }, []);
 
@@ -53,7 +57,7 @@ export default function AppLogin() {
                 <div className="text-center mb-8">
                     <div className="flex items-center justify-center gap-2.5 mb-4">
                         {platformLogo ? (
-                            <img src={platformLogo} alt="ClubPlatform" className="h-12 max-w-[180px] object-contain" />
+                            <img src={platformLogo} alt="ClubPlatform" style={{ height: platformLogoSize + 'px' }} className="max-w-[240px] object-contain" />
                         ) : (
                             <>
                                 <div className="w-10 h-10 rounded-2xl bg-[#019fcb] flex items-center justify-center shadow-lg shadow-blue-200">
