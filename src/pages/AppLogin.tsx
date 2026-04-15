@@ -75,7 +75,7 @@ export default function AppLogin() {
                         ))}
                     </div>
                     <h1 className="text-3xl font-normal text-gray-900 mb-2">Panel de Administración</h1>
-                    <p className="text-gray-500">Accede al panel de tu club rotario</p>
+                    <p className="text-gray-500">Accede al panel de control</p>
                 </div>
 
                 {/* Card */}
@@ -140,7 +140,7 @@ export default function AppLogin() {
                             <p className="text-gray-400 text-xs">
                                 ¿Aún no tienes cuenta?{' '}
                                 <Link to="/registro" className="text-[#019fcb] font-bold hover:underline">
-                                    Crear website para mi club
+                                    Crear website
                                 </Link>
                             </p>
                         </div>
@@ -148,7 +148,7 @@ export default function AppLogin() {
                 </div>
 
                 <p className="text-center text-gray-400 text-[11px] mt-6">
-                    © {new Date().getFullYear()} ClubPlatform — Plataforma digital para Clubes Rotarios · Por <a href="https://valkomen.com" target="_blank" rel="noopener noreferrer" className="font-bold hover:text-gray-600 transition-colors">Valkomen</a>
+                    © {new Date().getFullYear()} ClubPlatform — Plataforma de marketing digital para Rotary · Por <a href="https://valkomen.com" target="_blank" rel="noopener noreferrer" className="font-bold hover:text-gray-600 transition-colors">Valkomen</a>
                 </p>
             </div>
         </div>
