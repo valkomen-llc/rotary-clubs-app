@@ -11,8 +11,8 @@ const router = express.Router();
 const ensureTable = async () => {
     await db.query(`
         CREATE TABLE IF NOT EXISTS "Lead" (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            "clubId" UUID REFERENCES "Club"(id),
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "clubId" TEXT REFERENCES "Club"(id),
             name VARCHAR(255) NOT NULL,
             email VARCHAR(255) NOT NULL,
             phone VARCHAR(50),
