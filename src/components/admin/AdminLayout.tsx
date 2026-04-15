@@ -290,7 +290,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         } else {
             const isAssoc = club?.type === 'association';
             const isDistrict = club?.type === 'district';
-            const orgTypeLabel = isAssoc ? 'Asociación' : isDistrict ? 'Distrito' : 'Club';
+            const orgTypeLabel = isAssoc ? 'Asociación' : isDistrict ? 'Distrito' : 'Sitio';
             
             items.push(
                 { icon: Building2, label: `Mi ${orgTypeLabel}`, path: '/admin/mi-club', category: orgTypeLabel, keywords: ['logo', 'nombre', 'perfil', 'identidad', 'contacto', 'redes'] }

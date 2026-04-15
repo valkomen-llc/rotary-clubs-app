@@ -199,10 +199,10 @@ const ClubProfile: React.FC = () => {
             <div className="mb-8 flex justify-between items-center">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800">
-                        {clubType === 'district' ? 'Mi Distrito' : clubType === 'association' ? 'Mi Asociación' : 'Mi Club'}
+                        {clubType === 'district' ? 'Mi Distrito' : clubType === 'association' ? 'Mi Asociación' : 'Mi Sitio'}
                     </h1>
                     <p className="text-gray-500 text-sm">
-                        Personaliza la identidad y contacto de tu {clubType === 'district' ? 'distrito' : clubType === 'association' ? 'asociación' : 'club'} en la plataforma.
+                        Personaliza la identidad y contacto de tu {clubType === 'district' ? 'distrito' : clubType === 'association' ? 'asociación' : 'sitio'} en la plataforma.
                     </p>
                 </div>
                 <button
@@ -222,7 +222,7 @@ const ClubProfile: React.FC = () => {
                             <Building2 className="w-5 h-5" />
                         </div>
                         <h2 className="text-lg font-bold text-gray-800">
-                            Identidad de{clubType === 'district' ? 'l Distrito' : clubType === 'association' ? ' la Asociación' : 'l Club'}
+                            Identidad de{clubType === 'district' ? 'l Distrito' : clubType === 'association' ? ' la Asociación' : 'l Sitio'}
                         </h2>
                     </div>
 
@@ -230,7 +230,7 @@ const ClubProfile: React.FC = () => {
                         {/* Logo Upload */}
                         <div className="space-y-4">
                             <label className="text-sm font-bold text-gray-700 block text-center">
-                                Logo de{clubType === 'district' ? 'l Distrito' : clubType === 'association' ? ' la Asociación' : 'l Club'} (Header)
+                                Logo de{clubType === 'district' ? 'l Distrito' : clubType === 'association' ? ' la Asociación' : 'l Sitio'} (Header)
                             </label>
                             <div className="relative group mx-auto w-40 h-40">
                                 <div className="w-40 h-40 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden transition-all group-hover:border-rotary-blue/40">
@@ -298,7 +298,7 @@ const ClubProfile: React.FC = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-1">
                                     <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                                        Nombre de {clubType === 'district' ? 'l Distrito' : clubType === 'association' ? 'la Asociación' : 'l Club'}
+                                        Nombre de {clubType === 'district' ? 'l Distrito' : clubType === 'association' ? 'la Asociación' : 'l Sitio'}
                                     </label>
                                     <input
                                         type="text"
@@ -326,7 +326,7 @@ const ClubProfile: React.FC = () => {
                                     className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:border-rotary-blue/20 rounded-xl outline-none transition-all font-medium text-gray-800 resize-none"
                                     value={formData.description}
                                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                    placeholder="Describe qué hace especial a tu club..."
+                                    placeholder="Describe qué hace especial a tu sitio..."
                                 />
                             </div>
 
@@ -579,7 +579,7 @@ const ClubProfile: React.FC = () => {
                         <div className="bg-white border-x border-b border-gray-100 rounded-b-3xl p-8 pt-4 shadow-sm">
                             <ClubArchetypeCard
                                 result={formData.archetype}
-                                clubName={formData.name || 'Tu Club'}
+                                clubName={formData.name || 'Tu Sitio'}
                                 clubColors={{ primary: '#013388', secondary: '#E29C00' }}
                                 hideCTAs={true}
                             />

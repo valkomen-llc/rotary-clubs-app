@@ -126,9 +126,9 @@ router.post('/global-map-style', superAdminOnly, async (req, res) => {
 const adminRoles = ['administrator', 'club_admin', 'district_admin'];
 const contentRoles = ['administrator', 'club_admin', 'district_admin', 'editor'];
 
-router.get('/clubs/:id', roleMiddleware(adminRoles), getClubById);
+router.get('/clubs/:id', roleMiddleware(contentRoles), getClubById);
 router.put('/clubs/:id', roleMiddleware(adminRoles), updateClub);
-router.get('/clubs/:id/settings', roleMiddleware(adminRoles), async (req, res) => {
+router.get('/clubs/:id/settings', roleMiddleware(contentRoles), async (req, res) => {
     try {
         const { id } = req.params;
         const result = await db.query('SELECT key, value FROM "Setting" WHERE "clubId" = $1', [id]);
