@@ -359,8 +359,9 @@ const EventoDetalle = () => {
                         </div>
 
                         {event.id === '2038324a-0e04-497c-9328-fbaeb9ce2992' && (
-                            <div className="bg-white rounded-2xl p-2 border border-gray-100 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)]">
-                                <div className="rounded-xl overflow-hidden h-56 relative bg-gray-100 pointer-events-auto">
+                            <div className="bg-white rounded-2xl p-3 border border-gray-100 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)]">
+                                <h3 className="font-normal text-[1.1rem] mt-2 mb-3 text-center text-[#1B2B4D]">Ubicación de la Conferencia</h3>
+                                <div className="rounded-xl overflow-hidden h-96 relative bg-gray-100 pointer-events-auto">
                                     <iframe 
                                         width="100%" 
                                         height="100%" 
