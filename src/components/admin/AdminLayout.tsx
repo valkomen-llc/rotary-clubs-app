@@ -333,21 +333,23 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             items.push({ icon: BookOpen, label: 'Base IA', path: '/admin/conocimiento', category: 'Content' });
         }
 
-        // Module-dependent sections
-        if (isSuperAdmin || mod.rotaract) {
-            items.push({ icon: Users, label: 'Club Rotaract', path: '/admin/rotaract', category: 'Programas' });
-        }
-        if (isSuperAdmin || mod.interact) {
-            items.push({ icon: Users, label: 'Club Interact', path: '/admin/interact', category: 'Programas' });
-        }
-        if (isSuperAdmin || mod.youth_exchange) {
-            items.push({ icon: Globe, label: 'Intercambios Jóvenes', path: '/admin/intercambios-jovenes', category: 'Programas' });
-        }
-        if (isSuperAdmin || mod.ngse) {
-            items.push({ icon: Briefcase, label: 'Intercambios NGSE', path: '/admin/ngse', category: 'Programas' });
-        }
-        if (isSuperAdmin || mod.rotex) {
-            items.push({ icon: Award, label: 'ROTEX', path: '/admin/rotex', category: 'Programas' });
+        // Module-dependent sections (Programas)
+        if (user?.role !== 'editor') {
+            if (isSuperAdmin || mod.rotaract) {
+                items.push({ icon: Users, label: 'Club Rotaract', path: '/admin/rotaract', category: 'Programas' });
+            }
+            if (isSuperAdmin || mod.interact) {
+                items.push({ icon: Users, label: 'Club Interact', path: '/admin/interact', category: 'Programas' });
+            }
+            if (isSuperAdmin || mod.youth_exchange) {
+                items.push({ icon: Globe, label: 'Intercambios Jóvenes', path: '/admin/intercambios-jovenes', category: 'Programas' });
+            }
+            if (isSuperAdmin || mod.ngse) {
+                items.push({ icon: Briefcase, label: 'Intercambios NGSE', path: '/admin/ngse', category: 'Programas' });
+            }
+            if (isSuperAdmin || mod.rotex) {
+                items.push({ icon: Award, label: 'ROTEX', path: '/admin/rotex', category: 'Programas' });
+            }
         }
 
         // E-commerce — conditionally show
