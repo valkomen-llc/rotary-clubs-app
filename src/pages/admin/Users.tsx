@@ -83,7 +83,7 @@ const UsersManagement: React.FC = () => {
             setFormData({
                 email: '',
                 password: '',
-                role: currentUser?.role === 'administrator' ? 'club_admin' : 'member',
+                role: currentUser?.role === 'administrator' ? 'club_admin' : 'editor',
                 clubId: currentUser?.clubId || '',
             });
         }
@@ -212,7 +212,7 @@ const UsersManagement: React.FC = () => {
                                         u.role === 'club_admin' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
                                             'bg-gray-100 text-gray-600 border border-gray-200'
                                         }`}>
-                                        {u.role}
+                                        {u.role === 'administrator' ? 'Súper Admin' : u.role === 'club_admin' ? 'Admin de Sitio' : u.role === 'editor' ? 'Editor de Sitio' : u.role === 'member' ? 'Editor de Sitio' : u.role}
                                     </span>
                                 </td>
                                 <td className="px-6 py-4">
@@ -299,8 +299,8 @@ const UsersManagement: React.FC = () => {
                                             disabled={currentUser?.role !== 'administrator'}
                                         >
                                             {currentUser?.role === 'administrator' && <option value="administrator">Súper Admin</option>}
-                                            <option value="club_admin">Admin de Club</option>
-                                            <option value="member">Miembro / Editor</option>
+                                            <option value="club_admin">Admin de Sitio</option>
+                                            <option value="editor">Editor de Sitio</option>
                                         </select>
                                     </div>
 
