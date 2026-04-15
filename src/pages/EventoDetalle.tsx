@@ -92,6 +92,13 @@ const LatirSpecialSidebar = ({ startDate, metadata }: { startDate: string, metad
                 <p><strong className="font-extrabold">Ticket ROTEX:</strong> {latirConfig.ticketRotex || 'USD 200'}</p>
                 <p className="mt-3 text-[#1B2B4D]">Cierre de inscripciones: {latirConfig.closeDateText || '31/03/2026'}</p>
             </div>
+
+            {/* Extra image at the bottom of the box */}
+            {latirConfig.footerImage && (
+                <div className="mt-5 w-[calc(100%+3rem)] -mx-6 -mb-6 border-t border-gray-100 overflow-hidden rounded-b-2xl">
+                    <img src={latirConfig.footerImage} alt="Conf Info" className="w-full h-auto object-cover" />
+                </div>
+            )}
         </div>
     );
 };
@@ -295,13 +302,6 @@ const EventoDetalle = () => {
                                 </div>
                             </div>
                         </div>
-
-                        {/* Extra image at the bottom of the sidebar */}
-                        {event.id === '2038324a-0e04-497c-9328-fbaeb9ce2992' && event.metadata?.latir?.footerImage && (
-                            <div className="mt-4 rounded-xl overflow-hidden shadow-sm">
-                                <img src={event.metadata.latir.footerImage} alt="Conf Info" className="w-full h-auto object-cover" />
-                            </div>
-                        )}
                     </div>
                 </div>
             </div>
