@@ -379,6 +379,19 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
     return (
         <div className="flex flex-col h-screen bg-gray-50 overflow-hidden font-sans">
+            {/* System Upgrade / Version Banner */}
+            <div className="bg-[#1B2B4D] text-white w-full py-2 px-4 flex sm:flex-row flex-col items-center justify-center gap-2 sm:gap-3 text-xs font-medium z-[100] flex-shrink-0">
+                <div className="flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                    <span>Estamos realizando implementaciones y mejoras en la ingeniería del sitio.</span>
+                </div>
+                <div className="hidden sm:block h-3 w-[1px] bg-slate-600 mx-1" />
+                <Link to="/admin/system-updates" className="flex items-center gap-1.5 text-amber-400 hover:text-amber-300 transition-colors font-bold tracking-wide">
+                    <span>Release {SYSTEM_UPDATES[0].version}</span>
+                    <FileText className="w-3 h-3" />
+                </Link>
+            </div>
+
             {/* Impersonation Banner */}
             {isImpersonating && (
                 <div className="bg-gradient-to-r from-red-600 to-red-700 text-white w-full py-2.5 px-4 flex items-center justify-center gap-4 text-sm font-bold z-[100] shadow-md flex-shrink-0">
