@@ -483,9 +483,28 @@ const GalleryManager = ({
 }) => {
     const [uploading, setUploading] = useState(false);
     const [urlInput, setUrlInput] = useState('');
+    const [showMediaPicker, setShowMediaPicker] = useState(false);
+    const [mediaItems, setMediaItems] = useState<{ id: string, url: string, filename: string, type: string }[]>([]);
+    const [loadingMedia, setLoadingMedia] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
     const API = import.meta.env.VITE_API_URL || '/api';
     const token = localStorage.getItem('rotary_token');
+
+    const fetchMedia = async () => {
+        setLoadingMedia(true);
+        try {
+            const res = await fetch(`${API}/media`, { headers: { Authorization: `Bearer ${token}` } });
+            if (res.ok) setMediaItems(await res.json());
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoadingMedia(false);
+        }
+    };
+
+    useEffect(() => {
+        if (showMediaPicker && mediaItems.length === 0) fetchMedia();
+    }, [showMediaPicker]);
 
     const handleFiles = async (files: FileList) => {
         setUploading(true);
@@ -587,9 +606,58 @@ const GalleryManager = ({
                     disabled={!urlInput.trim()}
                     className="px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-200 disabled:opacity-50 transition-colors"
                 >
-                    + Agregar
+                    + Adjuntar enlace
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setShowMediaPicker(true)}
+                    className="px-4 py-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors flex items-center gap-2"
+                >
+                    <Image className="w-4 h-4" /> Librería
                 </button>
             </div>
+
+            {/* Media Picker Modal */}
+            {showMediaPicker && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowMediaPicker(false)}>
+                    <div className="bg-white w-full max-w-4xl max-h-[80vh] rounded-2xl shadow-xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                            <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                                <ImageIcon className="w-5 h-5 text-rotary-blue" />
+                                Seleccionar desde Librería Multimedia
+                            </h3>
+                            <button onClick={() => setShowMediaPicker(false)} className="p-1 hover:bg-gray-200 rounded-lg transition-colors">
+                                <X className="w-5 h-5 text-gray-500" />
+                            </button>
+                        </div>
+                        <div className="p-4 flex-1 overflow-y-auto">
+                            {loadingMedia ? (
+                                <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-rotary-blue" /></div>
+                            ) : mediaItems.filter(m => m.type === 'image').length === 0 ? (
+                                <div className="text-center py-20 text-gray-400">No hay imágenes en la librería.</div>
+                            ) : (
+                                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
+                                    {mediaItems.filter(m => m.type === 'image').map(item => (
+                                        <div
+                                            key={item.id}
+                                            onClick={() => {
+                                                onChange([...images, item.url]);
+                                                setShowMediaPicker(false);
+                                            }}
+                                            className="relative aspect-square rounded-xl overflow-hidden border border-gray-200 cursor-pointer group hover:ring-4 hover:ring-rotary-blue/30 transition-all"
+                                        >
+                                            <img src={item.url} alt={item.filename} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                                            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2">
+                                                <p className="text-[10px] text-white truncate">{item.filename}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
