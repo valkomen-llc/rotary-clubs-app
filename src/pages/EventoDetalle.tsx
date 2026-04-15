@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Calendar, MapPin, Clock, Tag, Loader2 } from 'lucide-react';
+import { ArrowLeft, Calendar, MapPin, Clock, Tag, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useClub } from '../contexts/ClubContext';
@@ -112,6 +112,7 @@ const EventoDetalle = () => {
     const [event, setEvent] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [currentImage, setCurrentImage] = useState(0);
 
     useEffect(() => { window.scrollTo(0, 0); }, [id]);
 
@@ -235,27 +236,60 @@ const EventoDetalle = () => {
                             !event.htmlContent && <p className="text-gray-400 italic">Sin descripción disponible.</p>
                         )}
 
+                        {/* Image gallery Carousel */}
+                        {hasImages && (
+                            <div className="my-10">
+                                <div className="relative aspect-[16/9] md:aspect-[21/9] rounded-2xl overflow-hidden shadow-xl ring-1 ring-gray-100 bg-gray-50">
+                                    <img
+                                        src={event.images[currentImage]}
+                                        alt={`Gallery image ${currentImage + 1}`}
+                                        className="w-full h-full object-cover transition-transform duration-500"
+                                    />
+
+                                    {event.images.length > 1 && (
+                                        <>
+                                            <button
+                                                onClick={() => setCurrentImage(prev => (prev - 1 + event.images.length) % event.images.length)}
+                                                className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 hover:bg-white rounded-full shadow-lg flex items-center justify-center transition-colors z-10"
+                                                aria-label="Imagen anterior"
+                                            >
+                                                <ChevronLeft className="w-5 h-5 text-gray-700" />
+                                            </button>
+                                            <button
+                                                onClick={() => setCurrentImage(prev => (prev + 1) % event.images.length)}
+                                                className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 hover:bg-white rounded-full shadow-lg flex items-center justify-center transition-colors z-10"
+                                                aria-label="Siguiente imagen"
+                                            >
+                                                <ChevronRight className="w-5 h-5 text-gray-700" />
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+
+                                {event.images.length > 1 && (
+                                    <div className="flex justify-center gap-2 mt-4">
+                                        {event.images.map((_: any, index: number) => (
+                                            <button
+                                                key={index}
+                                                onClick={() => setCurrentImage(index)}
+                                                className={`
+                                                    w-2 h-2 rounded-full transition-all
+                                                    ${index === currentImage ? 'bg-rotary-blue w-6' : 'bg-gray-300'}
+                                                `}
+                                                aria-label={`Ir a imagen ${index + 1}`}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {/* Rich HTML content */}
                         {event.htmlContent && (
                             <div
                                 className="prose prose-blue max-w-none text-gray-700"
                                 dangerouslySetInnerHTML={{ __html: event.htmlContent }}
                             />
-                        )}
-
-                        {/* Image gallery */}
-                        {hasImages && (
-                            <div className="mt-8">
-                                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Galería</h3>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                    {event.images.map((url: string, i: number) => (
-                                        <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                                            className="block aspect-square rounded-xl overflow-hidden border border-gray-100 hover:opacity-90 transition-opacity">
-                                            <img src={url} alt={`gallery-${i}`} className="w-full h-full object-cover" />
-                                        </a>
-                                    ))}
-                                </div>
-                            </div>
                         )}
                     </div>
 
