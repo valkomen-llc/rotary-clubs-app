@@ -113,6 +113,24 @@ router.post('/district-media', express.json(), async (req, res) => {
         const districtRes = await db.query('SELECT id FROM "Club" WHERE subdomain = $1 OR domain = $1 LIMIT 1', ['4271']);
         const clubId = districtRes.rows[0]?.id || null;
 
+        await db.query(`
+        CREATE TABLE IF NOT EXISTS "Lead" (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            "clubId" UUID REFERENCES "Club"(id),
+            name VARCHAR(255) NOT NULL,
+            email VARCHAR(255) NOT NULL,
+            phone VARCHAR(50),
+            subject VARCHAR(255),
+            message TEXT,
+            source VARCHAR(50) DEFAULT 'contact_form',
+            status VARCHAR(30) DEFAULT 'new',
+            notes TEXT,
+            metadata JSONB DEFAULT '{}',
+            "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+        );`);
+        await db.query(`ALTER TABLE "Lead" ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'`).catch(() => { });
+
         await db.query(
             `INSERT INTO "Lead" (name, email, phone, subject, message, "clubId", source, metadata)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
