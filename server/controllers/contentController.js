@@ -87,8 +87,8 @@ export const getClubPosts = async (req, res) => {
         if (!clubId) return res.status(400).json({ error: 'clubId is required' });
         
         // Solo incluimos noticias globales (NULL) si eres super admin, 
-        // para evitar que los clubes vean noticias que no pueden borrar.
-        const query = req.user.role === 'administrator' 
+        // o si eres editor (permitido para Rotary Latir) para que puedan administrarlas y verlas.
+        const query = (req.user.role === 'administrator' || req.user.role === 'editor')
             ? `SELECT * FROM "Post" WHERE "clubId" = $1 OR "clubId" IS NULL ORDER BY "createdAt" DESC`
             : `SELECT * FROM "Post" WHERE "clubId" = $1 ORDER BY "createdAt" DESC`;
 
