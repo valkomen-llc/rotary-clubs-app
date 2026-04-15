@@ -55,6 +55,9 @@ const ClubSettings: React.FC = () => {
     const [platformLogoSize, setPlatformLogoSize] = useState<number>(48);
     const [savingLogoSize, setSavingLogoSize] = useState(false);
 
+    const [saasRedirect, setSaasRedirect] = useState(false);
+    const [updatingRedirect, setUpdatingRedirect] = useState(false);
+
     useEffect(() => {
         if (isSuperAdmin) {
             const apiUrl = import.meta.env.VITE_API_URL || '/api';
@@ -63,6 +66,7 @@ const ClubSettings: React.FC = () => {
                 .then(data => {
                     if (data.url) setPlatformLogo(data.url);
                     if (data.size) setPlatformLogoSize(data.size);
+                    if (data.saasRedirect !== undefined) setSaasRedirect(data.saasRedirect);
                 })
                 .catch(() => {});
         }
@@ -524,6 +528,30 @@ const ClubSettings: React.FC = () => {
             toast.error('Error de conexión');
         } finally {
             setSavingLogoSize(false);
+        }
+    };
+
+    const handleToggleRedirect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newState = e.target.checked;
+        setUpdatingRedirect(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const apiUrl = import.meta.env.VITE_API_URL || '/api';
+            const r = await fetch(`${apiUrl}/admin/platform-config/redirect`.replace(/\/+/g, '/').replace(':/', '://'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ active: newState })
+            });
+            if (r.ok) {
+                setSaasRedirect(newState);
+                toast.success(newState ? 'Redirección a la app activada.' : 'El landing público de ClubPlatform está activo.');
+            } else {
+                toast.error('Error al actualizar redirección.');
+            }
+        } catch {
+            toast.error('Error de red al actualizar.');
+        } finally {
+            setUpdatingRedirect(false);
         }
     };
 
@@ -1225,6 +1253,27 @@ const ClubSettings: React.FC = () => {
                                         </button>
                                     </div>
                                 )}
+                            </div>
+                        </div>
+
+                        {/* Enrutamiento SaaS Redirect */}
+                        <div className="flex flex-col md:flex-row gap-6 p-5 border border-indigo-100 rounded-xl bg-indigo-50/30">
+                            <div className="md:w-1/3">
+                                <h4 className="font-bold text-gray-900 text-sm mb-1 flex items-center gap-2">
+                                    <Globe className="w-4 h-4 text-indigo-500" />
+                                    Enrutamiento Principal
+                                </h4>
+                                <p className="text-xs text-gray-500">
+                                    Si esto está activado, los usuarios que ingresen a <span className="font-mono bg-white px-1 py-0.5 rounded border border-gray-200">clubplatform.org</span> serán redirigidos a <span className="font-mono bg-white px-1 py-0.5 rounded border border-gray-200">app.clubplatform.org</span>.
+                                </p>
+                            </div>
+                            <div className="md:w-2/3 flex items-center">
+                                <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                                    <input type="checkbox" className="sr-only peer" checked={saasRedirect} onChange={handleToggleRedirect} disabled={updatingRedirect} />
+                                    <div className="w-14 h-7 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-indigo-600 disabled:opacity-50"></div>
+                                </label>
+                                {saasRedirect && <span className="ml-3 px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded-full uppercase">Activo</span>}
+                                {updatingRedirect && <span className="ml-3 text-xs text-gray-400">Actualizando...</span>}
                             </div>
                         </div>
 
