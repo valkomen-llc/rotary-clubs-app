@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Sparkles, Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
@@ -11,6 +11,15 @@ export default function AppLogin() {
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [platformLogo, setPlatformLogo] = useState<string | null>(null);
+
+    useEffect(() => {
+        const apiUrl = import.meta.env.VITE_API_URL || '/api';
+        fetch(`${apiUrl}/platform-config/logo`.replace(/\/+/g, '/').replace(':/', '://'))
+            .then(r => r.json())
+            .then(data => { if (data.url) setPlatformLogo(data.url); })
+            .catch(() => {});
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -43,10 +52,16 @@ export default function AppLogin() {
                 {/* Header */}
                 <div className="text-center mb-8">
                     <div className="flex items-center justify-center gap-2.5 mb-4">
-                        <div className="w-10 h-10 rounded-2xl bg-[#019fcb] flex items-center justify-center shadow-lg shadow-blue-200">
-                            <Sparkles className="w-5 h-5 text-white" />
-                        </div>
-                        <span className="font-black text-gray-900 text-xl">ClubPlatform</span>
+                        {platformLogo ? (
+                            <img src={platformLogo} alt="ClubPlatform" className="h-12 max-w-[180px] object-contain" />
+                        ) : (
+                            <>
+                                <div className="w-10 h-10 rounded-2xl bg-[#019fcb] flex items-center justify-center shadow-lg shadow-blue-200">
+                                    <Sparkles className="w-5 h-5 text-white" />
+                                </div>
+                                <span className="font-black text-gray-900 text-xl">ClubPlatform</span>
+                            </>
+                        )}
                     </div>
                     <h1 className="text-3xl font-black text-gray-900 mb-2">Panel de Administración</h1>
                     <p className="text-gray-500">Accede al panel de tu club rotario</p>

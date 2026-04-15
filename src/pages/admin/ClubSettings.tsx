@@ -50,6 +50,19 @@ const ClubSettings: React.FC = () => {
     const [mapStyle, setMapStyle] = useState<string>('m');
     const [savingMap, setSavingMap] = useState(false);
 
+    const [platformLogo, setPlatformLogo] = useState<string>('');
+    const [uploadingPlatformLogo, setUploadingPlatformLogo] = useState(false);
+
+    useEffect(() => {
+        if (isSuperAdmin) {
+            const apiUrl = import.meta.env.VITE_API_URL || '/api';
+            fetch(`${apiUrl}/platform-config/logo`.replace(/\/+/g, '/').replace(':/', '://'))
+                .then(r => r.json())
+                .then(data => { if (data.url) setPlatformLogo(data.url); })
+                .catch(() => {});
+        }
+    }, [isSuperAdmin]);
+
     useEffect(() => {
         if (isSuperAdmin) {
             const token = localStorage.getItem('rotary_token');
@@ -454,6 +467,36 @@ const ClubSettings: React.FC = () => {
             toast.error('Error de conexión');
         } finally {
             setSavingMap(false);
+        }
+    };
+
+    const handlePlatformLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setUploadingPlatformLogo(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const token = localStorage.getItem('rotary_token');
+            const apiUrl = import.meta.env.VITE_API_URL || '/api';
+            const res = await fetch(`${apiUrl}/platform-config/logo/upload`.replace(/\/+/g, '/').replace(':/', '://'), {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: formData,
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setPlatformLogo(data.url);
+                toast.success('Logo del panel de acceso actualizado');
+            } else {
+                const err = await res.json();
+                toast.error(err.error || 'Error al subir el logo');
+            }
+        } catch {
+            toast.error('Error de conexión');
+        } finally {
+            setUploadingPlatformLogo(false);
+            if (e.target) e.target.value = '';
         }
     };
 
@@ -1103,6 +1146,31 @@ const ClubSettings: React.FC = () => {
                             <Globe className="w-5 h-5 text-emerald-600" /> Configuración Global de la Plataforma
                         </h3>
 
+                        {/* Platform Login Logo */}
+                        <div className="flex flex-col md:flex-row gap-6 p-5 border border-gray-100 rounded-xl bg-gray-50/50 mb-4">
+                            <div className="md:w-1/3">
+                                <h4 className="font-bold text-gray-900 text-sm mb-1">Logo del Panel de Acceso</h4>
+                                <p className="text-xs text-gray-500">
+                                    Logo que aparece en la pantalla de inicio de sesión de ClubPlatform. Si no se configura, se muestra el ícono y nombre por defecto.
+                                </p>
+                            </div>
+                            <div className="md:w-2/3 flex items-center gap-5">
+                                {platformLogo ? (
+                                    <img src={platformLogo} alt="Logo actual" className="h-14 max-w-[160px] object-contain rounded-lg border border-gray-200 bg-white p-2" />
+                                ) : (
+                                    <div className="w-14 h-14 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center bg-white">
+                                        <Upload className="w-5 h-5 text-gray-300" />
+                                    </div>
+                                )}
+                                <label className={`cursor-pointer inline-flex items-center gap-2 bg-white border border-emerald-200 hover:bg-emerald-50 text-emerald-700 font-bold text-sm px-4 py-2.5 rounded-lg transition-colors ${uploadingPlatformLogo ? 'opacity-50 pointer-events-none' : ''}`}>
+                                    <Upload className="w-4 h-4" />
+                                    {uploadingPlatformLogo ? 'Subiendo...' : platformLogo ? 'Cambiar logo' : 'Subir logo'}
+                                    <input type="file" accept="image/*" className="hidden" onChange={handlePlatformLogoUpload} disabled={uploadingPlatformLogo} />
+                                </label>
+                            </div>
+                        </div>
+
+                        {/* Map Style */}
                         <div className="flex flex-col md:flex-row gap-6 p-5 border border-gray-100 rounded-xl bg-gray-50/50">
                             <div className="md:w-1/3">
                                 <h4 className="font-bold text-gray-900 text-sm mb-1">Mapas de Google</h4>
