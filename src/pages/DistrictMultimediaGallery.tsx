@@ -174,8 +174,8 @@ const DistrictMultimediaGallery: React.FC = () => {
                     backgroundSize: '71px 85px'
                 }}
             >
-                <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
-                    <div className="text-center max-w-4xl mx-auto">
+                <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 md:pt-36 pb-16 md:pb-24">
+                    <div className="text-center max-w-4xl mx-auto flex flex-col justify-center h-full">
                         <p className="text-white/80 text-sm md:text-base tracking-widest uppercase mb-4 font-bold">
                             Conferencia Bidistrital Rotary Medellín 2026
                         </p>
