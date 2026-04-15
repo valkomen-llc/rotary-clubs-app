@@ -53,7 +53,7 @@ const LatirSpecialSidebar = ({ startDate, metadata }: { startDate: string, metad
         <div className="bg-white rounded-2xl p-6 mb-4 flex flex-col items-center border border-gray-100 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)]">
             <div className="w-full text-left">
                 {latirConfig.headerLogo && (
-                    <img src={latirConfig.headerLogo} alt="Logo del Evento" className="max-h-20 w-auto mb-4 object-contain" />
+                    <img src={latirConfig.headerLogo} alt="Logo del Evento" className="w-full max-w-[320px] h-auto max-h-[140px] mb-6 object-contain object-left" />
                 )}
                 <h2 className="text-[2.2rem] leading-[1.1] font-black text-[#1B2B4D]" style={{ whiteSpace: 'pre-line' }}>
                     {latirConfig.title || 'Distrito 4921,\nPatagonia\nArgentina'}
