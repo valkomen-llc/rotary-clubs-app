@@ -357,6 +357,31 @@ const EventoDetalle = () => {
                                 </div>
                             </div>
                         </div>
+
+                        {event.id === '2038324a-0e04-497c-9328-fbaeb9ce2992' && (
+                            <div className="bg-white rounded-2xl p-2 border border-gray-100 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)]">
+                                <div className="rounded-xl overflow-hidden h-56 relative bg-gray-100 pointer-events-auto">
+                                    <iframe 
+                                        width="100%" 
+                                        height="100%" 
+                                        frameBorder="0" 
+                                        scrolling="no" 
+                                        src="https://maps.google.com/maps?q=Rayentray+Grand+Hotel,+Puerto+Madryn&hl=es&z=15&output=embed"
+                                        title="Ubicación Conferencia LATIR"
+                                        className="absolute inset-0 w-full h-full"
+                                    ></iframe>
+                                </div>
+                                <a 
+                                    href="https://www.google.com/maps/place/Rayentray+Grand+Hotel/@-42.784889,-65.0097973,843m/data=!3m2!1e3!4b1!4m9!3m8!1s0xbe024aad7797ae1f:0xb4c7f0e9503ba46f!5m2!4m1!1i2!8m2!3d-42.784889!4d-65.0097973!16s%2Fg%2F11b6ts1_39?hl=en-US" 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="block text-center mt-3 mb-1 text-sm font-semibold text-rotary-blue hover:underline"
+                                >
+                                    Ver ubicación en Google Maps
+                                </a>
+                            </div>
+                        )}
+
                     </div>
                 </div>
             </div>
