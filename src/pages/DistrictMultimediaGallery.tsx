@@ -164,14 +164,25 @@ const DistrictMultimediaGallery: React.FC = () => {
             <Navbar />
             
             {/* Header Hero */}
-            <section className="bg-rotary-geo pt-32 pb-16 px-6 relative border-t-[6px] border-[#013388]">
-                <div className="max-w-4xl mx-auto text-center relative z-10">
-                    <p className="text-white/80 font-bold uppercase tracking-[0.2em] text-sm mb-4">
-                        CONFERENCIA BIDISTRITAL ROTARY MEDELLÍN 2026
-                    </p>
-                    <h1 className="text-4xl md:text-5xl font-normal text-white drop-shadow-md">
-                        Galería Multimedia del Club
-                    </h1>
+            <section
+                className="relative overflow-hidden"
+                style={{
+                    backgroundColor: '#0c3c7c',
+                    backgroundImage: "url('/geo-darkblue.png')",
+                    backgroundPosition: '50% 0',
+                    backgroundRepeat: 'repeat',
+                    backgroundSize: '71px 85px'
+                }}
+            >
+                <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
+                    <div className="text-center max-w-4xl mx-auto">
+                        <p className="text-white/80 text-sm md:text-base tracking-widest uppercase mb-4 font-bold">
+                            Conferencia Bidistrital Rotary Medellín 2026
+                        </p>
+                        <h1 className="text-3xl md:text-5xl text-white">
+                            Galería Multimedia del Club
+                        </h1>
+                    </div>
                 </div>
             </section>
 
