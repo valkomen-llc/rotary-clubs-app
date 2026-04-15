@@ -106,24 +106,36 @@ const HtmlEditor = ({
 const getCroppedBlob = (imageSrc: string, pixelCrop: Area): Promise<Blob> =>
     new Promise((resolve, reject) => {
         const image = new window.Image();
-        image.crossOrigin = 'anonymous';
+        // crossOrigin must NOT be set for data: URLs — it breaks canvas in some browsers
+        if (!imageSrc.startsWith('data:')) {
+            image.crossOrigin = 'anonymous';
+        }
         image.onload = () => {
             const canvas = document.createElement('canvas');
             // Output at 1920×1080 regardless of source size
             canvas.width = 1920;
             canvas.height = 1080;
-            const ctx = canvas.getContext('2d')!;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return reject(new Error('Canvas context not available'));
             ctx.drawImage(
                 image,
                 pixelCrop.x, pixelCrop.y,
                 pixelCrop.width, pixelCrop.height,
                 0, 0, 1920, 1080
             );
-            canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Canvas empty')), 'image/jpeg', 0.92);
+            canvas.toBlob(
+                blob => blob ? resolve(blob) : reject(new Error('Canvas toBlob returned null')),
+                'image/jpeg',
+                0.92
+            );
         };
-        image.onerror = reject;
+        image.onerror = (e) => {
+            console.error('Image load error in cropper:', e);
+            reject(new Error('No se pudo cargar la imagen para recortar'));
+        };
         image.src = imageSrc;
     });
+
 
 // ── Crop Modal ────────────────────────────────────────────────────────────────
 const CropModal = ({
