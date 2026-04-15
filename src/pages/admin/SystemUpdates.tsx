@@ -29,17 +29,17 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
         type: "update",
         changes: [
             { type: "added", text: "Mejora del dashboard: Campos de texto editables para los títulos de imágenes en Áreas de Interés y Causas." },
-            { type: "added", text: "Unificación de la IA Antigravity dentro de ClubAssist para soporte integral." },
+            { type: "added", text: "Unificación de los Modelos de IA dentro de ClubAssist para soporte integral." },
             { type: "fixed", text: "Resolución de error de pantalla blanca tras despliegue de componentes avanzados." }
         ]
     },
     {
         version: "v4.3.0",
         date: "13 Abril 2026",
-        title: "Antigravity AI Core & System Support",
+        title: "Modelos de IA Implementados & Soporte Integrado",
         type: "feature",
         changes: [
-            { type: "added", text: "Implementación del núcleo de IA 'Antigravity' especializado en arquitectura y soporte técnico de la plataforma." },
+            { type: "added", text: "Implementación de Modelos de IA especializados en soporte técnico de la plataforma." },
             { type: "added", text: "Nueva sección 'Asistencia Chat' exclusiva para Super Administradores en la barra lateral." },
             { type: "changed", text: "Optimización de la lógica de aislamiento multitenancy para mayor seguridad en el acceso a datos." }
         ]
@@ -80,11 +80,11 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
     {
         version: "v4.0.0",
         date: "28 Marzo 2026",
-        title: "Arquitectura Multitenant & Vercel Domains",
+        title: "Arquitectura Web & Sistema Multitenant",
         type: "feature",
         changes: [
             { type: "added", text: "Lanzamiento oficial de la arquitectura SaaS multitenant para todos los Clubes Rotarios." },
-            { type: "added", text: "Integración automática con la API de Vercel para el aprovisionamiento dinámico de dominios personalizados." },
+            { type: "added", text: "Integración automática para el aprovisionamiento dinámico de dominios personalizados." },
             { type: "changed", text: "Refactorización de Prisma Schema para el aislamiento (isolation logic) de datos por club." }
         ]
     }
