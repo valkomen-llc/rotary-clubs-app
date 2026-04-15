@@ -422,10 +422,14 @@ const ImageUploader = ({
                 {/* Preview with aspect ratio matching the hero, unless noCrop is true */}
                 {currentUrl && (
                     <div
-                        className="relative w-full overflow-hidden rounded-xl border border-gray-200 group"
+                        className={`relative w-full overflow-hidden rounded-xl border border-gray-200 group ${noCrop ? 'bg-gray-50 flex items-center justify-center p-2' : ''}`}
                         style={noCrop ? {} : { aspectRatio: `${HERO_W}/${HERO_H}` }}
                     >
-                        <img src={currentUrl} alt="preview" className={`w-full h-full object-cover ${noCrop ? 'max-h-[600px] object-contain bg-gray-50' : ''}`} />
+                        <img 
+                            src={currentUrl} 
+                            alt="preview" 
+                            className={`w-full ${noCrop ? 'h-auto max-h-[600px] object-contain' : 'h-full object-cover'}`} 
+                        />
                         {!noCrop && (
                             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-3">
                                 <p className="text-xs text-white/80">Vista previa — ratio exacto del sitio ({HERO_W}×{HERO_H}px)</p>
