@@ -36,6 +36,12 @@
 </head>
 
 <body>
+  <!-- Redirect /conferencia → evento LATIR antes de que cargue React -->
+  <script>
+    if (window.location.pathname === '/conferencia') {
+      window.location.replace('https://rotarylatir.org/#/eventos/2038324a-0e04-497c-9328-fbaeb9ce2992');
+    }
+  </script>
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
 </body>

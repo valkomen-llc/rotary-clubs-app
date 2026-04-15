@@ -328,6 +328,7 @@ function App() {
                 </div>
               }>
               <Routes>
+                <Route path="/conferencia" element={<Navigate to="/eventos/2038324a-0e04-497c-9328-fbaeb9ce2992" replace />} />
                 <Route path="/" element={<SmartHome />} />
                 <Route path="/login" element={<AppLogin />} />
                 <Route path="/registro" element={<RegistroPage />} />
