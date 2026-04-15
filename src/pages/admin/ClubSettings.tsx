@@ -537,7 +537,7 @@ const ClubSettings: React.FC = () => {
         try {
             const token = localStorage.getItem('rotary_token');
             const apiUrl = import.meta.env.VITE_API_URL || '/api';
-            const r = await fetch(`${apiUrl}/admin/platform-config/redirect`.replace(/\/+/g, '/').replace(':/', '://'), {
+            const r = await fetch(`${apiUrl}/platform-config/redirect`.replace(/\/+/g, '/').replace(':/', '://'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ active: newState })
