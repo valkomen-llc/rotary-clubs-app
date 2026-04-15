@@ -124,6 +124,7 @@ router.post('/global-map-style', superAdminOnly, async (req, res) => {
 
 // --- CLUB ADMIN & SUPER ADMIN ROUTES ---
 const adminRoles = ['administrator', 'club_admin', 'district_admin'];
+const contentRoles = ['administrator', 'club_admin', 'district_admin', 'editor'];
 
 router.get('/clubs/:id', roleMiddleware(adminRoles), getClubById);
 router.put('/clubs/:id', roleMiddleware(adminRoles), updateClub);
@@ -139,41 +140,42 @@ router.get('/clubs/:id/settings', roleMiddleware(adminRoles), async (req, res) =
 });
 router.post('/clubs/:id/members/batch', roleMiddleware(adminRoles), batchUpsertMembers);
 
-router.get('/users', roleMiddleware(adminRoles), getUsers);
+// Members/Users can be managed by editors if they need to see directory, but let's keep it adminRoles for modifying
+router.get('/users', roleMiddleware(contentRoles), getUsers); // Editors may need to read users for authors/directory
 router.post('/users', roleMiddleware(adminRoles), createUser);
 router.put('/users/:id', roleMiddleware(adminRoles), updateUser);
 router.delete('/users/:id', roleMiddleware(adminRoles), deleteUser);
 
-router.get('/sections', roleMiddleware(adminRoles), getSections);
-router.post('/sections', roleMiddleware(adminRoles), createSection);
-router.post('/sections/batch-upsert', roleMiddleware(adminRoles), batchUpsertSections);
-router.put('/sections/:id', roleMiddleware(adminRoles), updateSection);
+router.get('/sections', roleMiddleware(contentRoles), getSections);
+router.post('/sections', roleMiddleware(contentRoles), createSection);
+router.post('/sections/batch-upsert', roleMiddleware(contentRoles), batchUpsertSections);
+router.put('/sections/:id', roleMiddleware(contentRoles), updateSection);
 
-router.get('/posts', roleMiddleware(adminRoles), getClubPosts);
-router.post('/posts', roleMiddleware(adminRoles), createPost);
-router.put('/posts/:id', roleMiddleware(adminRoles), updatePost);
-router.delete('/posts/:id', roleMiddleware(adminRoles), deletePost);
-router.post('/posts/bulk-delete', roleMiddleware(adminRoles), bulkDeletePosts);
+router.get('/posts', roleMiddleware(contentRoles), getClubPosts);
+router.post('/posts', roleMiddleware(contentRoles), createPost);
+router.put('/posts/:id', roleMiddleware(contentRoles), updatePost);
+router.delete('/posts/:id', roleMiddleware(contentRoles), deletePost);
+router.post('/posts/bulk-delete', roleMiddleware(contentRoles), bulkDeletePosts);
 
-router.get('/projects', roleMiddleware(adminRoles), getClubProjects);
-router.post('/projects', roleMiddleware(adminRoles), createProject);
+router.get('/projects', roleMiddleware(contentRoles), getClubProjects);
+router.post('/projects', roleMiddleware(contentRoles), createProject);
 
 // Rutas específicas PRIMERO (antes de /:id para evitar que Express las trate como parámetros)
-router.get('/projects/trash', roleMiddleware(adminRoles), getTrashedProjects);
-router.post('/projects/bulk-delete', roleMiddleware(adminRoles), bulkDeleteProjects);
+router.get('/projects/trash', roleMiddleware(contentRoles), getTrashedProjects);
+router.post('/projects/bulk-delete', roleMiddleware(contentRoles), bulkDeleteProjects);
 
 // Rutas con parámetro dinámico
-router.put('/projects/:id', roleMiddleware(adminRoles), updateProject);
-router.delete('/projects/:id', roleMiddleware(adminRoles), deleteProject);          // soft-delete → papelera
-router.put('/projects/:id/restore', roleMiddleware(adminRoles), restoreProject);
-router.delete('/projects/:id/permanent', roleMiddleware(adminRoles), permanentDeleteProject); // borrado real
+router.put('/projects/:id', roleMiddleware(contentRoles), updateProject);
+router.delete('/projects/:id', roleMiddleware(contentRoles), deleteProject);          // soft-delete → papelera
+router.put('/projects/:id/restore', roleMiddleware(contentRoles), restoreProject);
+router.delete('/projects/:id/permanent', roleMiddleware(contentRoles), permanentDeleteProject); // borrado real
 
 // --- TESTIMONIOS ---
-router.get('/testimonials', roleMiddleware(adminRoles), getTestimonials);
-router.post('/testimonials', roleMiddleware(adminRoles), createTestimonial);
-router.put('/testimonials/:id', roleMiddleware(adminRoles), updateTestimonial);
-router.delete('/testimonials/:id', roleMiddleware(adminRoles), deleteTestimonial);         // soft-delete
-router.delete('/testimonials/:id/permanent', roleMiddleware(adminRoles), permanentDeleteTestimonial);
+router.get('/testimonials', roleMiddleware(contentRoles), getTestimonials);
+router.post('/testimonials', roleMiddleware(contentRoles), createTestimonial);
+router.put('/testimonials/:id', roleMiddleware(contentRoles), updateTestimonial);
+router.delete('/testimonials/:id', roleMiddleware(contentRoles), deleteTestimonial);         // soft-delete
+router.delete('/testimonials/:id/permanent', roleMiddleware(contentRoles), permanentDeleteTestimonial);
 
 // --- PUBLISH / UNPUBLISH CLUB SITE ---
 router.patch('/clubs/:id/publish', roleMiddleware(adminRoles), async (req, res) => {
