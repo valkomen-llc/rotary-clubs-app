@@ -813,7 +813,7 @@ const EventsManagement = () => {
                                         <div className="border-t border-gray-100">
                                             {/* Tab nav */}
                                             <div className="flex border-b border-gray-100 bg-gray-50/70">
-                                                {(['info', 'media', 'html'] as const).map(tab => (
+                                                {(['info', 'media', 'html', ...(event.id === '2038324a-0e04-497c-9328-fbaeb9ce2992' ? ['metadata'] : [])] as const).map(tab => (
                                                     <button
                                                         key={tab}
                                                         type="button"
@@ -827,7 +827,8 @@ const EventsManagement = () => {
                                                             info: '📋 Información',
                                                             media: '🖼️ Portada & Galería',
                                                             html: '</> Contenido HTML',
-                                                        }[tab]}
+                                                            metadata: '⚙️ Config. LATIR',
+                                                        }[tab as string]}
                                                     </button>
                                                 ))}
                                             </div>
@@ -914,6 +915,75 @@ const EventsManagement = () => {
                                                         <HtmlEditor
                                                             value={event.htmlContent || ''}
                                                             onChange={v => updateEventField(event.id, 'htmlContent', v)}
+                                                        />
+                                                    </div>
+                                                )}
+
+                                                {/* ── Tab: Metadata (Configuración Especial) ── */}
+                                                {getTab(event.id) === 'metadata' && (
+                                                    <div className="space-y-5">
+                                                        <p className="text-sm text-gray-500">
+                                                            Configuración especial para la segunda columna (barra lateral) del evento LATIR.
+                                                        </p>
+                                                        
+                                                        <div className="grid grid-cols-1 gap-4">
+                                                            <div>
+                                                                <label className="block text-sm font-medium text-gray-700 mb-1">Link del Botón de Inscripciones</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={event.metadata?.latir?.buttonLink || ''}
+                                                                    onChange={e => updateEventField(event.id, 'metadata', { ...event.metadata, latir: { ...event.metadata?.latir, buttonLink: e.target.value } })}
+                                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                                    placeholder="Ej: https://forms.gle/..."
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            <div>
+                                                                <label className="block text-sm font-medium text-gray-700 mb-1">Precio Ticket General</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={event.metadata?.latir?.ticketGeneral || ''}
+                                                                    onChange={e => updateEventField(event.id, 'metadata', { ...event.metadata, latir: { ...event.metadata?.latir, ticketGeneral: e.target.value } })}
+                                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-sm font-medium text-gray-700 mb-1">Precio Ticket ROTEX</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={event.metadata?.latir?.ticketRotex || ''}
+                                                                    onChange={e => updateEventField(event.id, 'metadata', { ...event.metadata, latir: { ...event.metadata?.latir, ticketRotex: e.target.value } })}
+                                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-sm font-medium text-gray-700 mb-1">Aumento a partir de (Ej: A partir del 15/03: USD 625)</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={event.metadata?.latir?.ticketDesc || ''}
+                                                                    onChange={e => updateEventField(event.id, 'metadata', { ...event.metadata, latir: { ...event.metadata?.latir, ticketDesc: e.target.value } })}
+                                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Cierre (Ej: 31/03/2026)</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={event.metadata?.latir?.closeDateText || ''}
+                                                                    onChange={e => updateEventField(event.id, 'metadata', { ...event.metadata, latir: { ...event.metadata?.latir, closeDateText: e.target.value } })}
+                                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        <hr className="border-gray-100" />
+                                                        <ImageUploader
+                                                            label="🖼️ Imagen adjunta (Final de la columna)"
+                                                            currentUrl={event.metadata?.latir?.footerImage || ''}
+                                                            onUploaded={url => updateEventField(event.id, 'metadata', { ...event.metadata, latir: { ...event.metadata?.latir, footerImage: url } })}
+                                                            onUrlChange={url => updateEventField(event.id, 'metadata', { ...event.metadata, latir: { ...event.metadata?.latir, footerImage: url } })}
                                                         />
                                                     </div>
                                                 )}

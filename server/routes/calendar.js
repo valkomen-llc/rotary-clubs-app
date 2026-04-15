@@ -92,11 +92,11 @@ router.post('/publications', authMiddleware, async (req, res) => {
 // ── Events ────────────────────────────────────────────────────────────────────
 router.post('/events', authMiddleware, async (req, res) => {
     try {
-        const { title, description, htmlContent, startDate, endDate, location, type, image, images } = req.body;
+        const { title, description, htmlContent, startDate, endDate, location, type, image, images, metadata } = req.body;
         const result = await db.query(
-            `INSERT INTO "CalendarEvent" (id, title, description, "htmlContent", "startDate", "endDate", location, type, image, images, "clubId", "createdAt")
-             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW()) RETURNING *`,
-            [title, description, htmlContent || null, new Date(startDate), endDate ? new Date(endDate) : null, location, type, image || null, images || [], req.user.clubId]
+            `INSERT INTO "CalendarEvent" (id, title, description, "htmlContent", "startDate", "endDate", location, type, image, images, "clubId", "createdAt", metadata)
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11) RETURNING *`,
+            [title, description, htmlContent || null, new Date(startDate), endDate ? new Date(endDate) : null, location, type, image || null, images || [], req.user.clubId, metadata || {}]
         );
         res.json(result.rows[0]);
     } catch (error) {
@@ -113,13 +113,13 @@ router.put('/events/:id', authMiddleware, async (req, res) => {
         if (req.user.role !== 'administrator' && event.rows[0].clubId !== req.user.clubId) {
             return res.status(403).json({ error: 'No autorizado' });
         }
-        const { title, description, htmlContent, startDate, endDate, location, type, image, images } = req.body;
+        const { title, description, htmlContent, startDate, endDate, location, type, image, images, metadata } = req.body;
         const result = await db.query(
             `UPDATE "CalendarEvent"
              SET title=$1, description=$2, "htmlContent"=$3, "startDate"=$4, "endDate"=$5,
-                 location=$6, type=$7, image=$8, images=$9
-             WHERE id=$10 RETURNING *`,
-            [title, description, htmlContent || null, new Date(startDate), endDate ? new Date(endDate) : null, location, type, image || null, images || [], id]
+                 location=$6, type=$7, image=$8, images=$9, metadata=$10
+             WHERE id=$11 RETURNING *`,
+            [title, description, htmlContent || null, new Date(startDate), endDate ? new Date(endDate) : null, location, type, image || null, images || [], metadata || {}, id]
         );
         res.json(result.rows[0]);
     } catch (error) {

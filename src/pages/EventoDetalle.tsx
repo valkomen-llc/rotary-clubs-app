@@ -36,7 +36,8 @@ function calculateTimeLeft(targetDate: string) {
     };
 }
 
-const LatirSpecialSidebar = ({ startDate }: { startDate: string }) => {
+const LatirSpecialSidebar = ({ startDate, metadata }: { startDate: string, metadata: any }) => {
+    const latirConfig = metadata?.latir || {};
     const [timeLeft, setTimeLeft] = useState(() => calculateTimeLeft(startDate));
 
     useEffect(() => {
@@ -51,11 +52,11 @@ const LatirSpecialSidebar = ({ startDate }: { startDate: string }) => {
     return (
         <div className="bg-white rounded-2xl p-6 mb-4 flex flex-col items-center border border-gray-100 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)]">
             <div className="w-full text-left">
-                <h2 className="text-[2.2rem] leading-[1.1] font-black text-[#1B2B4D]">
-                    Distrito 4921,<br />Patagonia<br />Argentina
+                <h2 className="text-[2.2rem] leading-[1.1] font-black text-[#1B2B4D]" style={{ whiteSpace: 'pre-line' }}>
+                    {latirConfig.title || 'Distrito 4921,\nPatagonia\nArgentina'}
                 </h2>
-                <p className="text-[#475569] text-[1.15rem] mt-3 leading-snug">
-                    El destino de nuestras<br />nuevas historias.
+                <p className="text-[#475569] text-[1.15rem] mt-3 leading-snug" style={{ whiteSpace: 'pre-line' }}>
+                    {latirConfig.subtitle || 'El destino de nuestras\nnuevas historias.'}
                 </p>
             </div>
 
@@ -76,7 +77,7 @@ const LatirSpecialSidebar = ({ startDate }: { startDate: string }) => {
 
             {/* Button */}
             <a
-                href="https://forms.gle/CXWqMj5w335h4qm69"
+                href={latirConfig.buttonLink || "https://forms.gle/CXWqMj5w335h4qm69"}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full max-w-[220px] block text-center bg-[#D57D2C] hover:bg-[#c46f23] text-white text-[15px] font-bold py-2.5 rounded-full transition-colors mb-5"
@@ -86,10 +87,10 @@ const LatirSpecialSidebar = ({ startDate }: { startDate: string }) => {
 
             {/* Pricing details */}
             <div className="text-center text-[14px] text-[#1B2B4D] space-y-1.5 w-full pb-2">
-                <p><strong className="font-extrabold">Ticket general:</strong> USD 550</p>
-                <p className="italic font-medium text-[#1B2B4D]">A partir del 15/03: USD 625</p>
-                <p><strong className="font-extrabold">Ticket ROTEX:</strong> USD 200</p>
-                <p className="mt-3 text-[#1B2B4D]">Cierre de inscripciones: 31/03/2026</p>
+                <p><strong className="font-extrabold">Ticket general:</strong> {latirConfig.ticketGeneral || 'USD 550'}</p>
+                <p className="italic font-medium text-[#1B2B4D]">{latirConfig.ticketDesc || 'A partir del 15/03: USD 625'}</p>
+                <p><strong className="font-extrabold">Ticket ROTEX:</strong> {latirConfig.ticketRotex || 'USD 200'}</p>
+                <p className="mt-3 text-[#1B2B4D]">Cierre de inscripciones: {latirConfig.closeDateText || '31/03/2026'}</p>
             </div>
         </div>
     );
@@ -251,7 +252,7 @@ const EventoDetalle = () => {
                     {/* Sidebar info */}
                     <div className="space-y-4">
                         {event.id === '2038324a-0e04-497c-9328-fbaeb9ce2992' && (
-                            <LatirSpecialSidebar startDate={event.startDate} />
+                            <LatirSpecialSidebar startDate={event.startDate} metadata={event.metadata} />
                         )}
 
                         <div className="bg-gray-50 rounded-2xl p-6 space-y-5 border border-gray-100">
@@ -294,6 +295,13 @@ const EventoDetalle = () => {
                                 </div>
                             </div>
                         </div>
+
+                        {/* Extra image at the bottom of the sidebar */}
+                        {event.id === '2038324a-0e04-497c-9328-fbaeb9ce2992' && event.metadata?.latir?.footerImage && (
+                            <div className="mt-4 rounded-xl overflow-hidden shadow-sm">
+                                <img src={event.metadata.latir.footerImage} alt="Conf Info" className="w-full h-auto object-cover" />
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
