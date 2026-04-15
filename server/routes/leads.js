@@ -123,7 +123,16 @@ router.post('/submit', async (req, res) => {
 // ── ADMIN: List leads for the club (or all for super admin) ───────────────
 router.get('/', authMiddleware, async (req, res) => {
     try {
-        const clubId = req.user.role === 'administrator' ? req.query.clubId : req.user.clubId;
+        let clubId = req.user.clubId; 
+
+        // Si es Platform Super Admin (idenfificado porque su clubId subyacente es nulo o específico) puede forzar clubId
+        if (req.user.role === 'administrator' && !req.user.clubId && req.query.clubId) {
+            clubId = req.query.clubId;
+        } else if (req.user.role === 'administrator' && req.query.clubId && req.query.clubId !== req.user.clubId) {
+            // Un Club admin NO puede ver leads de otro club
+            clubId = req.user.clubId;
+        }
+
         const status = req.query.status;
         const search = req.query.search;
 

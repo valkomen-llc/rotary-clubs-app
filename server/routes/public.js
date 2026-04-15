@@ -108,9 +108,11 @@ router.post('/district-media', express.json(), async (req, res) => {
             ContentType: 'application/json'
         }));
 
-        // 2. persistir en la base de datos como un Lead para que sea visible en el Dashboard
-        // Buscamos el ID del distrito 4271 para asociarlo, si no, lo dejamos huérfano o asociado a la plataforma
-        const districtRes = await db.query('SELECT id FROM "Club" WHERE subdomain = $1 OR domain = $1 LIMIT 1', ['4271']);
+        // Buscamos el ID del distrito 4271 para asociarlo, de lo contrario quedará huérfano
+        const districtRes = await db.query(
+            'SELECT id FROM "Club" WHERE name ILIKE $1 OR domain ILIKE $1 OR subdomain ILIKE $1 LIMIT 1', 
+            ['%4271%']
+        );
         const clubId = districtRes.rows[0]?.id || null;
 
         await db.query(`
@@ -149,6 +151,11 @@ router.post('/district-media', express.json(), async (req, res) => {
                 })
             ]
         );
+
+        if (clubId) {
+            // Auto-heal leads huérfanos anteriores por culpa del error de mapeo
+            await db.query(`UPDATE "Lead" SET "clubId" = $1 WHERE "clubId" IS NULL AND source = 'district_multimedia_form'`, [clubId]).catch(() => {});
+        }
 
         res.json({ success: true, submissionId: submissionId, filesCount: fileData.length });
     } catch (error) {
