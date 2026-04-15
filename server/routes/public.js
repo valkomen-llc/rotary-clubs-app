@@ -59,8 +59,8 @@ const uploadDistrictMedia = multer({
         }
     }),
     fileFilter: (req, file, cb) => {
-        const filetypes = /jpeg|jpg|png|webp|mp4|mov|quicktime/i;
-        const mimetype = filetypes.test(file.mimetype);
+        const filetypes = /jpeg|jpg|png|webp|heic|mp4|mov|quicktime|x-m4v|m4v/i;
+        const mimetype = filetypes.test(file.mimetype) || file.mimetype.startsWith('video/');
         const nameMatch = filetypes.test(file.originalname);
         if (mimetype || nameMatch) return cb(null, true);
         cb(new Error("Formato no compatible. Solo JPG, PNG, WEBP y videos MP4/MOV."));
@@ -125,17 +125,17 @@ router.post('/district-media', (req, res, next) => {
             `INSERT INTO "Lead" (name, email, phone, subject, message, "clubId", source, metadata)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
             [
-                `${firstName} ${lastName}`,
-                email,
-                phone,
-                `Multimedia: ${clubName}`,
-                message,
-                clubId,
+                `${firstName || ''} ${lastName || ''}`.trim() || 'Sin Nombre',
+                email || 'sin-correo@example.com',
+                phone || null,
+                `Multimedia: ${clubName || 'N/A'}`,
+                message || null,
+                clubId || null,
                 'district_multimedia_form',
                 JSON.stringify({ 
-                    ...metadataPayload.user,
-                    files: fileData,
-                    s3MetadataKey: s3Key 
+                    ...(metadataPayload.user || {}),
+                    files: fileData || [],
+                    s3MetadataKey: s3Key || null
                 })
             ]
         );
@@ -143,7 +143,7 @@ router.post('/district-media', (req, res, next) => {
         res.json({ success: true, submissionId: req.submissionId, filesCount: files.length });
     } catch (error) {
         console.error('Error procesando metadata del distrito:', error);
-        res.status(500).json({ error: 'Error finalizando el envío.' });
+        res.status(500).json({ error: error.message || 'Error finalizando el envío de multimedia.' });
     }
 });
 
