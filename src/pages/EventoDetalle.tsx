@@ -25,6 +25,78 @@ const TYPE_LABELS: Record<string, string> = {
     conference: 'Conferencia', other: 'Otro',
 };
 
+function calculateTimeLeft(targetDate: string) {
+    const difference = new Date(targetDate).getTime() - new Date().getTime();
+    if (difference <= 0) return { days: 0, hours: 0, minutes: 0, seconds: 0 };
+    return {
+        days: Math.floor(difference / (1000 * 60 * 60 * 24)),
+        hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
+        minutes: Math.floor((difference / 1000 / 60) % 60),
+        seconds: Math.floor((difference / 1000) % 60),
+    };
+}
+
+const LatirSpecialSidebar = ({ startDate }: { startDate: string }) => {
+    const [timeLeft, setTimeLeft] = useState(() => calculateTimeLeft(startDate));
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setTimeLeft(calculateTimeLeft(startDate));
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [startDate]);
+
+    const formatNum = (num: number) => num.toString().padStart(2, '0');
+
+    return (
+        <div className="bg-white rounded-2xl p-6 mb-4 flex flex-col items-center border border-gray-100 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)]">
+            <div className="w-full text-left">
+                <h2 className="text-[2.2rem] leading-[1.1] font-black text-[#1B2B4D]">
+                    Distrito 4921,<br />Patagonia<br />Argentina
+                </h2>
+                <p className="text-[#475569] text-[1.15rem] mt-3 leading-snug">
+                    El destino de nuestras<br />nuevas historias.
+                </p>
+            </div>
+
+            {/* Countdown */}
+            <div className="flex gap-1 mt-8 mb-6 justify-center w-full">
+                {[
+                    { label: 'Days', val: timeLeft.days },
+                    { label: 'Hours', val: timeLeft.hours },
+                    { label: 'Minutes', val: timeLeft.minutes },
+                    { label: 'Seconds', val: timeLeft.seconds }
+                ].map(item => (
+                    <div key={item.label} className="bg-[#D57D2C] text-white flex flex-col items-center justify-center py-2.5 px-0.5 w-[4.5rem]">
+                        <span className="text-[2.25rem] font-normal leading-none tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>{formatNum(item.val)}</span>
+                        <span className="text-[11px] font-bold mt-1.5 capitalize">{item.label}</span>
+                    </div>
+                ))}
+            </div>
+
+            {/* Button */}
+            <a
+                href="#inscripciones"
+                onClick={(e) => {
+                    e.preventDefault();
+                    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                }}
+                className="w-full max-w-[220px] block text-center bg-[#D57D2C] hover:bg-[#c46f23] text-white text-[15px] font-bold py-2.5 rounded-full transition-colors mb-5"
+            >
+                Inscripciones
+            </a>
+
+            {/* Pricing details */}
+            <div className="text-center text-[14px] text-[#1B2B4D] space-y-1.5 w-full pb-2">
+                <p><strong className="font-extrabold">Ticket general:</strong> USD 550</p>
+                <p className="italic font-medium text-[#1B2B4D]">A partir del 15/03: USD 625</p>
+                <p><strong className="font-extrabold">Ticket ROTEX:</strong> USD 200</p>
+                <p className="mt-3 text-[#1B2B4D]">Cierre de inscripciones: 31/03/2026</p>
+            </div>
+        </div>
+    );
+};
+
 const EventoDetalle = () => {
     const { id } = useParams<{ id: string }>();
     const { club } = useClub();
@@ -180,6 +252,10 @@ const EventoDetalle = () => {
 
                     {/* Sidebar info */}
                     <div className="space-y-4">
+                        {event.id === '2038324a-0e04-497c-9328-fbaeb9ce2992' && (
+                            <LatirSpecialSidebar startDate={event.startDate} />
+                        )}
+
                         <div className="bg-gray-50 rounded-2xl p-6 space-y-5 border border-gray-100">
 
                             <div className="flex items-start gap-3">
