@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
     Plus, Trash2, Save, Calendar, ChevronDown, ChevronUp,
     MapPin, Clock, Image, X, Upload, Code, Eye, EyeOff,
-    ImagePlus, Link as LinkIcon, ExternalLink
+    ImagePlus, Link as LinkIcon, ExternalLink, Crop, ZoomIn, ZoomOut, RotateCw
 } from 'lucide-react';
+import Cropper from 'react-easy-crop';
+import type { Area } from 'react-easy-crop';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -100,7 +102,166 @@ const HtmlEditor = ({
     );
 };
 
-// ── Image Uploader ────────────────────────────────────────────────────────────
+// ── Canvas crop helper ────────────────────────────────────────────────────────
+const getCroppedBlob = (imageSrc: string, pixelCrop: Area): Promise<Blob> =>
+    new Promise((resolve, reject) => {
+        const image = new window.Image();
+        image.crossOrigin = 'anonymous';
+        image.onload = () => {
+            const canvas = document.createElement('canvas');
+            // Output at 1920×1080 regardless of source size
+            canvas.width = 1920;
+            canvas.height = 1080;
+            const ctx = canvas.getContext('2d')!;
+            ctx.drawImage(
+                image,
+                pixelCrop.x, pixelCrop.y,
+                pixelCrop.width, pixelCrop.height,
+                0, 0, 1920, 1080
+            );
+            canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Canvas empty')), 'image/jpeg', 0.92);
+        };
+        image.onerror = reject;
+        image.src = imageSrc;
+    });
+
+// ── Crop Modal ────────────────────────────────────────────────────────────────
+const CropModal = ({
+    src,
+    onConfirm,
+    onCancel,
+}: {
+    src: string;
+    onConfirm: (croppedBlob: Blob) => void;
+    onCancel: () => void;
+}) => {
+    const [crop, setCrop] = useState({ x: 0, y: 0 });
+    const [zoom, setZoom] = useState(1);
+    const [rotation, setRotation] = useState(0);
+    const [croppedArea, setCroppedArea] = useState<Area | null>(null);
+    const [processing, setProcessing] = useState(false);
+
+    const onCropComplete = useCallback((_: Area, croppedAreaPixels: Area) => {
+        setCroppedArea(croppedAreaPixels);
+    }, []);
+
+    const handleConfirm = async () => {
+        if (!croppedArea) return;
+        setProcessing(true);
+        try {
+            const blob = await getCroppedBlob(src, croppedArea);
+            onConfirm(blob);
+        } catch {
+            alert('Error al procesar el recorte');
+        } finally {
+            setProcessing(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onCancel} />
+
+            {/* Modal */}
+            <div className="relative z-10 bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden">
+                {/* Header */}
+                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                    <div className="flex items-center gap-2">
+                        <Crop className="w-5 h-5 text-blue-600" />
+                        <div>
+                            <h3 className="font-bold text-gray-900">Recortar portada</h3>
+                            <p className="text-xs text-gray-400">Formato 16:9 · Salida 1920×1080px</p>
+                        </div>
+                    </div>
+                    <button onClick={onCancel} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+                        <X className="w-4 h-4 text-gray-500" />
+                    </button>
+                </div>
+
+                {/* Cropper area */}
+                <div className="relative bg-gray-900" style={{ height: '400px' }}>
+                    <Cropper
+                        image={src}
+                        crop={crop}
+                        zoom={zoom}
+                        rotation={rotation}
+                        aspect={16 / 9}
+                        onCropChange={setCrop}
+                        onZoomChange={setZoom}
+                        onCropComplete={onCropComplete}
+                        showGrid
+                        style={{
+                            containerStyle: { background: '#111' },
+                            cropAreaStyle: {
+                                border: '2px solid rgba(59,130,246,0.8)',
+                                boxShadow: '0 0 0 9999px rgba(0,0,0,0.55)',
+                            },
+                        }}
+                    />
+                </div>
+
+                {/* Controls */}
+                <div className="px-5 py-4 bg-gray-50 space-y-3 border-t border-gray-100">
+                    {/* Zoom */}
+                    <div className="flex items-center gap-3">
+                        <ZoomOut className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                        <input
+                            type="range"
+                            min={1} max={3} step={0.01}
+                            value={zoom}
+                            onChange={e => setZoom(Number(e.target.value))}
+                            className="flex-1 h-1.5 appearance-none rounded-full bg-gray-200 accent-blue-600 cursor-pointer"
+                        />
+                        <ZoomIn className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                        <span className="text-xs text-gray-500 w-10 text-right">{Math.round(zoom * 100)}%</span>
+                    </div>
+
+                    {/* Rotation */}
+                    <div className="flex items-center gap-3">
+                        <RotateCw className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                        <input
+                            type="range"
+                            min={-180} max={180} step={1}
+                            value={rotation}
+                            onChange={e => setRotation(Number(e.target.value))}
+                            className="flex-1 h-1.5 appearance-none rounded-full bg-gray-200 accent-blue-600 cursor-pointer"
+                        />
+                        <span className="text-xs text-gray-500 w-14 text-right">{rotation}°</span>
+                        <button
+                            type="button"
+                            onClick={() => setRotation(0)}
+                            className="text-xs text-blue-600 hover:underline"
+                        >Reset</button>
+                    </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-100">
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                    >Cancelar</button>
+                    <button
+                        type="button"
+                        onClick={handleConfirm}
+                        disabled={processing}
+                        className="flex items-center gap-2 px-5 py-2 text-sm font-semibold bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50"
+                    >
+                        {processing ? (
+                            <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Procesando...</>
+                        ) : (
+                            <><Crop className="w-4 h-4" /> Confirmar recorte</>
+                        )}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ── Image Uploader (with crop) ────────────────────────────────────────────────
 const ImageUploader = ({
     label,
     currentUrl,
@@ -114,15 +275,27 @@ const ImageUploader = ({
 }) => {
     const [uploading, setUploading] = useState(false);
     const [tab, setTab] = useState<'upload' | 'url'>('upload');
+    const [cropSrc, setCropSrc] = useState<string | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const API = import.meta.env.VITE_API_URL || '/api';
     const token = localStorage.getItem('rotary_token');
 
-    const handleFile = async (file: File) => {
+    // Step 1: file selected → open crop modal
+    const handleFileSelected = (file: File) => {
+        const reader = new FileReader();
+        reader.onload = () => setCropSrc(reader.result as string);
+        reader.readAsDataURL(file);
+        // Reset input so same file can be re-selected
+        if (inputRef.current) inputRef.current.value = '';
+    };
+
+    // Step 2: crop confirmed → upload blob to S3
+    const handleCropConfirmed = async (blob: Blob) => {
+        setCropSrc(null);
         setUploading(true);
         try {
             const form = new FormData();
-            form.append('image', file);
+            form.append('image', blob, 'portada-evento.jpg');
             const res = await fetch(`${API}/calendar/events/upload-image`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },
@@ -138,84 +311,112 @@ const ImageUploader = ({
     };
 
     return (
-        <div className="space-y-3">
-            <label className="block text-sm font-semibold text-gray-700">{label}</label>
-
-            {/* Tab switcher */}
-            <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
-                <button
-                    type="button"
-                    onClick={() => setTab('upload')}
-                    className={`text-xs font-medium px-3 py-1.5 rounded-md transition-all ${tab === 'upload' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                    <Upload className="w-3 h-3 inline mr-1" />Subir archivo
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setTab('url')}
-                    className={`text-xs font-medium px-3 py-1.5 rounded-md transition-all ${tab === 'url' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                    <LinkIcon className="w-3 h-3 inline mr-1" />URL externa
-                </button>
-            </div>
-
-            {tab === 'upload' ? (
-                <div
-                    onClick={() => inputRef.current?.click()}
-                    className="border-2 border-dashed border-gray-300 hover:border-blue-400 rounded-xl p-6 text-center cursor-pointer transition-colors group"
-                >
-                    <input
-                        ref={inputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])}
-                    />
-                    {uploading ? (
-                        <div className="flex flex-col items-center gap-2">
-                            <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                            <p className="text-sm text-gray-500">Subiendo imagen...</p>
-                        </div>
-                    ) : (
-                        <div className="flex flex-col items-center gap-2">
-                            <ImagePlus className="w-8 h-8 text-gray-300 group-hover:text-blue-400 transition-colors" />
-                            <p className="text-sm text-gray-500">Haz clic o arrastra una imagen</p>
-                            <p className="text-xs text-gray-400">JPG, PNG, WEBP · Máx. 10MB</p>
-                        </div>
-                    )}
-                </div>
-            ) : (
-                <div className="flex gap-2">
-                    <input
-                        type="url"
-                        value={currentUrl}
-                        onChange={e => onUrlChange(e.target.value)}
-                        placeholder="https://ejemplo.com/imagen.jpg"
-                        className="flex-1 px-3 py-2.5 text-sm border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                    {currentUrl && (
-                        <a href={currentUrl} target="_blank" rel="noopener noreferrer"
-                            className="flex items-center px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
-                            <ExternalLink className="w-4 h-4 text-gray-600" />
-                        </a>
-                    )}
-                </div>
+        <>
+            {/* Crop modal (portal) */}
+            {cropSrc && (
+                <CropModal
+                    src={cropSrc}
+                    onConfirm={handleCropConfirmed}
+                    onCancel={() => setCropSrc(null)}
+                />
             )}
 
-            {/* Preview */}
-            {currentUrl && (
-                <div className="relative w-full h-40 rounded-xl overflow-hidden border border-gray-200 group">
-                    <img src={currentUrl} alt="preview" className="w-full h-full object-cover" />
+            <div className="space-y-3">
+                <label className="block text-sm font-semibold text-gray-700">{label}</label>
+
+                {/* Tab switcher */}
+                <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
                     <button
                         type="button"
-                        onClick={() => onUploaded('')}
-                        className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                        onClick={() => setTab('upload')}
+                        className={`text-xs font-medium px-3 py-1.5 rounded-md transition-all ${tab === 'upload' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                     >
-                        <X className="w-3 h-3" />
+                        <Upload className="w-3 h-3 inline mr-1" />Subir y recortar
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setTab('url')}
+                        className={`text-xs font-medium px-3 py-1.5 rounded-md transition-all ${tab === 'url' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                        <LinkIcon className="w-3 h-3 inline mr-1" />URL externa
                     </button>
                 </div>
-            )}
-        </div>
+
+                {tab === 'upload' ? (
+                    <div
+                        onClick={() => inputRef.current?.click()}
+                        className="border-2 border-dashed border-gray-300 hover:border-blue-400 rounded-xl p-6 text-center cursor-pointer transition-colors group"
+                    >
+                        <input
+                            ref={inputRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={e => e.target.files?.[0] && handleFileSelected(e.target.files[0])}
+                        />
+                        {uploading ? (
+                            <div className="flex flex-col items-center gap-2">
+                                <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                                <p className="text-sm text-gray-500">Subiendo portada recortada...</p>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center gap-2">
+                                <div className="flex gap-3 justify-center">
+                                    <ImagePlus className="w-8 h-8 text-gray-300 group-hover:text-blue-400 transition-colors" />
+                                    <Crop className="w-8 h-8 text-gray-300 group-hover:text-blue-400 transition-colors" />
+                                </div>
+                                <p className="text-sm text-gray-500">Haz clic para seleccionar y recortar</p>
+                                <p className="text-xs text-gray-400">Se abrirá el editor de recorte · Salida 1920×1080 · JPG, PNG, WEBP</p>
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <div className="flex gap-2">
+                        <input
+                            type="url"
+                            value={currentUrl}
+                            onChange={e => onUrlChange(e.target.value)}
+                            placeholder="https://ejemplo.com/imagen.jpg"
+                            className="flex-1 px-3 py-2.5 text-sm border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                        {currentUrl && (
+                            <a href={currentUrl} target="_blank" rel="noopener noreferrer"
+                                className="flex items-center px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                                <ExternalLink className="w-4 h-4 text-gray-600" />
+                            </a>
+                        )}
+                    </div>
+                )}
+
+                {/* Preview with aspect ratio matching the hero */}
+                {currentUrl && (
+                    <div className="relative w-full overflow-hidden rounded-xl border border-gray-200 group" style={{ aspectRatio: '16/9' }}>
+                        <img src={currentUrl} alt="preview" className="w-full h-full object-cover" />
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-3">
+                            <p className="text-xs text-white/80">Vista previa de portada (16:9)</p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => onUploaded('')}
+                            className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                        >
+                            <X className="w-3 h-3" />
+                        </button>
+                        {/* Re-crop button */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                // Open URL in cropper (re-crop existing image)
+                                setCropSrc(currentUrl);
+                            }}
+                            className="absolute top-2 left-2 flex items-center gap-1 px-2.5 py-1.5 bg-black/60 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80"
+                        >
+                            <Crop className="w-3 h-3" /> Recortar de nuevo
+                        </button>
+                    </div>
+                )}
+            </div>
+        </>
     );
 };
 
