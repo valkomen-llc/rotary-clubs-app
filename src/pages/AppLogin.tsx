@@ -57,7 +57,7 @@ export default function AppLogin() {
                 <div className="text-center mb-8">
                     <div className="flex items-center justify-center gap-2.5 mb-4">
                         {platformLogo ? (
-                            <img src={platformLogo} alt="ClubPlatform" style={{ height: platformLogoSize + 'px' }} className="max-w-[240px] object-contain" />
+                            <img src={platformLogo} alt="ClubPlatform" style={{ height: platformLogoSize + 'px', width: 'auto', maxWidth: '320px' }} />
                         ) : (
                             <>
                                 <div className="w-10 h-10 rounded-2xl bg-[#019fcb] flex items-center justify-center shadow-lg shadow-blue-200">
@@ -67,7 +67,7 @@ export default function AppLogin() {
                             </>
                         )}
                     </div>
-                    <h1 className="text-3xl font-black text-gray-900 mb-2">Panel de Administración</h1>
+                    <h1 className="text-3xl font-normal text-gray-900 mb-2">Panel de Administración</h1>
                     <p className="text-gray-500">Accede al panel de tu club rotario</p>
                 </div>
 
