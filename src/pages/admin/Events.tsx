@@ -996,13 +996,23 @@ const EventsManagement = () => {
                                                         </div>
 
                                                         <hr className="border-gray-100" />
-                                                        <ImageUploader
-                                                            label="🖼️ Imagen adjunta (Final de la columna)"
-                                                            currentUrl={event.metadata?.latir?.footerImage || ''}
-                                                            onUploaded={url => updateEventField(event.id, 'metadata', { ...event.metadata, latir: { ...event.metadata?.latir, footerImage: url } })}
-                                                            onUrlChange={url => updateEventField(event.id, 'metadata', { ...event.metadata, latir: { ...event.metadata?.latir, footerImage: url } })}
-                                                            noCrop={true}
-                                                        />
+                                                        
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                            <ImageUploader
+                                                                label="🖼️ Logo del Evento (Aparece arriba del título)"
+                                                                currentUrl={event.metadata?.latir?.headerLogo || ''}
+                                                                onUploaded={url => updateEventField(event.id, 'metadata', { ...event.metadata, latir: { ...event.metadata?.latir, headerLogo: url } })}
+                                                                onUrlChange={url => updateEventField(event.id, 'metadata', { ...event.metadata, latir: { ...event.metadata?.latir, headerLogo: url } })}
+                                                                noCrop={true}
+                                                            />
+                                                            <ImageUploader
+                                                                label="🖼️ Imagen adjunta (Final de la columna)"
+                                                                currentUrl={event.metadata?.latir?.footerImage || ''}
+                                                                onUploaded={url => updateEventField(event.id, 'metadata', { ...event.metadata, latir: { ...event.metadata?.latir, footerImage: url } })}
+                                                                onUrlChange={url => updateEventField(event.id, 'metadata', { ...event.metadata, latir: { ...event.metadata?.latir, footerImage: url } })}
+                                                                noCrop={true}
+                                                            />
+                                                        </div>
                                                     </div>
                                                 )}
 
