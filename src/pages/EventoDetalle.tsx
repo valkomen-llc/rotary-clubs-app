@@ -216,7 +216,7 @@ const EventoDetalle = () => {
                     {/* Main content */}
                     <div className="lg:col-span-2 space-y-6">
                         {descriptionParagraphs.length > 0 ? (
-                            <div className="space-y-5 text-gray-700 text-lg leading-relaxed">
+                            <div className="space-y-5 text-gray-700 text-base leading-relaxed">
                                 {descriptionParagraphs.map((p: string, i: number) => (
                                     <p key={i}>{p}</p>
                                 ))}
