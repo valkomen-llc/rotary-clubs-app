@@ -262,9 +262,11 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             });
         }
 
+        if (user?.role !== 'editor') {
+            items.push({ icon: LayoutDashboard, label: 'Overview', path: '/admin/dashboard', category: 'General', keywords: ['inicio', 'panel', 'dashboard', 'resumen'] });
+        }
         items.push(
-            { icon: LayoutDashboard, label: 'Overview', path: '/admin/dashboard', category: 'General', keywords: ['inicio', 'panel', 'dashboard', 'resumen'] },
-            { icon: PieChart, label: 'Analytics', path: '/admin/analytics', category: 'General', keywords: ['estadisticas', 'visitas', 'trafico', 'ga4'] },
+            { icon: PieChart, label: 'Analytics', path: '/admin/analytics', category: 'General', keywords: ['estadisticas', 'visitas', 'trafico', 'ga4'] }
         );
 
         if (isSuperAdmin) {
@@ -291,9 +293,17 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             const orgTypeLabel = isAssoc ? 'Asociación' : isDistrict ? 'Distrito' : 'Club';
             
             items.push(
-                { icon: Building2, label: `Mi ${orgTypeLabel}`, path: '/admin/mi-club', category: orgTypeLabel, keywords: ['logo', 'nombre', 'perfil', 'identidad', 'contacto', 'redes'] },
-                { icon: Users, label: `Miembros de${isAssoc ? ' la ' : 'l '}${orgTypeLabel}`, path: '/admin/miembros', category: orgTypeLabel, keywords: ['socio', 'miembro', 'directorio'] },
-                { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: orgTypeLabel, keywords: ['contacto', 'lead', 'formulario'] },
+                { icon: Building2, label: `Mi ${orgTypeLabel}`, path: '/admin/mi-club', category: orgTypeLabel, keywords: ['logo', 'nombre', 'perfil', 'identidad', 'contacto', 'redes'] }
+            );
+
+            if (user?.role !== 'editor') {
+                items.push(
+                    { icon: Users, label: `Miembros de${isAssoc ? ' la ' : 'l '}${orgTypeLabel}`, path: '/admin/miembros', category: orgTypeLabel, keywords: ['socio', 'miembro', 'directorio'] }
+                );
+            }
+
+            items.push(
+                { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: orgTypeLabel, keywords: ['contacto', 'lead', 'formulario'] }
             );
         }
 
