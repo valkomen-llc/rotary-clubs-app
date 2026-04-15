@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Sparkles, Eye, EyeOff, Loader2, CheckCircle, ArrowLeft, ArrowRight, Building2, User, ChevronDown } from 'lucide-react';
 
@@ -45,6 +45,27 @@ function slugify(text: string) {
 export default function RegistroPage() {
     const navigate = useNavigate();
     const [showPassword, setShowPassword] = useState(false);
+
+    const LOGO_CACHE_KEY = 'cp_platform_logo';
+    const cached = (() => { try { return JSON.parse(localStorage.getItem(LOGO_CACHE_KEY) || 'null'); } catch { return null; } })();
+    const [platformLogo, setPlatformLogo] = useState<string | null>(cached?.url || null);
+    const [platformLogoSize, setPlatformLogoSize] = useState<number>(cached?.size || 48);
+    const [logoReady, setLogoReady] = useState(!!cached);
+
+    useEffect(() => {
+        const apiUrl = import.meta.env.VITE_API_URL || '/api';
+        fetch(`${apiUrl}/platform-config/logo`.replace(/\/+/g, '/').replace(':/', '://'))
+            .then(r => r.json())
+            .then(data => {
+                const url = data.url || null;
+                const size = data.size || 48;
+                setPlatformLogo(url);
+                setPlatformLogoSize(size);
+                try { localStorage.setItem(LOGO_CACHE_KEY, JSON.stringify({ url, size })); } catch { }
+            })
+            .catch(() => {})
+            .finally(() => setLogoReady(true));
+    }, []);
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState('');
@@ -201,13 +222,19 @@ export default function RegistroPage() {
                     <Link to="/" className="inline-flex items-center gap-2 text-gray-400 hover:text-gray-600 transition-colors text-sm mb-6">
                         <ArrowLeft className="w-4 h-4" /> Volver al Inicio
                     </Link>
-                    <div className="flex items-center justify-center gap-2.5 mb-4">
-                        <div className="w-10 h-10 rounded-2xl bg-[#019fcb] flex items-center justify-center shadow-lg shadow-blue-200">
-                            <Sparkles className="w-5 h-5 text-white" />
-                        </div>
-                        <span className="font-black text-gray-900 text-xl">ClubPlatform</span>
+                    <div className="flex items-center justify-center gap-2.5 mb-4" style={{ minHeight: '40px' }}>
+                        {logoReady && (platformLogo ? (
+                            <img src={platformLogo} alt="ClubPlatform" style={{ height: platformLogoSize + 'px', width: 'auto', maxWidth: '320px' }} />
+                        ) : (
+                            <>
+                                <div className="w-10 h-10 rounded-2xl bg-[#019fcb] flex items-center justify-center shadow-lg shadow-blue-200">
+                                    <Sparkles className="w-5 h-5 text-white" />
+                                </div>
+                                <span className="font-black text-gray-900 text-xl">ClubPlatform</span>
+                            </>
+                        ))}
                     </div>
-                    <h1 className="text-3xl font-black text-gray-900 mb-3">Crea el sitio web de tu club rotario</h1>
+                    <h1 className="text-3xl font-normal text-gray-900 mb-3">Crea el sitio web de tu club rotario</h1>
                     <p className="text-gray-500 text-sm leading-relaxed max-w-lg mx-auto">Tu activo digital para imagen pública y comunicaciones, con presencia en línea 24/7, alcance nacional e internacional, posicionamiento de marca, monetización, crowdfunding y fundraising.</p>
                 </div>
 
