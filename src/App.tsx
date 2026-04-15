@@ -167,7 +167,7 @@ function SmartHome() {
       if (user?.role !== 'administrator' && !onboardingDone && !hasPublishedDomain) {
         return <Navigate to="/admin/onboarding" />;
       }
-      return <Navigate to="/admin/dashboard" />;
+      return <Navigate to={user?.role === 'editor' ? "/admin/analytics" : "/admin/dashboard"} />;
     }
     return <AppLogin />;
   }

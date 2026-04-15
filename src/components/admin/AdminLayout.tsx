@@ -124,9 +124,9 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     // Redirect to dashboard if trying to access locked route
     useEffect(() => {
         if (!isSuperAdmin && !setupComplete && !hasPublishedDomain && !SETUP_ALLOWED_PATHS.includes(location.pathname)) {
-            navigate('/admin/dashboard');
+            navigate(user?.role === 'editor' ? '/admin/analytics' : '/admin/dashboard');
         }
-    }, [location.pathname, setupComplete, isSuperAdmin, hasPublishedDomain]);
+    }, [location.pathname, setupComplete, isSuperAdmin, hasPublishedDomain, user?.role, navigate]);
 
     // Forcefully remove tracking/preview query parameters from the admin dashboard URL
     // so they do not permanently pollute the club context.

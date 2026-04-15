@@ -49,7 +49,11 @@ export default function AppLogin() {
                 return;
             }
             login(data.token, data.user);
-            navigate('/admin/dashboard');
+            if (data.user?.role === 'editor') {
+                navigate('/admin/analytics');
+            } else {
+                navigate('/admin/dashboard');
+            }
         } catch {
             setError('Error de conexión. Por favor intenta de nuevo.');
         } finally {
