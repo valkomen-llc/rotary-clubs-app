@@ -117,6 +117,14 @@ const EventoDetalle = () => {
     useEffect(() => { window.scrollTo(0, 0); }, [id]);
 
     useEffect(() => {
+        if (!event?.images || event.images.length <= 1) return;
+        const timer = setInterval(() => {
+            setCurrentImage(prev => (prev + 1) % event.images.length);
+        }, 4000);
+        return () => clearInterval(timer);
+    }, [event?.images]);
+
+    useEffect(() => {
         if (!club?.id || !id) return;
         const load = async () => {
             setLoading(true);
@@ -240,10 +248,18 @@ const EventoDetalle = () => {
                         {hasImages && (
                             <div className="my-10">
                                 <div className="relative aspect-[16/9] md:aspect-[21/9] rounded-2xl overflow-hidden shadow-xl ring-1 ring-gray-100 bg-gray-50">
+                                    <style>{`
+                                        @keyframes slowZoom {
+                                            from { transform: scale(1); }
+                                            to { transform: scale(1.1); }
+                                        }
+                                    `}</style>
                                     <img
+                                        key={currentImage}
                                         src={event.images[currentImage]}
                                         alt={`Gallery image ${currentImage + 1}`}
-                                        className="w-full h-full object-cover transition-transform duration-500"
+                                        className="w-full h-full object-cover"
+                                        style={{ animation: 'slowZoom 4s linear forwards' }}
                                     />
 
                                     {event.images.length > 1 && (
