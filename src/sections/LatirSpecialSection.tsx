@@ -126,8 +126,8 @@ const LatirSpecialSection = () => {
             {/* Image Header */}
             <div className="h-64 relative overflow-hidden">
               <img 
-                src="/images/latir-conference.png" 
-                alt="Conferencia LATIR" 
+                src="https://rotary-platform-assets.s3.us-east-1.amazonaws.com/events/1776276597620-upload.jpg" 
+                alt="V Conferencia LATIR / IV Conferencia ROTEX" 
                 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
@@ -138,7 +138,7 @@ const LatirSpecialSection = () => {
                     <MapPin className="w-3 h-3" /> Conferencia LATIR
                   </div>
                 </div>
-                <h3 className="text-2xl font-bold text-white uppercase tracking-tight">Magia en Movimiento</h3>
+                <h3 className="text-xl md:text-2xl font-bold text-white uppercase tracking-tight">V Conferencia LATIR / IV Conferencia ROTEX</h3>
               </div>
             </div>
 
