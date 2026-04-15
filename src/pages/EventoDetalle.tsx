@@ -67,7 +67,7 @@ const LatirSpecialSidebar = ({ startDate }: { startDate: string }) => {
                     { label: 'Minutes', val: timeLeft.minutes },
                     { label: 'Seconds', val: timeLeft.seconds }
                 ].map(item => (
-                    <div key={item.label} className="bg-[#D57D2C] text-white flex flex-col items-center justify-center py-2.5 px-0.5 w-[4.5rem]">
+                    <div key={item.label} className="bg-[#D57D2C] text-white flex flex-col items-center justify-center py-2.5 px-0.5 w-[4.5rem] rounded-md shadow-sm">
                         <span className="text-[2.25rem] font-normal leading-none tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>{formatNum(item.val)}</span>
                         <span className="text-[11px] font-bold mt-1.5 capitalize">{item.label}</span>
                     </div>
@@ -76,11 +76,9 @@ const LatirSpecialSidebar = ({ startDate }: { startDate: string }) => {
 
             {/* Button */}
             <a
-                href="#inscripciones"
-                onClick={(e) => {
-                    e.preventDefault();
-                    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-                }}
+                href="https://forms.gle/CXWqMj5w335h4qm69"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="w-full max-w-[220px] block text-center bg-[#D57D2C] hover:bg-[#c46f23] text-white text-[15px] font-bold py-2.5 rounded-full transition-colors mb-5"
             >
                 Inscripciones
