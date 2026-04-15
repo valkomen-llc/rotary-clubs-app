@@ -254,13 +254,15 @@ const EventoDetalle = () => {
                                             to { transform: scale(1.1); }
                                         }
                                     `}</style>
-                                    <img
-                                        key={currentImage}
-                                        src={event.images[currentImage]}
-                                        alt={`Gallery image ${currentImage + 1}`}
-                                        className="w-full h-full object-cover"
-                                        style={{ animation: 'slowZoom 4s linear forwards' }}
-                                    />
+                                    {event.images.map((imgSrc: string, index: number) => (
+                                        <img
+                                            key={`${imgSrc}-${index}`}
+                                            src={imgSrc}
+                                            alt={`Gallery image ${index + 1}`}
+                                            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ease-in-out ${index === currentImage ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}
+                                            style={index === currentImage ? { animation: 'slowZoom 4.5s linear forwards' } : {}}
+                                        />
+                                    ))}
 
                                     {event.images.length > 1 && (
                                         <>
