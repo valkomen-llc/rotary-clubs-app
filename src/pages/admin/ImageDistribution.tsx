@@ -119,13 +119,6 @@ const BASE_CONTAINERS: Container[] = [
             { key: 'history', subLabel: 'Nuestra Historia', count: 5, aspect: '16/9' },
         ],
     },
-    {
-        key: 'chatbot', label: 'Asistente IA (ChatBot)', desc: 'Imágenes de avatar para el asistente en la plataforma.', count: 2, aspect: '1/1',
-        groups: [
-            { key: 'chatbotPublicAvatar', subLabel: 'Avatar Público', count: 1, aspect: '1/1' },
-            { key: 'chatbotAdminAvatar', subLabel: 'Avatar Administrador', count: 1, aspect: '1/1' },
-        ],
-    },
 ];
 
 const ImageDistribution: React.FC = () => {
@@ -171,7 +164,17 @@ const ImageDistribution: React.FC = () => {
         if (user?.role === 'administrator') {
             active.push({ key: 'missionControl', label: 'Mission Control VIP', desc: 'Logotipo para el header del panel avanzado (Solo Global).', count: 1, aspect: 'auto' });
         }
-        
+        // ChatBot images (hidden for editors)
+        if (user?.role !== 'editor') {
+            active.push({
+                key: 'chatbot', label: 'Asistente IA (ChatBot)', desc: 'Imágenes de avatar para el asistente en la plataforma.', count: 2, aspect: '1/1',
+                groups: [
+                    { key: 'chatbotPublicAvatar', subLabel: 'Avatar Público', count: 1, aspect: '1/1' },
+                    { key: 'chatbotAdminAvatar', subLabel: 'Avatar Administrador', count: 1, aspect: '1/1' },
+                ],
+            });
+        }
+
         return active;
     }, [club, user]);
 
