@@ -220,7 +220,7 @@ export default function VerifyEmail() {
                             </>
                         ))}
                     </div>
-                    <h1 className="text-2xl font-black text-gray-900 mb-2">Verifica tu correo</h1>
+                    <h1 className="text-2xl font-normal text-gray-900 mb-2">Verifica tu correo</h1>
                     <p className="text-gray-500 text-sm">
                         Enviamos un código de 6 dígitos a<br />
                         <strong className="text-gray-700">{email}</strong>
