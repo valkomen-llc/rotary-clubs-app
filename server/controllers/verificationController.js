@@ -22,13 +22,17 @@ function generateCode() {
 /**
  * Builds the HTML email template for verification
  */
-function buildVerificationEmail(code, clubName) {
+function buildVerificationEmail(code, clubName, logoUrl = null) {
+    const logoHtml = logoUrl
+      ? `<img src="${logoUrl}" alt="ClubPlatform" style="height: 48px; width: auto; margin-bottom: 12px; display: block; margin-left: auto; margin-right: auto;" />`
+      : `<div style="display: inline-block; background: #013388; border-radius: 16px; padding: 12px; margin-bottom: 12px;">
+            <span style="color: white; font-size: 24px;">✦</span>
+        </div>`;
+
     return `
     <div style="font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
         <div style="text-align: center; margin-bottom: 32px;">
-            <div style="display: inline-block; background: #013388; border-radius: 16px; padding: 12px; margin-bottom: 12px;">
-                <span style="color: white; font-size: 24px;">✦</span>
-            </div>
+            ${logoHtml}
             <h1 style="color: #111827; font-size: 24px; font-weight: 900; margin: 0;">ClubPlatform</h1>
         </div>
 
@@ -48,8 +52,8 @@ function buildVerificationEmail(code, clubName) {
             </p>
         </div>
 
-        <p style="text-align: center; color: #9ca3af; font-size: 11px; margin-top: 24px;">
-            © ${new Date().getFullYear()} ClubPlatform — Plataforma digital para Rotary · Por Valkomen LLC
+        <p style="text-align: center; color: #9ca3af; font-size: 10px; margin-top: 24px;">
+            © 2026 ClubPlatform — Plataforma de marketing digital para Rotary · Por Valkomen LLC
         </p>
     </div>`;
 }
@@ -173,12 +177,16 @@ export const resendCode = async (req, res) => {
             clubName = club?.name;
         }
 
+        // Get platform logo
+        const platformLogoConfig = await prisma.platformConfig.findUnique({ where: { key: 'platform_logo' } });
+        const logoUrl = platformLogoConfig?.value || null;
+
         // Send email (awaited — this is fast, ~1-2s max)
         const EmailSvc = await getEmailService();
         const result = await EmailSvc.sendPlatformEmail({
             to: email.toLowerCase(),
             subject: `${code} — Código de verificación | ClubPlatform`,
-            html: buildVerificationEmail(code, clubName),
+            html: buildVerificationEmail(code, clubName, logoUrl),
         });
 
         if (!result.success) {
@@ -208,11 +216,14 @@ export const sendVerificationEmail = async (userId) => {
         include: { club: { select: { name: true } } }
     });
 
+    const platformLogoConfig = await prisma.platformConfig.findUnique({ where: { key: 'platform_logo' } });
+    const logoUrl = platformLogoConfig?.value || null;
+
     const EmailSvc = await getEmailService();
     const result = await EmailSvc.sendPlatformEmail({
         to: user.email,
         subject: `${code} — Código de verificación | ClubPlatform`,
-        html: buildVerificationEmail(code, user.club?.name),
+        html: buildVerificationEmail(code, user.club?.name, logoUrl),
     });
 
     return result;
