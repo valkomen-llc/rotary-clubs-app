@@ -29,8 +29,8 @@ const StepWelcome: React.FC<{ onNext: () => void; clubName: string }> = ({ onNex
         <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#019fcb] to-[#017da3] flex items-center justify-center mb-8 shadow-2xl shadow-blue-900/30">
             <Rocket className="w-10 h-10 text-white" />
         </div>
-        <h1 className="text-4xl font-black text-gray-900 mb-4 tracking-tight">
-            ¡Bienvenido a ClubPlatform!
+        <h1 className="text-4xl font-normal text-gray-900 mb-4 tracking-tight">
+            ¡Bienvenido a Club Platform for Rotary!
         </h1>
         <p className="text-lg text-gray-500 max-w-lg mb-2">
             Vamos a configurar el sitio web de <strong className="text-gray-900">{clubName}</strong> en unos pocos pasos.
