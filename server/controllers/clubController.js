@@ -158,14 +158,17 @@ export const updateClub = async (req, res) => {
             addField('status', status);
             addField('type', type);
 
-            if (updateFields.length === 0) return res.status(400).json({ error: 'No fields to update' });
+            const hasClubUpdates = updateFields.length > 0;
+            let result;
 
-            updateFields.push(`"updatedAt" = NOW()`);
-            params.push(id);
-
-            const query = `UPDATE "Club" SET ${updateFields.join(', ')} WHERE id = $${pIdx} RETURNING *`;
-            
-            const result = await db.query(query, params);
+            if (hasClubUpdates) {
+                updateFields.push(`"updatedAt" = NOW()`);
+                params.push(id);
+                const query = `UPDATE "Club" SET ${updateFields.join(', ')} WHERE id = $${pIdx} RETURNING *`;
+                result = await db.query(query, params);
+            } else {
+                result = await db.query(`UPDATE "Club" SET "updatedAt" = NOW() WHERE id = $1 RETURNING *`, [id]);
+            }
 
             // Vercel Auto-provision: If domain has changed or is being set
             const existingDomain = currentClub.rows[0].domain;

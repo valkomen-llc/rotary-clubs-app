@@ -489,6 +489,10 @@ const SITE_IMG_DEFAULTS = {
         { url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&h=500&fit=crop', alt: 'Momento Histórico 2' },
         { url: 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800&h=500&fit=crop', alt: 'Momento Histórico 3' },
     ],
+    rotaract: [{ url: 'https://images.unsplash.com/photo-1529390079861-591de354faf5?w=1600&h=800&fit=crop', alt: 'Club Rotaract' }],
+    interact: [{ url: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=1600&h=800&fit=crop', alt: 'Club Interact' }],
+    yepBanner: [{ url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes' }],
+    rotexHero: [{ url: 'https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?w=1600&h=800&fit=crop', alt: 'ROTEX Banner' }],
 };
 
 interface SiteImgSubGroup { key: string; subLabel: string; count: number; aspect: string; }
@@ -507,6 +511,15 @@ const SITE_CONTAINERS: SiteImgContainer[] = [
             { key: 'causesHero', subLabel: 'Hero — Banner (Causas)', count: 1, aspect: '16/6' },
             { key: 'polio', subLabel: 'Erradicación a la Polio', count: 1, aspect: '4/3' },
             { key: 'history', subLabel: 'Nuestra Historia', count: 5, aspect: '16/9' },
+        ],
+    },
+    {
+        key: 'modules', label: 'Programas y Clubes', desc: 'Imágenes banner para los programas juveniles e institucionales.', count: 4, aspect: '16/5',
+        groups: [
+            { key: 'yepBanner', subLabel: 'Programa de Intercambios', count: 1, aspect: '16/5' },
+            { key: 'rotexHero', subLabel: 'ROTEX', count: 1, aspect: '16/5' },
+            { key: 'interact', subLabel: 'Interact', count: 1, aspect: '16/5' },
+            { key: 'rotaract', subLabel: 'Rotaract', count: 1, aspect: '16/5' },
         ],
     },
 ];
