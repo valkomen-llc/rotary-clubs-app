@@ -59,14 +59,17 @@ const DEFAULTS = {
         { url: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=1200&h=675&fit=crop', alt: 'Actividad Rotex 5' }
     ],
     causes: [
-        { url: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=500&h=500&fit=crop', alt: 'Promoción de la paz' },
-        { url: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=500&h=500&fit=crop', alt: 'Lucha contra las enfermedades' },
-        { url: 'https://images.unsplash.com/photo-1593113598332-cd288d649433?w=500&h=500&fit=crop', alt: 'Suministro de agua salubre' },
-        { url: 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=500&h=500&fit=crop', alt: 'Mejorando la salud materno-infantil' },
-        { url: 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=500&h=500&fit=crop', alt: 'Apoyo a la educación' },
-        { url: 'https://images.unsplash.com/photo-1531206715517-5c0ba140b2b8?w=500&h=500&fit=crop', alt: 'Desarrollo de las economías locales' },
-        { url: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=500&h=500&fit=crop', alt: 'Protección del medioambiente' }
-    ]
+        { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/global/images/1774367759783-home-areas-of-focus-2025-Promoting-Peace-20250226_TR_003.jpg', alt: 'Promoción de la paz' },
+        { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/global/images/1774367706205-home-areas-of-focus-2025-Fighting-Disease-20240613_IN_050.jpg', alt: 'Lucha contra las enfermedades' },
+        { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/global/images/1774367749617-home-areas-of-focus-2025-Providing-Clean-Water-20211026_PK_030.jpg', alt: 'Suministro de agua salubre' },
+        { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/global/images/1774367740639-home-areas-of-focus-2025-Improving-Maternal-and-Child-Health-20250408_PG_186.jpg', alt: 'Mejorando la salud materno-infantil' },
+        { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/global/images/1774367754051-home-areas-of-focus-2025-Supporting-Education-20240620_PA_032.jpg', alt: 'Apoyo a la educación' },
+        { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/global/images/1774367732873-home-areas-of-focus-2025-Growing-Local-Economies-20221008_TR_008.jpg', alt: 'Desarrollo de las economías locales' },
+        { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/global/images/1774367725680-home-areas-of-focus-2025-Protecting-the-Environment-2024-04-012.jpg', alt: 'Protección del medioambiente' }
+    ],
+    chatbotPublicAvatar: { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/null/images/1775750783080-imagen_2026-02-23_03-49-22_(1).png', alt: 'Chatbot Persona' },
+    chatbotAdminAvatar: { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/null/images/1775750805930-imagen_2026-02-23_11-57-31_(3).png', alt: 'Admin Persona' },
+    missionControl: { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/null/images/1775761106234-Mision_Control_-_Rotary_Valkomen.png', alt: 'Mission Control' }
 };
 // Helper: detect if a URL is a default (not a real custom upload)
 const isDefault = (url: string) => !url || url.includes('images.unsplash.com') || url.includes('/defaults/');

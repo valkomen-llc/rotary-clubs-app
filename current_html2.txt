@@ -1,0 +1,132 @@
+
+<style>
+  .conf-section { margin: 2.5rem 0; }
+  .conf-section h2 { font-size: 1.6rem; font-weight: 800; color: #0C3C7C; margin-bottom: 1rem; text-align: center; }
+  .conf-section h3 { font-size: 1.1rem; font-weight: 700; color: #013388; margin-bottom: 0.5rem; }
+  .conf-badge { display: inline-block; background: #E29C00; color: #fff; font-size: 0.75rem; font-weight: 700; padding: 0.25rem 0.85rem; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem; }
+  .conf-countdown { display: flex; justify-content: center; gap: 1rem; margin: 1.5rem 0; }
+  .conf-countdown .unit { background: #013388; color: #fff; border-radius: 10px; padding: 0.75rem 1.25rem; text-align: center; min-width: 70px; }
+  .conf-countdown .unit .num { font-size: 2rem; font-weight: 900; display: block; line-height: 1; }
+  .conf-countdown .unit .lbl { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.75; }
+  .conf-highlight { background: linear-gradient(135deg, #013388 0%, #0052b4 100%); color: #fff; border-radius: 16px; padding: 1.5rem 2rem; margin: 2rem 0; }
+  .conf-highlight h2 { color: #fff; margin-top: 0; }
+  .conf-highlight ul { list-style: none; padding: 0; margin: 1rem 0 0; }
+  .conf-highlight ul li { padding: 0.4rem 0; font-size: 0.97rem; border-bottom: 1px solid rgba(255,255,255,0.12); }
+  .conf-highlight ul li:last-child { border: none; }
+  
+  .conf-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.25rem; margin: 1.5rem 0; }
+  .conf-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 1.25rem; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .conf-card img { width: 100%; height: 120px; object-fit: cover; border-radius: 10px; margin-bottom: 0.75rem; }
+  .conf-card h4 { font-size: 0.9rem; font-weight: 700; color: #013388; margin: 0 0 0.4rem; }
+  .conf-card p { font-size: 0.82rem; color: #6b7280; margin: 0; line-height: 1.5; }
+  .conf-btn { display: inline-block; background: #E29C00; color: #fff; font-weight: 700; font-size: 0.9rem; padding: 0.75rem 2rem; border-radius: 999px; text-decoration: none; text-align: center; margin: 0.5rem auto; }
+  .conf-btn-center { text-align: center; margin: 1.5rem 0; }
+  .conf-madryn { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.25rem; margin: 1.5rem 0; }
+  .conf-madryn-col h4 { font-size: 0.9rem; font-weight: 700; color: #013388; margin-bottom: 0.4rem; }
+  .conf-madryn-col p { font-size: 0.82rem; color: #4b5563; line-height: 1.6; }
+  .conf-contact { background: #f8fafc; border-left: 4px solid #013388; border-radius: 12px; padding: 1.5rem 1.75rem; margin: 2rem 0; }
+  .conf-contact h2 { text-align: left; margin-bottom: 0.75rem; }
+  .conf-contact p { font-size: 0.9rem; color: #374151; margin: 0.3rem 0; }
+  .conf-sponsors { display: flex; align-items: center; justify-content: center; gap: 2rem; flex-wrap: wrap; margin: 2rem 0 0; padding: 1.5rem; }
+  .conf-divider { border: none; border-top: 1px solid #e5e7eb; margin: 2.5rem 0; }
+</style>
+
+<!-- ── Todo lo que necesitas saber ── -->
+<div class="conf-section">
+  <div class="conf-highlight">
+    <h2 style="text-align:center; color:#fff;" style="font-weight: normal; margin-top: 0;">¿Qué incluye el ticket de USD 550 / USD 625?</h2>
+    <ul style="list-style:none; padding:0; margin:1rem 0 0;">
+      <li style="padding:0.4rem 0; font-size:0.97rem; border-bottom:1px solid rgba(255,255,255,0.12);">🛏️ Estadía en habitación doble Del 23 al 26 de abril de 2026.</li>
+      <li style="padding:0.4rem 0; font-size:0.97rem; border-bottom:1px solid rgba(255,255,255,0.12);">🎁 Kit de bienvenida y remera de la Conferencia.</li>
+      <li style="padding:0.4rem 0; font-size:0.97rem; border-bottom:1px solid rgba(255,255,255,0.12);">🍽️ Almuerzo – 25 de abril</li>
+      <li style="padding:0.4rem 0; font-size:0.97rem; border-bottom:1px solid rgba(255,255,255,0.12);">☕ Coffee Breaks durante las jornadas de capacitación.</li>
+      <li style="padding:0.4rem 0; font-size:0.97rem; border-bottom:1px solid rgba(255,255,255,0.12);">🌎 Cena “Sabores del LATIR” Una experiencia gastronómica con identidad regional.</li>
+      <li style="padding:0.4rem 0; font-size:0.97rem; border-bottom:1px solid rgba(255,255,255,0.12);">✨ Cena de Clausura Noche especial de celebración y encuentro.</li>
+      <li style="padding:0.4rem 0; font-size:0.97rem; border-bottom:none;">🌿 Día de Campo – 26 de abril – Actividad recreativa para disfrutar la experiencia patagónica.</li>
+    </ul>
+  </div>
+</div>
+
+<hr class="conf-divider"/>
+
+<!-- ── Modalidades de inscripción ── -->
+<div class="conf-section">
+  <h2 style="font-weight: normal; text-align: center; color: #013388;">🎟️ Inscripción, Modalidades, Alojamiento y Datos Importantes</h2>
+  <div class="conf-cards">
+    <div class="conf-card">
+      <img src="https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/a5868df5-6593-4711-b7e7-ad9936b96faf/images/1776282451302-WhatsApp-Image-2026-02-01-at-17.14.30.jpg" alt="Inscripciones"/>
+    <h4>🌐 Inscripciones</h4>
+      <p>Registro en formulario oficial. Disponible modalidad presencial y virtual. Consulta tarifas en USD para internacionales y ARS para Argentina.</p>
+    </div>
+    <div class="conf-card">
+      <img src="https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/a5868df5-6593-4711-b7e7-ad9936b96faf/images/1776282452464-8509370380618c2a5d075a71c35bb38e5b0f696ad3.jpg" alt="Confirmá Inscripción - Argentinos"/>
+    <h4>🏨 Confirmá Inscripción - Argentinos</h4>
+      <p>Si sos residente en Argentina, informá tu pago y elegí alojamiento haciendo click en la imagen.</p>
+    </div>
+    <div class="conf-card">
+      <img src="https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/a5868df5-6593-4711-b7e7-ad9936b96faf/images/1776282452215-puerto-madryn.webp" alt="Confirmá inscripción - Extranjeros"/>
+    <h4>🗂️ Confirmá Inscripción - Extranjeros</h4>
+      <p>Si no tenés residencia en Argentina confirmá tu inscripción informando tu vuelo y elegí alojamiento haciendo click en la imagen.</p>
+    </div>
+    <div class="conf-card">
+      <img src="https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/a5868df5-6593-4711-b7e7-ad9936b96faf/images/1776282451813-Copia-de-LATIR-Degustacion-de-vinos.jpg" alt="Degustación de vinos"/>
+    <h4>📋 Degustación de Vinos</h4>
+      <p>Súmate a una experiencia de aromas y sabores exclusiva para rotarios muy pronto link de inscripción.</p>
+    </div>
+  </div>
+</div>
+
+<hr class="conf-divider"/>
+
+<!-- ── Programas ── -->
+<div class="conf-section">
+  <h2 style="font-weight: normal; color: #013388;">🗓️ Programas V CONFERENCIA LATIR y IV ROTEX</h2>
+  <p style="text-align:center; color:#4b5563;">Del 22 al 26 de abril de 2026 contaremos con una agenda completa de paneles temáticos, talleres vivenciales, actos institucionales, actividades recreativas en Puerto Madryn y una gran noche de cierre.</p>
+  <div class="conf-btn-center">
+    <a class="conf-btn" href="https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/a5868df5-6593-4711-b7e7-ad9936b96faf/documents/1776284675541-Programa-Conferencia-LATIR.pdf" target="_blank">
+      📅 Conoce el Programa
+    </a>
+  </div>
+</div>
+
+<hr class="conf-divider"/>
+
+<!-- ── Disfrutá Puerto Madryn ── -->
+<div class="conf-section">
+  <h2 style="font-weight: normal; color: #013388;">🐋 Disfrutá Puerto Madryn</h2>
+  <p style="text-align:center; color:#4b5563; margin-bottom:1.5rem;">Puerto Madryn, la ciudad de la ballena, es una de las ciudades más bellas de la Patagonia argentina. Un destino inolvidable para descubrir la naturaleza, la gastronomía y la cultura patagónica.</p>
+  <div class="conf-madryn">
+    <div class="conf-madryn-col">
+      <h4>🌊 Turismo y Naturaleza</h4>
+      <p>Avistamiento de ballenas jorobadas y orcas, pingüineras en Punta Tombo, lobos marinos y elefantes marinos en Península Valdés — Patrimonio de la Humanidad UNESCO.</p>
+    </div>
+    <div class="conf-madryn-col">
+      <h4>🏨 Alojamiento</h4>
+      <p>Opciones para todos los presupuestos: desde hoteles boutique frente al mar hasta hostels confortables en el centro. La organización dispone de tarifas especiales para conferenciantes.</p>
+    </div>
+    <div class="conf-madryn-col">
+      <h4>🍷 Gastronomía y Actividades</h4>
+      <p>Frutos del mar frescos, cordero patagónico, vinos regionales. Actividades de buceo, kayak, trekking y paseos en lancha disponibles para los días libres.</p>
+    </div>
+  </div>
+</div>
+
+<hr class="conf-divider"/>
+
+<!-- ── Contacto ── -->
+<div class="conf-contact">
+  <h2>📬 Contáctanos</h2>
+  <p>Para consultas sobre la conferencia, inscripciones y alojamiento:</p>
+  <p>📧 <strong>Email:</strong> conferencia@rotarylatir.org</p>
+  <p>💬 <strong>WhatsApp:</strong> Únete al grupo oficial a través del formulario de inscripción</p>
+  <p>🌐 <strong>Web:</strong> <a href="https://rotarylatir.org/conferencia" style="color:#013388;">rotarylatir.org/conferencia</a></p>
+</div>
+
+<!-- ── Sponsors ── -->
+<div class="conf-section">
+  <hr class="conf-divider" style="margin-top:0;" />
+  <p style="text-align:center; font-size:0.8rem; color:#9ca3af; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:1rem;">Con el apoyo de</p>
+  <div class="conf-sponsors">
+    <img src="https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/a5868df5-6593-4711-b7e7-ad9936b96faf/images/1776285183540-Sponsors.jpg" alt="Sponsors" style="max-width: 100%; height: auto; border-radius: 8px;"/>
+  </div>
+</div>
