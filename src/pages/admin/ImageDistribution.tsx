@@ -107,8 +107,8 @@ interface Container { key: string; label: string; desc: string; count: number; a
 const BASE_CONTAINERS: Container[] = [
     { key: 'hero', label: 'Hero — Slider Principal', desc: '5 imágenes de slide con rotación automática. Tamaño ideal: 1600×700px, horizontal.', count: 5, aspect: '16/7' },
     { key: 'causes', label: 'Áreas de Interés — Causas', desc: '7 imágenes para las tarjetas de causas Rotary. Tamaño ideal: 500×500px, cuadrado.', count: 7, aspect: '1/1' },
-    { key: 'foundation', label: 'Fundación Rotaria', desc: '1 imagen de fondo para la sección de la Fundación. Tamaño ideal: 1600×800px, panorámica.', count: 1, aspect: '16/8' },
-    { key: 'join', label: 'Sección Únete', desc: '1 imagen motivacional para la sección de reclutamiento. Tamaño ideal: 600×500px.', count: 1, aspect: '6/5' },
+    { key: 'foundation', label: 'Fundación Rotaria', desc: '1 imagen de fondo para la sección de la Fundación. Tamaño ideal: 1600×700px, panorámica.', count: 1, aspect: '16/7' },
+    { key: 'join', label: 'Sección Únete', desc: '1 imagen motivacional para la sección de reclutamiento. Tamaño ideal: 800×600px.', count: 1, aspect: '4/3' },
     {
         key: 'about', label: 'Quiénes Somos', desc: 'Imágenes de las páginas Quiénes Somos y Nuestras Causas.', count: 13, aspect: '16/5',
         groups: [
@@ -129,8 +129,8 @@ const ImageDistribution: React.FC = () => {
     const activeContainers = React.useMemo(() => {
         const active: Container[] = [...BASE_CONTAINERS];
         const c = club as any;
-        if (c?.modules?.rotaract) active.push({ key: 'rotaract', label: 'Club Rotaract', desc: 'Imagen de portada para la sección Rotaract.', count: 1, aspect: '16/8' });
-        if (c?.modules?.interact) active.push({ key: 'interact', label: 'Club Interact', desc: 'Imagen de portada para la sección Interact.', count: 1, aspect: '16/8' });
+        if (c?.modules?.rotaract) active.push({ key: 'rotaract', label: 'Club Rotaract', desc: 'Imagen de portada para la sección Rotaract.', count: 1, aspect: '16/7' });
+        if (c?.modules?.interact) active.push({ key: 'interact', label: 'Club Interact', desc: 'Imagen de portada para la sección Interact.', count: 1, aspect: '16/7' });
         if (c?.modules?.youthExchange) {
             active.push({
                 key: 'yep',
@@ -802,11 +802,10 @@ const ImageDistribution: React.FC = () => {
                                 aspect={
                                     pickerTarget?.key === 'hero' ? 16 / 7 :
                                     pickerTarget?.key === 'aboutHero' ? 16 / 5 :
-                                    pickerTarget?.key === 'causesHero' ? 16 / 6 :
-                                    pickerTarget?.key === 'yepExperience' || pickerTarget?.key === 'polio' ? 4 / 3 :
-                                    pickerTarget?.key === 'history' ? 16 / 9 :
-                                    (['yep', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotexHero', 'foundation'].includes(pickerTarget?.key || '')) ? 16 / 8 :
-                                    pickerTarget?.key === 'rotexCarousel' ? 16 / 9 :
+                                    pickerTarget?.key === 'causesHero' || pickerTarget?.key === 'rotexHero' ? 16 / 6 :
+                                    pickerTarget?.key === 'yepExperience' || pickerTarget?.key === 'polio' || pickerTarget?.key === 'join' ? 4 / 3 :
+                                    pickerTarget?.key === 'history' || pickerTarget?.key === 'rotexCarousel' ? 16 / 9 :
+                                    (['yep', 'yepBanner', 'rotaract', 'interact', 'ngse', 'foundation'].includes(pickerTarget?.key || '')) ? 16 / 7 :
                                     1
                                 }
                                 cropShape={pickerTarget?.key.startsWith('chatbot') ? 'round' : 'rect'}

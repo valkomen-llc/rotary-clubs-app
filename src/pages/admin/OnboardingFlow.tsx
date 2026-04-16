@@ -6,6 +6,8 @@ import {
     Plus, Globe,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import Cropper from 'react-easy-crop';
+import getCroppedImg from '../../utils/cropImage';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -22,6 +24,73 @@ const STEPS = [
     { id: 'images', title: 'Imágenes', icon: ImageIcon },
     { id: 'complete', title: '¡Listo!', icon: CheckCircle2 },
 ];
+
+const CropModal: React.FC<{
+    image: string;
+    aspect?: number;
+    onCropComplete: (croppedImage: Blob) => void;
+    onClose: () => void;
+}> = ({ image, aspect, onCropComplete, onClose }) => {
+    const [crop, setCrop] = useState({ x: 0, y: 0 });
+    const [zoom, setZoom] = useState(1);
+    const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
+
+    const handleSave = async () => {
+        try {
+            const croppedImageBlob = await getCroppedImg(image, croppedAreaPixels);
+            onCropComplete(croppedImageBlob);
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl">
+                <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                    <h3 className="font-black text-gray-900">Ajustar Imagen</h3>
+                    <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                        <X className="w-5 h-5 text-gray-400" />
+                    </button>
+                </div>
+                <div className="relative h-[400px] bg-gray-900">
+                    <Cropper
+                        image={image}
+                        crop={crop}
+                        zoom={zoom}
+                        aspect={aspect}
+                        onCropChange={setCrop}
+                        onCropComplete={(_, pixels) => setCroppedAreaPixels(pixels)}
+                        onZoomChange={setZoom}
+                    />
+                </div>
+                <div className="p-6 bg-gray-50 flex flex-col gap-4">
+                    <div className="flex items-center gap-4">
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Zoom</span>
+                        <input
+                            type="range"
+                            value={zoom}
+                            min={1}
+                            max={3}
+                            step={0.1}
+                            aria-labelledby="Zoom"
+                            onChange={(e) => setZoom(Number(e.target.value))}
+                            className="flex-1 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#019fcb]"
+                        />
+                    </div>
+                    <div className="flex justify-end gap-3">
+                        <button onClick={onClose} className="px-6 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-700">
+                            Cancelar
+                        </button>
+                        <button onClick={handleSave} className="bg-[#019fcb] text-white px-8 py-2.5 rounded-xl font-bold text-sm hover:bg-[#017da3] transition-all shadow-lg shadow-blue-900/10">
+                            Guardar Recorte
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 // ── Step 0: Welcome ──────────────────────────────────────────────
 const StepWelcome: React.FC<{ onNext: () => void; clubName: string }> = ({ onNext, clubName }) => (
@@ -504,8 +573,8 @@ interface SiteImgContainer { key: string; label: string; desc: string; count: nu
 const SITE_CONTAINERS: SiteImgContainer[] = [
     { key: 'hero', label: 'Hero — Slider Principal', desc: '5 imágenes de slide con rotación automática. Tamaño ideal: 1600×700px.', count: 5, aspect: '16/7' },
     { key: 'causes', label: 'Áreas de Interés — Causas', desc: '7 imágenes para las tarjetas de causas Rotary. Tamaño ideal: 500×500px.', count: 7, aspect: '1/1' },
-    { key: 'foundation', label: 'Fundación Rotaria', desc: '1 imagen de fondo para la sección de la Fundación.', count: 1, aspect: '16/8' },
-    { key: 'join', label: 'Sección Únete', desc: '1 imagen motivacional para la sección de reclutamiento.', count: 1, aspect: '6/5' },
+    { key: 'foundation', label: 'Fundación Rotaria', desc: '1 imagen de fondo para la sección de la Fundación.', count: 1, aspect: '16/7' },
+    { key: 'join', label: 'Sección Únete', desc: '1 imagen motivacional para la sección de reclutamiento.', count: 1, aspect: '4/3' },
     {
         key: 'about', label: 'Quiénes Somos', desc: 'Imágenes de las páginas Quiénes Somos y Nuestras Causas.', count: 13, aspect: '16/5',
         groups: [
@@ -519,13 +588,13 @@ const SITE_CONTAINERS: SiteImgContainer[] = [
     {
         key: 'modules', label: 'Programas y Clubes', desc: 'Imágenes banner para los programas juveniles e institucionales.', count: 7, aspect: '16/5',
         groups: [
-            { key: 'yepBanner', subLabel: 'Programa de Intercambios', count: 1, aspect: '16/5', dependsOn: 'hasYouthExchange' },
-            { key: 'ngse', subLabel: 'Intercambios NGSE', count: 1, aspect: '16/5', dependsOn: 'hasNGSE' },
-            { key: 'rotexHero', subLabel: 'ROTEX', count: 1, aspect: '16/5', dependsOn: 'hasRotex' },
-            { key: 'interact', subLabel: 'Interact', count: 1, aspect: '16/5', dependsOn: 'hasInteract' },
-            { key: 'rotaract', subLabel: 'Rotaract', count: 1, aspect: '16/5', dependsOn: 'hasRotaract' },
-            { key: 'ecommerceBanner', subLabel: 'Tienda Virtual', count: 1, aspect: '16/5', dependsOn: 'hasEcommerce' },
-            { key: 'dianBanner', subLabel: 'Estado Financiero (DIAN)', count: 1, aspect: '16/5', dependsOn: 'hasDian' },
+            { key: 'yepBanner', subLabel: 'Programa de Intercambios', count: 1, aspect: '16/7', dependsOn: 'hasYouthExchange' },
+            { key: 'ngse', subLabel: 'Intercambios NGSE', count: 1, aspect: '16/7', dependsOn: 'hasNGSE' },
+            { key: 'rotexHero', subLabel: 'ROTEX', count: 1, aspect: '16/6', dependsOn: 'hasRotex' },
+            { key: 'interact', subLabel: 'Interact', count: 1, aspect: '16/7', dependsOn: 'hasInteract' },
+            { key: 'rotaract', subLabel: 'Rotaract', count: 1, aspect: '16/7', dependsOn: 'hasRotaract' },
+            { key: 'ecommerceBanner', subLabel: 'Tienda Virtual', count: 1, aspect: '16/7', dependsOn: 'hasEcommerce' },
+            { key: 'dianBanner', subLabel: 'Estado Financiero (DIAN)', count: 1, aspect: '16/7', dependsOn: 'hasDian' },
         ],
     },
 ];
@@ -1036,6 +1105,7 @@ const OnboardingFlow: React.FC = () => {
     });
     const [clubDocuments, setClubDocuments] = useState<any[]>([]);
     const [uploadingDoc, setUploadingDoc] = useState(false);
+    const [imageToCrop, setImageToCrop] = useState<{ url: string, aspect?: number, name: string, onSave: (blob: Blob) => void } | null>(null);
 
     // Update form when club data loads
     useEffect(() => {
@@ -1110,9 +1180,12 @@ const OnboardingFlow: React.FC = () => {
     const clubId = userClub?.id || user?.clubId || user?.club?.id;
 
     // ── Upload helper ──
-    const uploadFile = async (file: File): Promise<string> => {
+    const uploadFile = async (file: File | Blob, originalName?: string): Promise<string> => {
         const formData = new FormData();
-        formData.append('file', file);
+        const uploadFile = file instanceof Blob && originalName 
+            ? new File([file], originalName, { type: file.type })
+            : file;
+        formData.append('file', uploadFile);
         const res = await fetch(`${API}/media/upload`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}` },
@@ -1163,46 +1236,84 @@ const OnboardingFlow: React.FC = () => {
     };
 
     const handleLogoUpload = async (file: File) => {
-        setUploading(true);
-        try {
-            const formData = new FormData();
-            formData.append('file', file);
-            const res = await fetch(`${API}/media/upload-logo?folder=logos`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
-                body: formData,
+        const reader = new FileReader();
+        reader.onload = () => {
+            setImageToCrop({
+                url: reader.result as string,
+                // No aspect for logo, allow free crop
+                name: file.name,
+                onSave: async (blob) => {
+                    setImageToCrop(null);
+                    setUploading(true);
+                    try {
+                        const formData = new FormData();
+                        formData.append('file', new File([blob], file.name, { type: blob.type }));
+                        const res = await fetch(`${API}/media/upload-logo?folder=logos`, {
+                            method: 'POST',
+                            headers: { Authorization: `Bearer ${token}` },
+                            body: formData,
+                        });
+                        const data = await res.json();
+                        const url = data.url || data.secure_url || '';
+                        if (url) setBranding(b => ({ ...b, logo: url }));
+                    } catch { /* ignore */ }
+                    setUploading(false);
+                }
             });
-            const data = await res.json();
-            const url = data.url || data.secure_url || '';
-            if (url) setBranding(b => ({ ...b, logo: url }));
-        } catch { /* ignore */ }
-        setUploading(false);
+        };
+        reader.readAsDataURL(file);
     };
 
     const handleSiteImageUpload = async (key: string, file: File, index: number) => {
-        setUploading(true);
-        try {
-            const url = await uploadFile(file);
-            if (url) {
-                setSiteImages((prev: any) => {
-                    const newData = { ...prev };
-                    const defaults = (SITE_IMG_DEFAULTS as any)[key] || [];
-                    if (Array.isArray(defaults)) {
-                        // Ensure we have a full array
-                        const slots = Array.isArray(prev[key]) && prev[key].length === defaults.length
-                            ? [...prev[key]]
-                            : defaults.map((d: any, i: number) => (prev[key]?.[i] ? prev[key][i] : { ...d }));
-                        const alt = file.name.replace(/\.[^/.]+$/, '');
-                        slots[index] = { url, alt };
-                        newData[key] = slots;
-                    } else {
-                        newData[key] = [{ url, alt: file.name.replace(/\.[^/.]+$/, '') }];
-                    }
-                    return newData;
-                });
-            }
-        } catch { /* ignore */ }
-        setUploading(false);
+        let aspectValue = 16 / 7;
+        const container = SITE_CONTAINERS.find(c => c.key === key);
+        if (container) {
+            const [w, h] = container.aspect.split('/').map(Number);
+            aspectValue = w / h;
+        } else {
+            SITE_CONTAINERS.forEach(c => {
+                const g = c.groups?.find(g => g.key === key);
+                if (g) {
+                    const [w, h] = g.aspect.split('/').map(Number);
+                    aspectValue = w / h;
+                }
+            });
+        }
+
+        const reader = new FileReader();
+        reader.onload = () => {
+            setImageToCrop({
+                url: reader.result as string,
+                aspect: aspectValue,
+                name: file.name,
+                onSave: async (blob) => {
+                    setImageToCrop(null);
+                    setUploading(true);
+                    try {
+                        const url = await uploadFile(blob, file.name);
+                        if (url) {
+                            setSiteImages((prev: any) => {
+                                const newData = { ...prev };
+                                const defaults = (SITE_IMG_DEFAULTS as any)[key] || [];
+                                if (Array.isArray(defaults)) {
+                                    const slots = Array.isArray(prev[key]) && prev[key].length === defaults.length
+                                        ? [...prev[key]]
+                                        : defaults.map((d: any, i: number) => (prev[key]?.[i] ? prev[key][i] : { ...d }));
+                                    const alt = file.name.replace(/\.[^/.]+$/, '');
+                                    slots[index] = { url, alt };
+                                    newData[key] = slots;
+                                } else {
+                                    newData[key] = [{ url, alt: file.name.replace(/\.[^/.]+$/, '') }];
+                                }
+                                return newData;
+                            });
+                        }
+                    } catch { /* ignore */ }
+                    setUploading(false);
+                }
+            });
+        };
+        reader.readAsDataURL(file);
     };
 
     // ── Save progress per step ──
@@ -1442,6 +1553,16 @@ const OnboardingFlow: React.FC = () => {
                             {step === 5 && <StepSiteImages data={siteImages} modules={modules} onChange={setSiteImages} onImageUpload={handleSiteImageUpload} />}
                             {step === 6 && <StepComplete clubName={info.name || 'tu club'} onFinish={handleFinish} saving={saving} />}
                         </>
+                    )}
+
+                    {/* Image Cropping Modal */}
+                    {imageToCrop && (
+                        <CropModal
+                            image={imageToCrop.url}
+                            aspect={imageToCrop.aspect || undefined}
+                            onCropComplete={imageToCrop.onSave}
+                            onClose={() => setImageToCrop(null)}
+                        />
                     )}
                 </div>
             </main>

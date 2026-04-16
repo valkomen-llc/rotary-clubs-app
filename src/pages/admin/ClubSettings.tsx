@@ -33,6 +33,7 @@ const ClubSettings: React.FC = () => {
         favicon: '',
         logoHeaderSize: 200,
         autoGenerateCalendar: true,
+        mapStyle: 'm',
     });
     const [uploading, setUploading] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -106,6 +107,7 @@ const ClubSettings: React.FC = () => {
                 favicon: club.favicon || '',
                 logoHeaderSize: club.logoHeaderSize ?? 200,
                 autoGenerateCalendar: club.settings?.auto_generate_calendar !== false,
+                mapStyle: club.mapStyle || 'm',
             });
 
             // If platform supports paymentConfigs from populated backend
@@ -998,6 +1000,30 @@ const ClubSettings: React.FC = () => {
                                 onChange={handleChange}
                                 className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-rotary-blue outline-none"
                             />
+                        </div>
+                        <div className="md:col-span-2 mt-4 p-4 bg-blue-50/50 rounded-xl border border-blue-100/50">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div className="flex-1">
+                                    <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
+                                        <Globe className="w-4 h-4 text-rotary-blue" />
+                                        Estilo de Mapa Personalizado
+                                    </h4>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Elige cómo se verá el mapa de contacto en tu sitio público. Esto sobrescribe la configuración global.
+                                    </p>
+                                </div>
+                                <select
+                                    name="mapStyle"
+                                    value={formData.mapStyle}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, mapStyle: e.target.value }))}
+                                    className="bg-white border border-gray-200 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-rotary-blue/20 outline-none transition-all min-w-[200px]"
+                                >
+                                    <option value="m">Estándar (Predeterminado)</option>
+                                    <option value="k">Satélite (Sin etiquetas)</option>
+                                    <option value="h">Híbrido (Satélite + Etiquetas)</option>
+                                    <option value="p">Terreno / Relieve</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                     {/* Redes Sociales */}

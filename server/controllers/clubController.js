@@ -119,7 +119,7 @@ export const updateClub = async (req, res) => {
             primaryColor, secondaryColor, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, status,
             stripePublicKey, stripeSecretKey, useStripe,
             usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
-            storeActive, logoHeaderSize, autoGenerateCalendar,
+            storeActive, logoHeaderSize, autoGenerateCalendar, mapStyle,
             memberCount, moduleProjects, moduleEvents, moduleRotaract, moduleInteract, moduleEcommerce, moduleDian,
             moduleYouthExchange, moduleNgse, moduleRotex
         } = req.body;
@@ -204,6 +204,7 @@ export const updateClub = async (req, res) => {
                 'module_ngse': moduleNgse !== undefined ? String(moduleNgse) : undefined,
                 'module_rotex': moduleRotex !== undefined ? String(moduleRotex) : undefined,
                 'auto_generate_calendar': autoGenerateCalendar !== undefined ? String(autoGenerateCalendar) : undefined,
+                'map_style': mapStyle !== undefined ? String(mapStyle) : undefined,
             };
 
         for (const [key, value] of Object.entries(settingsToUpdate)) {

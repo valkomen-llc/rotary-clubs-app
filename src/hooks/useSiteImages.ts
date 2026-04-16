@@ -59,15 +59,18 @@ const DEFAULTS = {
         { url: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=1200&h=675&fit=crop', alt: 'Actividad Rotex 5' }
     ],
     causes: [
-        { url: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=500&h=500&fit=crop', alt: 'Lucha contra las enfermedades' },
         { url: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=500&h=500&fit=crop', alt: 'Promoción de la paz' },
+        { url: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=500&h=500&fit=crop', alt: 'Lucha contra las enfermedades' },
         { url: 'https://images.unsplash.com/photo-1593113598332-cd288d649433?w=500&h=500&fit=crop', alt: 'Suministro de agua salubre' },
-        { url: 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=500&h=500&fit=crop', alt: 'Apoyo a la educación' },
         { url: 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=500&h=500&fit=crop', alt: 'Mejorando la salud materno-infantil' },
+        { url: 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=500&h=500&fit=crop', alt: 'Apoyo a la educación' },
         { url: 'https://images.unsplash.com/photo-1531206715517-5c0ba140b2b8?w=500&h=500&fit=crop', alt: 'Desarrollo de las economías locales' },
         { url: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=500&h=500&fit=crop', alt: 'Protección del medioambiente' }
     ]
 };
+// Helper: detect if a URL is a default (not a real custom upload)
+const isDefault = (url: string) => !url || url.includes('images.unsplash.com') || url.includes('/defaults/');
+
 
 export function useSiteImages(): SiteImages & { _loading?: boolean } {
     const { club } = useClub();
@@ -149,9 +152,43 @@ export function useSiteImages(): SiteImages & { _loading?: boolean } {
         }
 
         const API = import.meta.env.VITE_API_URL || '/api';
-        fetch(`${API}/clubs/${clubId}/site-images?_t=${Date.now()}`)
-            .then(r => r.ok ? r.json() : {})
-            .then(data => {
+        const timestamp = Date.now();
+        
+        // Fetch global and club images in parallel to ensure inheritance works even with old server code
+        const fetchGlobal = fetch(`${API}/clubs/_global/site-images?_t=${timestamp}`).then(r => r.ok ? r.json() : {});
+        const fetchClub = clubId === '_global' 
+            ? Promise.resolve({}) 
+            : fetch(`${API}/clubs/${clubId}/site-images?_t=${timestamp}`).then(r => r.ok ? r.json() : {});
+
+        Promise.all([fetchGlobal, fetchClub])
+            .then(([globalData, clubData]) => {
+                const merged: any = { ...globalData };
+
+                // Merge club data over global data
+                Object.keys(clubData).forEach(key => {
+                    const clubVal = clubData[key];
+                    const globalVal = globalData[key];
+
+                    if (Array.isArray(clubVal)) {
+                        const globalArr = Array.isArray(globalVal) ? globalVal : [];
+                        // Combine: use club value if not default, otherwise use global
+                        merged[key] = (globalArr.length > 0 ? globalArr : clubVal).map((gSlot: any, i: number) => {
+                            const cSlot = clubVal[i];
+                            return (cSlot && cSlot.url && !isDefault(cSlot.url)) ? cSlot : gSlot;
+                        });
+                        // Append extra slots from club
+                        if (clubVal.length > (globalArr.length || 0)) {
+                            for (let i = (globalArr.length || 0); i < clubVal.length; i++) {
+                                merged[key].push(clubVal[i]);
+                            }
+                        }
+                    } else if (clubVal && typeof clubVal === 'object') {
+                        if (clubVal.url && !isDefault(clubVal.url)) {
+                            merged[key] = clubVal;
+                        }
+                    }
+                });
+
                 const arrayKeyConfigs = [
                     { key: 'hero', count: 5 },
                     { key: 'aboutCarousel', count: 3 },
@@ -163,26 +200,26 @@ export function useSiteImages(): SiteImages & { _loading?: boolean } {
 
                 arrayKeyConfigs.forEach(conf => {
                     const key = conf.key as keyof typeof DEFAULTS;
-                    if (data[conf.key] && Array.isArray(data[conf.key])) {
-                        data[conf.key] = (DEFAULTS[key] as any[]).map((def, i) => data[conf.key][i] || def);
-                    } else if (!data[conf.key]) {
-                        data[conf.key] = DEFAULTS[key];
+                    if (merged[conf.key] && Array.isArray(merged[conf.key])) {
+                        merged[conf.key] = (DEFAULTS[key] as any[]).map((def, i) => merged[conf.key][i] || def);
+                    } else if (!merged[conf.key]) {
+                        merged[conf.key] = DEFAULTS[key];
                     }
                 });
 
                 // Normalize single-slot keys: stored as arrays in DB but expected as objects
-                const d = data as any;
                 const singleKeys = [
                     'foundation', 'join', 'aboutHero', 'causesHero', 'polio',
                     'rotaract', 'interact', 'yepExperience', 'yepBanner', 'ngse',
-                    'rotexHero', 'chatbotPublicAvatar', 'chatbotAdminAvatar'
+                    'rotexHero', 'chatbotPublicAvatar', 'chatbotAdminAvatar', 'missionControl'
                 ];
                 singleKeys.forEach(key => {
-                    if (Array.isArray(d[key]) && d[key].length > 0) {
-                        d[key] = d[key][0];
+                    if (Array.isArray(merged[key]) && merged[key].length > 0) {
+                        merged[key] = merged[key][0];
                     }
                 });
-                setImages({ ...d, _loading: false });
+
+                setImages({ ...merged, _loading: false });
             })
             .catch(() => setImages(prev => ({ ...prev, _loading: false })));
     }, [clubId, club]);

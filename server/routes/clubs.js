@@ -96,8 +96,8 @@ router.get('/by-domain', async (req, res) => {
 
         const mappedClub = {
             ...clubDataRaw,
-            // Globally defined map style
-            mapStyle: globalMapStyle,
+            // Map Style: Priority 1: Club Setting, Priority 2: Global Platform Setting
+            mapStyle: settings['map_style'] || globalMapStyle,
             // LOGO INHERITANCE RULE:
             // 1. Header Logo: Use club's, fallback to master's
             logo: clubDataRaw.logo || masterLogos.logo,
@@ -137,9 +137,11 @@ router.get('/by-domain', async (req, res) => {
             logoText: clubDataRaw.name?.split(' ').pop(),
             productsCount: parseInt(clubDataRaw.productsCount) || 0,
             eventsCount: parseInt(clubDataRaw.eventsCount) || 0,
-            logoHeaderSize: parseInt(settings['logo_header_size']) || 200,
+            // Logo Size Inheritance: Priority 1: Club Setting, Priority 2: Master Club Setting, Priority 3: Default 200
+            logoHeaderSize: parseInt(settings['logo_header_size']) || parseInt(masterSettings['logo_header_size']) || 200,
             onboardingCompleted: settings['onboarding_completed'] === 'true',
             onboardingStep: parseInt(settings['onboarding_step']) || 0,
+
             settings: {
                 rotaract_logo: settings['rotaract_logo'] || masterSettings['rotaract_logo'] || null,
                 interact_logo: settings['interact_logo'] || masterSettings['interact_logo'] || null,
@@ -280,8 +282,8 @@ router.get('/:clubId/site-images', async (req, res) => {
         const globalImages = globalResult.rows.length > 0 ? parse(globalResult.rows[0]) : {};
         const clubImages = clubResult.rows.length > 0 ? parse(clubResult.rows[0]) : {};
 
-        // Helper: detect if a URL is an Unsplash default (not a real custom upload)
-        const isDefault = (url) => !url || url.includes('images.unsplash.com');
+        // Helper: detect if a URL is a default (not a real custom upload)
+        const isDefault = (url) => !url || url.includes('images.unsplash.com') || url.includes('/defaults/');
 
         // Merge: start with global defaults, then overlay club-specific images
         const merged = { ...globalImages };
@@ -299,7 +301,8 @@ router.get('/:clubId/site-images', async (req, res) => {
                 if (globalArr.length > 0) {
                     merged[key] = globalArr.map((globalSlot, i) => {
                         const clubSlot = clubVal[i];
-                        return (clubSlot && clubSlot.url) ? clubSlot : globalSlot;
+                        // If the club has a custom URL (not a default), use it. Otherwise, use global.
+                        return (clubSlot && clubSlot.url && !isDefault(clubSlot.url)) ? clubSlot : globalSlot;
                     });
                     // Append extra slots from club if they exist
                     if (clubVal.length > globalArr.length) {
@@ -314,7 +317,7 @@ router.get('/:clubId/site-images', async (req, res) => {
                 }
             } else if (clubVal && typeof clubVal === 'object') {
                 // Handle Single Object merging (older format if any)
-                if (clubVal.url) {
+                if (clubVal.url && !isDefault(clubVal.url)) {
                     merged[key] = clubVal;
                 }
             }

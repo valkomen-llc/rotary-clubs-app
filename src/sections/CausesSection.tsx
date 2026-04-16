@@ -1,7 +1,8 @@
 import { Globe } from 'lucide-react';
 import { useClub } from '../contexts/ClubContext';
+import { useSiteImages } from '../hooks/useSiteImages';
 
-const causes = [
+const defaultCauses = [
   {
     title: 'Lucha contra las enfermedades',
     image: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=500&h=500&fit=crop',
@@ -41,6 +42,20 @@ const causes = [
 
 const CausesSection = () => {
   const { club } = useClub();
+  const siteImages = useSiteImages();
+
+  // Merge dynamic images with defaults
+  const causes = defaultCauses.map((cause, i) => {
+    const custom = siteImages.causes?.[i];
+    if (custom) {
+      return {
+        ...cause,
+        image: custom.url || cause.image,
+        title: custom.alt || cause.title
+      };
+    }
+    return cause;
+  });
   return (
     <section className="bg-rotary-navy py-16 md:py-24">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">

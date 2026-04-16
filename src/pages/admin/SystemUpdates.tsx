@@ -23,16 +23,19 @@ interface UpdateItem {
 
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: "v4.3.4",
-        date: "13 Abril 2026",
-        title: "Editable UI Labels & Unified AI Core",
+        version: "v4.3.5",
+        date: "16 Abril 2026",
+        title: "Role-Based Access & Decoupled Configuration",
         type: "update",
         changes: [
-            { type: "added", text: "Mejora del dashboard: Campos de texto editables para los títulos de imágenes en Áreas de Interés y Causas." },
-            { type: "added", text: "Unificación de los Modelos de IA dentro de ClubAssist para soporte integral." },
-            { type: "fixed", text: "Resolución de error de pantalla blanca tras despliegue de componentes avanzados." }
+            { type: "added", text: "Independencia de la configuración: El Estilo del Mapa ahora es personalizable por club a través del panel de configuración." },
+            { type: "changed", text: "Mejora en la herencia de logos: El tamaño del logo del header ahora es individual, con un fallback seguro al club origen." },
+            { type: "fixed", text: "Seguridad de Acceso: Redirección automática de usuarios con rol 'editor' y restricción visual de acceso a la configuración global del sitio." },
+            { type: "added", text: "Optimización de Onboarding: Sincronización de flujos y ampliación del gestor de contenedores de imágenes laterales para módulos activos." }
         ]
     },
+    {
+        version: "v4.3.4",
     {
         version: "v4.3.0",
         date: "13 Abril 2026",
