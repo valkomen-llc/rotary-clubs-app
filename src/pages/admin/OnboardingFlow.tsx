@@ -18,8 +18,8 @@ const STEPS = [
     { id: 'info', title: 'Información', icon: Building2 },
     { id: 'branding', title: 'Identidad', icon: Palette },
     { id: 'social', title: 'Redes', icon: Share2 },
-    { id: 'images', title: 'Imágenes', icon: ImageIcon },
     { id: 'modules', title: 'Módulos', icon: Globe },
+    { id: 'images', title: 'Imágenes', icon: ImageIcon },
     { id: 'complete', title: '¡Listo!', icon: CheckCircle2 },
 ];
 
@@ -493,6 +493,9 @@ const SITE_IMG_DEFAULTS = {
     interact: [{ url: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=1600&h=800&fit=crop', alt: 'Club Interact' }],
     yepBanner: [{ url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes' }],
     rotexHero: [{ url: 'https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?w=1600&h=800&fit=crop', alt: 'ROTEX Banner' }],
+    ecommerceBanner: [{ url: 'https://images.unsplash.com/photo-1557821552-17105176677c?w=1600&h=500&fit=crop', alt: 'Tienda Virtual' }],
+    dianBanner: [{ url: 'https://images.unsplash.com/photo-1450101499163-c8848c66ca85?w=1600&h=500&fit=crop', alt: 'Transparencia Fiscal' }],
+    ngse: [{ url: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=1600&h=800&fit=crop', alt: 'NGSE' }],
 };
 
 interface SiteImgSubGroup { key: string; subLabel: string; count: number; aspect: string; }
@@ -514,22 +517,39 @@ const SITE_CONTAINERS: SiteImgContainer[] = [
         ],
     },
     {
-        key: 'modules', label: 'Programas y Clubes', desc: 'Imágenes banner para los programas juveniles e institucionales.', count: 4, aspect: '16/5',
+        key: 'modules', label: 'Programas y Clubes', desc: 'Imágenes banner para los programas juveniles e institucionales.', count: 7, aspect: '16/5',
         groups: [
-            { key: 'yepBanner', subLabel: 'Programa de Intercambios', count: 1, aspect: '16/5' },
-            { key: 'rotexHero', subLabel: 'ROTEX', count: 1, aspect: '16/5' },
-            { key: 'interact', subLabel: 'Interact', count: 1, aspect: '16/5' },
-            { key: 'rotaract', subLabel: 'Rotaract', count: 1, aspect: '16/5' },
+            { key: 'yepBanner', subLabel: 'Programa de Intercambios', count: 1, aspect: '16/5', dependsOn: 'hasYouthExchange' },
+            { key: 'ngse', subLabel: 'Intercambios NGSE', count: 1, aspect: '16/5', dependsOn: 'hasNGSE' },
+            { key: 'rotexHero', subLabel: 'ROTEX', count: 1, aspect: '16/5', dependsOn: 'hasRotex' },
+            { key: 'interact', subLabel: 'Interact', count: 1, aspect: '16/5', dependsOn: 'hasInteract' },
+            { key: 'rotaract', subLabel: 'Rotaract', count: 1, aspect: '16/5', dependsOn: 'hasRotaract' },
+            { key: 'ecommerceBanner', subLabel: 'Tienda Virtual', count: 1, aspect: '16/5', dependsOn: 'hasEcommerce' },
+            { key: 'dianBanner', subLabel: 'Estado Financiero (DIAN)', count: 1, aspect: '16/5', dependsOn: 'hasDian' },
         ],
     },
 ];
 
 const StepSiteImages: React.FC<{
     data: any;
+    modules: any;
     onChange: (d: any) => void;
     onImageUpload: (key: string, f: File, index: number) => void;
-}> = ({ data, onChange, onImageUpload }) => {
+}> = ({ data, modules, onChange, onImageUpload }) => {
     const [expanded, setExpanded] = useState<Record<string, boolean>>({ hero: true });
+
+    // Filter containers based on active modules
+    const activeContainers = React.useMemo(() => {
+        return SITE_CONTAINERS.map(c => {
+            if (!c.groups) return c;
+            const activeGroups = c.groups.filter(g => {
+                if (!(g as any).dependsOn) return true;
+                return modules[(g as any).dependsOn];
+            });
+            if (activeGroups.length === 0 && c.key === 'modules') return null;
+            return { ...c, groups: activeGroups };
+        }).filter(Boolean) as SiteImgContainer[];
+    }, [modules]);
 
     // Get slots for a given key, ensuring they always have the right length
     const getSlots = (key: string): { url: string; alt: string }[] => {
@@ -588,8 +608,8 @@ const StepSiteImages: React.FC<{
 
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
 
-            <div className="space-y-3">
-                {SITE_CONTAINERS.map(container => {
+            <div className="space-y-4">
+                {activeContainers.map(container => {
                     const subGroups = container.groups || [{ key: container.key, subLabel: '', count: container.count, aspect: container.aspect }];
                     const totalCount = subGroups.reduce((sum, g) => sum + g.count, 0);
                     const totalCustom = subGroups.reduce((sum, g) => {
@@ -1247,8 +1267,27 @@ const OnboardingFlow: React.FC = () => {
 
             // ── Step 4: Site Images ───────────────────────────────────
             // Saves to ContentSection (same as admin ImageDistribution)
+            // ── Step 4: Modules ───────────────────────────────────────
             if (step === 4) {
-                // Build normalized image data matching what the live site expects
+                await fetch(`${API}/admin/clubs/${clubId}`, {
+                    method: 'PUT', headers,
+                    body: JSON.stringify({
+                        memberCount: modules.memberCount,
+                        moduleProjects: modules.hasProjects,
+                        moduleEvents: modules.hasEvents,
+                        moduleRotaract: modules.hasRotaract,
+                        moduleInteract: modules.hasInteract,
+                        moduleEcommerce: modules.hasEcommerce,
+                        moduleDian: modules.hasDian,
+                        moduleYouthExchange: modules.hasYouthExchange,
+                        moduleNgse: modules.hasNGSE,
+                        moduleRotex: modules.hasRotex
+                    }),
+                });
+            }
+
+            // ── Step 5: Site Images ───────────────────────────────────
+            if (step === 5) {
                 const imgPayload: any = {};
                 for (const container of SITE_CONTAINERS) {
                     const subGroups = container.groups || [{ key: container.key, subLabel: '', count: container.count, aspect: container.aspect }];
@@ -1271,25 +1310,6 @@ const OnboardingFlow: React.FC = () => {
                         sections: [{ page: 'home', section: 'images', content: imgPayload }],
                     }),
                 }).catch(() => {});
-            }
-
-            // ── Step 5: Modules ───────────────────────────────────────
-            if (step === 5) {
-                await fetch(`${API}/admin/clubs/${clubId}`, {
-                    method: 'PUT', headers,
-                    body: JSON.stringify({
-                        memberCount: modules.memberCount,
-                        moduleProjects: modules.hasProjects,
-                        moduleEvents: modules.hasEvents,
-                        moduleRotaract: modules.hasRotaract,
-                        moduleInteract: modules.hasInteract,
-                        moduleEcommerce: modules.hasEcommerce,
-                        moduleDian: modules.hasDian,
-                        moduleYouthExchange: modules.hasYouthExchange,
-                        moduleNgse: modules.hasNGSE,
-                        moduleRotex: modules.hasRotex
-                    }),
-                });
             }
 
             // Always save step progress
@@ -1418,8 +1438,8 @@ const OnboardingFlow: React.FC = () => {
                             {step === 1 && <StepClubInfo data={info} onChange={setInfo} documents={clubDocuments} onDocUpload={handleDocUpload} onDocDelete={handleDocDelete} uploadingDoc={uploadingDoc} />}
                             {step === 2 && <StepBranding data={branding} onChange={setBranding} onLogoUpload={handleLogoUpload} />}
                             {step === 3 && <StepSocial data={social} onChange={setSocial} />}
-                            {step === 4 && <StepSiteImages data={siteImages} onChange={setSiteImages} onImageUpload={handleSiteImageUpload} />}
-                            {step === 5 && <StepModules data={modules} onChange={setModules} />}
+                            {step === 4 && <StepModules data={modules} onChange={setModules} />}
+                            {step === 5 && <StepSiteImages data={siteImages} modules={modules} onChange={setSiteImages} onImageUpload={handleSiteImageUpload} />}
                             {step === 6 && <StepComplete clubName={info.name || 'tu club'} onFinish={handleFinish} saving={saving} />}
                         </>
                     )}

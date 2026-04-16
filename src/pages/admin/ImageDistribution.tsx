@@ -160,6 +160,13 @@ const ImageDistribution: React.FC = () => {
             });
         }
         
+        if (c?.modules?.ecommerce) {
+            active.push({ key: 'ecommerceBanner', label: 'Tienda Virtual (E-commerce)', desc: 'Banner superior para la página de la tienda.', count: 1, aspect: '16/5' });
+        }
+        if (c?.modules?.dian) {
+            active.push({ key: 'dianBanner', label: 'Estados Financieros (DIAN)', desc: 'Imagen de cabecera para la página de transparencia.', count: 1, aspect: '16/5' });
+        }
+        
         // Superadmin feature
         if (user?.role === 'administrator') {
             active.push({ key: 'missionControl', label: 'Mission Control VIP', desc: 'Logotipo para el header del panel avanzado (Solo Global).', count: 1, aspect: 'auto' });
