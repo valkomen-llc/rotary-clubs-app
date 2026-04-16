@@ -17,7 +17,7 @@ export const useCMSContent = (page: string, clubId?: string) => {
             // We fetch both global (null clubId) and club-specific sections
             // Our backend getPublicSections handles one clubId at a time.
             // Simplified for now: fetch the specific club's sections.
-            const response = await fetch(`${apiUrl}/clubs/${clubId || 'global'}/sections?page=${page}`);
+            const response = await fetch(`${apiUrl}/clubs/${clubId || 'global'}/sections?page=${page}&clubId=${clubId || ''}`);
 
             if (response.ok) {
                 const data: CMSSection[] = await response.json();

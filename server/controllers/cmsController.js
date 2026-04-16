@@ -57,15 +57,47 @@ export const createSection = async (req, res) => {
 };
 
 export const getPublicSections = async (req, res) => {
-    const page = req.query.page;
-    const clubId = req.params.clubId || req.query.clubId;
+    const { clubId } = req.params;
+    const { page, clubId: queryClubId } = req.query;
+    
+    // Fallback to query param if not in URL params
+    const targetClubId = clubId || queryClubId;
+
     try {
-        const result = await db.query(
-            'SELECT * FROM "ContentSection" WHERE page = $1 AND "clubId" = $2',
-            [page, clubId || null]
-        );
-        res.json(result.rows);
+        if (!targetClubId) {
+            // If no clubId provided, return platform defaults (global)
+            const query = page 
+                ? 'SELECT * FROM "ContentSection" WHERE "clubId" IS NULL AND page = $1'
+                : 'SELECT * FROM "ContentSection" WHERE "clubId" IS NULL';
+            const params = page ? [page] : [];
+            const result = await db.query(query, params);
+            return res.json(result.rows);
+        }
+
+        // 1. Fetch sections for the specific club
+        let query = 'SELECT * FROM "ContentSection" WHERE "clubId" = $1';
+        const params = [targetClubId];
+        if (page) {
+            query += ' AND page = $2';
+            params.push(page);
+        }
+        const result = await db.query(query, params);
+
+        // 2. If results found for THIS club, return them
+        if (result.rows.length > 0) {
+            return res.json(result.rows);
+        }
+
+        // 3. Fallback: If no results for this club, return platform defaults
+        const defaultQuery = page 
+            ? 'SELECT * FROM "ContentSection" WHERE "clubId" IS NULL AND page = $1'
+            : 'SELECT * FROM "ContentSection" WHERE "clubId" IS NULL';
+        const defaultParams = page ? [page] : [];
+        const defaultResult = await db.query(defaultQuery, defaultParams);
+        
+        res.json(defaultResult.rows);
     } catch (err) {
+        console.error('getPublicSections error:', err);
         res.status(500).json({ error: 'Error fetching sections' });
     }
 };

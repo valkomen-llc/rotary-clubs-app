@@ -104,7 +104,7 @@ const NuestraHistoria = () => {
           {/* Compromiso Local */}
           <div className="max-w-4xl mx-auto text-center" style={{ marginTop: '80px' }}>
             <h2 className="text-2xl font-bold text-gray-800 mb-4">
-              {getC('local', 'title', `Nuestra historia en ${club.city}`)}
+              {getC('local', 'title', `Nuestra historia en ${club.city || 'Bogotá'}`)}
             </h2>
             <p className="text-gray-600 leading-relaxed text-lg whitespace-pre-line">
               {getC('local', 'content', "Ese compromiso sigue vigente hoy gracias a una organización verdaderamente internacional.")}

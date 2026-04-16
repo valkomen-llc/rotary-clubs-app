@@ -77,87 +77,19 @@ const isDefault = (url: string) => !url || url.includes('images.unsplash.com') |
 
 export function useSiteImages(): SiteImages & { _loading?: boolean } {
     const { club } = useClub();
-    
-    // PRE-MERGE: Initialize state with DEFAULTS + whatever we have in the club object from the first fetch
-    const [images, setImages] = useState<SiteImages & { _loading?: boolean }>(() => {
-        const clubSiteImages = (club as any)?.siteImages || {};
-        
-        // Start with a clean slate based on DEFAULTS
-        const initial = { ...DEFAULTS, _loading: true };
-        
-        // Standalone keys
-        const simpleKeys = [
-            'foundation', 'join', 'aboutHero', 'causesHero', 'polio', 
-            'rotaract', 'interact', 'yepExperience', 'yepBanner', 'ngse', 
-            'rotexHero', 'chatbotPublicAvatar', 'chatbotAdminAvatar'
-        ];
-        
-        simpleKeys.forEach(key => {
-            if (clubSiteImages[key]) (initial as any)[key] = clubSiteImages[key];
-        });
-        
-        // Array keys
-        const arrayKeys = ['hero', 'aboutCarousel', 'history', 'yep', 'rotexCarousel', 'causes'];
-        arrayKeys.forEach(key => {
-            if (Array.isArray(clubSiteImages[key]) && clubSiteImages[key].length > 0) {
-                const clubArray = clubSiteImages[key];
-                const defaultArray = (DEFAULTS as any)[key] || [];
-                // If the club array has content, use it to override/pad defaults
-                const merged = [...clubArray];
-                if (merged.length < defaultArray.length) {
-                    for (let i = merged.length; i < defaultArray.length; i++) {
-                        merged.push(defaultArray[i]);
-                    }
-                }
-                (initial as any)[key] = merged;
-            }
-        });
-        
-        return initial as any;
-    });
-
     const clubId = (club as any)?.id;
+    const clubSiteImages = (club as any)?.siteImages;
+
+    const [images, setImages] = useState<SiteImages & { _loading?: boolean }>(() => {
+        return { ...DEFAULTS, _loading: true };
+    });
 
     useEffect(() => {
         if (!clubId) return;
 
-        // Immediate sync from club object if available (avoids flash)
-        const clubSiteImages = (club as any)?.siteImages;
-        if (clubSiteImages) {
-            setImages(prev => {
-                const updated = { ...prev };
-                const simpleKeys = [
-                    'foundation', 'join', 'aboutHero', 'causesHero', 'polio', 
-                    'rotaract', 'interact', 'yepExperience', 'yepBanner', 'ngse', 
-                    'rotexHero', 'chatbotPublicAvatar', 'chatbotAdminAvatar'
-                ];
-                
-                simpleKeys.forEach(key => {
-                    if (clubSiteImages[key]) (updated as any)[key] = clubSiteImages[key];
-                });
-
-                if (clubSiteImages.hero) updated.hero = clubSiteImages.hero;
-                
-                const arrayKeys = ['hero', 'aboutCarousel', 'history', 'yep', 'rotexCarousel', 'causes'];
-                arrayKeys.forEach(key => {
-                    if (Array.isArray(clubSiteImages[key]) && clubSiteImages[key].length > 0) {
-                        const clubArray = clubSiteImages[key];
-                        const defaultArray = (DEFAULTS as any)[key] || [];
-                        const merged = [...clubArray];
-                        for (let i = merged.length; i < defaultArray.length; i++) {
-                            merged.push(defaultArray[i]);
-                        }
-                        (updated as any)[key] = merged;
-                    }
-                });
-                return updated;
-            });
-        }
-
         const API = import.meta.env.VITE_API_URL || '/api';
         const timestamp = Date.now();
         
-        // Fetch global and club images in parallel to ensure inheritance works even with old server code
         const fetchGlobal = fetch(`${API}/clubs/_global/site-images?_t=${timestamp}`).then(r => r.ok ? r.json() : {});
         const fetchClub = clubId === '_global' 
             ? Promise.resolve({}) 
@@ -165,64 +97,54 @@ export function useSiteImages(): SiteImages & { _loading?: boolean } {
 
         Promise.all([fetchGlobal, fetchClub])
             .then(([globalData, clubData]) => {
-                const merged: any = { ...globalData };
+                const final: any = { ...DEFAULTS };
 
-                // Merge club data over global data
-                Object.keys(clubData).forEach(key => {
-                    const clubVal = clubData[key];
-                    const globalVal = globalData[key];
+                // 1. Start with DEFAULTS
+                // 2. Merge GLOBAL data (if not default)
+                // 3. Merge CLUB data (if not default)
 
-                    if (Array.isArray(clubVal)) {
-                        const globalArr = Array.isArray(globalVal) ? globalVal : [];
-                        // Combine: use club value if not default, otherwise use global
-                        merged[key] = (globalArr.length > 0 ? globalArr : clubVal).map((gSlot: any, i: number) => {
-                            const cSlot = clubVal[i];
-                            return (cSlot && cSlot.url && !isDefault(cSlot.url)) ? cSlot : gSlot;
-                        });
-                        // Append extra slots from club
-                        if (clubVal.length > (globalArr.length || 0)) {
-                            for (let i = (globalArr.length || 0); i < clubVal.length; i++) {
-                                merged[key].push(clubVal[i]);
-                            }
-                        }
-                    } else if (clubVal && typeof clubVal === 'object') {
-                        if (clubVal.url && !isDefault(clubVal.url)) {
-                            merged[key] = clubVal;
-                        }
-                    }
-                });
-
-                const arrayKeyConfigs = [
-                    { key: 'hero', count: 5 },
-                    { key: 'aboutCarousel', count: 3 },
-                    { key: 'history', count: 5 },
-                    { key: 'yep', count: 5 },
-                    { key: 'rotexCarousel', count: 5 },
-                    { key: 'causes', count: 7 }
+                const allKeys = [
+                    'hero', 'aboutCarousel', 'history', 'yep', 'rotexCarousel', 'causes',
+                    'foundation', 'join', 'aboutHero', 'causesHero', 'polio', 'rotaract', 
+                    'interact', 'yepExperience', 'yepBanner', 'ngse', 'rotexHero', 
+                    'chatbotPublicAvatar', 'chatbotAdminAvatar', 'missionControl'
                 ];
 
-                arrayKeyConfigs.forEach(conf => {
-                    const key = conf.key as keyof typeof DEFAULTS;
-                    if (merged[conf.key] && Array.isArray(merged[conf.key])) {
-                        merged[conf.key] = (DEFAULTS[key] as any[]).map((def, i) => merged[conf.key][i] || def);
-                    } else if (!merged[conf.key]) {
-                        merged[conf.key] = DEFAULTS[key];
+                allKeys.forEach(key => {
+                    const gVal = globalData[key];
+                    const cVal = clubData[key];
+                    const dVal = (DEFAULTS as any)[key];
+
+                    if (Array.isArray(dVal)) {
+                        const merged = [...dVal];
+                        // Apply Global
+                        if (Array.isArray(gVal)) {
+                            gVal.forEach((slot, i) => {
+                                if (slot && slot.url && !isDefault(slot.url)) merged[i] = slot;
+                            });
+                        }
+                        // Apply Club
+                        if (Array.isArray(cVal)) {
+                            cVal.forEach((slot, i) => {
+                                if (slot && slot.url && !isDefault(slot.url)) merged[i] = slot;
+                            });
+                        }
+                        final[key] = merged;
+                    } else {
+                        // Single item
+                        // Start with default, then override with global, then override with club
+                        let val = dVal;
+                        if (gVal && gVal.url && !isDefault(gVal.url)) val = gVal;
+                        if (Array.isArray(gVal) && gVal[0]?.url && !isDefault(gVal[0].url)) val = gVal[0];
+                        
+                        if (cVal && cVal.url && !isDefault(cVal.url)) val = cVal;
+                        if (Array.isArray(cVal) && cVal[0]?.url && !isDefault(cVal[0].url)) val = cVal[0];
+                        
+                        final[key] = val;
                     }
                 });
 
-                // Normalize single-slot keys: stored as arrays in DB but expected as objects
-                const singleKeys = [
-                    'foundation', 'join', 'aboutHero', 'causesHero', 'polio',
-                    'rotaract', 'interact', 'yepExperience', 'yepBanner', 'ngse',
-                    'rotexHero', 'chatbotPublicAvatar', 'chatbotAdminAvatar', 'missionControl'
-                ];
-                singleKeys.forEach(key => {
-                    if (Array.isArray(merged[key]) && merged[key].length > 0) {
-                        merged[key] = merged[key][0];
-                    }
-                });
-
-                setImages({ ...merged, _loading: false });
+                setImages({ ...final, _loading: false });
             })
             .catch(() => setImages(prev => ({ ...prev, _loading: false })));
     }, [clubId, club]);
