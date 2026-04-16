@@ -599,13 +599,15 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                     Settings
                                 </Link>
                             ) : (
-                                <Link to="/admin/configuracion-sitio" className="flex items-center gap-3 px-4 py-2.5 text-sm rounded-xl hover:bg-gray-50 transition-all group font-semibold text-gray-700">
-                                    <Sparkles className="w-5 h-5 text-rotary-blue" />
-                                    <span className="flex-1">Configurar Sitio</span>
-                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${pctColor}`}>
-                                        {setupPct}%
-                                    </span>
-                                </Link>
+                                user?.role !== 'editor' && (
+                                    <Link to="/admin/configuracion-sitio" className="flex items-center gap-3 px-4 py-2.5 text-sm rounded-xl hover:bg-gray-50 transition-all group font-semibold text-gray-700">
+                                        <Sparkles className="w-5 h-5 text-rotary-blue" />
+                                        <span className="flex-1">Configurar Sitio</span>
+                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${pctColor}`}>
+                                            {setupPct}%
+                                        </span>
+                                    </Link>
+                                )
                             )}
                             <button onClick={handleLogout} className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-500 hover:text-red-600 rounded-xl hover:bg-red-50 transition-all group">
                                 <LogOut className="w-5 h-5 text-gray-400 group-hover:text-red-500" />

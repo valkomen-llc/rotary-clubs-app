@@ -186,7 +186,16 @@ const ClubAdminDashboard: React.FC = () => {
 
 const Dashboard: React.FC = () => {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const isSuperAdmin = user?.role === 'administrator';
+
+    useEffect(() => {
+        if (user?.role === 'editor') {
+            navigate('/admin/analytics', { replace: true });
+        }
+    }, [user, navigate]);
+
+    if (user?.role === 'editor') return null;
 
     return (
         <AdminLayout>
