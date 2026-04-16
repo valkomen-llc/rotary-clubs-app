@@ -43,7 +43,28 @@ export class EmailService {
     static async _sendViaResend({ to, subject, html }) {
         const apiKey = process.env.RESEND_API_KEY;
         if (!apiKey) {
-            console.error('[EmailService] RESEND_API_KEY not set');
+            console.warn('[EmailService] RESEND_API_KEY not set. Intentando usar configuración SMTP de fallback del Super Admin...');
+            
+            // Fallback to first available SMTP config from the clubs (usually the super admin's)
+            const fallbackConfig = await prisma.notificationConfig.findFirst({
+                where: { type: 'smtp', enabled: true }
+            });
+
+            if (fallbackConfig) {
+                const { default: nodemailer } = await import('nodemailer');
+                const transporter = nodemailer.createTransport({
+                    host: fallbackConfig.host,
+                    port: fallbackConfig.port,
+                    secure: fallbackConfig.port === 465,
+                    auth: { user: fallbackConfig.user, pass: fallbackConfig.password },
+                });
+                
+                const fromStr = fallbackConfig.fromName ? `"${fallbackConfig.fromName}" <${fallbackConfig.fromEmail}>` : fallbackConfig.fromEmail;
+                const info = await transporter.sendMail({ from: fromStr, to, subject, html });
+                return { success: true, messageId: info.messageId };
+            }
+
+            console.error('[EmailService] RESEND_API_KEY not set y no hay SMTP de fallback');
             return { success: false, error: 'RESEND_API_KEY not configured' };
         }
 
