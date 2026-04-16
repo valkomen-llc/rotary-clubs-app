@@ -1330,8 +1330,11 @@ const OnboardingFlow: React.FC = () => {
             }
             // Small delay to ensure DB commit before reload
             await new Promise(r => setTimeout(r, 500));
-            window.location.href = '/#/admin/dashboard';
-            window.location.reload();
+            // Use React Router to change the path safely, then trigger reload for a fresh app state
+            navigate('/admin/dashboard', { replace: true });
+            setTimeout(() => {
+                window.location.reload();
+            }, 300);
         } catch (err) {
             console.error('Finish error:', err);
         }
