@@ -16,6 +16,27 @@ export default function VerifyEmail() {
     const [success, setSuccess] = useState(false);
     const [resendTimer, setResendTimer] = useState(60);
 
+    const LOGO_CACHE_KEY = 'cp_platform_logo';
+    const cached = (() => { try { return JSON.parse(localStorage.getItem(LOGO_CACHE_KEY) || 'null'); } catch { return null; } })();
+    const [platformLogo, setPlatformLogo] = useState<string | null>(cached?.url || null);
+    const [platformLogoSize, setPlatformLogoSize] = useState<number>(cached?.size || 48);
+    const [logoReady, setLogoReady] = useState(!!cached);
+
+    useEffect(() => {
+        const apiUrl = import.meta.env.VITE_API_URL || '/api';
+        fetch(`${apiUrl}/platform-config/logo`.replace(/\/+/g, '/').replace(':/', '://'))
+            .then(r => r.json())
+            .then(data => {
+                const url = data.url || null;
+                const size = data.size || 48;
+                setPlatformLogo(url);
+                setPlatformLogoSize(size);
+                try { localStorage.setItem(LOGO_CACHE_KEY, JSON.stringify({ url, size })); } catch { }
+            })
+            .catch(() => {})
+            .finally(() => setLogoReady(true));
+    }, []);
+
     const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
     // Countdown for resend button
@@ -187,11 +208,17 @@ export default function VerifyEmail() {
 
                 {/* Header */}
                 <div className="text-center mb-8">
-                    <div className="flex items-center justify-center gap-2.5 mb-4">
-                        <div className="w-10 h-10 rounded-2xl bg-[#019fcb] flex items-center justify-center shadow-lg shadow-blue-200">
-                            <Sparkles className="w-5 h-5 text-white" />
-                        </div>
-                        <span className="font-black text-gray-900 text-xl">ClubPlatform</span>
+                    <div className="flex items-center justify-center gap-2.5 mb-4" style={{ minHeight: '40px' }}>
+                        {logoReady && (platformLogo ? (
+                            <img src={platformLogo} alt="ClubPlatform" style={{ height: platformLogoSize + 'px', width: 'auto', maxWidth: '320px' }} />
+                        ) : (
+                            <>
+                                <div className="w-10 h-10 rounded-2xl bg-[#019fcb] flex items-center justify-center shadow-lg shadow-blue-200">
+                                    <Sparkles className="w-5 h-5 text-white" />
+                                </div>
+                                <span className="font-black text-gray-900 text-xl">ClubPlatform</span>
+                            </>
+                        ))}
                     </div>
                     <h1 className="text-2xl font-black text-gray-900 mb-2">Verifica tu correo</h1>
                     <p className="text-gray-500 text-sm">
