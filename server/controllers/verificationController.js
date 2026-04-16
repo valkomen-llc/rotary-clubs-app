@@ -185,7 +185,7 @@ export const resendCode = async (req, res) => {
         const EmailSvc = await getEmailService();
         const result = await EmailSvc.sendPlatformEmail({
             to: email.toLowerCase(),
-            subject: `${code} — Código de verificación | ClubPlatform`,
+            subject: `${code} — Código de verificación | Club Platform for Rotary`,
             html: buildVerificationEmail(code, clubName, logoUrl),
         });
 
@@ -222,7 +222,7 @@ export const sendVerificationEmail = async (userId) => {
     const EmailSvc = await getEmailService();
     const result = await EmailSvc.sendPlatformEmail({
         to: user.email,
-        subject: `${code} — Código de verificación | ClubPlatform`,
+        subject: `${code} — Código de verificación | Club Platform for Rotary`,
         html: buildVerificationEmail(code, user.club?.name, logoUrl),
     });
 

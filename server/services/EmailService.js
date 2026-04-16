@@ -59,7 +59,9 @@ export class EmailService {
                     auth: { user: fallbackConfig.user, pass: fallbackConfig.password },
                 });
                 
-                const fromStr = fallbackConfig.fromName ? `"${fallbackConfig.fromName}" <${fallbackConfig.fromEmail}>` : fallbackConfig.fromEmail;
+                // Force "Club Platform for Rotary" as sender name instead of the local club's name
+                const senderEmail = fallbackConfig.fromEmail || fallbackConfig.user;
+                const fromStr = `"Club Platform for Rotary" <${senderEmail}>`;
                 const info = await transporter.sendMail({ from: fromStr, to, subject, html });
                 return { success: true, messageId: info.messageId };
             }
@@ -74,7 +76,7 @@ export class EmailService {
         }).catch(() => null);
 
         // Use verified domain for production emails
-        const from = fromConfig?.value || 'ClubPlatform <noreply@clubplatform.org>';
+        const from = fromConfig?.value || '"Club Platform for Rotary" <noreply@clubplatform.org>';
 
         const resp = await fetch('https://api.resend.com/emails', {
             method: 'POST',
