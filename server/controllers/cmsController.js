@@ -57,7 +57,8 @@ export const createSection = async (req, res) => {
 };
 
 export const getPublicSections = async (req, res) => {
-    const { page, clubId } = req.query;
+    const page = req.query.page;
+    const clubId = req.params.clubId || req.query.clubId;
     try {
         const result = await db.query(
             'SELECT * FROM "ContentSection" WHERE page = $1 AND "clubId" = $2',

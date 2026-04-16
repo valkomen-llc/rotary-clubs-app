@@ -106,7 +106,7 @@ const NuestraHistoria = () => {
             <h2 className="text-2xl font-bold text-gray-800 mb-4">
               {getC('local', 'title', `Nuestra historia en ${club.city}`)}
             </h2>
-            <p className="text-gray-600 leading-relaxed text-lg">
+            <p className="text-gray-600 leading-relaxed text-lg whitespace-pre-line">
               {getC('local', 'content', "Ese compromiso sigue vigente hoy gracias a una organización verdaderamente internacional.")}
             </p>
           </div>
@@ -117,7 +117,7 @@ const NuestraHistoria = () => {
               <h3 className="text-3xl md:text-4xl font-bold text-white mb-6">
                 {getC('timeline', 'title', "Décadas de Impacto")}
               </h3>
-              <p className="text-lg leading-relaxed mb-8 opacity-90 text-white">
+              <p className="text-lg leading-relaxed mb-8 opacity-90 text-white whitespace-pre-line">
                 {getC('timeline', 'description', "Nuestros socios se unen a los líderes comunitarios, amigos y aliados en una red global que aborda desafíos en todo el mundo.")}
               </p>
             </div>
