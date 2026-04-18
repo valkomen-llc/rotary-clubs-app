@@ -25,14 +25,23 @@ const NuestraHistoria = () => {
   const getC = (section: string, field: string, fallback: string) =>
     sections[section]?.[field] || fallback;
 
-  // Detección robusta de Origen
-  const urlParams = new URLSearchParams(window.location.search);
-  const clubParam = urlParams.get('club') || urlParams.get('asociacion') || '';
+  // Detección ultra-robusta de Origen (URL search, URL hash, y campos del club)
+  const getParam = (name: string) => {
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.has(name)) return searchParams.get(name);
+    const hashParams = new URLSearchParams(window.location.hash.split('?')[1]);
+    return hashParams.get(name);
+  };
+
+  const clubParam = getParam('club') || getParam('asociacion') || '';
+  const clubNameLower = (club.name || '').toLowerCase();
+  
   const isOrigen = 
-    clubParam === 'rotary-e-club-origen' || 
-    club.subdomain === 'rotary-e-club-origen' ||
-    club.domain === 'rotary-e-club-origen' ||
-    (club.name || '').toLowerCase().includes('origen');
+    clubParam.includes('origen') || 
+    club.subdomain?.includes('origen') ||
+    club.domain?.includes('origen') ||
+    clubNameLower.includes('origen') ||
+    clubNameLower.includes('e-club origen');
 
   const heroImage = images?.history?.[0]?.url || 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=500&fit=crop';
   const timelineImage = images?.history?.[1]?.url || 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=600&h=400&fit=crop';
@@ -45,6 +54,10 @@ const NuestraHistoria = () => {
 
   const genericFoundersRaw = getC('founders', 'list', '');
   const genericFoundersList = genericFoundersRaw ? genericFoundersRaw.split('\n').filter(Boolean) : [];
+
+  const localTitleFallback = club.city 
+    ? `Nuestra historia en ${club.city}` 
+    : (club.name && !club.name.includes('Cargando') ? `Nuestra historia en ${club.name}` : "Nuestra Historia Local");
 
   return (
     <div className="min-h-screen bg-white">
@@ -149,7 +162,7 @@ const NuestraHistoria = () => {
               {/* Historia Local (Otros Clubes) */}
               <div>
                 <h2 className="text-2xl md:text-3xl font-bold text-rotary-blue mb-5 text-center">
-                  {getC('local', 'title', `Nuestra historia en ${club.city || club.name}`)}
+                  {getC('local', 'title', localTitleFallback)}
                 </h2>
                 <p className="text-lg text-gray-700 leading-relaxed font-light text-center whitespace-pre-line">
                   {getC('local', 'content', 'Ese compromiso sigue vigente hoy gracias a una organización verdaderamente internacional.')}
