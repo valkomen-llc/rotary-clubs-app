@@ -23,6 +23,17 @@ interface UpdateItem {
 
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.3.7",
+        date: "18 Abril 2026",
+        title: "Origen History Upgrade & Robust Detection",
+        type: "update",
+        changes: [
+            { type: "added", text: "Implementación de contenido histórico hardcoded para Rotary E-Club Origen." },
+            { type: "fixed", text: "Detección multisource: Ahora el sistema reconoce al club vía URL Params, Hash Params y Metadatos de API." },
+            { type: "changed", text: "Corrección de títulos: Se eliminó el error 'undefined' en la sección de historia local." }
+        ]
+    },
+    {
         version: "v4.3.5",
         date: "16 Abril 2026",
         title: "Role-Based Access & Decoupled Configuration",
