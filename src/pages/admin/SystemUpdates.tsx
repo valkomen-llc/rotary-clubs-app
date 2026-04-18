@@ -47,6 +47,11 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
     },
     {
         version: "v4.3.4",
+        date: "15 Abril 2026",
+        title: "CMS Stability",
+        type: "update",
+        changes: [{ type: "fixed", text: "Estabilización de CMS" }]
+    },
     {
         version: "v4.3.0",
         date: "13 Abril 2026",
