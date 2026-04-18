@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import Cropper from 'react-easy-crop';
-import getCroppedImg from '../../utils/cropImage';
+import { getCroppedImg } from '../../utils/cropImage';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
