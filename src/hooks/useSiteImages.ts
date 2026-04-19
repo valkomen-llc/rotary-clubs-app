@@ -20,6 +20,7 @@ export interface SiteImages {
     ngse?: ImgSlot;
     rotexHero?: ImgSlot;
     rotexCarousel?: ImgSlot[];
+    paulHarrisAvatar?: ImgSlot;
     chatbotPublicAvatar?: ImgSlot;
     chatbotAdminAvatar?: ImgSlot;
 }
@@ -67,6 +68,7 @@ const DEFAULTS = {
         { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/global/images/1774367732873-home-areas-of-focus-2025-Growing-Local-Economies-20221008_TR_008.jpg', alt: 'Desarrollo de las economías locales' },
         { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/global/images/1774367725680-home-areas-of-focus-2025-Protecting-the-Environment-2024-04-012.jpg', alt: 'Protección del medioambiente' }
     ],
+    paulHarrisAvatar: { url: 'https://www.rotary.org/sites/default/files/styles/w_600/public/Paul%20Harris%20portrait.jpg', alt: 'Paul Harris' },
     chatbotPublicAvatar: { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/null/images/1775750783080-imagen_2026-02-23_03-49-22_(1).png', alt: 'Chatbot Persona' },
     chatbotAdminAvatar: { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/null/images/1775750805930-imagen_2026-02-23_11-57-31_(3).png', alt: 'Admin Persona' },
     missionControl: { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/null/images/1775761106234-Mision_Control_-_Rotary_Valkomen.png', alt: 'Mission Control' }
@@ -107,7 +109,7 @@ export function useSiteImages(): SiteImages & { _loading?: boolean } {
                     'hero', 'aboutCarousel', 'history', 'yep', 'rotexCarousel', 'causes',
                     'foundation', 'join', 'aboutHero', 'causesHero', 'polio', 'rotaract', 
                     'interact', 'yepExperience', 'yepBanner', 'ngse', 'rotexHero', 
-                    'chatbotPublicAvatar', 'chatbotAdminAvatar', 'missionControl'
+                    'paulHarrisAvatar', 'chatbotPublicAvatar', 'chatbotAdminAvatar', 'missionControl'
                 ];
 
                 allKeys.forEach(key => {
