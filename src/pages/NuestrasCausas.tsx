@@ -6,6 +6,8 @@ import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
 import { useSEO } from '../hooks/useSEO';
 import { useSiteImages } from '../hooks/useSiteImages';
+import { useState, useEffect } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 const NuestrasCausas = () => {
     const { club } = useClub();
@@ -75,6 +77,22 @@ const NuestrasCausas = () => {
 
     const heroImg = siteImages.causesHero?.url || getC('hero', 'image', "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=1600&h=600&fit=crop");
     const polioImg = siteImages.polio?.url || getC('polio', 'image', "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&h=600&fit=crop");
+
+    const [currentImage, setCurrentImage] = useState(0);
+
+    const galleryImages = [
+        siteImages.historyTimeline?.[0]?.url || siteImages?.history?.[2]?.url || 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=500&fit=crop',
+        siteImages.historyTimeline?.[1]?.url || siteImages?.history?.[3]?.url || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&h=500&fit=crop',
+        siteImages.historyTimeline?.[2]?.url || siteImages?.history?.[4]?.url || 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800&h=500&fit=crop',
+        ...(siteImages.historyTimeline?.slice(3).map(img => img.url) || [])
+    ];
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setCurrentImage(p => (p + 1) % galleryImages.length);
+        }, 4000);
+        return () => clearInterval(timer);
+    }, [galleryImages.length]);
 
     return (
         <div className="min-h-screen bg-white">
@@ -171,8 +189,65 @@ const NuestrasCausas = () => {
                         </div>
                     </div>
                 </div>
-            </div>
-        </section>
+
+                {/* Section Gap */}
+                <div className="h-24 md:h-32" />
+
+                {/* Galería de Momentos (History Sync) */}
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
+                    <h2 className="text-3xl font-medium text-gray-800 mb-10 text-center">Momentos Históricos</h2>
+                    <div className="relative aspect-[16/7] md:aspect-[16/6] rounded-[40px] overflow-hidden shadow-2xl ring-1 ring-gray-200 bg-black group max-w-5xl mx-auto">
+                        <div className="absolute inset-0 w-full h-full">
+                            {galleryImages.map((img, i) => (
+                                <div
+                                    key={i}
+                                    className={`absolute inset-0 transition-all duration-1000 ease-in-out ${
+                                        i === currentImage 
+                                            ? 'opacity-100 scale-100' 
+                                            : 'opacity-0 scale-110 pointer-events-none'
+                                    }`}
+                                >
+                                    <img
+                                        src={img}
+                                        alt={`Momento ${i + 1}`}
+                                        className={`w-full h-full object-cover transition-transform duration-[4000ms] ease-linear ${
+                                            i === currentImage ? 'scale-110' : 'scale-100'
+                                        }`}
+                                    />
+                                    <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/20" />
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Navigation Arrows */}
+                        <button
+                            onClick={() => setCurrentImage(p => (p - 1 + galleryImages.length) % galleryImages.length)}
+                            className="absolute left-6 top-1/2 -translate-y-1/2 w-14 h-14 bg-white/20 hover:bg-white/90 backdrop-blur-md rounded-full shadow-lg flex items-center justify-center transition-all duration-300 z-20 group-hover:left-8 opacity-0 group-hover:opacity-100"
+                        >
+                            <ChevronLeft className="w-7 h-7 text-gray-800" />
+                        </button>
+                        <button
+                            onClick={() => setCurrentImage(p => (p + 1) % galleryImages.length)}
+                            className="absolute right-6 top-1/2 -translate-y-1/2 w-14 h-14 bg-white/20 hover:bg-white/90 backdrop-blur-md rounded-full shadow-lg flex items-center justify-center transition-all duration-300 z-20 group-hover:right-8 opacity-0 group-hover:opacity-100"
+                        >
+                            <ChevronRight className="w-7 h-7 text-gray-800" />
+                        </button>
+
+                        {/* Indicators */}
+                        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-3 z-20">
+                            {galleryImages.map((_, i) => (
+                                <button
+                                    key={i}
+                                    onClick={() => setCurrentImage(i)}
+                                    className={`h-1.5 rounded-full transition-all duration-500 ${
+                                        i === currentImage ? 'w-10 bg-rotary-gold' : 'w-3 bg-white/50 hover:bg-white'
+                                    }`}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </section>
 
             {/* CTA Section (Synchronized with QuienesSomos) */}
             <section className="py-12 md:py-16 bg-gray-50">
