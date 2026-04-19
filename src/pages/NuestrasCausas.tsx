@@ -168,9 +168,11 @@ const NuestrasCausas = () => {
                                 >
                                     {getC('polio', 'buttonText', "Ayúdanos a acabar con la polio")}
                                 </a>
-                            </div>
                         </div>
                     </div>
+                </div>
+            </section>
+
             {/* CTA Section (Synchronized with QuienesSomos) */}
             <section className="py-12 md:py-16 bg-gray-50">
                 <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
