@@ -88,6 +88,26 @@ const NuestraHistoria = () => {
             <p className="text-lg leading-relaxed text-gray-800 whitespace-pre-line text-left">
               Rotary nació en Chicago en 1905, cuando Paul Harris, un joven abogado, reunió a profesionales de distintas áreas con el propósito de intercambiar ideas, cultivar la amistad y servir a la comunidad. Lo que empezó como un pequeño círculo pronto se expandió a todos los continentes, convirtiéndose en una red mundial de líderes comprometidos con la paz, la salud, la educación y el desarrollo sostenible. Hoy, más de 1,4 millones de rotarios en más de 200 países continúan soñando en grande y haciendo realidad proyectos que transforman vidas.
             </p>
+            
+            {/* Paul Harris Quote */}
+            <div className="mt-16 mb-16 text-center flex flex-col items-center">
+              <h2 className="text-3xl md:text-[34px] font-light text-gray-600 mb-8 italic leading-snug max-w-3xl">
+                «Más allá de lo que Rotary signifique para nosotros, el mundo lo conocerá por las obras que realice.»
+              </h2>
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-gray-100 shadow-sm">
+                  <img 
+                    src="https://www.rotary.org/sites/default/files/styles/w_600/public/Paul%20Harris%20portrait.jpg" 
+                    alt="Paul Harris" 
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div>
+                  <p className="font-bold text-gray-800 text-lg">Paul Harris</p>
+                  <p className="text-gray-500 font-light text-sm">Fundador de Rotary</p>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-24">
