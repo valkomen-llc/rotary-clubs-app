@@ -245,10 +245,12 @@ Gracias a la virtualidad y a la pasión de sus socios, el club ha logrado llegar
                     <img
                       src={img}
                       alt={`Momento ${i + 1}`}
-                      className={`w-full h-full object-cover transition-transform duration-5000 ease-linear ${
+                      className={`w-full h-full object-cover ${
                         i === currentImage ? 'scale-110' : 'scale-100'
                       }`}
-                      style={{ transitionDuration: '4000ms' }}
+                      style={{ 
+                        transition: i === currentImage ? 'transform 4000ms linear, opacity 1000ms ease-in-out' : 'opacity 1000ms ease-in-out'
+                      }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/20" />
                   </div>

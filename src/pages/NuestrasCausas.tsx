@@ -210,9 +210,12 @@ const NuestrasCausas = () => {
                                     <img
                                         src={img}
                                         alt={`Momento ${i + 1}`}
-                                        className={`w-full h-full object-cover transition-transform duration-[4000ms] ease-linear ${
+                                        className={`w-full h-full object-cover ${
                                             i === currentImage ? 'scale-110' : 'scale-100'
                                         }`}
+                                        style={{ 
+                                            transition: i === currentImage ? 'transform 4000ms linear, opacity 1000ms ease-in-out' : 'opacity 1000ms ease-in-out'
+                                        }}
                                     />
                                     <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/20" />
                                 </div>
