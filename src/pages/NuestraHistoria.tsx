@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Star, ChevronLeft, ChevronRight, User, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Navbar from '../sections/Navbar';
@@ -25,7 +25,15 @@ const NuestraHistoria = () => {
   const [currentImage, setCurrentImage] = useState(0);
   const [isZooming, setIsZooming] = useState(false);
 
+  const galleryImages = [
+    images.historyTimeline?.[0]?.url || images?.history?.[2]?.url || 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=500&fit=crop',
+    images.historyTimeline?.[1]?.url || images?.history?.[3]?.url || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&h=500&fit=crop',
+    images.historyTimeline?.[2]?.url || images?.history?.[4]?.url || 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800&h=500&fit=crop',
+    ...(images.historyTimeline?.slice(3).map(img => img.url) || [])
+  ];
+
   useEffect(() => {
+    if (galleryImages.length === 0) return;
     const timer = setInterval(() => {
       setIsZooming(true);
       setTimeout(() => {
@@ -43,18 +51,10 @@ const NuestraHistoria = () => {
   const isOrigen = 
     club.name?.toLowerCase().includes('origen') || 
     club.id?.toString() === '1' ||
-    club.subdomain === 'rotary-e-club-origen' ||
-    window.location.href.includes('rotary-e-club-origen');
+    club.subdomain === 'rotary-e-club-origen';
 
   const heroImage = images.historyHero?.url || images.history?.[0]?.url || 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=500&fit=crop';
   const timelineImage = images.historyImpact?.url || images.history?.[1]?.url || 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=600&h=400&fit=crop';
-
-  const galleryImages = [
-    images.historyTimeline?.[0]?.url || images?.history?.[2]?.url || 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=500&fit=crop',
-    images.historyTimeline?.[1]?.url || images?.history?.[3]?.url || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&h=500&fit=crop',
-    images.historyTimeline?.[2]?.url || images?.history?.[4]?.url || 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800&h=500&fit=crop',
-    ...(images.historyTimeline?.slice(3).map(img => img.url) || [])
-  ];
   let founderPhotoIndex = 0;
 
 
