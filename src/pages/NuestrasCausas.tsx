@@ -190,68 +190,8 @@ const NuestrasCausas = () => {
                     </div>
                 </div>
 
-                {/* Section Gap */}
-                <div className="h-24 md:h-32" />
-
-                {/* Galería de Momentos (History Sync) */}
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
-                    <h2 className="text-3xl font-medium text-gray-800 mb-10 text-center">Momentos Históricos</h2>
-                    <div className="relative aspect-[16/7] md:aspect-[16/6] rounded-[40px] overflow-hidden shadow-2xl ring-1 ring-gray-200 bg-black group max-w-5xl mx-auto">
-                        <div className="absolute inset-0 w-full h-full">
-                            {galleryImages.map((img, i) => (
-                                <div
-                                    key={i}
-                                    className={`absolute inset-0 transition-all duration-1000 ease-in-out ${
-                                        i === currentImage 
-                                            ? 'opacity-100 scale-100' 
-                                            : 'opacity-0 scale-110 pointer-events-none'
-                                    }`}
-                                >
-                                    <img
-                                        src={img}
-                                        alt={`Momento ${i + 1}`}
-                                        className={`w-full h-full object-cover ${
-                                            i === currentImage ? 'scale-110' : 'scale-100'
-                                        }`}
-                                        style={{ 
-                                            transition: i === currentImage ? 'transform 4000ms linear, opacity 1000ms ease-in-out' : 'opacity 1000ms ease-in-out'
-                                        }}
-                                    />
-                                    <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/20" />
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Navigation Arrows */}
-                        <button
-                            onClick={() => setCurrentImage(p => (p - 1 + galleryImages.length) % galleryImages.length)}
-                            className="absolute left-6 top-1/2 -translate-y-1/2 w-14 h-14 bg-white/20 hover:bg-white/90 backdrop-blur-md rounded-full shadow-lg flex items-center justify-center transition-all duration-300 z-20 group-hover:left-8 opacity-0 group-hover:opacity-100"
-                        >
-                            <ChevronLeft className="w-7 h-7 text-gray-800" />
-                        </button>
-                        <button
-                            onClick={() => setCurrentImage(p => (p + 1) % galleryImages.length)}
-                            className="absolute right-6 top-1/2 -translate-y-1/2 w-14 h-14 bg-white/20 hover:bg-white/90 backdrop-blur-md rounded-full shadow-lg flex items-center justify-center transition-all duration-300 z-20 group-hover:right-8 opacity-0 group-hover:opacity-100"
-                        >
-                            <ChevronRight className="w-7 h-7 text-gray-800" />
-                        </button>
-
-                        {/* Indicators */}
-                        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-3 z-20">
-                            {galleryImages.map((_, i) => (
-                                <button
-                                    key={i}
-                                    onClick={() => setCurrentImage(i)}
-                                    className={`h-1.5 rounded-full transition-all duration-500 ${
-                                        i === currentImage ? 'w-10 bg-rotary-gold' : 'w-3 bg-white/50 hover:bg-white'
-                                    }`}
-                                />
-                            ))}
-                        </div>
-                    </div>
                 </div>
-            </div>
-        </section>
+            </section>
 
             {/* CTA Section (Synchronized with QuienesSomos) */}
             <section className="py-12 md:py-16 bg-gray-50">
