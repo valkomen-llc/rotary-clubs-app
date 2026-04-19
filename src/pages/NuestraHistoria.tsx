@@ -181,11 +181,13 @@ const NuestraHistoria = () => {
             {/* Una década de impacto */}
             <div className="flex flex-col lg:flex-row overflow-hidden rounded-3xl shadow-xl ring-1 ring-gray-100 bg-white">
               <div className="lg:w-1/2 bg-rotary-navy p-8 md:p-16 flex flex-col justify-center">
-                <h2 className="text-3xl font-medium text-white mb-6">Una década de impacto</h2>
-                <p className="text-lg leading-relaxed text-white/90 whitespace-pre-line">
-                  Desde entonces, el E-Club Origen ha liderado proyectos innovadores y solidarios en diversas regiones del país: la campaña #TodoPorNuestrosHéroes durante la pandemia de COVID-19, el programa Origen H2O que lleva agua segura a comunidades rurales, Origen Siembra para la reforestación y la educación ambiental, el embellecimiento urbano con Rotary Pinta Colombia, la entrega de sillas de ruedas a personas en condición de discapacidad, el fortalecimiento de hogares infantiles y juveniles, entre muchos otros.
-                  {"\n\n"}
-                  Gracias a la virtualidad y a la pasión de sus socios, el club ha logrado llegar a más de 10 ciudades en Colombia y mantener vínculos internacionales con Guatemala y Brasil, demostrando que la amistad y el servicio rotario no tienen fronteras.
+                <h2 className="text-3xl font-medium text-white mb-6">
+                  {getC('impact', 'title', "Una década de impacto")}
+                </h2>
+                <p className="text-base leading-relaxed text-white/90 whitespace-pre-line">
+                  {getC('impact', 'text', `Desde entonces, el E-Club Origen ha liderado proyectos innovadores y solidarios en diversas regiones del país: la campaña #TodoPorNuestrosHéroes durante la pandemia de COVID-19, el programa Origen H2O que lleva agua segura a comunidades rurales, Origen Siembra para la reforestación y la educación ambiental, el embellecimiento urbano con Rotary Pinta Colombia, la entrega de sillas de ruedas a personas en condición de discapacidad, el fortalecimiento de hogares infantiles y juveniles, entre muchos otros.
+
+Gracias a la virtualidad y a la pasión de sus socios, el club ha logrado llegar a más de 10 ciudades en Colombia y mantener vínculos internacionales con Guatemala y Brasil, demostrando que la amistad y el servicio rotario no tienen fronteras.`)}
                 </p>
               </div>
               <div className="lg:w-1/2 h-[400px] lg:h-auto">
