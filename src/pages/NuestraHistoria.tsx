@@ -56,7 +56,7 @@ const NuestraHistoria = () => {
           <div className="absolute inset-0 bg-black/30" />
         </div>
         <div className="relative h-full flex items-center justify-center">
-          <h1 className="text-4xl md:text-5xl text-white">Nuestra Historia</h1>
+          {/* Title removed per user request */}
         </div>
       </section>
 
@@ -72,9 +72,9 @@ const NuestraHistoria = () => {
         }}
       >
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <p className="text-white leading-tight font-light" style={{ fontSize: '28px' }}>
+          <h1 className="text-white leading-tight font-light" style={{ fontSize: '35px' }}>
             Nuestra Historia
-          </p>
+          </h1>
         </div>
       </section>
 
