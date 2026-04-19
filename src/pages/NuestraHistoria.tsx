@@ -97,34 +97,56 @@ const NuestraHistoria = () => {
                 Siguiendo ese legado, en 2013 un grupo de jóvenes colombianos, con una sólida trayectoria en Interact y Rotaract, decidió crear un club rotario diferente: uno que derribara las barreras de la distancia y uniera a socios en un espacio 100% virtual. Tras un año de preparación y consultas ante Rotary International, en 2015 nació oficialmente el Rotary E-Club Origen, el primero de su tipo en Colombia, fundado íntegramente por ex Interactianos y Rotaractianos.
               </p>
               
-              {/* Socios Fundadores Infographic */}
-              <div className="mt-16 bg-white rounded-[40px] p-8 md:p-12 shadow-sm border border-sky-50/50">
-                <p className="text-xl font-medium text-[#333333] mb-10 text-center uppercase tracking-wider">
-                  Nuestros Socios Fundadores
-                </p>
+              {/* Socios Fundadores Infographic - Enhanced */}
+              <div className="mt-16 relative">
+                <div className="absolute inset-0 bg-sky-50/30 blur-3xl -z-10 rounded-full" />
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="text-center mb-12">
+                  <span className="bg-sky-100 text-rotary-blue text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-[0.2em]">
+                    Legado y Liderazgo
+                  </span>
+                  <h3 className="text-3xl font-medium text-gray-800 mt-4">Nuestros Socios Fundadores</h3>
+                  <div className="w-16 h-1 bg-rotary-gold mx-auto mt-4 rounded-full" />
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
                   {ORIGEN_FOUNDERS.map((name, i) => {
-                    const initials = name.split(' ').slice(0, 2).map(n => n[0]).join('');
-                    const isSpecial = name.includes('Past RDR');
+                    const isPastRDR = name.includes('Past RDR');
                     const [fullName, role] = name.split(' (');
+                    const iconColor = isPastRDR ? 'text-rotary-gold' : 'text-rotary-blue';
+                    const borderColor = isPastRDR ? 'border-rotary-gold/30' : 'border-gray-100';
                     
                     return (
-                      <div key={i} className="group relative bg-white border border-gray-100 rounded-3xl p-6 transition-all duration-300 hover:shadow-xl hover:shadow-sky-100/30 hover:-translate-y-1">
-                        <div className="flex items-center gap-5">
-                          <div className="w-14 h-14 rounded-2xl bg-sky-50 flex items-center justify-center text-rotary-blue font-bold text-lg group-hover:bg-rotary-blue group-hover:text-white transition-colors duration-300">
-                            {initials}
+                      <div key={i} className={`group relative bg-white/80 backdrop-blur-sm border ${borderColor} rounded-[32px] p-8 transition-all duration-500 hover:shadow-2xl hover:shadow-rotary-blue/10 hover:-translate-y-2`}>
+                        <div className="flex flex-col items-center text-center gap-5">
+                          <div className={`w-20 h-20 rounded-full bg-white shadow-inner flex items-center justify-center border-4 ${isPastRDR ? 'border-rotary-gold/20' : 'border-sky-50'}`}>
+                            {isPastRDR ? (
+                              <div className="relative">
+                                <ShieldCheck className="w-10 h-10 text-rotary-gold animate-pulse-slow" />
+                                <div className="absolute -top-1 -right-1 w-4 h-4 bg-rotary-blue rounded-full border-2 border-white" />
+                              </div>
+                            ) : (
+                              <User className="w-10 h-10 text-rotary-blue opacity-40 group-hover:opacity-100 transition-opacity" />
+                            )}
                           </div>
+                          
                           <div>
-                            <p className="font-medium text-gray-900 leading-tight">
+                            <p className="text-xl font-medium text-gray-900 group-hover:text-rotary-blue transition-colors">
                               {fullName}
                             </p>
                             {role && (
-                              <p className="text-xs text-rotary-blue mt-1 font-medium bg-sky-50 px-2 py-0.5 rounded-full inline-block">
-                                {role.replace(')', '')}
-                              </p>
+                              <div className="mt-3">
+                                <span className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full ${isPastRDR ? 'bg-rotary-gold/10 text-rotary-gold' : 'bg-sky-50 text-rotary-blue'}`}>
+                                  {role.replace(')', '')}
+                                </span>
+                              </div>
                             )}
                           </div>
+                        </div>
+                        
+                        {/* Decorative background element */}
+                        <div className="absolute bottom-4 right-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">
+                          <Star className="w-12 h-12" />
                         </div>
                       </div>
                     );
