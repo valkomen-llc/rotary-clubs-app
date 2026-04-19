@@ -76,22 +76,6 @@ const NuestrasCausas = () => {
     const heroImg = siteImages.causesHero?.url || getC('hero', 'image', "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=1600&h=600&fit=crop");
     const polioImg = siteImages.polio?.url || getC('polio', 'image', "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&h=600&fit=crop");
 
-    const [currentImage, setCurrentImage] = useState(0);
-
-    const galleryImages = [
-        siteImages.historyTimeline?.[0]?.url || siteImages?.history?.[2]?.url || 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=500&fit=crop',
-        siteImages.historyTimeline?.[1]?.url || siteImages?.history?.[3]?.url || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&h=500&fit=crop',
-        siteImages.historyTimeline?.[2]?.url || siteImages?.history?.[4]?.url || 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800&h=500&fit=crop',
-        ...(siteImages.historyTimeline?.slice(3).map(img => img.url) || [])
-    ];
-
-    useEffect(() => {
-        const timer = setInterval(() => {
-            setCurrentImage(p => (p + 1) % galleryImages.length);
-        }, 4000);
-        return () => clearInterval(timer);
-    }, [galleryImages.length]);
-
     return (
         <div className="min-h-screen bg-white">
             <Navbar />
