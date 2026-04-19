@@ -55,7 +55,6 @@ const NuestraHistoria = () => {
     images.historyTimeline?.[2]?.url || images?.history?.[4]?.url || 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800&h=500&fit=crop',
     ...(images.historyTimeline?.slice(3).map(img => img.url) || [])
   ];
-
   let founderPhotoIndex = 0;
 
 
@@ -90,7 +89,7 @@ const NuestraHistoria = () => {
         }}
       >
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-white leading-tight font-light" style={{ fontSize: '35px' }}>
+          <h1 className="text-white" style={{ fontSize: '35px' }}>
             Nuestra Historia
           </h1>
         </div>

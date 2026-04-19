@@ -99,7 +99,7 @@ const NuestrasCausas = () => {
             <Navbar />
 
             {/* Hero Section */}
-            <section className="relative w-full h-[350px] md:h-[450px] overflow-hidden">
+            <section className="relative w-full h-[300px] md:h-[400px] overflow-hidden">
                 <div className="absolute inset-0">
                     <img
                         src={heroImg}
