@@ -6,8 +6,6 @@ import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
 import { useSEO } from '../hooks/useSEO';
 import { useSiteImages } from '../hooks/useSiteImages';
-import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 const NuestrasCausas = () => {
     const { club } = useClub();

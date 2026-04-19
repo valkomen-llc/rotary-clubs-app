@@ -23,7 +23,7 @@ interface UpdateItem {
 
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: "v4.7.6",
+        version: "v4.7.7",
         date: "19 Abril 2026",
         title: "Global CTA Sync & History Polish",
         type: "update",
