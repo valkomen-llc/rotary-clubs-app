@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Star, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Star, ChevronLeft, ChevronRight, User, ShieldCheck } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
