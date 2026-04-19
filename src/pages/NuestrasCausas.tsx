@@ -171,7 +171,8 @@ const NuestrasCausas = () => {
                         </div>
                     </div>
                 </div>
-            </section>
+            </div>
+        </section>
 
             {/* CTA Section (Synchronized with QuienesSomos) */}
             <section className="py-12 md:py-16 bg-gray-50">
