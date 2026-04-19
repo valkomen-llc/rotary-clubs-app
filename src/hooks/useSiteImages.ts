@@ -98,7 +98,45 @@ export function useSiteImages(): SiteImages & { _loading?: boolean } {
     const clubSiteImages = (club as any)?.siteImages;
 
     const [images, setImages] = useState<SiteImages & { _loading?: boolean }>(() => {
-        return { ...DEFAULTS, _loading: true };
+        const initial = { ...DEFAULTS };
+        const clubSiteImages = (club as any)?.siteImages;
+
+        if (clubSiteImages) {
+            const allKeys = Object.keys(initial);
+            allKeys.forEach(key => {
+                const cVal = clubSiteImages[key];
+                const dVal = (DEFAULTS as any)[key];
+                if (Array.isArray(dVal)) {
+                    if (Array.isArray(cVal)) {
+                        const merged = [...dVal];
+                        cVal.forEach((slot, i) => {
+                            if (slot && slot.url && !isDefault(slot.url)) merged[i] = slot;
+                        });
+                        (initial as any)[key] = merged;
+                    }
+                } else {
+                    if (cVal && cVal.url && !isDefault(cVal.url)) (initial as any)[key] = cVal;
+                    if (Array.isArray(cVal) && cVal[0]?.url && !isDefault(cVal[0].url)) (initial as any)[key] = cVal[0];
+                }
+            });
+
+            // --- Initial Smart Migration for Nuestra Historia ---
+            const hist = (initial as any).history;
+            if (Array.isArray(hist) && hist.length >= 2) {
+                if (isDefault((initial as any).historyHero?.url) && !isDefault(hist[0]?.url)) (initial as any).historyHero = hist[0];
+                if (isDefault((initial as any).historyImpact?.url) && !isDefault(hist[1]?.url)) (initial as any).historyImpact = hist[1];
+                
+                if (Array.isArray((initial as any).historyTimeline)) {
+                    (initial as any).historyTimeline.forEach((slot: any, i: number) => {
+                        const oldIdx = i + 2;
+                        if (isDefault(slot.url) && hist[oldIdx] && !isDefault(hist[oldIdx].url)) {
+                            (initial as any).historyTimeline[i] = hist[oldIdx];
+                        }
+                    });
+                }
+            }
+        }
+        return { ...initial, _loading: true };
     });
 
     useEffect(() => {
