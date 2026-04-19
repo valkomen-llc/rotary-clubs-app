@@ -156,7 +156,12 @@ router.get('/by-domain', async (req, res) => {
                 interact_logo: settings['interact_logo'] || masterSettings['interact_logo'] || null,
                 youth_exchange_logo: settings['youth_exchange_logo'] || masterSettings['youth_exchange_logo'] || null,
                 hide_sample_news: settings['hide_sample_news'] === 'true'
-            }
+            },
+            members: (await db.query(
+                `SELECT id, name, image, description, "isBoard", "boardRole" 
+                 FROM "ClubMember" WHERE "clubId" = $1 ORDER BY "createdAt" DESC`,
+                [clubDataRaw.id]
+            )).rows
         };
 
         res.json(mappedClub);

@@ -33,6 +33,7 @@ export interface ClubConfig {
     isMainPlatform?: boolean;
     archetype?: any;
     settings?: any;
+    members?: any[];
 }
 
 // Default/Fallback configuration for when API is loading or fails

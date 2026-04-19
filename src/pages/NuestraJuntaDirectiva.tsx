@@ -29,7 +29,23 @@ const NuestraJuntaDirectiva = () => {
     }
   ];
 
-  const juntaDirectiva = sections['list']?.items || defaultJunta;
+  // Logic: 
+  // 1. Check if club has members in database (priority)
+  // 2. Fallback to CMS sections if configured
+  // 3. Absolute fallback to defaultJunta
+  const dbBoardMembers = (club.members || [])
+    .filter((m: any) => m.isBoard)
+    .map((m: any) => ({
+        id: m.id,
+        nombre: m.name,
+        cargo: m.boardRole || 'Directivo',
+        profesion: m.description || '',
+        imagen: m.image || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop&crop=face'
+    }));
+
+  const juntaDirectiva = dbBoardMembers.length > 0 
+    ? dbBoardMembers 
+    : (sections['list']?.items || defaultJunta);
 
   return (
     <div className="min-h-screen bg-gray-50">

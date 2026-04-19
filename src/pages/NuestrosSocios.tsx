@@ -27,7 +27,21 @@ const NuestrosSocios = () => {
     }
   ];
 
-  const socios = sections['list']?.items || defaultSocios;
+  // Logic:
+  // 1. Check if club has members in database (priority)
+  // 2. Fallback to CMS sections if configured
+  // 3. Absolute fallback to defaultSocios
+  const dbMembers = (club.members || [])
+    .map((m: any) => ({
+        id: m.id,
+        nombre: m.name,
+        profesion: m.description || '',
+        imagen: m.image || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face'
+    }));
+
+  const socios = dbMembers.length > 0 
+    ? dbMembers 
+    : (sections['list']?.items || defaultSocios);
 
   return (
     <div className="min-h-screen bg-gray-50">

@@ -33,12 +33,14 @@ export const getClubById = async (req, res) => {
         const clubResult = await db.query('SELECT * FROM "Club" WHERE id = $1', [id]);
         const settingsResult = await db.query('SELECT * FROM "Setting" WHERE "clubId" = $1', [id]);
         const paymentConfigs = await prisma.paymentProviderConfig.findMany({ where: { clubId: id } });
+        const membersResult = await db.query('SELECT id, name, image, description, "isBoard", "boardRole" FROM "ClubMember" WHERE "clubId" = $1 ORDER BY "createdAt" DESC', [id]);
 
         const club = clubResult.rows[0];
         if (!club) return res.status(404).json({ error: 'Club not found' });
 
         club.settings = settingsResult.rows;
         club.paymentConfigs = paymentConfigs;
+        club.members = membersResult.rows;
 
         // Build modules map from settings for frontend convenience
         const settingsMap = {};
