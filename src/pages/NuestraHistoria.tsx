@@ -13,6 +13,7 @@ const ORIGEN_FOUNDERS = [
   "Israel David Castellanos (Past RDR 2011–2012)",
   "Luz Adriana Bermúdez (Past RDR 2012–2013)",
   "Leidy Viviana Hurtado",
+  "", // Spacer to push Natalia to middle column
   "Natalia Giraldo"
 ];
 
@@ -131,6 +132,8 @@ const NuestraHistoria = () => {
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
                   {ORIGEN_FOUNDERS.map((name, i) => {
+                    if (!name) return <div key={i} className="hidden lg:block" />; // Spacer for grid alignment
+                    
                     const isPastRDR = name.includes('Past RDR');
                     const [fullName, role] = name.split(' (');
                     const iconColor = isPastRDR ? 'text-rotary-gold' : 'text-rotary-blue';
