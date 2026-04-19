@@ -78,7 +78,7 @@ const NuestraHistoria = () => {
 
           {/* Los orígenes de Rotary */}
           <div>
-            <h2 className="text-2xl md:text-3xl font-medium text-rotary-blue mb-5">Los orígenes de Rotary</h2>
+            <h2 className="text-2xl md:text-3xl font-medium text-gray-800 mb-5 text-center">Los orígenes de Rotary</h2>
             <p className="text-lg text-gray-700 leading-relaxed font-light whitespace-pre-line text-left">
               Rotary nació en Chicago en 1905, cuando Paul Harris, un joven abogado, reunió a profesionales de distintas áreas con el propósito de intercambiar ideas, cultivar la amistad y servir a la comunidad. Lo que empezó como un pequeño círculo pronto se expandió a todos los continentes, convirtiéndose en una red mundial de líderes comprometidos con la paz, la salud, la educación y el desarrollo sostenible. Hoy, más de 1,4 millones de rotarios en más de 200 países continúan soñando en grande y haciendo realidad proyectos que transforman vidas.
             </p>
@@ -86,14 +86,14 @@ const NuestraHistoria = () => {
 
           <div className="space-y-16">
             <div>
-              <h2 className="text-2xl md:text-3xl font-medium text-rotary-blue mb-5">El nacimiento de Origen</h2>
+              <h2 className="text-2xl md:text-3xl font-medium text-gray-800 mb-5 text-center">El nacimiento de Origen</h2>
               <p className="text-lg text-gray-700 leading-relaxed font-light whitespace-pre-line text-left">
                 Siguiendo ese legado, en 2013 un grupo de jóvenes colombianos, con una sólida trayectoria en Interact y Rotaract, decidió crear un club rotario diferente: uno que derribara las barreras de la distancia y uniera a socios en un espacio 100% virtual. Tras un año de preparación y consultas ante Rotary International, en 2015 nació oficialmente el Rotary E-Club Origen, el primero de su tipo en Colombia, fundado íntegramente por ex Interactianos y Rotaractianos.
               </p>
               
               {/* Socios Fundadores */}
               <div className="mt-10">
-                <h3 className="text-xl font-medium text-gray-800 mb-6">
+                <h3 className="text-xl font-medium text-gray-800 mb-6 text-center">
                   Los socios fundadores que dieron vida al sueño de Origen fueron:
                 </h3>
                 <ul className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
@@ -124,7 +124,7 @@ const NuestraHistoria = () => {
 
             {/* Mirando al futuro */}
             <div className="bg-white rounded-3xl shadow-sm ring-1 ring-gray-100 p-8 md:p-12">
-              <h2 className="text-2xl md:text-3xl font-medium text-rotary-blue mb-5">Mirando al futuro</h2>
+              <h2 className="text-2xl md:text-3xl font-medium text-gray-800 mb-5 text-center">Mirando al futuro</h2>
               <p className="text-lg text-gray-700 leading-relaxed font-light whitespace-pre-line">
                 Hoy, en 2025, celebramos 10 años de historia reafirmando nuestro compromiso con la visión global de Rotary: soñar en grande, construir puentes de paz y servir con creatividad e innovación. Somos una familia rotaria que une corazones, multiplica voluntades y transforma comunidades, con la certeza de que nuestra mejor obra siempre será la próxima.
               </p>
@@ -160,7 +160,7 @@ const NuestraHistoria = () => {
       {/* CTA */}
       <section className="py-12 md:py-16 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-2xl md:text-3xl font-bold text-rotary-blue mb-6">
+          <h2 className="text-2xl md:text-3xl font-medium text-gray-800 mb-6 text-center">
             ¿Quieres ser parte de nuestra historia?
           </h2>
           <button className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg">
