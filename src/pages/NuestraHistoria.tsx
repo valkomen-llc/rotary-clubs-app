@@ -231,7 +231,7 @@ Gracias a la virtualidad y a la pasión de sus socios, el club ha logrado llegar
           {/* Galería (Común para todos) */}
           <div>
             <h2 className="text-2xl font-medium text-gray-800 mb-6 text-center">Momentos Históricos</h2>
-            <div className="relative aspect-[16/7] md:aspect-[16/6] rounded-[40px] overflow-hidden shadow-2xl ring-1 ring-gray-200 bg-black group">
+            <div className="relative h-[400px] md:h-[500px] rounded-[40px] overflow-hidden shadow-2xl ring-1 ring-gray-200 bg-black group">
               <div className="absolute inset-0 w-full h-full">
                 {galleryImages.map((img, i) => (
                   <div
