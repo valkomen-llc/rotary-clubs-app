@@ -252,6 +252,24 @@ const ImageDistribution: React.FC = () => {
                 result[key] = src?.[key] || { ...def };
             }
         }
+
+        // --- Smart Migration Logic for Nuestra Historia ---
+        const isDef = (url: string) => !url || url.includes('images.unsplash.com') || url.includes('/defaults/');
+        const hist = src?.history;
+        if (Array.isArray(hist) && hist.length >= 2) {
+            if (isDef(result.historyHero?.url) && !isDef(hist[0]?.url)) result.historyHero = { ...hist[0] };
+            if (isDef(result.historyImpact?.url) && !isDef(hist[1]?.url)) result.historyImpact = { ...hist[1] };
+            
+            if (Array.isArray(result.historyTimeline)) {
+                result.historyTimeline.forEach((slot: any, i: number) => {
+                    const oldIdx = i + 2;
+                    if (isDef(slot.url) && hist[oldIdx] && !isDef(hist[oldIdx].url)) {
+                        result.historyTimeline[i] = { ...hist[oldIdx] };
+                    }
+                });
+            }
+        }
+
         return result as SiteImages;
     }, []);
 

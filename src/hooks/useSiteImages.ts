@@ -44,12 +44,13 @@ const DEFAULTS = {
         { url: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=1200&h=800&fit=crop', alt: 'Nosotros 3' }
     ],
     history: [
-        { url: 'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=1200&h=800&fit=crop', alt: 'Historia 1' },
-        { url: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=1200&h=800&fit=crop', alt: 'Historia 2' },
-        { url: 'https://images.unsplash.com/photo-1521791136064-7986c2959210?w=1200&h=800&fit=crop', alt: 'Historia 3' },
-        { url: 'https://images.unsplash.com/photo-1517048676732-d65bc937f952?w=1200&h=800&fit=crop', alt: 'Historia 4' },
-        { url: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1200&h=800&fit=crop', alt: 'Historia 5' }
+        { url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=500&fit=crop', alt: 'Hero Historia' },
+        { url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=600&h=400&fit=crop', alt: 'Décadas de Impacto' },
+        { url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=500&fit=crop', alt: 'Momento Histórico 1' },
+        { url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&h=500&fit=crop', alt: 'Momento Histórico 2' },
+        { url: 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800&h=500&fit=crop', alt: 'Momento Histórico 3' }
     ],
+
     historyHero: { url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=500&fit=crop', alt: 'Hero Historia' },
     historyImpact: { url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=600&h=400&fit=crop', alt: 'Décadas de Impacto' },
     historyTimeline: [
@@ -149,17 +150,31 @@ export function useSiteImages(): SiteImages & { _loading?: boolean } {
                         final[key] = merged;
                     } else {
                         // Single item
-                        // Start with default, then override with global, then override with club
                         let val = dVal;
                         if (gVal && gVal.url && !isDefault(gVal.url)) val = gVal;
                         if (Array.isArray(gVal) && gVal[0]?.url && !isDefault(gVal[0].url)) val = gVal[0];
-                        
                         if (cVal && cVal.url && !isDefault(cVal.url)) val = cVal;
                         if (Array.isArray(cVal) && cVal[0]?.url && !isDefault(cVal[0].url)) val = cVal[0];
-                        
                         final[key] = val;
                     }
                 });
+
+                // --- Smart Migration Logic for Nuestra Historia ---
+                // If the new keys are STILL default, try to pull from the old 'history' array
+                const hist = final.history;
+                if (Array.isArray(hist) && hist.length >= 2) {
+                    if (isDefault(final.historyHero?.url) && !isDefault(hist[0]?.url)) final.historyHero = hist[0];
+                    if (isDefault(final.historyImpact?.url) && !isDefault(hist[1]?.url)) final.historyImpact = hist[1];
+                    
+                    if (Array.isArray(final.historyTimeline)) {
+                        final.historyTimeline.forEach((slot, i) => {
+                            const oldIdx = i + 2;
+                            if (isDefault(slot.url) && hist[oldIdx] && !isDefault(hist[oldIdx].url)) {
+                                final.historyTimeline[i] = hist[oldIdx];
+                            }
+                        });
+                    }
+                }
 
                 setImages({ ...final, _loading: false });
             })
