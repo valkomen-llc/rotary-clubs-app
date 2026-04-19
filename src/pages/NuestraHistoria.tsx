@@ -97,19 +97,39 @@ const NuestraHistoria = () => {
                 Siguiendo ese legado, en 2013 un grupo de jóvenes colombianos, con una sólida trayectoria en Interact y Rotaract, decidió crear un club rotario diferente: uno que derribara las barreras de la distancia y uniera a socios en un espacio 100% virtual. Tras un año de preparación y consultas ante Rotary International, en 2015 nació oficialmente el Rotary E-Club Origen, el primero de su tipo en Colombia, fundado íntegramente por ex Interactianos y Rotaractianos.
               </p>
               
-              {/* Socios Fundadores */}
-              <div className="mt-12">
-                <p className="text-lg leading-relaxed text-gray-800 mb-6 text-left">
-                  Como socios fundadores que dieron vida al sueño de Origen asumimos la responsabilidad de tomar acción:
+              {/* Socios Fundadores Infographic */}
+              <div className="mt-16 bg-white rounded-[40px] p-8 md:p-12 shadow-sm border border-sky-50/50">
+                <p className="text-xl font-medium text-[#333333] mb-10 text-center uppercase tracking-wider">
+                  Nuestros Socios Fundadores
                 </p>
-                <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {ORIGEN_FOUNDERS.map((name, i) => (
-                    <li key={i} className="flex items-start">
-                      <span className="mr-3 font-bold text-gray-700 mt-1">•</span>
-                      <p className="text-lg text-gray-800">{name}</p>
-                    </li>
-                  ))}
-                </ul>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {ORIGEN_FOUNDERS.map((name, i) => {
+                    const initials = name.split(' ').slice(0, 2).map(n => n[0]).join('');
+                    const isSpecial = name.includes('Past RDR');
+                    const [fullName, role] = name.split(' (');
+                    
+                    return (
+                      <div key={i} className="group relative bg-white border border-gray-100 rounded-3xl p-6 transition-all duration-300 hover:shadow-xl hover:shadow-sky-100/30 hover:-translate-y-1">
+                        <div className="flex items-center gap-5">
+                          <div className="w-14 h-14 rounded-2xl bg-sky-50 flex items-center justify-center text-rotary-blue font-bold text-lg group-hover:bg-rotary-blue group-hover:text-white transition-colors duration-300">
+                            {initials}
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900 leading-tight">
+                              {fullName}
+                            </p>
+                            {role && (
+                              <p className="text-xs text-rotary-blue mt-1 font-medium bg-sky-50 px-2 py-0.5 rounded-full inline-block">
+                                {role.replace(')', '')}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
