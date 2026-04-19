@@ -838,10 +838,11 @@ const ImageDistribution: React.FC = () => {
                                 zoom={zoom}
                                 aspect={
                                     pickerTarget?.key === 'hero' ? 16 / 7 :
-                                    pickerTarget?.key === 'aboutHero' ? 16 / 5 :
+                                    pickerTarget?.key === 'aboutHero' || pickerTarget?.key === 'historyHero' ? 16 / 5 :
                                     pickerTarget?.key === 'causesHero' || pickerTarget?.key === 'rotexHero' ? 16 / 6 :
+                                    pickerTarget?.key === 'historyImpact' ? 3 / 2 :
                                     pickerTarget?.key === 'yepExperience' || pickerTarget?.key === 'polio' || pickerTarget?.key === 'join' ? 4 / 3 :
-                                    pickerTarget?.key === 'history' || pickerTarget?.key === 'rotexCarousel' ? 16 / 9 :
+                                    pickerTarget?.key === 'history' || pickerTarget?.key === 'historyTimeline' || pickerTarget?.key === 'rotexCarousel' ? 16 / 9 :
                                     (['yep', 'yepBanner', 'rotaract', 'interact', 'ngse', 'foundation'].includes(pickerTarget?.key || '')) ? 16 / 7 :
                                     1
                                 }
