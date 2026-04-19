@@ -34,14 +34,18 @@ const NuestraHistoria = () => {
     club.subdomain === 'rotary-e-club-origen' ||
     window.location.href.includes('rotary-e-club-origen');
 
-  const heroImage = images?.history?.[0]?.url || 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=500&fit=crop';
-  const timelineImage = images?.history?.[1]?.url || 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=600&h=400&fit=crop';
+  const heroImage = images.historyHero?.url || images.history?.[0]?.url || 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=500&fit=crop';
+  const timelineImage = images.historyImpact?.url || images.history?.[1]?.url || 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=600&h=400&fit=crop';
 
   const galleryImages = [
-    images?.history?.[2]?.url || 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=500&fit=crop',
-    images?.history?.[3]?.url || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&h=500&fit=crop',
-    images?.history?.[4]?.url || 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800&h=500&fit=crop',
+    images.historyTimeline?.[0]?.url || images?.history?.[2]?.url || 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=500&fit=crop',
+    images.historyTimeline?.[1]?.url || images?.history?.[3]?.url || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&h=500&fit=crop',
+    images.historyTimeline?.[2]?.url || images?.history?.[4]?.url || 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800&h=500&fit=crop',
+    ...(images.historyTimeline?.slice(3).map(img => img.url) || [])
   ];
+
+  let founderPhotoIndex = 0;
+
 
   return (
     <div className="min-h-screen bg-white">
@@ -140,17 +144,25 @@ const NuestraHistoria = () => {
                     const iconColor = isPastRDR ? 'text-rotary-gold' : 'text-rotary-blue';
                     const borderColor = isPastRDR ? 'border-rotary-gold/30' : 'border-gray-100';
                     
+                    const currentFounderIdx = name ? founderPhotoIndex++ : -1;
+                    const founderImageUrl = currentFounderIdx >= 0 ? images.historyFounders?.[currentFounderIdx]?.url : null;
+                    const isDefaultFounderImg = !founderImageUrl || founderImageUrl.includes('images.unsplash.com') || founderImageUrl.includes('photo-1507003211169');
+                    
                     return (
                       <div key={i} className={`group relative bg-white/80 backdrop-blur-sm border ${borderColor} rounded-[32px] p-8 transition-all duration-500 hover:shadow-2xl hover:shadow-rotary-blue/10 hover:-translate-y-2`}>
                         <div className="flex flex-col items-center text-center gap-5">
-                          <div className={`w-20 h-20 rounded-full bg-white shadow-inner flex items-center justify-center border-4 ${isPastRDR ? 'border-rotary-gold/20' : 'border-sky-50'}`}>
-                            {isPastRDR ? (
-                              <div className="relative">
-                                <ShieldCheck className="w-10 h-10 text-rotary-gold animate-pulse-slow" />
-                                <div className="absolute -top-1 -right-1 w-4 h-4 bg-rotary-blue rounded-full border-2 border-white" />
-                              </div>
+                          <div className={`w-20 h-20 rounded-full bg-white shadow-inner flex items-center justify-center border-4 overflow-hidden relative ${isPastRDR ? 'border-rotary-gold/20' : 'border-sky-50'}`}>
+                            {isDefaultFounderImg ? (
+                              isPastRDR ? (
+                                <div className="relative">
+                                  <ShieldCheck className="w-10 h-10 text-rotary-gold animate-pulse-slow" />
+                                  <div className="absolute -top-1 -right-1 w-4 h-4 bg-rotary-blue rounded-full border-2 border-white" />
+                                </div>
+                              ) : (
+                                <User className="w-10 h-10 text-rotary-blue opacity-40 group-hover:opacity-100 transition-opacity" />
+                              )
                             ) : (
-                              <User className="w-10 h-10 text-rotary-blue opacity-40 group-hover:opacity-100 transition-opacity" />
+                              <img src={founderImageUrl} alt={fullName} className="w-full h-full object-cover" />
                             )}
                           </div>
                           

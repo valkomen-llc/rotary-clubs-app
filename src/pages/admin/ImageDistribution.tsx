@@ -50,6 +50,16 @@ const DEFAULTS = {
         { url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&h=500&fit=crop', alt: 'Momento Histórico 2' },
         { url: 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800&h=500&fit=crop', alt: 'Momento Histórico 3' },
     ],
+    historyHero: { url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=500&fit=crop', alt: 'Hero Historia' },
+    historyImpact: { url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=600&h=400&fit=crop', alt: 'Décadas de Impacto' },
+    historyTimeline: [
+        { url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=500&fit=crop', alt: 'Momento Histórico 1' },
+        { url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&h=500&fit=crop', alt: 'Momento Histórico 2' },
+        { url: 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800&h=500&fit=crop', alt: 'Momento Histórico 3' },
+    ],
+    historyFounders: Array(7).fill({ url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop', alt: 'Socio Fundador' }),
+    paulHarrisAvatar: { url: 'https://www.rotary.org/sites/default/files/styles/w_600/public/Paul%20Harris%20portrait.jpg', alt: 'Paul Harris' },
+
     rotaract: { url: 'https://images.unsplash.com/photo-1529390079861-591de354faf5?w=1600&h=800&fit=crop', alt: 'Club Rotaract' },
     interact: { url: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=1600&h=800&fit=crop', alt: 'Club Interact' },
     yep: [
@@ -110,13 +120,22 @@ const BASE_CONTAINERS: Container[] = [
     { key: 'foundation', label: 'Fundación Rotaria', desc: '1 imagen de fondo para la sección de la Fundación. Tamaño ideal: 1600×700px, panorámica.', count: 1, aspect: '16/7' },
     { key: 'join', label: 'Sección Únete', desc: '1 imagen motivacional para la sección de reclutamiento. Tamaño ideal: 800×600px.', count: 1, aspect: '4/3' },
     {
-        key: 'about', label: 'Quiénes Somos', desc: 'Imágenes de las páginas Quiénes Somos y Nuestras Causas.', count: 13, aspect: '16/5',
+        key: 'about', label: 'Quiénes Somos', desc: 'Imágenes de las páginas Quiénes Somos y Nuestras Causas.', count: 8, aspect: '16/5',
         groups: [
             { key: 'aboutHero', subLabel: 'Hero — Banner (Quiénes Somos)', count: 1, aspect: '16/5' },
             { key: 'aboutCarousel', subLabel: 'Carrusel de Causas', count: 5, aspect: '8/5' },
             { key: 'causesHero', subLabel: 'Hero — Banner (Causas)', count: 1, aspect: '16/6' },
             { key: 'polio', subLabel: 'Erradicación a la Polio', count: 1, aspect: '4/3' },
-            { key: 'history', subLabel: 'Nuestra Historia', count: 5, aspect: '16/9' },
+        ],
+    },
+    {
+        key: 'history-page', label: 'Nuestra Historia', desc: 'Personaliza todas las imágenes de la página institucional de Historia.', count: 15, aspect: '16/9',
+        groups: [
+            { key: 'historyHero', subLabel: 'Hero — Banner Superior', count: 1, aspect: '16/5' },
+            { key: 'historyImpact', subLabel: 'Sección de Impacto', count: 1, aspect: '3/2' },
+            { key: 'historyTimeline', subLabel: 'Momentos Históricos (Carrusel)', count: 5, aspect: '16/9' },
+            { key: 'historyFounders', subLabel: 'Fotos de Fundadores', count: 7, aspect: '1/1' },
+            { key: 'paulHarrisAvatar', subLabel: 'Avatar de Paul Harris', count: 1, aspect: '1/1' },
         ],
     },
 ];
@@ -344,7 +363,7 @@ const ImageDistribution: React.FC = () => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        if (pickerTarget?.key.startsWith('chatbot') || ['hero', 'aboutHero', 'causesHero', 'yep', 'yepExperience', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotexHero', 'rotexCarousel', 'foundation', 'polio', 'history'].includes(pickerTarget?.key || '')) {
+        if (pickerTarget?.key.startsWith('chatbot') || ['hero', 'aboutHero', 'causesHero', 'yep', 'yepExperience', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotexHero', 'rotexCarousel', 'foundation', 'polio', 'history', 'historyHero', 'historyImpact', 'historyTimeline', 'historyFounders', 'paulHarrisAvatar'].includes(pickerTarget?.key || '')) {
             const reader = new FileReader();
             reader.onload = () => {
                 setCropImageSrc(reader.result as string);
@@ -434,7 +453,7 @@ const ImageDistribution: React.FC = () => {
     };
 
     const handleMediaClick = (url: string, filename: string) => {
-        if (pickerTarget?.key.startsWith('chatbot') || ['hero', 'aboutHero', 'causesHero', 'yep', 'yepExperience', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotexHero', 'rotexCarousel', 'foundation', 'polio', 'history'].includes(pickerTarget?.key || '')) {
+        if (pickerTarget?.key.startsWith('chatbot') || ['hero', 'aboutHero', 'causesHero', 'yep', 'yepExperience', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotexHero', 'rotexCarousel', 'foundation', 'polio', 'history', 'historyHero', 'historyImpact', 'historyTimeline', 'historyFounders', 'paulHarrisAvatar'].includes(pickerTarget?.key || '')) {
             setCropImageSrc(url);
             // Create a pseudo-file to carry over the original filename safely
             setCropFile(new File([], filename || 'image.jpg'));

@@ -12,6 +12,10 @@ export interface SiteImages {
     causesHero?: ImgSlot;
     polio?: ImgSlot;
     history?: ImgSlot[];
+    historyHero?: ImgSlot;
+    historyImpact?: ImgSlot;
+    historyTimeline?: ImgSlot[];
+    historyFounders?: ImgSlot[];
     rotaract?: ImgSlot;
     interact?: ImgSlot;
     yep?: ImgSlot[];
@@ -23,6 +27,7 @@ export interface SiteImages {
     paulHarrisAvatar?: ImgSlot;
     chatbotPublicAvatar?: ImgSlot;
     chatbotAdminAvatar?: ImgSlot;
+    missionControl?: ImgSlot;
 }
 
 const DEFAULTS = {
@@ -45,6 +50,15 @@ const DEFAULTS = {
         { url: 'https://images.unsplash.com/photo-1517048676732-d65bc937f952?w=1200&h=800&fit=crop', alt: 'Historia 4' },
         { url: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1200&h=800&fit=crop', alt: 'Historia 5' }
     ],
+    historyHero: { url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=500&fit=crop', alt: 'Hero Historia' },
+    historyImpact: { url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=600&h=400&fit=crop', alt: 'Décadas de Impacto' },
+    historyTimeline: [
+        { url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=500&fit=crop', alt: 'Momento Histórico 1' },
+        { url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&h=500&fit=crop', alt: 'Momento Histórico 2' },
+        { url: 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800&h=500&fit=crop', alt: 'Momento Histórico 3' }
+    ],
+    historyFounders: Array(7).fill({ url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop', alt: 'Socio Fundador' }),
+
     yep: [
         { url: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes 1' },
         { url: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&h=800&fit=crop', alt: 'Intercambio de Jóvenes 2' },
@@ -109,6 +123,7 @@ export function useSiteImages(): SiteImages & { _loading?: boolean } {
                     'hero', 'aboutCarousel', 'history', 'yep', 'rotexCarousel', 'causes',
                     'foundation', 'join', 'aboutHero', 'causesHero', 'polio', 'rotaract', 
                     'interact', 'yepExperience', 'yepBanner', 'ngse', 'rotexHero', 
+                    'historyHero', 'historyImpact', 'historyTimeline', 'historyFounders',
                     'paulHarrisAvatar', 'chatbotPublicAvatar', 'chatbotAdminAvatar', 'missionControl'
                 ];
 
