@@ -116,16 +116,21 @@ interface Container { key: string; label: string; desc: string; count: number; a
 
 const BASE_CONTAINERS: Container[] = [
     { key: 'hero', label: 'Hero — Slider Principal', desc: '5 imágenes de slide con rotación automática. Tamaño ideal: 1600×700px, horizontal.', count: 5, aspect: '16/7' },
-    { key: 'causes', label: 'Áreas de Interés — Causas', desc: '7 imágenes para las tarjetas de causas Rotary. Tamaño ideal: 500×500px, cuadrado.', count: 7, aspect: '1/1' },
+    {
+        key: 'causes-full', label: 'Áreas de Interés — Causas', desc: 'Personaliza el banner y las tarjetas de las 7 causas de Rotary.', count: 9, aspect: '1/1',
+        groups: [
+            { key: 'causesHero', subLabel: 'Hero — Banner (Causas)', count: 1, aspect: '16/6' },
+            { key: 'causes', subLabel: 'Tarjetas de Causas (Grid)', count: 7, aspect: '1/1' },
+            { key: 'polio', subLabel: 'Erradicación de la Polio', count: 1, aspect: '4/3' },
+        ],
+    },
     { key: 'foundation', label: 'Fundación Rotaria', desc: '1 imagen de fondo para la sección de la Fundación. Tamaño ideal: 1600×700px, panorámica.', count: 1, aspect: '16/7' },
     { key: 'join', label: 'Sección Únete', desc: '1 imagen motivacional para la sección de reclutamiento. Tamaño ideal: 800×600px.', count: 1, aspect: '4/3' },
     {
-        key: 'about', label: 'Quiénes Somos', desc: 'Imágenes de las páginas Quiénes Somos y Nuestras Causas.', count: 8, aspect: '16/5',
+        key: 'about', label: 'Quiénes Somos', desc: 'Imágenes institucionales de la sección Quiénes Somos.', count: 6, aspect: '16/5',
         groups: [
             { key: 'aboutHero', subLabel: 'Hero — Banner (Quiénes Somos)', count: 1, aspect: '16/5' },
-            { key: 'aboutCarousel', subLabel: 'Carrusel de Causas', count: 5, aspect: '8/5' },
-            { key: 'causesHero', subLabel: 'Hero — Banner (Causas)', count: 1, aspect: '16/6' },
-            { key: 'polio', subLabel: 'Erradicación a la Polio', count: 1, aspect: '4/3' },
+            { key: 'aboutCarousel', subLabel: 'Carrusel Institucional', count: 5, aspect: '8/5' },
         ],
     },
     {
@@ -618,7 +623,7 @@ const ImageDistribution: React.FC = () => {
                         return sum + s.filter((_, i) => !isDefault(g.key, i)).length;
                     }, 0);
                     
-                    const percentage = container.key === 'causes' ? 100 : Math.round((totalCustom / totalCount) * 100);
+                    const percentage = container.key.includes('causes') ? 100 : Math.round((totalCustom / totalCount) * 100);
                     const isOpen = expanded[container.key];
 
                     return (
