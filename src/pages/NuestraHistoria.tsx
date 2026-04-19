@@ -12,8 +12,8 @@ const ORIGEN_FOUNDERS = [
   "Lucas Lasso (Past RDR 2010–2011)",
   "Israel David Castellanos (Past RDR 2011–2012)",
   "Luz Adriana Bermúdez (Past RDR 2012–2013)",
-  "Natalia Giraldo",
-  "Leidy Viviana Hurtado"
+  "Leidy Viviana Hurtado",
+  "Natalia Giraldo"
 ];
 
 const NuestraHistoria = () => {
