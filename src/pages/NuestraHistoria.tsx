@@ -200,7 +200,7 @@ const NuestraHistoria = () => {
           </div>
 
           {/* Galería (Común para todos) */}
-          <div className="max-w-4xl mx-auto">
+          <div>
             <h2 className="text-2xl font-medium text-gray-800 mb-6 text-center">Momentos Históricos</h2>
             <div className="relative aspect-video rounded-3xl overflow-hidden shadow-2xl ring-1 ring-gray-200 bg-black">
               <img
