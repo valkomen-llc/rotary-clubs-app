@@ -25,8 +25,12 @@ const NuestraHistoria = () => {
   const getC = (section: string, field: string, fallback: string) =>
     sections[section]?.[field] || fallback;
 
-  // HARDCODED TRUE FOR TESTING
-  const isOrigen = true;
+  // Detección robusta de Rotary E-Club Origen
+  const isOrigen = 
+    club.name?.toLowerCase().includes('origen') || 
+    club.id?.toString() === '1' ||
+    club.subdomain === 'rotary-e-club-origen' ||
+    window.location.href.includes('rotary-e-club-origen');
 
   const heroImage = images?.history?.[0]?.url || 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600&h=500&fit=crop';
   const timelineImage = images?.history?.[1]?.url || 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=600&h=400&fit=crop';
@@ -60,7 +64,7 @@ const NuestraHistoria = () => {
           backgroundSize: '71px 85px',
         }}
       >
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-white" style={{ fontSize: '35px' }}>Nuestra Historia</h1>
           <p className="text-white/80 mt-2 italic text-lg opacity-90">
             {club.name || "Rotary E-Club Origen"}
@@ -70,7 +74,7 @@ const NuestraHistoria = () => {
 
       {/* Main Content */}
       <section className="bg-rotary-concrete" style={{ paddingTop: '56px', paddingBottom: '72px' }}>
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-16">
 
           {/* Los orígenes de Rotary */}
           <div>
@@ -155,7 +159,7 @@ const NuestraHistoria = () => {
 
       {/* CTA */}
       <section className="py-12 md:py-16 bg-white">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-2xl md:text-3xl font-bold text-rotary-blue mb-6">
             ¿Quieres ser parte de nuestra historia?
           </h2>
