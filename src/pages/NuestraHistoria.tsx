@@ -230,6 +230,22 @@ Gracias a la virtualidad y a la pasión de sus socios, el club ha logrado llegar
         </div>
       </section>
 
+      {/* CTA Section */}
+      <section className="py-20 bg-white border-t border-b border-rotary-blue/10">
+        <div className="max-w-4xl mx-auto px-6 text-center">
+          <h2 className="text-3xl font-normal text-gray-800 mb-10">
+            {getC('cta', 'title', "¿Quieres escribir la historia con nosotros?")}
+          </h2>
+          <a
+            href="#/contacto"
+            className="inline-flex items-center gap-3 bg-sky-50 hover:bg-sky-100 text-rotary-blue font-medium px-8 py-4 rounded-full shadow-sm transition-all duration-300 hover:shadow-md"
+          >
+            <Star className="w-5 h-5 text-rotary-gold fill-rotary-gold" />
+            <span>{getC('cta', 'button', "Involúcrate en Rotary")}</span>
+          </a>
+        </div>
+      </section>
+
       {/* Footer */}
       <Footer />
     </div>
