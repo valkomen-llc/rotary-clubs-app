@@ -157,4 +157,24 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     }
 });
 
+// GET /api/media/proxy — proxy same-origin para canvas (evita CORS)
+router.get('/proxy', authMiddleware, async (req, res) => {
+    const { url } = req.query;
+    if (!url || typeof url !== 'string') return res.status(400).json({ error: 'URL requerida' });
+    try {
+        const response = await fetch(url);
+        if (!response.ok) return res.status(502).json({ error: 'No se pudo obtener la imagen' });
+        const buffer = Buffer.from(await response.arrayBuffer());
+        const contentType = response.headers.get('content-type') || 'image/jpeg';
+        res.set('Content-Type', contentType);
+        res.set('Cache-Control', 'public, max-age=3600');
+        res.set('Access-Control-Allow-Origin', '*');
+        res.send(buffer);
+    } catch (err) {
+        console.error('Image proxy error:', err);
+        res.status(500).json({ error: 'Error al obtener la imagen' });
+    }
+});
+
+
 export default router;

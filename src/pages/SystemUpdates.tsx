@@ -21,7 +21,20 @@ interface UpdateItem {
     }>;
 }
 
+// Cache bust: 2026-04-20 18:16
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.8.5",
+        date: "20 Abril 2026",
+        title: "News Cover Image Engine Refinement",
+        type: "update",
+        changes: [
+            { type: "changed", text: "Refactorización del CropModal a componente aislado para mayor estabilidad de estado." },
+            { type: "added", text: "Mejora de visibilidad: Recuadro de recorte con borde de alto contraste (Rotary Blue)." },
+            { type: "added", text: "Nuevos controles de rotación (0-360°) y visualización de zoom en el editor." },
+            { type: "added", text: "Sistema de Image Proxy en Media Hub para evitar bloqueos de CORS al re-recortar imágenes." }
+        ]
+    },
     {
         version: "v4.8.3",
         date: "20 Abril 2026",

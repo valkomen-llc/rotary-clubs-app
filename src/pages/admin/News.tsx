@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Plus, Edit2, Trash2, Search, Newspaper, X, Upload,
-    Globe, Image as ImageIcon, Video, Tag, ChevronRight, Crop, ZoomIn, ZoomOut
+    Globe, Image as ImageIcon, Video, Tag, ChevronRight, Crop, ZoomIn, ZoomOut,
+    CheckCircle, Loader2, RotateCw
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import { Area } from 'react-easy-crop';
@@ -58,12 +59,114 @@ const NewsManagement: React.FC = () => {
 
     const [tagInput, setTagInput] = useState('');
 
+// ── Crop Modal Component (Refactored for stability and visibility) ────────────────
+const CropModal = ({ src, aspect, onConfirm, onCancel }: { 
+    src: string; 
+    aspect: number; 
+    onConfirm: (blob: Blob) => void; 
+    onCancel: () => void; 
+}) => {
+    const [crop, setCrop] = useState({ x: 0, y: 0 });
+    const [zoom, setZoom] = useState(1);
+    const [rotation, setRotation] = useState(0);
+    const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
+    const [processing, setProcessing] = useState(false);
+
+    const onCropComplete = (_: any, pixels: Area) => {
+        setCroppedAreaPixels(pixels);
+    };
+
+    const handleSave = async () => {
+        if (!croppedAreaPixels) return;
+        setProcessing(true);
+        try {
+            const blob = await getCroppedImg(src, croppedAreaPixels);
+            onConfirm(blob);
+        } catch (e) {
+            console.error(e);
+            toast.error("Error al procesar el recorte.");
+        } finally {
+            setProcessing(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onCancel} />
+            <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden animate-in fade-in zoom-in duration-300">
+                <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-rotary-blue flex items-center justify-center">
+                            <Crop className="w-4 h-4 text-white" />
+                        </div>
+                        <div>
+                            <h3 className="font-black text-gray-900">Recortar Portada</h3>
+                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Ratio Sugerido: 16:6 (Panorámico)</p>
+                        </div>
+                    </div>
+                    <button onClick={onCancel} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
+                        <X className="w-5 h-5 text-gray-400" />
+                    </button>
+                </div>
+
+                <div className="relative bg-[#111]" style={{ height: '500px' }}>
+                    <Cropper
+                        image={src}
+                        crop={crop}
+                        zoom={zoom}
+                        rotation={rotation}
+                        aspect={aspect}
+                        onCropChange={setCrop}
+                        onZoomChange={setZoom}
+                        onRotationChange={setRotation}
+                        onCropComplete={onCropComplete}
+                        showGrid={true}
+                        style={{
+                            containerStyle: { background: '#111' },
+                            cropAreaStyle: {
+                                border: '3px solid #013388',
+                                boxShadow: '0 0 0 9999px rgba(0,0,0,0.6)',
+                            }
+                        }}
+                    />
+                </div>
+
+                <div className="p-6 bg-gray-50 border-t border-gray-100 flex flex-col gap-4">
+                    <div className="flex items-center gap-6">
+                        <div className="flex-1 space-y-2">
+                            <div className="flex justify-between items-center">
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Zoom: {Math.round(zoom * 100)}%</span>
+                            </div>
+                            <input type="range" min={1} max={3} step={0.1} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-rotary-blue" />
+                        </div>
+                        <div className="flex-1 space-y-2">
+                            <div className="flex justify-between items-center">
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Rotación: {rotation}°</span>
+                            </div>
+                            <input type="range" min={0} max={360} step={1} value={rotation} onChange={(e) => setRotation(Number(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-rotary-blue" />
+                        </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2">
+                        <p className="text-[11px] text-gray-500 font-medium max-w-md"> Arrastra la imagen para encuadrarla. El área iluminada será la portada final en el blog. </p>
+                        <div className="flex gap-3">
+                            <button onClick={onCancel} className="px-6 py-2.5 text-sm font-bold text-gray-400 hover:text-gray-600 transition-colors"> Cancelar </button>
+                            <button onClick={handleSave} disabled={processing} className="bg-rotary-blue text-white px-8 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-rotary-blue/20 hover:bg-sky-800 transition-all flex items-center gap-2">
+                                {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                                {processing ? 'Procesando...' : 'Aplicar Recorte'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
     // Crop States
     const [isCropModalOpen, setIsCropModalOpen] = useState(false);
     const [imageToCrop, setImageToCrop] = useState<string | null>(null);
-    const [crop, setCrop] = useState({ x: 0, y: 0 });
-    const [zoom, setZoom] = useState(1);
-    const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
 
     useEffect(() => {
         if (club?.id) {
@@ -191,23 +294,15 @@ const NewsManagement: React.FC = () => {
         }
     };
 
-    const onCropComplete = (croppedArea: Area, croppedAreaPixels: Area) => {
-        setCroppedAreaPixels(croppedAreaPixels);
-    };
-
-    const handleCropSave = async () => {
-        if (!imageToCrop || !croppedAreaPixels) return;
-
-        setUploading(true);
+    const handleCropModalConfirm = async (blob: Blob) => {
         setIsCropModalOpen(false);
+        setUploading(true);
+        const token = localStorage.getItem('rotary_token');
+        const apiUrl = import.meta.env.VITE_API_URL || '/api';
 
         try {
-            const croppedBlob = await getCroppedImg(imageToCrop, croppedAreaPixels);
-            const token = localStorage.getItem('rotary_token');
-            const apiUrl = import.meta.env.VITE_API_URL || '/api';
-
             const uploadData = new FormData();
-            uploadData.append('file', croppedBlob, 'cover.jpg');
+            uploadData.append('file', blob, 'cropped_cover.jpg');
             uploadData.append('folder', 'news');
 
             const targetUrl = `${apiUrl}/media/upload?folder=news&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
@@ -220,13 +315,12 @@ const NewsManagement: React.FC = () => {
             if (response.ok) {
                 const data = await response.json();
                 setFormData(prev => ({ ...prev, image: data.url }));
-                toast.success('Imagen de portada recortada y actualizada');
+                toast.success('Imagen de portada recortada y subida con éxito');
             } else {
                 toast.error('Error al subir imagen recortada');
             }
         } catch (error) {
-            console.error('Crop error:', error);
-            toast.error('Error al procesar el recorte');
+            toast.error('Error de conexión al subir imagen');
         } finally {
             setUploading(false);
             setImageToCrop(null);
@@ -617,9 +711,29 @@ const NewsManagement: React.FC = () => {
                                                             <img src={formData.image} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
                                                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                                                                 <button type="button" 
-                                                                    onClick={() => {
-                                                                        setImageToCrop(formData.image);
-                                                                        setIsCropModalOpen(true);
+                                                                    onClick={async () => {
+                                                                        if (formData.image.startsWith('data:')) {
+                                                                            setImageToCrop(formData.image);
+                                                                            setIsCropModalOpen(true);
+                                                                            return;
+                                                                        }
+                                                                        const token = localStorage.getItem('rotary_token');
+                                                                        const apiUrl = import.meta.env.VITE_API_URL || '/api';
+                                                                        try {
+                                                                            const res = await fetch(`${apiUrl}/media/proxy?url=${encodeURIComponent(formData.image)}`, { headers: { Authorization: `Bearer ${token}` } });
+                                                                            if (!res.ok) throw new Error('Proxy failed');
+                                                                            const blob = await res.blob();
+                                                                            const reader = new FileReader();
+                                                                            reader.onload = () => {
+                                                                                setImageToCrop(reader.result as string);
+                                                                                setIsCropModalOpen(true);
+                                                                            };
+                                                                            reader.readAsDataURL(blob);
+                                                                        } catch (err) {
+                                                                            toast.error('No se pudo cargar la imagen para re-recortar');
+                                                                            setImageToCrop(formData.image); // Fallback to direct URL
+                                                                            setIsCropModalOpen(true);
+                                                                        }
                                                                     }} 
                                                                     className="bg-rotary-blue text-white p-2 rounded-full hover:bg-sky-700 transition-colors"
                                                                     title="Recortar imagen"
@@ -807,98 +921,16 @@ const NewsManagement: React.FC = () => {
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
-            {/* Crop Modal */}
-            {isCropModalOpen && imageToCrop && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in duration-200">
-                        {/* Header */}
-                        <div className="px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                            <div>
-                                <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                                    <Crop className="w-5 h-5 text-rotary-blue" /> Recortar Portada
-                                </h3>
-                                <p className="text-xs text-gray-400 font-medium">Ajusta el área de la imagen para que luzca perfecta en el blog.</p>
-                            </div>
-                            <button onClick={() => { setIsCropModalOpen(false); setImageToCrop(null); }} className="p-2 hover:bg-white rounded-full text-gray-400 transition-colors shadow-sm">
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        {/* Cropper Body */}
-                        <div className="relative bg-gray-900" style={{ height: '450px' }}>
-                            <Cropper
-                                image={imageToCrop}
-                                crop={crop}
-                                zoom={zoom}
-                                aspect={16 / 6}
-                                onCropChange={setCrop}
-                                onZoomChange={setZoom}
-                                onCropComplete={onCropComplete}
-                                showGrid={true}
-                                style={{
-                                    containerStyle: { background: '#111' },
-                                    cropAreaStyle: {
-                                        border: '2px solid white',
-                                        boxShadow: '0 0 0 9999px rgba(0,0,0,0.5)',
-                                    }
-                                }}
-                            />
-                        </div>
-
-                        {/* Controls */}
-                        <div className="px-8 py-4 bg-white border-t border-gray-100 space-y-4">
-                            <div className="flex items-center gap-6">
-                                <div className="flex items-center gap-3 flex-1">
-                                    <ZoomOut className="w-4 h-4 text-gray-400" />
-                                    <input
-                                        type="range"
-                                        value={zoom}
-                                        min={1}
-                                        max={3}
-                                        step={0.1}
-                                        aria-labelledby="Zoom"
-                                        onChange={(e) => setZoom(Number(e.target.value))}
-                                        className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-rotary-blue"
-                                    />
-                                    <ZoomIn className="w-4 h-4 text-gray-400" />
-                                </div>
-                                <div className="text-xs font-bold text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
-                                    Zoom: {Math.round(zoom * 100)}%
-                                </div>
-                            </div>
-
-                            <div className="flex justify-between items-center bg-rotary-blue/5 p-4 rounded-2xl border border-rotary-blue/10">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-rotary-blue/10 flex items-center justify-center">
-                                        <ImageIcon className="w-4 h-4 text-rotary-blue" />
-                                    </div>
-                                    <p className="text-xs font-medium text-gray-600">
-                                        El área sombreada se recortará. Recomendamos centrar lo más importante del artículo.
-                                    </p>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => { setIsCropModalOpen(false); setImageToCrop(null); }}
-                                        className="px-6 py-2.5 text-gray-500 font-bold hover:text-gray-700 transition-colors text-sm"
-                                    >
-                                        Cancelar
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={handleCropSave}
-                                        className="bg-rotary-blue text-white px-8 py-2.5 rounded-xl font-bold hover:bg-sky-800 transition-all shadow-lg shadow-rotary-blue/20 flex items-center gap-2 text-sm"
-                                    >
-                                        Aplicar Recorte
-                                        <ChevronRight className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                     {/* Crop Modal */}
+        {isCropModalOpen && imageToCrop && (
+            <CropModal
+                src={imageToCrop}
+                aspect={16 / 6}
+                onConfirm={handleCropModalConfirm}
+                onCancel={() => setIsCropModalOpen(false)}
+            />
+        )}
+            </div>
             )}
         </AdminLayout>
     );
