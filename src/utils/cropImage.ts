@@ -15,7 +15,8 @@ export const createImage = (url: string): Promise<HTMLImageElement> =>
 
 export async function getCroppedImg(
   imageSrc: string,
-  pixelCrop: { x: number; y: number; width: number; height: number }
+  pixelCrop: { x: number; y: number; width: number; height: number },
+  rotation = 0
 ): Promise<Blob> {
   const image = await createImage(imageSrc)
   const canvas = document.createElement('canvas')
@@ -25,20 +26,40 @@ export async function getCroppedImg(
     throw new Error('No 2d context')
   }
 
-  canvas.width = pixelCrop.width
-  canvas.height = pixelCrop.height
+  const rotRad = (rotation * Math.PI) / 180
+  const { width: bBoxWidth, height: bBoxHeight } = rotateSize(
+    image.width,
+    image.height,
+    rotation
+  )
 
-  ctx.drawImage(
-    image,
+  // set canvas size to match the bounding box
+  canvas.width = bBoxWidth
+  canvas.height = bBoxHeight
+
+  // translate canvas context to a central point and rotate around it
+  ctx.translate(bBoxWidth / 2, bBoxHeight / 2)
+  ctx.rotate(rotRad)
+  ctx.translate(-image.width / 2, -image.height / 2)
+
+  // draw rotated image
+  ctx.drawImage(image, 0, 0)
+
+  // croppedAreaPixels values are bounding box relative
+  // extract the cropped image using these values
+  const data = ctx.getImageData(
     pixelCrop.x,
     pixelCrop.y,
     pixelCrop.width,
-    pixelCrop.height,
-    0,
-    0,
-    pixelCrop.width,
     pixelCrop.height
   )
+
+  // set canvas width to final desired crop size - this also clears the canvas
+  canvas.width = pixelCrop.width
+  canvas.height = pixelCrop.height
+
+  // paste generated rotate image with correct offsets for x,y crop values.
+  ctx.putImageData(data, 0, 0)
 
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
@@ -49,4 +70,15 @@ export async function getCroppedImg(
       resolve(blob)
     }, 'image/jpeg', 0.95)
   })
+}
+
+function rotateSize(width: number, height: number, rotation: number) {
+  const rotRad = (rotation * Math.PI) / 180
+
+  return {
+    width:
+      Math.abs(Math.cos(rotRad) * width) + Math.abs(Math.sin(rotRad) * height),
+    height:
+      Math.abs(Math.sin(rotRad) * width) + Math.abs(Math.cos(rotRad) * height),
+  }
 }

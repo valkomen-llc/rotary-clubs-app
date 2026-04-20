@@ -80,7 +80,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         if (!croppedAreaPixels) return;
         setProcessing(true);
         try {
-            const blob = await getCroppedImg(src, croppedAreaPixels);
+            const blob = await getCroppedImg(src, croppedAreaPixels, rotation);
             onConfirm(blob);
         } catch (e) {
             console.error(e);
