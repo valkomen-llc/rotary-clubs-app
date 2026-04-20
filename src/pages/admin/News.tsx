@@ -121,14 +121,18 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                         onRotationChange={setRotation}
                         onCropComplete={onCropComplete}
                         showGrid={true}
-                        style={{
-                            containerStyle: { background: '#111' },
-                            cropAreaStyle: {
-                                border: '3px solid #013388',
-                                boxShadow: '0 0 0 9999px rgba(0,0,0,0.6)',
-                            }
+                        classes={{
+                            containerClassName: 'bg-[#111] h-full',
+                            cropAreaClassName: 'border-3 border-[#013388] shadow-[0_0_0_9999px_rgba(0,0,0,0.6)]'
                         }}
                     />
+                    <style>{`
+                        .react-easy-crop_CropArea {
+                            border: 3px solid #013388 !important;
+                            color: rgba(0, 0, 0, 0.6) !important;
+                            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6) !important;
+                        }
+                    `}</style>
                 </div>
 
                 <div className="p-6 bg-gray-50 border-t border-gray-100 flex flex-col gap-4">
