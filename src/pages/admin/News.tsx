@@ -2,8 +2,11 @@ import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Plus, Edit2, Trash2, Search, Newspaper, X, Upload,
-    Globe, Image as ImageIcon, Video, Tag, ChevronRight
+    Globe, Image as ImageIcon, Video, Tag, ChevronRight, Crop, ZoomIn, ZoomOut
 } from 'lucide-react';
+import Cropper from 'react-easy-crop';
+import { Area } from 'react-easy-crop';
+import { getCroppedImg } from '../../utils/cropImage';
 import { toast } from 'sonner';
 import { useClub } from '../../contexts/ClubContext';
 import { articulosDestacados, articulos as articulosEstaticos } from '../../data/news';
@@ -54,6 +57,13 @@ const NewsManagement: React.FC = () => {
     });
 
     const [tagInput, setTagInput] = useState('');
+
+    // Crop States
+    const [isCropModalOpen, setIsCropModalOpen] = useState(false);
+    const [imageToCrop, setImageToCrop] = useState<string | null>(null);
+    const [crop, setCrop] = useState({ x: 0, y: 0 });
+    const [zoom, setZoom] = useState(1);
+    const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
 
     useEffect(() => {
         if (club?.id) {
@@ -139,6 +149,18 @@ const NewsManagement: React.FC = () => {
         const files = e.target.files;
         if (!files || files.length === 0) return;
 
+        if (!isGallery) {
+            const file = files[0];
+            const reader = new FileReader();
+            reader.onload = () => {
+                setImageToCrop(reader.result as string);
+                setIsCropModalOpen(true);
+            };
+            reader.readAsDataURL(file);
+            e.target.value = ''; // Reset input to allow re-selection
+            return;
+        }
+
         setUploading(true);
         const token = localStorage.getItem('rotary_token');
         const apiUrl = import.meta.env.VITE_API_URL || '/api';
@@ -158,18 +180,56 @@ const NewsManagement: React.FC = () => {
 
                 if (response.ok) {
                     const data = await response.json();
-                    if (isGallery) {
-                        setFormData(prev => ({ ...prev, images: [...prev.images, data.url] }));
-                    } else {
-                        setFormData(prev => ({ ...prev, image: data.url }));
-                    }
+                    setFormData(prev => ({ ...prev, images: [...prev.images, data.url] }));
                 }
             }
-            toast.success(isGallery ? 'Fotos añadidas a la galería' : 'Imagen de portada actualizada');
+            toast.success('Fotos añadidas a la galería');
         } catch (error) {
             toast.error('Error al subir imagen');
         } finally {
             setUploading(false);
+        }
+    };
+
+    const onCropComplete = (croppedArea: Area, croppedAreaPixels: Area) => {
+        setCroppedAreaPixels(croppedAreaPixels);
+    };
+
+    const handleCropSave = async () => {
+        if (!imageToCrop || !croppedAreaPixels) return;
+
+        setUploading(true);
+        setIsCropModalOpen(false);
+
+        try {
+            const croppedBlob = await getCroppedImg(imageToCrop, croppedAreaPixels);
+            const token = localStorage.getItem('rotary_token');
+            const apiUrl = import.meta.env.VITE_API_URL || '/api';
+
+            const uploadData = new FormData();
+            uploadData.append('file', croppedBlob, 'cover.jpg');
+            uploadData.append('folder', 'news');
+
+            const targetUrl = `${apiUrl}/media/upload?folder=news&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
+            const response = await fetch(targetUrl, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: uploadData
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setFormData(prev => ({ ...prev, image: data.url }));
+                toast.success('Imagen de portada recortada y actualizada');
+            } else {
+                toast.error('Error al subir imagen recortada');
+            }
+        } catch (error) {
+            console.error('Crop error:', error);
+            toast.error('Error al procesar el recorte');
+        } finally {
+            setUploading(false);
+            setImageToCrop(null);
         }
     };
 
@@ -555,8 +615,20 @@ const NewsManagement: React.FC = () => {
                                                     {formData.image ? (
                                                         <>
                                                             <img src={formData.image} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
-                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                                                <button type="button" onClick={() => setFormData({ ...formData, image: '' })} className="bg-red-500 text-white p-2 rounded-full"><X className="w-4 h-4" /></button>
+                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                                                <button type="button" 
+                                                                    onClick={() => {
+                                                                        setImageToCrop(formData.image);
+                                                                        setIsCropModalOpen(true);
+                                                                    }} 
+                                                                    className="bg-rotary-blue text-white p-2 rounded-full hover:bg-sky-700 transition-colors"
+                                                                    title="Recortar imagen"
+                                                                >
+                                                                    <Crop className="w-4 h-4" />
+                                                                </button>
+                                                                <button type="button" onClick={() => setFormData({ ...formData, image: '' })} className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600 transition-colors">
+                                                                    <X className="w-4 h-4" />
+                                                                </button>
                                                             </div>
                                                         </>
                                                     ) : (
@@ -732,6 +804,97 @@ const NewsManagement: React.FC = () => {
                                     {isSubmitting ? 'Guardando...' : (editingPost ? 'Guardar Cambios' : 'Publicar Noticia')}
                                     <ChevronRight className="w-4 h-4" />
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Crop Modal */}
+            {isCropModalOpen && imageToCrop && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in duration-200">
+                        {/* Header */}
+                        <div className="px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                            <div>
+                                <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                                    <Crop className="w-5 h-5 text-rotary-blue" /> Recortar Portada
+                                </h3>
+                                <p className="text-xs text-gray-400 font-medium">Ajusta el área de la imagen para que luzca perfecta en el blog.</p>
+                            </div>
+                            <button onClick={() => { setIsCropModalOpen(false); setImageToCrop(null); }} className="p-2 hover:bg-white rounded-full text-gray-400 transition-colors shadow-sm">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Cropper Body */}
+                        <div className="relative bg-gray-900" style={{ height: '450px' }}>
+                            <Cropper
+                                image={imageToCrop}
+                                crop={crop}
+                                zoom={zoom}
+                                aspect={16 / 6}
+                                onCropChange={setCrop}
+                                onZoomChange={setZoom}
+                                onCropComplete={onCropComplete}
+                                showGrid={true}
+                                style={{
+                                    containerStyle: { background: '#111' },
+                                    cropAreaStyle: {
+                                        border: '2px solid white',
+                                        boxShadow: '0 0 0 9999px rgba(0,0,0,0.5)',
+                                    }
+                                }}
+                            />
+                        </div>
+
+                        {/* Controls */}
+                        <div className="px-8 py-4 bg-white border-t border-gray-100 space-y-4">
+                            <div className="flex items-center gap-6">
+                                <div className="flex items-center gap-3 flex-1">
+                                    <ZoomOut className="w-4 h-4 text-gray-400" />
+                                    <input
+                                        type="range"
+                                        value={zoom}
+                                        min={1}
+                                        max={3}
+                                        step={0.1}
+                                        aria-labelledby="Zoom"
+                                        onChange={(e) => setZoom(Number(e.target.value))}
+                                        className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-rotary-blue"
+                                    />
+                                    <ZoomIn className="w-4 h-4 text-gray-400" />
+                                </div>
+                                <div className="text-xs font-bold text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
+                                    Zoom: {Math.round(zoom * 100)}%
+                                </div>
+                            </div>
+
+                            <div className="flex justify-between items-center bg-rotary-blue/5 p-4 rounded-2xl border border-rotary-blue/10">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-rotary-blue/10 flex items-center justify-center">
+                                        <ImageIcon className="w-4 h-4 text-rotary-blue" />
+                                    </div>
+                                    <p className="text-xs font-medium text-gray-600">
+                                        El área sombreada se recortará. Recomendamos centrar lo más importante del artículo.
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => { setIsCropModalOpen(false); setImageToCrop(null); }}
+                                        className="px-6 py-2.5 text-gray-500 font-bold hover:text-gray-700 transition-colors text-sm"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleCropSave}
+                                        className="bg-rotary-blue text-white px-8 py-2.5 rounded-xl font-bold hover:bg-sky-800 transition-all shadow-lg shadow-rotary-blue/20 flex items-center gap-2 text-sm"
+                                    >
+                                        Aplicar Recorte
+                                        <ChevronRight className="w-4 h-4" />
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>

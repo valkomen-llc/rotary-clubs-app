@@ -23,6 +23,18 @@ interface UpdateItem {
 
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.8.4",
+        date: "20 Abril 2026",
+        title: "Advanced Blog Image Cropping Engine",
+        type: "feature",
+        changes: [
+            { type: "added", text: "Integración de react-easy-crop para el manejo preciso de portadas en noticias." },
+            { type: "added", text: "Nueva interfaz de recorte (CropModal) con controles de zoom y aspect ratio 16:6." },
+            { type: "changed", text: "Flujo de subida optimizado: las imágenes se recortan localmente antes de la persistencia en el servidor." },
+            { type: "added", text: "Botón de re-encuadre rápido en la previsualización de imágenes existentes." }
+        ]
+    },
+    {
         version: "v4.8.3",
         date: "20 Abril 2026",
         title: "Member Directory Reordering Engine",
