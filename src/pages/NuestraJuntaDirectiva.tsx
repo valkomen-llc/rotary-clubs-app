@@ -89,6 +89,8 @@ const NuestraJuntaDirectiva = () => {
                     alt={miembro.nombre}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
                   />
+                </div>
+
                 {/* Content Section */}
                 <div className="p-6 md:p-8 flex flex-col flex-grow text-center bg-white">
                   <h3 className="text-xl font-bold text-gray-900 mb-2">
