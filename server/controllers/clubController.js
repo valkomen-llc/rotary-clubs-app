@@ -33,7 +33,11 @@ export const getClubById = async (req, res) => {
         const clubResult = await db.query('SELECT * FROM "Club" WHERE id = $1', [id]);
         const settingsResult = await db.query('SELECT * FROM "Setting" WHERE "clubId" = $1', [id]);
         const paymentConfigs = await prisma.paymentProviderConfig.findMany({ where: { clubId: id } });
+<<<<<<< HEAD
         const membersResult = await db.query('SELECT id, name, image, description, "isBoard", "boardRole" FROM "ClubMember" WHERE "clubId" = $1 ORDER BY "createdAt" DESC', [id]);
+=======
+        const membersResult = await db.query('SELECT id, name, image, description, "isBoard", "boardRole", position FROM "ClubMember" WHERE "clubId" = $1 ORDER BY position ASC, "createdAt" DESC', [id]);
+>>>>>>> 7829d1f (feat: member reordering engine v4.8.3)
 
         const club = clubResult.rows[0];
         if (!club) return res.status(404).json({ error: 'Club not found' });
@@ -303,7 +307,8 @@ export const batchUpsertMembers = async (req, res) => {
                         image: m.image || null,
                         description: m.description || null,
                         isBoard: !!m.isBoard,
-                        boardRole: m.boardRole || null
+                        boardRole: m.boardRole || null,
+                        position: m.position || 0
                     }))
                 })
             ] : [])

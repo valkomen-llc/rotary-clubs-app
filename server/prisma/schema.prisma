@@ -270,6 +270,7 @@ model ClubMember {
   isBoard     Boolean  @default(false)
   boardRole   String?
   clubId      String
+  position    Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)

@@ -1,7 +1,11 @@
 {
   "name": "my-app",
   "private": true,
+<<<<<<< HEAD
   "version": "4.8.2",
+=======
+  "version": "4.8.3",
+>>>>>>> 7829d1f (feat: member reordering engine v4.8.3)
   "type": "module",
   "scripts": {
     "dev": "vite",

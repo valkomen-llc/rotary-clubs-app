@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
     Users, Plus, Loader2, Camera, ShieldCheck, Trash2, 
     UserCheck, AlertCircle, Save, UserPlus, Search, 
-    Filter, MoreVertical, X, CheckCircle2
+    Filter, MoreVertical, X, CheckCircle2, ArrowUp, ArrowDown, GripVertical
 } from 'lucide-react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
@@ -18,6 +18,7 @@ interface Member {
     description: string;
     isBoard: boolean;
     boardRole: string;
+    position: number;
 }
 
 const MembersPage: React.FC = () => {
@@ -46,7 +47,8 @@ const MembersPage: React.FC = () => {
                         image: m.image || '', 
                         description: m.description || '',
                         isBoard: m.isBoard || false, 
-                        boardRole: m.boardRole || ''
+                        boardRole: m.boardRole || '',
+                        position: m.position || 0
                     })));
                 }
             })
@@ -61,7 +63,8 @@ const MembersPage: React.FC = () => {
             image: '', 
             description: '', 
             isBoard: false, 
-            boardRole: ''
+            boardRole: '',
+            position: members.length > 0 ? members[0].position - 1 : 0
         };
         setMembers(prev => [newMember, ...prev]);
         toast.info('Nuevo socio añadido al inicio de la lista');
@@ -73,6 +76,42 @@ const MembersPage: React.FC = () => {
             next[index] = { ...next[index], [field]: value };
             return next;
         });
+    };
+
+    const moveMember = (index: number, direction: 'up' | 'down') => {
+        setMembers(prev => {
+            const next = [...prev];
+            const targetIndex = direction === 'up' ? index - 1 : index + 1;
+            if (targetIndex < 0 || targetIndex >= next.length) return prev;
+            
+            // Swap
+            const [moved] = next.splice(index, 1);
+            next.splice(targetIndex, 0, moved);
+            return next;
+        });
+    };
+
+    const handleDragStart = (e: React.DragEvent, index: number) => {
+        e.dataTransfer.setData('draggedIndex', index.toString());
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+        e.preventDefault();
+        const draggedIndex = parseInt(e.dataTransfer.getData('draggedIndex'));
+        if (draggedIndex === targetIndex) return;
+
+        setMembers(prev => {
+            const next = [...prev];
+            const [moved] = next.splice(draggedIndex, 1);
+            next.splice(targetIndex, 0, moved);
+            return next;
+        });
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
     };
 
     const removeMember = (index: number) => {
@@ -105,7 +144,10 @@ const MembersPage: React.FC = () => {
 
     const saveMembers = async () => {
         if (!clubId) return;
-        const validMembers = members.filter(m => m.name.trim() !== '');
+        
+        // Update positions based on current array order before saving
+        const membersToSave = members.map((m, i) => ({ ...m, position: i }));
+        const validMembers = membersToSave.filter(m => m.name.trim() !== '');
         
         if (validMembers.length === 0 && members.length > 0) {
             toast.warning('Debes asignar al menos un nombre para guardar');
@@ -258,7 +300,13 @@ const MembersPage: React.FC = () => {
                                     index={originalIndex}
                                     onUpdate={updateMember}
                                     onRemove={removeMember}
+                                    onMove={moveMember}
                                     onImageUpload={handleImageUpload}
+                                    isFirst={originalIndex === 0}
+                                    isLast={originalIndex === members.length - 1}
+                                    onDragStart={(e) => handleDragStart(e, originalIndex)}
+                                    onDragOver={handleDragOver}
+                                    onDrop={(e) => handleDrop(e, originalIndex)}
                                 />
                             );
                         })}
@@ -275,8 +323,14 @@ const MemberCard: React.FC<{
     index: number;
     onUpdate: (i: number, field: keyof Member, value: any) => void;
     onRemove: (i: number) => void;
+    onMove: (i: number, dir: 'up' | 'down') => void;
     onImageUpload: (i: number, file: File) => void;
-}> = ({ member, index, onUpdate, onRemove, onImageUpload }) => {
+    isFirst: boolean;
+    isLast: boolean;
+    onDragStart: (e: React.DragEvent) => void;
+    onDragOver: (e: React.DragEvent) => void;
+    onDrop: (e: React.DragEvent) => void;
+}> = ({ member, index, onUpdate, onRemove, onMove, onImageUpload, isFirst, isLast, onDragStart, onDragOver, onDrop }) => {
     const fileRef = useRef<HTMLInputElement>(null);
     const [isHovered, setIsHovered] = useState(false);
 
@@ -284,11 +338,19 @@ const MemberCard: React.FC<{
         <div 
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
-            className={`group bg-white rounded-[2rem] border transition-all duration-300 p-6 flex flex-col gap-5 ${isHovered ? 'border-sky-200 shadow-xl shadow-sky-500/5 -translate-y-1' : 'border-gray-100 shadow-sm'}`}>
+            draggable
+            onDragStart={onDragStart}
+            onDragOver={onDragOver}
+            onDrop={onDrop}
+            className={`group bg-white rounded-[2rem] border transition-all duration-300 p-6 flex flex-col gap-5 ${isHovered ? 'border-sky-200 shadow-xl shadow-sky-500/5 -translate-y-1' : 'border-gray-100 shadow-sm'} cursor-default active:cursor-grabbing`}>
             
             <div className="flex items-start justify-between">
                 {/* Profile Image with Camera Overlay */}
-                <div className="relative">
+                <div className="flex items-center gap-4">
+                    <div className="cursor-grab active:cursor-grabbing p-1 -ml-2 text-gray-300 hover:text-sky-400 transition-colors opacity-0 group-hover:opacity-100">
+                        <GripVertical className="w-5 h-5" />
+                    </div>
+                    <div className="relative">
                     <div onClick={() => fileRef.current?.click()}
                         className={`w-20 h-20 rounded-2xl border-2 overflow-hidden cursor-pointer transition-all ${member.image ? 'border-sky-100' : 'border-dashed border-gray-200 bg-gray-50'}`}>
                         {member.image ? (
@@ -311,12 +373,24 @@ const MemberCard: React.FC<{
 
                 {/* Actions Menu */}
                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {!isFirst && (
+                        <button onClick={() => onMove(index, 'up')}
+                            className="w-8 h-8 rounded-full bg-sky-50 text-sky-600 flex items-center justify-center hover:bg-sky-500 hover:text-white transition-all shadow-sm"
+                            title="Mover arriba">
+                            <ArrowUp className="w-3.5 h-3.5" />
+                        </button>
+                    )}
+                    {!isLast && (
+                        <button onClick={() => onMove(index, 'down')}
+                            className="w-8 h-8 rounded-full bg-sky-50 text-sky-600 flex items-center justify-center hover:bg-sky-500 hover:text-white transition-all shadow-sm"
+                            title="Mover abajo">
+                            <ArrowDown className="w-3.5 h-3.5" />
+                        </button>
+                    )}
                     <button onClick={() => onRemove(index)}
-                        className="w-8 h-8 rounded-full bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all shadow-sm">
+                        className="w-8 h-8 rounded-full bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all shadow-sm"
+                        title="Eliminar">
                         <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button className="w-8 h-8 rounded-full bg-gray-50 text-gray-400 flex items-center justify-center hover:bg-gray-100 transition-all shadow-sm">
-                        <MoreVertical className="w-3.5 h-3.5" />
                     </button>
                 </div>
             </div>

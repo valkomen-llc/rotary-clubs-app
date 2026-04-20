@@ -23,6 +23,16 @@ interface UpdateItem {
 
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.8.3",
+        date: "20 Abril 2026",
+        title: "Member Directory Reordering Engine",
+        type: "feature",
+        changes: [
+            { type: "added", text: "Herramienta de reordenamiento visual (Drag & Drop) para socios del club." },
+            { type: "added", text: "Nueva columna de posición en base de datos para persistencia del orden personalizado." },
+            { type: "changed", text: "Sincronización total del orden del backend con las vistas públicas de Socios y Junta Directiva." }
+        ]
+    },
         version: "v4.8.2",
         date: "19 Abril 2026",
         title: "Global CTA Sync & History Polish",
