@@ -33,6 +33,7 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
             { type: "changed", text: "Sincronización total del orden del backend con las vistas públicas de Socios y Junta Directiva." }
         ]
     },
+    {
         version: "v4.8.2",
         date: "19 Abril 2026",
         title: "Global CTA Sync & History Polish",
