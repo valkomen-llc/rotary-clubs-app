@@ -350,25 +350,27 @@ const MemberCard: React.FC<{
                     <div className="cursor-grab active:cursor-grabbing p-1 -ml-2 text-gray-300 hover:text-sky-400 transition-colors opacity-0 group-hover:opacity-100">
                         <GripVertical className="w-5 h-5" />
                     </div>
+                    
                     <div className="relative">
-                    <div onClick={() => fileRef.current?.click()}
-                        className={`w-20 h-20 rounded-2xl border-2 overflow-hidden cursor-pointer transition-all ${member.image ? 'border-sky-100' : 'border-dashed border-gray-200 bg-gray-50'}`}>
-                        {member.image ? (
-                            <img src={member.image} alt={member.name} className="w-full h-full object-cover" />
-                        ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 px-2">
-                                <Camera className="w-5 h-5 text-gray-300" />
-                                <span className="text-[9px] font-black text-gray-400 uppercase text-center leading-tight">Subir Foto</span>
+                        <div onClick={() => fileRef.current?.click()}
+                            className={`w-20 h-20 rounded-2xl border-2 overflow-hidden cursor-pointer transition-all ${member.image ? 'border-sky-100' : 'border-dashed border-gray-200 bg-gray-50'}`}>
+                            {member.image ? (
+                                <img src={member.image} alt={member.name} className="w-full h-full object-cover" />
+                            ) : (
+                                <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 px-2">
+                                    <Camera className="w-5 h-5 text-gray-300" />
+                                    <span className="text-[9px] font-black text-gray-400 uppercase text-center leading-tight">Subir Foto</span>
+                                </div>
+                            )}
+                            
+                            {/* Hover Overlay */}
+                            <div className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity rounded-2xl ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
+                                <Camera className="w-6 h-6 text-white" />
                             </div>
-                        )}
-                        
-                        {/* Hover Overlay */}
-                        <div className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity rounded-2xl ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
-                            <Camera className="w-6 h-6 text-white" />
                         </div>
+                        <input ref={fileRef} type="file" accept="image/*" className="hidden"
+                            onChange={e => e.target.files?.[0] && onImageUpload(index, e.target.files[0])} />
                     </div>
-                    <input ref={fileRef} type="file" accept="image/*" className="hidden"
-                        onChange={e => e.target.files?.[0] && onImageUpload(index, e.target.files[0])} />
                 </div>
 
                 {/* Actions Menu */}
