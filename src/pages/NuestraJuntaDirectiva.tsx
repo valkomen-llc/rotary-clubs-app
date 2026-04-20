@@ -89,25 +89,24 @@ const NuestraJuntaDirectiva = () => {
                     alt={miembro.nombre}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
                   />
-                  {/* Floating Badge overlay for Cargo */}
-                  <div className="absolute top-4 right-4 z-20">
-                    <div className="bg-white/95 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-lg border border-gray-100 flex items-center gap-1.5">
-                      <Award className="w-4 h-4 text-rotary-gold" />
-                      <span className="text-rotary-blue font-bold text-xs uppercase tracking-wider">
-                        {miembro.cargo}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
                 {/* Content Section */}
                 <div className="p-6 md:p-8 flex flex-col flex-grow text-center bg-white">
                   <h3 className="text-xl font-bold text-gray-900 mb-2">
                     {miembro.nombre}
                   </h3>
-                  <p className="text-gray-500 font-medium text-sm md:text-base leading-relaxed">
+                  <p className="text-gray-500 font-medium text-sm md:text-base leading-relaxed mb-4">
                     {miembro.profesion}
                   </p>
+                  
+                  {/* Cargo Badge placed below profession */}
+                  <div className="mt-auto flex justify-center">
+                    <div className="bg-sky-50 px-4 py-1.5 rounded-full border border-sky-100 flex items-center gap-2">
+                      <Award className="w-3.5 h-3.5 text-rotary-blue" />
+                      <span className="text-rotary-blue font-black text-[10px] uppercase tracking-widest">
+                        {miembro.cargo}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
