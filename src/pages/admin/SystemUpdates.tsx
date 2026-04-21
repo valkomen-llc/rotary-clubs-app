@@ -24,6 +24,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.5",
+        date: "21 Abril 2026",
+        title: "Arquitectura: Estabilidad Crítica",
+        type: "maintenance",
+        changes: [
+            { type: "changed", text: "Migración completa del motor de guardado de noticias de SQL crudo a Prisma para máxima fiabilidad." },
+            { type: "fixed", text: "Corregido error que dejaba el botón de guardado en estado infinito (Guardando...)." },
+            { type: "added", text: "Mejora en los mensajes de error del panel administrativo para diagnosticar fallos de red." }
+        ]
+    },
+    {
         version: "v4.11.4",
         date: "21 Abril 2026",
         title: "Motor de IA: Precisión SEO",

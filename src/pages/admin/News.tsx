@@ -417,9 +417,12 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 toast.success(editingPost ? 'Noticia actualizada' : 'Noticia creada');
                 setIsModalOpen(false);
                 fetchPosts();
+            } else {
+                const errorData = await response.json();
+                toast.error(`Error: ${errorData.error || 'No se pudo guardar la noticia'}`);
             }
         } catch (error: any) {
-            toast.error('Error al guardar');
+            toast.error('Error de conexión al guardar');
         } finally {
             setIsSubmitting(false);
         }

@@ -109,28 +109,26 @@ export const createPost = async (req, res) => {
         let targetClubId = req.user.role === 'administrator' ? (clubId || req.user.clubId) : req.user.clubId;
         if (clubId === 'global' && req.user.role === 'administrator') targetClubId = null;
 
-        const result = await db.query(
-            `INSERT INTO "Post" (id, title, slug, content, image, published, "clubId", category, tags, keywords, "seoTitle", "seoDescription", "seoImage", "videoUrl", images, "isAI", "createdAt", "updatedAt")
-             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW()) RETURNING *`,
-            [
-                title || '', 
-                slug || null, 
-                content || '', 
-                image || null, 
-                published || false, 
-                targetClubId, 
-                category || '', 
-                tags || [], 
-                keywords || '', 
-                seoTitle || '', 
-                seoDescription || '', 
-                seoImage || null, 
-                videoUrl || '', 
-                images || [], 
-                isAI || false
-            ]
-        );
-        res.status(201).json(result.rows[0]);
+        const post = await prisma.post.create({
+            data: {
+                title: title || '',
+                slug: slug || undefined,
+                content: content || '',
+                image: image || null,
+                published: published || false,
+                clubId: targetClubId,
+                category: category || '',
+                tags: Array.isArray(tags) ? tags : [],
+                keywords: keywords || '',
+                seoTitle: seoTitle || '',
+                seoDescription: seoDescription || '',
+                seoImage: seoImage || null,
+                videoUrl: videoUrl || '',
+                images: Array.isArray(images) ? images : [],
+                isAI: isAI || false
+            }
+        });
+        res.status(201).json(post);
     } catch (error) {
         console.error('Create Post Error:', error);
         res.status(500).json({ error: 'Error creating post', details: error.message });
@@ -145,35 +143,33 @@ export const updatePost = async (req, res) => {
     } = req.body;
     
     try {
-        const existing = await db.query('SELECT * FROM "Post" WHERE id = $1', [id]);
-        if (!existing.rows[0]) return res.status(404).json({ error: 'Post not found' });
+        const existing = await prisma.post.findUnique({ where: { id } });
+        if (!existing) return res.status(404).json({ error: 'Post not found' });
         
-        if (req.user.role !== 'administrator' && existing.rows[0].clubId !== req.user.clubId) {
+        if (req.user.role !== 'administrator' && existing.clubId !== req.user.clubId) {
             return res.status(403).json({ error: 'Access denied' });
         }
 
-        const result = await db.query(
-            `UPDATE "Post" SET title=$1, slug=$2, content=$3, image=$4, published=$5, category=$6, tags=$7, keywords=$8,
-             "seoTitle"=$9, "seoDescription"=$10, "seoImage"=$11, "videoUrl"=$12, images=$13, "updatedAt"=NOW()
-             WHERE id=$14 RETURNING *`,
-            [
-                title || '', 
-                slug || existing.rows[0].slug, 
-                content || '', 
-                image || null, 
-                published !== undefined ? published : existing.rows[0].published, 
-                category || '', 
-                tags || [], 
-                keywords || '', 
-                seoTitle || '', 
-                seoDescription || '', 
-                seoImage || null, 
-                videoUrl || '', 
-                images || [], 
-                id
-            ]
-        );
-        res.json(result.rows[0]);
+        const post = await prisma.post.update({
+            where: { id },
+            data: {
+                title: title || existing.title,
+                slug: slug || existing.slug,
+                content: content || existing.content,
+                image: image || existing.image,
+                published: published !== undefined ? published : existing.published,
+                category: category || existing.category,
+                tags: Array.isArray(tags) ? tags : existing.tags,
+                keywords: keywords || existing.keywords,
+                seoTitle: seoTitle || existing.seoTitle,
+                seoDescription: seoDescription || existing.seoDescription,
+                seoImage: seoImage || existing.seoImage,
+                videoUrl: videoUrl || existing.videoUrl,
+                images: Array.isArray(images) ? images : existing.images,
+                updatedAt: new Date()
+            }
+        });
+        res.json(post);
     } catch (error) {
         console.error('Update Post Error:', error);
         res.status(500).json({ error: 'Error updating post', details: error.message });
