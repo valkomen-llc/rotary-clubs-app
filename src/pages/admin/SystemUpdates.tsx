@@ -21,8 +21,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-20 18:16
+// Cache bust: 2026-04-20 19:11
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.8.6",
+        date: "20 Abril 2026",
+        title: "News URL Slug Engine",
+        type: "feature",
+        changes: [
+            { type: "added", text: "Implementación de campo 'Slug' personalizado en ajustes SEO de noticias." },
+            { type: "added", text: "Nueva función de generación automática de slug amigable desde el título." },
+            { type: "added", text: "Ruteo dinámico: el blog ahora resuelve artículos tanto por ID como por Slug personalizado." },
+            { type: "changed", text: "Mejora de interfaz SEO: El campo de slug se posicionó junto al título para acceso rápido." }
+        ]
+    },
     {
         version: "v4.8.5",
         date: "20 Abril 2026",
