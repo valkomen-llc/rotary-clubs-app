@@ -836,12 +836,16 @@ router.post('/suggest-social', authMiddleware, async (req, res) => {
     const { title, content } = req.body;
     try {
         const systemPrompt = `Eres un experto estratega de Redes Sociales para Rotary International. 
-        Tu tarea es generar un "Copy" (texto de publicación) impactante para Facebook y LinkedIn basado en una noticia.
-        El tono debe ser inspiracional, comunitario y profesional (Service Above Self). 
-        Usa emojis de forma estratégica. Incluye 3 hashtags relevantes de Rotary (ej. #GenteDeAccion, #Rotary, #Servicio) al final.
+        Tu misión es crear un "Copy" (texto de publicación) para Facebook y LinkedIn que sirva como un puente irresistible hacia el artículo del blog.
+        REGLAS CRÍTICAS: 
+        1. El texto debe estar ESTRICTAMENTE basado en los detalles específicos de la noticia proporcionada (Título y Contenido).
+        2. Debe actuar como un "teaser": resume lo más emocionante pero invita al usuario a leer la historia completa en nuestra web.
+        3. El tono debe ser institucional, inspiracional y profesional (Gente de Acción). 
+        4. Usa emojis de forma estratégica y termina con una invitación clara a leer más.
+        5. Incluye 3 hashtags relevantes al final.
         Responde EXCLUSIVAMENTE con un objeto JSON con la llave: socialCopy.`;
         
-        const userPrompt = `Crea un copy para redes sociales sobre esta noticia rotaria:
+        const userPrompt = `Genera un copy persuasivo que conecte a nuestra audiencia de Facebook/LinkedIn con este artículo:
         Título: ${title}
         Contenido resumido: ${content?.substring(0, 1500)}`;
 
