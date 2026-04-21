@@ -788,6 +788,46 @@ router.post('/suggest', authMiddleware, async (req, res) => {
     }
 });
 
+
+router.post('/suggest-seo', authMiddleware, async (req, res) => {
+    const { title, content } = req.body;
+    if (!process.env.OPENAI_API_KEY) {
+        return res.status(503).json({ error: 'IA no configurada' });
+    }
+    try {
+        const prompt = `Como experto SEO en Rotary, analiza esta noticia:
+        Título: ${title}
+        Contenido: ${content?.substring(0, 600)}
+        
+        Sugiere metadatos optimizados:
+        1. seoTitle (atractivo, máx 60 caracteres)
+        2. seoDescription (resumen sugerente, máx 160 caracteres)
+        3. slug (formato amigable-url-en-minusculas)
+        
+        Responde exclusivamente con el objeto JSON: {"seoTitle": "...", "seoDescription": "...", "slug": "..."}`;
+
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` 
+            },
+            body: JSON.stringify({
+                model: "gpt-3.5-turbo-0125",
+                messages: [{ role: "user", content: prompt }],
+                temperature: 0.7,
+                response_format: { type: "json_object" }
+            })
+        });
+        const data = await response.json();
+        const suggestions = JSON.parse(data.choices[0].message.content);
+        res.json(suggestions);
+    } catch (error) {
+        console.error('Suggest SEO error:', error);
+        res.status(500).json({ error: 'Error al generar sugerencias' });
+    }
+});
+
 // PUBLIC chatbot endpoint — no auth required
 router.post('/chat', async (req, res) => {
     const { message, clubId } = req.body;

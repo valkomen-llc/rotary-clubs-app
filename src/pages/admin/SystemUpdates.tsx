@@ -21,8 +21,19 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-20 19:17
+// Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.8.8",
+        date: "20 Abril 2026",
+        title: "Motor de IA: SEO Autónomo",
+        type: "feature",
+        changes: [
+            { type: "added", text: "Nueva integración de IA para automatizar metadatos SEO (Título, Descripción y Slug)." },
+            { type: "added", text: "Botón 'Redactar con IA' en el editor de noticias para optimización en un clic." },
+            { type: "changed", text: "Despliegue de infraestructura backend para sugerencias contextuales de contenido." }
+        ]
+    },
     {
         version: "v4.8.7",
         date: "20 Abril 2026",

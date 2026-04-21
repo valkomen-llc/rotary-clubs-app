@@ -3,7 +3,7 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Plus, Edit2, Trash2, Search, Newspaper, X, Upload,
     Globe, Image as ImageIcon, Video, Tag, ChevronRight, Crop, ZoomIn, ZoomOut,
-    CheckCircle, Loader2, RotateCw
+    CheckCircle, Loader2, RotateCw, RefreshCw
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import { Area } from 'react-easy-crop';
@@ -40,6 +40,7 @@ const NewsManagement: React.FC = () => {
     const [editingPost, setEditingPost] = useState<Post | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [isGeneratingSlug, setIsGeneratingSlug] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<'content' | 'gallery' | 'seo'>('content');
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -343,6 +344,45 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         } finally {
             setUploading(false);
             setImageToCrop(null);
+        }
+    };
+
+    const handleAISuggestSEO = async () => {
+        if (!formData.title) {
+            toast.error('Primero escribe un título para la noticia');
+            return;
+        }
+        setIsGeneratingSlug(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const apiUrl = import.meta.env.VITE_API_URL || '/api';
+            const response = await fetch(`${apiUrl}/ai/suggest-seo`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ 
+                    title: formData.title,
+                    content: formData.content.replace(/<[^>]*>/g, '').substring(0, 1000)
+                })
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setFormData(prev => ({
+                    ...prev,
+                    seoTitle: data.seoTitle || prev.seoTitle,
+                    seoDescription: data.seoDescription || prev.seoDescription,
+                    slug: data.slug || prev.slug
+                }));
+                toast.success('IA: Sugerencias SEO aplicadas');
+            } else {
+                toast.error('Error al generar sugerencias con IA');
+            }
+        } catch (err) {
+            toast.error('Error de conexión con el motor de IA');
+        } finally {
+            setIsGeneratingSlug(false);
         }
     };
 
@@ -840,6 +880,15 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                 <h4 className="font-bold text-gray-800">Optimización SEO</h4>
                                                 <p className="text-xs text-gray-500 font-medium">Maximiza el alcance de esta noticia en Google y otros buscadores.</p>
                                             </div>
+                                            <button
+                                                type="button"
+                                                onClick={handleAISuggestSEO}
+                                                disabled={isGeneratingSlug || !formData.title}
+                                                className="flex items-center gap-2 px-4 py-2 bg-rotary-blue text-white rounded-xl text-xs font-bold hover:bg-rotary-blue/90 transition-all shadow-sm disabled:opacity-50"
+                                            >
+                                                <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingSlug ? 'animate-spin' : ''}`} />
+                                                {isGeneratingSlug ? 'Generando...' : 'Redactar con IA'}
+                                            </button>
                                         </div>
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
