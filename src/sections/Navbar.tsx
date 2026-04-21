@@ -303,7 +303,7 @@ const Navbar = () => {
                     <button
                       key={l.code}
                       onClick={() => { setLang(l.code); setLanguageOpen(false); }}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-sky-50 transition-colors ${currentLanguage.code === l.code ? 'text-rotary-blue font-medium' : 'text-gray-700'}`}
+                      className={`w-full flex items-center gap-2.5 px-4 py-1.5 text-sm hover:bg-sky-50 transition-colors ${currentLanguage.code === l.code ? 'text-rotary-blue font-medium' : 'text-gray-700'}`}
                     >
                       <span className="text-lg">{l.flag}</span>
                       <span>{l.name}</span>

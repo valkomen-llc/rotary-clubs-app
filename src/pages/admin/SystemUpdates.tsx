@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.40",
+        date: "21 de Abril, 2026",
+        title: "UI: Refinamiento de Selector de Idiomas",
+        description: "Reducción de interlineado y paddings en el menú de idiomas para una estética más compacta.",
+        type: "update",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "improved", text: "Navbar: Ajustado el padding vertical (py-1.5) y gaps en el selector de idiomas." }
+        ]
+    },
+    {
         version: "v4.11.39",
         date: "21 de Abril, 2026",
         title: "Layout: Estandarización LATIR",
