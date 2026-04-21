@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.31",
+        date: "21 de Abril, 2026",
+        title: "Diseño: Spacing & Tipografía",
+        description: "Ajuste de márgenes de contenido (40px) y suavizado de pesos tipográficos en los títulos del footer.",
+        type: "update",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "improved", text: "Layout: Implementado margen vertical de 40px (py-10) en la sección principal del footer." },
+            { type: "changed", text: "Typography: Removido el peso 'font-black' de los títulos de columna para una estética más limpia." }
+        ]
+    },
+    {
         version: "v4.11.30",
         date: "21 de Abril, 2026",
         title: "Imagen: Branding & Spacing",

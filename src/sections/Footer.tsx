@@ -112,7 +112,7 @@ const Footer = () => {
 
     return (
         <footer className="text-white w-full border-t border-white/5" style={{ backgroundColor: '#013E7D', background: '#013E7D' }}>
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
                     {/* Logo & End Polio */}
                     <div className="space-y-8">
@@ -162,7 +162,7 @@ const Footer = () => {
 
                     {/* Links de Interés */}
                     <div className="md:pl-6">
-                        <h3 className="font-black text-lg mb-6 tracking-tight flex items-center gap-2">
+                        <h3 className="font-medium text-lg mb-6 tracking-tight flex items-center gap-2">
                              <div className="w-1 h-5 bg-yellow-500 rounded-full" />
                              {activeConfig.menu1Title}
                         </h3>
@@ -185,7 +185,7 @@ const Footer = () => {
 
                     {/* Realiza una Acción / Columna 3 */}
                     <div>
-                        <h3 className="font-black text-lg mb-6 tracking-tight flex items-center gap-2">
+                        <h3 className="font-medium text-lg mb-6 tracking-tight flex items-center gap-2">
                              <div className="w-1 h-5 bg-yellow-500 rounded-full" />
                              {activeConfig.menu2Title}
                         </h3>
@@ -207,7 +207,7 @@ const Footer = () => {
 
                     {/* Newsletter / Columna 4 */}
                     <div>
-                        <h3 className="font-black text-lg mb-6 tracking-tight">Newsletter</h3>
+                        <h3 className="font-medium text-lg mb-6 tracking-tight">Newsletter</h3>
                         <p className="text-white/50 text-xs mb-4 leading-relaxed">Suscríbete para recibir noticias y actualizaciones de nuestra comunidad.</p>
                         <div className="flex gap-2">
                             <Input
