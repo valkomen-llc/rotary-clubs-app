@@ -24,6 +24,16 @@ interface UpdateItem {
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.8",
+        date: "21 Abril 2026",
+        title: "Arquitectura: Auto-Heal Gen-2",
+        type: "maintenance",
+        changes: [
+            { type: "changed", text: "Ampliación de la lógica auto-curativa para cubrir consultas iniciales de Prisma (findUnique)." },
+            { type: "fixed", text: "Parcheo preventivo del esquema de base de datos incluso antes del guardado." }
+        ]
+    },
+    {
         version: "v4.11.7",
         date: "21 Abril 2026",
         title: "Arquitectura: Sistema Auto-Curativo",
