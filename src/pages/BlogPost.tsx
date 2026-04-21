@@ -4,7 +4,7 @@ import { useClub } from '../contexts/ClubContext';
 import { 
   Calendar, User, Clock, ArrowLeft, Share2, Facebook, Twitter, 
   Linkedin, Tag, ChevronRight, Star, Send, CheckCircle, MessageSquare,
-  Maximize2, X as CloseIcon, Play, Video as VideoIcon
+  Maximize2, X as CloseIcon, Play, Video as VideoIcon, ChevronLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Navbar from '../sections/Navbar';
@@ -682,7 +682,7 @@ const BlogPost = () => {
   const [error, setError] = useState(false);
 
   // Lightbox
-  const [selectedMedia, setSelectedMedia] = useState<{ url: string, type: 'image' | 'video' } | null>(null);
+  const [selectedMediaIndex, setSelectedMediaIndex] = useState<number | null>(null);
 
   // Comentarios
   const [comments, setComments] = useState<Comment[]>([]);
@@ -800,6 +800,36 @@ const BlogPost = () => {
     }
     window.scrollTo(0, 0);
   }, [id, club.id]);
+
+  const allMedia = articulo ? [
+    ...(articulo.videoGallery || []).map((v: string) => ({ url: v, type: 'video' })),
+    ...(articulo.images || []).map((i: string) => ({ url: i, type: 'image' }))
+  ] : [];
+
+  const handleNextMedia = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (selectedMediaIndex !== null && allMedia.length > 0) {
+      setSelectedMediaIndex((selectedMediaIndex + 1) % allMedia.length);
+    }
+  };
+
+  const handlePrevMedia = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (selectedMediaIndex !== null && allMedia.length > 0) {
+      setSelectedMediaIndex((selectedMediaIndex - 1 + allMedia.length) % allMedia.length);
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (selectedMediaIndex === null) return;
+      if (e.key === 'ArrowRight') handleNextMedia();
+      if (e.key === 'ArrowLeft') handlePrevMedia();
+      if (e.key === 'Escape') setSelectedMediaIndex(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedMediaIndex]);
 
   if (isLoading) {
     return (
@@ -920,10 +950,7 @@ const BlogPost = () => {
               
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4 auto-rows-[220px]">
                 {/* Mezclar videos e imágenes */}
-                {[
-                  ...(articulo.videoGallery || []).map((v: string) => ({ url: v, type: 'video' })),
-                  ...(articulo.images || []).map((i: string) => ({ url: i, type: 'image' }))
-                ].map((item: any, index: number) => {
+                {allMedia.map((item: any, index: number) => {
                    // Patrón para que la primera sea grande y ocupe 2x2 en un grid de 3 columnas
                    const isFirstLarge = index === 0;
                    
@@ -935,7 +962,7 @@ const BlogPost = () => {
                        viewport={{ once: true }}
                        transition={{ delay: index * 0.05 }}
                        className={`relative rounded-2xl overflow-hidden shadow-md group cursor-pointer border border-gray-100 ${isFirstLarge ? 'md:col-span-2 md:row-span-2' : 'col-span-1'}`}
-                       onClick={() => setSelectedMedia(item)}
+                       onClick={() => setSelectedMediaIndex(index)}
                      >
                        {item.type === 'video' ? (
                          <div className="w-full h-full bg-gray-900 flex items-center justify-center relative">
@@ -977,41 +1004,66 @@ const BlogPost = () => {
 
           {/* Lightbox Immersivo */}
           <AnimatePresence>
-            {selectedMedia && (
+            {selectedMediaIndex !== null && allMedia[selectedMediaIndex] && (
               <motion.div 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/95 p-4 md:p-10 backdrop-blur-sm"
-                onClick={() => setSelectedMedia(null)}
+                onClick={() => setSelectedMediaIndex(null)}
               >
-                <button 
-                  className="absolute top-6 right-6 text-white hover:text-rotary-gold transition-colors z-[10000]"
-                  onClick={(e) => { e.stopPropagation(); setSelectedMedia(null); }}
-                >
-                  <CloseIcon className="w-10 h-10" />
-                </button>
+                {/* Controles del Lightbox */}
+                <div className="absolute top-6 right-6 flex items-center gap-6 z-[10000]">
+                   <span className="text-white/50 text-xs font-black tracking-[0.2em]">
+                     {selectedMediaIndex + 1} / {allMedia.length}
+                   </span>
+                   <button 
+                     className="text-white hover:text-rotary-gold transition-colors"
+                     onClick={(e) => { e.stopPropagation(); setSelectedMediaIndex(null); }}
+                   >
+                     <CloseIcon className="w-10 h-10" />
+                   </button>
+                </div>
+
+                {/* Botones de Navegación Lateral */}
+                {allMedia.length > 1 && (
+                  <>
+                   <button 
+                     className="absolute left-4 md:left-10 top-1/2 -translate-y-1/2 p-3 bg-white/5 hover:bg-white/10 text-white rounded-full transition-all z-[10000] border border-white/10 group backdrop-blur-md"
+                     onClick={handlePrevMedia}
+                   >
+                     <ChevronLeft className="w-8 h-8 group-hover:-translate-x-1 transition-transform" />
+                   </button>
+                   <button 
+                     className="absolute right-4 md:right-10 top-1/2 -translate-y-1/2 p-3 bg-white/5 hover:bg-white/10 text-white rounded-full transition-all z-[10000] border border-white/10 group backdrop-blur-md"
+                     onClick={handleNextMedia}
+                   >
+                     <ChevronRight className="w-8 h-8 group-hover:translate-x-1 transition-transform" />
+                   </button>
+                  </>
+                )}
 
                 <motion.div 
-                  initial={{ scale: 0.9, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.9, opacity: 0 }}
+                  key={selectedMediaIndex} // Force re-animation on index change
+                  initial={{ scale: 0.9, opacity: 0, x: 20 }}
+                  animate={{ scale: 1, opacity: 1, x: 0 }}
+                  exit={{ scale: 0.9, opacity: 0, x: -20 }}
                   className="max-w-7xl w-full max-h-full flex items-center justify-center relative"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {selectedMedia.type === 'video' ? (
+                  {allMedia[selectedMediaIndex].type === 'video' ? (
                     <div className="w-full aspect-video rounded-2xl overflow-hidden shadow-2xl bg-black">
                       <iframe
                         className="w-full h-full border-none"
-                        src={`https://www.youtube.com/embed/${selectedMedia.url.split('v=')[1]?.split('&')[0] || selectedMedia.url.split('/').pop()}?autoplay=1`}
+                        src={`https://www.youtube.com/embed/${allMedia[selectedMediaIndex].url.split('v=')[1]?.split('&')[0] || allMedia[selectedMediaIndex].url.split('/').pop()}?autoplay=1`}
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                         allowFullScreen
                       ></iframe>
                     </div>
                   ) : (
                     <img 
-                      src={selectedMedia.url} 
-                      className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
+                      src={allMedia[selectedMediaIndex].url} 
+                      className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl select-none"
                       alt="Full view"
                       crossOrigin="anonymous"
                     />

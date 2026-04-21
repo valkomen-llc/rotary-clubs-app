@@ -24,6 +24,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.16",
+        date: "21 Abril 2026",
+        title: "Multimedia: Navegación Immersiva",
+        type: "feature",
+        changes: [
+            { type: "added", text: "Navegación en Visor: Añadidas flechas (Siguiente/Anterior) en el Lightbox para navegar por toda la galería sin salir del modo pantalla completa." },
+            { type: "added", text: "Atajos de Teclado: Ahora puedes usar las flechas del teclado y la tecla ESC para navegar y cerrar la galería." },
+            { type: "improved", text: "Contador de Medios: Se añadió un indicador visual (ej: 1/12) para saber la posición actual dentro de la galería." }
+        ]
+    },
+    {
         version: "v4.11.15",
         date: "21 Abril 2026",
         title: "Multimedia: Refinamiento de Grid y Tipografía",
