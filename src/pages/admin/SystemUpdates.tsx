@@ -14,26 +14,28 @@ interface UpdateItem {
     version: string;
     date: string;
     title: string;
-    type: 'hotfix' | 'feature' | 'update' | 'rollback';
-    changes: Array<{
-    type: 'hotfix' | 'feature' | 'update' | 'rollback' | 'feat' | 'major' | 'maintenance' | 'fix';
     description?: string;
     author?: string;
+    type: 'hotfix' | 'feature' | 'update' | 'rollback' | 'feat' | 'major' | 'maintenance' | 'fix';
     changes?: Array<{
         type: 'added' | 'fixed' | 'changed' | 'removed' | 'rollback' | 'improved';
         text: string;
     }>;
 }
 
-// Cache bust: 2026-04-20 19:25
+// Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
         version: "v4.11.20",
         date: "21 de Abril, 2026",
         title: "Gestor Global de Footers & 4 Skins Institucionales",
-        description: "Implementación del centro de mando para footers multitenant. Ahora el súper-administrador puede configurar globalmente los logos y menús para Clubes, Distritos, Asociaciones y Colrotarios. Inyección dinámica en el frontend con persistencia en el motor de skins.",
+        description: "Implementación del centro de mando para footers multitenant. Ahora el súper-administrador puede configurar globalmente los logos y menús para Clubes, Distritos, Asociaciones y Colrotarios.",
         type: "feat",
-        author: "Antigravity Engineering"
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "added", text: "Interfaz 'Sistema Footer': Nuevo centro de mando para configurar arquitecturas globales." },
+            { type: "added", text: "Soporte Colrotarios: Añadido el perfil específico para la Fundación Rotaria Colombiana." }
+        ]
     },
     {
         version: "v4.11.19",
@@ -43,6 +45,7 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
         changes: [
             { type: "added", text: "Motor de Skins: Formalizada la selección de arquitectura visual ('Skins') para diferenciar Clubes, Distritos y Asociaciones." },
             { type: "improved", text: "Interfaz Super-Admin: Optimizada la configuración de sitios para permitir la elección explícita de la piel arquitectónica." },
+            { type: "changed", text: "Refactorización de Footer: Eliminación de referencias estáticas en favor de inyección de datos multitenant." },
             { type: "improved", text: "Consistencia de Footer: Ahora los labels se adaptan ('El Club', 'El Distrito', 'Nuestra Red') garantizando una identidad institucional coherente." }
         ]
     },
