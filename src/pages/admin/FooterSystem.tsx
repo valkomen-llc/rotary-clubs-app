@@ -28,19 +28,52 @@ const FooterSystem = () => {
     }, []);
 
     const fetchSkins = async () => {
+        setIsLoading(true);
         try {
-            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/system/footer-skins`, {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('rotary_token')}` }
+            const apiBase = import.meta.env.VITE_API_URL || '/api';
+            const response = await fetch(`${apiBase}/system/footer-skins`, {
+                headers: { 
+                    'Authorization': `Bearer ${localStorage.getItem('rotary_token')}`,
+                    'Accept': 'application/json'
+                }
             });
+            
             if (response.ok) {
                 const data = await response.json();
                 setSkins(data);
+            } else {
+                const err = await response.json().catch(() => ({}));
+                toast.error(`Error ${response.status}: ${err.error || 'No se pudo cargar la configuración'}`);
+                // Use defaults if fetch fails
+                setSkins({
+                    club: getDefaultSkin('club'),
+                    district: getDefaultSkin('district'),
+                    association: getDefaultSkin('association'),
+                    colrotarios: getDefaultSkin('colrotarios')
+                });
             }
         } catch (error) {
-            toast.error('Error al cargar configuraciones');
+            console.error('Fetch error:', error);
+            toast.error('Error de conexión con el servidor');
         } finally {
             setIsLoading(false);
         }
+    };
+
+    const getDefaultSkin = (type: string) => {
+        const baseMenu2 = [
+            { label: 'Aporte Voluntario', href: '#/maneras-de-contribuir' },
+            { label: 'Comunícate con nosotros', href: '#/contacto' },
+            { label: 'Rotary.org', href: 'https://rotary.org', external: true }
+        ];
+        return {
+            logoTop: "https://app.clubplatform.org/rotary-logo-white.png",
+            logoBottom: "https://app.clubplatform.org/logo-end-polio.svg",
+            menu1Title: "Navegación",
+            menu1Items: [{ label: 'Inicio', href: '/' }],
+            menu2Title: "Acciones",
+            menu2Items: baseMenu2
+        };
     };
 
     const handleSave = async () => {

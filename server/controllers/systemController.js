@@ -1,5 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
+import db from '../lib/db.js';
 
 export const getFooterSkins = async (req, res) => {
     try {
@@ -7,9 +6,11 @@ export const getFooterSkins = async (req, res) => {
         const results = {};
 
         for (const type of skins) {
-            const setting = await prisma.setting.findFirst({
-                where: { key: `footer_skin_${type}`, clubId: null }
-            });
+            const result = await db.query(
+                'SELECT value FROM "Setting" WHERE key = $1 AND "clubId" IS NULL LIMIT 1',
+                [`footer_skin_${type}`]
+            );
+            const setting = result.rows[0];
             results[type] = setting ? JSON.parse(setting.value) : getDefaultSkin(type);
         }
 
@@ -25,20 +26,15 @@ export const updateFooterSkin = async (req, res) => {
     const { config } = req.body;
 
     try {
-        await prisma.setting.upsert({
-            where: {
-                key_clubId: {
-                    key: `footer_skin_${type}`,
-                    clubId: null
-                }
-            },
-            update: { value: JSON.stringify(config) },
-            create: {
-                key: `footer_skin_${type}`,
-                value: JSON.stringify(config),
-                clubId: null
-            }
-        });
+        const key = `footer_skin_${type}`;
+        const val = JSON.stringify(config);
+        
+        await db.query(`
+            INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt")
+            VALUES (gen_random_uuid(), $1, $2, NULL, NOW())
+            ON CONFLICT (key) WHERE "clubId" IS NULL
+            DO UPDATE SET value = $2, "updatedAt" = NOW()
+        `, [key, val]);
 
         res.json({ message: `Skin ${type} actualizado exitosamente` });
     } catch (error) {
@@ -52,9 +48,11 @@ export const getFooterSkinPublic = async (req, res) => {
         const { type } = req.query;
         if (!type) return res.status(400).json({ error: 'Tipo requerido' });
 
-        const setting = await prisma.setting.findFirst({
-            where: { key: `footer_skin_${type}`, clubId: null }
-        });
+        const result = await db.query(
+            'SELECT value FROM "Setting" WHERE key = $1 AND "clubId" IS NULL LIMIT 1',
+            [`footer_skin_${type}`]
+        );
+        const setting = result.rows[0];
 
         const config = setting ? JSON.parse(setting.value) : getDefaultSkin(type);
         res.json(config);
