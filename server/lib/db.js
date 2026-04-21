@@ -10,9 +10,9 @@ const getPool = async () => {
         _pool = new Pool({
             connectionString: process.env.DATABASE_URL,
             ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false },
-            max: 3,
+            max: 10, // Increased for dashboard concurrency
             idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 10000,
+            connectionTimeoutMillis: 5000, // Fail fast to use defaults
         });
     }
     return _pool;

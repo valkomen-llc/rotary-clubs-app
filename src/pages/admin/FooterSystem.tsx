@@ -18,10 +18,33 @@ interface FooterSkinConfig {
     menu2Items: FooterItem[];
 }
 
+const getDefaultSkin = (type: string): FooterSkinConfig => {
+    const baseMenu2 = [
+        { label: 'Aporte Voluntario', href: '#/maneras-de-contribuir' },
+        { label: 'Comunícate con nosotros', href: '#/contacto' },
+        { label: 'Rotary.org', href: 'https://rotary.org', external: true }
+    ];
+    return {
+        logoTop: "https://app.clubplatform.org/rotary-logo-white.png",
+        logoBottom: "https://app.clubplatform.org/logo-end-polio.svg",
+        menu1Title: "Navegación",
+        menu1Items: [{ label: 'Inicio', href: '/' }],
+        menu2Title: "Acciones",
+        menu2Items: baseMenu2
+    };
+};
+
 const FooterSystem = () => {
+    const initialSkins = {
+        club: getDefaultSkin('club'),
+        district: getDefaultSkin('district'),
+        association: getDefaultSkin('association'),
+        colrotarios: getDefaultSkin('colrotarios')
+    };
+
     const [activeTab, setActiveTab] = useState<'club' | 'district' | 'association' | 'colrotarios'>('club');
-    const [skins, setSkins] = useState<Record<string, FooterSkinConfig>>({});
-    const [isLoading, setIsLoading] = useState(true);
+    const [skins, setSkins] = useState<Record<string, FooterSkinConfig>>(initialSkins);
+    const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
@@ -30,10 +53,8 @@ const FooterSystem = () => {
 
     const fetchSkins = async () => {
         setIsLoading(true);
-        console.log("Iniciando carga de skins...");
-        
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s for slow connections
 
         try {
             const apiBase = import.meta.env.VITE_API_URL || '/api';
@@ -47,55 +68,15 @@ const FooterSystem = () => {
             
             clearTimeout(timeoutId);
 
-            const defaultSkins = {
-                club: getDefaultSkin('club'),
-                district: getDefaultSkin('district'),
-                association: getDefaultSkin('association'),
-                colrotarios: getDefaultSkin('colrotarios')
-            };
-
             if (response.ok) {
                 const data = await response.json();
-                console.log("Skins cargadas:", data);
-                setSkins({ ...defaultSkins, ...data });
-            } else {
-                console.warn("Respuesta no OK:", response.status);
-                toast.error('Error de servidor, cargando predeterminados');
-                setSkins(defaultSkins);
+                setSkins(prev => ({ ...prev, ...data }));
             }
         } catch (error) {
             console.error('Fetch error:', error);
-            const defaultSkins = {
-                club: getDefaultSkin('club'),
-                district: getDefaultSkin('district'),
-                association: getDefaultSkin('association'),
-                colrotarios: getDefaultSkin('colrotarios')
-            };
-            setSkins(defaultSkins);
-            if ((error as any).name === 'AbortError') {
-                toast.error('Tiempo de espera agotado, usando predeterminados');
-            } else {
-                toast.error('Error de conexión, usando predeterminados');
-            }
         } finally {
             setIsLoading(false);
         }
-    };
-
-    const getDefaultSkin = (type: string) => {
-        const baseMenu2 = [
-            { label: 'Aporte Voluntario', href: '#/maneras-de-contribuir' },
-            { label: 'Comunícate con nosotros', href: '#/contacto' },
-            { label: 'Rotary.org', href: 'https://rotary.org', external: true }
-        ];
-        return {
-            logoTop: "https://app.clubplatform.org/rotary-logo-white.png",
-            logoBottom: "https://app.clubplatform.org/logo-end-polio.svg",
-            menu1Title: "Navegación",
-            menu1Items: [{ label: 'Inicio', href: '/' }],
-            menu2Title: "Acciones",
-            menu2Items: baseMenu2
-        };
     };
 
     const handleSave = async () => {
@@ -149,27 +130,22 @@ const FooterSystem = () => {
         updateSkin(menu, currentItems);
     };
 
-    if (isLoading) return (
-        <AdminLayout>
-            <div className="min-h-[60vh] flex items-center justify-center">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 border-4 border-rotary-blue border-t-transparent rounded-full animate-spin" />
-                    <p className="text-gray-500 font-bold animate-pulse">Cargando sistema de footers...</p>
-                </div>
-            </div>
-        </AdminLayout>
-    );
-
     const currentConfig = skins[activeTab] || getDefaultSkin(activeTab);
-
-    if (!currentConfig) return (
-        <AdminLayout>
-            <div className="p-8 text-center text-red-500 font-bold">Error: No se pudo cargar la configuración del skin.</div>
-        </AdminLayout>
-    );
 
     return (
         <AdminLayout>
+            {isLoading && (
+                <div className="fixed top-0 left-0 w-full h-1 bg-rotary-blue overflow-hidden z-[9999]">
+                    <div className="w-full h-full bg-blue-400 animate-progress origin-left" style={{ animation: 'progress 2s infinite linear' }} />
+                </div>
+            )}
+            <style>{`
+                @keyframes progress {
+                    0% { transform: translateX(-100%); }
+                    100% { transform: translateX(100%); }
+                }
+            `}</style>
+            
             <div className="max-w-7xl mx-auto space-y-8">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                     <div>
@@ -189,7 +165,6 @@ const FooterSystem = () => {
                     </button>
                 </div>
 
-                {/* Tabs de Navegación */}
                 <div className="flex flex-wrap gap-2 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200">
                     {[
                         { id: 'club', label: 'Rotary Club', icon: Building2 },
@@ -213,7 +188,6 @@ const FooterSystem = () => {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Visual Settings: Logos */}
                     <div className="lg:col-span-1 space-y-6">
                         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-6">
                             <h3 className="font-black text-gray-800 flex items-center gap-2">
@@ -257,7 +231,6 @@ const FooterSystem = () => {
                         </div>
                     </div>
 
-                    {/* Content Settings: Menus */}
                     <div className="lg:col-span-2 space-y-8">
                         {[
                             { key: 'menu1Items' as const, titleKey: 'menu1Title' as const, icon: LinkIcon, color: 'bg-blue-600' },
@@ -341,7 +314,6 @@ const FooterSystem = () => {
                     </div>
                 </div>
 
-                {/* Preview Section */}
                 <div className="bg-slate-900 p-8 rounded-3xl shadow-2xl relative overflow-hidden">
                     <div className="absolute top-4 right-4 bg-emerald-500 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-lg">Vista Previa Real-Time</div>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-12 opacity-80 pointer-events-none grayscale-[0.2]">
