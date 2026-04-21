@@ -3,21 +3,24 @@ import db from '../lib/db.js';
 export const getFooterSkins = async (req, res) => {
     try {
         const skins = ['club', 'district', 'association', 'colrotarios'];
-        const results = {};
+        const keys = skins.map(s => `footer_skin_${s}`);
+        
+        const result = await db.query(
+            'SELECT key, value FROM "Setting" WHERE key = ANY($1) AND "clubId" IS NULL',
+            [keys]
+        );
 
-        for (const type of skins) {
-            const result = await db.query(
-                'SELECT value FROM "Setting" WHERE key = $1 AND "clubId" IS NULL LIMIT 1',
-                [`footer_skin_${type}`]
-            );
-            const setting = result.rows[0];
-            results[type] = setting ? JSON.parse(setting.value) : getDefaultSkin(type);
-        }
+        const results = {};
+        skins.forEach(type => {
+            const key = `footer_skin_${type}`;
+            const row = result.rows.find(r => r.key === key);
+            results[type] = row ? JSON.parse(row.value) : getDefaultSkin(type);
+        });
 
         res.json(results);
     } catch (error) {
-        console.error('Error fetching footer skins:', error);
-        res.status(500).json({ error: 'Error fetching footer skins' });
+        console.error('Fatal error fetching footer skins:', error);
+        res.status(500).json({ error: 'Error sistémico de carga' });
     }
 };
 

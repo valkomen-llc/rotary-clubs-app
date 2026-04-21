@@ -29,15 +29,23 @@ const FooterSystem = () => {
 
     const fetchSkins = async () => {
         setIsLoading(true);
+        console.log("Iniciando carga de skins...");
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+
         try {
             const apiBase = import.meta.env.VITE_API_URL || '/api';
             const response = await fetch(`${apiBase}/system/footer-skins`, {
+                signal: controller.signal,
                 headers: { 
                     'Authorization': `Bearer ${localStorage.getItem('rotary_token')}`,
                     'Accept': 'application/json'
                 }
             });
             
+            clearTimeout(timeoutId);
+
             const defaultSkins = {
                 club: getDefaultSkin('club'),
                 district: getDefaultSkin('district'),
@@ -47,19 +55,27 @@ const FooterSystem = () => {
 
             if (response.ok) {
                 const data = await response.json();
+                console.log("Skins cargadas:", data);
                 setSkins({ ...defaultSkins, ...data });
             } else {
-                toast.error('Error al cargar del servidor, usando valores predeterminados');
+                console.warn("Respuesta no OK:", response.status);
+                toast.error('Error de servidor, cargando predeterminados');
                 setSkins(defaultSkins);
             }
         } catch (error) {
             console.error('Fetch error:', error);
-            setSkins({
+            const defaultSkins = {
                 club: getDefaultSkin('club'),
                 district: getDefaultSkin('district'),
                 association: getDefaultSkin('association'),
                 colrotarios: getDefaultSkin('colrotarios')
-            });
+            };
+            setSkins(defaultSkins);
+            if ((error as any).name === 'AbortError') {
+                toast.error('Tiempo de espera agotado, usando predeterminados');
+            } else {
+                toast.error('Error de conexión, usando predeterminados');
+            }
         } finally {
             setIsLoading(false);
         }
