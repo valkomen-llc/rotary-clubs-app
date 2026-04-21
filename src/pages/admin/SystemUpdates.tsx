@@ -24,6 +24,16 @@ interface UpdateItem {
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.2",
+        date: "21 Abril 2026",
+        title: "Estabilidad: Persistencia SEO",
+        type: "hotfix",
+        changes: [
+            { type: "fixed", text: "Blindaje del backend para asegurar el guardado de noticias incluso con campos SEO incompletos." },
+            { type: "changed", text: "Mejora en la robustez de las consultas raw de base de datos para evitar errores de red." }
+        ]
+    },
+    {
         version: "v4.11.1",
         date: "21 Abril 2026",
         title: "Motor de IA: Hotfix SEO",

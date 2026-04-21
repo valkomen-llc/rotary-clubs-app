@@ -100,7 +100,11 @@ export const getClubPosts = async (req, res) => {
 };
 
 export const createPost = async (req, res) => {
-    const { title, slug, content, image, published, clubId, category, tags, keywords, seoTitle, seoDescription, seoImage, videoUrl, images, isAI } = req.body;
+    const { 
+        title, slug, content, image, published, clubId, category, tags, 
+        keywords, seoTitle, seoDescription, seoImage, videoUrl, images, isAI 
+    } = req.body;
+    
     try {
         let targetClubId = req.user.role === 'administrator' ? (clubId || req.user.clubId) : req.user.clubId;
         if (clubId === 'global' && req.user.role === 'administrator') targetClubId = null;
@@ -108,33 +112,71 @@ export const createPost = async (req, res) => {
         const result = await db.query(
             `INSERT INTO "Post" (id, title, slug, content, image, published, "clubId", category, tags, keywords, "seoTitle", "seoDescription", "seoImage", "videoUrl", images, "isAI", "createdAt", "updatedAt")
              VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW()) RETURNING *`,
-            [title, slug, content, image, published || false, targetClubId, category, tags || [], keywords, seoTitle, seoDescription, seoImage, videoUrl, images || [], isAI || false]
+            [
+                title || '', 
+                slug || null, 
+                content || '', 
+                image || null, 
+                published || false, 
+                targetClubId, 
+                category || '', 
+                tags || [], 
+                keywords || '', 
+                seoTitle || '', 
+                seoDescription || '', 
+                seoImage || null, 
+                videoUrl || '', 
+                images || [], 
+                isAI || false
+            ]
         );
         res.status(201).json(result.rows[0]);
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Error creating post' });
+        console.error('Create Post Error:', error);
+        res.status(500).json({ error: 'Error creating post', details: error.message });
     }
 };
 
 export const updatePost = async (req, res) => {
     const { id } = req.params;
-    const { title, slug, content, image, published, category, tags, keywords, seoTitle, seoDescription, seoImage, videoUrl, images } = req.body;
+    const { 
+        title, slug, content, image, published, category, tags, 
+        keywords, seoTitle, seoDescription, seoImage, videoUrl, images 
+    } = req.body;
+    
     try {
         const existing = await db.query('SELECT * FROM "Post" WHERE id = $1', [id]);
         if (!existing.rows[0]) return res.status(404).json({ error: 'Post not found' });
+        
         if (req.user.role !== 'administrator' && existing.rows[0].clubId !== req.user.clubId) {
             return res.status(403).json({ error: 'Access denied' });
         }
+
         const result = await db.query(
             `UPDATE "Post" SET title=$1, slug=$2, content=$3, image=$4, published=$5, category=$6, tags=$7, keywords=$8,
              "seoTitle"=$9, "seoDescription"=$10, "seoImage"=$11, "videoUrl"=$12, images=$13, "updatedAt"=NOW()
              WHERE id=$14 RETURNING *`,
-            [title, slug, content, image, published, category, tags, keywords, seoTitle, seoDescription, seoImage, videoUrl, images, id]
+            [
+                title || '', 
+                slug || existing.rows[0].slug, 
+                content || '', 
+                image || null, 
+                published !== undefined ? published : existing.rows[0].published, 
+                category || '', 
+                tags || [], 
+                keywords || '', 
+                seoTitle || '', 
+                seoDescription || '', 
+                seoImage || null, 
+                videoUrl || '', 
+                images || [], 
+                id
+            ]
         );
         res.json(result.rows[0]);
     } catch (error) {
-        res.status(500).json({ error: 'Error updating post' });
+        console.error('Update Post Error:', error);
+        res.status(500).json({ error: 'Error updating post', details: error.message });
     }
 };
 
