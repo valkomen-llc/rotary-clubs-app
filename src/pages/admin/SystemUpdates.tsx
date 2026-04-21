@@ -24,7 +24,7 @@ interface UpdateItem {
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: "v4.8.8",
+        version: "v4.8.9",
         date: "20 Abril 2026",
         title: "Motor de IA: SEO Autónomo",
         type: "feature",

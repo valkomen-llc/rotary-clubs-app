@@ -6,7 +6,7 @@ import {
     CheckCircle, Loader2, RotateCw, RefreshCw
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
-import { Area } from 'react-easy-crop';
+import type { Area } from 'react-easy-crop';
 import { getCroppedImg } from '../../utils/cropImage';
 import { toast } from 'sonner';
 import { useClub } from '../../contexts/ClubContext';
