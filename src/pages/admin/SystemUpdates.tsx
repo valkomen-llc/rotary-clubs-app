@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.29",
+        date: "21 de Abril, 2026",
+        title: "Estética: Preview Fiel y Zero-Cache",
+        description: "Ajuste visual del panel administrativo para coincidir 100% con el sitio público y desactivación de caché para persistencia inmediata.",
+        type: "fix",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "improved", text: "Visual: El fondo de la vista previa ahora usa el Azul Rotary oficial (#013E7D) y estilos de lista realistas." },
+            { type: "fixed", text: "Instantaneidad: Removida la capa de caché en memoria para garantizar que los cambios se reflejen al instante en todo el cluster." }
+        ]
+    },
+    {
         version: "v4.11.28",
         date: "21 de Abril, 2026",
         title: "Infraestructura: Alineación de Pipeline Vercel",

@@ -1,19 +1,8 @@
 import db from '../lib/db.js';
 import crypto from 'crypto';
 
-// Ultra-fast in-memory cache (1 hour)
-let skinsCache = null;
-let lastCacheUpdate = 0;
-const CACHE_TTL = 60 * 60 * 1000; // 1 hour
-
 export const getFooterSkins = async (req, res) => {
     try {
-        const now = Date.now();
-        if (skinsCache && (now - lastCacheUpdate < CACHE_TTL)) {
-            console.log("Serving footer skins from cache");
-            return res.json(skinsCache);
-        }
-
         const skins = ['club', 'district', 'association', 'colrotarios'];
         const result = await db.query(
             "SELECT key, value FROM \"Setting\" WHERE key IN ('footer_skin_club', 'footer_skin_district', 'footer_skin_association', 'footer_skin_colrotarios') AND \"clubId\" IS NULL"
@@ -26,14 +15,10 @@ export const getFooterSkins = async (req, res) => {
             results[type] = row ? JSON.parse(row.value) : getDefaultSkin(type);
         });
 
-        // Update cache
-        skinsCache = results;
-        lastCacheUpdate = now;
-
         res.json(results);
     } catch (error) {
         console.error('Fatal error fetching footer skins:', error);
-        res.status(500).json({ error: 'Error de carga en base de datos', details: error.message });
+        res.status(500).json({ error: 'Error de base de datos', details: error.message });
     }
 };
 
@@ -45,24 +30,18 @@ export const updateFooterSkin = async (req, res) => {
     try {
         const val = JSON.stringify(config);
         
-        // Nuclear approach: Delete then Insert to bypass idiosyncratic Unique Constraint behaviors with NULLs
         await db.query('DELETE FROM "Setting" WHERE key = $1 AND "clubId" IS NULL', [key]);
         await db.query(
             'INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt") VALUES ($1, $2, $3, NULL, NOW())',
             [crypto.randomUUID(), key, val]
         );
 
-        // Invalidate cache
-        skinsCache = null;
-        lastCacheUpdate = 0;
-
-        res.json({ message: `Skin ${type} actualizado exitosamente` });
+        res.json({ message: `Configuración ${type} guardada exitosamente` });
     } catch (error) {
         console.error('Error updating footer skin:', error);
         res.status(500).json({ 
-            error: 'Error de Escritura DB', 
-            details: error.message,
-            code: error.code
+            error: 'Fallo al escribir en base de datos', 
+            details: error.message
         });
     }
 };
@@ -72,27 +51,16 @@ export const getFooterSkinPublic = async (req, res) => {
         const { type } = req.query;
         if (!type) return res.status(400).json({ error: 'Tipo requerido' });
 
-        const now = Date.now();
-        // Use cache if available
-        if (skinsCache && (now - lastCacheUpdate < CACHE_TTL)) {
-            const cached = skinsCache[type];
-            if (cached) return res.json(cached);
-        }
+        const result = await db.query(
+            'SELECT value FROM "Setting" WHERE key = $1 AND "clubId" IS NULL',
+            [`footer_skin_${type}`]
+        );
 
-        // If not in cache or expired, fetch it
-        const setting = await prisma.setting.findFirst({
-            where: {
-                key: `footer_skin_${type}`,
-                clubId: null
-            }
-        });
-
-        const config = setting ? JSON.parse(setting.value) : getDefaultSkin(type);
-        
+        const config = result.rows.length > 0 ? JSON.parse(result.rows[0].value) : getDefaultSkin(type);
         res.json(config);
     } catch (error) {
         console.error('Public footer fetch error:', error);
-        res.status(500).json({ error: 'Error del servidor' });
+        res.status(500).json({ error: 'Error de carga' });
     }
 };
 

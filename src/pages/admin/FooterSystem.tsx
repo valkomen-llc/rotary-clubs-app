@@ -405,38 +405,57 @@ const FooterSystem = () => {
                     </div>
                 </div>
 
-                <div className="bg-slate-900 p-8 rounded-3xl shadow-2xl relative overflow-hidden">
-                    <div className="absolute top-4 right-4 bg-emerald-500 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-lg">Vista Previa Real-Time</div>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-12 opacity-80 pointer-events-none grayscale-[0.2]">
+                <div className="bg-[#013E7D] p-10 rounded-3xl shadow-2xl relative overflow-hidden border border-white/5">
+                    <div className="absolute top-4 right-4 bg-emerald-500/90 text-white text-[10px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest shadow-xl backdrop-blur-sm border border-white/20">
+                        Vista Previa Real-Time
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-12">
+                        <div className="space-y-8">
+                            <div className="bg-white/10 p-4 rounded-xl backdrop-blur-md border border-white/5 inline-block">
+                                <img src={currentConfig.logoTop} className="h-12 object-contain brightness-0 invert" alt="Logo Top" />
+                            </div>
+                            <div className="bg-white/5 p-4 rounded-xl border border-white/5 inline-block">
+                                <img src={currentConfig.logoBottom} className="h-14 object-contain" alt="Logo Bottom" />
+                            </div>
+                        </div>
+                        <div>
+                            <h4 className="text-white font-black text-sm mb-6 uppercase tracking-wider">{currentConfig.menu1Title}</h4>
+                            <ul className="space-y-4">
+                                {currentConfig.menu1Items.slice(0, 5).map((item, i) => (
+                                    <li key={i} className="text-white/60 hover:text-white text-xs font-bold flex items-center gap-2 transition-colors cursor-default">
+                                        <ArrowRight className="w-3.5 h-3.5 text-[#F7B512]" />
+                                        {item.label}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                        <div>
+                            <h4 className="text-white font-black text-sm mb-6 uppercase tracking-wider">{currentConfig.menu2Title}</h4>
+                            <ul className="space-y-4">
+                                {currentConfig.menu2Items.slice(0, 5).map((item, i) => (
+                                    <li key={i} className="text-white/60 hover:text-white text-xs font-bold flex items-center gap-2 transition-colors cursor-default">
+                                        <div className="w-2 h-2 rounded-full bg-[#F7B512] shadow-[0_0_8px_rgba(247,181,18,0.5)]" />
+                                        {item.label}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
                         <div className="space-y-6">
-                            <img src={currentConfig.logoTop} className="h-10 object-contain" alt="Logo Top" />
-                            <img src={currentConfig.logoBottom} className="h-12 object-contain" alt="Logo Bottom" />
-                        </div>
-                        <div>
-                            <h4 className="text-white font-black text-sm mb-6">{currentConfig.menu1Title}</h4>
-                            <ul className="space-y-3">
-                                {currentConfig.menu1Items.slice(0, 4).map((item, i) => (
-                                    <li key={i} className="text-white/40 text-xs font-bold flex items-center gap-2">
-                                        <ArrowRight className="w-3 h-3 text-rotary-blue" />
-                                        {item.label}
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                        <div>
-                            <h4 className="text-white font-black text-sm mb-6">{currentConfig.menu2Title}</h4>
-                            <ul className="space-y-3">
-                                {currentConfig.menu2Items.slice(0, 4).map((item, i) => (
-                                    <li key={i} className="text-white/40 text-xs font-bold flex items-center gap-2">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
-                                        {item.label}
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                        <div className="space-y-4">
-                            <h4 className="text-white font-black text-sm mb-4 tracking-tight">Suscríbete al Newsletter</h4>
-                            <div className="h-10 bg-white/5 border border-white/10 rounded-lg" />
+                            <div>
+                                <h4 className="text-white font-black text-sm mb-4 tracking-tight uppercase tracking-wider">Suscríbete al Newsletter</h4>
+                                <div className="relative">
+                                    <div className="h-11 bg-white/10 border border-white/20 rounded-xl flex items-center px-4">
+                                        <div className="w-full h-2 bg-white/5 rounded-full animate-pulse" />
+                                    </div>
+                                    <div className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-[#F7B512] shadow-lg" />
+                                </div>
+                            </div>
+                            <div className="pt-4 border-t border-white/10">
+                                <p className="text-[10px] text-white/30 font-bold uppercase tracking-tighter">
+                                    © 2026 Rotary International. <br />
+                                    Todos los derechos reservados.
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>
