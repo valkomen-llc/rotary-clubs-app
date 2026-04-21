@@ -24,6 +24,15 @@ interface UpdateItem {
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.1",
+        date: "21 Abril 2026",
+        title: "Motor de IA: Hotfix SEO",
+        type: "hotfix",
+        changes: [
+            { type: "fixed", text: "Corregido prompt del sistema para obligar a la IA a devolver Keywords y Tags." }
+        ]
+    },
+    {
         version: "v4.11.0",
         date: "21 Abril 2026",
         title: "SEO Social: Imagen Independiente",

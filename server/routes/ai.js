@@ -794,7 +794,7 @@ router.post('/suggest-seo', authMiddleware, async (req, res) => {
     
     try {
         const systemPrompt = `Eres un experto en SEO para Rotary. Tu tarea es generar metadatos optimizados para una noticia. 
-        Responde EXCLUSIVAMENTE con un objeto JSON con las llaves: seoTitle, seoDescription, slug.`;
+        Responde EXCLUSIVAMENTE con un objeto JSON con las llaves: seoTitle, seoDescription, slug, keywords, tags.`;
         
         const userPrompt = `Analiza esta noticia y sugiere SEO:
         Título: ${title}
