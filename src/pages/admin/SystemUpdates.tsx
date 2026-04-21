@@ -24,6 +24,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.7",
+        date: "21 Abril 2026",
+        title: "Arquitectura: Sistema Auto-Curativo",
+        type: "maintenance",
+        changes: [
+            { type: "added", text: "Implementación de lógica auto-curativa que detecta columnas faltantes y las crea automáticamente (Auto-Migration)." },
+            { type: "fixed", text: "Resolución definitiva del error 'seoImage does not exist' mediante parcheo en tiempo real." },
+            { type: "changed", text: "Optimización de la comunicación entre Prisma y la base de datos de producción." }
+        ]
+    },
+    {
         version: "v4.11.6",
         date: "21 Abril 2026",
         title: "Diagnóstico: Errores Transparentes",

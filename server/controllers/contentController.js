@@ -109,26 +109,41 @@ export const createPost = async (req, res) => {
         let targetClubId = req.user.role === 'administrator' ? (clubId || req.user.clubId) : req.user.clubId;
         if (clubId === 'global' && req.user.role === 'administrator') targetClubId = null;
 
-        const post = await prisma.post.create({
-            data: {
-                title: title || '',
-                slug: slug || undefined,
-                content: content || '',
-                image: image || null,
-                published: published || false,
-                clubId: targetClubId,
-                category: category || '',
-                tags: Array.isArray(tags) ? tags : [],
-                keywords: keywords || '',
-                seoTitle: seoTitle || '',
-                seoDescription: seoDescription || '',
-                seoImage: seoImage || null,
-                videoUrl: videoUrl || '',
-                images: Array.isArray(images) ? images : [],
-                isAI: isAI || false
+        const executeCreate = async () => {
+            return await prisma.post.create({
+                data: {
+                    title: title || '',
+                    slug: slug || undefined,
+                    content: content || '',
+                    image: image || null,
+                    published: published || false,
+                    clubId: targetClubId,
+                    category: category || '',
+                    tags: Array.isArray(tags) ? tags : [],
+                    keywords: keywords || '',
+                    seoTitle: seoTitle || '',
+                    seoDescription: seoDescription || '',
+                    seoImage: seoImage || null,
+                    videoUrl: videoUrl || '',
+                    images: Array.isArray(images) ? images : [],
+                    isAI: isAI || false
+                }
+            });
+        };
+
+        try {
+            const post = await executeCreate();
+            res.status(201).json(post);
+        } catch (createError) {
+            // Auto-heal: If column seoImage is missing, add it and retry
+            if (createError.message.includes('seoImage') && createError.message.includes('does not exist')) {
+                console.log('Detecting missing seoImage column in create. Attempting auto-migration...');
+                await db.query('ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "seoImage" TEXT;');
+                const retryPost = await executeCreate();
+                return res.status(201).json(retryPost);
             }
-        });
-        res.status(201).json(post);
+            throw createError;
+        }
     } catch (error) {
         console.error('Create Post Error:', error);
         res.status(500).json({ error: 'Error creating post', details: error.message });
@@ -150,26 +165,41 @@ export const updatePost = async (req, res) => {
             return res.status(403).json({ error: 'Access denied' });
         }
 
-        const post = await prisma.post.update({
-            where: { id },
-            data: {
-                title: title || existing.title,
-                slug: slug || existing.slug,
-                content: content || existing.content,
-                image: image || existing.image,
-                published: published !== undefined ? published : existing.published,
-                category: category || existing.category,
-                tags: Array.isArray(tags) ? tags : existing.tags,
-                keywords: keywords || existing.keywords,
-                seoTitle: seoTitle || existing.seoTitle,
-                seoDescription: seoDescription || existing.seoDescription,
-                seoImage: seoImage || existing.seoImage,
-                videoUrl: videoUrl || existing.videoUrl,
-                images: Array.isArray(images) ? images : existing.images,
-                updatedAt: new Date()
+        const executeUpdate = async () => {
+            return await prisma.post.update({
+                where: { id },
+                data: {
+                    title: title || existing.title,
+                    slug: slug || existing.slug,
+                    content: content || existing.content,
+                    image: image || existing.image,
+                    published: published !== undefined ? published : existing.published,
+                    category: category || existing.category,
+                    tags: Array.isArray(tags) ? tags : existing.tags,
+                    keywords: keywords || existing.keywords,
+                    seoTitle: seoTitle || existing.seoTitle,
+                    seoDescription: seoDescription || existing.seoDescription,
+                    seoImage: seoImage || existing.seoImage,
+                    videoUrl: videoUrl || existing.videoUrl,
+                    images: Array.isArray(images) ? images : existing.images,
+                    updatedAt: new Date()
+                }
+            });
+        };
+
+        try {
+            const post = await executeUpdate();
+            res.json(post);
+        } catch (updateError) {
+            // Auto-heal: If column seoImage is missing, add it and retry
+            if (updateError.message.includes('seoImage') && updateError.message.includes('does not exist')) {
+                console.log('Detecting missing seoImage column. Attempting auto-migration...');
+                await db.query('ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "seoImage" TEXT;');
+                const retryPost = await executeUpdate();
+                return res.json(retryPost);
             }
-        });
-        res.json(post);
+            throw updateError;
+        }
     } catch (error) {
         console.error('Update Post Error:', error);
         res.status(500).json({ error: 'Error updating post', details: error.message });
