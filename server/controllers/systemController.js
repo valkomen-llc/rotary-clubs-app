@@ -1,4 +1,4 @@
-import db from '../lib/db.js';
+import prisma from '../lib/prisma.js';
 
 // Ultra-fast in-memory cache (1 hour)
 let skinsCache = null;
@@ -14,15 +14,20 @@ export const getFooterSkins = async (req, res) => {
         }
 
         const skins = ['club', 'district', 'association', 'colrotarios'];
-        const result = await db.query(
-            "SELECT key, value FROM \"Setting\" WHERE key IN ('footer_skin_club', 'footer_skin_district', 'footer_skin_association', 'footer_skin_colrotarios') AND \"clubId\" IS NULL"
-        );
+        const settings = await prisma.setting.findMany({
+            where: {
+                key: {
+                    in: ['footer_skin_club', 'footer_skin_district', 'footer_skin_association', 'footer_skin_colrotarios']
+                },
+                clubId: null
+            }
+        });
 
         const results = {};
         skins.forEach(type => {
             const key = `footer_skin_${type}`;
-            const row = result.rows.find(r => r.key === key);
-            results[type] = row ? JSON.parse(row.value) : getDefaultSkin(type);
+            const setting = settings.find(s => s.key === key);
+            results[type] = setting ? JSON.parse(setting.value) : getDefaultSkin(type);
         });
 
         // Update cache
@@ -39,24 +44,28 @@ export const getFooterSkins = async (req, res) => {
 export const updateFooterSkin = async (req, res) => {
     const { type } = req.params;
     const { config } = req.body;
+    const key = `footer_skin_${type}`;
 
     try {
-        const key = `footer_skin_${type}`;
         const val = JSON.stringify(config);
         
-        // Use a more robust UPSERT for Postgres with NULLable clubId
-        // We first try to update, if 0 rows affected, we insert.
-        const updateResult = await db.query(
-            'UPDATE "Setting" SET value = $1, "updatedAt" = NOW() WHERE key = $2 AND "clubId" IS NULL',
-            [val, key]
-        );
-
-        if (updateResult.rowCount === 0) {
-            await db.query(
-                'INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt") VALUES (gen_random_uuid(), $1, $2, NULL, NOW())',
-                [key, val]
-            );
-        }
+        await prisma.setting.upsert({
+            where: {
+                key_clubId: {
+                    key: key,
+                    clubId: null
+                }
+            },
+            update: {
+                value: val,
+                updatedAt: new Date()
+            },
+            create: {
+                key: key,
+                value: val,
+                clubId: null
+            }
+        });
 
         // Invalidate cache
         skinsCache = null;
@@ -65,7 +74,7 @@ export const updateFooterSkin = async (req, res) => {
         res.json({ message: `Skin ${type} actualizado exitosamente` });
     } catch (error) {
         console.error('Error updating footer skin:', error);
-        res.status(500).json({ error: 'Error updating footer skin' });
+        res.status(500).json({ error: 'Error al actualizar footer', details: error.message });
     }
 };
 
@@ -82,15 +91,15 @@ export const getFooterSkinPublic = async (req, res) => {
         }
 
         // If not in cache or expired, fetch it
-        const result = await db.query(
-            'SELECT value FROM "Setting" WHERE key = $1 AND "clubId" IS NULL LIMIT 1',
-            [`footer_skin_${type}`]
-        );
-        const setting = result.rows[0];
+        const setting = await prisma.setting.findFirst({
+            where: {
+                key: `footer_skin_${type}`,
+                clubId: null
+            }
+        });
+
         const config = setting ? JSON.parse(setting.value) : getDefaultSkin(type);
         
-        // Single type fetch doesn't populate the full cache, but could.
-        // For simplicity, just return it.
         res.json(config);
     } catch (error) {
         console.error('Public footer fetch error:', error);
