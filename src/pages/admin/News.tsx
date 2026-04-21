@@ -996,6 +996,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                 </div>
                                             </div>
                                         </div>
+                                    </div>
                                 )}
                             </form>
                         </div>
