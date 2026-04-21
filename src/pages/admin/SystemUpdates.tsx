@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.39",
+        date: "21 de Abril, 2026",
+        title: "Layout: Estandarización LATIR",
+        description: "Adopción del ancho '7xl' (spacious) de LATIR para todos los clubes y distritos de la plataforma.",
+        type: "update",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "improved", text: "Visual: Unificada la arquitectura de ancho máximo a 7xl para paridad estética total." }
+        ]
+    },
+    {
         version: "v4.11.38",
         date: "21 de Abril, 2026",
         title: "Layout: Contención & Ancho Simétrico",

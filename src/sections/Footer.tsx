@@ -112,7 +112,7 @@ const Footer = () => {
 
     return (
         <footer className="text-white w-full border-t border-white/5" style={{ backgroundColor: '#013E7D', background: '#013E7D' }}>
-            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-[60px]">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-[60px]">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
                     {/* Logo & End Polio */}
                     <div className="space-y-8">
@@ -223,7 +223,7 @@ const Footer = () => {
 
             {/* Bottom Bar */}
             <div className="border-t border-white/5 bg-black/10">
-                <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
                     <div className="flex flex-col md:flex-row items-center justify-between gap-6">
                         <div className="text-white/50 text-[11px] leading-loose no-uppercase text-center md:text-left">
                             © {new Date().getFullYear()} {club.name}. Todos los derechos reservados. <br className="md:hidden" />
