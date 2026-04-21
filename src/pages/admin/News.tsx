@@ -61,7 +61,6 @@ const NewsManagement: React.FC = () => {
     });
 
     const [tagInput, setTagInput] = useState('');
-    const [isGeneratingSlug, setIsGeneratingSlug] = useState(false);
 
     const generateSlug = (text: string) => {
         return text
