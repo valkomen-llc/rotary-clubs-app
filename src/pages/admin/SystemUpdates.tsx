@@ -26,6 +26,19 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.30",
+        date: "21 de Abril, 2026",
+        title: "Imagen: Branding & Spacing",
+        description: "Actualización de la identidad visual 'Powered by Valkomen' y optimización de espacios verticales en el footer.",
+        type: "update",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "changed", text: "Branding: Simplificada la firma institucional a 'Powered by Valkomen'." },
+            { type: "improved", text: "Spacing: Reducido al 50% el margen vertical del copyright para un diseño más compacto." },
+            { type: "improved", text: "Visual: Sincronizado el color de fondo oficial (#013E7D) en el componente público." }
+        ]
+    },
+    {
         version: "v4.11.29",
         date: "21 de Abril, 2026",
         title: "Estética: Preview Fiel y Zero-Cache",
