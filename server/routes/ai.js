@@ -832,6 +832,33 @@ router.post('/suggest-seo', authMiddleware, async (req, res) => {
     }
 });
 
+router.post('/suggest-social', authMiddleware, async (req, res) => {
+    const { title, content } = req.body;
+    try {
+        const systemPrompt = `Eres un experto estratega de Redes Sociales para Rotary International. 
+        Tu tarea es generar un "Copy" (texto de publicación) impactante para Facebook y LinkedIn basado en una noticia.
+        El tono debe ser inspiracional, comunitario y profesional (Service Above Self). 
+        Usa emojis de forma estratégica. Incluye 3 hashtags relevantes de Rotary (ej. #GenteDeAccion, #Rotary, #Servicio) al final.
+        Responde EXCLUSIVAMENTE con un objeto JSON con la llave: socialCopy.`;
+        
+        const userPrompt = `Crea un copy para redes sociales sobre esta noticia rotaria:
+        Título: ${title}
+        Contenido resumido: ${content?.substring(0, 1500)}`;
+
+        const defaultSlug = await getDefaultModel();
+        const rawResponse = await routeToModel(defaultSlug || 'gpt-3.5-turbo', systemPrompt, userPrompt);
+        
+        let cleaned = rawResponse.replace(/```json|```/gi, '').trim();
+        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error('No JSON found in AI response');
+        const result = JSON.parse(jsonMatch[0]);
+        res.json(result);
+    } catch (error) {
+        console.error('Suggest Social error:', error);
+        res.status(500).json({ error: 'Error al generar copy para redes', details: error.message });
+    }
+});
+
 // PUBLIC chatbot endpoint — no auth required
 router.post('/chat', async (req, res) => {
     const { message, clubId } = req.body;

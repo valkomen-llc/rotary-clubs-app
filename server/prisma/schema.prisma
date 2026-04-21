@@ -171,6 +171,7 @@ model Post {
   seoTitle       String?
   seoDescription String?
   seoImage       String?
+  socialCopy     String?
   videoUrl       String?
   images         String[]
   isAI           Boolean  @default(false)

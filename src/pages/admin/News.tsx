@@ -3,7 +3,7 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Plus, Edit2, Trash2, Search, Newspaper, X, Upload,
     Globe, Image as ImageIcon, Video, Tag, ChevronRight, Crop, ZoomIn, ZoomOut,
-    CheckCircle, Loader2, RotateCw, RefreshCw
+    CheckCircle, Loader2, RotateCw, RefreshCw, Facebook, Linkedin, Share2, Sparkles, MessageSquare
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
@@ -28,6 +28,7 @@ interface Post {
     seoTitle?: string;
     seoDescription?: string;
     seoImage?: string;
+    socialCopy?: string;
     videoUrl?: string;
     images?: string[];
     createdAt: string;
@@ -43,7 +44,7 @@ const NewsManagement: React.FC = () => {
     const [uploading, setUploading] = useState(false);
     const [isGeneratingSlug, setIsGeneratingSlug] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeTab, setActiveTab] = useState<'content' | 'gallery' | 'seo'>('content');
+    const [activeTab, setActiveTab] = useState<'content' | 'gallery' | 'seo' | 'social'>('content');
     const [cropTarget, setCropTarget] = useState<'image' | 'seoImage'>('image');
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -239,6 +240,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 seoTitle: post.seoTitle || '',
                 seoDescription: post.seoDescription || '',
                 seoImage: post.seoImage || '',
+                socialCopy: post.socialCopy || '',
                 videoUrl: post.videoUrl || '',
                 images: post.images || [],
             };
@@ -388,6 +390,43 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
             }
         } catch (err) {
             toast.error('Error de conexión con el motor de IA');
+        } finally {
+            setIsGeneratingSlug(false);
+        }
+    };
+
+    const handleAISuggestSocial = async () => {
+        if (!formData.title) {
+            toast.error('Escribe al menos el título para generar el copy');
+            return;
+        }
+
+        setIsGeneratingSlug(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const apiUrl = import.meta.env.VITE_API_URL || '/api';
+            const res = await fetch(`${apiUrl}/ai/suggest-social`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ 
+                    title: formData.title,
+                    content: formData.content.replace(/<[^>]*>?/gm, '')
+                })
+            });
+
+            if (!res.ok) throw new Error('Error al generar copy');
+            const data = await res.json();
+            
+            setFormData(prev => ({
+                ...prev,
+                socialCopy: data.socialCopy || prev.socialCopy
+            }));
+            toast.success('Copy para redes generado');
+        } catch (error) {
+            toast.error('No se pudo generar el copy');
         } finally {
             setIsGeneratingSlug(false);
         }
@@ -695,7 +734,8 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                             {[
                                 { id: 'content', label: 'Contenido', icon: Newspaper },
                                 { id: 'gallery', label: 'Galería & Media', icon: ImageIcon },
-                                { id: 'seo', label: 'SEO & Tráfico', icon: Globe }
+                                { id: 'seo', label: 'SEO & Tráfico', icon: Globe },
+                                { id: 'social', label: 'Redes Sociales', icon: Share2 }
                             ].map(tab => (
                                 <button
                                     key={tab.id}
@@ -902,7 +942,6 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                         </div>
 
                                         <div className="grid grid-cols-1 lg:grid-cols-5 gap-10">
-                                            {/* Columna 1: Campos (60% aprox en LG) */}
                                             <div className="lg:col-span-3 space-y-6">
                                                 <div>
                                                     <label className="block text-sm font-bold text-gray-700 mb-2">Meta Título (SEO)</label>
@@ -985,45 +1024,6 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                     </div>
                                                 </div>
 
-                                                {/* Nueva Opción de Imagen SEO Independiente */}
-                                                <div className="p-4 bg-gray-50 border border-gray-100 rounded-2xl">
-                                                    <div className="flex justify-between items-center mb-3">
-                                                        <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Imagen Social Personalizada (OpenGraph)</label>
-                                                        {formData.seoImage && (
-                                                            <button 
-                                                                type="button" 
-                                                                onClick={() => setFormData({ ...formData, seoImage: '' })}
-                                                                className="text-[9px] text-red-500 font-bold hover:underline"
-                                                            >
-                                                                Restablecer a Portada
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex gap-4 items-center">
-                                                        <div className="w-24 h-16 rounded-xl border border-gray-200 bg-white overflow-hidden relative group">
-                                                            {(formData.seoImage || formData.image) ? (
-                                                                <img src={formData.seoImage || formData.image} alt="SEO Preview" className="w-full h-full object-cover" />
-                                                            ) : (
-                                                                <div className="w-full h-full flex items-center justify-center bg-gray-100"><ImageIcon className="w-6 h-6 text-gray-300" /></div>
-                                                            )}
-                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                                                <Upload className="w-5 h-5 text-white" />
-                                                                <input 
-                                                                    type="file" 
-                                                                    className="absolute inset-0 opacity-0 cursor-pointer" 
-                                                                    onChange={(e) => handleImageUpload(e, false, 'seoImage')} 
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex-1">
-                                                            <p className="text-[10px] text-gray-500 leading-tight">
-                                                                Esta imagen se usará al compartir en Facebook, LinkedIn y WhatsApp. 
-                                                                <span className="block mt-1 font-bold text-rotary-blue">Mínimo sugerido: 1200x630px.</span>
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
                                                 {/* Indicadores de Salud SEO (Character Counters) */}
                                                 <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
                                                     <div className={`p-4 rounded-3xl border transition-all duration-300 ${formData.seoTitle.length > 60 || formData.seoTitle.length === 0 ? 'bg-red-50/50 border-red-100' : 'bg-green-50/50 border-green-100'}`}>
@@ -1079,6 +1079,162 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                         </div>
                                     </div>
                                 )}
+
+                                {activeTab === 'social' && (
+                                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-10 animate-in slide-in-from-right-4 duration-300">
+                                        <div className="lg:col-span-3 space-y-6">
+                                            <div className="p-6 bg-rotary-blue/5 rounded-2xl border border-rotary-blue/10">
+                                                <div className="flex items-center justify-between mb-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-2.5 bg-rotary-blue text-white rounded-xl shadow-lg shadow-rotary-blue/20">
+                                                            <Sparkles className="w-5 h-5" />
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="font-bold text-gray-800 leading-none mb-1">Copy Estratégico</h4>
+                                                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Facebook & LinkedIn</p>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleAISuggestSocial}
+                                                        disabled={isGeneratingSlug || !formData.title}
+                                                        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-rotary-blue rounded-xl text-xs font-bold hover:bg-gray-50 transition-all shadow-sm"
+                                                    >
+                                                        <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingSlug ? 'animate-spin' : ''}`} />
+                                                        {isGeneratingSlug ? 'Redactando...' : 'Generar con IA'}
+                                                    </button>
+                                                </div>
+                                                <textarea
+                                                    value={formData.socialCopy}
+                                                    onChange={(e) => setFormData(prev => ({ ...prev, socialCopy: e.target.value }))}
+                                                    rows={10}
+                                                    className="w-full px-5 py-4 bg-white border border-gray-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-rotary-blue/10 transition-all font-medium text-sm leading-relaxed shadow-inner"
+                                                    placeholder="Escribe el texto que acompañará tu noticia en redes sociales..."
+                                                />
+                                            </div>
+
+                                            <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100">
+                                                <div className="flex justify-between items-center mb-6">
+                                                    <div className="flex items-center gap-2">
+                                                        <ImageIcon className="w-4 h-4 text-rotary-blue" />
+                                                        <h4 className="font-bold text-gray-800">Imagen Social Personalizada</h4>
+                                                    </div>
+                                                    {formData.seoImage && (
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => setFormData({ ...formData, seoImage: '' })}
+                                                            className="text-[10px] text-red-500 font-bold hover:underline"
+                                                        >
+                                                            Restablecer a Portada
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <div className="flex flex-col md:flex-row gap-6 items-center">
+                                                    <div className="w-full md:w-64 aspect-[1.91/1] rounded-2xl border-2 border-dashed border-gray-200 bg-white overflow-hidden relative group transition-all hover:border-rotary-blue/50">
+                                                        {(formData.seoImage || formData.image) ? (
+                                                            <img src={formData.seoImage || formData.image} alt="Social Preview" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                                        ) : (
+                                                            <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 gap-2">
+                                                                <ImageIcon className="w-8 h-8 text-gray-200" />
+                                                                <span className="text-[9px] font-bold text-gray-400 uppercase">Sin Imagen</span>
+                                                            </div>
+                                                        )}
+                                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                            <div className="flex flex-col items-center gap-2">
+                                                                <Upload className="w-6 h-6 text-white" />
+                                                                <span className="text-[10px] font-bold text-white uppercase tracking-widest">Subir Imagen</span>
+                                                            </div>
+                                                            <input 
+                                                                type="file" 
+                                                                className="absolute inset-0 opacity-0 cursor-pointer" 
+                                                                onChange={(e) => handleImageUpload(e, false, 'seoImage')} 
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex-1 space-y-3">
+                                                        <div className="flex items-center gap-2 p-3 bg-white border border-gray-100 rounded-2xl">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-rotary-blue animate-pulse" />
+                                                            <p className="text-[11px] font-bold text-gray-600">Recomendado: 1200x630px para Facebook/LinkdIn.</p>
+                                                        </div>
+                                                        <p className="text-[10px] text-gray-400 leading-relaxed font-medium">
+                                                            Esta imagen es la que se mostrará en la "card" de previsualización al compartir el enlace. No afecta la portada del artículo en tu web.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="lg:col-span-2 space-y-6">
+                                            <div className="sticky top-0 space-y-8">
+                                                <div>
+                                                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                                        <Facebook className="w-4 h-4 text-[#1877F2]" /> Vista Previa Facebook
+                                                    </h4>
+                                                    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                                                        <div className="p-3 flex items-center gap-2 border-b border-gray-50">
+                                                            <div className="w-9 h-9 rounded-full bg-gray-50 p-1.5 border border-gray-100">
+                                                                <img src={club?.logo || ''} className="w-full h-full object-contain" alt="Club Logo" crossOrigin="anonymous" />
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-xs font-bold text-gray-900 leading-none mb-1">{club?.name}</p>
+                                                                <p className="text-[10px] text-gray-500">Publicado ahora mismo · 🌎</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="px-4 py-3">
+                                                            <p className="text-xs text-gray-800 whitespace-pre-wrap leading-relaxed">
+                                                                {formData.socialCopy || <span className="text-gray-300 italic">El copy estratégico aparecerá aquí...</span>}
+                                                            </p>
+                                                        </div>
+                                                        <div className="border-t border-gray-100">
+                                                            <div className="aspect-[1.91/1] bg-gray-50">
+                                                                <img src={formData.seoImage || formData.image || ''} className="w-full h-full object-cover" alt="Preview" crossOrigin="anonymous" />
+                                                            </div>
+                                                            <div className="p-3 bg-[#F0F2F5] border-t border-gray-200">
+                                                                <p className="text-[10px] text-gray-500 uppercase font-bold tracking-tight mb-1">{window.location.hostname}</p>
+                                                                <p className="text-sm font-bold text-gray-900 line-clamp-2 leading-tight">
+                                                                    {formData.seoTitle || formData.title || 'Título de la Noticia'}
+                                                                </p>
+                                                                <p className="text-xs text-gray-500 mt-1 line-clamp-1">
+                                                                    {formData.seoDescription || 'Resumen de la noticia para redes sociales...'}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                                        <Linkedin className="w-4 h-4 text-[#0A66C2]" /> Vista Previa LinkedIn
+                                                    </h4>
+                                                    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm p-4">
+                                                        <div className="flex items-start gap-2 mb-4">
+                                                            <div className="w-12 h-12 rounded bg-gray-50 p-2 border border-gray-100">
+                                                                <img src={club?.logo || ''} className="w-full h-full object-contain" alt="Club Logo" crossOrigin="anonymous" />
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-bold text-gray-900 leading-none mb-1">{club?.name}</p>
+                                                                <p className="text-[11px] text-gray-500">Miembros del club de la plataforma</p>
+                                                                <p className="text-[11px] text-gray-400">1m · 🌐</p>
+                                                            </div>
+                                                        </div>
+                                                        <p className="text-sm text-gray-800 mb-4 whitespace-pre-wrap leading-relaxed">
+                                                            {formData.socialCopy || <span className="text-gray-300 italic">Tu publicación profesional aparecerá aquí...</span>}
+                                                        </p>
+                                                        <div className="rounded-xl border border-gray-200 bg-gray-50 overflow-hidden hover:bg-gray-100 transition-colors">
+                                                            <div className="aspect-[1.91/1] bg-gray-200">
+                                                                <img src={formData.seoImage || formData.image || ''} className="w-full h-full object-cover" alt="LinkedIn Content" crossOrigin="anonymous" />
+                                                            </div>
+                                                            <div className="p-4 bg-white">
+                                                                <p className="text-sm font-bold text-gray-900 line-clamp-2">{formData.seoTitle || formData.title}</p>
+                                                                <p className="text-[11px] text-gray-400 mt-1.5 font-medium">{window.location.hostname} · 3 min de lectura</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </form>
                         </div>
 
@@ -1090,7 +1246,8 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                     <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Paso Actual</span>
                                     <span className="text-xs font-bold text-rotary-blue">
                                         {activeTab === 'content' ? '1. Redacción' :
-                                            activeTab === 'gallery' ? '2. Multimedia' : '3. SEO & Indexación'}
+                                            activeTab === 'gallery' ? '2. Multimedia' : 
+                                            activeTab === 'social' ? '3. Redes Sociales' : '4. SEO & Indexación'}
                                     </span>
                                 </div>
                                 <button

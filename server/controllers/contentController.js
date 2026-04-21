@@ -102,7 +102,7 @@ export const getClubPosts = async (req, res) => {
 export const createPost = async (req, res) => {
     const { 
         title, slug, content, image, published, clubId, category, tags, 
-        keywords, seoTitle, seoDescription, seoImage, videoUrl, images, isAI 
+        keywords, seoTitle, seoDescription, seoImage, socialCopy, videoUrl, images, isAI 
     } = req.body;
     
     const runCreate = async () => {
@@ -123,6 +123,7 @@ export const createPost = async (req, res) => {
                 seoTitle: seoTitle || '',
                 seoDescription: seoDescription || '',
                 seoImage: seoImage || null,
+                socialCopy: socialCopy || '',
                 videoUrl: videoUrl || '',
                 images: Array.isArray(images) ? images : [],
                 isAI: isAI || false
@@ -134,11 +135,12 @@ export const createPost = async (req, res) => {
         const post = await runCreate();
         res.status(201).json(post);
     } catch (error) {
-        // Auto-heal: If column seoImage is missing, add it and retry
-        if (error.message.includes('seoImage') && (error.message.includes('does not exist') || error.message.includes('column'))) {
+        // Auto-heal: If columns are missing, add them and retry
+        if (error.message.includes('seoImage') || error.message.includes('socialCopy')) {
             try {
-                console.log('Auto-migration (Create): Adding missing seoImage column to Post...');
+                console.log('Auto-migration (Create): Patching Post table schema...');
                 await db.query('ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "seoImage" TEXT;');
+                await db.query('ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "socialCopy" TEXT;');
                 const retryPost = await runCreate();
                 return res.status(201).json(retryPost);
             } catch (migrationError) {
@@ -154,7 +156,7 @@ export const updatePost = async (req, res) => {
     const { id } = req.params;
     const { 
         title, slug, content, image, published, category, tags, 
-        keywords, seoTitle, seoDescription, seoImage, videoUrl, images 
+        keywords, seoTitle, seoDescription, seoImage, socialCopy, videoUrl, images 
     } = req.body;
     
     const runUpdate = async () => {
@@ -183,6 +185,7 @@ export const updatePost = async (req, res) => {
                 seoTitle: seoTitle || existing.seoTitle,
                 seoDescription: seoDescription || existing.seoDescription,
                 seoImage: seoImage || existing.seoImage,
+                socialCopy: socialCopy || existing.socialCopy,
                 videoUrl: videoUrl || existing.videoUrl,
                 images: Array.isArray(images) ? images : existing.images,
                 updatedAt: new Date()
@@ -194,11 +197,12 @@ export const updatePost = async (req, res) => {
         const post = await runUpdate();
         if (post) res.json(post);
     } catch (error) {
-        // Auto-heal: If column seoImage is missing, add it and retry
-        if (error.message.includes('seoImage') && (error.message.includes('does not exist') || error.message.includes('column'))) {
+        // Auto-heal: If columns are missing, add them and retry
+        if (error.message.includes('seoImage') || error.message.includes('socialCopy')) {
             try {
-                console.log('Auto-migration: Adding missing seoImage column to Post...');
+                console.log('Auto-migration (Update): Patching Post table schema...');
                 await db.query('ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "seoImage" TEXT;');
+                await db.query('ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "socialCopy" TEXT;');
                 const retryPost = await runUpdate();
                 if (retryPost) return res.json(retryPost);
             } catch (migrationError) {
