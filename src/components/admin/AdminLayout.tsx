@@ -18,6 +18,7 @@ import {
     BookOpen,
     PieChart,
     Layers,
+    Layout,
     UserPlus,
     Store,
     Receipt,
@@ -272,6 +273,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         if (isSuperAdmin) {
             items.push(
                 { icon: Terminal, label: 'Mission Control VIP', path: '/admin/mission-control-vip', category: 'General', keywords: ['agentes', 'mission control', 'gateway', 'vip'] },
+                { icon: Layout, label: 'Sistema Footer', path: '/admin/sistema-footer', category: 'General', keywords: ['footer', 'skin', 'logo', 'pie de pagina'] },
                 { icon: QrCode, label: 'WhatsApp QR Gateway', path: '/admin/whatsapp-qr', category: 'General', keywords: ['whatsapp', 'qr', 'web', 'grupos'] },
                 { icon: ShieldCheck, label: 'System Updates', path: '/admin/system-updates', category: 'General', keywords: ['updates', 'versiones', 'changelog', 'sistema'] },
             );

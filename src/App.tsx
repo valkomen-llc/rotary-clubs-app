@@ -108,6 +108,7 @@ const RotexPage = React.lazy(() => import('./pages/admin/RotexPage'));
 const EventsManagement = React.lazy(() => import('./pages/admin/Events'));
 const WhatsAppQR = React.lazy(() => import('./pages/admin/WhatsAppQR'));
 const SuperAssistantChat = React.lazy(() => import('./pages/admin/SuperAssistantChat'));
+const FooterSystem = React.lazy(() => import('./pages/admin/FooterSystem'));
 import ClubPreview from './pages/ClubPreview';
 import ChatBot from './components/ChatBot';
 import LandingPage from './pages/LandingPage';
@@ -690,6 +691,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <ImageDistribution />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/sistema-footer"
+                  element={
+                    <PrivateRoute>
+                      <FooterSystem />
                     </PrivateRoute>
                   }
                 />

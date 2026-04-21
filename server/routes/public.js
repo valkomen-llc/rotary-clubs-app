@@ -164,4 +164,7 @@ router.post('/district-media', express.json(), async (req, res) => {
     }
 });
 
+import { getFooterSkinPublic } from '../controllers/systemController.js';
+router.get('/footer-skin', getFooterSkinPublic);
+
 export default router;

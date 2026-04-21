@@ -16,13 +16,25 @@ interface UpdateItem {
     title: string;
     type: 'hotfix' | 'feature' | 'update' | 'rollback';
     changes: Array<{
-        type: 'added' | 'fixed' | 'changed' | 'removed' | 'rollback';
+    type: 'hotfix' | 'feature' | 'update' | 'rollback' | 'feat' | 'major' | 'maintenance' | 'fix';
+    description?: string;
+    author?: string;
+    changes?: Array<{
+        type: 'added' | 'fixed' | 'changed' | 'removed' | 'rollback' | 'improved';
         text: string;
     }>;
 }
 
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.11.20",
+        date: "21 de Abril, 2026",
+        title: "Gestor Global de Footers & 4 Skins Institucionales",
+        description: "Implementación del centro de mando para footers multitenant. Ahora el súper-administrador puede configurar globalmente los logos y menús para Clubes, Distritos, Asociaciones y Colrotarios. Inyección dinámica en el frontend con persistencia en el motor de skins.",
+        type: "feat",
+        author: "Antigravity Engineering"
+    },
     {
         version: "v4.11.19",
         date: "21 Abril 2026",
