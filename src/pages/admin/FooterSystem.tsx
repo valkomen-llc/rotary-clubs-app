@@ -38,23 +38,28 @@ const FooterSystem = () => {
                 }
             });
             
+            const defaultSkins = {
+                club: getDefaultSkin('club'),
+                district: getDefaultSkin('district'),
+                association: getDefaultSkin('association'),
+                colrotarios: getDefaultSkin('colrotarios')
+            };
+
             if (response.ok) {
                 const data = await response.json();
-                setSkins(data);
+                setSkins({ ...defaultSkins, ...data });
             } else {
-                const err = await response.json().catch(() => ({}));
-                toast.error(`Error ${response.status}: ${err.error || 'No se pudo cargar la configuración'}`);
-                // Use defaults if fetch fails
-                setSkins({
-                    club: getDefaultSkin('club'),
-                    district: getDefaultSkin('district'),
-                    association: getDefaultSkin('association'),
-                    colrotarios: getDefaultSkin('colrotarios')
-                });
+                toast.error('Error al cargar del servidor, usando valores predeterminados');
+                setSkins(defaultSkins);
             }
         } catch (error) {
             console.error('Fetch error:', error);
-            toast.error('Error de conexión con el servidor');
+            setSkins({
+                club: getDefaultSkin('club'),
+                district: getDefaultSkin('district'),
+                association: getDefaultSkin('association'),
+                colrotarios: getDefaultSkin('colrotarios')
+            });
         } finally {
             setIsLoading(false);
         }
@@ -127,9 +132,18 @@ const FooterSystem = () => {
         updateSkin(menu, currentItems);
     };
 
-    if (isLoading) return <div className="p-8 text-center text-gray-500">Cargando sistema de footers...</div>;
+    if (isLoading) return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-4">
+                <div className="w-12 h-12 border-4 border-rotary-blue border-t-transparent rounded-full animate-spin" />
+                <p className="text-gray-500 font-bold animate-pulse">Cargando sistema de footers...</p>
+            </div>
+        </div>
+    );
 
-    const currentConfig = skins[activeTab];
+    const currentConfig = skins[activeTab] || getDefaultSkin(activeTab);
+
+    if (!currentConfig) return <div className="p-8 text-center text-red-500">Error: No se pudo cargar la configuración del skin.</div>;
 
     return (
         <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
