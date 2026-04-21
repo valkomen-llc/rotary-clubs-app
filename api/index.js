@@ -60,8 +60,15 @@ const getDistricts = async () => _districts || (({ default: _districts } = await
 const getWhatsAppCRM = async () => _whatsappCRM || (({ default: _whatsappCRM } = await import('../server/routes/whatsapp-crm.js')), _whatsappCRM);
 const getPlatformConfig = async () => _platformConfig || (({ default: _platformConfig } = await import('../server/routes/platform-config.js')), _platformConfig);
 
+let _scoutGrants;
+const getScoutGrants = async () => _scoutGrants || (({ default: _scoutGrants } = await import('../server/routes/grants.js')), _scoutGrants);
+
 let _documents;
 const getDocuments = async () => _documents || (({ default: _documents } = await import('../server/routes/documents.js')), _documents);
+
+let _system, _whatsappQr;
+const getSystem = async () => _system || (({ default: _system } = await import('../server/routes/system.js')), _system);
+const getWhatsappQr = async () => _whatsappQr || (({ default: _whatsappQr } = await import('../server/routes/whatsapp-qr.js')), _whatsappQr);
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 app.use('/api/auth', async (req, res, next) => (await getAuth())(req, res, next));
@@ -88,6 +95,14 @@ app.use('/api/platform-config', async (req, res, next) => (await getPlatformConf
 app.use('/api/documents', async (req, res, next) => (await getDocuments())(req, res, next));
 app.post('/api/debug-url', (req, res) => {
     res.json({ url: req.url, originalUrl: req.originalUrl, path: req.path });
+});
+
+app.use('/api/system', async (req, res, next) => (await getSystem())(req, res, next));
+app.use('/api/whatsapp-qr', async (req, res, next) => (await getWhatsappQr())(req, res, next));
+
+// Diagnostic Ping - Ported to entry point for guaranteed reachability
+app.post('/api/ping-footer', (req, res) => {
+    res.json({ status: "alive", entry: "api/index.js", timestamp: new Date().toISOString() });
 });
 
 app.use('/api/scout-grants', async (req, res, next) => (await getScoutGrants())(req, res, next));

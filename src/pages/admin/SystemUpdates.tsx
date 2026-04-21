@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.28",
+        date: "21 de Abril, 2026",
+        title: "Infraestructura: Alineación de Pipeline Vercel",
+        description: "Corrección crítica de ruteo en el entry-point de producción para habilitar módulos de sistema y WhatsApp.",
+        type: "fix",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "fixed", text: "Vercel: Montadas las rutas de '/api/system' y '/api/whatsapp-qr' en el despachador de producción." },
+            { type: "improved", text: "Integridad: Saneada la carga diferida de módulos para evitar errores de ruteo wildcard." }
+        ]
+    },
+    {
         version: "v4.11.27",
         date: "21 de Abril, 2026",
         title: "Diagnóstico: Traceroute API Ping",
