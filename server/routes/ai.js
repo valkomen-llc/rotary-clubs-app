@@ -803,7 +803,9 @@ router.post('/suggest-seo', authMiddleware, async (req, res) => {
         Requerimientos:
         - seoTitle: Atractivo, máx 60 caracteres.
         - seoDescription: Resumen sugerente, máx 160 caracteres.
-        - slug: Formato amigable-url-en-minusculas.`;
+        - slug: Formato amigable-url-en-minusculas.
+        - keywords: 5 palabras clave separadas por comas.
+        - tags: 3 etiquetas relevantes (solo palabras).`;
 
         // Use multi-model router for flexibility and robustness
         const defaultSlug = await getDefaultModel();
@@ -818,6 +820,10 @@ router.post('/suggest-seo', authMiddleware, async (req, res) => {
         }
 
         const suggestions = JSON.parse(jsonMatch[0]);
+        // Sanitize tags as array
+        if (typeof suggestions.tags === 'string') {
+            suggestions.tags = suggestions.tags.split(',').map(t => t.trim());
+        }
         res.json(suggestions);
     } catch (error) {
         console.error('Suggest SEO error:', error);
