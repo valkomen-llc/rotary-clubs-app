@@ -791,40 +791,37 @@ router.post('/suggest', authMiddleware, async (req, res) => {
 
 router.post('/suggest-seo', authMiddleware, async (req, res) => {
     const { title, content } = req.body;
-    if (!process.env.OPENAI_API_KEY) {
-        return res.status(503).json({ error: 'IA no configurada' });
-    }
+    
     try {
-        const prompt = `Como experto SEO en Rotary, analiza esta noticia:
+        const systemPrompt = `Eres un experto en SEO para Rotary. Tu tarea es generar metadatos optimizados para una noticia. 
+        Responde EXCLUSIVAMENTE con un objeto JSON con las llaves: seoTitle, seoDescription, slug.`;
+        
+        const userPrompt = `Analiza esta noticia y sugiere SEO:
         Título: ${title}
-        Contenido: ${content?.substring(0, 600)}
+        Contenido resumido: ${content?.substring(0, 1000)}
         
-        Sugiere metadatos optimizados:
-        1. seoTitle (atractivo, máx 60 caracteres)
-        2. seoDescription (resumen sugerente, máx 160 caracteres)
-        3. slug (formato amigable-url-en-minusculas)
-        
-        Responde exclusivamente con el objeto JSON: {"seoTitle": "...", "seoDescription": "...", "slug": "..."}`;
+        Requerimientos:
+        - seoTitle: Atractivo, máx 60 caracteres.
+        - seoDescription: Resumen sugerente, máx 160 caracteres.
+        - slug: Formato amigable-url-en-minusculas.`;
 
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json', 
-                'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` 
-            },
-            body: JSON.stringify({
-                model: "gpt-3.5-turbo-0125",
-                messages: [{ role: "user", content: prompt }],
-                temperature: 0.7,
-                response_format: { type: "json_object" }
-            })
-        });
-        const data = await response.json();
-        const suggestions = JSON.parse(data.choices[0].message.content);
+        // Use multi-model router for flexibility and robustness
+        const defaultSlug = await getDefaultModel();
+        const rawResponse = await routeToModel(defaultSlug || 'gpt-3.5-turbo', systemPrompt, userPrompt);
+        
+        // Clean markdown if present
+        let cleaned = rawResponse.replace(/```json|```/gi, '').trim();
+        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        
+        if (!jsonMatch) {
+            throw new Error('No JSON found in AI response');
+        }
+
+        const suggestions = JSON.parse(jsonMatch[0]);
         res.json(suggestions);
     } catch (error) {
         console.error('Suggest SEO error:', error);
-        res.status(500).json({ error: 'Error al generar sugerencias' });
+        res.status(500).json({ error: 'Error al generar sugerencias', details: error.message });
     }
 });
 
