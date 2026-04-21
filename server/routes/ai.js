@@ -863,6 +863,36 @@ router.post('/suggest-social', authMiddleware, async (req, res) => {
     }
 });
 
+router.post('/suggest-cta', authMiddleware, async (req, res) => {
+    const { title, content } = req.body;
+    try {
+        const systemPrompt = `Eres el Embajador de Comunicación Global de Rotary. 
+        Tu tarea es crear una frase corta de "Llamado a la Acción" (CTA) diseñada para compartir este artículo en GRUPOS INTERNACIONALES de Facebook de Rotary.
+        REGLAS:
+        1. Debe ser una sola frase corta e impactante (máximo 150 caracteres).
+        2. Debe invitar a la colaboración, el intercambio de ideas o simplemente a conocer lo que está haciendo otro club.
+        3. El tono debe ser de hermandad rotaria mundial. 
+        4. No uses demasiados hashtags, solo la esencia.
+        Responde EXCLUSIVAMENTE con un objeto JSON con la llave: ctaCopy.`;
+        
+        const userPrompt = `Crea un CTA para grupos internacionales sobre esta noticia:
+        Título: ${title}
+        Resumen: ${content?.substring(0, 1000)}`;
+
+        const defaultSlug = await getDefaultModel();
+        const rawResponse = await routeToModel(defaultSlug || 'gpt-3.5-turbo', systemPrompt, userPrompt);
+        
+        let cleaned = rawResponse.replace(/```json|```/gi, '').trim();
+        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error('No JSON found in AI response');
+        const result = JSON.parse(jsonMatch[0]);
+        res.json(result);
+    } catch (error) {
+        console.error('Suggest CTA error:', error);
+        res.status(500).json({ error: 'Error al generar CTA para grupos', details: error.message });
+    }
+});
+
 // PUBLIC chatbot endpoint — no auth required
 router.post('/chat', async (req, res) => {
     const { message, clubId } = req.body;

@@ -29,6 +29,7 @@ interface Post {
     seoDescription?: string;
     seoImage?: string;
     socialCopy?: string;
+    ctaCopy?: string;
     videoUrl?: string;
     images?: string[];
     createdAt: string;
@@ -60,6 +61,8 @@ const NewsManagement: React.FC = () => {
         seoTitle: '',
         seoDescription: '',
         seoImage: '',
+        socialCopy: '',
+        ctaCopy: '',
         videoUrl: '',
         images: [] as string[],
     });
@@ -241,6 +244,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 seoDescription: post.seoDescription || '',
                 seoImage: post.seoImage || '',
                 socialCopy: post.socialCopy || '',
+                ctaCopy: post.ctaCopy || '',
                 videoUrl: post.videoUrl || '',
                 images: post.images || [],
             };
@@ -427,6 +431,43 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
             toast.success('Copy para redes generado');
         } catch (error) {
             toast.error('No se pudo generar el copy');
+        } finally {
+            setIsGeneratingSlug(false);
+        }
+    };
+
+    const handleAISuggestCTA = async () => {
+        if (!formData.title) {
+            toast.error('Escribe al menos el título para generar el CTA');
+            return;
+        }
+
+        setIsGeneratingSlug(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const apiUrl = import.meta.env.VITE_API_URL || '/api';
+            const res = await fetch(`${apiUrl}/ai/suggest-cta`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ 
+                    title: formData.title,
+                    content: formData.content.replace(/<[^>]*>?/gm, '')
+                })
+            });
+
+            if (!res.ok) throw new Error('Error al generar CTA');
+            const data = await res.json();
+            
+            setFormData(prev => ({
+                ...prev,
+                ctaCopy: data.ctaCopy || prev.ctaCopy
+            }));
+            toast.success('Frase para grupos generada');
+        } catch (error) {
+            toast.error('No se pudo generar la frase');
         } finally {
             setIsGeneratingSlug(false);
         }
@@ -1111,6 +1152,34 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                     className="w-full px-5 py-4 bg-white border border-gray-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-rotary-blue/10 transition-all font-medium text-sm leading-relaxed shadow-inner"
                                                     placeholder="Escribe el texto que acompañará tu noticia en redes sociales..."
                                                 />
+                                            </div>
+
+                                            <div className="p-6 bg-amber-50/50 rounded-2xl border border-amber-100 flex flex-col gap-4">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2 text-amber-700">
+                                                        <Share2 className="w-4 h-4" />
+                                                        <h4 className="font-bold text-sm uppercase tracking-wider">Frase para Grupos (CTA)</h4>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleAISuggestCTA}
+                                                        disabled={isGeneratingSlug || !formData.title}
+                                                        className="text-[10px] font-bold text-amber-600 hover:underline uppercase tracking-widest flex items-center gap-1"
+                                                    >
+                                                        <RefreshCw className={`w-3 h-3 ${isGeneratingSlug ? 'animate-spin' : ''}`} />
+                                                        Sugerir con IA
+                                                    </button>
+                                                </div>
+                                                <input
+                                                    type="text"
+                                                    value={formData.ctaCopy}
+                                                    onChange={(e) => setFormData(prev => ({ ...prev, ctaCopy: e.target.value }))}
+                                                    className="w-full px-4 py-3 bg-white border border-amber-100 rounded-xl focus:outline-none focus:ring-4 focus:ring-amber-200/20 transition-all font-medium text-sm italic text-amber-900 shadow-sm"
+                                                    placeholder="Ej: Discover how our club is making an impact. Greetings from Colombia! 🇨🇴"
+                                                />
+                                                <p className="text-[9px] text-amber-600/70 font-medium">
+                                                    Úsala para compartir este artículo en Grupos Internacionales de Facebook. ¡Haz que otros clubes te conozcan!
+                                                </p>
                                             </div>
 
                                             <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100">

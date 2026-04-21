@@ -24,6 +24,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.12",
+        date: "21 Abril 2026",
+        title: "Comunidad: Engagement Global de Grupos",
+        type: "feature",
+        changes: [
+            { type: "added", text: "Nuevo campo 'Frase para Grupos (CTA)' para mensajes personalizados en grupos internacionales." },
+            { type: "added", text: "Motor de IA 'Embajador Global' para sugerir CTAs en otros idiomas y contextos rotarios." },
+            { type: "fixed", text: "Lógica de persistencia optimizada para campos multi-mensaje en redes sociales." },
+            { type: "changed", text: "Mejora visual en la pestaña de Redes con campo destacado para alcance comunitario." }
+        ]
+    },
+    {
         version: "v4.11.11",
         date: "21 Abril 2026",
         title: "IA: Motor de Copy de Alta Precisión",
