@@ -26,6 +26,19 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.22",
+        date: "21 de Abril, 2026",
+        title: "Multimedia: Integración Media Library en Footer",
+        description: "Implementación del selector de biblioteca multimedia para los logos globales del portal.",
+        type: "feature",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "added", text: "Media Picker Modal: Nuevo selector inmersivo para elegir logos directamente desde la biblioteca de medios." },
+            { type: "added", text: "Buscador de Archivos: Implementada búsqueda en tiempo real dentro del selector de logos." },
+            { type: "improved", text: "Workflow de Logos: Eliminada la necesidad de copiar URLs manualmente; ahora la selección es visual." }
+        ]
+    },
+    {
         version: "v4.11.21",
         date: "21 de Abril, 2026",
         title: "Estabilidad: Arquitectura Zero-Wait & Cache-Pool",

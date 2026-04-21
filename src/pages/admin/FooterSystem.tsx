@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Layout, Globe, Users, Building2, Image as ImageIcon, Link as LinkIcon, Plus, Trash2, ArrowRight } from 'lucide-react';
+import { 
+    Save, Layout, Globe, Users, Building2, Image as ImageIcon, 
+    Link as LinkIcon, Plus, Trash2, ArrowRight, Search, X, Loader2 
+} from 'lucide-react';
 import { toast } from 'sonner';
 import AdminLayout from '../../components/admin/AdminLayout';
 
@@ -46,6 +49,13 @@ const FooterSystem = () => {
     const [skins, setSkins] = useState<Record<string, FooterSkinConfig>>(initialSkins);
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+
+    // Media Picker States
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const [pickerTarget, setPickerTarget] = useState<'logoTop' | 'logoBottom' | null>(null);
+    const [mediaItems, setMediaItems] = useState<any[]>([]);
+    const [mediaLoading, setMediaLoading] = useState(false);
+    const [mediaSearch, setMediaSearch] = useState('');
 
     useEffect(() => {
         fetchSkins();
@@ -132,6 +142,41 @@ const FooterSystem = () => {
 
     const currentConfig = skins[activeTab] || getDefaultSkin(activeTab);
 
+    const openPicker = (target: 'logoTop' | 'logoBottom') => {
+        setPickerTarget(target);
+        setPickerOpen(true);
+        fetchMedia();
+    };
+
+    const fetchMedia = async () => {
+        setMediaLoading(true);
+        try {
+            const apiBase = import.meta.env.VITE_API_URL || '/api';
+            const response = await fetch(`${apiBase}/media?type=image`, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('rotary_token')}` }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setMediaItems(Array.isArray(data) ? data : data.items || []);
+            }
+        } catch (error) {
+            console.error('Fetch media error:', error);
+        } finally {
+            setMediaLoading(false);
+        }
+    };
+
+    const selectMedia = (url: string) => {
+        if (pickerTarget) {
+            updateSkin(pickerTarget, url);
+            setPickerOpen(false);
+        }
+    };
+
+    const filteredMedia = mediaItems.filter(m =>
+        m.filename?.toLowerCase().includes(mediaSearch.toLowerCase())
+    );
+
     return (
         <AdminLayout>
             {isLoading && (
@@ -198,14 +243,23 @@ const FooterSystem = () => {
                             <div className="space-y-4">
                                 <div>
                                     <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Logo Superior (Blanco preferible)</label>
-                                    <div className="flex gap-2">
-                                        <input 
-                                            type="text" 
-                                            className="flex-1 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-rotary-blue outline-none"
-                                            value={currentConfig.logoTop}
-                                            onChange={(e) => updateSkin('logoTop', e.target.value)}
-                                            placeholder="URL del logo superior"
-                                        />
+                                    <div className="flex flex-col gap-2">
+                                        <div className="flex gap-2">
+                                            <input 
+                                                type="text" 
+                                                className="flex-1 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-rotary-blue outline-none"
+                                                value={currentConfig.logoTop}
+                                                onChange={(e) => updateSkin('logoTop', e.target.value)}
+                                                placeholder="URL del logo superior"
+                                            />
+                                            <button 
+                                                onClick={() => openPicker('logoTop')}
+                                                className="px-3 bg-blue-50 text-rotary-blue rounded-lg hover:bg-blue-100 transition-all shadow-sm flex items-center justify-center p-2"
+                                                title="Seleccionar de biblioteca"
+                                            >
+                                                <ImageIcon className="w-5 h-5" />
+                                            </button>
+                                        </div>
                                     </div>
                                     <div className="mt-2 p-4 bg-rotary-blue rounded-lg flex justify-center">
                                         <img src={currentConfig.logoTop} className="h-8 object-contain" alt="Preview" />
@@ -214,14 +268,23 @@ const FooterSystem = () => {
 
                                 <div>
                                     <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Logo Inferior (End Polio / Youth)</label>
-                                    <div className="flex gap-2">
-                                        <input 
-                                            type="text" 
-                                            className="flex-1 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-rotary-blue outline-none"
-                                            value={currentConfig.logoBottom}
-                                            onChange={(e) => updateSkin('logoBottom', e.target.value)}
-                                            placeholder="URL del logo inferior"
-                                        />
+                                    <div className="flex flex-col gap-2">
+                                        <div className="flex gap-2">
+                                            <input 
+                                                type="text" 
+                                                className="flex-1 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-rotary-blue outline-none"
+                                                value={currentConfig.logoBottom}
+                                                onChange={(e) => updateSkin('logoBottom', e.target.value)}
+                                                placeholder="URL del logo inferior"
+                                            />
+                                            <button 
+                                                onClick={() => openPicker('logoBottom')}
+                                                className="px-3 bg-blue-50 text-rotary-blue rounded-lg hover:bg-blue-100 transition-all shadow-sm flex items-center justify-center p-2"
+                                                title="Seleccionar de biblioteca"
+                                            >
+                                                <ImageIcon className="w-5 h-5" />
+                                            </button>
+                                        </div>
                                     </div>
                                     <div className="mt-2 p-4 bg-slate-100 rounded-lg flex justify-center">
                                         <img src={currentConfig.logoBottom} className="h-10 object-contain" alt="Preview" />
@@ -350,6 +413,79 @@ const FooterSystem = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Media Picker Modal */}
+            {pickerOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col border border-gray-100 scale-100 animate-in zoom-in-95 duration-300">
+                        <div className="px-8 py-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/80">
+                            <div>
+                                <h2 className="text-xl font-black text-gray-800 flex items-center gap-3">
+                                    <ImageIcon className="w-6 h-6 text-rotary-blue" />
+                                    Biblioteca Multimedia
+                                </h2>
+                                <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mt-1">
+                                    Seleccionando logo para {pickerTarget === 'logoTop' ? 'Cabecera' : 'Pie de página'}
+                                </p>
+                            </div>
+                            <button 
+                                onClick={() => setPickerOpen(false)} 
+                                className="p-2.5 hover:bg-white rounded-xl text-gray-400 hover:text-red-500 transition-all shadow-sm border border-transparent hover:border-gray-200"
+                            >
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        <div className="px-8 py-4 bg-white border-b border-gray-100">
+                            <div className="relative">
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                                <input 
+                                    type="text" 
+                                    placeholder="Buscar por nombre de archivo..."
+                                    className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border-transparent focus:bg-white focus:border-rotary-blue/20 rounded-2xl outline-none text-sm transition-all font-bold text-gray-800 shadow-inner"
+                                    value={mediaSearch} 
+                                    onChange={e => setMediaSearch(e.target.value)} 
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                            {mediaLoading ? (
+                                <div className="flex flex-col items-center justify-center py-24 gap-4">
+                                    <Loader2 className="w-10 h-10 animate-spin text-rotary-blue" />
+                                    <p className="text-gray-400 font-black uppercase text-[10px] tracking-widest animate-pulse">Sincronizando archivos...</p>
+                                </div>
+                            ) : filteredMedia.length === 0 ? (
+                                <div className="text-center py-24 text-gray-400 flex flex-col items-center justify-center border-2 border-dashed border-gray-100 rounded-3xl">
+                                    <ImageIcon className="w-16 h-16 mx-auto mb-6 opacity-10" />
+                                    <p className="font-black text-gray-600 uppercase tracking-widest">{mediaSearch ? 'Sin resultados.' : 'Sin imágenes'}</p>
+                                    <p className="text-sm mt-1">Intenta subir archivos antes desde Multimedia.</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                                    {filteredMedia.map(item => (
+                                        <button 
+                                            key={item.id} 
+                                            onClick={() => selectMedia(item.url)}
+                                            className="group relative rounded-2xl overflow-hidden border border-gray-100 hover:border-rotary-blue hover:shadow-2xl transition-all aspect-square bg-gray-50/50 flex items-center justify-center p-2 hover:-translate-y-2"
+                                        >
+                                            <img src={item.url} alt={item.filename} className="w-full h-full object-contain drop-shadow-sm group-hover:scale-110 transition-transform duration-500" />
+                                            <div className="absolute inset-0 bg-rotary-blue/0 group-hover:bg-rotary-blue/10 transition-all flex items-center justify-center">
+                                                <div className="w-10 h-10 rounded-full bg-rotary-blue text-white shadow-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all translate-y-4 group-hover:translate-y-0">
+                                                    <Plus className="w-6 h-6" />
+                                                </div>
+                                            </div>
+                                            <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
+                                                <p className="text-[10px] text-white font-black truncate text-left uppercase tracking-tighter">{item.filename}</p>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </AdminLayout>
     );
 };
