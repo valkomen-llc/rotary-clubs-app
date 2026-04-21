@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.26",
+        date: "21 de Abril, 2026",
+        title: "Infraestructura: Dual-Route & Deep Diagnostics",
+        description: "Despliegue de redundancia en rutas API y saneamiento de URLs para corregir errores de ruteo ambiental.",
+        type: "fix",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "fixed", text: "Routing: Implementada ruta secundaria de actualización para eludir bloqueos de proxy/WAF." },
+            { type: "fixed", text: "URL Sanitization: Normalización de SLD y API endpoints para evitar errores de barra final (trailing slash)." }
+        ]
+    },
+    {
         version: "v4.11.25",
         date: "21 de Abril, 2026",
         title: "Diagnóstico: Caja Negra y Persistencia Atómica",

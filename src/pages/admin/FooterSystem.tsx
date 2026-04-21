@@ -92,7 +92,10 @@ const FooterSystem = () => {
     const handleSave = async () => {
         setIsSaving(true);
         try {
-            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/system/footer-skins/${activeTab}`, {
+            const baseUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+            const finalUrl = `${baseUrl}/system/footer-skins/${activeTab}`;
+            
+            const response = await fetch(finalUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

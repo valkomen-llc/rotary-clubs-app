@@ -9,5 +9,6 @@ router.use(authMiddleware);
 
 router.get('/footer-skins', superAdminOnly, getFooterSkins);
 router.post('/footer-skins/:type', superAdminOnly, updateFooterSkin);
+router.post('/update-skin/:type', superAdminOnly, updateFooterSkin);
 
 export default router;
