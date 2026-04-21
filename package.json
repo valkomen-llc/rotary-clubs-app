@@ -1,7 +1,7 @@
 {
   "name": "my-app",
   "private": true,
-  "version": "4.11.35",
+  "version": "4.11.36",
   "type": "module",
   "scripts": {
     "dev": "vite",

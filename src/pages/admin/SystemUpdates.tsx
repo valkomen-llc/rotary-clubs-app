@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.36",
+        date: "21 de Abril, 2026",
+        title: "Imagen: Calibración de Logo",
+        description: "Reajuste del tamaño del logo principal a +10px (66px) para un balance visual óptimo.",
+        type: "update",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "improved", text: "Visual: Calibrado el tamaño del logo Rotary a 66px para una integración más armónica." }
+        ]
+    },
+    {
         version: "v4.11.35",
         date: "21 de Abril, 2026",
         title: "Imagen: Logo Prominence & Clean Titles",

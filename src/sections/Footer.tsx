@@ -120,7 +120,7 @@ const Footer = () => {
                             <img
                                 src={activeConfig.logoTop}
                                 alt="Rotary"
-                                className="h-[76px] w-auto object-contain"
+                                className="h-[66px] w-auto object-contain"
                                 onError={(e) => { (e.target as HTMLImageElement).src = "https://app.clubplatform.org/rotary-logo-white.png"; }}
                             />
                         </div>
