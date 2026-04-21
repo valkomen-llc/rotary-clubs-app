@@ -24,6 +24,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.13",
+        date: "21 Abril 2026",
+        title: "Estabilidad: Supervivencia de Enlaces y SEO",
+        type: "fix",
+        changes: [
+            { type: "fixed", text: "Corregido el error 'Error loading page' cuando se accede desde Facebook con parámetros fbclid." },
+            { type: "added", text: "Implementada lógica de 'Supervivencia SEO': Si la inyección de metadatos falla, el sitio carga el contenido normal sin colapsar." },
+            { type: "changed", text: "Optimización del motor de rutas para ignorar parámetros de rastreo externos en la búsqueda de artículos." }
+        ]
+    },
+    {
         version: "v4.11.12",
         date: "21 Abril 2026",
         title: "Comunidad: Engagement Global de Grupos",

@@ -1,7 +1,12 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import fs from 'fs';
+import { PrismaClient } from '@prisma/client';
 
 const app = express();
+const prisma = new PrismaClient();
+
 app.use(cors({ origin: true, credentials: true }));
 
 // Parse raw body for Stripe Webhooks BEFORE express.json()
@@ -88,11 +93,6 @@ app.post('/api/debug-url', (req, res) => {
 app.use('/api/scout-grants', async (req, res, next) => (await getScoutGrants())(req, res, next));
 
 // ── Frontend & SEO Injection ──────────────────────────────────────────────────
-import path from 'path';
-import fs from 'fs';
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
-
 app.get('*', async (req, res) => {
     // Skip if it's an API route (should be handled by express routes above)
     if (req.path.startsWith('/api')) return;
@@ -126,8 +126,8 @@ app.get('*', async (req, res) => {
 
         // Deep SEO for Blog Posts
         if (req.path.includes('/blog/')) {
-            const slug = req.path.split('/blog/')[1]?.split('/')[0];
-            if (slug) {
+            const slug = req.path.split('/blog/')[1]?.split('?')[0]?.split('#')[0];
+            if (slug && slug !== '') {
                 const post = await prisma.post.findFirst({
                     where: { OR: [{ slug }, { id: slug }] }
                 });
@@ -156,7 +156,6 @@ app.get('*', async (req, res) => {
             <meta name="twitter:image" content="${meta.image}">
         `;
 
-        // Replace existing common meta tags or append to head
         if (html.includes('</head>')) {
             html = html.replace('</head>', `${tags}\n</head>`);
         }
@@ -164,6 +163,15 @@ app.get('*', async (req, res) => {
         res.send(html);
     } catch (err) {
         console.error('Frontend Injection Error:', err);
+        // CRITICAL FALLBACK: If injection fails, just serve the raw index.html instead of an error page
+        try {
+            const indexPath = path.resolve(process.cwd(), 'dist/index.html');
+            if (fs.existsSync(indexPath)) {
+                return res.sendFile(indexPath);
+            }
+        } catch (fallbackErr) {
+            console.error('Fallback fatal error:', fallbackErr);
+        }
         res.status(500).send('Error loading page.');
     }
 });
