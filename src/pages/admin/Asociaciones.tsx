@@ -37,6 +37,7 @@ const AsociacionesManagement: React.FC = () => {
         subdomain: '',
         description: '',
         status: 'active',
+        type: 'association',
         moduleProjects: true,
         moduleEvents: true,
         moduleRotaract: false,
@@ -91,7 +92,7 @@ const AsociacionesManagement: React.FC = () => {
                 subdomain: club.subdomain || '',
                 description: club.description || '',
                 status: club.status || 'active',
-                type: 'association',
+                type: club.type || 'association',
                 adminUserId: '',
                 moduleProjects: true, moduleEvents: true, moduleRotaract: false, moduleInteract: false,
                 moduleEcommerce: false, moduleDian: false, moduleYouthExchange: false, moduleNgse: false, moduleRotex: false,
@@ -154,7 +155,7 @@ const AsociacionesManagement: React.FC = () => {
 
             // En Asociaciones el subdominio no es requerido, se generará pseudo-random si está vacío o se envía nulo
             const finalSubdomain = formData.subdomain || `assoc-${Date.now().toString(36)}`;
-            const formDataWithType = { ...formData, type: 'association', subdomain: finalSubdomain };
+            const formDataWithType = { ...formData, subdomain: finalSubdomain };
 
             const response = await fetch(url, {
                 method: editingClub ? 'PUT' : 'POST',
@@ -423,7 +424,7 @@ const AsociacionesManagement: React.FC = () => {
                                     <p className="text-[10px] text-gray-400 mt-1">Este será el prefijo que usará la plataforma si no configuras un Dominio Propio (ej: tunombre.clubplatform.org).</p>
                                 </div>
 
-                                <div className="md:col-span-2">
+                                <div>
                                     <label className="block text-sm font-bold text-gray-700 mb-1">Estado</label>
                                     <select
                                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all"
@@ -432,6 +433,21 @@ const AsociacionesManagement: React.FC = () => {
                                     >
                                         <option value="active">Activo</option>
                                         <option value="inactive">Inactivo</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Skin de Arquitectura (Footer)</label>
+                                    <select
+                                        className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all bg-sky-50 font-bold text-rotary-blue"
+                                        value={formData.type}
+                                        onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                                        title="Define la estructura de links y labels del footer"
+                                    >
+                                        <option value="association">Skin de Asociación / Agrupación</option>
+                                        <option value="club">Skin de Rotary Club (Socio)</option>
+                                        <option value="district">Skin de Distrito Rotary</option>
+                                        <option value="colrotarios">Skin de Colrotarios (Fundación)</option>
                                     </select>
                                 </div>
 

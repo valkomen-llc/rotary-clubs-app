@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.37",
+        date: "21 de Abril, 2026",
+        title: "Arquitectura: Sync de Footer en Asociaciones",
+        description: "Habilitada la selección de Skin de Arquitectura (Footer) para asociaciones y redes tipo LATIR.",
+        type: "update",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "improved", text: "Admin: Integrada la opción de 'Skin de Arquitectura' en el módulo de Asociaciones para paridad con los clubes." },
+            { type: "fixed", text: "Core: Corregida la persistencia del tipo de club en la edición de asociaciones." }
+        ]
+    },
+    {
         version: "v4.11.36",
         date: "21 de Abril, 2026",
         title: "Imagen: Calibración de Logo",
