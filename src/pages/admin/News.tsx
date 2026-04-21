@@ -892,7 +892,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                             </button>
                                         </div>
 
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                                             <div className="space-y-6">
                                                 <div>
                                                     <label className="block text-sm font-bold text-gray-700 mb-2">Meta Título (SEO)</label>
@@ -926,61 +926,62 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                     <p className="mt-1 text-[10px] text-gray-400 italic">Si se deja vacío usará el ID por defecto.</p>
                                                 </div>
 
-                                                    <div>
-                                                        <label className="block text-sm font-bold text-gray-700 mb-2">Meta Descripción</label>
-                                                        <textarea
-                                                            rows={3}
-                                                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none resize-none"
-                                                            value={formData.seoDescription}
-                                                            onChange={(e) => setFormData({ ...formData, seoDescription: e.target.value })}
-                                                            placeholder="Pequeño resumen de 160 caracteres..."
-                                                        />
-                                                    </div>
+                                                <div>
+                                                    <label className="block text-sm font-bold text-gray-700 mb-2">Meta Descripción</label>
+                                                    <textarea
+                                                        rows={3}
+                                                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none resize-none"
+                                                        value={formData.seoDescription}
+                                                        onChange={(e) => setFormData({ ...formData, seoDescription: e.target.value })}
+                                                        placeholder="Pequeño resumen de 160 caracteres..."
+                                                    />
+                                                </div>
 
-                                                    <div>
-                                                        <label className="block text-sm font-bold text-gray-700 mb-2">Palabras Clave (Keywords)</label>
-                                                        <input
-                                                            type="text"
-                                                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none"
-                                                            value={formData.keywords}
-                                                            onChange={(e) => setFormData({ ...formData, keywords: e.target.value })}
-                                                            placeholder="Separadas por comas..."
-                                                        />
-                                                    </div>
+                                                <div>
+                                                    <label className="block text-sm font-bold text-gray-700 mb-2">Palabras Clave (Keywords)</label>
+                                                    <input
+                                                        type="text"
+                                                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none"
+                                                        value={formData.keywords}
+                                                        onChange={(e) => setFormData({ ...formData, keywords: e.target.value })}
+                                                        placeholder="Separadas por comas..."
+                                                    />
+                                                </div>
 
-                                                    <div>
-                                                        <label className="block text-sm font-bold text-gray-700 mb-2">Etiquetas (Tags)</label>
-                                                        <div className="space-y-3">
-                                                            <div className="relative">
-                                                                <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                                                <input
-                                                                    type="text"
-                                                                    className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none"
-                                                                    value={tagInput}
-                                                                    onChange={(e) => setTagInput(e.target.value)}
-                                                                    onKeyDown={handleAddTag}
-                                                                    placeholder="Escribe y presiona Enter..."
-                                                                />
-                                                            </div>
-                                                            <div className="flex flex-wrap gap-2">
-                                                                {formData.tags.map(tag => (
-                                                                    <span key={tag} className="flex items-center gap-1.5 px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-bold border border-gray-200">
-                                                                        #{tag}
-                                                                        <button type="button" onClick={() => removeTag(tag)} className="hover:text-red-500"><X className="w-3 h-3" /></button>
-                                                                    </span>
-                                                                ))}
-                                                            </div>
+                                                <div>
+                                                    <label className="block text-sm font-bold text-gray-700 mb-2">Etiquetas (Tags)</label>
+                                                    <div className="space-y-3">
+                                                        <div className="relative">
+                                                            <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                                            <input
+                                                                type="text"
+                                                                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none"
+                                                                value={tagInput}
+                                                                onChange={(e) => setTagInput(e.target.value)}
+                                                                onKeyDown={handleAddTag}
+                                                                placeholder="Escribe y presiona Enter..."
+                                                            />
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {formData.tags.map(tag => (
+                                                                <span key={tag} className="flex items-center gap-1.5 px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-bold border border-gray-200">
+                                                                    #{tag}
+                                                                    <button type="button" onClick={() => removeTag(tag)} className="hover:text-red-500"><X className="w-3 h-3" /></button>
+                                                                </span>
+                                                            ))}
                                                         </div>
                                                     </div>
                                                 </div>
                                             </div>
 
-                                            <SEOPreview
-                                                title={formData.seoTitle || formData.title}
-                                                description={formData.seoDescription}
-                                                url={`https://${(club as any)?.domain || 'tusitio.org'}/#/blog/${formData.slug || editingPost?.id || 'nuevo'}`}
-                                                image={formData.image}
-                                            />
+                                            <div className="bg-gray-50/10 p-6 rounded-3xl border border-dashed border-gray-200">
+                                                <SEOPreview
+                                                    title={formData.seoTitle || formData.title}
+                                                    description={formData.seoDescription}
+                                                    url={`https://${(club as any)?.domain || 'tusitio.org'}/#/blog/${formData.slug || editingPost?.id || 'nuevo'}`}
+                                                    image={formData.image}
+                                                />
+                                            </div>
                                         </div>
                                 )}
                             </form>
