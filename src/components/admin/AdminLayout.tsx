@@ -404,7 +404,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 </div>
                 <div className="hidden sm:block h-3 w-[1px] bg-slate-600 mx-1" />
                 <Link to="/admin/system-updates" className="flex items-center gap-1.5 text-amber-400 hover:text-amber-300 transition-colors font-bold tracking-wide">
-                    <span>Release {SYSTEM_UPDATES[0].version}</span>
+                    <span>Release v4.8.8</span>
                     <FileText className="w-3 h-3" />
                 </Link>
             </div>
@@ -615,7 +615,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                             </button>
                             <div className="flex justify-center mt-2">
                                 <span className="text-[10px] font-black tracking-widest text-gray-300 uppercase py-1 px-2 border border-gray-100 rounded-full bg-gray-50/50">
-                                    Release {SYSTEM_UPDATES[0].version}
+                                    Release v4.8.8
                                 </span>
                             </div>
                         </div>
