@@ -24,6 +24,30 @@ interface UpdateItem {
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.11",
+        date: "21 Abril 2026",
+        title: "IA: Motor de Copy de Alta Precisión",
+        type: "feature",
+        changes: [
+            { type: "changed", text: "Optimización profunda del prompt de IA para generar copys sociales vinculados al contenido del blog." },
+            { type: "added", text: "Lógica de 'teaser persuasivo' para aumentar el CTR (Click-Through Rate) desde redes sociales." },
+            { type: "fixed", text: "Mejora en la detección de detalles clave de la noticia para evitar mensajes genéricos." }
+        ]
+    },
+    {
+        version: "v4.11.10",
+        date: "21 Abril 2026",
+        title: "Social: Centro de Optimización Multiplataforma",
+        type: "feature",
+        changes: [
+            { type: "added", text: "Nueva pestaña de 'Redes Sociales' para optimización independiente de Facebook y LinkedIn." },
+            { type: "added", text: "Generador de micro-blogging con IA integrado en el flujo de publicación." },
+            { type: "added", text: "Previsualización real del post en Facebook y LinkedIn dentro del editor." },
+            { type: "changed", text: "Migración de la herramienta de Imagen Social Personalizada a la nueva pestaña de Redes." },
+            { type: "fixed", text: "Auto-curación de base de datos para el nuevo campo de copy estratégico." }
+        ]
+    },
+    {
         version: "v4.11.9",
         date: "21 Abril 2026",
         title: "SEO: URLs Limpias y Previsualización Dinámica",
