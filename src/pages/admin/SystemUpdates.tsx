@@ -24,6 +24,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.10.0",
+        date: "21 Abril 2026",
+        title: "Maestría en SEO & UX: Interfaz Dual",
+        type: "update",
+        changes: [
+            { type: "changed", text: "Reestructuración total de la pestaña SEO: Diseño en dos columnas para mayor eficiencia." },
+            { type: "added", text: "Generación automática de Keywords y Tags mediante IA para todas las noticias." },
+            { type: "fixed", text: "Sincronización de versiones para asegurar la carga inmediata de optimizaciones." }
+        ]
+    },
+    {
         version: "v4.9.0",
         date: "20 Abril 2026",
         title: "Motor de IA: SEO Autónomo",
