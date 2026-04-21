@@ -99,6 +99,11 @@ app.use('/api/site-progress', siteProgressRoutes);
 app.use('/api/scout-grants', grantsRoutes);
 app.use('/api/system', systemRoutes);
 
+// DIAGNOSTIC PING - Direct route to bypass potential file-loading/middleware issues
+app.post('/api/ping-footer', (req, res) => {
+    res.json({ status: "alive", timestamp: new Date().toISOString(), bodySize: JSON.stringify(req.body).length });
+});
+
 export default app;
 
 if (process.env.NODE_ENV !== 'production') {

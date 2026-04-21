@@ -93,6 +93,20 @@ const FooterSystem = () => {
         setIsSaving(true);
         try {
             const baseUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+            
+            // DIAGNOSTIC PING
+            try {
+                const ping = await fetch(`${baseUrl}/ping-footer`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ test: true })
+                });
+                const pingData = await ping.json();
+                console.log("Diagnostic Ping:", pingData);
+            } catch (e) {
+                console.error("Diagnostic Ping FAILED:", e);
+            }
+
             const finalUrl = `${baseUrl}/system/footer-skins/${activeTab}`;
             
             const response = await fetch(finalUrl, {

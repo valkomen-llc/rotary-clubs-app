@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.27",
+        date: "21 de Abril, 2026",
+        title: "Diagnóstico: Traceroute API Ping",
+        description: "Implementación de sonda de diagnóstico en tiempo real para verificar la integridad del túnel API.",
+        type: "fix",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "added", text: "Traceroute: Nueva sonda de ping directo al servidor para descartar bloqueos de red ambiental." },
+            { type: "improved", text: "Stability: Refactorización de la capa de comunicación para mayor tolerancia a fallos de ruteo." }
+        ]
+    },
+    {
         version: "v4.11.26",
         date: "21 de Abril, 2026",
         title: "Infraestructura: Dual-Route & Deep Diagnostics",
