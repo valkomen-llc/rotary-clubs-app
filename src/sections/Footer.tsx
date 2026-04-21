@@ -120,7 +120,7 @@ const Footer = () => {
                             <img
                                 src={activeConfig.logoTop}
                                 alt="Rotary"
-                                className="h-14 w-auto object-contain"
+                                className="h-[76px] w-auto object-contain"
                                 onError={(e) => { (e.target as HTMLImageElement).src = "https://app.clubplatform.org/rotary-logo-white.png"; }}
                             />
                         </div>
@@ -162,8 +162,7 @@ const Footer = () => {
 
                     {/* Links de Interés */}
                     <div className="md:pl-6">
-                        <h3 className="font-medium text-lg mb-6 tracking-tight flex items-center gap-2">
-                             <div className="w-1 h-5 bg-yellow-500 rounded-full" />
+                        <h3 className="font-medium text-lg mb-6 tracking-tight">
                              {activeConfig.menu1Title}
                         </h3>
                         <ul className="space-y-3 text-[14px] font-medium text-white/80">
@@ -185,8 +184,7 @@ const Footer = () => {
 
                     {/* Realiza una Acción / Columna 3 */}
                     <div>
-                        <h3 className="font-medium text-lg mb-6 tracking-tight flex items-center gap-2">
-                             <div className="w-1 h-5 bg-yellow-500 rounded-full" />
+                        <h3 className="font-medium text-lg mb-6 tracking-tight">
                              {activeConfig.menu2Title}
                         </h3>
                         <ul className="space-y-3 text-[14px] font-medium text-white/80">

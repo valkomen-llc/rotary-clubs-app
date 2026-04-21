@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.35",
+        date: "21 de Abril, 2026",
+        title: "Imagen: Logo Prominence & Clean Titles",
+        description: "Aumento del tamaño del logo principal (+20px) y simplificación de los títulos de columna removiendo separadores.",
+        type: "update",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "improved", text: "Visual: Incrementado el tamaño del logo Rotary a 76px para mejor legibilidad de marca." },
+            { type: "removed", text: "Design: Removidos los separadores amarillos verticales de los títulos de columna." }
+        ]
+    },
+    {
         version: "v4.11.34",
         date: "21 de Abril, 2026",
         title: "Diseño: Simetría Absoluta",
