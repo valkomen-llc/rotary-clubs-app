@@ -12,6 +12,7 @@ interface Club {
     domain: string | null;
     subdomain: string | null;
     status: string;
+    type: string;
     description: string | null;
     _count?: {
         users: number;
@@ -37,6 +38,7 @@ const ClubsManagement: React.FC = () => {
         subdomain: '',
         description: '',
         status: 'active',
+        type: 'club',
         moduleProjects: true,
         moduleEvents: true,
         moduleRotaract: false,
@@ -89,6 +91,7 @@ const ClubsManagement: React.FC = () => {
                 subdomain: club.subdomain || '',
                 description: club.description || '',
                 status: club.status || 'active',
+                type: club.type || 'club',
                 adminUserId: '',
                 moduleProjects: true, moduleEvents: true, moduleRotaract: false, moduleInteract: false,
                 moduleEcommerce: false, moduleDian: false, moduleYouthExchange: false, moduleNgse: false, moduleRotex: false,
@@ -130,6 +133,7 @@ const ClubsManagement: React.FC = () => {
                 subdomain: '',
                 description: '',
                 status: 'active',
+                type: 'club',
                 adminUserId: '',
                 moduleProjects: true, moduleEvents: true, moduleRotaract: false, moduleInteract: false,
                 moduleEcommerce: false, moduleDian: false, moduleYouthExchange: false, moduleNgse: false, moduleRotex: false,

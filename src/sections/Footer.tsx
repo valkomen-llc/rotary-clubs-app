@@ -5,10 +5,58 @@ import { useClub } from '../contexts/ClubContext';
 
 const Footer = () => {
   const { club } = useClub();
+  const type = club.type || 'club';
   
   // Confirmed working URLs on app.clubplatform.org
   const rotaryLogo = "https://app.clubplatform.org/rotary-logo-white.png";
   const endPolioLogo = "https://app.clubplatform.org/logo-end-polio.svg";
+
+  // --- FOOTER CONFIGURATION BY TYPE ---
+  
+  const getLinks = () => {
+    switch(type) {
+      case 'association':
+        return [
+          { label: 'Acerca de Rotary', href: '#/quienes-somos' },
+          { label: `Historia de ${club.name}`, href: '#/nuestra-historia' },
+          { label: 'Junta Directiva', href: '#/nuestra-junta-directiva' },
+          { label: 'Programa de Intercambios', href: '#/intercambio-jovenes' },
+          { label: 'My Rotary', href: 'https://my.rotary.org', external: true },
+          { label: 'Nuestros Eventos', href: '#/eventos' },
+          { label: 'Novedades', href: '#/blog' },
+          { label: 'Descaras', href: '#/descargas' },
+          { label: 'Contacto', href: '#/contacto' }
+        ];
+      case 'district':
+        return [
+          { label: 'Gobernación', href: '#/gobernacion' },
+          { label: 'Clubes del Distrito', href: '#/clubes' },
+          { label: 'Historia del Distrito', href: '#/historia' },
+          { label: 'La Fundación Rotaria', href: '#/la-fundacion-rotaria' },
+          { label: 'Intercambio de Jóvenes (RYE)', href: '#/intercambio-jovenes' },
+          { label: 'My Rotary', href: 'https://my.rotary.org', external: true },
+          { label: 'Eventos Distritales', href: '#/eventos' },
+          { label: 'Noticias', href: '#/blog' },
+          { label: 'Contacto', href: '#/contacto' }
+        ];
+      case 'club':
+      default:
+        return [
+          { label: 'Quiénes Somos', href: '#/quienes-somos' },
+          { label: 'Nuestra Historia', href: '#/nuestra-historia' },
+          { label: 'Junta Directiva local', href: '#/nuestra-junta-directiva' },
+          { label: 'La Fundación Rotaria', href: '#/la-fundacion-rotaria' },
+          { label: 'Hazte Socio', href: '#/contacto' },
+          { label: 'Proyectos Locales', href: '#/proyectos' },
+          { label: 'My Rotary', href: 'https://my.rotary.org', external: true },
+          { label: 'Eventos del Club', href: '#/eventos' },
+          { label: 'Blog de Noticias', href: '#/blog' },
+          { label: 'Contacto', href: '#/contacto' }
+        ];
+    }
+  };
+
+  const links = getLinks();
 
   return (
     <footer className="text-white w-full" style={{ backgroundColor: '#0C3C7C', background: '#0C3C7C' }}>
@@ -38,30 +86,43 @@ const Footer = () => {
             {/* Redes Sociales */}
             <div className="pt-4">
                <div className="flex items-center gap-4">
-                  <a href="#" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all border border-white/5">
-                    <Twitter className="w-5 h-5 fill-white" />
-                  </a>
-                  {/* Keep other icons hidden if not set, or show placeholders if version requires it */}
+                  {club.settings?.twitter_url && (
+                    <a href={club.settings.twitter_url} target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all border border-white/5">
+                      <Twitter className="w-5 h-5 fill-white" />
+                    </a>
+                  )}
+                  {club.settings?.facebook_url && (
+                    <a href={club.settings.facebook_url} target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all border border-white/5">
+                      <Facebook className="w-5 h-5 fill-white" />
+                    </a>
+                  )}
+                  {club.settings?.instagram_url && (
+                    <a href={club.settings.instagram_url} target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all border border-white/5">
+                      <Instagram className="w-5 h-5 text-white" />
+                    </a>
+                  )}
                </div>
             </div>
           </div>
 
           {/* Links de Interés */}
           <div className="md:pl-6">
-            <h3 className="font-bold text-lg mb-6 tracking-tight">Links de Interés</h3>
+            <h3 className="font-bold text-lg mb-6 tracking-tight">
+              {type === 'club' ? 'El Club' : type === 'district' ? 'El Distrito' : 'Nuestra Red'}
+            </h3>
             <ul className="space-y-3 text-[14px] font-medium text-white/80">
-               <li><a href="#/quienes-somos" className="hover:text-yellow-400 transition-colors">Acerca de Rotary</a></li>
-              <li><a href="#/nuestra-historia" className="hover:text-yellow-400 transition-colors">Historia de Rotary LATIR</a></li>
-              <li><a href="#/nuestra-junta-directiva" className="hover:text-yellow-400 transition-colors">Junta Directiva Rotary LATIR</a></li>
-              {!(club?.subdomain?.toLowerCase().includes('latir') || club?.name?.toLowerCase().includes('latir')) && (
-                <li><a href="#/la-fundacion-rotaria" className="hover:text-yellow-400 transition-colors">La Fundación Rotaria</a></li>
-              )}
-              <li><a href="#/intercambio-jovenes" className="hover:text-yellow-400 transition-colors">Programa de Intercambios de Rotary</a></li>
-              <li><a href="https://my.rotary.org" target="_blank" rel="noopener noreferrer" className="hover:text-yellow-400 transition-colors">My Rotary</a></li>
-              <li><a href="#/eventos" className="hover:text-yellow-400 transition-colors">Nuestros Eventos</a></li>
-              <li><a href="#/blog" className="hover:text-yellow-400 transition-colors">Novedades</a></li>
-              <li><a href="#/descargas" className="hover:text-yellow-400 transition-colors">Centro de Descargas</a></li>
-              <li><a href="#/contacto" className="hover:text-yellow-400 transition-colors">Contacto</a></li>
+              {links.map((link, idx) => (
+                <li key={idx}>
+                  <a 
+                    href={link.href} 
+                    target={link.external ? "_blank" : undefined}
+                    rel={link.external ? "noopener noreferrer" : undefined}
+                    className="hover:text-yellow-400 transition-colors"
+                  >
+                    {link.label}
+                  </a>
+                </li>
+              ))}
             </ul>
           </div>
 
@@ -75,7 +136,7 @@ const Footer = () => {
               </li>
               <li className="flex items-center gap-2">
                 <span className="text-yellow-500 text-lg select-none">•</span>
-                <a href="#" className="hover:text-yellow-400 transition-colors">Comunícate con nosotros</a>
+                <a href="#/contacto" className="hover:text-yellow-400 transition-colors">Comunícate con nosotros</a>
               </li>
               <li className="flex items-center gap-2">
                 <span className="text-yellow-500 text-lg select-none">•</span>
@@ -118,7 +179,8 @@ const Footer = () => {
               <a href="https://my.rotary.org/terms-of-use" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Términos</a>
             </div>
             <div className="flex items-center gap-4">
-                <Twitter className="w-4 h-4 text-white/30 hover:text-white transition-colors" />
+                {club.settings?.twitter_url && <Twitter className="w-4 h-4 text-white/30 hover:text-white transition-colors" />}
+                {club.settings?.facebook_url && <Facebook className="w-4 h-4 text-white/30 hover:text-white transition-colors" />}
             </div>
           </div>
         </div>

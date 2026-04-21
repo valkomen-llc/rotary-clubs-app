@@ -24,6 +24,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.17",
+        date: "21 Abril 2026",
+        title: "Infraestructura: Footer Dinámico Multitenant",
+        type: "feature",
+        changes: [
+            { type: "added", text: "Ecosistema de Footers: Implementadas 3 'pieles' (Club, Distrito, Asociación) que se activan automáticamente según el tipo de tenant." },
+            { type: "added", text: "Gestión Super-Admin: Nueva opción en el panel de control de clubes para definir el tipo de organización y su comportamiento visual." },
+            { type: "improved", text: "Abstracción de Datos: Eliminadas referencias hardcodeadas a 'Rotary LATIR' en el footer, permitiendo que cada sitio use sus propios nombres y links institucionales." }
+        ]
+    },
+    {
         version: "v4.11.16",
         date: "21 Abril 2026",
         title: "Multimedia: Navegación Immersiva",
