@@ -24,6 +24,16 @@ interface UpdateItem {
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.6",
+        date: "21 Abril 2026",
+        title: "Diagnóstico: Errores Transparentes",
+        type: "hotfix",
+        changes: [
+            { type: "added", text: "Mejora en la visualización de errores para mostrar detalles técnicos del servidor en el panel." },
+            { type: "fixed", text: "Preparación para sincronización de columnas de base de datos faltantes." }
+        ]
+    },
+    {
         version: "v4.11.5",
         date: "21 Abril 2026",
         title: "Arquitectura: Estabilidad Crítica",
