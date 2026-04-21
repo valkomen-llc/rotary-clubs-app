@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.25",
+        date: "21 de Abril, 2026",
+        title: "Diagnóstico: Caja Negra y Persistencia Atómica",
+        description: "Implementación de registro 'caja negra' para capturar respuestas crudas del servidor y bypass de restricciones DB.",
+        type: "fix",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "fixed", text: "Database: Implementada persistencia por reemplazo atómico para evitar conflictos de restricciones únicas." },
+            { type: "improved", text: "Telemetría: El panel ahora captura y muestra la respuesta cruda del servidor si esta no es un JSON válido." }
+        ]
+    },
+    {
         version: "v4.11.24",
         date: "21 de Abril, 2026",
         title: "Diagnóstico: Reporte Avanzado de Errores",

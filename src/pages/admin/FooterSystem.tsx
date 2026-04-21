@@ -104,10 +104,14 @@ const FooterSystem = () => {
             if (response.ok) {
                 toast.success(`Configuración ${activeTab} guardada exitosamente`);
             } else {
-                const errData = await response.json().catch(() => ({}));
-                const msg = errData.details || errData.error || 'Error desconocido';
+                const text = await response.text();
+                let errData: any = {};
+                try { errData = JSON.parse(text); } catch (e) { /* ignore */ }
+                
+                const msg = errData.details || errData.error || (text.length > 5 ? text.slice(0, 60) : 'Error desconocido');
+                
                 toast.error(`Error: ${msg}`, {
-                    description: errData.code ? `Código DB: ${errData.code}` : undefined,
+                    description: errData.code ? `Código DB: ${errData.code}` : 'El servidor no devolvió un JSON válido',
                     duration: 10000
                 });
             }

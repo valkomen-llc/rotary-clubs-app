@@ -1,4 +1,5 @@
-import prisma from '../lib/prisma.js';
+import db from '../lib/db.js';
+import crypto from 'crypto';
 
 // Ultra-fast in-memory cache (1 hour)
 let skinsCache = null;
@@ -14,20 +15,15 @@ export const getFooterSkins = async (req, res) => {
         }
 
         const skins = ['club', 'district', 'association', 'colrotarios'];
-        const settings = await prisma.setting.findMany({
-            where: {
-                key: {
-                    in: ['footer_skin_club', 'footer_skin_district', 'footer_skin_association', 'footer_skin_colrotarios']
-                },
-                clubId: null
-            }
-        });
+        const result = await db.query(
+            "SELECT key, value FROM \"Setting\" WHERE key IN ('footer_skin_club', 'footer_skin_district', 'footer_skin_association', 'footer_skin_colrotarios') AND \"clubId\" IS NULL"
+        );
 
         const results = {};
         skins.forEach(type => {
             const key = `footer_skin_${type}`;
-            const setting = settings.find(s => s.key === key);
-            results[type] = setting ? JSON.parse(setting.value) : getDefaultSkin(type);
+            const row = result.rows.find(r => r.key === key);
+            results[type] = row ? JSON.parse(row.value) : getDefaultSkin(type);
         });
 
         // Update cache
@@ -37,7 +33,7 @@ export const getFooterSkins = async (req, res) => {
         res.json(results);
     } catch (error) {
         console.error('Fatal error fetching footer skins:', error);
-        res.status(500).json({ error: 'Error sistémico de carga' });
+        res.status(500).json({ error: 'Error de carga en base de datos', details: error.message });
     }
 };
 
@@ -49,40 +45,12 @@ export const updateFooterSkin = async (req, res) => {
     try {
         const val = JSON.stringify(config);
         
-        // Use findFirst instead of upsert to avoid Unique Constraint issues with NULL clubId
-        const existing = await prisma.setting.findFirst({
-            where: {
-                key: key,
-                clubId: null
-            }
-        });
-
-        if (existing) {
-            await prisma.setting.update({
-                where: { id: existing.id },
-                data: {
-                    value: val,
-                    updatedAt: new Date()
-                }
-            });
-
-            // Cleanup potential duplicates (safety cleanup for NULL-able unique constraints in Postgres)
-            await prisma.setting.deleteMany({
-                where: {
-                    key: key,
-                    clubId: null,
-                    NOT: { id: existing.id }
-                }
-            });
-        } else {
-            await prisma.setting.create({
-                data: {
-                    key: key,
-                    value: val,
-                    clubId: null
-                }
-            });
-        }
+        // Nuclear approach: Delete then Insert to bypass idiosyncratic Unique Constraint behaviors with NULLs
+        await db.query('DELETE FROM "Setting" WHERE key = $1 AND "clubId" IS NULL', [key]);
+        await db.query(
+            'INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt") VALUES ($1, $2, $3, NULL, NOW())',
+            [crypto.randomUUID(), key, val]
+        );
 
         // Invalidate cache
         skinsCache = null;
@@ -92,9 +60,9 @@ export const updateFooterSkin = async (req, res) => {
     } catch (error) {
         console.error('Error updating footer skin:', error);
         res.status(500).json({ 
-            error: 'Error de Persistencia', 
+            error: 'Error de Escritura DB', 
             details: error.message,
-            code: error.code // Prisma or PG error code
+            code: error.code
         });
     }
 };
