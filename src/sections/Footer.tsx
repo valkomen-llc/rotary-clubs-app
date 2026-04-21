@@ -191,8 +191,8 @@ const Footer = () => {
                         </h3>
                         <ul className="space-y-3 text-[14px] font-medium text-white/80">
                              {activeConfig.menu2Items?.map((link: any, idx: number) => (
-                                <li key={idx} className="flex items-center gap-2">
-                                    <span className="text-yellow-500 text-lg select-none">•</span>
+                                <li key={idx} className="flex items-center gap-3">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-yellow-500 shadow-[0_0_8px_rgba(250,165,26,0.4)] flex-shrink-0" />
                                     <a 
                                         href={link.href} 
                                         target={link.external ? "_blank" : undefined}

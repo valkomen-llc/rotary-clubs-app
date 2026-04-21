@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.34",
+        date: "21 de Abril, 2026",
+        title: "Diseño: Simetría Absoluta",
+        description: "Ajuste milimétrico del interlineado en los menús del footer usando indicadores de tamaño fijo.",
+        type: "update",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "improved", text: "Visual: Normalizado el interlineado mediante el uso de un dot circular de tamaño fijo en lugar de caracteres de texto." }
+        ]
+    },
+    {
         version: "v4.11.33",
         date: "21 de Abril, 2026",
         title: "Diseño: Simetría de Menús",
