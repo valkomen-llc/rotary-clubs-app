@@ -112,7 +112,7 @@ const Footer = () => {
 
     return (
         <footer className="text-white w-full border-t border-white/5" style={{ backgroundColor: '#013E7D', background: '#013E7D' }}>
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-[60px]">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
                     {/* Logo & End Polio */}
                     <div className="space-y-8">

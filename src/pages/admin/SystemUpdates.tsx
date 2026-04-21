@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.32",
+        date: "21 de Abril, 2026",
+        title: "Diseño: Spacing Ampliado (60px)",
+        description: "Expansión del margen vertical del footer para una estética más aireada y premium.",
+        type: "update",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "improved", text: "Layout: Incrementado el margen vertical principal a 60px para mayor amplitud visual." }
+        ]
+    },
+    {
         version: "v4.11.31",
         date: "21 de Abril, 2026",
         title: "Diseño: Spacing & Tipografía",
