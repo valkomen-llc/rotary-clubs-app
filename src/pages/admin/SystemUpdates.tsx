@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.23",
+        date: "21 de Abril, 2026",
+        title: "Estabilidad: Persistencia Ultra-Safe",
+        description: "Corrección crítica en la persistencia de configuraciones globales para evitar colisiones de base de datos.",
+        type: "fix",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "fixed", text: "Database Sync: Refactorización del motor de persistencia para manejar correctamente restricciones únicas con valores NULL." },
+            { type: "improved", text: "Error Reporting: Los errores de guardado ahora muestran el detalle técnico exacto en el panel para facilitar diagnósticos." }
+        ]
+    },
+    {
         version: "v4.11.22",
         date: "21 de Abril, 2026",
         title: "Multimedia: Integración Media Library en Footer",

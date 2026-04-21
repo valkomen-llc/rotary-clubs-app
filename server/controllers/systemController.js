@@ -49,23 +49,40 @@ export const updateFooterSkin = async (req, res) => {
     try {
         const val = JSON.stringify(config);
         
-        await prisma.setting.upsert({
+        // Use findFirst instead of upsert to avoid Unique Constraint issues with NULL clubId
+        const existing = await prisma.setting.findFirst({
             where: {
-                key_clubId: {
-                    key: key,
-                    clubId: null
-                }
-            },
-            update: {
-                value: val,
-                updatedAt: new Date()
-            },
-            create: {
                 key: key,
-                value: val,
                 clubId: null
             }
         });
+
+        if (existing) {
+            await prisma.setting.update({
+                where: { id: existing.id },
+                data: {
+                    value: val,
+                    updatedAt: new Date()
+                }
+            });
+
+            // Cleanup potential duplicates (safety cleanup for NULL-able unique constraints in Postgres)
+            await prisma.setting.deleteMany({
+                where: {
+                    key: key,
+                    clubId: null,
+                    NOT: { id: existing.id }
+                }
+            });
+        } else {
+            await prisma.setting.create({
+                data: {
+                    key: key,
+                    value: val,
+                    clubId: null
+                }
+            });
+        }
 
         // Invalidate cache
         skinsCache = null;
@@ -74,7 +91,10 @@ export const updateFooterSkin = async (req, res) => {
         res.json({ message: `Skin ${type} actualizado exitosamente` });
     } catch (error) {
         console.error('Error updating footer skin:', error);
-        res.status(500).json({ error: 'Error al actualizar footer', details: error.message });
+        res.status(500).json({ 
+            error: 'No se pudo guardar la configuración del footer', 
+            details: error.message 
+        });
     }
 };
 

@@ -104,7 +104,8 @@ const FooterSystem = () => {
             if (response.ok) {
                 toast.success(`Configuración ${activeTab} guardada exitosamente`);
             } else {
-                toast.error('Error al guardar');
+                const errData = await response.json().catch(() => ({}));
+                toast.error(errData.error || errData.details || 'Error al guardar');
             }
         } catch (error) {
             toast.error('Error de conexión');
