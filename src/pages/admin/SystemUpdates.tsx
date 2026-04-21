@@ -24,6 +24,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.3",
+        date: "21 Abril 2026",
+        title: "Salud SEO: Contadores Inteligentes",
+        type: "feature",
+        changes: [
+            { type: "added", text: "Indicadores visuales en tiempo real para Título SEO (60 carac.) y Meta Descripción (160 carac.)." },
+            { type: "added", text: "Alertas críticas cuando el contenido excede los límites de truncamiento de Google." },
+            { type: "changed", text: "Mejora visual en la pestaña de SEO con tarjetas de estado dinámicas." }
+        ]
+    },
+    {
         version: "v4.11.2",
         date: "21 Abril 2026",
         title: "Estabilidad: Persistencia SEO",

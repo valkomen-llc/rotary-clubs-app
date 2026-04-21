@@ -1020,6 +1020,39 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                         </div>
                                                     </div>
                                                 </div>
+
+                                                {/* Indicadores de Salud SEO (Character Counters) */}
+                                                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
+                                                    <div className={`p-4 rounded-3xl border transition-all duration-300 ${formData.seoTitle.length > 60 || formData.seoTitle.length === 0 ? 'bg-red-50/50 border-red-100' : 'bg-green-50/50 border-green-100'}`}>
+                                                        <span className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2 font-mono">Título SEO</span>
+                                                        <div className="flex items-baseline gap-1">
+                                                            <span className={`text-2xl font-black ${formData.seoTitle.length > 60 || formData.seoTitle.length === 0 ? 'text-red-500' : 'text-green-500'}`}>
+                                                                {formData.seoTitle.length}
+                                                            </span>
+                                                            <span className="text-xs text-gray-300 font-bold">/60</span>
+                                                        </div>
+                                                        {(formData.seoTitle.length > 60) ? (
+                                                            <p className="text-[10px] text-red-400 font-bold mt-1 animate-pulse">Google lo truncará</p>
+                                                        ) : (
+                                                            <p className="text-[10px] text-green-600/60 font-bold mt-1 italic">Longitud ideal</p>
+                                                        )}
+                                                    </div>
+
+                                                    <div className={`p-4 rounded-3xl border transition-all duration-300 ${formData.seoDescription.length > 160 || formData.seoDescription.length === 0 ? 'bg-red-50/50 border-red-100' : 'bg-green-50/50 border-green-100'}`}>
+                                                        <span className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2 font-mono">Meta Descripción</span>
+                                                        <div className="flex items-baseline gap-1">
+                                                            <span className={`text-2xl font-black ${formData.seoDescription.length > 160 || formData.seoDescription.length === 0 ? 'text-red-500' : 'text-green-500'}`}>
+                                                                {formData.seoDescription.length}
+                                                            </span>
+                                                            <span className="text-xs text-gray-300 font-bold">/160</span>
+                                                        </div>
+                                                        {(formData.seoDescription.length > 160) ? (
+                                                            <p className="text-[10px] text-red-400 font-bold mt-1 animate-pulse">Google lo truncará</p>
+                                                        ) : (
+                                                            <p className="text-[10px] text-green-600/60 font-bold mt-1 italic">Longitud ideal</p>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </div>
 
                                             {/* Columna 2: Visualización (40% aprox en LG) */}
