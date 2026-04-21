@@ -914,19 +914,18 @@ const BlogPost = () => {
           {((articulo.images && articulo.images.length > 0) || (articulo.videoGallery && articulo.videoGallery.length > 0)) && (
             <div className="mt-12 mb-16">
               <div className="flex items-center justify-between mb-8">
-                <h3 className="text-2xl font-black text-gray-900 border-b-4 border-rotary-gold pb-1 inline-block uppercase tracking-tight">Galería Multimedia</h3>
+                <h3 className="text-[20px] font-black text-gray-900 border-b-4 border-rotary-gold pb-1 inline-block uppercase tracking-tight">Galería Multimedia</h3>
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{articulo.images.length + (articulo.videoGallery?.length || 0)} ARCHIVOS</p>
               </div>
               
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 auto-rows-[200px]">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 auto-rows-[220px]">
                 {/* Mezclar videos e imágenes */}
                 {[
                   ...(articulo.videoGallery || []).map((v: string) => ({ url: v, type: 'video' })),
                   ...(articulo.images || []).map((i: string) => ({ url: i, type: 'image' }))
                 ].map((item: any, index: number) => {
-                   // Lógica para que algunas celdas sean más grandes (Bento style)
-                   const isLarge = index % 5 === 0;
-                   const isWide = index % 7 === 1;
+                   // Patrón para que la primera sea grande y ocupe 2x2 en un grid de 3 columnas
+                   const isFirstLarge = index === 0;
                    
                    return (
                      <motion.div 
@@ -935,7 +934,7 @@ const BlogPost = () => {
                        whileInView={{ opacity: 1, y: 0 }}
                        viewport={{ once: true }}
                        transition={{ delay: index * 0.05 }}
-                       className={`relative rounded-2xl overflow-hidden shadow-md group cursor-pointer border border-gray-100 ${isLarge ? 'md:col-span-2 md:row-span-2' : isWide ? 'md:col-span-2' : ''}`}
+                       className={`relative rounded-2xl overflow-hidden shadow-md group cursor-pointer border border-gray-100 ${isFirstLarge ? 'md:col-span-2 md:row-span-2' : 'col-span-1'}`}
                        onClick={() => setSelectedMedia(item)}
                      >
                        {item.type === 'video' ? (

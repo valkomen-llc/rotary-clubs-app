@@ -24,6 +24,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.15",
+        date: "21 Abril 2026",
+        title: "Multimedia: Refinamiento de Grid y Tipografía",
+        type: "fix",
+        changes: [
+            { type: "changed", text: "Grid de 3 Columnas: Todas las imágenes y videos se distribuyen ahora en un esquema exacto de 3 columnas para mayor orden visual." },
+            { type: "improved", text: "Tipografía: Ajustado el tamaño del título de la galería a 20px según requerimientos." },
+            { type: "fixed", text: "Alineación: Corregido el espacio vacío al final de la galería asegurando que siempre se completen las filas." }
+        ]
+    },
+    {
         version: "v4.11.14",
         date: "21 Abril 2026",
         title: "Multimedia: Galería Adaptativa y Multi-Video",
