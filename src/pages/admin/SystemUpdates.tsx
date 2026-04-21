@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.38",
+        date: "21 de Abril, 2026",
+        title: "Layout: Contención & Ancho Simétrico",
+        description: "Normalización del ancho máximo del footer (6xl) para asegurar simetría entre clubes y asociaciones.",
+        type: "update",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "improved", text: "Visual: Reducido el max-width del footer (6xl) para unificar la estética de LATIR con los clubes standard." }
+        ]
+    },
+    {
         version: "v4.11.37",
         date: "21 de Abril, 2026",
         title: "Arquitectura: Sync de Footer en Asociaciones",
