@@ -24,6 +24,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.14",
+        date: "21 Abril 2026",
+        title: "Multimedia: Galería Adaptativa y Multi-Video",
+        type: "feature",
+        changes: [
+            { type: "added", text: "Nueva Galería Bento: Adaptación automática a diferentes formatos de imagen." },
+            { type: "added", text: "Soporte Multi-Video: Ahora puedes agregar múltiples videos de YouTube/Vimeo por noticia." },
+            { type: "added", text: "Lightbox Inmersivo: Visualización de fotos y videos en pantalla completa con transiciones fluidas." },
+            { type: "improved", text: "Admin: Nueva pestaña de gestión multimedia para colecciones mixtas de foto y video." }
+        ]
+    },
+    {
         version: "v4.11.13",
         date: "21 Abril 2026",
         title: "Estabilidad: Supervivencia de Enlaces y SEO",

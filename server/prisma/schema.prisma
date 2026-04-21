@@ -175,6 +175,7 @@ model Post {
   ctaCopy        String?
   videoUrl       String?
   images         String[]
+  videoGallery   String[]
   isAI           Boolean  @default(false)
   clubId         String?
   createdAt      DateTime @default(now())

@@ -3,8 +3,10 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useClub } from '../contexts/ClubContext';
 import { 
   Calendar, User, Clock, ArrowLeft, Share2, Facebook, Twitter, 
-  Linkedin, Tag, ChevronRight, Star, Send, CheckCircle, MessageSquare
+  Linkedin, Tag, ChevronRight, Star, Send, CheckCircle, MessageSquare,
+  Maximize2, X as CloseIcon, Play, Video as VideoIcon
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 
@@ -679,6 +681,9 @@ const BlogPost = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
 
+  // Lightbox
+  const [selectedMedia, setSelectedMedia] = useState<{ url: string, type: 'image' | 'video' } | null>(null);
+
   // Comentarios
   const [comments, setComments] = useState<Comment[]>([]);
   const [loadingComments, setLoadingComments] = useState(true);
@@ -889,14 +894,15 @@ const BlogPost = () => {
             dangerouslySetInnerHTML={{ __html: articulo.contenido }}
           />
 
-          {/* Video si existe */}
+          {/* Video Principal si existe */}
           {articulo.videoUrl && (
             <div className="mt-12 mb-16">
-              <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">Video relacionado</h3>
-              <div className="aspect-video rounded-2xl overflow-hidden shadow-2xl border border-gray-100">
+              <div className="relative aspect-video rounded-3xl overflow-hidden shadow-2xl border-8 border-gray-100/50 group">
                 <iframe
+                  className="absolute inset-0 w-full h-full"
                   src={`https://www.youtube.com/embed/${articulo.videoUrl.split('v=')[1]?.split('&')[0] || articulo.videoUrl.split('/').pop()}`}
-                  className="w-full h-full"
+                  title="Video principal"
+                  frameBorder="0"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
                 ></iframe>
@@ -904,23 +910,117 @@ const BlogPost = () => {
             </div>
           )}
 
-          {/* Galería si existe */}
-          {articulo.images && articulo.images.length > 0 && (
+          {/* Galería Adaptativa (Imágenes y Videos) */}
+          {((articulo.images && articulo.images.length > 0) || (articulo.videoGallery && articulo.videoGallery.length > 0)) && (
             <div className="mt-12 mb-16">
-              <h3 className="text-xl font-bold text-gray-900 mb-6 border-b pb-2">Galería de imágenes</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                {articulo.images.map((img: string, index: number) => (
-                  <div key={index} className="aspect-[4/3] rounded-xl overflow-hidden shadow-lg border border-gray-100 group">
-                    <img
-                      src={img}
-                      alt={`Imagen ${index + 1}`}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                    />
-                  </div>
-                ))}
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="text-2xl font-black text-gray-900 border-b-4 border-rotary-gold pb-1 inline-block uppercase tracking-tight">Galería Multimedia</h3>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{articulo.images.length + (articulo.videoGallery?.length || 0)} ARCHIVOS</p>
+              </div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 auto-rows-[200px]">
+                {/* Mezclar videos e imágenes */}
+                {[
+                  ...(articulo.videoGallery || []).map((v: string) => ({ url: v, type: 'video' })),
+                  ...(articulo.images || []).map((i: string) => ({ url: i, type: 'image' }))
+                ].map((item: any, index: number) => {
+                   // Lógica para que algunas celdas sean más grandes (Bento style)
+                   const isLarge = index % 5 === 0;
+                   const isWide = index % 7 === 1;
+                   
+                   return (
+                     <motion.div 
+                       key={index} 
+                       initial={{ opacity: 0, y: 20 }}
+                       whileInView={{ opacity: 1, y: 0 }}
+                       viewport={{ once: true }}
+                       transition={{ delay: index * 0.05 }}
+                       className={`relative rounded-2xl overflow-hidden shadow-md group cursor-pointer border border-gray-100 ${isLarge ? 'md:col-span-2 md:row-span-2' : isWide ? 'md:col-span-2' : ''}`}
+                       onClick={() => setSelectedMedia(item)}
+                     >
+                       {item.type === 'video' ? (
+                         <div className="w-full h-full bg-gray-900 flex items-center justify-center relative">
+                            {/* Miniatura del video (usando el ID de youtube si es posible) */}
+                            <div className="absolute inset-0 opacity-40">
+                               <img 
+                                 src={`https://img.youtube.com/vi/${item.url.split('v=')[1]?.split('&')[0] || item.url.split('/').pop()}/0.jpg`} 
+                                 className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all"
+                                 alt=""
+                               />
+                            </div>
+                            <div className="bg-rotary-blue text-white p-4 rounded-full relative z-10 group-hover:scale-110 transition-transform shadow-xl">
+                              <Play className="w-6 h-6 fill-white" />
+                            </div>
+                            <div className="absolute bottom-4 left-4 z-20 flex items-center gap-2">
+                              <VideoIcon className="w-4 h-4 text-white" />
+                              <span className="text-[10px] font-black text-white uppercase tracking-widest">Video</span>
+                            </div>
+                         </div>
+                       ) : (
+                         <>
+                           <img
+                             src={item.url}
+                             alt={`Galería ${index + 1}`}
+                             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                             crossOrigin="anonymous"
+                           />
+                           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
+                              <Maximize2 className="w-5 h-5 text-white" />
+                           </div>
+                         </>
+                       )}
+                     </motion.div>
+                   );
+                })}
               </div>
             </div>
           )}
+
+          {/* Lightbox Immersivo */}
+          <AnimatePresence>
+            {selectedMedia && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/95 p-4 md:p-10 backdrop-blur-sm"
+                onClick={() => setSelectedMedia(null)}
+              >
+                <button 
+                  className="absolute top-6 right-6 text-white hover:text-rotary-gold transition-colors z-[10000]"
+                  onClick={(e) => { e.stopPropagation(); setSelectedMedia(null); }}
+                >
+                  <CloseIcon className="w-10 h-10" />
+                </button>
+
+                <motion.div 
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.9, opacity: 0 }}
+                  className="max-w-7xl w-full max-h-full flex items-center justify-center relative"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {selectedMedia.type === 'video' ? (
+                    <div className="w-full aspect-video rounded-2xl overflow-hidden shadow-2xl bg-black">
+                      <iframe
+                        className="w-full h-full border-none"
+                        src={`https://www.youtube.com/embed/${selectedMedia.url.split('v=')[1]?.split('&')[0] || selectedMedia.url.split('/').pop()}?autoplay=1`}
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      ></iframe>
+                    </div>
+                  ) : (
+                    <img 
+                      src={selectedMedia.url} 
+                      className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
+                      alt="Full view"
+                      crossOrigin="anonymous"
+                    />
+                  )}
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Compartir */}
           <div className="mt-12 pt-8 border-t border-gray-200">

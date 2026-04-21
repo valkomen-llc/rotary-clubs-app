@@ -32,6 +32,7 @@ interface Post {
     ctaCopy?: string;
     videoUrl?: string;
     images?: string[];
+    videoGallery?: string[];
     createdAt: string;
     isStatic?: boolean;
 }
@@ -65,6 +66,7 @@ const NewsManagement: React.FC = () => {
         ctaCopy: '',
         videoUrl: '',
         images: [] as string[],
+        videoGallery: [] as string[],
     });
 
     const [tagInput, setTagInput] = useState('');
@@ -247,6 +249,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 ctaCopy: post.ctaCopy || '',
                 videoUrl: post.videoUrl || '',
                 images: post.images || [],
+                videoGallery: post.videoGallery || [],
             };
 
             if (post.isStatic) {
@@ -920,14 +923,55 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                             <div className="p-6 bg-gray-50 rounded-2xl border border-gray-200 border-dashed flex flex-col items-center justify-center text-center">
                                                 <Video className="w-10 h-10 text-gray-300 mb-2" />
-                                                <label className="block text-sm font-bold text-gray-700 mb-3">Video de la Noticia (YouTube/Vimeo)</label>
+                                                <label className="block text-sm font-bold text-gray-700 mb-3">Video Principal (YouTube/Vimeo)</label>
                                                 <input
                                                     type="url"
-                                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none text-sm font-medium"
+                                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none text-sm font-medium mb-4"
                                                     value={formData.videoUrl}
                                                     onChange={(e) => setFormData({ ...formData, videoUrl: e.target.value })}
-                                                    placeholder="URL del video..."
+                                                    placeholder="URL del video principal..."
                                                 />
+                                                
+                                                <div className="w-full pt-4 border-t border-gray-100">
+                                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Agregar Videos a Galería</label>
+                                                    <div className="flex gap-2">
+                                                        <input 
+                                                            type="url" 
+                                                            id="gallery-video-input"
+                                                            className="flex-1 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-rotary-blue/20 outline-none"
+                                                            placeholder="URL de YouTube/Vimeo..."
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    e.preventDefault();
+                                                                    const val = (e.currentTarget as HTMLInputElement).value;
+                                                                    if (val) {
+                                                                        setFormData(prev => ({
+                                                                            ...prev,
+                                                                            videoGallery: [...(prev.videoGallery || []), val]
+                                                                        }));
+                                                                        (e.currentTarget as HTMLInputElement).value = '';
+                                                                    }
+                                                                }
+                                                            }}
+                                                        />
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const input = document.getElementById('gallery-video-input') as HTMLInputElement;
+                                                                if (input?.value) {
+                                                                    setFormData(prev => ({
+                                                                        ...prev,
+                                                                        videoGallery: [...(prev.videoGallery || []), input.value]
+                                                                    }));
+                                                                    input.value = '';
+                                                                }
+                                                            }}
+                                                            className="px-4 py-2 bg-rotary-blue text-white rounded-xl text-xs font-bold hover:bg-sky-700 transition-colors"
+                                                        >
+                                                            Añadir
+                                                        </button>
+                                                    </div>
+                                                </div>
                                             </div>
 
                                             <div className="group relative p-6 bg-gray-900 border border-gray-800 rounded-2xl flex flex-col items-center justify-center text-center overflow-hidden">
@@ -943,11 +987,29 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
 
                                         <div className="space-y-4">
                                             <h4 className="font-bold text-gray-800 flex items-center gap-2">
-                                                <ImageIcon className="w-4 h-4 text-rotary-blue" /> Imágenes en Galería ({formData.images.length})
+                                                <ImageIcon className="w-4 h-4 text-rotary-blue" /> Multimedia en Galería ({formData.images.length + (formData.videoGallery?.length || 0)})
                                             </h4>
+                                            
                                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                                {/* Videos first */}
+                                                {formData.videoGallery?.map((url, idx) => (
+                                                    <div key={`vid-${idx}`} className="aspect-square rounded-xl overflow-hidden border-2 border-rotary-blue/30 relative group shadow-sm bg-gray-900 flex items-center justify-center">
+                                                        <div className="absolute inset-0 z-10 bg-black/20" />
+                                                        <Video className="w-8 h-8 text-white relative z-20" />
+                                                        <div className="absolute bottom-2 left-2 right-2 truncate text-[10px] text-white font-bold bg-black/60 px-1 rounded z-20">Video</div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setFormData(prev => ({ ...prev, videoGallery: prev.videoGallery?.filter((_, i) => i !== idx) }))}
+                                                            className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-30"
+                                                        >
+                                                            <X className="w-2.5 h-2.5" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+
+                                                {/* Then Images */}
                                                 {formData.images.map((url, idx) => (
-                                                    <div key={idx} className="aspect-square rounded-xl overflow-hidden border border-gray-100 relative group shadow-sm bg-gray-50">
+                                                    <div key={`img-${idx}`} className="aspect-square rounded-xl overflow-hidden border border-gray-100 relative group shadow-sm bg-gray-50">
                                                         <img src={url} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
                                                         <button
                                                             type="button"

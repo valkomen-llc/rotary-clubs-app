@@ -102,7 +102,7 @@ export const getClubPosts = async (req, res) => {
 export const createPost = async (req, res) => {
     const { 
         title, slug, content, image, published, clubId, category, tags, 
-        keywords, seoTitle, seoDescription, seoImage, socialCopy, ctaCopy, videoUrl, images, isAI 
+        keywords, seoTitle, seoDescription, seoImage, socialCopy, ctaCopy, videoUrl, images, videoGallery, isAI 
     } = req.body;
     
     const runCreate = async () => {
@@ -127,6 +127,7 @@ export const createPost = async (req, res) => {
                 ctaCopy: ctaCopy || '',
                 videoUrl: videoUrl || '',
                 images: Array.isArray(images) ? images : [],
+                videoGallery: Array.isArray(videoGallery) ? videoGallery : [],
                 isAI: isAI || false
             }
         });
@@ -137,12 +138,14 @@ export const createPost = async (req, res) => {
         res.status(201).json(post);
     } catch (error) {
         // Auto-heal: If columns are missing, add them and retry
-        if (error.message.includes('seoImage') || error.message.includes('socialCopy') || error.message.includes('ctaCopy')) {
+        const missingCols = ['seoImage', 'socialCopy', 'ctaCopy', 'videoGallery'];
+        if (missingCols.some(col => error.message.includes(col))) {
             try {
-                console.log('Auto-migration (Create): Patching Post table schema...');
-                await db.query('ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "seoImage" TEXT;');
-                await db.query('ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "socialCopy" TEXT;');
-                await db.query('ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "ctaCopy" TEXT;');
+                console.log('Auto-migration (Create): Patching Post table schema for multimedia...');
+                for (const col of missingCols) {
+                    const type = col === 'videoGallery' ? 'TEXT[]' : 'TEXT';
+                    await db.query(`ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "${col}" ${type};`);
+                }
                 const retryPost = await runCreate();
                 return res.status(201).json(retryPost);
             } catch (migrationError) {
@@ -158,7 +161,7 @@ export const updatePost = async (req, res) => {
     const { id } = req.params;
     const { 
         title, slug, content, image, published, category, tags, 
-        keywords, seoTitle, seoDescription, seoImage, socialCopy, ctaCopy, videoUrl, images 
+        keywords, seoTitle, seoDescription, seoImage, socialCopy, ctaCopy, videoUrl, images, videoGallery 
     } = req.body;
     
     const runUpdate = async () => {
@@ -191,6 +194,7 @@ export const updatePost = async (req, res) => {
                 ctaCopy: ctaCopy || existing.ctaCopy,
                 videoUrl: videoUrl || existing.videoUrl,
                 images: Array.isArray(images) ? images : existing.images,
+                videoGallery: Array.isArray(videoGallery) ? videoGallery : existing.videoGallery,
                 updatedAt: new Date()
             }
         });
@@ -201,12 +205,14 @@ export const updatePost = async (req, res) => {
         if (post) res.json(post);
     } catch (error) {
         // Auto-heal: If columns are missing, add them and retry
-        if (error.message.includes('seoImage') || error.message.includes('socialCopy') || error.message.includes('ctaCopy')) {
+        const missingCols = ['seoImage', 'socialCopy', 'ctaCopy', 'videoGallery'];
+        if (missingCols.some(col => error.message.includes(col))) {
             try {
-                console.log('Auto-migration (Update): Patching Post table schema...');
-                await db.query('ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "seoImage" TEXT;');
-                await db.query('ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "socialCopy" TEXT;');
-                await db.query('ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "ctaCopy" TEXT;');
+                console.log('Auto-migration (Update): Patching Post table schema for multimedia...');
+                for (const col of missingCols) {
+                    const type = col === 'videoGallery' ? 'TEXT[]' : 'TEXT';
+                    await db.query(`ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "${col}" ${type};`);
+                }
                 const retryPost = await runUpdate();
                 if (retryPost) return res.json(retryPost);
             } catch (migrationError) {
