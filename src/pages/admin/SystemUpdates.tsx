@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.24",
+        date: "21 de Abril, 2026",
+        title: "Diagnóstico: Reporte Avanzado de Errores",
+        description: "Implementación de sistema de diagnóstico transparente para fallos en configuraciones globales.",
+        type: "fix",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "improved", text: "Transparencia: El panel ahora muestra el código de error técnico y detalle exacto del servidor en caso de fallo." },
+            { type: "improved", text: "Robustez: Mejorada la captura de excepciones en el bus de datos de footers." }
+        ]
+    },
+    {
         version: "v4.11.23",
         date: "21 de Abril, 2026",
         title: "Estabilidad: Persistencia Ultra-Safe",

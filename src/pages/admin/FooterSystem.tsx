@@ -105,10 +105,16 @@ const FooterSystem = () => {
                 toast.success(`Configuración ${activeTab} guardada exitosamente`);
             } else {
                 const errData = await response.json().catch(() => ({}));
-                toast.error(errData.error || errData.details || 'Error al guardar');
+                const msg = errData.details || errData.error || 'Error desconocido';
+                toast.error(`Error: ${msg}`, {
+                    description: errData.code ? `Código DB: ${errData.code}` : undefined,
+                    duration: 10000
+                });
             }
-        } catch (error) {
-            toast.error('Error de conexión');
+        } catch (error: any) {
+            toast.error('Fallo crítico de red o servidor', {
+                description: error.message
+            });
         } finally {
             setIsSaving(false);
         }

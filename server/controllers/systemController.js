@@ -92,8 +92,9 @@ export const updateFooterSkin = async (req, res) => {
     } catch (error) {
         console.error('Error updating footer skin:', error);
         res.status(500).json({ 
-            error: 'No se pudo guardar la configuración del footer', 
-            details: error.message 
+            error: 'Error de Persistencia', 
+            details: error.message,
+            code: error.code // Prisma or PG error code
         });
     }
 };
