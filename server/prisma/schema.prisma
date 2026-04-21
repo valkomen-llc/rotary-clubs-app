@@ -170,6 +170,7 @@ model Post {
   keywords       String?
   seoTitle       String?
   seoDescription String?
+  seoImage       String?
   videoUrl       String?
   images         String[]
   isAI           Boolean  @default(false)

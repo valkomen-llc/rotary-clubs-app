@@ -24,6 +24,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.0",
+        date: "21 Abril 2026",
+        title: "SEO Social: Imagen Independiente",
+        type: "feature",
+        changes: [
+            { type: "added", text: "Nueva opción para subir una imagen de previsualización (OpenGraph) diferente a la portada del artículo." },
+            { type: "changed", text: "Actualización de previsualización SEO para mostrar en tiempo real la imagen social personalizada." },
+            { type: "fixed", text: "Sincronización de base de datos para persistir metadatos de imágenes SEO." }
+        ]
+    },
+    {
         version: "v4.10.0",
         date: "21 Abril 2026",
         title: "Maestría en SEO & UX: Interfaz Dual",

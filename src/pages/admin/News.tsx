@@ -27,6 +27,7 @@ interface Post {
     keywords?: string;
     seoTitle?: string;
     seoDescription?: string;
+    seoImage?: string;
     videoUrl?: string;
     images?: string[];
     createdAt: string;
@@ -43,6 +44,7 @@ const NewsManagement: React.FC = () => {
     const [isGeneratingSlug, setIsGeneratingSlug] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<'content' | 'gallery' | 'seo'>('content');
+    const [cropTarget, setCropTarget] = useState<'image' | 'seoImage'>('image');
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
     const [formData, setFormData] = useState({
@@ -56,6 +58,7 @@ const NewsManagement: React.FC = () => {
         keywords: '',
         seoTitle: '',
         seoDescription: '',
+        seoImage: '',
         videoUrl: '',
         images: [] as string[],
     });
@@ -235,6 +238,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 keywords: post.keywords || '',
                 seoTitle: post.seoTitle || '',
                 seoDescription: post.seoDescription || '',
+                seoImage: post.seoImage || '',
                 videoUrl: post.videoUrl || '',
                 images: post.images || [],
             };
@@ -260,6 +264,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 keywords: '',
                 seoTitle: '',
                 seoDescription: '',
+                seoImage: '',
                 videoUrl: '',
                 images: [],
             });
@@ -267,13 +272,14 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         setIsModalOpen(true);
     };
 
-    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, isGallery = false) => {
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, isGallery = false, target: 'image' | 'seoImage' = 'image') => {
         const files = e.target.files;
         if (!files || files.length === 0) return;
 
         if (!isGallery) {
             const file = files[0];
             const reader = new FileReader();
+            setCropTarget(target);
             reader.onload = () => {
                 setImageToCrop(reader.result as string);
                 setIsCropModalOpen(true);
@@ -333,8 +339,8 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
 
             if (response.ok) {
                 const data = await response.json();
-                setFormData(prev => ({ ...prev, image: data.url }));
-                toast.success('Imagen de portada recortada y subida con éxito');
+                setFormData(prev => ({ ...prev, [cropTarget]: data.url }));
+                toast.success(cropTarget === 'image' ? 'Imagen de portada actualizada' : 'Imagen SEO actualizada');
             } else {
                 toast.error('Error al subir imagen recortada');
             }
@@ -975,6 +981,45 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                         </div>
                                                     </div>
                                                 </div>
+
+                                                {/* Nueva Opción de Imagen SEO Independiente */}
+                                                <div className="p-4 bg-gray-50 border border-gray-100 rounded-2xl">
+                                                    <div className="flex justify-between items-center mb-3">
+                                                        <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Imagen Social Personalizada (OpenGraph)</label>
+                                                        {formData.seoImage && (
+                                                            <button 
+                                                                type="button" 
+                                                                onClick={() => setFormData({ ...formData, seoImage: '' })}
+                                                                className="text-[9px] text-red-500 font-bold hover:underline"
+                                                            >
+                                                                Restablecer a Portada
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex gap-4 items-center">
+                                                        <div className="w-24 h-16 rounded-xl border border-gray-200 bg-white overflow-hidden relative group">
+                                                            {(formData.seoImage || formData.image) ? (
+                                                                <img src={formData.seoImage || formData.image} alt="SEO Preview" className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <div className="w-full h-full flex items-center justify-center bg-gray-100"><ImageIcon className="w-6 h-6 text-gray-300" /></div>
+                                                            )}
+                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                                <Upload className="w-5 h-5 text-white" />
+                                                                <input 
+                                                                    type="file" 
+                                                                    className="absolute inset-0 opacity-0 cursor-pointer" 
+                                                                    onChange={(e) => handleImageUpload(e, false, 'seoImage')} 
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <p className="text-[10px] text-gray-500 leading-tight">
+                                                                Esta imagen se usará al compartir en Facebook, LinkedIn y WhatsApp. 
+                                                                <span className="block mt-1 font-bold text-rotary-blue">Mínimo sugerido: 1200x630px.</span>
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
 
                                             {/* Columna 2: Visualización (40% aprox en LG) */}
@@ -984,7 +1029,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                         title={formData.seoTitle || formData.title}
                                                         description={formData.seoDescription}
                                                         url={`https://${(club as any)?.domain || 'tusitio.org'}/#/blog/${formData.slug || editingPost?.id || 'nuevo'}`}
-                                                        image={formData.image}
+                                                        image={formData.seoImage || formData.image}
                                                     />
                                                 </div>
                                                 <div className="p-4 bg-rotary-blue/5 rounded-2xl border border-rotary-blue/10">
