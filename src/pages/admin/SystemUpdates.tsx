@@ -21,8 +21,19 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-20 19:11
+// Cache bust: 2026-04-20 19:17
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.8.7",
+        date: "20 Abril 2026",
+        title: "News URL Slug Engine (Final Polish)",
+        type: "update",
+        changes: [
+            { type: "changed", text: "Promoción del campo 'Slug' a la parte superior derecha (Pestaña SEO) para acceso inmediato." },
+            { type: "added", text: "Estilización mejorada: Fondo resaltado (light gray) y fuente monoespaciada para el slug." },
+            { type: "fixed", text: "Corrección de visibilidad: Eliminada la necesidad de scroll para encontrar el ajuste de URL." }
+        ]
+    },
     {
         version: "v4.8.6",
         date: "20 Abril 2026",

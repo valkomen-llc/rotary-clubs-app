@@ -856,9 +856,30 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                 </div>
 
                                                 <div>
+                                                    <label className="block text-sm font-bold text-gray-700 mb-2 flex justify-between items-center">
+                                                        Slug de URL (Personalizado)
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => setFormData({ ...formData, slug: generateSlug(formData.title) })}
+                                                            className="text-[10px] text-rotary-blue hover:underline uppercase font-bold px-2 py-1 bg-rotary-blue/5 rounded-lg transition-colors"
+                                                        >
+                                                            Generar Auto
+                                                        </button>
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none font-mono text-xs bg-gray-50"
+                                                        value={formData.slug}
+                                                        onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
+                                                        placeholder="ej: nombre-de-la-noticia"
+                                                    />
+                                                    <p className="mt-1 text-[10px] text-gray-400 italic">Si se deja vacío usará el ID por defecto.</p>
+                                                </div>
+
+                                                <div>
                                                     <label className="block text-sm font-bold text-gray-700 mb-2">Meta Descripción</label>
                                                     <textarea
-                                                        rows={4}
+                                                        rows={3}
                                                         className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none resize-none"
                                                         value={formData.seoDescription}
                                                         onChange={(e) => setFormData({ ...formData, seoDescription: e.target.value })}
@@ -874,28 +895,6 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                 image={formData.image}
                                             />
                                         </div>
-
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
-                                                <div>
-                                                    <label className="block text-sm font-bold text-gray-700 mb-2">Slug de URL (Personalizado)</label>
-                                                    <div className="flex gap-2">
-                                                        <input
-                                                            type="text"
-                                                            className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none font-mono text-xs"
-                                                            value={formData.slug}
-                                                            onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
-                                                            placeholder="ej: nombre-de-la-noticia"
-                                                        />
-                                                        <button 
-                                                            type="button" 
-                                                            onClick={() => setFormData({ ...formData, slug: generateSlug(formData.title) })}
-                                                            className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-[10px] font-bold uppercase transition-colors"
-                                                        >
-                                                            Auto
-                                                        </button>
-                                                    </div>
-                                                    <p className="mt-1 text-[10px] text-gray-400">Si lo dejas vacío, el sistema usará el ID por defecto.</p>
-                                                </div>
 
                                                 <div>
                                                     <label className="block text-sm font-bold text-gray-700 mb-2">Palabras Clave (Keywords)</label>
