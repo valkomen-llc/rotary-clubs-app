@@ -1,5 +1,23 @@
 import React, { useEffect, Suspense } from 'react';
-import { HashRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation, Navigate, useNavigate } from 'react-router-dom';
+
+// Componente para manejar redirecciones de enlaces antiguos con hash (/#/blog...)
+const HashRedirector = () => {
+    const location = useLocation();
+    const navigate = useNavigate();
+    
+    useEffect(() => {
+        const hash = window.location.hash;
+        if (hash) {
+            // Si hay un hash, limpiarlo y navegar a la ruta real
+            const cleanPath = hash.replace(/^#/, '') || '/';
+            navigate(cleanPath, { replace: true });
+        }
+    }, [navigate]);
+
+    return null;
+};
+
 import Navbar from './sections/Navbar';
 import HeroSection from './sections/HeroSection';
 import ActionSection from './sections/ActionSection';
@@ -316,6 +334,7 @@ function App() {
         <AuthProvider>
           <CartProvider>
             <Router>
+              <HashRedirector />
               <AnalyticsTracker />
               <SEOTracker />
               <Suspense fallback={

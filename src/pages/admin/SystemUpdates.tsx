@@ -24,6 +24,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.9",
+        date: "21 Abril 2026",
+        title: "SEO: URLs Limpias y Previsualización Dinámica",
+        type: "major",
+        changes: [
+            { type: "changed", text: "Migración de HashRouter a BrowserRouter para habilitar URLs limpias y profesionales." },
+            { type: "added", text: "Implementación de Inyección Dinámica de Metadatos (SSR-Lite) para previsualización en Facebook/WhatsApp." },
+            { type: "added", text: "Manejo de redirecciones automáticas de enlaces antiguos con '#' para no perder tráfico anterior." },
+            { type: "fixed", text: "Corrección de la 'ceguera' de los rastreadores en artículos individuales del blog." }
+        ]
+    },
+    {
         version: "v4.11.8",
         date: "21 Abril 2026",
         title: "Arquitectura: Auto-Heal Gen-2",

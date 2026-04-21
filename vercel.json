@@ -22,8 +22,8 @@
             "destination": "/api/index.js"
         },
         {
-            "source": "/((?!api/|vps/).*)",
-            "destination": "/index.html"
+            "source": "/((?!api/|vps/|assets/|favicon.ico|manifest.json|robots.txt|sitemap.xml).*)",
+            "destination": "/api/index.js"
         }
     ]
 }

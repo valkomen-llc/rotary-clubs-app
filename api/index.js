@@ -85,8 +85,87 @@ app.post('/api/debug-url', (req, res) => {
     res.json({ url: req.url, originalUrl: req.originalUrl, path: req.path });
 });
 
-let _scoutGrants;
-const getScoutGrants = async () => _scoutGrants || (({ default: _scoutGrants } = await import('../server/routes/grants.js')), _scoutGrants);
 app.use('/api/scout-grants', async (req, res, next) => (await getScoutGrants())(req, res, next));
+
+// ── Frontend & SEO Injection ──────────────────────────────────────────────────
+import path from 'path';
+import fs from 'fs';
+import { PrismaClient } from '@prisma/client';
+const prisma = new PrismaClient();
+
+app.get('*', async (req, res) => {
+    // Skip if it's an API route (should be handled by express routes above)
+    if (req.path.startsWith('/api')) return;
+
+    try {
+        const indexPath = path.resolve(process.cwd(), 'dist/index.html');
+        if (!fs.existsSync(indexPath)) {
+            return res.status(404).send('Frontend not built or not found.');
+        }
+
+        let html = fs.readFileSync(indexPath, 'utf8');
+
+        // Extract metadata based on URL
+        const hostname = req.headers.host || '';
+        const originParts = hostname.split('.');
+        const subdomain = hostname.includes('clubplatform.org') ? originParts[0] : null;
+        
+        let club;
+        if (subdomain && !['app', 'www', 'landing'].includes(subdomain.toLowerCase())) {
+            club = await prisma.club.findFirst({ where: { subdomain: subdomain.toLowerCase() } });
+        } else {
+            club = await prisma.club.findFirst({ where: { domain: hostname } });
+        }
+
+        let meta = {
+            title: club?.name ? `${club.name} | Rotary` : 'Rotary ClubPlatform',
+            description: club?.description || 'Servicio por encima del interés propio.',
+            image: club?.logo || 'https://rotarycluborigen.org/logo.png',
+            url: `https://${hostname}${req.path}`
+        };
+
+        // Deep SEO for Blog Posts
+        if (req.path.includes('/blog/')) {
+            const slug = req.path.split('/blog/')[1]?.split('/')[0];
+            if (slug) {
+                const post = await prisma.post.findFirst({
+                    where: { OR: [{ slug }, { id: slug }] }
+                });
+                if (post) {
+                    meta.title = post.seoTitle || `${post.title} | ${club?.name || 'Rotary'}`;
+                    meta.description = post.seoDescription || post.content.substring(0, 160).replace(/<[^>]*>?/gm, '');
+                    meta.image = post.seoImage || post.image || meta.image;
+                }
+            }
+        }
+
+        // Inject Meta Tags
+        const pageTitle = meta.title;
+        html = html.replace(/<title>.*?<\/title>/g, `<title>${pageTitle}</title>`);
+        
+        const tags = `
+            <meta name="description" content="${meta.description}">
+            <meta property="og:title" content="${meta.title}">
+            <meta property="og:description" content="${meta.description}">
+            <meta property="og:image" content="${meta.image}">
+            <meta property="og:url" content="${meta.url}">
+            <meta property="og:type" content="article">
+            <meta name="twitter:card" content="summary_large_image">
+            <meta name="twitter:title" content="${meta.title}">
+            <meta name="twitter:description" content="${meta.description}">
+            <meta name="twitter:image" content="${meta.image}">
+        `;
+
+        // Replace existing common meta tags or append to head
+        if (html.includes('</head>')) {
+            html = html.replace('</head>', `${tags}\n</head>`);
+        }
+
+        res.send(html);
+    } catch (err) {
+        console.error('Frontend Injection Error:', err);
+        res.status(500).send('Error loading page.');
+    }
+});
 
 export default app;
