@@ -1,9 +1,9 @@
 import db from '../lib/db.js';
 
-// Ultra-fast in-memory cache (5 minutes)
+// Ultra-fast in-memory cache (1 hour)
 let skinsCache = null;
 let lastCacheUpdate = 0;
-const CACHE_TTL = 5 * 60 * 1000; // 5 min
+const CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
 export const getFooterSkins = async (req, res) => {
     try {
@@ -74,15 +74,26 @@ export const getFooterSkinPublic = async (req, res) => {
         const { type } = req.query;
         if (!type) return res.status(400).json({ error: 'Tipo requerido' });
 
+        const now = Date.now();
+        // Use cache if available
+        if (skinsCache && (now - lastCacheUpdate < CACHE_TTL)) {
+            const cached = skinsCache[type];
+            if (cached) return res.json(cached);
+        }
+
+        // If not in cache or expired, fetch it
         const result = await db.query(
             'SELECT value FROM "Setting" WHERE key = $1 AND "clubId" IS NULL LIMIT 1',
             [`footer_skin_${type}`]
         );
         const setting = result.rows[0];
-
         const config = setting ? JSON.parse(setting.value) : getDefaultSkin(type);
+        
+        // Single type fetch doesn't populate the full cache, but could.
+        // For simplicity, just return it.
         res.json(config);
     } catch (error) {
+        console.error('Public footer fetch error:', error);
         res.status(500).json({ error: 'Error del servidor' });
     }
 };
