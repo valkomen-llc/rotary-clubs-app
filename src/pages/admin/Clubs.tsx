@@ -412,8 +412,8 @@ const ClubsManagement: React.FC = () => {
                                     )}
                                 </div>
 
-                                <div className="md:col-span-2">
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Estado</label>
+                                <div className="md:col-span-1">
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Estado del Sitio</label>
                                     <select
                                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all"
                                         value={formData.status}
@@ -421,6 +421,20 @@ const ClubsManagement: React.FC = () => {
                                     >
                                         <option value="active">Activo</option>
                                         <option value="inactive">Inactivo</option>
+                                    </select>
+                                </div>
+
+                                <div className="md:col-span-1">
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Skin de Arquitectura (Footer)</label>
+                                    <select
+                                        className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all bg-sky-50 font-bold text-rotary-blue"
+                                        value={formData.type}
+                                        onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                                        title="Define la estructura de links y labels del footer"
+                                    >
+                                        <option value="club">Skin de Rotary Club (Socio)</option>
+                                        <option value="district">Skin de Distrito Rotary</option>
+                                        <option value="association">Skin de Asociación / Agrupación</option>
                                     </select>
                                 </div>
 

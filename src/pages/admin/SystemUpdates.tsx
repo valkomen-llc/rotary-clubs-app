@@ -24,6 +24,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.19",
+        date: "21 Abril 2026",
+        title: "Infraestructura: Motor de Skins Institucionales",
+        type: "feature",
+        changes: [
+            { type: "added", text: "Motor de Skins: Formalizada la selección de arquitectura visual ('Skins') para diferenciar Clubes, Distritos y Asociaciones." },
+            { type: "improved", text: "Interfaz Super-Admin: Optimizada la configuración de sitios para permitir la elección explícita de la piel arquitectónica." },
+            { type: "improved", text: "Consistencia de Footer: Ahora los labels se adaptan ('El Club', 'El Distrito', 'Nuestra Red') garantizando una identidad institucional coherente." }
+        ]
+    },
+    {
         version: "v4.11.17",
         date: "21 Abril 2026",
         title: "Infraestructura: Footer Dinámico Multitenant",
