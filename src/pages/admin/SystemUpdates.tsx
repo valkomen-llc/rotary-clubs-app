@@ -24,6 +24,16 @@ interface UpdateItem {
 // Cache bust: 2026-04-20 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.4",
+        date: "21 Abril 2026",
+        title: "Motor de IA: Precisión SEO",
+        type: "hotfix",
+        changes: [
+            { type: "fixed", text: "Ajuste estricto en el prompt de IA para limitar la Meta Descripción a 155 caracteres." },
+            { type: "changed", text: "Refuerzo de las 'Reglas de Oro' en el sistema para evitar truncamiento en Google." }
+        ]
+    },
+    {
         version: "v4.11.3",
         date: "21 Abril 2026",
         title: "Salud SEO: Contadores Inteligentes",

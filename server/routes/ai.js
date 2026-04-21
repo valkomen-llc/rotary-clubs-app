@@ -794,15 +794,16 @@ router.post('/suggest-seo', authMiddleware, async (req, res) => {
     
     try {
         const systemPrompt = `Eres un experto en SEO para Rotary. Tu tarea es generar metadatos optimizados para una noticia. 
+        IMPORTANTE: El campo 'seoTitle' debe tener máximo 60 caracteres y 'seoDescription' máximo 155 caracteres. Es CRÍTICO para evitar que Google los trunque.
         Responde EXCLUSIVAMENTE con un objeto JSON con las llaves: seoTitle, seoDescription, slug, keywords, tags.`;
         
         const userPrompt = `Analiza esta noticia y sugiere SEO:
         Título: ${title}
         Contenido resumido: ${content?.substring(0, 1000)}
         
-        Requerimientos:
-        - seoTitle: Atractivo, máx 60 caracteres.
-        - seoDescription: Resumen sugerente, máx 160 caracteres.
+        Requerimientos (SÉ MUY ESTRICTO CON LOS LÍMITES):
+        - seoTitle: Atractivo, MÁXIMO 60 caracteres.
+        - seoDescription: Resumen sugerente, MÁXIMO 155 caracteres.
         - slug: Formato amigable-url-en-minusculas.
         - keywords: 5 palabras clave separadas por comas.
         - tags: 3 etiquetas relevantes (solo palabras).`;
