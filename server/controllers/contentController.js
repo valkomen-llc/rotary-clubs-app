@@ -24,7 +24,7 @@ export const getPublicPostById = async (req, res) => {
     const { clubId, postId } = req.params;
     try {
         const result = await db.query(
-            `SELECT * FROM "Post" WHERE id = $1 AND ("clubId" = $2 OR "clubId" IS NULL) AND published = true`,
+            `SELECT * FROM "Post" WHERE (id = $1 OR slug = $1) AND ("clubId" = $2 OR "clubId" IS NULL) AND published = true`,
             [postId, clubId]
         );
         if (result.rows.length === 0) {
@@ -100,15 +100,15 @@ export const getClubPosts = async (req, res) => {
 };
 
 export const createPost = async (req, res) => {
-    const { title, content, image, published, clubId, category, tags, keywords, seoTitle, seoDescription, videoUrl, images, isAI } = req.body;
+    const { title, slug, content, image, published, clubId, category, tags, keywords, seoTitle, seoDescription, videoUrl, images, isAI } = req.body;
     try {
         let targetClubId = req.user.role === 'administrator' ? (clubId || req.user.clubId) : req.user.clubId;
         if (clubId === 'global' && req.user.role === 'administrator') targetClubId = null;
 
         const result = await db.query(
-            `INSERT INTO "Post" (id, title, content, image, published, "clubId", category, tags, keywords, "seoTitle", "seoDescription", "videoUrl", images, "isAI", "createdAt", "updatedAt")
-             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW()) RETURNING *`,
-            [title, content, image, published || false, targetClubId, category, tags || [], keywords, seoTitle, seoDescription, videoUrl, images || [], isAI || false]
+            `INSERT INTO "Post" (id, title, slug, content, image, published, "clubId", category, tags, keywords, "seoTitle", "seoDescription", "videoUrl", images, "isAI", "createdAt", "updatedAt")
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW()) RETURNING *`,
+            [title, slug, content, image, published || false, targetClubId, category, tags || [], keywords, seoTitle, seoDescription, videoUrl, images || [], isAI || false]
         );
         res.status(201).json(result.rows[0]);
     } catch (error) {
@@ -119,7 +119,7 @@ export const createPost = async (req, res) => {
 
 export const updatePost = async (req, res) => {
     const { id } = req.params;
-    const { title, content, image, published, category, tags, keywords, seoTitle, seoDescription, videoUrl, images } = req.body;
+    const { title, slug, content, image, published, category, tags, keywords, seoTitle, seoDescription, videoUrl, images } = req.body;
     try {
         const existing = await db.query('SELECT * FROM "Post" WHERE id = $1', [id]);
         if (!existing.rows[0]) return res.status(404).json({ error: 'Post not found' });
@@ -127,10 +127,10 @@ export const updatePost = async (req, res) => {
             return res.status(403).json({ error: 'Access denied' });
         }
         const result = await db.query(
-            `UPDATE "Post" SET title=$1, content=$2, image=$3, published=$4, category=$5, tags=$6, keywords=$7,
-             "seoTitle"=$8, "seoDescription"=$9, "videoUrl"=$10, images=$11, "updatedAt"=NOW()
-             WHERE id=$12 RETURNING *`,
-            [title, content, image, published, category, tags, keywords, seoTitle, seoDescription, videoUrl, images, id]
+            `UPDATE "Post" SET title=$1, slug=$2, content=$3, image=$4, published=$5, category=$6, tags=$7, keywords=$8,
+             "seoTitle"=$9, "seoDescription"=$10, "videoUrl"=$11, images=$12, "updatedAt"=NOW()
+             WHERE id=$13 RETURNING *`,
+            [title, slug, content, image, published, category, tags, keywords, seoTitle, seoDescription, videoUrl, images, id]
         );
         res.json(result.rows[0]);
     } catch (error) {

@@ -18,6 +18,7 @@ import 'react-quill-new/dist/quill.snow.css';
 interface Post {
     id: string;
     title: string;
+    slug?: string;
     content: string;
     image: string | null;
     published: boolean;
@@ -45,6 +46,7 @@ const NewsManagement: React.FC = () => {
 
     const [formData, setFormData] = useState({
         title: '',
+        slug: '',
         content: '',
         image: '',
         published: true,
@@ -58,6 +60,17 @@ const NewsManagement: React.FC = () => {
     });
 
     const [tagInput, setTagInput] = useState('');
+    const [isGeneratingSlug, setIsGeneratingSlug] = useState(false);
+
+    const generateSlug = (text: string) => {
+        return text
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '');
+    };
 
 // ── Crop Modal Component (Refactored for stability and visibility) ────────────────
 const CropModal = ({ src, aspect, onConfirm, onCancel }: { 
@@ -213,6 +226,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         if (post) {
             const initialData = {
                 title: post.title || '',
+                slug: post.slug || '',
                 content: post.content || '',
                 image: post.image || '',
                 published: post.isStatic ? true : post.published,
@@ -237,6 +251,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
             setEditingPost(null);
             setFormData({
                 title: '',
+                slug: '',
                 content: '',
                 image: '',
                 published: true,
@@ -855,12 +870,33 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                             <SEOPreview
                                                 title={formData.seoTitle || formData.title}
                                                 description={formData.seoDescription}
-                                                url={`https://${(club as any)?.domain || 'tusitio.org'}/#/blog/${editingPost?.id || 'nuevo'}`}
+                                                url={`https://${(club as any)?.domain || 'tusitio.org'}/#/blog/${formData.slug || editingPost?.id || 'nuevo'}`}
                                                 image={formData.image}
                                             />
                                         </div>
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
+                                                <div>
+                                                    <label className="block text-sm font-bold text-gray-700 mb-2">Slug de URL (Personalizado)</label>
+                                                    <div className="flex gap-2">
+                                                        <input
+                                                            type="text"
+                                                            className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none font-mono text-xs"
+                                                            value={formData.slug}
+                                                            onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
+                                                            placeholder="ej: nombre-de-la-noticia"
+                                                        />
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => setFormData({ ...formData, slug: generateSlug(formData.title) })}
+                                                            className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-[10px] font-bold uppercase transition-colors"
+                                                        >
+                                                            Auto
+                                                        </button>
+                                                    </div>
+                                                    <p className="mt-1 text-[10px] text-gray-400">Si lo dejas vacío, el sistema usará el ID por defecto.</p>
+                                                </div>
+
                                                 <div>
                                                     <label className="block text-sm font-bold text-gray-700 mb-2">Palabras Clave (Keywords)</label>
                                                     <input

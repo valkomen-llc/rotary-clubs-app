@@ -1147,7 +1147,7 @@ const BlogPost = () => {
                 .map((relacionado) => (
                   <Link
                     key={relacionado.id}
-                    to={`/blog/${relacionado.id}`}
+                    to={`/blog/${relacionado.slug || relacionado.id}`}
                     className="group bg-white rounded-xl overflow-hidden shadow-md hover:shadow-lg transition-all"
                   >
                     <div className="relative aspect-[16/10] overflow-hidden">

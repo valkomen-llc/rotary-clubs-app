@@ -143,7 +143,7 @@ const Blog = () => {
               {destacados.map((articulo) => (
                 <Link
                   key={articulo.id}
-                  to={`/blog/${articulo.id}`}
+                  to={`/blog/${articulo.slug || articulo.id}`}
                   className="group relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow"
                 >
                   <div className="relative aspect-[16/10] overflow-hidden">
@@ -224,7 +224,7 @@ const Blog = () => {
               {articulosPagina.map((articulo) => (
                 <Link
                   key={articulo.id}
-                  to={`/blog/${articulo.id}`}
+                  to={`/blog/${articulo.slug || articulo.id}`}
                   className="group bg-white rounded-xl overflow-hidden shadow-md hover:shadow-lg transition-all border border-gray-100 h-full flex flex-col"
                 >
                   <div className="relative aspect-[4/3] overflow-hidden">

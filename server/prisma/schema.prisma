@@ -161,6 +161,7 @@ model Project {
 model Post {
   id             String   @id @default(uuid())
   title          String
+  slug           String?  @unique
   content        String
   image          String?
   published      Boolean  @default(false)
