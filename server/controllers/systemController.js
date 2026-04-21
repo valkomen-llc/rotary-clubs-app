@@ -1,13 +1,21 @@
 import db from '../lib/db.js';
 
+// Ultra-fast in-memory cache (5 minutes)
+let skinsCache = null;
+let lastCacheUpdate = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 min
+
 export const getFooterSkins = async (req, res) => {
     try {
+        const now = Date.now();
+        if (skinsCache && (now - lastCacheUpdate < CACHE_TTL)) {
+            console.log("Serving footer skins from cache");
+            return res.json(skinsCache);
+        }
+
         const skins = ['club', 'district', 'association', 'colrotarios'];
-        const keys = skins.map(s => `footer_skin_${s}`);
-        
         const result = await db.query(
-            'SELECT key, value FROM "Setting" WHERE key = ANY($1) AND "clubId" IS NULL',
-            [keys]
+            "SELECT key, value FROM \"Setting\" WHERE key IN ('footer_skin_club', 'footer_skin_district', 'footer_skin_association', 'footer_skin_colrotarios') AND \"clubId\" IS NULL"
         );
 
         const results = {};
@@ -16,6 +24,10 @@ export const getFooterSkins = async (req, res) => {
             const row = result.rows.find(r => r.key === key);
             results[type] = row ? JSON.parse(row.value) : getDefaultSkin(type);
         });
+
+        // Update cache
+        skinsCache = results;
+        lastCacheUpdate = now;
 
         res.json(results);
     } catch (error) {
@@ -32,12 +44,23 @@ export const updateFooterSkin = async (req, res) => {
         const key = `footer_skin_${type}`;
         const val = JSON.stringify(config);
         
-        await db.query(`
-            INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt")
-            VALUES (gen_random_uuid(), $1, $2, NULL, NOW())
-            ON CONFLICT (key) WHERE "clubId" IS NULL
-            DO UPDATE SET value = $2, "updatedAt" = NOW()
-        `, [key, val]);
+        // Use a more robust UPSERT for Postgres with NULLable clubId
+        // We first try to update, if 0 rows affected, we insert.
+        const updateResult = await db.query(
+            'UPDATE "Setting" SET value = $1, "updatedAt" = NOW() WHERE key = $2 AND "clubId" IS NULL',
+            [val, key]
+        );
+
+        if (updateResult.rowCount === 0) {
+            await db.query(
+                'INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt") VALUES (gen_random_uuid(), $1, $2, NULL, NOW())',
+                [key, val]
+            );
+        }
+
+        // Invalidate cache
+        skinsCache = null;
+        lastCacheUpdate = 0;
 
         res.json({ message: `Skin ${type} actualizado exitosamente` });
     } catch (error) {
