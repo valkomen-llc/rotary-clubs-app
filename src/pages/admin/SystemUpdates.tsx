@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.33",
+        date: "21 de Abril, 2026",
+        title: "Diseño: Simetría de Menús",
+        description: "Normalización de espacios verticales (space-y-3) en todas las columnas del footer para una simetría perfecta.",
+        type: "update",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "fixed", text: "Layout: Sincronizada la distancia entre enlaces en todas las columnas del footer." }
+        ]
+    },
+    {
         version: "v4.11.32",
         date: "21 de Abril, 2026",
         title: "Diseño: Spacing Ampliado (60px)",

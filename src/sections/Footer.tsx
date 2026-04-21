@@ -189,7 +189,7 @@ const Footer = () => {
                              <div className="w-1 h-5 bg-yellow-500 rounded-full" />
                              {activeConfig.menu2Title}
                         </h3>
-                        <ul className="space-y-4 text-[14px] font-medium text-white/80">
+                        <ul className="space-y-3 text-[14px] font-medium text-white/80">
                              {activeConfig.menu2Items?.map((link: any, idx: number) => (
                                 <li key={idx} className="flex items-center gap-2">
                                     <span className="text-yellow-500 text-lg select-none">•</span>
