@@ -1,4 +1,4 @@
-// REBOOT V4.39.0 | DATABASE READINESS | 2026-04-22T18:35:00
+// REBOOT V4.40.0 | AUTO-SYNC ACTIVE | 2026-04-22T18:45:00
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

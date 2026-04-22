@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-22 18:35
+// Cache bust: 2026-04-22 18:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.40.0",
+        date: "22 de Abril, 2026",
+        title: "Content Studio: Auto-Sync Active ⚙️",
+        description: "Automatización de la sincronización de base de datos durante el despliegue de Vercel.",
+        type: "major",
+        changes: [
+            { type: "improved", text: "Infraestructura: Inyección de db push automático en el proceso de build." },
+            { type: "fix", text: "Base de Datos: Resolución garantizada de tablas faltantes (VideoProject)." },
+            { type: "major", text: "Autonomía: El sistema ahora auto-repara discrepancias de esquema." }
+        ]
+    },
     {
         version: "v4.39.0",
         date: "22 de Abril, 2026",
