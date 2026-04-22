@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.41",
+        date: "22 de Abril, 2026",
+        title: "Branding: Refinamiento de Copyright",
+        description: "Eliminación de negrilla en el crédito de Valkomen para una estética más limpia.",
+        type: "update",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "improved", text: "Footer: Removida la clase 'font-bold' del link Powered by Valkomen." }
+        ]
+    },
+    {
         version: "v4.11.40",
         date: "21 de Abril, 2026",
         title: "UI: Refinamiento de Selector de Idiomas",
