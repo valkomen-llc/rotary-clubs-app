@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 09:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.14.0",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Arquitectura de Cápsula Aislada 💠",
+        description: "Solución definitiva de conectividad: el motor de redacción ahora opera en un entorno 100% independiente para garantizar disponibilidad absoluta.",
+        type: "major",
+        changes: [
+            { type: "added", text: "Infra: Nueva Cápsula de IA Blindada (articulia.js) con recursos dedicados." },
+            { type: "improved", text: "Red: Túnel de tráfico prioritario para peticiones de redacción." },
+            { type: "fixed", text: "Sistema: Eliminación definitiva del error de respuesta HTML de Vercel." }
+        ]
+    },
+    {
         version: "v4.13.10",
         date: "22 de Abril, 2026",
         title: "ArticulIA: Inyección de Núcleo 🔥",

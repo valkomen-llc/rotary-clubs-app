@@ -490,7 +490,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         const apiUrl = import.meta.env.VITE_API_URL || '/api';
 
         try {
-            const response = await fetch(`${apiUrl}/ai/generate-article`, {
+            const response = await fetch(`${apiUrl}/articulia`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
