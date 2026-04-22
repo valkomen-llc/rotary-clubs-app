@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 09:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.16.1",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Formato JSON Estricto 💎",
+        description: "Optimización final del motor de redacción: Activación de 'Strict JSON Mode' para eliminar errores de formato de la IA.",
+        type: "update",
+        changes: [
+            { type: "improved", text: "Motor: Activación de responseMimeType: application/json." },
+            { type: "fixed", text: "Estabilidad: Eliminación de bloques de texto innecesarios de Gemini." },
+            { type: "improved", text: "Sistema: Salto a la versión de precisión v4.16.1." }
+        ]
+    },
+    {
         version: "v4.16.0",
         date: "22 de Abril, 2026",
         title: "Reinicio de Emergencia: DraftEngine 🚀",
