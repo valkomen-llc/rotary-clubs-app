@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.45",
+        date: "22 de Abril, 2026",
+        title: "Router: Prioridad Absoluta de Redirección",
+        description: "Reubicada la lógica de redirección al tope absoluto del servidor para máxima confiabilidad.",
+        type: "fix",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "improved", text: "Infra: Redirección forzada antes de CORS y parseo de body para evitar bloqueos." }
+        ]
+    },
+    {
         version: "v4.11.44",
         date: "22 de Abril, 2026",
         title: "Router: Soporte de Rewrites Vercel",

@@ -7,42 +7,33 @@ import { PrismaClient } from '@prisma/client';
 const app = express();
 const prisma = new PrismaClient();
 
-app.use(cors({ origin: true, credentials: true }));
-app.use(express.json());
-
 // ── SaaS Redirection Middleware ──────────────────────────────────────────────
-// This must stay at the TOP to intercept root domain traffic before SEO/Dist.
+// This stays at the VERY TOP to intercept traffic before any other processing.
 app.use(async (req, res, next) => {
     try {
-        const hostname = req.headers['x-forwarded-host'] || req.headers.host || '';
+        const host = (req.headers['x-forwarded-host'] || req.headers.host || '').toLowerCase();
         
-        // Handle clubplatform.org and www.clubplatform.org
-        const isMainDomain = hostname === 'clubplatform.org' || hostname === 'www.clubplatform.org';
-        const isVercelRoot = hostname === 'club-platform.vercel.app';
+        // Target: clubplatform.org or www.clubplatform.org
+        // Rule: If it's the main domain and NOT app. or api. subdomains
+        const isRoot = host === 'clubplatform.org' || host === 'www.clubplatform.org' || host.includes('club-platform.vercel.app');
         
-        if (isMainDomain || isVercelRoot) {
-            // CRITICAL: On Vercel, requests are rewritten to /api/index.js.
-            // We must check the ORIGINAL URL to see if it's an API call or not.
-            const originalPath = req.originalUrl || req.url || '/';
-            const isActualApi = originalPath.startsWith('/api/') || originalPath.startsWith('/vps/');
-            const isAsset = originalPath.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|json|webp|woff|woff2|ttf)$/i);
-
-            if (!isActualApi && !isAsset) {
-                const redirectConfig = await prisma.platformConfig.findUnique({
-                    where: { key: 'saas_redirect' }
-                });
-
-                if (redirectConfig?.value === 'true') {
-                    console.log(`[Redirect] Routing root domain ${hostname}${originalPath} to app.clubplatform.org`);
-                    return res.redirect(301, `https://app.clubplatform.org${originalPath}`);
-                }
+        if (isRoot && !req.path.startsWith('/api') && !req.path.startsWith('/vps')) {
+            const redirectSetting = await prisma.platformConfig.findUnique({ where: { key: 'saas_redirect' } });
+            
+            if (redirectSetting?.value === 'true') {
+                const target = `https://app.clubplatform.org${req.url}`;
+                console.log(`[Priority Redirect] Routing ${host}${req.url} -> ${target}`);
+                return res.redirect(301, target);
             }
         }
     } catch (err) {
-        console.error('[Redirect Middleware] Error:', err);
+        console.error('[Redirect Middleware Error]:', err);
     }
     next();
 });
+
+app.use(cors({ origin: true, credentials: true }));
+app.use(express.json());
 
 // Parse raw body for Stripe Webhooks BEFORE express.json()
 app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), async (req, res, next) => {
