@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-22 18:55
+// Cache bust: 2026-04-22 19:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.42.0",
+        date: "22 de Abril, 2026",
+        title: "Content Studio: Auto-Radar Tracking 📡",
+        description: "Implementación de monitoreo automático para el estado de generación de videos.",
+        type: "major",
+        changes: [
+            { type: "improved", text: "Biblioteca: Implementado Auto-Polling cada 30 segundos para proyectos en proceso." },
+            { type: "fix", text: "Experiencia: Los videos cambian a 'Listo' automáticamente sin refrescar." },
+            { type: "major", text: "Sincronización: Conectividad proactiva con el estado de tareas de KIE.ai." }
+        ]
+    },
     {
         version: "v4.41.0",
         date: "22 de Abril, 2026",

@@ -29,8 +29,26 @@ const ProjectLibrary: React.FC = () => {
         fetchProjects();
     }, []);
 
-    const fetchProjects = async () => {
-        setLoading(true);
+    // v4.42.0: Auto-Polling for processing projects
+    useEffect(() => {
+        const hasProcessing = projects.some(p => p.status === 'processing');
+        if (!hasProcessing) return;
+
+        const interval = setInterval(() => {
+            console.log('Radar v4.42.0: Sincronizando biblioteca automáticamente...');
+            
+            // For each processing project, trigger a sync in the backend
+            // But to save resources, we'll just fetch all projects again
+            // and the backend sync will happen on demand if we hit the sync controller
+            // Actually, we should just perform a refresh
+            fetchProjects(false); // Silent refresh
+        }, 30000);
+
+        return () => clearInterval(interval);
+    }, [projects]);
+
+    const fetchProjects = async (showLoading = true) => {
+        if (showLoading) setLoading(true);
         try {
             const token = localStorage.getItem('rotary_token');
             const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/content-studio/projects`, {
