@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.51",
+        date: "22 de Abril, 2026",
+        title: "Router: Redirección de Punto Cero (HTML Script)",
+        description: "Implementada redirección en el archivo index.html para prioridad instantánea e infalible.",
+        type: "fix",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "fixed", text: "Infra: Inyectado script de redirección en index.html (Punto Cero) para evadir cualquier caché de Vercel." }
+        ]
+    },
+    {
         version: "v4.11.50",
         date: "22 de Abril, 2026",
         title: "Router: Redirección Universal de Plataforma",

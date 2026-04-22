@@ -34,20 +34,11 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return;
         }
 
-        // If this is the main platform domain, check for SaaS redirection toggle
-        if (isMainPlatform) {
-            fetch(`${import.meta.env.VITE_API_URL || '/api'}/platform-config/logo`)
-                .then(r => r.json())
-                .then(data => {
-                    if (data?.saasRedirect) {
-                        console.log('SaaS Redirect Active: Routing to app.clubplatform.org');
-                        window.location.replace('https://app.clubplatform.org/');
-                    }
-                })
-                .catch(err => console.error('Redirect check failed:', err));
-
-            setClub(getClubByHostname(hostname));
-            setIsLoading(false);
+        // FORCED REDIRECTION RULE (Nuclear Option)
+        // If we are on the main domain root, redirect to app subdomain IMMEDIATELY.
+        if (isMainPlatform && window.location.pathname === '/') {
+            console.log('Forced Domain Redirect: clubplatform.org -> app.clubplatform.org');
+            window.location.replace('https://app.clubplatform.org/');
             return;
         }
 
