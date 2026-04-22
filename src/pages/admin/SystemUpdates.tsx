@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.43",
+        date: "22 de Abril, 2026",
+        title: "Router: Prioridad Global de Redirección",
+        description: "Promovida la lógica de redirección a middleware global de alta prioridad para interceptar tráfico de dominio raíz.",
+        type: "fix",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "improved", text: "Infra: Transmisión inmediata (301) de clubplatform.org a app.clubplatform.org antes de carga de assets." }
+        ]
+    },
+    {
         version: "v4.11.42",
         date: "22 de Abril, 2026",
         title: "Router: Activación Redirección SaaS",
