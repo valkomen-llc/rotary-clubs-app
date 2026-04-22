@@ -501,6 +501,8 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
 
             if (response.ok) {
                 const article = await response.json();
+                console.log('IA ArticulIA Response:', article);
+                
                 setFormData(prev => ({
                     ...prev,
                     title: article.title || prev.title,
@@ -514,9 +516,12 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 }));
                 toast.success('¡Artículo redactado con éxito!');
             } else {
-                toast.error('No se pudo generar el artículo');
+                const errData = await response.json();
+                console.error('IA ArticulIA Error:', errData);
+                toast.error(`No se pudo generar: ${errData.error || 'Error desconocido'}`);
             }
         } catch (error) {
+            console.error('IA ArticulIA Connection Error:', error);
             toast.error('Error de conexión con la IA');
         } finally {
             setIsGeneratingArticle(false);

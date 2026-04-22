@@ -1389,20 +1389,23 @@ router.post('/generate-article', authMiddleware, async (req, res) => {
         console.log(`[ArticulIA] Generando artículo con modelo: ${slug} para contexto: ${context.substring(0, 50)}...`);
         const raw = await routeToModel(slug, systemPrompt, userPrompt);
         
-        let cleaned = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        // Limpiado agresivo: buscamos el primer '{' y el último '}'
+        const firstBrace = raw.indexOf('{');
+        const lastBrace = raw.lastIndexOf('}');
         
-        if (!jsonMatch) {
-            console.error('[ArticulIA] Error: No se encontró JSON en la respuesta. Raw:', raw.substring(0, 200));
-            throw new Error('No se encontró JSON en la respuesta de la IA');
+        if (firstBrace === -1 || lastBrace === -1) {
+            console.error('[ArticulIA] Respuesta no contiene JSON válido. Raw:', raw.substring(0, 300));
+            throw new Error('La IA no devolvió un formato válido.');
         }
 
-        const article = JSON.parse(jsonMatch[0]);
+        const jsonStr = raw.substring(firstBrace, lastBrace + 1);
+        const article = JSON.parse(jsonStr);
+        
         console.log('[ArticulIA] Artículo generado con éxito');
         res.json(article);
     } catch (error) {
-        console.error('[ArticulIA] Error detallado:', error.message);
-        res.status(500).json({ error: 'Error al generar el artículo con IA', details: error.message });
+        console.error('[ArticulIA] Error crítico:', error.message);
+        res.status(500).json({ error: 'Error al generar el artículo', details: error.message });
     }
 });
 
