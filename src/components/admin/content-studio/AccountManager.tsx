@@ -25,7 +25,23 @@ const AccountManager: React.FC = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetchAccounts();
+        const params = new URLSearchParams(window.location.search);
+        const connected = params.get('connected');
+        const error = params.get('error');
+
+        if (connected) {
+            toast.success(`¡Cuenta de ${connected} conectada con éxito!`, {
+                icon: <CheckCircle2 className="w-4 h-4" />
+            });
+            fetchAccounts();
+            // Limpiamos los parámetros de la URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
+        if (error) {
+            toast.error(`Error al conectar: ${error}`);
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
     }, []);
 
     const fetchAccounts = async () => {
@@ -47,15 +63,21 @@ const AccountManager: React.FC = () => {
     };
 
     const platforms = [
-        { id: 'instagram', name: 'Instagram Reels', icon: Instagram, color: 'text-pink-600', bg: 'bg-pink-50' },
-        { id: 'tiktok', name: 'TikTok', icon: TikTok, color: 'text-slate-900', bg: 'bg-slate-50' },
-        { id: 'youtube', name: 'YouTube Shorts', icon: Youtube, color: 'text-red-600', bg: 'bg-red-50' },
-        { id: 'facebook', name: 'Facebook Reels', icon: Facebook, color: 'text-blue-600', bg: 'bg-blue-50' }
+        { id: 'instagram', name: 'Instagram Reels', icon: Instagram, color: 'text-pink-600', bg: 'bg-pink-50', scope: 'instagram_basic,instagram_content_publish' },
+        { id: 'tiktok', name: 'TikTok', icon: TikTok, color: 'text-slate-900', bg: 'bg-slate-50', scope: 'video.upload,user.info.basic' },
+        { id: 'youtube', name: 'YouTube Shorts', icon: Youtube, color: 'text-red-600', bg: 'bg-red-50', scope: 'https://www.googleapis.com/auth/youtube.upload' },
+        { id: 'facebook', name: 'Facebook Reels', icon: Facebook, color: 'text-blue-600', bg: 'bg-blue-50', scope: 'pages_show_list,pages_read_engagement,pages_manage_posts' }
     ];
 
     const connectAccount = (platformId: string) => {
-        toast.info(`Iniciando conexión con ${platformId}... (Simulación OAuth)`);
-        // In a real app, redirect to OAuth URL
+        const platform = platforms.find(p => p.id === platformId);
+        if (!platform) return;
+
+        toast.loading(`Redirigiendo a ${platform.name}...`);
+        
+        // El backend generará la URL de OAuth personalizada
+        const API = import.meta.env.VITE_API_URL || '/api';
+        window.location.href = `${API}/content-studio/oauth/${platformId}/authorize`;
     };
 
     return (

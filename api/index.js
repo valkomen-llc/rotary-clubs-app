@@ -101,6 +101,24 @@ app.use('/api/system', async (req, res, next) => (await getSystem())(req, res, n
 app.use('/api/whatsapp-qr', async (req, res, next) => (await getWhatsappQr())(req, res, next));
 app.use('/api/content-studio', async (req, res, next) => (await getContentStudio())(req, res, next));
 
+// ── Social OAuth Callbacks ───────────────────────────────────────────────────
+app.get('/api/social/callback/:platform', async (req, res) => {
+    const { platform } = req.params;
+    const { code, state, error } = req.query;
+
+    if (error) {
+        return res.redirect(`/admin/content-studio?tab=accounts&error=${encodeURIComponent(error)}`);
+    }
+
+    // En un flujo real, aquí cambiaríamos el 'code' por un access_token
+    // usando axios y las credenciales del cliente (API Keys)
+    console.log(`[OAuth] Recibido callback para ${platform}: ${code}`);
+    
+    // Redirigimos de vuelta con señal de éxito
+    res.redirect(`/admin/content-studio?tab=accounts&connected=${platform}`);
+});
+
+
 // Diagnostic Ping - Ported to entry point for guaranteed reachability
 app.post('/api/ping-footer', (req, res) => {
     res.json({ status: "alive", entry: "api/index.js", timestamp: new Date().toISOString() });

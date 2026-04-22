@@ -8,10 +8,15 @@ import {
     schedulePost,
     getScheduledPosts,
     handleKieWebhook,
-    syncProjectStatus
+    syncProjectStatus,
+    getOAuthUrl
 } from '../controllers/contentStudioController.js';
 
 const router = express.Router();
+
+// OAuth Redirection
+router.get('/oauth/:platform/authorize', authMiddleware, getOAuthUrl);
+
 
 // Webhook (Public for KIE.ai)
 router.post('/webhook', handleKieWebhook);

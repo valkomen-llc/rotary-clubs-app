@@ -98,6 +98,8 @@ model Club {
   testimonials           Testimonial[]
   users                  User[]
   whatsAppCampaigns      WhatsAppCampaign[]
+  socialAccounts         SocialAccount[]
+
   whatsAppConfig         WhatsAppConfig?
   whatsAppContacts       WhatsAppContact[]
   whatsAppLists          WhatsAppContactList[]
@@ -876,8 +878,27 @@ model FundingOpportunity {
   clubId        String?
   agentId       String?   @default("rafael")
   metadata      Json?
+
   club          Club?     @relation(fields: [clubId], references: [id])
 }
+
+model SocialAccount {
+  id            String    @id @default(uuid())
+  clubId        String?
+  platform      String    // 'instagram', 'tiktok', 'youtube', 'facebook'
+  platformId    String    // ID del usuario en la plataforma
+  accountName   String?
+  accessToken   String    @db.Text
+  refreshToken  String?   @db.Text
+  expiresAt     DateTime?
+  avatar        String?
+  status        String    @default("active") // 'active', 'expired', 'revoked'
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  club          Club?     @relation(fields: [clubId], references: [id])
+}
+
 
 model Comment {
   id        String   @id @default(uuid())
