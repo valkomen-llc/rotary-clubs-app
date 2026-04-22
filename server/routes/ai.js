@@ -1398,22 +1398,25 @@ router.post('/generate-article', authMiddleware, async (req, res) => {
     }`;
 
     const userPrompt = `Contexto: ${context.trim()}`;
-    const slug = 'gemini-2.5-flash'; // Usamos el slug verificado en BUILTIN_MODELS
+    const slug = 'gemini-2.5-flash';
 
     try {
+        if (!process.env.GEMINI_API_KEY && !process.env.OPENAI_API_KEY) {
+            return res.status(500).json({ error: 'Llaves de IA no configuradas en el servidor.' });
+        }
+
         console.log(`[ArticulIA-Flash] Generando con ${slug}...`);
         const raw = await routeToModel(slug, systemPrompt, userPrompt);
         
         const firstBrace = raw.indexOf('{');
         const lastBrace = raw.lastIndexOf('}');
-        
-        if (firstBrace === -1 || lastBrace === -1) throw new Error('Respuesta inválida');
+        if (firstBrace === -1 || lastBrace === -1) throw new Error('Respuesta de IA no tiene formato JSON');
 
         const article = JSON.parse(raw.substring(firstBrace, lastBrace + 1));
         res.json(article);
     } catch (error) {
         console.error('[ArticulIA] Error en ruta:', error.message);
-        res.status(500).json({ error: 'Fallo en motor de IA', details: error.message });
+        res.status(500).json({ error: 'La IA no pudo procesar la solicitud', details: error.message });
     }
 });
 

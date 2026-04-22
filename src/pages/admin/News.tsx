@@ -518,11 +518,12 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
             } else {
                 const errData = await response.json();
                 console.error('IA ArticulIA Error:', errData);
-                toast.error(`No se pudo generar: ${errData.error || 'Error desconocido'}`);
+                toast.error(`Error del servidor: ${errData.details || errData.error || 'Sin respuesta'}`);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('IA ArticulIA Connection Error:', error);
-            toast.error('Error de conexión con la IA');
+            // Mensaje más detallado para diagnosticar
+            toast.error(`Error de conexión: ${error.message}. Verifica que las API Keys de IA estén en Vercel.`);
         } finally {
             setIsGeneratingArticle(false);
         }
