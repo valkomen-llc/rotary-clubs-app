@@ -1357,12 +1357,47 @@ router.post('/projects/generate', authMiddleware, upload.array('files', 15), asy
             modelUsed: slug,
             generatedAt: new Date().toISOString()
         });
+// POST /api/ai/generate-article — Genera un artículo completo desde contexto
+router.post('/generate-article', authMiddleware, async (req, res) => {
+    const { context, modelSlug } = req.body;
+    if (!context || context.trim().length < 5) {
+        return res.status(400).json({ error: 'El contexto es demasiado corto.' });
+    }
+
+    const systemPrompt = `Eres ArticulIA, el redactor jefe experto del club Rotario. Tu misión es transformar un contexto breve en un artículo de blog profesional, inspirador y optimizado para SEO.
+    IMPORTANTE:
+    1. Usa un tono institucional, empoderador y alineado con los valores de Rotary (Gente de Acción).
+    2. El artículo debe ser estructurado y fácil de leer.
+    3. Responde ÚNICAMENTE con un JSON válido. No incluyas explicaciones fuera del JSON.
+    
+    ESTRUCTURA DEL JSON:
+    {
+      "title": "Un título impactante (máx 70 car)",
+      "content": "Cuerpo del artículo en HTML. Usa <p>, <h2>, <ul>, <li>. Mínimo 3 parrafos potentes.",
+      "seoTitle": "Título SEO optimizado (máx 60 car)",
+      "seoDescription": "Meta descripción ganadora (máx 155 car)",
+      "slug": "url-amigable-formato-guiones",
+      "keywords": "5 palabras clave separadas por comas",
+      "tags": ["etiqueta1", "etiqueta2"],
+      "socialCopy": "Un copy persuasivo para redes sociales con 3 hashtags y emojis"
+    }`;
+
+    const userPrompt = `Contexto del artículo:\n"${context.trim()}"`;
+    const slug = modelSlug || 'gpt-3.5-turbo';
+
+    try {
+        const raw = await routeToModel(slug, systemPrompt, userPrompt);
+        
+        let cleaned = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        
+        if (!jsonMatch) throw new Error('No se encontró JSON en la respuesta de la IA');
+
+        const article = JSON.parse(jsonMatch[0]);
+        res.json(article);
     } catch (error) {
-        console.error('Project generation error:', error.message);
-        if (error instanceof SyntaxError) {
-            return res.status(422).json({ error: 'El modelo no devolvió JSON válido. Intenta de nuevo o usa otro modelo.' });
-        }
-        res.status(500).json({ error: error.message || 'Error al generar el proyecto' });
+        console.error('Article generation error:', error);
+        res.status(500).json({ error: 'Error al generar el artículo con IA', details: error.message });
     }
 });
 

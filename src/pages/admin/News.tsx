@@ -70,6 +70,8 @@ const NewsManagement: React.FC = () => {
     });
 
     const [tagInput, setTagInput] = useState('');
+    const [aiContext, setAiContext] = useState('');
+    const [isGeneratingArticle, setIsGeneratingArticle] = useState(false);
 
     const generateSlug = (text: string) => {
         return text
@@ -277,6 +279,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 videoUrl: '',
                 images: [],
             });
+            setAiContext('');
         }
         setIsModalOpen(true);
     };
@@ -473,6 +476,50 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
             toast.error('No se pudo generar la frase');
         } finally {
             setIsGeneratingSlug(false);
+        }
+    };
+    
+    const handleGenerateArticle = async () => {
+        if (!aiContext || aiContext.length < 10) {
+            toast.error('Por favor escribe un contexto más detallado (mín. 10 car)');
+            return;
+        }
+
+        setIsGeneratingArticle(true);
+        const token = localStorage.getItem('rotary_token');
+        const apiUrl = import.meta.env.VITE_API_URL || '/api';
+
+        try {
+            const response = await fetch(`${apiUrl}/ai/generate-article`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ context: aiContext })
+            });
+
+            if (response.ok) {
+                const article = await response.json();
+                setFormData(prev => ({
+                    ...prev,
+                    title: article.title || prev.title,
+                    content: article.content || prev.content,
+                    seoTitle: article.seoTitle || prev.seoTitle,
+                    seoDescription: article.seoDescription || prev.seoDescription,
+                    slug: article.slug || prev.slug,
+                    keywords: article.keywords || prev.keywords,
+                    tags: article.tags || prev.tags,
+                    socialCopy: article.socialCopy || prev.socialCopy
+                }));
+                toast.success('¡Artículo redactado con éxito!');
+            } else {
+                toast.error('No se pudo generar el artículo');
+            }
+        } catch (error) {
+            toast.error('Error de conexión con la IA');
+        } finally {
+            setIsGeneratingArticle(false);
         }
     };
 
@@ -797,6 +844,38 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
 
                         {/* Form Body */}
                         <div className="flex-1 overflow-y-auto p-8">
+                            {/* AI Drafting Assistant (New Section) */}
+                            {activeTab === 'content' && (
+                                <div className="mb-10 bg-rotary-blue/[0.03] border border-rotary-blue/10 rounded-2xl p-6">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 rounded-lg bg-rotary-blue/10 flex items-center justify-center">
+                                                <Sparkles className="w-4 h-4 text-rotary-blue" />
+                                            </div>
+                                            <h3 className="text-sm font-black text-rotary-blue uppercase tracking-widest">Asistente de Redacción IA</h3>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={handleGenerateArticle}
+                                            disabled={isGeneratingArticle}
+                                            className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2 rounded-xl hover:bg-sky-800 transition-all text-xs font-bold shadow-md disabled:opacity-50"
+                                        >
+                                            {isGeneratingArticle ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                            {isGeneratingArticle ? 'Redactando...' : 'Redactar Artículo Completo'}
+                                        </button>
+                                    </div>
+                                    <textarea
+                                        placeholder="Escribe aquí el sustento o contexto de la noticia (ej: Quiénes participaron, qué pasó, impacto social...)"
+                                        className="w-full bg-white border border-gray-100 rounded-xl p-4 text-sm outline-none focus:ring-2 focus:ring-rotary-blue/20 min-h-[80px] resize-none"
+                                        value={aiContext}
+                                        onChange={(e) => setAiContext(e.target.value)}
+                                    />
+                                    <p className="text-[10px] text-gray-400 mt-2 font-medium">
+                                        💡 La IA redactará el título, cuerpo, SEO y copys basándose en lo que escribas arriba.
+                                    </p>
+                                </div>
+                            )}
+
                             <form id="newsForm" onSubmit={handleSubmit} className="space-y-8">
 
                                 {activeTab === 'content' && (
