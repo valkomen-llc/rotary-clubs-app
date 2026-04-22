@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 09:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.14.4",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Mapeador de Datos Inteligente 🧠",
+        description: "Optimización del sistema de inyección: el asistente ahora reconoce y mapea los datos de la IA sin importar variaciones en el formato de respuesta.",
+        type: "update",
+        changes: [
+            { type: "improved", text: "UX: Inyección automática y forzada de Título, Cuerpo, SEO y Social Media." },
+            { type: "improved", text: "Resiliencia: Detección inteligente de campos (mayúsculas/minúsculas) de la IA." },
+            { type: "fixed", text: "Sistema: Sincronización oficial de versiones v4.14.4." }
+        ]
+    },
+    {
         version: "v4.14.0",
         date: "22 de Abril, 2026",
         title: "ArticulIA: Arquitectura de Cápsula Aislada 💠",
