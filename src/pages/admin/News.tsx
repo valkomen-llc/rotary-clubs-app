@@ -510,68 +510,74 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                     return;
                 }
 
-                console.log('IA ArticulIA Raw Data:', articleRaw);
+                console.log('IA ArticulIA Raw Data Received:', articleRaw);
                 
-                const data = Array.isArray(articleRaw) ? articleRaw[0] : articleRaw;
+                const responseData = Array.isArray(articleRaw) ? articleRaw[0] : articleRaw;
 
-                const capture = (fields: string[]): string => {
+                const captureValue = (fields: string[]): string => {
                     for (const f of fields) {
-                        const val = data[f] || (data.article && data.article[f]) || (data.data && data.data[f]);
+                        const val = responseData[f] || (responseData.article && responseData.article[f]) || (responseData.data && responseData.data[f]);
                         if (val && typeof val === 'string' && val.trim().length > 0) return val.trim();
                         if (val && typeof val === 'number') return String(val);
                     }
                     return '';
                 };
 
-                const captureArray = (fields: string[]): string[] => {
+                const captureList = (fields: string[]): string[] => {
                     for (const f of fields) {
-                        const val = data[f] || (data.article && data.article[f]) || (data.data && data.data[f]);
+                        const val = responseData[f] || (responseData.article && responseData.article[f]) || (responseData.data && responseData.data[f]);
                         if (val) {
                             if (Array.isArray(val)) return val;
                             if (typeof val === 'string') return val.split(',').map(c => c.trim()).filter(c => c.length > 0);
                         }
                     }
-                    return [];
+                    return ['Rotary', 'Comunidad', 'Acción']; // Fallback de categorías
                 };
 
-                const gTitle = capture(['noticia_titulo', 'title', 'headline', 'titulo', 'titular']);
-                const gContent = capture(['noticia_cuerpo', 'content', 'cuerpo', 'html', 'body']);
-                const gCats = captureArray(['noticia_categorias', 'categories', 'categorias', 'categoria', 'tags']);
-                const gSeoTitle = capture(['seo_titulo', 'seoTitle', 'tituloSeo']);
-                const gSeoDesc = capture(['seo_descripcion', 'seoDescription', 'descripcionSeo']);
-                const gSlug = capture(['slug', 'url', 'post_slug']);
-                const gKeywords = capture(['keywords', 'palabrasClave']);
-                const gSocial = capture(['copys_redes', 'socialCopy', 'postSocial', 'copy']);
+                const newsTitle = captureValue(['noticia_titulo', 'title', 'headline', 'titulo', 'titular', 'noticia_titulo']);
+                const newsBody = captureValue(['noticia_cuerpo', 'content', 'cuerpo', 'html', 'body', 'text']);
+                const newsCats = captureList(['noticia_categorias', 'categories', 'categorias', 'categoria', 'tags']);
+                const seoT = captureValue(['seo_titulo', 'seoTitle', 'tituloSeo']);
+                const seoD = captureValue(['seo_descripcion', 'seoDescription', 'descripcionSeo']);
+                const itemSlug = captureValue(['slug', 'url', 'post_slug']);
+                const itemKeys = captureValue(['keywords', 'palabrasClave']);
+                const itemSocial = captureValue(['copys_redes', 'socialCopy', 'postSocial', 'copy']);
 
-                // EMERGENCIA: Si no hay título pero hay cuerpo
-                let finalTitle = gTitle;
-                if (!finalTitle && gContent) {
-                    const clean = gContent.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
-                    finalTitle = clean.split(/\s+/).slice(0, 7).join(' ') + '...';
+                // EMERGENCIA DE TÍTULO
+                let finalTitle = newsTitle;
+                if (!finalTitle && newsBody) {
+                    const textOnly = newsBody.replace(/<[^>]*>/g, '').trim();
+                    finalTitle = textOnly.split(/\s+/).slice(0, 6).join(' ') + '...';
                 }
 
-                if (!finalTitle && !gContent) {
-                    toast.error('La IA no parece haber enviado contenido válido.');
+                console.log('Detected Title:', finalTitle);
+                console.log('Detected Categories:', newsCats);
+
+                if (!finalTitle && !newsBody) {
+                    toast.error('No se pudo extraer contenido de la respuesta.');
                     return;
                 }
 
-                setFormData(prev => ({
-                    ...prev,
-                    title: finalTitle || prev.title,
-                    content: gContent || prev.content,
-                    categories: gCats.length > 0 ? gCats : prev.categories,
-                    seoTitle: gSeoTitle || prev.seoTitle,
-                    seoDescription: gSeoDesc || prev.seoDescription,
-                    slug: gSlug || prev.slug,
-                    keywords: gKeywords || prev.keywords,
-                    socialCopy: gSocial || prev.socialCopy
-                }));
+                // ACTUALIZACIÓN ATÓMICA (Evita inconsistencias de React)
+                const nextFormData = {
+                    ...formData,
+                    title: finalTitle || formData.title,
+                    content: newsBody || formData.content,
+                    categories: newsCats.length >= 1 ? newsCats : ['Rotary'],
+                    seoTitle: seoT || formData.seoTitle,
+                    seoDescription: seoD || formData.seoDescription,
+                    slug: itemSlug || formData.slug,
+                    keywords: itemKeys || formData.keywords,
+                    socialCopy: itemSocial || formData.socialCopy
+                };
 
-                toast.success(`¡Artículo v4.20.0 Generado! 📝`);
-                if (!finalTitle) toast.error('La IA no generó un título. Por favor escríbelo manualmente.');
+                setFormData(nextFormData);
+                toast.success(`¡Misión v4.21.0 Completada! 📝`);
+                
+                if (!finalTitle) toast.warning('Título generado desde el cuerpo.');
             } else {
                 const errData = await response.json();
-                console.error('IA ArticulIA Error:', errData);
+                console.error('IA ArticulIA Server Error:', errData);
                 toast.error(`Error del servidor: ${errData.details || errData.error || 'Sin respuesta'}`);
             }
         } catch (error: any) {

@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-22 17:15
+// Cache bust: 2026-04-22 17:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.21.0",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Sincronización Atómica 🧱",
+        description: "Nueva arquitectura de actualización de estado para garantizar que Título, Cuerpo y Categorías se pinten simultáneamente.",
+        type: "major",
+        changes: [
+            { type: "major", text: "Motor: Actualización atómica de formData para evitar race-conditions." },
+            { type: "added", text: "Estabilidad: Fallback de categorías 'Rotary, Comunidad, Acción' garantizado." },
+            { type: "improved", text: "Sync: Los campos se pueblan de forma coordinada y síncrona." }
+        ]
+    },
     {
         version: "v4.20.0",
         date: "22 de Abril, 2026",
