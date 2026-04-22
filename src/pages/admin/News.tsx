@@ -503,15 +503,31 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 const articleRaw = await response.json();
                 console.log('IA ArticulIA Received Data:', articleRaw);
                 
-                // Mapeo inteligente (soporta Mayúsculas y Minúsculas)
-                const title = articleRaw.title || articleRaw.Title || articleRaw.titulo || '';
-                const content = articleRaw.content || articleRaw.Content || articleRaw.cuerpo || '';
-                const seoTitle = articleRaw.seoTitle || articleRaw.SeoTitle || '';
-                const seoDescription = articleRaw.seoDescription || articleRaw.SeoDescription || '';
-                const slug = articleRaw.slug || articleRaw.Slug || '';
-                const keywords = articleRaw.keywords || articleRaw.Keywords || '';
-                const socialCopy = articleRaw.socialCopy || articleRaw.SocialCopy || '';
-                
+                // Mapeo exhaustivo (busca en raíz y en posibles sub-objetos)
+                const findField = (obj: any, fields: string[]) => {
+                    if (!obj) return '';
+                    for (const f of fields) {
+                        if (obj[f]) return obj[f];
+                    }
+                    if (obj.article) return findField(obj.article, fields);
+                    if (obj.data) return findField(obj.data, fields);
+                    return '';
+                };
+
+                const title = findField(articleRaw, ['title', 'Title', 'titulo', 'Titulo']);
+                const content = findField(articleRaw, ['content', 'Content', 'cuerpo', 'Cuerpo', 'html']);
+                const seoTitle = findField(articleRaw, ['seoTitle', 'SeoTitle', 'tituloSeo']);
+                const seoDescription = findField(articleRaw, ['seoDescription', 'SeoDescription', 'descripcionSeo']);
+                const slug = findField(articleRaw, ['slug', 'Slug', 'url']);
+                const keywords = findField(articleRaw, ['keywords', 'Keywords', 'palabrasClave']);
+                const socialCopy = findField(articleRaw, ['socialCopy', 'SocialCopy', 'postSocial', 'copy']);
+
+                if (!title && !content) {
+                    toast.error('La IA respondió pero no se detectaron campos de texto.');
+                    console.warn('Estructura desconocida:', articleRaw);
+                    return;
+                }
+
                 setFormData(prev => ({
                     ...prev,
                     title: title || prev.title,
@@ -522,7 +538,8 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                     keywords: keywords || prev.keywords,
                     socialCopy: socialCopy || prev.socialCopy
                 }));
-                toast.success('¡Artículo redactado e inyectado con éxito!');
+                
+                toast.success(`¡Inyectado! (Título: ${title.length} car, Cuerpo: ${content.length} car)`);
             } else {
                 const errData = await response.json();
                 console.error('IA ArticulIA Error:', errData);
