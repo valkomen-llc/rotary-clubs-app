@@ -75,9 +75,13 @@ const AccountManager: React.FC = () => {
 
         toast.loading(`Redirigiendo a ${platform.name}...`);
         
+        // Obtenemos el clubId del localStorage para pasarlo como state
+        const clubData = JSON.parse(localStorage.getItem('rotary_club') || '{}');
+        const clubId = clubData.id || '';
+
         // El backend generará la URL de OAuth personalizada
         const API = import.meta.env.VITE_API_URL || '/api';
-        window.location.href = `${API}/content-studio/oauth/${platformId}/authorize`;
+        window.location.href = `${API}/content-studio/oauth/${platformId}/authorize?clubId=${clubId}`;
     };
 
     return (

@@ -14,8 +14,8 @@ import {
 
 const router = express.Router();
 
-// OAuth Redirection
-router.get('/oauth/:platform/authorize', authMiddleware, getOAuthUrl);
+// OAuth Redirection (Public for redirect, identity handled via state)
+router.get('/oauth/:platform/authorize', getOAuthUrl);
 
 
 // Webhook (Public for KIE.ai)
