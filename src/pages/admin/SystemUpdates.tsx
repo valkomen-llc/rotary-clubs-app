@@ -38,6 +38,18 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
         ]
     },
     {
+        version: "v4.15.1",
+        date: "22 de Abril, 2026",
+        title: "Infraestructura: Desbloqueo Maestro ⚙️",
+        description: "Optimización profunda de infraestructura: Activación de Node 18 y reparación de tablas de rutas en Vercel para garantizar despliegues fluidos.",
+        type: "major",
+        changes: [
+            { type: "improved", text: "Infra: Activación obligatoria de Node 18 para estabilidad de IA." },
+            { type: "fixed", text: "Rutas: Reparación de conflictos de redirección en vercel.json." },
+            { type: "improved", text: "Despliegue: Forzado de reconstrucción global v4.15.1." }
+        ]
+    },
+    {
         version: "v4.15.0",
         date: "22 de Abril, 2026",
         title: "Saneamiento Global y Motor v1.5 🔥",
