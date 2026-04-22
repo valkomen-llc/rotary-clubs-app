@@ -897,6 +897,7 @@ model SocialAccount {
   updatedAt     DateTime  @updatedAt
 
   club          Club?     @relation(fields: [clubId], references: [id])
+  scheduledPosts ScheduledPost[]
 }
 
 
@@ -916,18 +917,6 @@ model Comment {
   post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
 }
 
-model SocialAccount {
-  id           String   @id @default(uuid())
-  platform     String   // "instagram", "facebook", "tiktok", "youtube"
-  accountName  String
-  accessToken  String
-  refreshToken String?
-  expiresAt    DateTime?
-  clubId       String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  posts        ScheduledPost[]
-}
 
 model VideoProject {
   id            String   @id @default(uuid())
