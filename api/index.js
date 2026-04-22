@@ -108,20 +108,10 @@ app.use('/api/scout-grants', async (req, res, next) => (await getScoutGrants())(
 
 // ── Frontend & SEO Injection ──────────────────────────────────────────────────
 app.get('*', async (req, res) => {
+    // Skip if it's an API route (should be handled by express routes above)
+    if (req.path.startsWith('/api')) return;
+
     try {
-        const host = (req.headers['x-forwarded-host'] || req.headers.host || '').toLowerCase();
-        const isSaaS = host === 'clubplatform.org' || host === 'www.clubplatform.org' || host.includes('club-platform.vercel.app');
-        
-        if (isSaaS && !req.path.startsWith('/api') && !req.path.startsWith('/assets')) {
-            const redirectConfig = await prisma.platformConfig.findUnique({ where: { key: 'saas_redirect' } }).catch(() => null);
-            if (redirectConfig?.value === 'true') {
-                return res.redirect(301, `https://app.clubplatform.org${req.url}`);
-            }
-        }
-
-        // Skip if it's an API route
-        if (req.path.startsWith('/api')) return;
-
         const indexPath = path.resolve(process.cwd(), 'dist/index.html');
         if (!fs.existsSync(indexPath)) {
             return res.status(404).send('Frontend not built or not found.');
