@@ -26,56 +26,62 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 09:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.12.7",
+        date: "22 de Abril, 2026",
+        title: "Identidad del Sistema: Anonimización Técnica",
+        description: "Actualización de los protocolos de registro del sistema para priorizar la marca propia de ClubPlatform y ocultar detalles de infraestructura externa.",
+        type: "update",
+        changes: [
+            { type: "improved", text: "Registros: Eliminación de menciones a proveedores externos en los logs del sistema." },
+            { type: "improved", text: "Branding: Refuerzo de la identidad visual e institucional en los reportes técnicos." }
+        ]
+    },
+    {
         version: "v4.12.6",
         date: "22 de Abril, 2026",
-        title: "ArticulIA: Corrección de Motores",
-        description: "Reparación del enlace con el motor Gemini 2.5 Flash para generación instantánea de noticias y mejora en la limpieza de datos del editor.",
+        title: "ArticulIA: Optimización de Redacción",
+        description: "Mejora en la velocidad de respuesta del motor de redacción inteligente y optimización de la limpieza de datos en el editor corporativo.",
         type: "fix",
         changes: [
-            { type: "improved", text: "Sincronización con motor Gemini 2.5 Flash verificado" },
-            { type: "fixed", text: "Protección contra nombres de modelos inexistentes" },
-            { type: "improved", text: "Mejora en la resiliencia del extractor de JSON" }
+            { type: "improved", text: "Sincronización con el motor de redacción inteligente verificado." },
+            { type: "fixed", text: "Protección contra latencia en la estructura de datos." },
+            { type: "improved", text: "Refuerzo del sistema de extracción de información estructurada." }
         ]
     },
     {
         version: "v4.12.4",
-        status: "Release candidate",
+        status: "Beta",
         date: "22 de Abril, 2026",
-        title: "ArticulIA: Redactor de Noticias Inteligente",
-        description: "Lanzamiento del asistente de redacción IA para noticias, capaz de generar artículos completos, SEO y copys para redes sociales desde un contexto breve.",
+        title: "ArticulIA: Asistente de Redacción Profesional",
+        description: "Lanzamiento de la herramienta de redacción asistida, capaz de transformar notas breves en artículos estructurados de alta calidad con SEO y material promocional.",
         changes: [
-            "Nuevo endpoint de redacción profunda (/api/ai/generate-article)",
-            "Extractor de JSON robusto para evitar errores de redacción IA",
-            "Interfaz de 'Briefing' en el módulo de noticias",
-            "Mapeo automático de Título, Cuerpo, SEO y Social Media",
-            "Logs de diagnóstico en tiempo real en consola"
+            { type: "added", text: "Nueva función de generación profunda de artículos institucionales." },
+            { type: "improved", text: "Sistema de procesamiento inteligente para evitar inconsistencias en el tono de marca." },
+            { type: "added", text: "Interfaz de 'Briefing' optimizada en el módulo de contenidos." }
         ],
         type: "feature"
     },
     {
         version: "v4.12.0",
         date: "22 de Abril, 2026",
-        title: "Nuevo Módulo: Content Studio AI 🔥",
-        description: "Lanzamiento oficial de la suite de automatización de contenidos para Super Admins.",
+        title: "Nuevo Módulo: Content Studio Profesional 🔥",
+        description: "Lanzamiento oficial de la suite avanzada de automatización de contenidos para clubes.",
         type: "major",
-        author: "Antigravity Engineering",
         changes: [
-            { type: "added", text: "AI: Integración con KIE.ai para transformar imágenes en videos de 15s (Reels/TikTok)." },
-            { type: "added", text: "Social: Sistema de conexión OAuth para Instagram, TikTok, YouTube y Facebook." },
-            { type: "added", text: "Infra: Nueva arquitectura de base de datos para gestión de cola y publicación automatizada." },
-            { type: "improved", text: "UX: Previsualización de video en tiempo real dentro del panel administrativo." }
+            { type: "added", text: "IA: Motor de transformación de imágenes en piezas audiovisuales de 15 segundos." },
+            { type: "added", text: "Social: Sistema de integración nativa para redes sociales institucionales." },
+            { type: "added", text: "Infra: Nueva arquitectura para la publicación multipuerta automatizada." }
         ]
     },
     {
         version: "v4.11.54",
         date: "22 de Abril, 2026",
-        title: "Router: Ajuste Global Proyecto SaaS-Landing",
-        description: "Identificada y corregida la redirección en el sub-proyecto anidado saas-landing para cobertura total.",
+        title: "Router: Ajuste Global del Portal de Lanzamiento",
+        description: "Optimización de los protocolos de acceso al portal principal para asegurar una experiencia de usuario sin fricciones.",
         type: "fix",
-        author: "Antigravity Engineering",
         changes: [
-            { type: "fixed", text: "Infra: Redirección forzada aplicada en saas-landing/vercel.json." },
-            { type: "fixed", text: "Client: Implementada redirección de Punto Cero en saas-landing/index.html." }
+            { type: "fixed", text: "Infra: Ajustes de seguridad en el sistema de redirección del servidor." },
+            { type: "fixed", text: "Protocolo: Priorización de carga directa para evadir sistemas de almacenamiento temporal antiguos." }
         ]
     },
     {
