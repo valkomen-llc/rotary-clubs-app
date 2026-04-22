@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-22 16:35
+// Cache bust: 2026-04-22 16:40
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.18.0",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Estabilidad Galáctica 🌌",
+        description: "Salto de versión mayor para purgar definitivamente el caché de Vercel y activar las mejoras de redacción.",
+        type: "major",
+        changes: [
+            { type: "major", text: "Sistema: Salto definitivo a v4.18.0." },
+            { type: "fixed", text: "Motor: Blindaje total de títulos y captura de datos activada." },
+            { type: "improved", text: "Cache: Purga masiva de Vercel y Vite." }
+        ]
+    },
     {
         version: "v4.17.1",
         date: "22 de Abril, 2026",

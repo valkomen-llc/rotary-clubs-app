@@ -30,10 +30,6 @@
             "destination": "http://76.13.101.187:5001/api/:path*"
         },
         {
-            "source": "/api/articulia",
-            "destination": "/api/articulia.js"
-        },
-        {
             "source": "/api/:path*",
             "destination": "/api/index.js"
         },
