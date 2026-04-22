@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-22 16:50
+// Cache bust: 2026-04-22 17:05
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.18.2",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Integración Total 🚀",
+        description: "Automatización completa de Título, Cuerpo y Categorías en un solo clic.",
+        type: "update",
+        changes: [
+            { type: "added", text: "Motor: Generación automática de categorías sugeridas." },
+            { type: "fixed", text: "Sincronía: Título y Cuerpo ahora se inyectan simultáneamente." },
+            { type: "improved", text: "Estabilidad: Blindaje total de captura de datos v4.18.2." }
+        ]
+    },
     {
         version: "v4.18.1",
         date: "22 de Abril, 2026",

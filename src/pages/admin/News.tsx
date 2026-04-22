@@ -511,8 +511,6 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 }
 
                 console.log('IA ArticulIA Received Data:', articleRaw);
-                
-                // Mapeo ultra-robusto (detecta arrays, objetos anidados y campos variados)
                 const findField = (obj: any, fields: string[]): string => {
                     if (!obj) return '';
                     if (Array.isArray(obj)) return findField(obj[0], fields);
@@ -523,9 +521,24 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                     if (obj.data) return findField(obj.data, fields);
                     return '';
                 };
+
+                const findArrayField = (obj: any, fields: string[]): string[] => {
+                    if (!obj) return [];
+                    if (Array.isArray(obj)) return findArrayField(obj[0], fields);
+                    for (const f of fields) {
+                        if (obj[f]) {
+                            if (Array.isArray(obj[f])) return obj[f];
+                            if (typeof obj[f] === 'string') return obj[f].split(',').map((c: string) => c.trim());
+                        }
+                    }
+                    if (obj.article) return findArrayField(obj.article, fields);
+                    if (obj.data) return findArrayField(obj.data, fields);
+                    return [];
+                };
  
-                const rawHead = findField(articleRaw, ['headline', 'title', 'titulo', 'titular', 'name']);
+                const rawHead = findField(articleRaw, ['title', 'headline', 'titulo', 'titular', 'noticia_titulo']);
                 const contentText = findField(articleRaw, ['content', 'cuerpo', 'html', 'body', 'text']);
+                const categories = findArrayField(articleRaw, ['categories', 'categorias', 'categoria', 'tags']);
                 
                 let title = rawHead;
                 const content = contentText;
@@ -535,8 +548,8 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                     title = clean.split(' ').slice(0, 8).join(' ') + '...';
                 }
 
-                const seoTitle = findField(articleRaw, ['seoTitle', 'SeoTitle', 'tituloSeo', 'metaTitle']);
-                const seoDescription = findField(articleRaw, ['seoDescription', 'SeoDescription', 'descripcionSeo']);
+                const seoTitle = findField(articleRaw, ['seoTitle', 'tituloSeo', 'metaTitle']);
+                const seoDescription = findField(articleRaw, ['seoDescription', 'descripcionSeo']);
                 const slug = findField(articleRaw, ['slug', 'url', 'post_slug']);
                 const keywords = findField(articleRaw, ['keywords', 'palabrasClave']);
                 const socialCopy = findField(articleRaw, ['socialCopy', 'postSocial', 'copy', 'caption', 'social_text']);
@@ -551,6 +564,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                     ...prev,
                     title: title || prev.title,
                     content: content || prev.content,
+                    categories: categories.length > 0 ? categories : prev.categories,
                     seoTitle: seoTitle || prev.seoTitle,
                     seoDescription: seoDescription || prev.seoDescription,
                     slug: slug || prev.slug,
