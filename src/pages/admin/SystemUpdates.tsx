@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.50",
+        date: "22 de Abril, 2026",
+        title: "Router: Redirección Universal de Plataforma",
+        description: "Implementado sistema de triple seguridad (Infra + Server + Frontend) para garantizar el enrutamiento SaaS.",
+        type: "fix",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "fixed", text: "Infra: Reforzado redirect en vercel.json con prioridad absoluta." },
+            { type: "improved", text: "App: Inyectada lógica de redirección en el punto de entrada de React como medida final infalible." }
+        ]
+    },
+    {
         version: "v4.11.49",
         date: "22 de Abril, 2026",
         title: "Router: Redirección Multi-Capa Infrasegua",

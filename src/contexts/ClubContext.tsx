@@ -34,8 +34,18 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return;
         }
 
-        // If this is the main platform domain, skip club lookup
+        // If this is the main platform domain, check for SaaS redirection toggle
         if (isMainPlatform) {
+            fetch(`${import.meta.env.VITE_API_URL || '/api'}/platform-config/logo`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data?.saasRedirect) {
+                        console.log('SaaS Redirect Active: Routing to app.clubplatform.org');
+                        window.location.replace('https://app.clubplatform.org/');
+                    }
+                })
+                .catch(err => console.error('Redirect check failed:', err));
+
             setClub(getClubByHostname(hostname));
             setIsLoading(false);
             return;
