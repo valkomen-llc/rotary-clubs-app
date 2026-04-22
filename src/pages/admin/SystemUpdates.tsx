@@ -26,6 +26,21 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 09:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.12.4",
+        status: "Release candidate",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Redactor de Noticias Inteligente",
+        description: "Lanzamiento del asistente de redacción IA para noticias, capaz de generar artículos completos, SEO y copys para redes sociales desde un contexto breve.",
+        changes: [
+            "Nuevo endpoint de redacción profunda (/api/ai/generate-article)",
+            "Extractor de JSON robusto para evitar errores de redacción IA",
+            "Interfaz de 'Briefing' en el módulo de noticias",
+            "Mapeo automático de Título, Cuerpo, SEO y Social Media",
+            "Logs de diagnóstico en tiempo real en consola"
+        ],
+        type: "feature"
+    },
+    {
         version: "v4.12.0",
         date: "22 de Abril, 2026",
         title: "Nuevo Módulo: Content Studio AI 🔥",
