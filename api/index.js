@@ -113,6 +113,22 @@ app.get('*', async (req, res) => {
     if (req.path.startsWith('/api')) return;
 
     try {
+        const hostname = req.headers['x-forwarded-host'] || req.headers.host || req.hostname || '';
+        
+        // ── Main Domain Redirection (SaaS Redirect) ──────────────────────────
+        // If the request comes from the root domain and redirect is active, send to app.
+        const isRootDomain = hostname === 'clubplatform.org' || 
+                           hostname === 'www.clubplatform.org' || 
+                           hostname.includes('club-platform.vercel.app');
+                           
+        if (isRootDomain && !req.path.startsWith('/api')) {
+            const redirectSetting = await prisma.platformConfig.findUnique({ where: { key: 'saas_redirect' } });
+            if (redirectSetting?.value === 'true') {
+                console.log(`[Redirect] Routing ${hostname}${req.url} to app.clubplatform.org`);
+                return res.redirect(301, `https://app.clubplatform.org${req.url}`);
+            }
+        }
+
         const indexPath = path.resolve(process.cwd(), 'dist/index.html');
         if (!fs.existsSync(indexPath)) {
             return res.status(404).send('Frontend not built or not found.');

@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.42",
+        date: "22 de Abril, 2026",
+        title: "Router: Activación Redirección SaaS",
+        description: "Implementada lógica de redirección de dominio raíz a subdominio 'app' mediante flag de configuración.",
+        type: "fix",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "fixed", text: "Infra: Corregido el enrutamiento de clubplatform.org -> app.clubplatform.org." }
+        ]
+    },
+    {
         version: "v4.11.41",
         date: "22 de Abril, 2026",
         title: "Branding: Refinamiento de Copyright",
