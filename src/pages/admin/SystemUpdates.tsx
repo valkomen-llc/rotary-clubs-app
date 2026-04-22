@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 09:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.13.10",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Inyección de Núcleo 🔥",
+        description: "Máximo nivel de estabilidad: el motor de redacción ahora reside en el núcleo del servidor para eliminar cualquier fallo de conexión externa.",
+        type: "major",
+        changes: [
+            { type: "improved", text: "Estabilidad: Inyección directa de rutas en el punto de entrada de Vercel." },
+            { type: "improved", text: "Velocidad: Eliminación de latencia por carga modular de archivos." },
+            { type: "fixed", text: "Sistema: Sincronización global de versiones v4.13.10." }
+        ]
+    },
+    {
         version: "v4.13.8",
         date: "22 de Abril, 2026",
         title: "ArticulIA: Modo de Alta Compatibilidad",

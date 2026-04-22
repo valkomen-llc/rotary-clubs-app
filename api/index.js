@@ -18,7 +18,7 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), asy
 
 // ── Static endpoints ─────────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'ok', version: '3.0.0' });
+    res.json({ status: 'ok', version: '4.13.10' });
 });
 
 app.get('/api/health', async (req, res) => {
