@@ -38,6 +38,18 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
         ]
     },
     {
+        version: "v4.15.0",
+        date: "22 de Abril, 2026",
+        title: "Saneamiento Global y Motor v1.5 🔥",
+        description: "Gran limpieza técnica del núcleo del sistema y despliegue final de la arquitectura de Cápsula Independiente para ArticulIA.",
+        type: "major",
+        changes: [
+            { type: "added", text: "Arquitectura: Despliegue de cápsula aislada (articulia.js) sin interferencias." },
+            { type: "improved", text: "Motor: Conexión estable con la API v1 de Google Gemini." },
+            { type: "fixed", text: "Despliegue: Eliminación de código heredado que bloqueaba actualizaciones." }
+        ]
+    },
+    {
         version: "v4.14.9",
         date: "22 de Abril, 2026",
         title: "ArticulIA: Optimización de Despliegue ⚡",

@@ -101,33 +101,6 @@ app.use('/api/system', async (req, res, next) => (await getSystem())(req, res, n
 app.use('/api/whatsapp-qr', async (req, res, next) => (await getWhatsappQr())(req, res, next));
 app.use('/api/content-studio', async (req, res, next) => (await getContentStudio())(req, res, next));
 
-// ── DIRECT ARTICULIA BYPASS (v4.13.9) ────────────────────────────────────────
-// Inyectamos la ruta directamente aquí para evitar fallos de importación en Vercel
-app.post('/api/ai/generate-article', async (req, res) => {
-    const { context } = req.body;
-    try {
-        const apiKey = process.env.GEMINI_API_KEY;
-        if (!apiKey) return res.status(200).json({ error: 'Falta GEMINI_API_KEY en Vercel' });
-
-        const prompt = `Eres ArticulIA de Rotary. Crea un artículo BREVE de 2 párrafos y lista de puntos en HTML desde este contexto: ${context}. Responde SOLO JSON: {"title":"","content":"","seoTitle":"","seoDescription":"","slug":"","keywords":"","tags":[],"socialCopy":""}`;
-        
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                generationConfig: { temperature: 0.4, maxOutputTokens: 1024 }
-            })
-        });
-
-        const data = await response.json();
-        const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        const article = JSON.parse(raw.substring(raw.indexOf('{'), raw.lastIndexOf('}') + 1));
-        res.json(article);
-    } catch (e) {
-        res.status(200).json({ error: 'Error en respuesta rápida', details: e.message });
-    }
-});
 
 // ── Social OAuth Callbacks ───────────────────────────────────────────────────
 app.get('/api/social/callback/:platform', async (req, res) => {
