@@ -7,31 +7,6 @@ import { PrismaClient } from '@prisma/client';
 const app = express();
 const prisma = new PrismaClient();
 
-// ── SaaS Redirection Middleware ──────────────────────────────────────────────
-// This stays at the VERY TOP to intercept traffic before any other processing.
-app.use(async (req, res, next) => {
-    try {
-        const host = (req.headers['x-forwarded-host'] || req.headers.host || '').toLowerCase();
-        
-        // Target: clubplatform.org or www.clubplatform.org
-        // Rule: If it's the main domain and NOT app. or api. subdomains
-        const isRoot = host === 'clubplatform.org' || host === 'www.clubplatform.org' || host.includes('club-platform.vercel.app');
-        
-        if (isRoot && !req.path.startsWith('/api') && !req.path.startsWith('/vps')) {
-            const redirectSetting = await prisma.platformConfig.findUnique({ where: { key: 'saas_redirect' } });
-            
-            if (redirectSetting?.value === 'true') {
-                const target = `https://app.clubplatform.org${req.url}`;
-                console.log(`[Priority Redirect] Routing ${host}${req.url} -> ${target}`);
-                return res.redirect(301, target);
-            }
-        }
-    } catch (err) {
-        console.error('[Redirect Middleware Error]:', err);
-    }
-    next();
-});
-
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
@@ -133,10 +108,20 @@ app.use('/api/scout-grants', async (req, res, next) => (await getScoutGrants())(
 
 // ── Frontend & SEO Injection ──────────────────────────────────────────────────
 app.get('*', async (req, res) => {
-    // Skip if it's an API route (should be handled by express routes above)
-    if (req.path.startsWith('/api')) return;
-
     try {
+        const host = (req.headers['x-forwarded-host'] || req.headers.host || '').toLowerCase();
+        const isSaaS = host === 'clubplatform.org' || host === 'www.clubplatform.org' || host.includes('club-platform.vercel.app');
+        
+        if (isSaaS && !req.path.startsWith('/api') && !req.path.startsWith('/assets')) {
+            const redirectConfig = await prisma.platformConfig.findUnique({ where: { key: 'saas_redirect' } }).catch(() => null);
+            if (redirectConfig?.value === 'true') {
+                return res.redirect(301, `https://app.clubplatform.org${req.url}`);
+            }
+        }
+
+        // Skip if it's an API route
+        if (req.path.startsWith('/api')) return;
+
         const indexPath = path.resolve(process.cwd(), 'dist/index.html');
         if (!fs.existsSync(indexPath)) {
             return res.status(404).send('Frontend not built or not found.');

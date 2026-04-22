@@ -7,25 +7,15 @@
     },
     "redirects": [
         {
-            "source": "/",
-            "has": [
-                {
-                    "type": "host",
-                    "value": "clubplatform.org"
-                }
-            ],
-            "destination": "https://app.clubplatform.org",
+            "source": "/(.*)",
+            "has": [{ "type": "host", "value": "clubplatform.org" }],
+            "destination": "https://app.clubplatform.org/$1",
             "permanent": false
         },
         {
-            "source": "/",
-            "has": [
-                {
-                    "type": "host",
-                    "value": "www.clubplatform.org"
-                }
-            ],
-            "destination": "https://app.clubplatform.org",
+            "source": "/(.*)",
+            "has": [{ "type": "host", "value": "www.clubplatform.org" }],
+            "destination": "https://app.clubplatform.org/$1",
             "permanent": false
         },
         {

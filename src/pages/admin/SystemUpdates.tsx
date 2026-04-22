@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.49",
+        date: "22 de Abril, 2026",
+        title: "Router: Redirección Multi-Capa Infrasegua",
+        description: "Desplegada estrategia de doble capa: redirect nativo wildcard en Vercel y fallback dinámico en servidor.",
+        type: "fix",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "fixed", text: "Infra: Activada redirección wildcard nativa para cubrir todas las rutas de clubplatform.org." },
+            { type: "improved", text: "Server: Reforzada la lógica de redirección dinámica en el manejador global de páginas." }
+        ]
+    },
+    {
         version: "v4.11.48",
         date: "22 de Abril, 2026",
         title: "Router: Redirección Nativa de Vercel (Host-Based)",
