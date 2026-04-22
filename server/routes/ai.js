@@ -1376,13 +1376,13 @@ router.post('/generate-article', async (req, res) => {
     2. El artículo debe ser estructurado y fácil de leer.
     3. Responde ÚNICAMENTE con un JSON válido. No incluyas explicaciones fuera del JSON.
     
-    ESTRUCTURA DEL JSON (OBLIGATORIA - NO FALLAR):
+    ESTRUCTURA DEL JSON (OBLIGATORIA - REGLAS DE LONGITUD REQUERIDAS):
     {
-      "noticia_titulo": "Escribe aquí el titular impactante (MÁX 70 CAR)",
-      "noticia_cuerpo": "Cuerpo del artículo en HTML. Usa <p>, <h2>. Mínimo 3 parrafos.",
-      "noticia_categorias": "Categoría1, Categoría2, Categoría3",
-      "seo_titulo": "Título SEO",
-      "seo_descripcion": "Meta descripción",
+      "noticia_titulo": " Titular (máx 70 car)",
+      "noticia_cuerpo": " HTML con <p>, <h2>. Mínimo 3 parrafos.",
+      "noticia_categorias": "Categoría1, Categoría2",
+      "seo_titulo": "Título SEO (STRICT MAX 60 CHARACTERS - NUNCA TE PASES)",
+      "seo_descripcion": "Meta descripción (STRICT MAX 155 CHARACTERS)",
       "slug": "url-amigable",
       "keywords": "palabras, clave",
       "copys_redes": "Texto para redes sociales"

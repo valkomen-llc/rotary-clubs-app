@@ -556,21 +556,32 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                     return;
                 }
 
-                // ACTUALIZACIÓN FUNCIONAL (Elimina el error de 'Stale Closure')
+                // RECORTE DE SEGURIDAD SEO (v4.35.0)
+                const safeTrim = (text: string, limit: number) => {
+                    if (!text || text.length <= limit) return text;
+                    const truncated = text.substring(0, limit - 3);
+                    const lastSpace = truncated.lastIndexOf(' ');
+                    return (lastSpace > limit / 2 ? truncated.substring(0, lastSpace) : truncated) + '...';
+                };
+
+                const finalSeoTitle = safeTrim(seoT, 60);
+                const finalSeoDesc = safeTrim(seoD, 160);
+
+                // ACTUALIZACIÓN FUNCIONAL (v4.35.0 SEO Precision)
                 setFormData((prev: any) => ({
                     ...prev,
                     title: finalTitle || prev.title,
                     content: newsBody || prev.content,
                     category: firstCat || prev.category,
                     tags: newsTags.length > 0 ? newsTags : prev.tags,
-                    seoTitle: seoT || prev.seoTitle,
-                    seoDescription: seoD || prev.seoDescription,
+                    seoTitle: finalSeoTitle || prev.seoTitle,
+                    seoDescription: finalSeoDesc || prev.seoDescription,
                     slug: itemSlug || prev.slug,
                     keywords: itemKeys || prev.keywords,
                     socialCopy: itemSocial || prev.socialCopy
                 }));
 
-                toast.success(`¡Misión v4.30.0 Completada! 🏗️`);
+                toast.success(`¡Misión v4.35.0 Completada! ⚖️`);
                 
                 if (!finalTitle) toast.warning('Título generado desde el cuerpo.');
             } else {

@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-22 17:45
+// Cache bust: 2026-04-22 17:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.35.0",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: SEO Precision Update ⚖️",
+        description: "Control estricto de longitud de caracteres para SEO (60 para Títulos, 160 para Descripciones).",
+        type: "major",
+        changes: [
+            { type: "major", text: "Motor: Límites estrictos inyectados en el prompt de la IA." },
+            { type: "added", text: "Frontend: Auto-recorte inteligente en espacios para no exceder límites." },
+            { type: "improved", text: "Sincronización: Título, Cuerpo y SEO alineados perfectamente." }
+        ]
+    },
     {
         version: "v4.30.0",
         date: "22 de Abril, 2026",
