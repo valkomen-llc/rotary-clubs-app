@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 09:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.16.3",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Refuerzo de Captura 🛡️",
+        description: "Mejora en la detección de campos para asegurar que el título y otros metadatos se capturen correctamente sin importar el formato de la IA.",
+        type: "update",
+        changes: [
+            { type: "improved", text: "Interfaz: Mapeo avanzado de campos (titular, headline, etc.)." },
+            { type: "fixed", text: "Servidor: Eliminación de redundancia en prompts." },
+            { type: "improved", text: "Sistema: Actualización a la versión de estabilidad v4.16.3." }
+        ]
+    },
+    {
         version: "v4.16.2",
         date: "22 de Abril, 2026",
         title: "ArticulIA: Sincronización SEO-News 🔗",

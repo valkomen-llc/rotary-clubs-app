@@ -523,13 +523,13 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                     return '';
                 };
 
-                const title = findField(articleRaw, ['title', 'Title', 'titulo', 'Titulo']);
-                const content = findField(articleRaw, ['content', 'Content', 'cuerpo', 'Cuerpo', 'html']);
-                const seoTitle = findField(articleRaw, ['seoTitle', 'SeoTitle', 'tituloSeo']);
-                const seoDescription = findField(articleRaw, ['seoDescription', 'SeoDescription', 'descripcionSeo']);
-                const slug = findField(articleRaw, ['slug', 'Slug', 'url']);
-                const keywords = findField(articleRaw, ['keywords', 'Keywords', 'palabrasClave']);
-                const socialCopy = findField(articleRaw, ['socialCopy', 'SocialCopy', 'postSocial', 'copy']);
+                const title = findField(articleRaw, ['title', 'Title', 'titulo', 'Titulo', 'titular', 'Titular', 'headline', 'Headline', 'headline_text', 'name']);
+                const content = findField(articleRaw, ['content', 'Content', 'cuerpo', 'Cuerpo', 'html', 'body', 'Body', 'article_body', 'text']);
+                const seoTitle = findField(articleRaw, ['seoTitle', 'SeoTitle', 'tituloSeo', 'metaTitle', 'seo_title']);
+                const seoDescription = findField(articleRaw, ['seoDescription', 'SeoDescription', 'descripcionSeo', 'metaDescription', 'seo_description']);
+                const slug = findField(articleRaw, ['slug', 'Slug', 'url', 'post_slug', 'permalink']);
+                const keywords = findField(articleRaw, ['keywords', 'Keywords', 'palabrasClave', 'seo_keywords']);
+                const socialCopy = findField(articleRaw, ['socialCopy', 'SocialCopy', 'postSocial', 'copy', 'caption', 'social_text']);
 
                 if (!title && !content) {
                     toast.error('La IA respondió pero no se detectaron campos de texto.');
@@ -548,7 +548,8 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                     socialCopy: socialCopy || prev.socialCopy
                 }));
                 
-                toast.success(`¡Inyectado! (Título: ${title.length} car, Cuerpo: ${content.length} car)`);
+                toast.success(`¡Artículo Generado! 📝`);
+                if (!title) toast.error('La IA no generó un título. Por favor escríbelo manualmente.');
             } else {
                 const errData = await response.json();
                 console.error('IA ArticulIA Error:', errData);

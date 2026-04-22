@@ -1388,11 +1388,9 @@ router.post('/generate-article', async (req, res) => {
       "socialCopy": "Un copy persuasivo para redes sociales con 3 hashtags y emojis"
     }`;
 
-    const userPrompt = `Contexto del evento/noticia: ${context.trim()}`;
-
     try {
-        const userPrompt = `Analiza este contexto y genera un artículo completo con SEO y redes sociales:
-        Contexto: ${context.trim()}`;
+        const userPrompt = `Analiza este contexto y genera un artículo completo con SEO y redes sociales para Rotary:
+        Contexto real del evento: ${context.trim()}`;
 
         // Usar la lógica de enrutamiento dinámico (idéntico al SEO)
         const defaultSlug = await getDefaultModel();
