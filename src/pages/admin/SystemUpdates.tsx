@@ -26,15 +26,15 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 09:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: "v4.14.6",
+        version: "v4.15.2",
         date: "22 de Abril, 2026",
-        title: "ArticulIA: Blindaje Total y Anti-Caché 🛡️",
-        description: "Actualización crítica de estabilidad que elimina la latencia de caché y mejora la detección de errores del motor de IA.",
+        title: "ArticulIA: Sincronización de Identidad ⚡",
+        description: "Reparación del sistema de reporte de versiones y confirmación de la infraestructura estable de Node 18 y Google v1.",
         type: "major",
         changes: [
-            { type: "improved", text: "Estabilidad: Sistema anti-caché dinámico para respuestas frescas." },
-            { type: "fixed", text: "Lógica: Detección inteligente de errores camuflados del servidor." },
-            { type: "improved", text: "Sistema: Salto estratégico a la versión v4.14.6." }
+            { type: "improved", text: "UX: Corrección del reporte de versión en el panel administrativo." },
+            { type: "improved", text: "Motor: Confirmación de redacción con Google Gemini v1 Estable." },
+            { type: "fixed", text: "Sistema: Limpieza de registros duplicados y re-ordenamiento de historial." }
         ]
     },
     {
