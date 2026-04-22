@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-22 16:40
+// Cache bust: 2026-04-22 16:50
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.18.1",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Estabilidad Total 💎",
+        description: "Reparación de sintaxis en el motor de redacción y activación final de v4.18.1.",
+        type: "update",
+        changes: [
+            { type: "fixed", text: "Compilación: Eliminado error de sintaxis en el mapeo de redes sociales." },
+            { type: "improved", text: "Estabilidad: Captura de campos optimizada y blindaje de títulos activo." },
+            { type: "major", text: "Sistema: Salto a la versión de producción v4.18.1." }
+        ]
+    },
     {
         version: "v4.18.0",
         date: "22 de Abril, 2026",

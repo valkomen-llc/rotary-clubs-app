@@ -539,8 +539,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 const seoDescription = findField(articleRaw, ['seoDescription', 'SeoDescription', 'descripcionSeo']);
                 const slug = findField(articleRaw, ['slug', 'url', 'post_slug']);
                 const keywords = findField(articleRaw, ['keywords', 'palabrasClave']);
-                const socialCopy = findField(articleRaw, ['socialCopy', 'postSocial', 'copy', 'caption']);
-py', 'postSocial', 'copy', 'caption', 'social_text']);
+                const socialCopy = findField(articleRaw, ['socialCopy', 'postSocial', 'copy', 'caption', 'social_text']);
 
                 if (!title && !content) {
                     toast.error('La IA respondió pero no se detectaron campos de texto.');
