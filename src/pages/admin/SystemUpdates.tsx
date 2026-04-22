@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 09:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.16.2",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Sincronización SEO-News 🔗",
+        description: "Unificación total del motor de redacción con el módulo de SEO para garantizar estabilidad 100% y compatibilidad con Gemini 1.5.",
+        type: "update",
+        changes: [
+            { type: "added", text: "Motor: Migración exitosa al endpoint central /api/ai/generate-article." },
+            { type: "improved", text: "Estabilidad: Réplica exacta de la lógica de redacción del módulo SEO." },
+            { type: "major", text: "Sistema: Eliminación de cápsulas redundantes y activación de v4.16.2." }
+        ]
+    },
+    {
         version: "v4.16.1",
         date: "22 de Abril, 2026",
         title: "ArticulIA: Formato JSON Estricto 💎",

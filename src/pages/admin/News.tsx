@@ -490,8 +490,8 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         const apiUrl = import.meta.env.VITE_API_URL || '/api';
 
         try {
-            // Nuevo motor v4.16.0 (draft-engine) para evitar bloqueos
-            const response = await fetch(`${apiUrl}/draft-engine?t=${Date.now()}`, {
+            // Llamamos al motor central (Fórmula SEO verificada)
+            const response = await fetch(`${apiUrl}/ai/generate-article`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

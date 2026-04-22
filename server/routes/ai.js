@@ -1388,50 +1388,31 @@ router.post('/generate-article', async (req, res) => {
       "socialCopy": "Un copy persuasivo para redes sociales con 3 hashtags y emojis"
     }`;
 
-    const systemPrompt = `Eres ArticulIA, redactor veloz de Rotary. Transforma el contexto en un artículo BREVE.
-    REGLA: Responde en menos de 8 segundos. JSON estricto.
-    
-    ESTRUCTURA:
-    {
-      "title": "Titular (máx 60 car)",
-      "content": "HTML: 2 párrafos cortos y 1 lista de puntos.",
-      "seoTitle": "SEO Title (máx 55 car)",
-      "seoDescription": "Meta desc (máx 150 car)",
-      "slug": "url-corta",
-      "keywords": "3 palabras clave",
-      "tags": ["Rotary", "Acción"],
-      "socialCopy": "Copy breve con emojis"
-    }`;
-
     const userPrompt = `Contexto del evento/noticia: ${context.trim()}`;
 
     try {
-        const apiKey = process.env.GEMINI_API_KEY;
-        const slug = 'gemini-2.5-flash';
+        const userPrompt = `Analiza este contexto y genera un artículo completo con SEO y redes sociales:
+        Contexto: ${context.trim()}`;
 
-        if (!apiKey) {
-            return res.status(200).json({ error: 'Falta configuración en el servidor. Por favor, verifica las API Keys.' });
+        // Usar la lógica de enrutamiento dinámico (idéntico al SEO)
+        const defaultSlug = await getDefaultModel();
+        const raw = await routeToModel(defaultSlug || 'gemini-2.5-flash', systemPrompt, userPrompt);
+        
+        // Limpieza de formato (Fórmula del SEO)
+        let cleaned = raw.replace(/```json|```/gi, '').trim();
+        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        
+        if (!jsonMatch) {
+            throw new Error('La IA no devolvió un formato JSON válido.');
         }
 
-        console.log(`[ArticulIA] Iniciando proceso con motor verificado...`);
-        
-        // Usar la función estructural del sistema que sabemos que es compatible con Vercel
-        const raw = await routeToModel(slug, systemPrompt, userPrompt);
-        
-        const firstBrace = raw.indexOf('{');
-        const lastBrace = raw.lastIndexOf('}');
-        
-        if (firstBrace === -1 || lastBrace === -1) {
-            throw new Error('La respuesta de redacción no tiene el formato esperado.');
-        }
-
-        const article = JSON.parse(raw.substring(firstBrace, lastBrace + 1));
+        const article = JSON.parse(jsonMatch[0]);
         res.json(article);
 
     } catch (error) {
-        console.error('[ArticulIA] Error Crítico:', error.message);
+        console.error('[ArticulIA] Error en motor central:', error);
         res.status(200).json({ 
-            error: 'Servicio temporalmente no disponible', 
+            error: 'Intenta de nuevo en unos segundos', 
             details: error.message 
         });
     }
