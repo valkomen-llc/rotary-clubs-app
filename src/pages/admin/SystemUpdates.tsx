@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 09:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.16.4",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Blindaje Anti-Errores 🛡️",
+        description: "Máxima estabilidad en la captura de datos. Implementación de 'Self-Healing' que asegura que el título siempre se genere, incluso con fallos de la IA.",
+        type: "update",
+        changes: [
+            { type: "added", text: "Motor: Autocorrección de títulos basada en el contenido." },
+            { type: "improved", text: "Estabilidad: Manejo de respuestas en formato Array y Objetos complejos." },
+            { type: "major", text: "Sistema: Salto a la versión definitiva v4.16.4." }
+        ]
+    },
+    {
         version: "v4.16.3",
         date: "22 de Abril, 2026",
         title: "ArticulIA: Refuerzo de Captura 🛡️",

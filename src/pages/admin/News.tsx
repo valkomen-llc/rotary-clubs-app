@@ -512,24 +512,35 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
 
                 console.log('IA ArticulIA Received Data:', articleRaw);
                 
-                // Mapeo exhaustivo (busca en raíz y en posibles sub-objetos)
-                const findField = (obj: any, fields: string[]) => {
+                // Mapeo ultra-robusto (detecta arrays, objetos anidados y campos variados)
+                const findField = (obj: any, fields: string[]): string => {
                     if (!obj) return '';
+                    if (Array.isArray(obj)) return findField(obj[0], fields);
                     for (const f of fields) {
-                        if (obj[f]) return obj[f];
+                        if (obj[f] && typeof obj[f] === 'string' && obj[f].trim().length > 0) return obj[f].trim();
                     }
                     if (obj.article) return findField(obj.article, fields);
                     if (obj.data) return findField(obj.data, fields);
                     return '';
                 };
+ 
+                const rawHead = findField(articleRaw, ['headline', 'title', 'titulo', 'titular', 'name']);
+                const contentText = findField(articleRaw, ['content', 'cuerpo', 'html', 'body', 'text']);
+                
+                let title = rawHead;
+                const content = contentText;
 
-                const title = findField(articleRaw, ['title', 'Title', 'titulo', 'Titulo', 'titular', 'Titular', 'headline', 'Headline', 'headline_text', 'name']);
-                const content = findField(articleRaw, ['content', 'Content', 'cuerpo', 'Cuerpo', 'html', 'body', 'Body', 'article_body', 'text']);
-                const seoTitle = findField(articleRaw, ['seoTitle', 'SeoTitle', 'tituloSeo', 'metaTitle', 'seo_title']);
-                const seoDescription = findField(articleRaw, ['seoDescription', 'SeoDescription', 'descripcionSeo', 'metaDescription', 'seo_description']);
-                const slug = findField(articleRaw, ['slug', 'Slug', 'url', 'post_slug', 'permalink']);
-                const keywords = findField(articleRaw, ['keywords', 'Keywords', 'palabrasClave', 'seo_keywords']);
-                const socialCopy = findField(articleRaw, ['socialCopy', 'SocialCopy', 'postSocial', 'copy', 'caption', 'social_text']);
+                if (!title && content) {
+                    const clean = content.replace(/<[^>]*>/g, '').trim();
+                    title = clean.split(' ').slice(0, 8).join(' ') + '...';
+                }
+
+                const seoTitle = findField(articleRaw, ['seoTitle', 'SeoTitle', 'tituloSeo', 'metaTitle']);
+                const seoDescription = findField(articleRaw, ['seoDescription', 'SeoDescription', 'descripcionSeo']);
+                const slug = findField(articleRaw, ['slug', 'url', 'post_slug']);
+                const keywords = findField(articleRaw, ['keywords', 'palabrasClave']);
+                const socialCopy = findField(articleRaw, ['socialCopy', 'postSocial', 'copy', 'caption']);
+py', 'postSocial', 'copy', 'caption', 'social_text']);
 
                 if (!title && !content) {
                     toast.error('La IA respondió pero no se detectaron campos de texto.');

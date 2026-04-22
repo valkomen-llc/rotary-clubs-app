@@ -1378,7 +1378,7 @@ router.post('/generate-article', async (req, res) => {
     
     ESTRUCTURA DEL JSON:
     {
-      "title": "Un título impactante (máx 70 car)",
+      "headline": "Titular impactante y obligatorio del artículo (máx 70 car)",
       "content": "Cuerpo del artículo en HTML. Usa <p>, <h2>, <ul>, <li>. Mínimo 3 parrafos potentes.",
       "seoTitle": "Título SEO optimizado (máx 60 car)",
       "seoDescription": "Meta descripción ganadora (máx 155 car)",
