@@ -490,7 +490,8 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         const apiUrl = import.meta.env.VITE_API_URL || '/api';
 
         try {
-            const response = await fetch(`${apiUrl}/articulia`, {
+            // Anti-caché con timestamp para forzar versión v4.14.6+
+            const response = await fetch(`${apiUrl}/articulia?t=${Date.now()}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -501,6 +502,14 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
 
             if (response.ok) {
                 const articleRaw = await response.json();
+                
+                // Si el servidor nos mandó un error camuflado (JSON con error)
+                if (articleRaw.error) {
+                    toast.error(`La IA dice: ${articleRaw.error}`);
+                    console.error('IA Error payload:', articleRaw);
+                    return;
+                }
+
                 console.log('IA ArticulIA Received Data:', articleRaw);
                 
                 // Mapeo exhaustivo (busca en raíz y en posibles sub-objetos)

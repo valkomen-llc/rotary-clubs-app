@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 09:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.14.6",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Blindaje Total y Anti-Caché 🛡️",
+        description: "Actualización crítica de estabilidad que elimina la latencia de caché y mejora la detección de errores del motor de IA.",
+        type: "major",
+        changes: [
+            { type: "improved", text: "Estabilidad: Sistema anti-caché dinámico para respuestas frescas." },
+            { type: "fixed", text: "Lógica: Detección inteligente de errores camuflados del servidor." },
+            { type: "improved", text: "Sistema: Salto estratégico a la versión v4.14.6." }
+        ]
+    },
+    {
         version: "v4.14.4",
         date: "22 de Abril, 2026",
         title: "ArticulIA: Mapeador de Datos Inteligente 🧠",
