@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 09:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.16.0",
+        date: "22 de Abril, 2026",
+        title: "Reinicio de Emergencia: DraftEngine 🚀",
+        description: "Salto de versión mayor y cambio de arquitectura de motor (v1.5) para romper el bloqueo de despliegue en Vercel.",
+        type: "major",
+        changes: [
+            { type: "added", text: "Motor: Despliegue de 'draft-engine.js' con vía de comunicación limpia." },
+            { type: "improved", text: "Sistema: Eliminación de cápsulas redundantes y bucles de redirección." },
+            { type: "major", text: "Versión: Salto definitivo a v4.16.0 para purga de caché global." }
+        ]
+    },
+    {
         version: "v4.15.2",
         date: "22 de Abril, 2026",
         title: "ArticulIA: Sincronización de Identidad ⚡",
