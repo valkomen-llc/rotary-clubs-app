@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 09:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.12.9",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Diagnóstico Avanzado",
+        description: "Implementación de un sistema de reporte de errores en tiempo real para el redactor inteligente y optimización de la validación de llaves de seguridad.",
+        type: "update",
+        changes: [
+            { type: "improved", text: "Diagnóstico: El sistema ahora informa la causa exacta de fallos en la IA." },
+            { type: "fixed", text: "Seguridad: Validación instantánea de llaves de procesamiento en el servidor." },
+            { type: "improved", text: "UX: Feedback detallado en el panel de noticias ante errores de conexión." }
+        ]
+    },
+    {
         version: "v4.12.7",
         date: "22 de Abril, 2026",
         title: "Identidad del Sistema: Anonimización Técnica",
