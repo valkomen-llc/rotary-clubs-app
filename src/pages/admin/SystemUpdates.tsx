@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 09:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.13.0",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Estabilidad Crítica",
+        description: "Implementación de arquitectura de conexión directa para el motor de redacción, eliminando intermediarios para garantizar estabilidad y velocidad.",
+        type: "major",
+        changes: [
+            { type: "improved", text: "Arquitectura: Conexión directa con el nodo de procesamiento para evitar micro-cortes." },
+            { type: "improved", text: "Seguridad: Sistema de respuesta forzada en formato JSON para diagnósticos precisos." },
+            { type: "fixed", text: "Backend: Limpieza de redundancias en las rutas de IA." }
+        ]
+    },
+    {
         version: "v4.12.9",
         date: "22 de Abril, 2026",
         title: "ArticulIA: Diagnóstico Avanzado",

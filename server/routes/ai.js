@@ -1397,26 +1397,51 @@ router.post('/generate-article', authMiddleware, async (req, res) => {
       "socialCopy": "Copy breve con emojis"
     }`;
 
-    const userPrompt = `Contexto: ${context.trim()}`;
-    const slug = 'gemini-2.5-flash';
+    const userPrompt = `Contexto del evento/noticia: ${context.trim()}`;
 
     try {
-        if (!process.env.GEMINI_API_KEY && !process.env.OPENAI_API_KEY) {
-            return res.status(500).json({ error: 'Llaves de IA no configuradas en el servidor.' });
+        // Validación ultra-rápida de seguridad
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+            return res.status(200).json({ error: 'No hay API Key configurada. Por favor, añádela en Vercel.' });
         }
 
-        console.log(`[ArticulIA-Flash] Generando con ${slug}...`);
-        const raw = await routeToModel(slug, systemPrompt, userPrompt);
+        console.log(`[ArticulIA-Direct] Llamando a motor institucional...`);
         
+        // Llamada directa sin intermediarios para asegurar velocidad y evitar crashes
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+        
+        const response = await fetch(geminiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+                generationConfig: { temperature: 0.4, maxOutputTokens: 2048 }
+            })
+        });
+
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error?.message || 'Error en comunicación directa');
+        }
+
+        const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
         const firstBrace = raw.indexOf('{');
         const lastBrace = raw.lastIndexOf('}');
-        if (firstBrace === -1 || lastBrace === -1) throw new Error('Respuesta de IA no tiene formato JSON');
+        
+        if (firstBrace === -1 || lastBrace === -1) throw new Error('Formato de respuesta inválido');
 
         const article = JSON.parse(raw.substring(firstBrace, lastBrace + 1));
         res.json(article);
+
     } catch (error) {
-        console.error('[ArticulIA] Error en ruta:', error.message);
-        res.status(500).json({ error: 'La IA no pudo procesar la solicitud', details: error.message });
+        console.error('[ArticulIA-Direct] Error:', error.message);
+        res.status(200).json({ 
+            error: 'No se pudo generar el contenido', 
+            details: error.message 
+        });
     }
 });
 
