@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-22 18:15
+// Cache bust: 2026-04-22 18:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.38.0",
+        date: "22 de Abril, 2026",
+        title: "Content Studio: Transparencia Total 🔓",
+        description: "Sincronización del frontend para reportar errores técnicos detallados del servidor.",
+        type: "major",
+        changes: [
+            { type: "improved", text: "Frontend: Activación de lectura de mensajes de error dinámicos." },
+            { type: "fix", text: "Transparencia: Eliminación de mensajes de error genéricos y hardcoded." },
+            { type: "major", text: "Diagnóstico: Capacidad total para identificar fallos de DB en vivo." }
+        ]
+    },
     {
         version: "v4.37.0",
         date: "22 de Abril, 2026",

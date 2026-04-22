@@ -61,9 +61,9 @@ const VideoCreator: React.FC = () => {
 
             if (response.ok) {
                 toast.success('Proyecto iniciado. El video aparecerá en tu biblioteca pronto.', { id: toastId });
-                // Reset form or redirect
             } else {
-                toast.error('Error al iniciar el proyecto', { id: toastId });
+                const errData = await response.json();
+                toast.error(errData.error || 'Error al iniciar el proyecto', { id: toastId });
             }
         } catch (error) {
             toast.error('Error de conexión', { id: toastId });
