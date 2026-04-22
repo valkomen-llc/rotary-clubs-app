@@ -1406,46 +1406,32 @@ router.post('/generate-article', async (req, res) => {
     const userPrompt = `Contexto del evento/noticia: ${context.trim()}`;
 
     try {
-        // Validación ultra-rápida de seguridad
         const apiKey = process.env.GEMINI_API_KEY;
+        const slug = 'gemini-2.5-flash';
+
         if (!apiKey) {
-            return res.status(200).json({ error: 'No hay API Key configurada. Por favor, añádela en Vercel.' });
+            return res.status(200).json({ error: 'Falta configuración en el servidor. Por favor, verifica las API Keys.' });
         }
 
-        console.log(`[ArticulIA-Direct] Llamando a motor institucional...`);
+        console.log(`[ArticulIA] Iniciando proceso con motor verificado...`);
         
-        // Llamada directa sin intermediarios para asegurar velocidad y evitar crashes
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+        // Usar la función estructural del sistema que sabemos que es compatible con Vercel
+        const raw = await routeToModel(slug, systemPrompt, userPrompt);
         
-        const response = await fetch(geminiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                systemInstruction: { parts: [{ text: systemPrompt }] },
-                contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-                generationConfig: { temperature: 0.4, maxOutputTokens: 2048 }
-            })
-        });
-
-        const data = await response.json();
-        
-        if (!response.ok) {
-            throw new Error(data.error?.message || 'Error en comunicación directa');
-        }
-
-        const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
         const firstBrace = raw.indexOf('{');
         const lastBrace = raw.lastIndexOf('}');
         
-        if (firstBrace === -1 || lastBrace === -1) throw new Error('Formato de respuesta inválido');
+        if (firstBrace === -1 || lastBrace === -1) {
+            throw new Error('La respuesta de redacción no tiene el formato esperado.');
+        }
 
         const article = JSON.parse(raw.substring(firstBrace, lastBrace + 1));
         res.json(article);
 
     } catch (error) {
-        console.error('[ArticulIA-Direct] Error:', error.message);
+        console.error('[ArticulIA] Error Crítico:', error.message);
         res.status(200).json({ 
-            error: 'No se pudo generar el contenido', 
+            error: 'Servicio temporalmente no disponible', 
             details: error.message 
         });
     }

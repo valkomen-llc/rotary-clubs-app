@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 09:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.13.8",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Modo de Alta Compatibilidad",
+        description: "Re-diseño de la conexión con el motor de redacción para asegurar compatibilidad total con el entorno de ejecución de Vercel y evitar errores de sistema.",
+        type: "update",
+        changes: [
+            { type: "improved", text: "Arquitectura: Regreso al protocolo de enrutamiento estructural verificado." },
+            { type: "fixed", text: "Entorno: Eliminación de dependencias de Node.js nativas que causaban colapsos." },
+            { type: "improved", text: "UX: Persistencia del sistema de diagnóstico avanzado de errores." }
+        ]
+    },
+    {
         version: "v4.13.0",
         date: "22 de Abril, 2026",
         title: "ArticulIA: Estabilidad Crítica",
