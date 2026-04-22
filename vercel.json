@@ -7,6 +7,28 @@
     },
     "redirects": [
         {
+            "source": "/",
+            "has": [
+                {
+                    "type": "host",
+                    "value": "clubplatform.org"
+                }
+            ],
+            "destination": "https://app.clubplatform.org",
+            "permanent": false
+        },
+        {
+            "source": "/",
+            "has": [
+                {
+                    "type": "host",
+                    "value": "www.clubplatform.org"
+                }
+            ],
+            "destination": "https://app.clubplatform.org",
+            "permanent": false
+        },
+        {
             "source": "/conferencia",
             "destination": "https://rotarylatir.org/#/eventos/2038324a-0e04-497c-9328-fbaeb9ce2992",
             "permanent": false

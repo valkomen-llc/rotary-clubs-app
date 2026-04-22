@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.48",
+        date: "22 de Abril, 2026",
+        title: "Router: Redirección Nativa de Vercel (Host-Based)",
+        description: "Implementada redirección de infraestructura en vercel.json para máxima prioridad y fiabilidad.",
+        type: "fix",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "fixed", text: "Infra: Activado redirect nativo de Vercel para clubplatform.org -> app.clubplatform.org." }
+        ]
+    },
+    {
         version: "v4.11.47",
         date: "22 de Abril, 2026",
         title: "Router: Redirección Forzada en Edge",
