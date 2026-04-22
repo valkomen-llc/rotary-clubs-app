@@ -1376,17 +1376,16 @@ router.post('/generate-article', async (req, res) => {
     2. El artículo debe ser estructurado y fácil de leer.
     3. Responde ÚNICAMENTE con un JSON válido. No incluyas explicaciones fuera del JSON.
     
-    ESTRUCTURA DEL JSON (OBLIGATORIA):
+    ESTRUCTURA DEL JSON (OBLIGATORIA - NO FALLAR):
     {
-      "title": "Titular impactante y profesional (máx 70 car)",
-      "content": "Cuerpo del artículo en HTML. Usa <p>, <h2>, <ul>. Mínimo 3 parrafos potentes.",
-      "categories": ["Rotary", "Comunidad", "Acción"],
-      "seoTitle": "Título SEO (máx 60 car)",
-      "seoDescription": "Meta descripción (máx 155 car)",
+      "noticia_titulo": "Escribe aquí el titular impactante (MÁX 70 CAR)",
+      "noticia_cuerpo": "Cuerpo del artículo en HTML. Usa <p>, <h2>. Mínimo 3 parrafos.",
+      "noticia_categorias": "Categoría1, Categoría2, Categoría3",
+      "seo_titulo": "Título SEO",
+      "seo_descripcion": "Meta descripción",
       "slug": "url-amigable",
-      "keywords": "palabra1, palabra2",
-      "tags": ["Rotary", "Inspiración"],
-      "socialCopy": "Copy para redes sociales con emojis"
+      "keywords": "palabras, clave",
+      "copys_redes": "Texto para redes sociales"
     }`;
 
     try {

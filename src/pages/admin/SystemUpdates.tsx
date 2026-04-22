@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-22 17:05
+// Cache bust: 2026-04-22 17:15
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.20.0",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Estabilidad Galáctica 🌌",
+        description: "Salto de arquitectura mayor para garantizar la captura del 100% de los datos de redacción.",
+        type: "major",
+        changes: [
+            { type: "major", text: "Motor: Nuevo sistema de captura universal noticia_titulo + noticia_categorias." },
+            { type: "added", text: "Título: Generación automática de emergencia desde el contenido." },
+            { type: "improved", text: "Categorías: Soporte para múltiples formatos y sugerencias inteligentes." }
+        ]
+    },
     {
         version: "v4.18.2",
         date: "22 de Abril, 2026",

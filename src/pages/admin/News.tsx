@@ -510,70 +510,65 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                     return;
                 }
 
-                console.log('IA ArticulIA Received Data:', articleRaw);
-                const findField = (obj: any, fields: string[]): string => {
-                    if (!obj) return '';
-                    if (Array.isArray(obj)) return findField(obj[0], fields);
+                console.log('IA ArticulIA Raw Data:', articleRaw);
+                
+                const data = Array.isArray(articleRaw) ? articleRaw[0] : articleRaw;
+
+                const capture = (fields: string[]): string => {
                     for (const f of fields) {
-                        if (obj[f] && typeof obj[f] === 'string' && obj[f].trim().length > 0) return obj[f].trim();
+                        const val = data[f] || (data.article && data.article[f]) || (data.data && data.data[f]);
+                        if (val && typeof val === 'string' && val.trim().length > 0) return val.trim();
+                        if (val && typeof val === 'number') return String(val);
                     }
-                    if (obj.article) return findField(obj.article, fields);
-                    if (obj.data) return findField(obj.data, fields);
                     return '';
                 };
 
-                const findArrayField = (obj: any, fields: string[]): string[] => {
-                    if (!obj) return [];
-                    if (Array.isArray(obj)) return findArrayField(obj[0], fields);
+                const captureArray = (fields: string[]): string[] => {
                     for (const f of fields) {
-                        if (obj[f]) {
-                            if (Array.isArray(obj[f])) return obj[f];
-                            if (typeof obj[f] === 'string') return obj[f].split(',').map((c: string) => c.trim());
+                        const val = data[f] || (data.article && data.article[f]) || (data.data && data.data[f]);
+                        if (val) {
+                            if (Array.isArray(val)) return val;
+                            if (typeof val === 'string') return val.split(',').map(c => c.trim()).filter(c => c.length > 0);
                         }
                     }
-                    if (obj.article) return findArrayField(obj.article, fields);
-                    if (obj.data) return findArrayField(obj.data, fields);
                     return [];
                 };
- 
-                const rawHead = findField(articleRaw, ['title', 'headline', 'titulo', 'titular', 'noticia_titulo']);
-                const contentText = findField(articleRaw, ['content', 'cuerpo', 'html', 'body', 'text']);
-                const categories = findArrayField(articleRaw, ['categories', 'categorias', 'categoria', 'tags']);
-                
-                let title = rawHead;
-                const content = contentText;
 
-                if (!title && content) {
-                    const clean = content.replace(/<[^>]*>/g, '').trim();
-                    title = clean.split(' ').slice(0, 8).join(' ') + '...';
+                const gTitle = capture(['noticia_titulo', 'title', 'headline', 'titulo', 'titular']);
+                const gContent = capture(['noticia_cuerpo', 'content', 'cuerpo', 'html', 'body']);
+                const gCats = captureArray(['noticia_categorias', 'categories', 'categorias', 'categoria', 'tags']);
+                const gSeoTitle = capture(['seo_titulo', 'seoTitle', 'tituloSeo']);
+                const gSeoDesc = capture(['seo_descripcion', 'seoDescription', 'descripcionSeo']);
+                const gSlug = capture(['slug', 'url', 'post_slug']);
+                const gKeywords = capture(['keywords', 'palabrasClave']);
+                const gSocial = capture(['copys_redes', 'socialCopy', 'postSocial', 'copy']);
+
+                // EMERGENCIA: Si no hay título pero hay cuerpo
+                let finalTitle = gTitle;
+                if (!finalTitle && gContent) {
+                    const clean = gContent.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+                    finalTitle = clean.split(/\s+/).slice(0, 7).join(' ') + '...';
                 }
 
-                const seoTitle = findField(articleRaw, ['seoTitle', 'tituloSeo', 'metaTitle']);
-                const seoDescription = findField(articleRaw, ['seoDescription', 'descripcionSeo']);
-                const slug = findField(articleRaw, ['slug', 'url', 'post_slug']);
-                const keywords = findField(articleRaw, ['keywords', 'palabrasClave']);
-                const socialCopy = findField(articleRaw, ['socialCopy', 'postSocial', 'copy', 'caption', 'social_text']);
-
-                if (!title && !content) {
-                    toast.error('La IA respondió pero no se detectaron campos de texto.');
-                    console.warn('Estructura desconocida:', articleRaw);
+                if (!finalTitle && !gContent) {
+                    toast.error('La IA no parece haber enviado contenido válido.');
                     return;
                 }
 
                 setFormData(prev => ({
                     ...prev,
-                    title: title || prev.title,
-                    content: content || prev.content,
-                    categories: categories.length > 0 ? categories : prev.categories,
-                    seoTitle: seoTitle || prev.seoTitle,
-                    seoDescription: seoDescription || prev.seoDescription,
-                    slug: slug || prev.slug,
-                    keywords: keywords || prev.keywords,
-                    socialCopy: socialCopy || prev.socialCopy
+                    title: finalTitle || prev.title,
+                    content: gContent || prev.content,
+                    categories: gCats.length > 0 ? gCats : prev.categories,
+                    seoTitle: gSeoTitle || prev.seoTitle,
+                    seoDescription: gSeoDesc || prev.seoDescription,
+                    slug: gSlug || prev.slug,
+                    keywords: gKeywords || prev.keywords,
+                    socialCopy: gSocial || prev.socialCopy
                 }));
-                
-                toast.success(`¡Artículo Generado! 📝`);
-                if (!title) toast.error('La IA no generó un título. Por favor escríbelo manualmente.');
+
+                toast.success(`¡Artículo v4.20.0 Generado! 📝`);
+                if (!finalTitle) toast.error('La IA no generó un título. Por favor escríbelo manualmente.');
             } else {
                 const errData = await response.json();
                 console.error('IA ArticulIA Error:', errData);
