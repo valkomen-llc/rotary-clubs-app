@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.46",
+        date: "22 de Abril, 2026",
+        title: "Router: Implementación Vercel Edge Middleware",
+        description: "Añadida capa de middleware de borde para interceptar tráfico antes del servicio de archivos estáticos.",
+        type: "fix",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "fixed", text: "Infra: Garantizada la redirección de clubplatform.org mediante Edge Logic para evadir el caché estático." }
+        ]
+    },
+    {
         version: "v4.11.45",
         date: "22 de Abril, 2026",
         title: "Router: Prioridad Absoluta de Redirección",
