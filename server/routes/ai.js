@@ -1398,10 +1398,10 @@ router.post('/generate-article', authMiddleware, async (req, res) => {
     }`;
 
     const userPrompt = `Contexto: ${context.trim()}`;
-    const slug = 'gemini-1.5-flash';
+    const slug = 'gemini-2.5-flash'; // Usamos el slug verificado en BUILTIN_MODELS
 
     try {
-        console.log(`[ArticulIA-Flash] Iniciando redacción rápida...`);
+        console.log(`[ArticulIA-Flash] Generando con ${slug}...`);
         const raw = await routeToModel(slug, systemPrompt, userPrompt);
         
         const firstBrace = raw.indexOf('{');
@@ -1412,8 +1412,8 @@ router.post('/generate-article', authMiddleware, async (req, res) => {
         const article = JSON.parse(raw.substring(firstBrace, lastBrace + 1));
         res.json(article);
     } catch (error) {
-        console.error('[ArticulIA] Error:', error.message);
-        res.status(500).json({ error: 'La IA tardó demasiado o falló', details: error.message });
+        console.error('[ArticulIA] Error en ruta:', error.message);
+        res.status(500).json({ error: 'Fallo en motor de IA', details: error.message });
     }
 });
 

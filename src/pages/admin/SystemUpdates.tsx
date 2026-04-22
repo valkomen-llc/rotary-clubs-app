@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 09:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.12.6",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Corrección de Motores",
+        description: "Reparación del enlace con el motor Gemini 2.5 Flash para generación instantánea de noticias y mejora en la limpieza de datos del editor.",
+        type: "fix",
+        changes: [
+            { type: "improved", text: "Sincronización con motor Gemini 2.5 Flash verificado" },
+            { type: "fixed", text: "Protección contra nombres de modelos inexistentes" },
+            { type: "improved", text: "Mejora en la resiliencia del extractor de JSON" }
+        ]
+    },
+    {
         version: "v4.12.4",
         status: "Release candidate",
         date: "22 de Abril, 2026",
