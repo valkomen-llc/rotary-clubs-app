@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-22 09:55
+// Cache bust: 2026-04-22 16:35
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.17.1",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Estabilidad Absoluta 💎",
+        description: "Salto de versión para romper estancamiento de caché y activar blindaje total de redacción.",
+        type: "major",
+        changes: [
+            { type: "major", text: "Sistema: Salto forzado a v4.17.1 para purga de Vercel." },
+            { type: "fixed", text: "Motor: Activación del blindaje de títulos y captura multi-formato." },
+            { type: "improved", text: "Cache: Disruptor temporal inyectado en el core del servidor." }
+        ]
+    },
     {
         version: "v4.16.4",
         date: "22 de Abril, 2026",
