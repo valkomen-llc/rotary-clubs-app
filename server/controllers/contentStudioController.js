@@ -47,7 +47,7 @@ export const createVideoProject = async (req, res) => {
         }
     } catch (error) {
         console.error('Error creating video project:', error);
-        res.status(500).json({ error: 'Error al procesar el proyecto' });
+        res.status(500).json({ error: 'Error al procesar el proyecto: ' + error.message });
     }
 };
 
@@ -82,6 +82,7 @@ export const connectSocialAccount = async (req, res) => {
 
         res.status(201).json(account);
     } catch (error) {
+        console.error('Account Connection Error:', error);
         res.status(500).json({ error: 'Error al conectar la cuenta' });
     }
 };

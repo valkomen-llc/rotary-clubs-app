@@ -1,4 +1,4 @@
-// REBOOT V4.36.0 | REMOTION SYNC ACTIVE | 2026-04-22T18:05:00
+// REBOOT V4.37.0 | TELEMETRY ACTIVE | 2026-04-22T18:15:00
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-22 18:05
+// Cache bust: 2026-04-22 18:15
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.37.0",
+        date: "22 de Abril, 2026",
+        title: "Content Studio: Integrity & Telemetry 📡",
+        description: "Mejora de la trazabilidad de errores en el motor de video y reporte detallado.",
+        type: "major",
+        changes: [
+            { type: "improved", text: "Telemetría: Activación de reportes de error detallados desde Prisma." },
+            { type: "fix", text: "Diagnóstico: Preparación para identificar fallos de integridad de datos." },
+            { type: "major", text: "Estabilidad: Refuerzo del log de errores en el servidor." }
+        ]
+    },
     {
         version: "v4.36.0",
         date: "22 de Abril, 2026",
