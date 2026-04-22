@@ -534,9 +534,10 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                     return ['Rotary', 'Comunidad', 'Acción']; // Fallback de categorías
                 };
 
-                const newsTitle = captureValue(['noticia_titulo', 'title', 'headline', 'titulo', 'titular', 'noticia_titulo']);
+                const newsTitle = captureValue(['noticia_titulo', 'title', 'headline', 'titulo', 'titular']);
                 const newsBody = captureValue(['noticia_cuerpo', 'content', 'cuerpo', 'html', 'body', 'text']);
-                const newsCats = captureList(['noticia_categorias', 'categories', 'categorias', 'categoria', 'tags']);
+                const newsTags = captureList(['noticia_categorias', 'categories', 'categorias', 'categoria', 'tags']);
+                const firstCat = newsTags.length > 0 ? newsTags[0] : 'General';
                 const seoT = captureValue(['seo_titulo', 'seoTitle', 'tituloSeo']);
                 const seoD = captureValue(['seo_descripcion', 'seoDescription', 'descripcionSeo']);
                 const itemSlug = captureValue(['slug', 'url', 'post_slug']);
@@ -547,11 +548,8 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 let finalTitle = newsTitle;
                 if (!finalTitle && newsBody) {
                     const textOnly = newsBody.replace(/<[^>]*>/g, '').trim();
-                    finalTitle = textOnly.split(/\s+/).slice(0, 6).join(' ') + '...';
+                    finalTitle = textOnly.split(/\s+/).slice(0, 8).join(' ') + '...';
                 }
-
-                console.log('Detected Title:', finalTitle);
-                console.log('Detected Categories:', newsCats);
 
                 if (!finalTitle && !newsBody) {
                     toast.error('No se pudo extraer contenido de la respuesta.');
@@ -563,7 +561,8 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                     ...prev,
                     title: finalTitle || prev.title,
                     content: newsBody || prev.content,
-                    categories: newsCats.length >= 1 ? newsCats : ['Rotary'],
+                    category: firstCat || prev.category,
+                    tags: newsTags.length > 0 ? newsTags : prev.tags,
                     seoTitle: seoT || prev.seoTitle,
                     seoDescription: seoD || prev.seoDescription,
                     slug: itemSlug || prev.slug,
@@ -571,7 +570,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                     socialCopy: itemSocial || prev.socialCopy
                 }));
 
-                toast.success(`¡Misión v4.25.0 Completada! 🚀`);
+                toast.success(`¡Misión v4.30.0 Completada! 🏗️`);
                 
                 if (!finalTitle) toast.warning('Título generado desde el cuerpo.');
             } else {
@@ -952,7 +951,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                     type="text" required
                                                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none transition-all font-bold text-lg"
                                                     value={formData.title}
-                                                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                                                    onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
                                                     placeholder="Escribe un titular llamativo..."
                                                 />
                                             </div>
@@ -963,7 +962,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                     <ReactQuill
                                                         theme="snow"
                                                         value={formData.content}
-                                                        onChange={(val) => setFormData({ ...formData, content: val })}
+                                                        onChange={(val) => setFormData(prev => ({ ...prev, content: val }))}
                                                         modules={quillModules}
                                                         className="h-80 mb-12"
                                                     />
@@ -977,7 +976,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                         type="text"
                                                         className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none"
                                                         value={formData.category}
-                                                        onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                                                        onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
                                                         placeholder="Ej: Eventos, Proyectos, Servicio"
                                                     />
                                                 </div>
@@ -991,7 +990,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                             type="checkbox"
                                                             className="hidden"
                                                             checked={formData.published}
-                                                            onChange={(e) => setFormData({ ...formData, published: e.target.checked })}
+                                                            onChange={(e) => setFormData(prev => ({ ...prev, published: e.target.checked }))}
                                                         />
                                                         <span className="text-sm font-bold text-gray-700 group-hover:text-rotary-blue transition-colors">Publicado</span>
                                                     </label>

@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-22 17:35
+// Cache bust: 2026-04-22 17:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.30.0",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Sincronización Estructural 🏗️",
+        description: "Alineación total de la IA con el esquema de datos real y blindaje contra sobreescritura.",
+        type: "major",
+        changes: [
+            { type: "major", text: "Motor: Corrección de campos (category/tags) para alineación con DB." },
+            { type: "fixed", text: "React: Migración a actualizaciones funcionales en TODOS los inputs." },
+            { type: "improved", text: "Blindaje: Quill ya no puede borrar el título durante la generación." }
+        ]
+    },
     {
         version: "v4.25.0",
         date: "22 de Abril, 2026",
