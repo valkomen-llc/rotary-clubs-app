@@ -558,21 +558,20 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                     return;
                 }
 
-                // ACTUALIZACIÓN ATÓMICA (Evita inconsistencias de React)
-                const nextFormData = {
-                    ...formData,
-                    title: finalTitle || formData.title,
-                    content: newsBody || formData.content,
+                // ACTUALIZACIÓN FUNCIONAL (Elimina el error de 'Stale Closure')
+                setFormData((prev: any) => ({
+                    ...prev,
+                    title: finalTitle || prev.title,
+                    content: newsBody || prev.content,
                     categories: newsCats.length >= 1 ? newsCats : ['Rotary'],
-                    seoTitle: seoT || formData.seoTitle,
-                    seoDescription: seoD || formData.seoDescription,
-                    slug: itemSlug || formData.slug,
-                    keywords: itemKeys || formData.keywords,
-                    socialCopy: itemSocial || formData.socialCopy
-                };
+                    seoTitle: seoT || prev.seoTitle,
+                    seoDescription: seoD || prev.seoDescription,
+                    slug: itemSlug || prev.slug,
+                    keywords: itemKeys || prev.keywords,
+                    socialCopy: itemSocial || prev.socialCopy
+                }));
 
-                setFormData(nextFormData);
-                toast.success(`¡Misión v4.21.0 Completada! 📝`);
+                toast.success(`¡Misión v4.25.0 Completada! 🚀`);
                 
                 if (!finalTitle) toast.warning('Título generado desde el cuerpo.');
             } else {

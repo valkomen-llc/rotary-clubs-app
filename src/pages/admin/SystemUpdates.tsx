@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-22 17:25
+// Cache bust: 2026-04-22 17:35
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.25.0",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Estabilidad Atómica (Final) ☢️",
+        description: "Reparación crítica del cierre de estado (Stale Closure) para garantizar la población de campos.",
+        type: "major",
+        changes: [
+            { type: "major", text: "Motor: Implementación de actualización funcional (prev => ...) en formData." },
+            { type: "fixed", text: "Sync: Reparación del bug de 'Título Vacío' mediante inyección forzada." },
+            { type: "improved", text: "Estado: Sincronización total de Título, Cuerpo y Categorías garantizada." }
+        ]
+    },
     {
         version: "v4.21.0",
         date: "22 de Abril, 2026",
