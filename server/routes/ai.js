@@ -1357,8 +1357,14 @@ router.post('/projects/generate', authMiddleware, upload.array('files', 15), asy
             modelUsed: slug,
             generatedAt: new Date().toISOString()
         });
+    } catch (error) {
+        console.error('[ProyectIA] Error:', error.message);
+        res.status(500).json({ error: 'Error al procesar el proyecto' });
+    }
+});
+
 // POST /api/ai/generate-article — Genera un artículo completo desde contexto
-router.post('/generate-article', authMiddleware, async (req, res) => {
+router.post('/generate-article', async (req, res) => {
     const { context, modelSlug } = req.body;
     if (!context || context.trim().length < 5) {
         return res.status(400).json({ error: 'El contexto es demasiado corto.' });
