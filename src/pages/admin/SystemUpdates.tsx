@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-22 18:25
+// Cache bust: 2026-04-22 18:35
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.39.0",
+        date: "22 de Abril, 2026",
+        title: "Content Studio: Database Readiness 🏗️",
+        description: "Preparación y validación de la infraestructura de tablas para el motor de video.",
+        type: "major",
+        changes: [
+            { type: "fix", text: "Database: Requerimiento de sincronización de tabla VideoProject." },
+            { type: "improved", text: "Estabilidad: Refuerzo de la integridad del esquema Prisma." },
+            { type: "major", text: "Infraestructura: Preparación para almacenamiento de tareas KIE.ai." }
+        ]
+    },
     {
         version: "v4.38.0",
         date: "22 de Abril, 2026",
