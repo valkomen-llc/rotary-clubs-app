@@ -500,21 +500,29 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
             });
 
             if (response.ok) {
-                const article = await response.json();
-                console.log('IA ArticulIA Response:', article);
+                const articleRaw = await response.json();
+                console.log('IA ArticulIA Received Data:', articleRaw);
+                
+                // Mapeo inteligente (soporta Mayúsculas y Minúsculas)
+                const title = articleRaw.title || articleRaw.Title || articleRaw.titulo || '';
+                const content = articleRaw.content || articleRaw.Content || articleRaw.cuerpo || '';
+                const seoTitle = articleRaw.seoTitle || articleRaw.SeoTitle || '';
+                const seoDescription = articleRaw.seoDescription || articleRaw.SeoDescription || '';
+                const slug = articleRaw.slug || articleRaw.Slug || '';
+                const keywords = articleRaw.keywords || articleRaw.Keywords || '';
+                const socialCopy = articleRaw.socialCopy || articleRaw.SocialCopy || '';
                 
                 setFormData(prev => ({
                     ...prev,
-                    title: article.title || prev.title,
-                    content: article.content || prev.content,
-                    seoTitle: article.seoTitle || prev.seoTitle,
-                    seoDescription: article.seoDescription || prev.seoDescription,
-                    slug: article.slug || prev.slug,
-                    keywords: article.keywords || prev.keywords,
-                    tags: article.tags || prev.tags,
-                    socialCopy: article.socialCopy || prev.socialCopy
+                    title: title || prev.title,
+                    content: content || prev.content,
+                    seoTitle: seoTitle || prev.seoTitle,
+                    seoDescription: seoDescription || prev.seoDescription,
+                    slug: slug || prev.slug,
+                    keywords: keywords || prev.keywords,
+                    socialCopy: socialCopy || prev.socialCopy
                 }));
-                toast.success('¡Artículo redactado con éxito!');
+                toast.success('¡Artículo redactado e inyectado con éxito!');
             } else {
                 const errData = await response.json();
                 console.error('IA ArticulIA Error:', errData);
