@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-22 18:45
+// Cache bust: 2026-04-22 18:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.41.0",
+        date: "22 de Abril, 2026",
+        title: "Content Studio: AI Key Bridge 🗝️",
+        description: "Validación de credenciales y activación del motor de generación por IA.",
+        type: "major",
+        changes: [
+            { type: "fix", text: "Database: Confirmada sincronización exitosa de tablas (VideoProject)." },
+            { type: "improved", text: "Seguridad: Implementado validador de configuración para KIE_API_KEY." },
+            { type: "major", text: "Generación: El sistema está listo para enviar tareas a KIE.ai." }
+        ]
+    },
     {
         version: "v4.40.0",
         date: "22 de Abril, 2026",
