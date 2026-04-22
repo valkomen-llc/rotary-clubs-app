@@ -13,9 +13,6 @@ app.use(express.json());
 // ── SaaS Redirection Middleware ──────────────────────────────────────────────
 // This must stay at the TOP to intercept root domain traffic before SEO/Dist.
 app.use(async (req, res, next) => {
-    // Skip API calls
-    if (req.path.startsWith('/api') || req.path.startsWith('/assets')) return next();
-
     try {
         const hostname = req.headers['x-forwarded-host'] || req.headers.host || '';
         
@@ -24,12 +21,21 @@ app.use(async (req, res, next) => {
         const isVercelRoot = hostname === 'club-platform.vercel.app';
         
         if (isMainDomain || isVercelRoot) {
-            const redirectConfig = await prisma.platformConfig.findUnique({
-                where: { key: 'saas_redirect' }
-            });
+            // CRITICAL: On Vercel, requests are rewritten to /api/index.js.
+            // We must check the ORIGINAL URL to see if it's an API call or not.
+            const originalPath = req.originalUrl || req.url || '/';
+            const isActualApi = originalPath.startsWith('/api/') || originalPath.startsWith('/vps/');
+            const isAsset = originalPath.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|json|webp|woff|woff2|ttf)$/i);
 
-            if (redirectConfig?.value === 'true') {
-                return res.redirect(301, `https://app.clubplatform.org${req.url}`);
+            if (!isActualApi && !isAsset) {
+                const redirectConfig = await prisma.platformConfig.findUnique({
+                    where: { key: 'saas_redirect' }
+                });
+
+                if (redirectConfig?.value === 'true') {
+                    console.log(`[Redirect] Routing root domain ${hostname}${originalPath} to app.clubplatform.org`);
+                    return res.redirect(301, `https://app.clubplatform.org${originalPath}`);
+                }
             }
         }
     } catch (err) {

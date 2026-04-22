@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.44",
+        date: "22 de Abril, 2026",
+        title: "Router: Soporte de Rewrites Vercel",
+        description: "Corregida la detección de dominio raíz mediante originalUrl para compatibilidad con rewrites de Vercel.",
+        type: "fix",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "fixed", text: "Infra: Reparada la redirección de clubplatform.org -> app que fallaba por rewrites internos." }
+        ]
+    },
+    {
         version: "v4.11.43",
         date: "22 de Abril, 2026",
         title: "Router: Prioridad Global de Redirección",
