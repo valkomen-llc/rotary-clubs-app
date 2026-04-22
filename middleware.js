@@ -1,21 +1,15 @@
-// Vercel Edge Middleware (Standard Web API compatible)
-export default async function middleware(req) {
+// Vercel Edge Middleware - Hardened for Priority Redirection
+export default function middleware(req) {
   const url = new URL(req.url);
-  const host = req.headers.get('host') || '';
+  const host = (req.headers.get('host') || '').toLowerCase();
 
-  // Only target the root domain
-  const isRootDomain = host === 'clubplatform.org' || host === 'www.clubplatform.org' || host === 'club-platform.vercel.app';
+  // Robust check for the main domain (clubplatform.org)
+  // Targets the root domain hit to /
+  const isMainDomain = host.includes('clubplatform.org') && !host.startsWith('app.') && !host.startsWith('api.');
+  const isVercelRoot = host.includes('club-platform.vercel.app');
   
-  if (isRootDomain && url.pathname === '/') {
-    try {
-      // Dynamic check via the public API
-      const configRes = await fetch(`${url.origin}/api/platform-config/logo`);
-      if (configRes.ok) {
-        const config = await configRes.json();
-        if (config.saasRedirect) {
-          return Response.redirect('https://app.clubplatform.org/', 301);
-        }
+  if ((isMainDomain || isVercelRoot) && url.pathname === '/') {
+    // Using 302 to prevent browser caching while testing the infrastructure
+    return Response.redirect('https://app.clubplatform.org/', 302);
   }
-  
-  // Return nothing to continue to standard Vercel routing (static files, rewrites, etc.)
 }

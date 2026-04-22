@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.47",
+        date: "22 de Abril, 2026",
+        title: "Router: Redirección Forzada en Edge",
+        description: "Implementada redirección inmediata en capa de borde (Edge) para clubplatform.org.",
+        type: "fix",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "fixed", text: "Infra: Activada redirección forzada (302) para garantizar el salto a app.clubplatform.org." }
+        ]
+    },
+    {
         version: "v4.11.46",
         date: "22 de Abril, 2026",
         title: "Router: Implementación Vercel Edge Middleware",
