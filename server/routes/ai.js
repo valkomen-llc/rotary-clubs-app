@@ -1382,30 +1382,38 @@ router.post('/generate-article', authMiddleware, async (req, res) => {
       "socialCopy": "Un copy persuasivo para redes sociales con 3 hashtags y emojis"
     }`;
 
-    const userPrompt = `Contexto del artículo:\n"${context.trim()}"`;
-    const slug = modelSlug || 'gemini-1.5-flash'; // Forzamos un modelo ultra-rápido para evitar timeouts
+    const systemPrompt = `Eres ArticulIA, redactor veloz de Rotary. Transforma el contexto en un artículo BREVE.
+    REGLA: Responde en menos de 8 segundos. JSON estricto.
+    
+    ESTRUCTURA:
+    {
+      "title": "Titular (máx 60 car)",
+      "content": "HTML: 2 párrafos cortos y 1 lista de puntos.",
+      "seoTitle": "SEO Title (máx 55 car)",
+      "seoDescription": "Meta desc (máx 150 car)",
+      "slug": "url-corta",
+      "keywords": "3 palabras clave",
+      "tags": ["Rotary", "Acción"],
+      "socialCopy": "Copy breve con emojis"
+    }`;
+
+    const userPrompt = `Contexto: ${context.trim()}`;
+    const slug = 'gemini-1.5-flash';
 
     try {
-        console.log(`[ArticulIA] Generando artículo con modelo: ${slug} para contexto: ${context.substring(0, 50)}...`);
+        console.log(`[ArticulIA-Flash] Iniciando redacción rápida...`);
         const raw = await routeToModel(slug, systemPrompt, userPrompt);
         
-        // Limpiado agresivo: buscamos el primer '{' y el último '}'
         const firstBrace = raw.indexOf('{');
         const lastBrace = raw.lastIndexOf('}');
         
-        if (firstBrace === -1 || lastBrace === -1) {
-            console.error('[ArticulIA] Respuesta no contiene JSON válido. Raw:', raw.substring(0, 300));
-            throw new Error('La IA no devolvió un formato válido.');
-        }
+        if (firstBrace === -1 || lastBrace === -1) throw new Error('Respuesta inválida');
 
-        const jsonStr = raw.substring(firstBrace, lastBrace + 1);
-        const article = JSON.parse(jsonStr);
-        
-        console.log('[ArticulIA] Artículo generado con éxito');
+        const article = JSON.parse(raw.substring(firstBrace, lastBrace + 1));
         res.json(article);
     } catch (error) {
-        console.error('[ArticulIA] Error crítico:', error.message);
-        res.status(500).json({ error: 'Error al generar el artículo', details: error.message });
+        console.error('[ArticulIA] Error:', error.message);
+        res.status(500).json({ error: 'La IA tardó demasiado o falló', details: error.message });
     }
 });
 
