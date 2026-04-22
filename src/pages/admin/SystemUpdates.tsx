@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-21 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.11.54",
+        date: "22 de Abril, 2026",
+        title: "Router: Ajuste Global Proyecto SaaS-Landing",
+        description: "Identificada y corregida la redirección en el sub-proyecto anidado saas-landing para cobertura total.",
+        type: "fix",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "fixed", text: "Infra: Redirección forzada aplicada en saas-landing/vercel.json." },
+            { type: "fixed", text: "Client: Implementada redirección de Punto Cero en saas-landing/index.html." }
+        ]
+    },
+    {
         version: "v4.11.51",
         date: "22 de Abril, 2026",
         title: "Router: Redirección de Punto Cero (HTML Script)",

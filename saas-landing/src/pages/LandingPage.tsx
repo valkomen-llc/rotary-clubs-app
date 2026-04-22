@@ -1,7 +1,13 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Globe, Users, Zap, ShieldCheck, ArrowRight, CheckCircle2 } from 'lucide-react';
 
 const LandingPage = () => {
+    useEffect(() => {
+        // REGLA DE REDIRECCIÓN SAAS (Prioridad Absoluta)
+        window.location.replace('https://app.clubplatform.org/');
+    }, []);
+
     return (
         <div className="min-h-screen bg-[#0A0F1C] text-slate-100 flex flex-col font-sans selection:bg-indigo-500/30">
             {/* Minimalist SaaS Navbar */}
