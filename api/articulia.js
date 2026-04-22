@@ -41,14 +41,15 @@ export default async function handler(req, res) {
 
         const userPrompt = `Contexto: ${context}`;
 
-        console.log('[ArticulIA-Capsule] Llamando a motor directo...');
+        console.log('[ArticulIA-Capsule] Llamando a motor estable (v1)...');
         
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                systemInstruction: { parts: [{ text: systemPrompt }] },
-                contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+                contents: [{ 
+                    parts: [{ text: `${systemPrompt}\n\nContexto: ${userPrompt}` }] 
+                }],
                 generationConfig: { temperature: 0.4, maxOutputTokens: 1024 }
             })
         });
