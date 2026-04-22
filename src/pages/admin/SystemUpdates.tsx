@@ -38,6 +38,18 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
         ]
     },
     {
+        version: "v4.14.9",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Optimización de Despliegue ⚡",
+        description: "Aligeramiento de recursos del sistema para garantizar actualizaciones inmediatas y eliminar bloqueos en el servidor.",
+        type: "update",
+        changes: [
+            { type: "improved", text: "Infra: Eliminación de dependencias pesadas en funciones serverless." },
+            { type: "fixed", text: "Despliegue: Sincronización garantizada en panel de Vercel." },
+            { type: "improved", text: "Sistema: Salto definitivo a la versión v4.14.9." }
+        ]
+    },
+    {
         version: "v4.14.8",
         date: "22 de Abril, 2026",
         title: "ArticulIA: Motor Estable v1 🚀",
