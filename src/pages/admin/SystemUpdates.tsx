@@ -38,7 +38,19 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
         ]
     },
     {
-        version: "v4.14.4",
+        version: "v4.14.8",
+        date: "22 de Abril, 2026",
+        title: "ArticulIA: Motor Estable v1 🚀",
+        description: "Migración técnica al motor oficial y estable de Google Gemini para resolver errores de reconocimiento de modelo y garantizar redacción inmediata.",
+        type: "major",
+        changes: [
+            { type: "improved", text: "Motor: Migración de v1beta a v1 estable en todos los endpoints." },
+            { type: "fixed", text: "Compatibilidad: Reparación de error 'model not found' de Google." },
+            { type: "improved", text: "Sistema: Salto oficial a la versión de producción v4.14.8." }
+        ]
+    },
+    {
+        version: "v4.14.6",
         date: "22 de Abril, 2026",
         title: "ArticulIA: Mapeador de Datos Inteligente 🧠",
         description: "Optimización del sistema de inyección: el asistente ahora reconoce y mapea los datos de la IA sin importar variaciones en el formato de respuesta.",
