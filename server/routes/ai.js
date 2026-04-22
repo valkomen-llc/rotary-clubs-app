@@ -1383,20 +1383,25 @@ router.post('/generate-article', authMiddleware, async (req, res) => {
     }`;
 
     const userPrompt = `Contexto del artículo:\n"${context.trim()}"`;
-    const slug = modelSlug || 'gpt-3.5-turbo';
+    const slug = modelSlug || 'gemini-1.5-flash'; // Forzamos un modelo ultra-rápido para evitar timeouts
 
     try {
+        console.log(`[ArticulIA] Generando artículo con modelo: ${slug} para contexto: ${context.substring(0, 50)}...`);
         const raw = await routeToModel(slug, systemPrompt, userPrompt);
         
         let cleaned = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
         const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
         
-        if (!jsonMatch) throw new Error('No se encontró JSON en la respuesta de la IA');
+        if (!jsonMatch) {
+            console.error('[ArticulIA] Error: No se encontró JSON en la respuesta. Raw:', raw.substring(0, 200));
+            throw new Error('No se encontró JSON en la respuesta de la IA');
+        }
 
         const article = JSON.parse(jsonMatch[0]);
+        console.log('[ArticulIA] Artículo generado con éxito');
         res.json(article);
     } catch (error) {
-        console.error('Article generation error:', error);
+        console.error('[ArticulIA] Error detallado:', error.message);
         res.status(500).json({ error: 'Error al generar el artículo con IA', details: error.message });
     }
 });
