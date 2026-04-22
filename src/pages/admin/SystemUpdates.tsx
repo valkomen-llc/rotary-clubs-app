@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-22 17:55
+// Cache bust: 2026-04-22 18:05
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.36.0",
+        date: "22 de Abril, 2026",
+        title: "Content Studio: Remotion Sync 🎬",
+        description: "Sincronización del controlador de video con el esquema de base de datos (kieJobId).",
+        type: "major",
+        changes: [
+            { type: "fix", text: "Motor: Reparación del mapeo de externalTaskId -> kieJobId." },
+            { type: "fixed", text: "Database: Persistencia garantizada de los IDs de tarea de KIE.ai." },
+            { type: "improved", text: "Render: Desbloqueo del flujo de renderizado de video por IA." }
+        ]
+    },
     {
         version: "v4.35.0",
         date: "22 de Abril, 2026",

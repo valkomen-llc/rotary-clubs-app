@@ -28,7 +28,7 @@ export const createVideoProject = async (req, res) => {
             await prisma.videoProject.update({
                 where: { id: project.id },
                 data: { 
-                    externalTaskId: kieTask.taskId,
+                    kieJobId: kieTask.taskId,
                     status: 'processing'
                 }
             });
@@ -181,7 +181,7 @@ export const handleKieWebhook = async (req, res) => {
 
         // Find project by external task ID
         const project = await prisma.videoProject.findFirst({
-            where: { externalTaskId: task_id }
+            where: { kieJobId: task_id }
         });
 
         if (!project) {
@@ -214,7 +214,7 @@ export const syncProjectStatus = async (req, res) => {
             where: { id }
         });
 
-        if (!project || !project.externalTaskId) {
+        if (!project || !project.kieJobId) {
             return res.status(404).json({ error: 'Proyecto no válido para sincronización' });
         }
 
@@ -223,7 +223,7 @@ export const syncProjectStatus = async (req, res) => {
         }
 
         const { checkTaskStatus } = await import('../services/kieService.js');
-        const updatedStatus = await checkTaskStatus(project.externalTaskId);
+        const updatedStatus = await checkTaskStatus(project.kieJobId);
 
         const updatedProject = await prisma.videoProject.update({
             where: { id },
