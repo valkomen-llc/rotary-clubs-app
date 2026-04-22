@@ -894,3 +894,46 @@ model Comment {
   updatedAt DateTime @updatedAt
   post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
 }
+
+model SocialAccount {
+  id           String   @id @default(uuid())
+  platform     String   // "instagram", "facebook", "tiktok", "youtube"
+  accountName  String
+  accessToken  String
+  refreshToken String?
+  expiresAt    DateTime?
+  clubId       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  posts        ScheduledPost[]
+}
+
+model VideoProject {
+  id            String   @id @default(uuid())
+  title         String
+  videoUrl      String?
+  sourceImages  Json     // Array of image IDs/URLs
+  config        Json     // { transitions, duration, kenBurns, etc }
+  status        String   @default("draft") // "draft", "processing", "ready", "failed"
+  kieJobId      String?
+  clubId        String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  scheduledPosts ScheduledPost[]
+}
+
+model ScheduledPost {
+  id             String        @id @default(uuid())
+  projectId      String
+  socialAccountId String
+  caption        String?
+  status         String        @default("pending") // "pending", "scheduled", "published", "failed"
+  scheduledFor   DateTime?
+  publishedAt    DateTime?
+  platformPostId String?
+  error          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  video          VideoProject  @relation(fields: [projectId], references: [id])
+  account        SocialAccount @relation(fields: [socialAccountId], references: [id])
+}

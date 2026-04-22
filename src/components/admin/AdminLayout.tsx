@@ -42,7 +42,8 @@ import {
     QrCode,
     ShieldCheck,
     Upload,
-    MessageSquare
+    MessageSquare,
+    Video
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -288,6 +289,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: HeartHandshake, label: 'Donaciones Globales', path: '/admin/donaciones', category: 'Management', keywords: ['donacion', 'aportes'] },
                 { icon: Bell, label: 'CRM y Envíos Centrales', path: '/admin/crm', category: 'Management', keywords: ['crm', 'email', 'campana', 'whatsapp'] },
                 { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: 'Management', keywords: ['contacto', 'lead', 'formulario'] },
+                { icon: Video, label: 'Content Studio', path: '/admin/content-studio', category: 'Management', keywords: ['video', 'reels', 'tiktok', 'ia', 'shorts'], badge: 'ia' },
             );
         } else {
             const isAssoc = club?.type === 'association';

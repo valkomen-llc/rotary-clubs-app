@@ -23,8 +23,22 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-21 15:45
+// Cache bust: 2026-04-22 09:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.12.0",
+        date: "22 de Abril, 2026",
+        title: "Nuevo Módulo: Content Studio AI 🔥",
+        description: "Lanzamiento oficial de la suite de automatización de contenidos para Super Admins.",
+        type: "major",
+        author: "Antigravity Engineering",
+        changes: [
+            { type: "added", text: "AI: Integración con KIE.ai para transformar imágenes en videos de 15s (Reels/TikTok)." },
+            { type: "added", text: "Social: Sistema de conexión OAuth para Instagram, TikTok, YouTube y Facebook." },
+            { type: "added", text: "Infra: Nueva arquitectura de base de datos para gestión de cola y publicación automatizada." },
+            { type: "improved", text: "UX: Previsualización de video en tiempo real dentro del panel administrativo." }
+        ]
+    },
     {
         version: "v4.11.54",
         date: "22 de Abril, 2026",
