@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 13:00 (NUCLEAR PURGE ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.79.0",
+        date: "23 de Abril, 2026",
+        title: "Núcleo: Restauración Atómica (v4.79.0) 🛡️💎",
+        description: "Reversión total sincronizada (Frontend + Backend) para sanar la identidad.",
+        type: "rollback",
+        changes: [
+            { type: "rollback", text: "Integridad: Sincronización de ClubContext y useSiteImages con el Backend estable." },
+            { type: "fixed", text: "Identidad: Eliminación definitiva del estado 'Cargando Club' perpetuo." },
+            { type: "improved", text: "Estabilidad: Restauración total del flujo de multimedia en el sitio público y admin." }
+        ]
+    },
+    {
         version: "v4.78.0",
         date: "23 de Abril, 2026",
         title: "Núcleo: Identidad de Alta Fidelidad (v4.78.0) 🛡️🎯",
