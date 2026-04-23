@@ -26,15 +26,15 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 13:00 (NUCLEAR PURGE ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: "v4.70.0",
+        version: "v4.71.0",
         date: "23 de Abril, 2026",
-        title: "Sistemas: Urgencia y Renovación (v4.70.0) 🚨🛡️",
-        description: "Implementación del banner de notificación crítica para vencimientos de servicio.",
+        title: "Datos & Núcleo: Restauración de Identidad (v4.71.0) 🛡️✨",
+        description: "Corrección crítica de la lógica de herencia para evitar caídas al club genérico.",
         type: "major",
         changes: [
-            { type: "added", text: "Top Banner: Barra de emergencia roja con botón de renovación en el Header." },
-            { type: "fixed", text: "Configuración: Habilitación de settings para control manual de alertas." },
-            { type: "improved", text: "Comunicación: Sistema de aviso preventivo para continuidad de servicio." }
+            { type: "fixed", text: "Herencia: Restauración total de la personalización para clubes en borrador/setup." },
+            { type: "improved", text: "Identidad: Mejora en la detección de dominios para asegurar carga de settings locales." },
+            { type: "fixed", text: "Estabilidad: Eliminación del fallback agresivo a 'origen' en el panel admin." }
         ]
     },
     {

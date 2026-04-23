@@ -44,8 +44,9 @@ router.get('/by-domain', async (req, res) => {
         });
 
         // 2. Fetch Current Club
-        // When preview=true, allow loading draft clubs too
-        const statusFilter = preview === 'true' ? '' : "AND c.status = 'active'";
+        // When a specific domain/subdomain is requested, we should try to find it 
+        // even if it's not 'active' yet, especially for the admin panel.
+        // We only fall back to 'origen' if THE RECORD does not exist at all.
         let result = await db.query(
             `SELECT c.id, c.name, c.city, c.logo, c."footerLogo", c."endPolioLogo", c.favicon, c.domain, c.subdomain, c.status, c.type,
              s.key, s.value,
@@ -53,7 +54,7 @@ router.get('/by-domain', async (req, res) => {
              (SELECT COUNT(*) FROM "CalendarEvent" ce WHERE ce."clubId" = c.id) as "eventsCount"
              FROM "Club" c 
              LEFT JOIN "Setting" s ON s."clubId" = c.id
-             WHERE (c.domain = $1 OR c.subdomain = $2) ${statusFilter}`,
+             WHERE (c.domain = $1 OR c.subdomain = $2)`,
             [domain, domain.split('.')[0]]
         );
 
