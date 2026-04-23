@@ -65,6 +65,27 @@ const ProjectLibrary: React.FC = () => {
         }
     };
 
+    const handleDelete = async (id: string) => {
+        if (!confirm('¿Estás seguro de eliminar este proyecto de video?')) return;
+        
+        const tId = toast.loading('Eliminando proyecto...');
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/content-studio/projects/${id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                toast.success('Proyecto eliminado correctamente', { id: tId });
+                fetchProjects(false);
+            } else {
+                toast.error('No se pudo eliminar el proyecto', { id: tId });
+            }
+        } catch (error) {
+            toast.error('Error de conexión al eliminar', { id: tId });
+        }
+    };
+
     const getStatusIcon = (status: string) => {
         switch (status) {
             case 'ready': return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
@@ -166,7 +187,11 @@ const ProjectLibrary: React.FC = () => {
                                     <Share2 className="w-3 h-3" /> Publicar
                                 </button>
                             )}
-                            <button className="px-3 bg-gray-50 text-gray-400 py-2 rounded-xl hover:bg-red-50 hover:text-red-500 transition-all">
+                            <button 
+                                onClick={() => handleDelete(project.id)}
+                                className="px-3 bg-gray-50 text-gray-400 py-2 rounded-xl hover:bg-red-50 hover:text-red-500 transition-all"
+                                title="Eliminar proyecto"
+                            >
                                 <Trash2 className="w-3 h-3" />
                             </button>
                         </div>

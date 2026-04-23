@@ -9,6 +9,7 @@ import {
     getScheduledPosts,
     handleKieWebhook,
     syncProjectStatus,
+    deleteVideoProject,
     getOAuthUrl
 } from '../controllers/contentStudioController.js';
 
@@ -25,6 +26,7 @@ router.post('/webhook', handleKieWebhook);
 router.post('/projects', authMiddleware, createVideoProject);
 router.get('/projects', authMiddleware, getVideoProjects);
 router.get('/projects/:id/sync', authMiddleware, syncProjectStatus);
+router.delete('/projects/:id', authMiddleware, deleteVideoProject);
 
 // Social Accounts
 router.post('/accounts', authMiddleware, connectSocialAccount);

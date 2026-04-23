@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-22 19:00
+// Cache bust: 2026-04-22 19:10
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.43.0",
+        date: "22 de Abril, 2026",
+        title: "Content Studio: Library Sovereignty 🗑️",
+        description: "Habilitación de gestión total de proyectos y borrado de biblioteca.",
+        type: "major",
+        changes: [
+            { type: "fix", text: "Biblioteca: Habilitado botón de eliminación para proyectos fallidos o atascados." },
+            { type: "improved", text: "Interfaz: Implementación de confirmación de borrado y estados consistentes." },
+            { type: "major", text: "Control: Capacidad total para limpiar la biblioteca y reintentar generaciones." }
+        ]
+    },
     {
         version: "v4.42.0",
         date: "22 de Abril, 2026",
