@@ -26,15 +26,15 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 13:00 (NUCLEAR PURGE ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: "v4.61.0",
+        version: "v4.62.0",
         date: "23 de Abril, 2026",
-        title: "Datos & CRM: Restauración Histórica (v4.61.0) 🚀🛡️",
-        description: "Versión definitiva de recuperación de contactos y visibilidad panorámica distrital.",
+        title: "Datos & Multimedia: Rescate Histórico (v4.62.0) 🚀🛡️",
+        description: "Versión definitiva de recuperación de contactos antiguos de la Galería Multimedia.",
         type: "major",
         changes: [
-            { type: "fixed", text: "CRM: Restaurada visibilidad para roles de Administrador de Distrito." },
-            { type: "fixed", text: "Contactos: Recuperada la lista completa de mensajes de la semana pasada." },
-            { type: "improved", text: "Métricas: Sincronización de contadores de leads en tiempo real." }
+            { type: "added", text: "Auto-Healing: Motor de recuperación automática para leads históricos." },
+            { type: "fixed", text: "CRM: Sincronizada fuente 'Galería Multimedia' con el estándar distrital." },
+            { type: "improved", text: "Estabilidad: Blindaje total de visibilidad para District Admin." }
         ]
     },
     {

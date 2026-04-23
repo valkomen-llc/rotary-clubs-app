@@ -129,11 +129,25 @@ router.get('/', authMiddleware, async (req, res) => {
         // Si es Admin de Distrito pero no tiene clubId directo, intentar buscar el 'Club' que representa al distrito
         if (districtId && !clubId) {
             const districtClub = await prisma.club.findFirst({
-                where: { districtId: districtId, type: 'district' }, // Suponiendo que hay un tipo o relación
+                where: { districtId: districtId, type: 'district' },
                 select: { id: true }
             });
             if (districtClub) clubId = districtClub.id;
         }
+
+        // --- AUTO-HEALING: RESCATE DE LEADS HISTÓRICOS (Galería Multimedia) ---
+        if (districtId) {
+            try {
+                await db.query(
+                    `UPDATE "Lead" SET "clubId" = (SELECT id FROM "Club" WHERE "districtId" = $1 AND type = 'district' LIMIT 1) 
+                     WHERE "clubId" IS NULL AND source IN ('Galería Multimedia', 'district_multimedia_form')`,
+                    [districtId]
+                ).catch(() => {});
+            } catch (e) {
+                console.error('Auto-healing error:', e);
+            }
+        }
+        // --- END AUTO-HEALING ---
 
         // Si es Super Admin o District Admin, ampliar visibilidad
         if (req.user.role === 'administrator') {
