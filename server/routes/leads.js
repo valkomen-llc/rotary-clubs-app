@@ -126,10 +126,18 @@ router.get('/', authMiddleware, async (req, res) => {
         let clubId = req.user.clubId;
         let districtId = req.user.districtId;
 
+        // Si es Admin de Distrito pero no tiene clubId directo, intentar buscar el 'Club' que representa al distrito
+        if (districtId && !clubId) {
+            const districtClub = await prisma.club.findFirst({
+                where: { districtId: districtId, type: 'district' }, // Suponiendo que hay un tipo o relación
+                select: { id: true }
+            });
+            if (districtClub) clubId = districtClub.id;
+        }
+
         // Si es Super Admin o District Admin, ampliar visibilidad
         if (req.user.role === 'administrator') {
             if (req.query.clubId) {
-                // Permitir forzar un club específico si tiene permiso
                 if (!req.user.clubId || req.user.clubId === req.query.clubId) {
                     clubId = req.query.clubId;
                 }
@@ -143,26 +151,25 @@ router.get('/', authMiddleware, async (req, res) => {
         let params = [];
         let idx = 1;
 
-        // LÓGICA DE FILTRADO INTELIGENTE
-        if (districtId && !clubId) {
-            // Es un Admin de Distrito puro: ver leads de todos sus clubes
-            const districtClubs = await prisma.club.findMany({
+        // LÓGICA DE FILTRADO PANORÁMICO
+        if (districtId && req.user.role === 'administrator') {
+            const allDistrictClubs = await prisma.club.findMany({
                 where: { districtId: districtId },
                 select: { id: true }
             });
-            const clubIds = districtClubs.map(c => c.id);
+            const clubIds = allDistrictClubs.map(c => c.id);
+            
             if (clubIds.length > 0) {
-                where.push(`"clubId" = ANY($${idx++})`);
+                // Ver leads de sus clubes o leads huérfanos (del portal del distrito)
+                where.push(`("clubId" = ANY($${idx++}) OR "clubId" IS NULL)`);
                 params.push(clubIds);
             } else {
-                // Si no hay clubes, al menos intentar ver leads sin clubId (del distrito)
                 where.push(`"clubId" IS NULL`);
             }
         } else if (clubId) {
             where.push(`"clubId" = $${idx++}`);
             params.push(clubId);
         } else if (req.user.role !== 'administrator') {
-            // Usuario sin privilegios y sin clubId -> No ve nada
             return res.json({ leads: [], total: 0, statusCounts: {} });
         }
         if (status && status !== 'all') {
@@ -185,18 +192,21 @@ router.get('/', authMiddleware, async (req, res) => {
         let countsWhereBasis = [];
         let countsParams = [];
         let cIdx = 1;
-        if (districtId && !clubId) {
-            const districtClubs = await prisma.club.findMany({ where: { districtId }, select: { id: true } });
-            const cIds = districtClubs.map(c => c.id);
-            if (cIds.length > 0) {
-                countsWhereBasis.push(`"clubId" = ANY($${cIdx++})`);
-                countsParams.push(cIds);
+
+        if (districtId && req.user.role === 'administrator') {
+            const allDistrictClubs = await prisma.club.findMany({
+                where: { districtId: districtId },
+                select: { id: true }
+            });
+            const clubIds = allDistrictClubs.map(c => c.id);
+            if (clubIds.length > 0) {
+                countsWhereBasis.push(`("clubId" = ANY($${cIdx++}) OR "clubId" IS NULL)`);
+                countsParams.push(clubIds);
             } else {
                 countsWhereBasis.push(`"clubId" IS NULL`);
             }
         } else if (clubId) {
             countsWhereBasis.push(`"clubId" = $${cIdx++}`);
-            params.push(clubId); // Note: using 'params' from outer scope or sync properly
             countsParams.push(clubId);
         }
 
