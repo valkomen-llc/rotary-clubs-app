@@ -11,36 +11,55 @@ const SocialHub: React.FC = () => {
     ]);
     const [loadingPlatform, setLoadingPlatform] = useState<string | null>(null);
     const [isPageSelectorOpen, setIsPageSelectorOpen] = useState(false);
-    const [mockPages] = useState([
-        { id: 'p1', name: 'Rotary Club Buenaventura (Oficial)', followers: '1.2k' },
-        { id: 'p2', name: 'Distrito 4271 - Proyectos', followers: '3.4k' },
-        { id: 'p3', name: 'Rotary Juventud E-Club', followers: '850' }
-    ]);
-
-    const handleConnect = (platformId: string) => {
-        setLoadingPlatform(platformId);
+    useEffect(() => {
+        fetchConnectedAccounts();
         
-        setTimeout(() => {
-            setLoadingPlatform(null);
-            if (platformId === 'facebook') {
-                setIsPageSelectorOpen(true);
-            } else {
-                const platform = connections.find(c => c.id === platformId);
-                toast.success(`Iniciando conexión con ${platform?.name}...`, {
-                    description: 'Serás redirigido para autorizar el acceso.'
-                });
+        // Verificar si volvemos de un OAuth exitoso
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('status') === 'success') {
+            toast.success('¡Conexión exitosa!', {
+                description: `Se ha vinculado la cuenta de ${params.get('platform')}`
+            });
+            // Limpiar URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    }, []);
+
+    const fetchConnectedAccounts = async () => {
+        try {
+            const response = await fetch('/api/social/accounts');
+            const data = await response.json();
+            
+            if (Array.isArray(data)) {
+                setConnections(prev => prev.map(p => {
+                    const matched = data.find(acc => acc.platform === p.id);
+                    return matched ? { ...p, connected: true, account: matched.accountName } : p;
+                }));
             }
-        }, 800);
+        } catch (error) {
+            console.error('Fallo al cargar cuentas sociales');
+        }
     };
 
-    const selectPage = (pageName: string) => {
-        setConnections(prev => prev.map(c => 
-            c.id === 'facebook' ? { ...c, connected: true, account: pageName } : c
-        ));
-        setIsPageSelectorOpen(false);
-        toast.success('Facebook Page conectada correctamente', {
-            description: `Ahora puedes publicar en ${pageName}`
-        });
+    const handleConnect = async (platformId: string) => {
+        setLoadingPlatform(platformId);
+        
+        try {
+            const response = await fetch(`/api/social/connect/${platformId}`);
+            const data = await response.json();
+            
+            if (data.url) {
+                toast.info(`Redirigiendo a ${platformId}...`, {
+                    description: 'Autoriza el acceso para continuar.'
+                });
+                window.location.href = data.url;
+            } else {
+                throw new Error('No se obtuvo URL de autenticación');
+            }
+        } catch (error) {
+            toast.error('Error al iniciar conexión');
+            setLoadingPlatform(null);
+        }
     };
 
     const handleDisconnect = (platformId: string) => {
@@ -180,9 +199,7 @@ const SocialHub: React.FC = () => {
                             </div>
                         </div>
                     </div>
-                </div>
-
-                {/* Security Note */}
+                           {/* Security Note */}
                 <div className="flex items-center gap-6 p-8 bg-blue-50/30 rounded-[2.5rem] border border-blue-100/30">
                     <div className="p-4 bg-white rounded-[1.5rem] shadow-sm">
                         <Shield className="w-8 h-8 text-rotary-blue" />
@@ -192,47 +209,6 @@ const SocialHub: React.FC = () => {
                         Rotary Platform utiliza protocolos OAuth 2.0 de última generación. Los tokens están encriptados y el acceso puede revocarse desde el panel de seguridad de cada red social. No se almacenan credenciales directas.
                     </p>
                 </div>
-
-                {/* Page Selector Modal */}
-                {isPageSelectorOpen && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-md" onClick={() => setIsPageSelectorOpen(false)}></div>
-                        <div className="relative bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-                            <div className="p-8 bg-[#013388] text-white">
-                                <h4 className="text-xl font-black mb-1">Selecciona tu Fan Page</h4>
-                                <p className="text-blue-100 text-xs font-medium">Hemos detectado {mockPages.length} páginas bajo tu administración.</p>
-                            </div>
-                            <div className="p-6 space-y-3">
-                                {mockPages.map(page => (
-                                    <button 
-                                        key={page.id}
-                                        onClick={() => selectPage(page.name)}
-                                        className="w-full flex items-center justify-between p-4 rounded-2xl border border-gray-100 hover:border-rotary-blue hover:bg-blue-50 transition-all text-left group"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2 bg-gray-100 rounded-xl group-hover:bg-white">
-                                                <Facebook className="w-5 h-5 text-blue-600" />
-                                            </div>
-                                            <div className="space-y-0.5">
-                                                <div className="text-sm font-bold text-gray-800">{page.name}</div>
-                                                <div className="text-[10px] text-gray-400 font-medium uppercase">{page.followers} seguidores</div>
-                                            </div>
-                                        </div>
-                                        <Plus className="w-4 h-4 text-gray-300 group-hover:text-rotary-blue" />
-                                    </button>
-                                ))}
-                            </div>
-                            <div className="px-6 pb-8">
-                                <button 
-                                    onClick={() => setIsPageSelectorOpen(false)}
-                                    className="w-full py-3 text-gray-400 text-[10px] font-black uppercase tracking-[0.2em] hover:text-gray-600 transition-colors"
-                                >
-                                    Cancelar Conexión
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
         </AdminLayout>
     );

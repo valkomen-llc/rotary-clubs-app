@@ -5,8 +5,18 @@ import path from 'path';
 import fs from 'fs';
 import { PrismaClient } from '@prisma/client';
 
+import { socialController } from '../server/controllers/socialController.js';
+
 const app = express();
 const prisma = new PrismaClient();
+
+app.use(cors());
+app.use(express.json());
+
+// RUTAS SOCIAL HUB (Omnicanalidad Real)
+app.get('/api/social/connect/facebook', socialController.getFacebookAuthUrl);
+app.get('/api/social/callback/facebook', socialController.handleFacebookCallback);
+app.get('/api/social/accounts', socialController.getConnectedAccounts);
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
