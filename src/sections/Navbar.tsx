@@ -614,6 +614,7 @@ const Navbar = () => {
 
       <CartDrawer />
     </nav>
+    </>
   );
 };
 
