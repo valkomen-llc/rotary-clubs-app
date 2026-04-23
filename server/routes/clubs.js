@@ -45,7 +45,6 @@ router.get('/by-domain', async (req, res) => {
 
         // 2. Fetch Current Club
         // Aggressive search: Case-insensitive on domain and subdomain.
-        // We also check for 'Nuevo Cali' specific keywords if domain part matches.
         const domainPart = domain.split('.')[0].toLowerCase();
         let result = await db.query(
             `SELECT c.id, c.name, c.city, c.logo, c."footerLogo", c."endPolioLogo", c.favicon, c.domain, c.subdomain, c.status, c.type,
@@ -54,13 +53,16 @@ router.get('/by-domain', async (req, res) => {
              (SELECT COUNT(*) FROM "CalendarEvent" ce WHERE ce."clubId" = c.id) as "eventsCount"
              FROM "Club" c 
              LEFT JOIN "Setting" s ON s."clubId" = c.id
-             WHERE (LOWER(c.domain) = LOWER($1) OR LOWER(c.subdomain) = LOWER($2) OR LOWER(c.subdomain) LIKE $3)`,
+             WHERE (LOWER(c.domain) = LOWER($1) OR LOWER(c.subdomain) = LOWER($2) OR LOWER(c.subdomain) LIKE $3)
+             ORDER BY CASE WHEN LOWER(c.domain) = LOWER($1) THEN 0 WHEN LOWER(c.subdomain) = LOWER($2) THEN 1 ELSE 2 END ASC`,
             [domain, domainPart, `%${domainPart}%`]
         );
 
         let rows = result.rows;
+        let foundBy = 'exact_match';
 
         if (!rows.length) {
+            foundBy = 'fallback_origen';
             result = await db.query(
                 `SELECT c.id, c.name, c.city, c.logo, c."footerLogo", c."endPolioLogo", c.favicon, c.domain, c.subdomain, c.status, c.type,
                  s.key, s.value,
@@ -87,6 +89,14 @@ router.get('/by-domain', async (req, res) => {
             }
             if (r.key) settings[r.key] = r.value;
         });
+
+        // Diagnostic marker
+        clubDataRaw._diagnostic = {
+            queriedDomain: domain,
+            foundBy,
+            id: clubDataRaw.id,
+            subdomain: clubDataRaw.subdomain
+        };
 
         // Use a consistent fallback for logo assets if neither the club nor master has them
         const defaultFooter = "https://rotary-platform-assets.s3.amazonaws.com/logos/rotary-logo-white-main.png";

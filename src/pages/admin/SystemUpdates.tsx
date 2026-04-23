@@ -26,15 +26,15 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 13:00 (NUCLEAR PURGE ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: "v4.73.0",
+        version: "v4.74.0",
         date: "23 de Abril, 2026",
-        title: "Núcleo: Prioridad de Identidad (v4.73.0) 🛡️✨",
-        description: "Corrección del ordenamiento SQL para priorizar personalizaciones sobre fallbacks.",
+        title: "Núcleo: Diagnóstico de Identidad (v4.74.0) 🛡️📊",
+        description: "Rastreo de decisiones de búsqueda para restaurar la herencia de datos.",
         type: "major",
         changes: [
-            { type: "fixed", text: "SQL: Implementación de NULLS LAST para asegurar prioridad de datos del club." },
-            { type: "fixed", text: "Multimedia: Restauración de logos, banners y hero sliders personalizados." },
-            { type: "improved", text: "Herencia: Blindaje total contra reseteos visuales accidentales." }
+            { type: "added", text: "Diagnóstico: Implementación de marcadores de decisión en el endpoint by-domain." },
+            { type: "fixed", text: "Prioridad: Ordenamiento por relevancia (exact domain > subdomain > partial)." },
+            { type: "improved", text: "Estabilidad: Blindaje total contra fallbacks accidentales a origen." }
         ]
     },
     {
