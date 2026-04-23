@@ -151,8 +151,8 @@ router.get('/', authMiddleware, async (req, res) => {
         let params = [];
         let idx = 1;
 
-        // LÓGICA DE FILTRADO PANORÁMICO
-        if (districtId && req.user.role === 'administrator') {
+        // LÓGICA DE FILTRADO PANORÁMICO (Incluyendo District Admin)
+        if (districtId && (req.user.role === 'administrator' || req.user.role === 'district_admin')) {
             const allDistrictClubs = await prisma.club.findMany({
                 where: { districtId: districtId },
                 select: { id: true }
@@ -169,7 +169,7 @@ router.get('/', authMiddleware, async (req, res) => {
         } else if (clubId) {
             where.push(`"clubId" = $${idx++}`);
             params.push(clubId);
-        } else if (req.user.role !== 'administrator') {
+        } else if (req.user.role !== 'administrator' && req.user.role !== 'district_admin') {
             return res.json({ leads: [], total: 0, statusCounts: {} });
         }
         if (status && status !== 'all') {
@@ -193,7 +193,7 @@ router.get('/', authMiddleware, async (req, res) => {
         let countsParams = [];
         let cIdx = 1;
 
-        if (districtId && req.user.role === 'administrator') {
+        if (districtId && (req.user.role === 'administrator' || req.user.role === 'district_admin')) {
             const allDistrictClubs = await prisma.club.findMany({
                 where: { districtId: districtId },
                 select: { id: true }
