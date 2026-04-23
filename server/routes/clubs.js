@@ -156,6 +156,9 @@ router.get('/by-domain', async (req, res) => {
                 interact_logo: settings['interact_logo'] || masterSettings['interact_logo'] || null,
                 youth_exchange_logo: settings['youth_exchange_logo'] || masterSettings['youth_exchange_logo'] || null,
                 hide_sample_news: settings['hide_sample_news'] === 'true',
+                // Billing / Expiration Banner
+                billing_banner_active: settings['billing_banner_active'] === 'true',
+                billing_banner_message: settings['billing_banner_message'] || 'Su servicio está próximo a vencer. Por favor renueve su suscripción para evitar interrupciones.',
                 // Social Media URLs
                 facebook_url: settings['social_facebook'] || '',
                 instagram_url: settings['social_instagram'] || '',

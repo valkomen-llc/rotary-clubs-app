@@ -131,7 +131,28 @@ const Navbar = () => {
   ];
 
   return (
-    <nav className="bg-white shadow-sm sticky top-0 z-50">
+    <>
+      {/* Top Notification Banner (Urgency Alert) */}
+      {(club.settings as any)?.billing_banner_active && (
+        <div className="w-full bg-gradient-to-r from-red-600 via-red-700 to-red-900 border-b border-red-800/20 py-2.5 px-4 shadow-lg animate-in slide-in-from-top duration-700">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-center gap-3 text-white text-center sm:text-left">
+            <div className="flex items-center gap-2">
+              <span className="text-xl animate-pulse">🚨</span>
+              <p className="text-sm font-bold tracking-tight">
+                {(club.settings as any)?.billing_banner_message || 'Su servicio está próximo a vencer. Por favor renueve su suscripción.'}
+              </p>
+            </div>
+            <button
+              onClick={() => navigate('/admin/billing')}
+              className="bg-white/20 hover:bg-white/30 backdrop-blur-md text-white border border-white/40 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-wider transition-all hover:scale-105 active:scale-95"
+            >
+              Renovar ahora
+            </button>
+          </div>
+        </div>
+      )}
+
+      <nav className="bg-white shadow-sm sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between min-h-[4rem] py-2 cursor-default">
           {/* Logo */}

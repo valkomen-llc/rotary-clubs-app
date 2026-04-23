@@ -26,15 +26,15 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 13:00 (NUCLEAR PURGE ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: "v4.69.0",
+        version: "v4.70.0",
         date: "23 de Abril, 2026",
-        title: "Datos & CRM: Sonda de Rescate (v4.69.0) 🏹🛡️",
-        description: "Búsqueda focalizada por contenido ('Maria') en tablas sospechosas.",
+        title: "Sistemas: Urgencia y Renovación (v4.70.0) 🚨🛡️",
+        description: "Implementación del banner de notificación crítica para vencimientos de servicio.",
         type: "major",
         changes: [
-            { type: "added", text: "Diagnóstico: Escaneo inteligente de tablas tipo Lead/Contact/Multimedia." },
-            { type: "fixed", text: "Visibilidad: Corrección del spinner infinito y auditoría de datos por nombre." },
-            { type: "improved", text: "Rescate: Localización precisa de los 11 contactos de la galería." }
+            { type: "added", text: "Top Banner: Barra de emergencia roja con botón de renovación en el Header." },
+            { type: "fixed", text: "Configuración: Habilitación de settings para control manual de alertas." },
+            { type: "improved", text: "Comunicación: Sistema de aviso preventivo para continuidad de servicio." }
         ]
     },
     {
