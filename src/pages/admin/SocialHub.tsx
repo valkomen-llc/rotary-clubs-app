@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
-import { Share2, Facebook, Linkedin, Twitter, CheckCircle2, AlertCircle, ExternalLink, RefreshCw, Plus } from 'lucide-react';
+import { Share2, Facebook, Linkedin, Twitter, CheckCircle2, AlertCircle, ExternalLink, RefreshCw, Plus, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 
 const SocialHub: React.FC = () => {
