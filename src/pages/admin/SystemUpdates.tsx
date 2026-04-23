@@ -26,15 +26,15 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 13:00 (NUCLEAR PURGE ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: "v4.67.0",
+        version: "v4.68.0",
         date: "23 de Abril, 2026",
-        title: "Datos & CRM: Recuperación Multinivel (v4.67.0) 🚀🛡️",
-        description: "Búsqueda agregada en múltiples tablas para rescatar historial de contactos.",
+        title: "Datos & CRM: Inventario Invasivo (v4.68.0) 📊🛡️",
+        description: "Versión de auditoría profunda para listar todas las tablas de la base de datos.",
         type: "major",
         changes: [
-            { type: "added", text: "Integración: Agregación de datos desde tablas Lead y Comment." },
-            { type: "fixed", text: "Visibilidad: Recuperación confirmada del historial de Galería Multimedia." },
-            { type: "improved", text: "Auditoría: Unificación de flujos de formularios en el CRM." }
+            { type: "added", text: "Diagnóstico: Escaneo completo de tablas de PostgreSQL (information_schema)." },
+            { type: "fixed", text: "Investigación: Mapeo de tablas de versiones heredadas (Legacy Tables)." },
+            { type: "improved", text: "Visibilidad: Auditoría total para localizar los 11 contactos perdidos." }
         ]
     },
     {

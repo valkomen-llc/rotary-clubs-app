@@ -164,23 +164,23 @@ router.get('/', authMiddleware, async (req, res) => {
         }
         // --- END AUTO-HEALING ---
 
-        // --- RECUPERACIÓN MULTINIVEL (REBOOT v4.67.0) ---
-        // Si la tabla Lead está vacía, intentamos buscar en Comments (frecuente en Galería Multimedia)
-        const leadRes = await db.query(`SELECT * FROM "Lead" ORDER BY "createdAt" DESC LIMIT 50`, []);
-        const commentRes = await db.query(`SELECT id, "firstName" || ' ' || "lastName" as name, email, phone, 'Comentario/Multimedia' as subject, text as message, 'public_form' as source, "createdAt" FROM "Comment" ORDER BY "createdAt" DESC LIMIT 50`, []);
+        // --- INVENTARIO DE TABLAS (REBOOT v4.68.0) ---
+        // Consultamos a PostgreSQL por todas las tablas existentes
+        const tablesRes = await db.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'", []);
+        const tables = tablesRes.rows.map(t => t.table_name);
         
-        // Unificamos los resultados
-        const combinedLeads = [...leadRes.rows, ...commentRes.rows].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-        console.log(`[RECOVERY] Leads: ${leadRes.rows.length}, Comments: ${commentRes.rows.length}`);
+        console.log(`[INVENTORY] Tablas encontradas: ${tables.join(', ')}`);
         
         res.json({
-            leads: combinedLeads,
-            total: combinedLeads.length,
-            statusCounts: { "new": combinedLeads.length },
-            debug: "MULTILEVEL_RECOVERY"
+            leads: [],
+            total: 0,
+            statusCounts: { "DEBUG_TABLES": tables.length },
+            debug: {
+                tables: tables,
+                message: "INVENTORY_MODE_ACTIVE"
+            }
         });
-        return; // Terminamos aquí para el diagnóstico
+        return; // Terminamos aquí para ver el inventario
     } catch (error) {
         console.error('Lead list error:', error);
         res.status(500).json({ error: 'Error fetching leads' });
