@@ -23,18 +23,18 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-23 11:57 (ULTRA PURGE)
+// Cache bust: 2026-04-23 13:00 (NUCLEAR PURGE ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: "v4.52.5",
+        version: "v4.52.10",
         date: "23 de Abril, 2026",
-        title: "Omnicanalidad & Social Hub: Centralización Total 🚀🛡️",
-        description: "Versión definitiva centralizada en app.clubplatform.org con ID oficial de Meta.",
+        title: "Omnicanalidad & CRM: Restauración Total 🚀🛡️",
+        description: "Versión definitiva con Leads distritales corregidos y Social Hub centralizado.",
         type: "major",
         changes: [
-            { type: "added", text: "Meta: Integración oficial con ID 2190338908168499." },
-            { type: "improved", text: "Arquitectura: Centralización de dominio en Club Platform." },
-            { type: "fixed", text: "Estructura: Sello final de jerarquía JSX." }
+            { type: "fixed", text: "Leads: Visibilidad restaurada para todos los clubes del distrito." },
+            { type: "added", text: "CRM: Unificación de contadores y estadísticas multiclub." },
+            { type: "improved", text: "Meta: Sello oficial de Club Platform (Meta ID 2190338908168499)." }
         ]
     },
     {
