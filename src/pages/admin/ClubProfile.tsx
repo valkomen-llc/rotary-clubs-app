@@ -3,7 +3,7 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import { Link } from 'react-router-dom';
 import {
     Building2, Save, Upload, MapPin, Globe, Mail, Phone,
-    Facebook, Instagram, Twitter, Youtube, Linkedin, Tiktok, Info, Trash2, Dna
+    Facebook, Instagram, Twitter, Youtube, Linkedin, Music, Info, Trash2, Dna
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
@@ -490,7 +490,7 @@ const ClubProfile: React.FC = () => {
                             </div>
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 flex-shrink-0 bg-gray-50 rounded-lg flex items-center justify-center text-gray-400">
-                                    <Tiktok className="w-5 h-5" />
+                                    <Music className="w-5 h-5" />
                                 </div>
                                 <input
                                     type="text" placeholder="URL de TikTok"

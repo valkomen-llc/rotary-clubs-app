@@ -26,6 +26,16 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 20:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.48.1",
+        date: "23 de Abril, 2026",
+        title: "Build Fix: Compatibilidad de Iconos 🛠️",
+        description: "Reparación de error de exportación de Lucide para Tiktok.",
+        type: "patch",
+        changes: [
+            { type: "fixed", text: "Vercel: Sustituido icono Tiktok por Music para asegurar compatibilidad con el motor de build." }
+        ]
+    },
+    {
         version: "v4.48.0",
         date: "23 de Abril, 2026",
         title: "Omnicanalidad: Soporte TikTok 🎵✨",
