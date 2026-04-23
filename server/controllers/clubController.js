@@ -1,8 +1,6 @@
 import db from '../lib/db.js';
-import { PrismaClient } from '@prisma/client';
 import VercelService from '../services/VercelService.js';
-
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (EVITA ERROR 500 POR CONEXIONES)
 
 export const getAllClubs = async (req, res) => {
     try {

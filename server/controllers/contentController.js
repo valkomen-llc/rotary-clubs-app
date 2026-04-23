@@ -1,6 +1,5 @@
 import db from '../lib/db.js';
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (ESTABILIDAD TOTAL)
 
 // Public: Get posts for a specific club
 export const getPublicPosts = async (req, res) => {

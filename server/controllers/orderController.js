@@ -1,5 +1,6 @@
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
+import { authMiddleware } from '../middleware/auth.js';
+import db from '../lib/db.js';
+import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (OBLIGATORIO)
 
 export const createOrder = async (req, res) => {
     try {

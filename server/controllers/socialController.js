@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
-
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (ESTABILIDAD)
 
 // Configuración Centralizada de la App de Facebook (Club Platform)
 const FB_APP_ID = process.env.FB_APP_ID || '2190338908168499';
