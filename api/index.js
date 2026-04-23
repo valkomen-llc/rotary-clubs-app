@@ -1,4 +1,4 @@
-// REBOOT V4.58.0 | CACHE BUST ELIMINATOR | 2026-04-23T13:58:00
+// REBOOT V4.59.0 | BUILD RESCUE MASTER | 2026-04-23T14:02:00
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
