@@ -19,6 +19,7 @@ interface VideoProject {
     videoUrl: string | null;
     status: 'draft' | 'processing' | 'ready' | 'failed';
     createdAt: string;
+    lastKieResponse?: any;
 }
 
 const ProjectLibrary: React.FC = () => {
@@ -155,9 +156,21 @@ const ProjectLibrary: React.FC = () => {
                                 {getStatusIcon(project.status)}
                             </div>
                         </div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">
-                            Generado el {new Date(project.createdAt).toLocaleDateString()}
-                        </p>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
+                             Generado el {new Date(project.createdAt).toLocaleDateString()}
+                         </p>
+                         
+                         {project.status === 'processing' && project.lastKieResponse && (
+                             <div className="mb-4 p-2 bg-indigo-50/50 rounded-lg border border-indigo-100/50">
+                                <div className="flex items-center gap-1 mb-1">
+                                    <div className="w-1 h-1 rounded-full bg-indigo-400 animate-pulse" />
+                                    <span className="text-[8px] font-black text-indigo-400 uppercase tracking-tighter">KIE.AI STATUS</span>
+                                </div>
+                                <p className="text-[9px] font-mono text-indigo-600 truncate">
+                                    {typeof project.lastKieResponse === 'string' ? project.lastKieResponse : (project.lastKieResponse.status || project.lastKieResponse.data?.status || 'Active')}
+                                </p>
+                             </div>
+                         )}
 
                         <div className="flex gap-2">
                             {project.status === 'processing' && (

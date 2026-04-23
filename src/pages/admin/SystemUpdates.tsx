@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-22 19:40
+// Cache bust: 2026-04-22 20:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.45.0",
+        date: "22 de Abril, 2026",
+        title: "Content Studio: Black Box Diagnostics 📡",
+        description: "Visibilidad técnica de estados de IA y telemetría profunda de video.",
+        type: "major",
+        changes: [
+            { type: "improved", text: "Diagnóstico: Implementada visualización de estados internos de KIE.ai." },
+            { type: "fix", text: "Infraestructura: Añadido campo de persistencia para respuestas crudas de la IA." },
+            { type: "major", text: "Transparencia: Ahora el sistema muestra el estado técnico real de los videos." }
+        ]
+    },
     {
         version: "v4.44.0",
         date: "22 de Abril, 2026",

@@ -230,7 +230,8 @@ export const syncProjectStatus = async (req, res) => {
             where: { id },
             data: {
                 status: updatedStatus.status,
-                videoUrl: updatedStatus.videoUrl || project.videoUrl
+                videoUrl: updatedStatus.videoUrl || project.videoUrl,
+                lastKieResponse: updatedStatus.raw // Almacenamos la respuesta cruda para diagnóstico
             }
         });
 

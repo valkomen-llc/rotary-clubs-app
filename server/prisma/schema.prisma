@@ -924,9 +924,10 @@ model VideoProject {
   videoUrl      String?
   sourceImages  Json     // Array of image IDs/URLs
   config        Json     // { transitions, duration, kenBurns, etc }
-  status        String   @default("draft") // "draft", "processing", "ready", "failed"
-  kieJobId      String?
-  clubId        String?
+  status          String   @default("draft") // "draft", "processing", "ready", "failed"
+  kieJobId        String?
+  lastKieResponse Json?
+  clubId          String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   scheduledPosts ScheduledPost[]
