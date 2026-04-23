@@ -23,18 +23,18 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-23 11:45 (SUPREME PURGE)
+// Cache bust: 2026-04-23 11:57 (ULTRA PURGE)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: "v4.52.2",
+        version: "v4.52.5",
         date: "23 de Abril, 2026",
-        title: "Omnicanalidad & Social Hub: Estabilidad Total 🚀🛡️",
-        description: "Versión final con jerarquía de etiquetas corregida y conexión real a Meta.",
+        title: "Omnicanalidad & Social Hub: Centralización Total 🚀🛡️",
+        description: "Versión definitiva centralizada en app.clubplatform.org con ID oficial de Meta.",
         type: "major",
         changes: [
-            { type: "fixed", text: "Estructura: Cierre de tags anidados en SocialHub.tsx." },
-            { type: "added", text: "Backend: Persistencia real en modelo SocialAccount." },
-            { type: "improved", text: "Hotfix: Resolución de White Screen en producción." }
+            { type: "added", text: "Meta: Integración oficial con ID 2190338908168499." },
+            { type: "improved", text: "Arquitectura: Centralización de dominio en Club Platform." },
+            { type: "fixed", text: "Estructura: Sello final de jerarquía JSX." }
         ]
     },
     {
