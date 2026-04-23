@@ -164,23 +164,33 @@ router.get('/', authMiddleware, async (req, res) => {
         }
         // --- END AUTO-HEALING ---
 
-        // --- INVENTARIO DE TABLAS (REBOOT v4.68.0) ---
-        // Consultamos a PostgreSQL por todas las tablas existentes
-        const tablesRes = await db.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'", []);
-        const tables = tablesRes.rows.map(t => t.table_name);
+        // --- SONDA DE RESCATE (REBOOT v4.69.0) ---
+        // Buscamos tablas que suenen a contactos
+        const tRes = await db.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND (table_name ILIKE '%lead%' OR table_name ILIKE '%contact%' OR table_name ILIKE '%multimedia%' OR table_name ILIKE '%formulario%')", []);
+        const suspectedTables = tRes.rows.map(t => t.table_name);
         
-        console.log(`[INVENTORY] Tablas encontradas: ${tables.join(', ')}`);
-        
+        let discovery = "Buscando...";
+        for (const table of suspectedTables) {
+            try {
+                const check = await db.query(`SELECT COUNT(*) FROM "${table}" WHERE name ILIKE '%Maria%' OR "firstName" ILIKE '%Maria%' OR email ILIKE '%Maria%'`);
+                if (parseInt(check.rows[0].count) > 0) {
+                    discovery = `¡ENCONTRADO! Los datos están en la tabla: [${table}]`;
+                    break;
+                }
+            } catch (e) {}
+        }
+
         res.json({
             leads: [],
             total: 0,
-            statusCounts: { "DEBUG_TABLES": tables.length },
+            statusCounts: { "NUEVO": 0, "CONTACTADO": 0 },
             debug: {
-                tables: tables,
-                message: "INVENTORY_MODE_ACTIVE"
+                suspectedTables: suspectedTables,
+                discovery: discovery,
+                message: "PROBE_MODE_ACTIVE"
             }
         });
-        return; // Terminamos aquí para ver el inventario
+        return;
     } catch (error) {
         console.error('Lead list error:', error);
         res.status(500).json({ error: 'Error fetching leads' });
