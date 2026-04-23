@@ -120,7 +120,9 @@ router.get('/by-domain', async (req, res) => {
             // FETCH ContentSection images for faster load & consistency with useSiteImages
             siteImages: await (async () => {
                 const imgRes = await db.query(
-                    `SELECT content FROM "ContentSection" WHERE page = 'home' AND section = 'images' AND ("clubId" = $1 OR "clubId" IS NULL) ORDER BY "clubId" DESC LIMIT 1`,
+                    `SELECT content FROM "ContentSection" 
+                     WHERE page = 'home' AND section = 'images' AND ("clubId" = $1 OR "clubId" IS NULL) 
+                     ORDER BY "clubId" DESC NULLS LAST LIMIT 1`,
                     [clubDataRaw.id]
                 );
                 if (imgRes.rows.length === 0) return {};
