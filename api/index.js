@@ -1,4 +1,4 @@
-// REBOOT V4.77.0 | STABILITY ROLLBACK (v4.69 CODE) | 2026-04-23T16:40:00
+// REBOOT V4.78.0 | HIGH-FIDELITY IDENTITY RESTORATION | 2026-04-23T16:46:00
 import express from 'express';
 import cors from 'cors';
 import path from 'path';

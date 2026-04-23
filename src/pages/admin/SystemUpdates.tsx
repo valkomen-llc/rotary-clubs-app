@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 13:00 (NUCLEAR PURGE ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.78.0",
+        date: "23 de Abril, 2026",
+        title: "Núcleo: Identidad de Alta Fidelidad (v4.78.0) 🛡️🎯",
+        description: "Buscador blindado contra filtros de status y errores de dominio.",
+        type: "major",
+        changes: [
+            { type: "added", text: "Buscador: Implementada coincidencia Case-Insensitive (LOWER) y limpieza de www." },
+            { type: "fixed", text: "Failsafe: Se eliminó el filtro de status para asegurar carga de identidad en cualquier estado." },
+            { type: "improved", text: "Log: Añadida telemetría de identidad (IDENTITY_PROBE) para diagnóstico en vivo." }
+        ]
+    },
+    {
         version: "v4.77.0",
         date: "23 de Abril, 2026",
         title: "Núcleo: Restauración de Estabilidad (v4.77.0) 🛡️📉",

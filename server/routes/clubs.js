@@ -21,14 +21,19 @@ router.get('/by-domain', async (req, res) => {
     }
 
     try {
+        // CLEAN DOMAIN: Remove www. and handle case-insensitivity
+        const cleanDomain = domain.toLowerCase().replace(/^www\./, '');
+        const domainPart = cleanDomain.split('.')[0];
+
+        console.log(`[IDENTITY_PROBE] Querying: ${cleanDomain} | Part: ${domainPart}`);
+
         // 1. Fetch Master Club (origen) to get global logos and settings
-        // Use double quotes for camelCase columns to ensure Postgres matches Prisma's naming
         const masterResult = await db.query(
             `SELECT c.logo, c."footerLogo", c."endPolioLogo", c.favicon, s.key, s.value 
              FROM "Club" c 
              LEFT JOIN "Setting" s ON s."clubId" = c.id 
-             WHERE c.subdomain = $1`,
-            ['origen']
+             WHERE LOWER(c.subdomain) = 'origen'`,
+            []
         );
         
         const masterLogos = masterResult.rows.length ? {
@@ -43,9 +48,8 @@ router.get('/by-domain', async (req, res) => {
             if (r.key) masterSettings[r.key] = r.value;
         });
 
-        // 2. Fetch Current Club
-        // When preview=true, allow loading draft clubs too
-        const statusFilter = preview === 'true' ? '' : "AND c.status = 'active'";
+        // 2. Fetch Current Club (AGRESSIVE & CASE-INSENSITIVE)
+        // We prioritize exact domain match, then subdomain match. We IGNORE status for identity resolution to prevent site death.
         let result = await db.query(
             `SELECT c.id, c.name, c.city, c.logo, c."footerLogo", c."endPolioLogo", c.favicon, c.domain, c.subdomain, c.status, c.type,
              s.key, s.value,
@@ -53,13 +57,15 @@ router.get('/by-domain', async (req, res) => {
              (SELECT COUNT(*) FROM "CalendarEvent" ce WHERE ce."clubId" = c.id) as "eventsCount"
              FROM "Club" c 
              LEFT JOIN "Setting" s ON s."clubId" = c.id
-             WHERE (c.domain = $1 OR c.subdomain = $2) ${statusFilter}`,
-            [domain, domain.split('.')[0]]
+             WHERE (LOWER(c.domain) = $1 OR LOWER(c.subdomain) = $2 OR LOWER(c.domain) = $3)
+             ORDER BY CASE WHEN LOWER(c.domain) = $1 THEN 0 ELSE 1 END ASC`,
+            [cleanDomain, domainPart, domain.toLowerCase()]
         );
 
         let rows = result.rows;
 
         if (!rows.length) {
+            console.warn(`[IDENTITY_WARNING] No specific club found for ${cleanDomain}. Falling back to Origen.`);
             result = await db.query(
                 `SELECT c.id, c.name, c.city, c.logo, c."footerLogo", c."endPolioLogo", c.favicon, c.domain, c.subdomain, c.status, c.type,
                  s.key, s.value,
@@ -67,7 +73,7 @@ router.get('/by-domain', async (req, res) => {
                  (SELECT COUNT(*) FROM "CalendarEvent" ce WHERE ce."clubId" = c.id) as "eventsCount"
                  FROM "Club" c 
                  LEFT JOIN "Setting" s ON s."clubId" = c.id
-                 WHERE c.subdomain = 'origen'`
+                 WHERE LOWER(c.subdomain) = 'origen'`
             );
             rows = result.rows;
         }
