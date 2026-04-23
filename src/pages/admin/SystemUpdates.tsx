@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-23 10:42 (MEGA PURGE)
+// Cache bust: 2026-04-23 11:45 (SUPREME PURGE)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.52.2",
+        date: "23 de Abril, 2026",
+        title: "Omnicanalidad & Social Hub: Estabilidad Total 🚀🛡️",
+        description: "Versión final con jerarquía de etiquetas corregida y conexión real a Meta.",
+        type: "major",
+        changes: [
+            { type: "fixed", text: "Estructura: Cierre de tags anidados en SocialHub.tsx." },
+            { type: "added", text: "Backend: Persistencia real en modelo SocialAccount." },
+            { type: "improved", text: "Hotfix: Resolución de White Screen en producción." }
+        ]
+    },
     {
         version: "v4.52.0",
         date: "23 de Abril, 2026",
