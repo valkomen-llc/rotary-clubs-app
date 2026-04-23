@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
+import { Link } from 'react-router-dom';
 import {
     Plus, Edit2, Trash2, Search, Newspaper, X, Upload,
     Globe, Image as ImageIcon, Video, Tag, ChevronRight, Crop, ZoomIn, ZoomOut,
-    CheckCircle, Loader2, RotateCw, RefreshCw, Facebook, Linkedin, Share2, Sparkles, MessageSquare
+    CheckCircle, Loader2, RotateCw, RefreshCw, Facebook, Linkedin, Share2, Sparkles, MessageSquare,
+    Twitter, AlertCircle, ExternalLink
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
@@ -62,11 +64,13 @@ const NewsManagement: React.FC = () => {
         seoTitle: '',
         seoDescription: '',
         seoImage: '',
-        socialCopy: '',
         ctaCopy: '',
         videoUrl: '',
         images: [] as string[],
         videoGallery: [] as string[],
+        publishFacebook: false,
+        publishLinkedin: false,
+        publishTwitter: false,
     });
 
     const [tagInput, setTagInput] = useState('');
@@ -1396,6 +1400,72 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                 <p className="text-[9px] text-amber-600/70 font-medium">
                                                     Úsala para compartir este artículo en Grupos Internacionales de Facebook. ¡Haz que otros clubes te conozcan!
                                                 </p>
+                                            </div>
+
+                                            <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100">
+                                                <div className="flex justify-between items-center mb-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <Share2 className="w-4 h-4 text-rotary-blue" />
+                                                        <h4 className="font-bold text-gray-800">Publicar en Canales Conectados</h4>
+                                                    </div>
+                                                    <Link to="/admin/social-hub" className="text-[10px] font-bold text-rotary-blue hover:underline flex items-center gap-1">
+                                                        Gestionar Conexiones <ExternalLink className="w-3 h-3" />
+                                                    </Link>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                    <div className={`p-4 rounded-2xl border transition-all ${formData.publishFacebook ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-100 opacity-60'}`}>
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <div className="p-2 bg-white rounded-lg shadow-sm">
+                                                                <Facebook className="w-4 h-4 text-blue-600" />
+                                                            </div>
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={formData.publishFacebook}
+                                                                onChange={(e) => setFormData(prev => ({ ...prev, publishFacebook: e.target.checked }))}
+                                                                className="w-4 h-4 accent-blue-600 cursor-pointer"
+                                                            />
+                                                        </div>
+                                                        <p className="text-[10px] font-black text-gray-700 uppercase tracking-tighter">Facebook</p>
+                                                    </div>
+
+                                                    <div className={`p-4 rounded-2xl border transition-all ${formData.publishLinkedin ? 'bg-sky-50 border-sky-200' : 'bg-white border-gray-100 opacity-60'}`}>
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <div className="p-2 bg-white rounded-lg shadow-sm">
+                                                                <Linkedin className="w-4 h-4 text-sky-700" />
+                                                            </div>
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={formData.publishLinkedin}
+                                                                onChange={(e) => setFormData(prev => ({ ...prev, publishLinkedin: e.target.checked }))}
+                                                                className="w-4 h-4 accent-sky-700 cursor-pointer"
+                                                            />
+                                                        </div>
+                                                        <p className="text-[10px] font-black text-gray-700 uppercase tracking-tighter">LinkedIn</p>
+                                                    </div>
+
+                                                    <div className={`p-4 rounded-2xl border transition-all ${formData.publishTwitter ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-100 opacity-60'}`}>
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <div className="p-2 bg-white rounded-lg shadow-sm">
+                                                                <Twitter className="w-4 h-4 text-gray-900" />
+                                                            </div>
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={formData.publishTwitter}
+                                                                onChange={(e) => setFormData(prev => ({ ...prev, publishTwitter: e.target.checked }))}
+                                                                className="w-4 h-4 accent-gray-900 cursor-pointer"
+                                                            />
+                                                        </div>
+                                                        <p className="text-[10px] font-black text-gray-700 uppercase tracking-tighter">X (Twitter)</p>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="mt-4 p-3 bg-blue-50/50 rounded-xl border border-blue-100/50 flex items-center gap-2">
+                                                    <AlertCircle className="w-3.5 h-3.5 text-blue-600" />
+                                                    <p className="text-[9px] text-blue-700 font-medium italic">
+                                                        Al marcar estas opciones, la noticia se publicará automáticamente en tus perfiles institucionales al guardar los cambios.
+                                                    </p>
+                                                </div>
                                             </div>
 
                                             <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100">

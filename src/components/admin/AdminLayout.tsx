@@ -43,7 +43,8 @@ import {
     ShieldCheck,
     Upload,
     MessageSquare,
-    Video
+    Video,
+    Share2
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -290,6 +291,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: Bell, label: 'CRM y Envíos Centrales', path: '/admin/crm', category: 'Management', keywords: ['crm', 'email', 'campana', 'whatsapp'] },
                 { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: 'Management', keywords: ['contacto', 'lead', 'formulario'] },
                 { icon: Video, label: 'Content Studio', path: '/admin/content-studio', category: 'Management', keywords: ['video', 'reels', 'tiktok', 'ia', 'shorts'], badge: 'ia' },
+                { icon: Share2, label: 'Hub Social', path: '/admin/social-hub', category: 'Management', keywords: ['facebook', 'linkedin', 'twitter', 'x', 'oauth', 'conexiones'], badge: 'premium' },
             );
         } else {
             const isAssoc = club?.type === 'association';
@@ -297,7 +299,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             const orgTypeLabel = isAssoc ? 'Asociación' : isDistrict ? 'Distrito' : 'Sitio';
             
             items.push(
-                { icon: Building2, label: `Mi ${orgTypeLabel}`, path: '/admin/mi-club', category: orgTypeLabel, keywords: ['logo', 'nombre', 'perfil', 'identidad', 'contacto', 'redes'] }
+                { icon: Building2, label: `Mi ${orgTypeLabel}`, path: '/admin/mi-club', category: orgTypeLabel, keywords: ['logo', 'nombre', 'perfil', 'identidad', 'contacto', 'redes'] },
+                { icon: Share2, label: 'Hub Social', path: '/admin/social-hub', category: orgTypeLabel, keywords: ['facebook', 'linkedin', 'twitter', 'x', 'oauth', 'conexiones'], badge: 'premium' }
             );
 
             if (user?.role !== 'editor') {

@@ -110,6 +110,7 @@ const WhatsAppQR = React.lazy(() => import('./pages/admin/WhatsAppQR'));
 const SuperAssistantChat = React.lazy(() => import('./pages/admin/SuperAssistantChat'));
 const ContentStudio = React.lazy(() => import('./pages/admin/ContentStudio'));
 const FooterSystem = React.lazy(() => import('./pages/admin/FooterSystem'));
+const SocialHub = React.lazy(() => import('./pages/admin/SocialHub'));
 import ClubPreview from './pages/ClubPreview';
 import ChatBot from './components/ChatBot';
 import LandingPage from './pages/LandingPage';
@@ -708,6 +709,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <FooterSystem />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/social-hub"
+                  element={
+                    <PrivateRoute>
+                      <SocialHub />
                     </PrivateRoute>
                   }
                 />

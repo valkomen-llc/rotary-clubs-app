@@ -23,8 +23,33 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-22 20:00
+// Cache bust: 2026-04-23 09:50 (FORCED PURGE)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.51.0",
+        date: "23 de Abril, 2026",
+        title: "Omnicanalidad Social: Full Roll-out 🚀💎",
+        description: "Despliegue final y total del ecosistema de publicación masiva.",
+        type: "major",
+        changes: [
+            { type: "added", text: "Social Hub: Activación global del motor de conexiones OAuth." },
+            { type: "added", text: "Omnicanalidad: Integración total en Noticias, Proyectos y Eventos." },
+            { type: "improved", text: "Estabilidad: Purga profunda de caché y sincronización de versiones." }
+        ]
+    },
+    {
+        version: "v4.50.0",
+        date: "23 de Abril, 2026",
+        title: "Hub Social & Omnicanalidad 🚀🌐",
+        description: "Unificación de la estrategia digital del club en un solo ecosistema.",
+        type: "major",
+        changes: [
+            { type: "added", text: "Social Hub: Nuevo centro de mando para gestionar conexiones OAuth oficiales." },
+            { type: "added", text: "Omnicanalidad: Panel de lanzamiento integrado en Noticias, Proyectos y Eventos." },
+            { type: "improved", text: "UX: Vista previa social en tiempo real y toggles de publicación rápida." },
+            { type: "major", text: "Estrategia: Capacidad de difusión multidispositivo sincronizada." }
+        ]
+    },
     {
         version: "v4.49.0",
         date: "23 de Abril, 2026",

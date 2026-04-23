@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import {
     Plus, Trash2, Save, Calendar, ChevronDown, ChevronUp,
     MapPin, Clock, Image, X, Upload, Code, Eye, EyeOff,
-    ImagePlus, Link as LinkIcon, ExternalLink, Crop, ZoomIn, ZoomOut, RotateCw
+    ImagePlus, Link as LinkIcon, ExternalLink, Crop, ZoomIn, ZoomOut, RotateCw,
+    Facebook, Linkedin, Twitter, Share2, AlertCircle, ExternalLink as ExternalLink2, Sparkles
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
@@ -21,6 +23,10 @@ interface CalendarEvent {
     image?: string;
     images?: string[];
     clubId: string;
+    socialCopy?: string;
+    publishFacebook?: boolean;
+    publishLinkedin?: boolean;
+    publishTwitter?: boolean;
 }
 
 const EVENT_TYPES = [
@@ -671,7 +677,7 @@ const EventsManagement = () => {
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [showAdd, setShowAdd] = useState(false);
     const [newEvent, setNewEvent] = useState(emptyForm);
-    const [activeTab, setActiveTab] = useState<Record<string, 'info' | 'media' | 'html'>>({});
+    const [activeTab, setActiveTab] = useState<Record<string, 'info' | 'media' | 'html' | 'social'>>({});
 
     const API = import.meta.env.VITE_API_URL || '/api';
     const token = localStorage.getItem('rotary_token');
@@ -692,7 +698,7 @@ const EventsManagement = () => {
     useEffect(() => { fetchEvents(); }, []);
 
     const getTab = (id: string) => activeTab[id] || 'info';
-    const setTab = (id: string, tab: 'info' | 'media' | 'html') =>
+    const setTab = (id: string, tab: 'info' | 'media' | 'html' | 'social') =>
         setActiveTab(prev => ({ ...prev, [id]: tab }));
 
     const handleCreate = async () => {
@@ -925,7 +931,7 @@ const EventsManagement = () => {
                                         <div className="border-t border-gray-100">
                                             {/* Tab nav */}
                                             <div className="flex border-b border-gray-100 bg-gray-50/70">
-                                                {(['info', 'media', 'html', ...(event.id === '2038324a-0e04-497c-9328-fbaeb9ce2992' ? ['metadata'] : [])] as const).map(tab => (
+                                                {(['info', 'media', 'html', 'social', ...(event.id === '2038324a-0e04-497c-9328-fbaeb9ce2992' ? ['metadata'] : [])] as const).map(tab => (
                                                     <button
                                                         key={tab}
                                                         type="button"
@@ -937,8 +943,9 @@ const EventsManagement = () => {
                                                     >
                                                         {{
                                                             info: '📋 Información',
-                                                            media: '🖼️ Portada & Galería',
-                                                            html: '</> Contenido HTML',
+                                                            media: '🖼️ Multimedia',
+                                                            html: '</> HTML',
+                                                            social: '🚀 Social',
                                                             metadata: '⚙️ Config. LATIR',
                                                         }[tab as string]}
                                                     </button>
@@ -1107,6 +1114,92 @@ const EventsManagement = () => {
                                                                 onUrlChange={url => updateEventField(event.id, 'metadata', { ...event.metadata, latir: { ...event.metadata?.latir, footerImage: url } })}
                                                                 noCrop={true}
                                                             />
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* ── Tab: Social ── */}
+                                                {getTab(event.id) === 'social' && (
+                                                    <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                                                        <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-between">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="p-2 bg-blue-600 text-white rounded-lg">
+                                                                    <Share2 className="w-5 h-5" />
+                                                                </div>
+                                                                <div>
+                                                                    <h4 className="font-bold text-gray-800 text-sm">Campaña de Difusión Automática</h4>
+                                                                    <p className="text-[11px] text-gray-500">Publica este evento en tus redes al guardar los cambios.</p>
+                                                                </div>
+                                                            </div>
+                                                            <Link to="/admin/social-hub" className="px-3 py-1.5 bg-white border border-gray-200 text-blue-600 rounded-lg text-xs font-bold hover:bg-gray-50 transition-all flex items-center gap-1.5">
+                                                                <ExternalLink2 className="w-3.5 h-3.5" /> Social Hub
+                                                            </Link>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                                            <div className="space-y-4">
+                                                                <div>
+                                                                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase tracking-widest">Copy para Redes Sociales</label>
+                                                                    <textarea 
+                                                                        value={event.socialCopy || ''}
+                                                                        onChange={(e) => updateEventField(event.id, 'socialCopy', e.target.value)}
+                                                                        rows={4}
+                                                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/10 outline-none text-sm"
+                                                                        placeholder="Ej: 🎉 No te pierdas nuestra próxima reunión de club este jueves..."
+                                                                    />
+                                                                </div>
+
+                                                                <div className="space-y-2">
+                                                                    <label className="block text-xs font-bold text-gray-700 mb-2 uppercase tracking-widest">Plataformas de destino</label>
+                                                                    <div className="grid grid-cols-1 gap-2">
+                                                                        <label className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${event.publishFacebook ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-100'}`}>
+                                                                            <div className="flex items-center gap-2">
+                                                                                <Facebook className={`w-4 h-4 ${event.publishFacebook ? 'text-blue-600' : 'text-gray-300'}`} />
+                                                                                <span className={`text-xs font-bold ${event.publishFacebook ? 'text-blue-900' : 'text-gray-400'}`}>Facebook Página</span>
+                                                                            </div>
+                                                                            <input type="checkbox" checked={!!event.publishFacebook} onChange={e => updateEventField(event.id, 'publishFacebook', e.target.checked)} className="w-4 h-4 accent-blue-600" />
+                                                                        </label>
+
+                                                                        <label className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${event.publishLinkedin ? 'bg-sky-50 border-sky-200' : 'bg-white border-gray-100'}`}>
+                                                                            <div className="flex items-center gap-2">
+                                                                                <Linkedin className={`w-4 h-4 ${event.publishLinkedin ? 'text-sky-700' : 'text-gray-300'}`} />
+                                                                                <span className={`text-xs font-bold ${event.publishLinkedin ? 'text-sky-900' : 'text-gray-400'}`}>LinkedIn Perfil</span>
+                                                                            </div>
+                                                                            <input type="checkbox" checked={!!event.publishLinkedin} onChange={e => updateEventField(event.id, 'publishLinkedin', e.target.checked)} className="w-4 h-4 accent-sky-700" />
+                                                                        </label>
+
+                                                                        <label className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${event.publishTwitter ? 'bg-gray-800 border-gray-900 text-white' : 'bg-white border-gray-100'}`}>
+                                                                            <div className="flex items-center gap-2">
+                                                                                <Twitter className={`w-4 h-4 ${event.publishTwitter ? 'text-white' : 'text-gray-300'}`} />
+                                                                                <span className={`text-sm font-bold ${event.publishTwitter ? 'text-white' : 'text-gray-400'}`}>X (Twitter) Feed</span>
+                                                                            </div>
+                                                                            <input type="checkbox" checked={!!event.publishTwitter} onChange={e => updateEventField(event.id, 'publishTwitter', e.target.checked)} className="w-4 h-4 accent-gray-100" />
+                                                                        </label>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="space-y-4">
+                                                                <div className="p-4 bg-white border border-gray-100 rounded-2xl shadow-sm">
+                                                                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Vista Previa</h4>
+                                                                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                                                                        <div className="aspect-video bg-gray-200 rounded-lg overflow-hidden mb-2">
+                                                                            <img src={event.image || ''} className="w-full h-full object-cover" alt="Event Preview" crossOrigin="anonymous" />
+                                                                        </div>
+                                                                        <p className="text-[10px] font-black text-blue-600 uppercase tracking-tighter mb-1">PRÓXIMO EVENTO</p>
+                                                                        <p className="text-xs font-bold text-gray-900 line-clamp-1 mb-1">{event.title || 'Título del Evento'}</p>
+                                                                        <p className="text-[10px] text-gray-500 line-clamp-2 leading-relaxed italic">
+                                                                            {event.socialCopy || 'Este evento será compartido automáticamente con tus seguidores...'}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="p-3 bg-amber-50 rounded-xl border border-amber-100 flex items-start gap-2">
+                                                                    <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                                                                    <p className="text-[10px] text-amber-800 leading-relaxed">
+                                                                        <b>Tip de Eventos:</b> Asegúrate de incluir la hora y el lugar en el copy para aumentar la asistencia.
+                                                                    </p>
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 )}

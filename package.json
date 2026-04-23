@@ -1,12 +1,13 @@
 {
-  "name": "rotary-clubs-app",
+  "name": "rotary-clubs-app-v4-51",
   "private": true,
-  "version": "4.49.0",
+  "version": "4.51.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss && vite build",
-    "postinstall": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss",
+    "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
+    "postinstall": "npx prisma generate --schema=./server/prisma/schema.prisma",
+    "db:push": "npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss",
     "lint": "eslint .",
     "preview": "vite preview"
   },

@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
+import { Link } from 'react-router-dom';
 import ProjectAIModal from '../../components/admin/ProjectAIModal';
 import {
     Edit2, Trash2, Search, FolderKanban, X, Upload,
     MapPin, Target, Info, Users, DollarSign, Image as ImageIcon,
     Video, MessageSquare, CalendarDays, Rocket, CheckCircle, ChevronRight,
-    LayoutGrid, Sparkles, RotateCcw, CheckSquare, Square, Trash, Quote, Bot
+    LayoutGrid, Sparkles, RotateCcw, CheckSquare, Square, Trash, Quote, Bot,
+    Facebook, Linkedin, Twitter, Share2, AlertCircle, ExternalLink
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useClub } from '../../contexts/ClubContext';
@@ -117,7 +119,7 @@ const ProjectsManagement: React.FC = () => {
     const [filterStatus, setFilterStatus] = useState('all');
     const [filterCategory, setFilterCategory] = useState('all');
     const [filterSort, setFilterSort] = useState('recent');
-    const [activeTab, setActiveTab] = useState<'info' | 'crowd' | 'impact' | 'gallery'>('info');
+    const [activeTab, setActiveTab] = useState<'info' | 'crowd' | 'impact' | 'gallery' | 'social'>('info');
 
     // ── Agentes para el Paso 1 de nuevo proyecto ──
     interface ProjectAgent { id: string; name: string; role: string; category: string; description: string; avatarSeed: string; avatarColor: string; greeting: string; capabilities: string[]; active: boolean; }
@@ -154,6 +156,10 @@ const ProjectsManagement: React.FC = () => {
         images: [] as string[],
         impacto: '',
         actualizaciones: '',
+        socialCopy: '',
+        publishFacebook: false,
+        publishLinkedin: false,
+        publishTwitter: false,
     });
 
     useEffect(() => {
@@ -967,7 +973,8 @@ const ProjectsManagement: React.FC = () => {
                                 { id: 'info', label: 'General', icon: Info },
                                 { id: 'crowd', label: 'Crowdfunding', icon: DollarSign },
                                 { id: 'impact', label: 'Impacto & Blog', icon: MessageSquare },
-                                { id: 'gallery', label: 'Galería & Media', icon: ImageIcon }
+                                { id: 'gallery', label: 'Galería & Media', icon: ImageIcon },
+                                { id: 'social', label: 'Social', icon: Share2 }
                             ].map(tab => (
                                 <button
                                     key={tab.id}
@@ -1252,6 +1259,94 @@ const ProjectsManagement: React.FC = () => {
                                                 )}
                                             </div>
                                         </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'social' && (
+                                    <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                                        <div className="p-6 bg-rotary-blue/5 rounded-2xl border border-rotary-blue/10 flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-3 bg-rotary-blue text-white rounded-xl shadow-lg shadow-rotary-blue/20">
+                                                    <Share2 className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-bold text-gray-800">Campaña de Difusión Automática</h4>
+                                                    <p className="text-xs text-gray-500 font-medium">Comparte este proyecto en los perfiles oficiales conectando el Social Hub.</p>
+                                                </div>
+                                            </div>
+                                            <Link to="/admin/social-hub" className="px-4 py-2 bg-white border border-gray-200 text-rotary-blue rounded-xl text-xs font-bold hover:bg-gray-50 transition-all flex items-center gap-2">
+                                                <ExternalLink className="w-3.5 h-3.5" /> Gestionar Conexiones
+                                            </Link>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                            <div className="space-y-6">
+                                                <div className="p-6 bg-white rounded-3xl border border-gray-100 shadow-sm">
+                                                    <label className="block text-sm font-bold text-gray-700 mb-3">Copy para Redes Sociales</label>
+                                                    <textarea 
+                                                        value={formData.socialCopy}
+                                                        onChange={(e) => setFormData({...formData, socialCopy: e.target.value})}
+                                                        rows={6}
+                                                        className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-rotary-blue/10 outline-none text-sm leading-relaxed"
+                                                        placeholder="Escribe un mensaje inspirador para atraer donantes o seguidores..."
+                                                    />
+                                                    <p className="mt-2 text-[10px] text-gray-400 font-medium uppercase tracking-widest text-right">Ideal: 240 - 500 caracteres</p>
+                                                </div>
+
+                                                <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100">
+                                                    <h4 className="font-bold text-gray-800 text-sm mb-4">¿Dónde quieres publicar?</h4>
+                                                    <div className="space-y-3">
+                                                        <label className={`flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer ${formData.publishFacebook ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-100'}`}>
+                                                            <div className="flex items-center gap-3">
+                                                                <Facebook className={`w-5 h-5 ${formData.publishFacebook ? 'text-blue-600' : 'text-gray-300'}`} />
+                                                                <span className={`text-sm font-bold ${formData.publishFacebook ? 'text-blue-900' : 'text-gray-400'}`}>Facebook Página Oficial</span>
+                                                            </div>
+                                                            <input type="checkbox" checked={formData.publishFacebook} onChange={e => setFormData({...formData, publishFacebook: e.target.checked})} className="w-5 h-5 accent-blue-600" />
+                                                        </label>
+
+                                                        <label className={`flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer ${formData.publishLinkedin ? 'bg-sky-50 border-sky-200' : 'bg-white border-gray-100'}`}>
+                                                            <div className="flex items-center gap-3">
+                                                                <Linkedin className={`w-5 h-5 ${formData.publishLinkedin ? 'text-sky-700' : 'text-gray-300'}`} />
+                                                                <span className={`text-sm font-bold ${formData.publishLinkedin ? 'text-sky-900' : 'text-gray-400'}`}>LinkedIn Empresa</span>
+                                                            </div>
+                                                            <input type="checkbox" checked={formData.publishLinkedin} onChange={e => setFormData({...formData, publishLinkedin: e.target.checked})} className="w-5 h-5 accent-sky-700" />
+                                                        </label>
+
+                                                        <label className={`flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer ${formData.publishTwitter ? 'bg-gray-800 border-gray-900 text-white' : 'bg-white border-gray-100'}`}>
+                                                            <div className="flex items-center gap-3">
+                                                                <Twitter className={`w-5 h-5 ${formData.publishTwitter ? 'text-white' : 'text-gray-300'}`} />
+                                                                <span className={`text-sm font-bold ${formData.publishTwitter ? 'text-white' : 'text-gray-400'}`}>X (Twitter) Feed</span>
+                                                            </div>
+                                                            <input type="checkbox" checked={formData.publishTwitter} onChange={e => setFormData({...formData, publishTwitter: e.target.checked})} className="w-5 h-5 accent-gray-100" />
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-6">
+                                                <div className="p-6 bg-white border border-gray-100 rounded-3xl shadow-sm">
+                                                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Vista Previa Social</h4>
+                                                    <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                                                        <div className="aspect-[1.91/1] bg-gray-200 rounded-xl overflow-hidden mb-3">
+                                                            <img src={formData.image || ''} className="w-full h-full object-cover" alt="Social Preview" crossOrigin="anonymous" />
+                                                        </div>
+                                                        <p className="text-xs font-black text-rotary-blue uppercase tracking-tighter mb-1">{formData.category}</p>
+                                                        <p className="text-sm font-bold text-gray-900 line-clamp-1 mb-2">{formData.title || 'Título del Proyecto'}</p>
+                                                        <p className="text-xs text-gray-500 line-clamp-3 leading-relaxed">
+                                                            {formData.socialCopy || 'El mensaje que escribas a la izquierda aparecerá aquí al compartir el proyecto...'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 flex items-start gap-3">
+                                                    <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                                                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                                                        <b>Nota Estratégica:</b> Al publicar proyectos, enfócate en el impacto y cuántas vidas se transformarán. 
+                                                        Esto genera mayor compromiso y propensión a la donación.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </form>
@@ -1275,7 +1370,8 @@ const ProjectsManagement: React.FC = () => {
                                     <span className="text-xs font-bold text-rotary-blue">
                                         {activeTab === 'info' ? '1. Información General' :
                                             activeTab === 'crowd' ? '2. Metas de Recaudo' :
-                                                activeTab === 'impact' ? '3. Detalles de Impacto' : '4. Multimedia'}
+                                                activeTab === 'impact' ? '3. Detalles de Impacto' : 
+                                                    activeTab === 'gallery' ? '4. Multimedia' : '5. Difusión Social'}
                                     </span>
                                 </div>
                                 <button
