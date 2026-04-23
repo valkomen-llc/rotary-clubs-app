@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-22 19:10
+// Cache bust: 2026-04-22 19:40
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.44.0",
+        date: "22 de Abril, 2026",
+        title: "Content Studio: Advanced Telemetry 📡",
+        description: "Optimización del mapeo de estados y monitoreo profundo de la IA.",
+        type: "major",
+        changes: [
+            { type: "improved", text: "Telemetría: Soporte ampliado para estados SUCCESS, ERROR y RUNNING de KIE.ai." },
+            { type: "fix", text: "Estabilidad: Refuerzo del radar de seguimiento para evitar bloqueos en procesamiento." },
+            { type: "major", text: "Diagnóstico: Mejorada la visibilidad interna del progreso de renderizado." }
+        ]
+    },
     {
         version: "v4.43.0",
         date: "22 de Abril, 2026",

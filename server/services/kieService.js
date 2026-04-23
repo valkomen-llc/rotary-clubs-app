@@ -69,13 +69,20 @@ export const checkTaskStatus = async (taskId) => {
             throw new Error(data.msg || 'Error al consultar estado en KIE.ai');
         }
 
-        // KIE.ai status mapping (approximate)
-        // Adjust based on real API response structure
-        const status = data.data?.status;
-        const videoUrl = data.data?.output?.video_url;
+        // KIE.ai status mapping (Enhanced v4.44.0)
+        const status = data.data?.status || data.status;
+        const videoUrl = data.data?.output?.video_url || data.output?.videoUrl;
+
+        console.log(`KIE Status Check [${taskId}]: ${status}`);
+
+        let mappedStatus = 'processing';
+        if (status === 'COMPLETED' || status === 'SUCCESS') mappedStatus = 'ready';
+        if (status === 'FAILED' || status === 'ERROR') mappedStatus = 'failed';
+        if (status === 'QUEUED' || status === 'PENDING') mappedStatus = 'processing';
+        if (status === 'ACTIVE' || status === 'RUNNING') mappedStatus = 'processing';
 
         return {
-            status: status === 'COMPLETED' ? 'ready' : status === 'FAILED' ? 'failed' : 'processing',
+            status: mappedStatus,
             videoUrl: videoUrl,
             raw: data
         };
