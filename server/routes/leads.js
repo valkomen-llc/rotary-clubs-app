@@ -164,61 +164,13 @@ router.get('/', authMiddleware, async (req, res) => {
         }
         // --- END AUTO-HEALING ---
 
-        // Si es Super Admin o District Admin, ampliar visibilidad
-        if (req.user.role === 'administrator') {
-            if (req.query.clubId) {
-                if (!req.user.clubId || req.user.clubId === req.query.clubId) {
-                    clubId = req.query.clubId;
-                }
-            }
-        }
-
-        const status = req.query.status;
-        const search = req.query.search;
-
-        let where = [];
-        let params = [];
-        let idx = 1;
-
-        // LÓGICA DE FILTRADO PANORÁMICO (Incluyendo District Admin)
-        if (districtId && (req.user.role === 'administrator' || req.user.role === 'district_admin')) {
-            const allDistrictClubs = await prisma.club.findMany({
-                where: { districtId: districtId },
-                select: { id: true }
-            });
-            const clubIds = allDistrictClubs.map(c => c.id);
-            
-            if (clubIds.length > 0) {
-                // Ver leads de sus clubes o leads huérfanos (del portal del distrito)
-                where.push(`("clubId" = ANY($${idx++}) OR "clubId" IS NULL)`);
-                params.push(clubIds);
-            } else {
-                where.push(`"clubId" IS NULL`);
-            }
-        } else if (req.user.role === 'administrator' && !districtId) {
-            // SÚPER ADMIN GLOBAL: No aplicamos filtros de clubId/districtId, ve todo.
-            console.log('Global Admin detected: Unrestricted lead access.');
-        } else if (clubId) {
-            where.push(`"clubId" = $${idx++}`);
-            params.push(clubId);
-        } else if (req.user.role !== 'administrator' && req.user.role !== 'district_admin') {
-            return res.json({ leads: [], total: 0, statusCounts: {} });
-        }
-        if (status && status !== 'all') {
-            where.push(`status = $${idx++}`);
-            params.push(status);
-        }
-        if (search) {
-            where.push(`(name ILIKE $${idx} OR email ILIKE $${idx})`);
-            params.push(`%${search}%`);
-            idx++;
-        }
-
-        const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+        // --- DIAGNÓSTICO NUCLEAR (REBOOT v4.66.0) ---
+        // Eliminamos todo filtrado para ver si hay ALGO en la tabla
         const result = await db.query(
-            `SELECT * FROM "Lead" ${whereClause} ORDER BY "createdAt" DESC LIMIT 200`,
-            params
+            `SELECT * FROM "Lead" ORDER BY "createdAt" DESC LIMIT 100`,
+            []
         );
+        console.log(`[NUCLEAR] Datos encontrados: ${result.rows.length}`);
 
         // También retornar contadores por estado usando la misma cláusula WHERE (sin filtrar por status)
         let countsWhereBasis = [];
