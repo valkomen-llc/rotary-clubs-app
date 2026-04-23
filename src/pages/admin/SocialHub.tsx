@@ -199,7 +199,9 @@ const SocialHub: React.FC = () => {
                             </div>
                         </div>
                     </div>
-                           {/* Security Note */}
+                </div>
+
+                {/* Security Note */}
                 <div className="flex items-center gap-6 p-8 bg-blue-50/30 rounded-[2.5rem] border border-blue-100/30">
                     <div className="p-4 bg-white rounded-[1.5rem] shadow-sm">
                         <Shield className="w-8 h-8 text-rotary-blue" />
