@@ -43,9 +43,9 @@ router.get('/by-domain', async (req, res) => {
             if (r.key) masterSettings[r.key] = r.value;
         });
 
-        // 2. Fetch Current Club (AGRESSIVE GENETIC FUSION)
-        // Find all records that might match this domain or subdomain.
-        const domainPart = domain.split('.')[0].toLowerCase();
+        // 2. Fetch Current Club
+        // When preview=true, allow loading draft clubs too
+        const statusFilter = preview === 'true' ? '' : "AND c.status = 'active'";
         let result = await db.query(
             `SELECT c.id, c.name, c.city, c.logo, c."footerLogo", c."endPolioLogo", c.favicon, c.domain, c.subdomain, c.status, c.type,
              s.key, s.value,
@@ -53,19 +53,13 @@ router.get('/by-domain', async (req, res) => {
              (SELECT COUNT(*) FROM "CalendarEvent" ce WHERE ce."clubId" = c.id) as "eventsCount"
              FROM "Club" c 
              LEFT JOIN "Setting" s ON s."clubId" = c.id
-             WHERE (LOWER(c.domain) = LOWER($1) OR LOWER(c.subdomain) = LOWER($2) OR LOWER(c.subdomain) LIKE $3)
-             ORDER BY 
-                CASE WHEN LOWER(c.domain) = LOWER($1) THEN 0 ELSE 1 END,
-                CASE WHEN c.logo IS NOT NULL AND c.logo <> '' THEN 0 ELSE 1 END,
-                c."createdAt" DESC`,
-            [domain, domainPart, `%${domainPart}%`]
+             WHERE (c.domain = $1 OR c.subdomain = $2) ${statusFilter}`,
+            [domain, domain.split('.')[0]]
         );
 
         let rows = result.rows;
-        let foundBy = 'genetic_fusion';
 
         if (!rows.length) {
-            foundBy = 'fallback_origen';
             result = await db.query(
                 `SELECT c.id, c.name, c.city, c.logo, c."footerLogo", c."endPolioLogo", c.favicon, c.domain, c.subdomain, c.status, c.type,
                  s.key, s.value,
@@ -82,32 +76,16 @@ router.get('/by-domain', async (req, res) => {
             return res.status(404).json({ error: 'Club not found' });
         }
 
-        // Aggregate results: If multiple records match, pick the one with most info for the base,
-        // but collect settings from all matching club IDs to ensure features are active.
+        // Group settings
         const clubDataRaw = {};
         const settings = {};
-        const seenIds = new Set();
-        
         rows.forEach(r => {
-            // First row (best match) defines the base identity
             if (!clubDataRaw.id) {
                 const { key, value, ...clubInfo } = r;
                 Object.assign(clubDataRaw, clubInfo);
             }
             if (r.key) settings[r.key] = r.value;
-            seenIds.add(r.id);
         });
-
-        const clubIds = Array.from(seenIds);
-
-        // Diagnostic marker
-        clubDataRaw._diagnostic = {
-            queriedDomain: domain,
-            foundBy,
-            idsCount: clubIds.length,
-            primaryId: clubDataRaw.id,
-            subdomain: clubDataRaw.subdomain
-        };
 
         // Use a consistent fallback for logo assets if neither the club nor master has them
         const defaultFooter = "https://rotary-platform-assets.s3.amazonaws.com/logos/rotary-logo-white-main.png";
@@ -139,14 +117,10 @@ router.get('/by-domain', async (req, res) => {
             social: settings['social_links'] ? JSON.parse(settings['social_links']) : [],
             customSocial: settings['custom_social_links'] ? JSON.parse(settings['custom_social_links']) : [],
             // FETCH ContentSection images for faster load & consistency with useSiteImages
-            // We search across ALL matched IDs to find actual content
             siteImages: await (async () => {
                 const imgRes = await db.query(
-                    `SELECT content FROM "ContentSection" 
-                     WHERE page = 'home' AND section = 'images' AND ("clubId" = ANY($1) OR "clubId" IS NULL) 
-                     ORDER BY CASE WHEN "clubId" IS NOT NULL THEN 0 ELSE 1 END, "updatedAt" DESC 
-                     LIMIT 1`,
-                    [clubIds]
+                    `SELECT content FROM "ContentSection" WHERE page = 'home' AND section = 'images' AND ("clubId" = $1 OR "clubId" IS NULL) ORDER BY "clubId" DESC LIMIT 1`,
+                    [clubDataRaw.id]
                 );
                 if (imgRes.rows.length === 0) return {};
                 const c = imgRes.rows[0].content;
@@ -182,9 +156,6 @@ router.get('/by-domain', async (req, res) => {
                 interact_logo: settings['interact_logo'] || masterSettings['interact_logo'] || null,
                 youth_exchange_logo: settings['youth_exchange_logo'] || masterSettings['youth_exchange_logo'] || null,
                 hide_sample_news: settings['hide_sample_news'] === 'true',
-                // Billing / Expiration Banner
-                billing_banner_active: settings['billing_banner_active'] === 'true',
-                billing_banner_message: settings['billing_banner_message'] || 'Su servicio está próximo a vencer. Por favor renueve su suscripción para evitar interrupciones.',
                 // Social Media URLs
                 facebook_url: settings['social_facebook'] || '',
                 instagram_url: settings['social_instagram'] || '',

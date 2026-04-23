@@ -26,15 +26,27 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 13:00 (NUCLEAR PURGE ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: "v4.76.0",
+        version: "v4.77.0",
         date: "23 de Abril, 2026",
-        title: "Núcleo: Identidad Fluida (v4.76.0) 🛡️✨",
-        description: "Eliminación del bloqueo de renderizado causado por el banner de urgencia.",
+        title: "Núcleo: Restauración de Estabilidad (v4.77.0) 🛡️📉",
+        description: "Rollback total a v4.69.0 para recuperar la integridad visual del sitio.",
+        type: "rollback",
+        changes: [
+            { type: "rollback", text: "Código: Reversión completa a la estructura estable de la v4.69.0." },
+            { type: "removed", text: "Banner: Eliminada la barra de urgencia que bloqueaba el renderizado del Header." },
+            { type: "fixed", text: "Identidad: Restauración inmediata de logos y multimedia para Nuevo Cali." }
+        ]
+    },
+    {
+        version: "v4.69.0",
+        date: "23 de Abril, 2026",
+        title: "Datos & CRM: Sonda de Rescate (v4.69.0) 🏹🛡️",
+        description: "Búsqueda focalizada por contenido ('Maria') en tablas sospechosas.",
         type: "major",
         changes: [
-            { type: "fixed", text: "Navbar: Independencia del renderizado del logo frente a la lógica de settings." },
-            { type: "improved", text: "Estabilidad: Blindaje contra errores de carga en el banner de suscripción." },
-            { type: "fixed", text: "Identidad: Restauración automática del logo y hero slider tras el fix del flujo." }
+            { type: "added", text: "Diagnóstico: Escaneo inteligente de tablas tipo Lead/Contact/Multimedia." },
+            { type: "fixed", text: "Visibilidad: Corrección del spinner infinito y auditoría de datos por nombre." },
+            { type: "improved", text: "Rescate: Localización precisa de los 11 contactos de la galería." }
         ]
     },
     {
