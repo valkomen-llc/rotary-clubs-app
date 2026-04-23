@@ -26,15 +26,15 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 13:00 (NUCLEAR PURGE ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: "v4.74.0",
+        version: "v4.75.0",
         date: "23 de Abril, 2026",
-        title: "Núcleo: Diagnóstico de Identidad (v4.74.0) 🛡️📊",
-        description: "Rastreo de decisiones de búsqueda para restaurar la herencia de datos.",
+        title: "Núcleo: Fusión Genética (v4.75.0) 🛡️🧬",
+        description: "Agregación de múltiples registros para restaurar identidades fragmentadas.",
         type: "major",
         changes: [
-            { type: "added", text: "Diagnóstico: Implementación de marcadores de decisión en el endpoint by-domain." },
-            { type: "fixed", text: "Prioridad: Ordenamiento por relevancia (exact domain > subdomain > partial)." },
-            { type: "improved", text: "Estabilidad: Blindaje total contra fallbacks accidentales a origen." }
+            { type: "added", text: "Multi-ID: Implementación de ANY($1) para consolidar multimedia de registros huérfanos." },
+            { type: "fixed", text: "Identidad: Lógica de fusión para unificar logos y settings de múltiples coincidencias." },
+            { type: "improved", text: "Herencia: Blindaje total de la integridad visual mediante agregación." }
         ]
     },
     {

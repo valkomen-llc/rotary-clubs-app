@@ -43,8 +43,8 @@ router.get('/by-domain', async (req, res) => {
             if (r.key) masterSettings[r.key] = r.value;
         });
 
-        // 2. Fetch Current Club
-        // Aggressive search: Case-insensitive on domain and subdomain.
+        // 2. Fetch Current Club (AGRESSIVE GENETIC FUSION)
+        // Find all records that might match this domain or subdomain.
         const domainPart = domain.split('.')[0].toLowerCase();
         let result = await db.query(
             `SELECT c.id, c.name, c.city, c.logo, c."footerLogo", c."endPolioLogo", c.favicon, c.domain, c.subdomain, c.status, c.type,
@@ -54,12 +54,15 @@ router.get('/by-domain', async (req, res) => {
              FROM "Club" c 
              LEFT JOIN "Setting" s ON s."clubId" = c.id
              WHERE (LOWER(c.domain) = LOWER($1) OR LOWER(c.subdomain) = LOWER($2) OR LOWER(c.subdomain) LIKE $3)
-             ORDER BY CASE WHEN LOWER(c.domain) = LOWER($1) THEN 0 WHEN LOWER(c.subdomain) = LOWER($2) THEN 1 ELSE 2 END ASC`,
+             ORDER BY 
+                CASE WHEN LOWER(c.domain) = LOWER($1) THEN 0 ELSE 1 END,
+                CASE WHEN c.logo IS NOT NULL AND c.logo <> '' THEN 0 ELSE 1 END,
+                c."createdAt" DESC`,
             [domain, domainPart, `%${domainPart}%`]
         );
 
         let rows = result.rows;
-        let foundBy = 'exact_match';
+        let foundBy = 'genetic_fusion';
 
         if (!rows.length) {
             foundBy = 'fallback_origen';
@@ -79,22 +82,30 @@ router.get('/by-domain', async (req, res) => {
             return res.status(404).json({ error: 'Club not found' });
         }
 
-        // Group settings
+        // Aggregate results: If multiple records match, pick the one with most info for the base,
+        // but collect settings from all matching club IDs to ensure features are active.
         const clubDataRaw = {};
         const settings = {};
+        const seenIds = new Set();
+        
         rows.forEach(r => {
+            // First row (best match) defines the base identity
             if (!clubDataRaw.id) {
                 const { key, value, ...clubInfo } = r;
                 Object.assign(clubDataRaw, clubInfo);
             }
             if (r.key) settings[r.key] = r.value;
+            seenIds.add(r.id);
         });
+
+        const clubIds = Array.from(seenIds);
 
         // Diagnostic marker
         clubDataRaw._diagnostic = {
             queriedDomain: domain,
             foundBy,
-            id: clubDataRaw.id,
+            idsCount: clubIds.length,
+            primaryId: clubDataRaw.id,
             subdomain: clubDataRaw.subdomain
         };
 
@@ -128,12 +139,14 @@ router.get('/by-domain', async (req, res) => {
             social: settings['social_links'] ? JSON.parse(settings['social_links']) : [],
             customSocial: settings['custom_social_links'] ? JSON.parse(settings['custom_social_links']) : [],
             // FETCH ContentSection images for faster load & consistency with useSiteImages
+            // We search across ALL matched IDs to find actual content
             siteImages: await (async () => {
                 const imgRes = await db.query(
                     `SELECT content FROM "ContentSection" 
-                     WHERE page = 'home' AND section = 'images' AND ("clubId" = $1 OR "clubId" IS NULL) 
-                     ORDER BY "clubId" DESC NULLS LAST LIMIT 1`,
-                    [clubDataRaw.id]
+                     WHERE page = 'home' AND section = 'images' AND ("clubId" = ANY($1) OR "clubId" IS NULL) 
+                     ORDER BY CASE WHEN "clubId" IS NOT NULL THEN 0 ELSE 1 END, "updatedAt" DESC 
+                     LIMIT 1`,
+                    [clubIds]
                 );
                 if (imgRes.rows.length === 0) return {};
                 const c = imgRes.rows[0].content;
