@@ -123,14 +123,17 @@ router.post('/submit', async (req, res) => {
 // ── ADMIN: List leads for the club (or all for super admin) ───────────────
 router.get('/', authMiddleware, async (req, res) => {
     try {
-        let clubId = req.user.clubId; 
+        let clubId = req.user.clubId;
+        let districtId = req.user.districtId;
 
-        // Si es Platform Super Admin (idenfificado porque su clubId subyacente es nulo o específico) puede forzar clubId
-        if (req.user.role === 'administrator' && !req.user.clubId && req.query.clubId) {
-            clubId = req.query.clubId;
-        } else if (req.user.role === 'administrator' && req.query.clubId && req.query.clubId !== req.user.clubId) {
-            // Un Club admin NO puede ver leads de otro club
-            clubId = req.user.clubId;
+        // Si es Super Admin o District Admin, ampliar visibilidad
+        if (req.user.role === 'administrator') {
+            if (req.query.clubId) {
+                // Permitir forzar un club específico si tiene permiso
+                if (!req.user.clubId || req.user.clubId === req.query.clubId) {
+                    clubId = req.query.clubId;
+                }
+            }
         }
 
         const status = req.query.status;
@@ -140,9 +143,27 @@ router.get('/', authMiddleware, async (req, res) => {
         let params = [];
         let idx = 1;
 
-        if (clubId) {
+        // LÓGICA DE FILTRADO INTELIGENTE
+        if (districtId && !clubId) {
+            // Es un Admin de Distrito puro: ver leads de todos sus clubes
+            const districtClubs = await prisma.club.findMany({
+                where: { districtId: districtId },
+                select: { id: true }
+            });
+            const clubIds = districtClubs.map(c => c.id);
+            if (clubIds.length > 0) {
+                where.push(`"clubId" = ANY($${idx++})`);
+                params.push(clubIds);
+            } else {
+                // Si no hay clubes, al menos intentar ver leads sin clubId (del distrito)
+                where.push(`"clubId" IS NULL`);
+            }
+        } else if (clubId) {
             where.push(`"clubId" = $${idx++}`);
             params.push(clubId);
+        } else if (req.user.role !== 'administrator') {
+            // Usuario sin privilegios y sin clubId -> No ve nada
+            return res.json({ leads: [], total: 0, statusCounts: {} });
         }
         if (status && status !== 'all') {
             where.push(`status = $${idx++}`);
@@ -160,16 +181,34 @@ router.get('/', authMiddleware, async (req, res) => {
             params
         );
 
-        // Also return counts by status
-        const countsWhere = clubId ? `WHERE "clubId" = $1` : '';
-        const countsParams = clubId ? [clubId] : [];
+        // También retornar contadores por estado usando la misma cláusula WHERE (sin filtrar por status)
+        let countsWhereBasis = [];
+        let countsParams = [];
+        let cIdx = 1;
+        if (districtId && !clubId) {
+            const districtClubs = await prisma.club.findMany({ where: { districtId }, select: { id: true } });
+            const cIds = districtClubs.map(c => c.id);
+            if (cIds.length > 0) {
+                countsWhereBasis.push(`"clubId" = ANY($${cIdx++})`);
+                countsParams.push(cIds);
+            } else {
+                countsWhereBasis.push(`"clubId" IS NULL`);
+            }
+        } else if (clubId) {
+            countsWhereBasis.push(`"clubId" = $${cIdx++}`);
+            params.push(clubId); // Note: using 'params' from outer scope or sync properly
+            countsParams.push(clubId);
+        }
+
+        const statsWhereClause = countsWhereBasis.length ? `WHERE ${countsWhereBasis.join(' AND ')}` : '';
+        
         const counts = await db.query(
-            `SELECT status, COUNT(*) as count FROM "Lead" ${countsWhere} GROUP BY status`,
+            `SELECT status, COUNT(*) as count FROM "Lead" ${statsWhereClause} GROUP BY status`,
             countsParams
         );
 
         const totalResult = await db.query(
-            `SELECT COUNT(*) FROM "Lead" ${countsWhere}`,
+            `SELECT COUNT(*) FROM "Lead" ${statsWhereClause}`,
             countsParams
         );
 
