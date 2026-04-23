@@ -3,7 +3,7 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import { Link } from 'react-router-dom';
 import {
     Building2, Save, Upload, MapPin, Globe, Mail, Phone,
-    Facebook, Instagram, Twitter, Youtube, Info, Trash2, Dna
+    Facebook, Instagram, Twitter, Youtube, Linkedin, Info, Trash2, Dna
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
@@ -31,6 +31,7 @@ const ClubProfile: React.FC = () => {
         instagram: string;
         twitter: string;
         youtube: string;
+        linkedin: string;
         storeActive: boolean;
         logoHeaderSize: number;
         archetype: any;
@@ -50,8 +51,9 @@ const ClubProfile: React.FC = () => {
         instagram: '',
         twitter: '',
         youtube: '',
+        linkedin: '',
         storeActive: true,
-        logoHeaderSize: 200,
+        logoHeaderSize: 150,
         archetype: null,
     });
 
@@ -102,6 +104,7 @@ const ClubProfile: React.FC = () => {
                     instagram: settingsMap['social_instagram'] || '',
                     twitter: settingsMap['social_twitter'] || '',
                     youtube: settingsMap['social_youtube'] || '',
+                    linkedin: settingsMap['social_linkedin'] || '',
                     storeActive: settingsMap['store_active'] !== 'false', // Default true
                     logoHeaderSize: parseInt(settingsMap['logo_header_size']) || 150,
                     archetype: data.archetype || null,
@@ -469,6 +472,17 @@ const ClubProfile: React.FC = () => {
                                     className="flex-1 px-4 py-2.5 bg-gray-50 border-transparent focus:bg-white focus:border-rotary-blue/20 rounded-xl outline-none transition-all text-sm font-medium"
                                     value={formData.youtube}
                                     onChange={(e) => setFormData({ ...formData, youtube: e.target.value })}
+                                />
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 flex-shrink-0 bg-gray-50 rounded-lg flex items-center justify-center text-gray-400">
+                                    <Linkedin className="w-5 h-5" />
+                                </div>
+                                <input
+                                    type="text" placeholder="URL de LinkedIn"
+                                    className="flex-1 px-4 py-2.5 bg-gray-50 border-transparent focus:bg-white focus:border-rotary-blue/20 rounded-xl outline-none transition-all text-sm font-medium"
+                                    value={formData.linkedin}
+                                    onChange={(e) => setFormData({ ...formData, linkedin: e.target.value })}
                                 />
                             </div>
                         </div>

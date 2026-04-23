@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 20:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.47.0",
+        date: "23 de Abril, 2026",
+        title: "Conectividad Social: LinkedIn & Fix Guardado 🔗",
+        description: "Reparación de persistencia social y soporte para LinkedIn.",
+        type: "major",
+        changes: [
+            { type: "fixed", text: "Guardado: Reparada la comunicación con el servidor para redes sociales individuales." },
+            { type: "added", text: "Redes: Incorporado campo de LinkedIn en Perfil de Mi Sitio y Configuraciones." },
+            { type: "improved", text: "UI: Restaurada integridad de iconos de Lucide en el panel administrativo." }
+        ]
+    },
+    {
         version: "v4.46.0",
         date: "23 de Abril, 2026",
         title: "Identidad Visual: Precision Auto-Crop 🎞️",
