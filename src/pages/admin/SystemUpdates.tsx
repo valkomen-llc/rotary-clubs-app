@@ -26,15 +26,15 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 13:00 (NUCLEAR PURGE ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: "v4.64.0",
+        version: "v4.65.0",
         date: "23 de Abril, 2026",
-        title: "Datos & CRM: Omnisciencia de Acceso (v4.64.0) 🚀🛡️",
-        description: "Versión maestra de recuperación de visibilidad para Administradores Globales.",
+        title: "Datos & Historial: Operación Rescate (v4.65.0) 🚀🛡️",
+        description: "Versión crítica de migración retroactiva para recuperar el historial de leads.",
         type: "major",
         changes: [
-            { type: "added", text: "CRM: Visatibilidad total (Omnisciencia) para el rol Administrator." },
-            { type: "fixed", text: "Contactos: Recuperados los 11 contactos históricos de la Galería Multimedia." },
-            { type: "improved", text: "Seguridad: Optimización de filtros de acceso multitenant." }
+            { type: "added", text: "Auto-Migración: Rescate automático de leads desde tablas heredadas (leads)." },
+            { type: "fixed", text: "Contactos: Restauración de los 11 contactos originales de multimedia." },
+            { type: "improved", text: "Arquitectura: Unificación del esquema de base de datos para CRM." }
         ]
     },
     {

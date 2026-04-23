@@ -27,6 +27,21 @@ const ensureTable = async () => {
         );
         CREATE INDEX IF NOT EXISTS idx_lead_club ON "Lead" ("clubId", "createdAt" DESC);
         CREATE INDEX IF NOT EXISTS idx_lead_status ON "Lead" (status);
+
+        // --- MIGRACIÓN DE RESCATE (REBOOT v4.65.0) ---
+        // Intentamos rescatar de tablas que podrían haber existido en versiones previas
+        await db.query(`
+            DO $$ 
+            BEGIN 
+                -- De 'leads' (minúscula) a '\"Lead\"'
+                IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'leads') THEN
+                    INSERT INTO "Lead" (name, email, phone, subject, message, "clubId", source, status, "createdAt")
+                    SELECT name, email, phone, subject, message, "clubId", source, status, "createdAt" FROM leads
+                    ON CONFLICT DO NOTHING;
+                END IF;
+            END $$;
+        `).catch(() => {});
+        // --- FIN MIGRACIÓN ---
     `);
     // Add metadata column if table already existed without it
     await db.query(`ALTER TABLE "Lead" ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'`).catch(() => { });
