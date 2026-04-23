@@ -117,7 +117,7 @@ export const updateClub = async (req, res) => {
     const { id } = req.params;
         const {
             name, description, city, country, district, domain, subdomain, type,
-            email, phone, address, state, facebook, instagram, twitter, youtube, linkedin, 
+            email, phone, address, state, facebook, instagram, twitter, youtube, linkedin, tiktok, 
             socialLinks, customSocialLinks, siteImages, galleryImages,
             primaryColor, secondaryColor, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, status,
             stripePublicKey, stripeSecretKey, useStripe,
@@ -190,6 +190,7 @@ export const updateClub = async (req, res) => {
                 'social_twitter': twitter,
                 'social_youtube': youtube,
                 'social_linkedin': linkedin,
+                'social_tiktok': tiktok,
                 'social_links': socialLinks ? JSON.stringify(socialLinks) : undefined,
                 'custom_social_links': customSocialLinks ? JSON.stringify(customSocialLinks) : undefined,
                 'site_images': siteImages ? JSON.stringify(siteImages) : undefined,

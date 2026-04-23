@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 20:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.48.0",
+        date: "23 de Abril, 2026",
+        title: "Omnicanalidad: Soporte TikTok 🎵✨",
+        description: "Integración de TikTok y consolidación del ecosistema social.",
+        type: "major",
+        changes: [
+            { type: "added", text: "Redes: Incorporado soporte nativo para TikTok en el perfil del club." },
+            { type: "improved", text: "Integridad: Sincronización total de guardado para el set completo de redes (6 canales)." },
+            { type: "major", text: "Estética: Finalizada la expansión de iconos sociales en el panel Mi Sitio." }
+        ]
+    },
+    {
         version: "v4.47.0",
         date: "23 de Abril, 2026",
         title: "Conectividad Social: LinkedIn & Fix Guardado 🔗",
