@@ -164,55 +164,23 @@ router.get('/', authMiddleware, async (req, res) => {
         }
         // --- END AUTO-HEALING ---
 
-        // --- DIAGNÓSTICO NUCLEAR (REBOOT v4.66.0) ---
-        // Eliminamos todo filtrado para ver si hay ALGO en la tabla
-        const result = await db.query(
-            `SELECT * FROM "Lead" ORDER BY "createdAt" DESC LIMIT 100`,
-            []
-        );
-        console.log(`[NUCLEAR] Datos encontrados: ${result.rows.length}`);
-
-        // También retornar contadores por estado usando la misma cláusula WHERE (sin filtrar por status)
-        let countsWhereBasis = [];
-        let countsParams = [];
-        let cIdx = 1;
-
-        if (districtId && (req.user.role === 'administrator' || req.user.role === 'district_admin')) {
-            const allDistrictClubs = await prisma.club.findMany({
-                where: { districtId: districtId },
-                select: { id: true }
-            });
-            const clubIds = allDistrictClubs.map(c => c.id);
-            if (clubIds.length > 0) {
-                countsWhereBasis.push(`("clubId" = ANY($${cIdx++}) OR "clubId" IS NULL)`);
-                countsParams.push(clubIds);
-            } else {
-                countsWhereBasis.push(`"clubId" IS NULL`);
-            }
-        } else if (req.user.role === 'administrator' && !districtId) {
-            // SÚPER ADMIN GLOBAL: No aplicamos filtros, cuenta todo.
-        } else if (clubId) {
-            countsWhereBasis.push(`"clubId" = $${cIdx++}`);
-            countsParams.push(clubId);
-        }
-
-        const statsWhereClause = countsWhereBasis.length ? `WHERE ${countsWhereBasis.join(' AND ')}` : '';
+        // --- RECUPERACIÓN MULTINIVEL (REBOOT v4.67.0) ---
+        // Si la tabla Lead está vacía, intentamos buscar en Comments (frecuente en Galería Multimedia)
+        const leadRes = await db.query(`SELECT * FROM "Lead" ORDER BY "createdAt" DESC LIMIT 50`, []);
+        const commentRes = await db.query(`SELECT id, "firstName" || ' ' || "lastName" as name, email, phone, 'Comentario/Multimedia' as subject, text as message, 'public_form' as source, "createdAt" FROM "Comment" ORDER BY "createdAt" DESC LIMIT 50`, []);
         
-        const counts = await db.query(
-            `SELECT status, COUNT(*) as count FROM "Lead" ${statsWhereClause} GROUP BY status`,
-            countsParams
-        );
+        // Unificamos los resultados
+        const combinedLeads = [...leadRes.rows, ...commentRes.rows].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-        const totalResult = await db.query(
-            `SELECT COUNT(*) FROM "Lead" ${statsWhereClause}`,
-            countsParams
-        );
-
+        console.log(`[RECOVERY] Leads: ${leadRes.rows.length}, Comments: ${commentRes.rows.length}`);
+        
         res.json({
-            leads: result.rows,
-            total: parseInt(totalResult.rows[0].count),
-            statusCounts: counts.rows.reduce((acc, r) => ({ ...acc, [r.status]: parseInt(r.count) }), {}),
+            leads: combinedLeads,
+            total: combinedLeads.length,
+            statusCounts: { "new": combinedLeads.length },
+            debug: "MULTILEVEL_RECOVERY"
         });
+        return; // Terminamos aquí para el diagnóstico
     } catch (error) {
         console.error('Lead list error:', error);
         res.status(500).json({ error: 'Error fetching leads' });

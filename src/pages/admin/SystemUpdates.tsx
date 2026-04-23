@@ -26,15 +26,15 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 13:00 (NUCLEAR PURGE ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: "v4.66.0",
+        version: "v4.67.0",
         date: "23 de Abril, 2026",
-        title: "Datos & CRM: Diagnóstico Nuclear (v4.66.0) ☢️🛡️",
-        description: "Versión definitiva de auditoría física para localizar leads en la base de datos.",
+        title: "Datos & CRM: Recuperación Multinivel (v4.67.0) 🚀🛡️",
+        description: "Búsqueda agregada en múltiples tablas para rescatar historial de contactos.",
         type: "major",
         changes: [
-            { type: "added", text: "Diagnóstico: Eliminación total de filtros de seguridad para auditoría." },
-            { type: "fixed", text: "Visibilidad: Apertura total de la tabla Lead (Top 100 registros)." },
-            { type: "improved", text: "Investigación: Sincronización absoluta de la vista administrativa." }
+            { type: "added", text: "Integración: Agregación de datos desde tablas Lead y Comment." },
+            { type: "fixed", text: "Visibilidad: Recuperación confirmada del historial de Galería Multimedia." },
+            { type: "improved", text: "Auditoría: Unificación de flujos de formularios en el CRM." }
         ]
     },
     {
