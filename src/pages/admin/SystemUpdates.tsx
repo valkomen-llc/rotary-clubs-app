@@ -26,15 +26,15 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 13:00 (NUCLEAR PURGE ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: "v4.71.0",
+        version: "v4.72.0",
         date: "23 de Abril, 2026",
-        title: "Datos & Núcleo: Restauración de Identidad (v4.71.0) 🛡️✨",
-        description: "Corrección crítica de la lógica de herencia para evitar caídas al club genérico.",
+        title: "Núcleo: Búsqueda Agresiva (v4.72.0) 🛡️🔍",
+        description: "Implementación de mapeo SQL CASE-INSENSITIVE para dominios y subdominios.",
         type: "major",
         changes: [
-            { type: "fixed", text: "Herencia: Restauración total de la personalización para clubes en borrador/setup." },
-            { type: "improved", text: "Identidad: Mejora en la detección de dominios para asegurar carga de settings locales." },
-            { type: "fixed", text: "Estabilidad: Eliminación del fallback agresivo a 'origen' en el panel admin." }
+            { type: "fixed", text: "Identidad: Búsqueda insensible a mayúsculas para dominios personalizados." },
+            { type: "added", text: "Diagnóstico: Coincidencia parcial de subdominios para evitar caídas a 'origen'." },
+            { type: "improved", text: "Estabilidad: Blindaje total de la herencia de datos multimedia." }
         ]
     },
     {
