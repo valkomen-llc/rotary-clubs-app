@@ -26,15 +26,15 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 13:00 (NUCLEAR PURGE ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: "v4.59.0",
+        version: "v4.60.0",
         date: "23 de Abril, 2026",
-        title: "Rescate & CRM: Edición Maestra (v4.59.0) 🚀🛡️",
-        description: "Versión de rescate definitiva con dependencias restauradas y estabilidad absoluta.",
+        title: "Identidad & Motor: Restauración Total (v4.60.0) 🚀🛡️",
+        description: "Versión definitiva de recuperación de marca y estabilidad del motor Express.",
         type: "major",
         changes: [
-            { type: "fixed", text: "Build: Restaurada dependencia 'sonner' (soluciona error Vercel)." },
-            { type: "fixed", text: "CRM: Visibilidad distrital 4271 activa y funcional." },
-            { type: "improved", text: "Infraestructura: Saneamiento total de conexiones de base de datos." }
+            { type: "fixed", text: "Motor: Restaurada dependencia 'express' (soluciona colapso total)." },
+            { type: "fixed", text: "Identidad: Recuperada personalización, logos y colores de clubes." },
+            { type: "improved", text: "Build: Optimización de tubería de despliegue en Vercel." }
         ]
     },
     {
