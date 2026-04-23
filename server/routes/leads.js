@@ -3,8 +3,8 @@ import db from '../lib/db.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { PrismaClient } from '@prisma/client';
 import EmailService from '../services/EmailService.js';
+import prisma from '../lib/prisma.js'; // IMPORTACIÓN CRÍTICA PARA ESTABILIDAD
 
-const prisma = new PrismaClient();
 const router = express.Router();
 
 // ── Auto-create Lead table if it doesn't exist ────────────────────────────
