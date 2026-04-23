@@ -180,6 +180,9 @@ router.get('/', authMiddleware, async (req, res) => {
             } else {
                 where.push(`"clubId" IS NULL`);
             }
+        } else if (req.user.role === 'administrator' && !districtId) {
+            // SÚPER ADMIN GLOBAL: No aplicamos filtros de clubId/districtId, ve todo.
+            console.log('Global Admin detected: Unrestricted lead access.');
         } else if (clubId) {
             where.push(`"clubId" = $${idx++}`);
             params.push(clubId);
@@ -219,6 +222,8 @@ router.get('/', authMiddleware, async (req, res) => {
             } else {
                 countsWhereBasis.push(`"clubId" IS NULL`);
             }
+        } else if (req.user.role === 'administrator' && !districtId) {
+            // SÚPER ADMIN GLOBAL: No aplicamos filtros, cuenta todo.
         } else if (clubId) {
             countsWhereBasis.push(`"clubId" = $${cIdx++}`);
             countsParams.push(clubId);
