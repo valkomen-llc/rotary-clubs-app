@@ -3,23 +3,23 @@ import axios from 'axios';
 
 const prisma = new PrismaClient();
 
-// Configuración de la App de Facebook (deberían venir de .env)
-const FB_APP_ID = process.env.FB_APP_ID || '';
+// Configuración Centralizada de la App de Facebook (Club Platform)
+const FB_APP_ID = process.env.FB_APP_ID || '2190338908168499';
 const FB_APP_SECRET = process.env.FB_APP_SECRET || '';
 
 export const socialController = {
     // Paso 1: Generar URL de autorización
     getFacebookAuthUrl: (req, res) => {
-        // Detectar URL base dinámicamente si no está en el .env
-        const protocol = req.headers['x-forwarded-proto'] || 'http';
-        const host = req.get('host');
-        const baseUrl = process.env.APP_URL || `${protocol}://${host}`;
+        // Forzar dominio centralizado para OAuth si estamos en producción
+        const baseUrl = process.env.NODE_ENV === 'production' 
+            ? 'https://app.clubplatform.org' 
+            : `${req.protocol}://${req.get('host')}`;
+            
         const redirectUri = `${baseUrl}/api/social/callback/facebook`;
-
         const scope = 'pages_show_list,pages_read_engagement,pages_manage_posts,public_profile';
+        
         const url = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${FB_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&display=popup`;
         
-        console.log('Generando OAuth Auth URL para:', FB_APP_ID);
         res.json({ url });
     },
 
@@ -28,10 +28,10 @@ export const socialController = {
         const { code } = req.query;
         const hostname = req.hostname;
         
-        // Calcular URI de redirección igual que en el Paso 1
-        const protocol = req.headers['x-forwarded-proto'] || 'http';
-        const host = req.get('host');
-        const baseUrl = process.env.APP_URL || `${protocol}://${host}`;
+        // Calcular URI de redirección centralizada
+        const baseUrl = process.env.NODE_ENV === 'production' 
+            ? 'https://app.clubplatform.org' 
+            : `${req.protocol}://${req.get('host')}`;
         const redirectUri = `${baseUrl}/api/social/callback/facebook`;
         
         if (!code) return res.redirect('/admin/social-hub?status=error&message=no_code');
