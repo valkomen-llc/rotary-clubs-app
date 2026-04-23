@@ -1,26 +1,19 @@
-// Lazy-loaded database module for Vercel serverless compatibility
-// Uses dynamic import() to avoid top-level CJS/ESM conflict
+import { PrismaClient } from '@prisma/client';
 
-let _pool = null;
-
-const getPool = async () => {
-    if (!_pool) {
-        const pg = await import('pg');
-        const { Pool } = pg.default;
-        _pool = new Pool({
-            connectionString: process.env.DATABASE_URL,
-            ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false },
-            max: 10, // Increased for dashboard concurrency
-            idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 5000, // Fail fast to use defaults
-        });
-    }
-    return _pool;
+const prismaClientSingleton = () => {
+  return new PrismaClient();
 };
 
-const query = async (text, params) => {
-    const pool = await getPool();
-    return pool.query(text, params);
-};
+const globalForPrisma = global;
+const prisma = globalForPrisma.prisma ?? prismaClientSingleton();
 
-export default { query, getPool };
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+
+export default {
+  query: async (text, params) => {
+    // Fallback for legacy raw queries if needed, but Prisma should be used
+    return prisma.$queryRawUnsafe(text.replace(/\$\d/g, '?'), ...(params || []))
+      .then(rows => ({ rows }));
+  },
+  prisma
+};

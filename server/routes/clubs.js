@@ -21,79 +21,58 @@ router.get('/by-domain', async (req, res) => {
     }
 
     try {
-        // CLEAN DOMAIN: Remove www. and handle case-insensitivity
         const cleanDomain = domain.toLowerCase().replace(/^www\./, '');
-        const domainPart = cleanDomain.split('.')[0];
-
-        console.log(`[IDENTITY_PROBE] Querying: ${cleanDomain} | Part: ${domainPart}`);
-
-        // 1. Fetch Master Club (origen) to get global logos and settings
-        const masterResult = await db.query(
-            `SELECT c.logo, c."footerLogo", c."endPolioLogo", c.favicon, s.key, s.value 
-             FROM "Club" c 
-             LEFT JOIN "Setting" s ON s."clubId" = c.id 
-             WHERE LOWER(c.subdomain) = 'origen'`,
-            []
-        );
         
-        const masterLogos = masterResult.rows.length ? {
-            logo: masterResult.rows[0].logo,
-            footerLogo: masterResult.rows[0].footerLogo,
-            endPolioLogo: masterResult.rows[0].endPolioLogo,
-            favicon: masterResult.rows[0].favicon
+        // Use Prisma for all lookups to ensure column mapping stability
+        const masterClub = await db.prisma.club.findFirst({
+            where: { subdomain: 'origen' },
+            include: { settings: true }
+        });
+
+        const masterLogos = masterClub ? {
+            logo: masterClub.logo,
+            footerLogo: masterClub.footerLogo,
+            endPolioLogo: masterClub.endPolioLogo,
+            favicon: masterClub.favicon
         } : {};
 
         const masterSettings = {};
-        masterResult.rows.forEach(r => {
-            if (r.key) masterSettings[r.key] = r.value;
+        masterClub?.settings.forEach(s => {
+            masterSettings[s.key] = s.value;
         });
 
-        // 2. Fetch Current Club (AGRESSIVE & CASE-INSENSITIVE)
-        // We prioritize exact domain match, then subdomain match. We IGNORE status for identity resolution to prevent site death.
-        let result = await db.query(
-            `SELECT c.id, c.name, c.city, c.logo, c."footerLogo", c."endPolioLogo", c.favicon, c.domain, c.subdomain, c.status, c.type,
-             s.key, s.value,
-             (SELECT COUNT(*) FROM "Product" p WHERE p."clubId" = c.id AND p.status = 'active') as "productsCount",
-             (SELECT COUNT(*) FROM "CalendarEvent" ce WHERE ce."clubId" = c.id) as "eventsCount"
-             FROM "Club" c 
-             LEFT JOIN "Setting" s ON s."clubId" = c.id
-             WHERE (LOWER(c.domain) = $1 OR LOWER(c.subdomain) = $2 OR LOWER(c.domain) = $3)
-             ORDER BY CASE WHEN LOWER(c.domain) = $1 THEN 0 ELSE 1 END ASC`,
-            [cleanDomain, domainPart, domain.toLowerCase()]
-        );
+        // 2. Fetch Current Club with Prisma (FAILSIGHT)
+        const club = await db.prisma.club.findFirst({
+            where: {
+                OR: [
+                    { domain: { equals: cleanDomain, mode: 'insensitive' } },
+                    { subdomain: { equals: cleanDomain.split('.')[0], mode: 'insensitive' } },
+                    { domain: { equals: domain, mode: 'insensitive' } }
+                ]
+            },
+            include: {
+                settings: true,
+                _count: {
+                    select: { products: { where: { status: 'active' } }, events: true }
+                }
+            }
+        });
 
-        let rows = result.rows;
-
-        if (!rows.length) {
-            console.warn(`[IDENTITY_WARNING] No specific club found for ${cleanDomain}. Falling back to Origen.`);
-            result = await db.query(
-                `SELECT c.id, c.name, c.city, c.logo, c."footerLogo", c."endPolioLogo", c.favicon, c.domain, c.subdomain, c.status, c.type,
-                 s.key, s.value,
-                 (SELECT COUNT(*) FROM "Product" p WHERE p."clubId" = c.id AND p.status = 'active') as "productsCount",
-                 (SELECT COUNT(*) FROM "CalendarEvent" ce WHERE ce."clubId" = c.id) as "eventsCount"
-                 FROM "Club" c 
-                 LEFT JOIN "Setting" s ON s."clubId" = c.id
-                 WHERE LOWER(c.subdomain) = 'origen'`
-            );
-            rows = result.rows;
+        let activeClub = club;
+        if (!activeClub) {
+            console.warn(`[IDENTITY] Fallback to Origen for ${cleanDomain}`);
+            activeClub = masterClub;
         }
 
-        if (!rows.length) {
+        if (!activeClub) {
             return res.status(404).json({ error: 'Club not found' });
         }
 
-        // Group settings
-        const clubDataRaw = {};
         const settings = {};
-        rows.forEach(r => {
-            if (!clubDataRaw.id) {
-                const { key, value, ...clubInfo } = r;
-                Object.assign(clubDataRaw, clubInfo);
-            }
-            if (r.key) settings[r.key] = r.value;
+        activeClub.settings.forEach(s => {
+            settings[s.key] = s.value;
         });
 
-        // Use a consistent fallback for logo assets if neither the club nor master has them
         const defaultFooter = "https://rotary-platform-assets.s3.amazonaws.com/logos/rotary-logo-white-main.png";
 
         // Fetch global settings

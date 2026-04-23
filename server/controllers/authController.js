@@ -15,12 +15,15 @@ const getJwt = async () => {
 export const login = async (req, res) => {
     const { email, password } = req.body;
     try {
-        const result = await db.query(
-            `SELECT u.*, c.name as "clubName", c.subdomain as "clubSubdomain" 
-             FROM "User" u LEFT JOIN "Club" c ON u."clubId" = c.id WHERE u.email = $1`,
-            [email]
-        );
-        const user = result.rows[0];
+        const user = await db.prisma.user.findUnique({
+            where: { email },
+            include: {
+                club: {
+                    select: { id: true, name: true, subdomain: true }
+                }
+            }
+        });
+
         if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
         const bcryptLib = await getBcrypt();
@@ -41,7 +44,7 @@ export const login = async (req, res) => {
                 email: user.email,
                 role: user.role,
                 clubId: user.clubId || null,
-                club: user.clubId ? { id: user.clubId, name: user.clubName, subdomain: user.clubSubdomain } : null
+                club: user.club
             }
         });
     } catch (err) {

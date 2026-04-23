@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-23 13:00 (NUCLEAR PURGE ☢️)
+// Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.80.0",
+        date: "23 de Abril, 2026",
+        title: "Núcleo: Estabilidad Elástica (v4.80.0) 🛡️🛠️",
+        description: "Hibridación de lógica v4.69 con motor de datos Prisma para sanar el login y la identidad.",
+        type: "update",
+        changes: [
+            { type: "fixed", text: "Infraestructura: Migración de Auth y Clubs a Prisma para eliminar el 'Server Error'." },
+            { type: "improved", text: "Identidad: Restauración total de multimedia y logos mediante consulta resiliente." },
+            { type: "fixed", text: "Compilación: Reparación de error de sintaxis en MissionControlVIP que bloqueaba despliegues." }
+        ]
+    },
     {
         version: "v4.79.0",
         date: "23 de Abril, 2026",
