@@ -9,6 +9,7 @@ const SocialHub: React.FC = () => {
         { id: 'linkedin', name: 'LinkedIn Professional', icon: Linkedin, color: 'text-blue-700', bg: 'bg-blue-50', connected: false, account: null },
         { id: 'twitter', name: 'X (Twitter)', icon: Twitter, color: 'text-gray-900', bg: 'bg-gray-50', connected: false, account: null }
     ]);
+    const [loadingPlatform, setLoadingPlatform] = useState<string | null>(null);
     const [isPageSelectorOpen, setIsPageSelectorOpen] = useState(false);
     const [mockPages] = useState([
         { id: 'p1', name: 'Rotary Club Buenaventura (Oficial)', followers: '1.2k' },
