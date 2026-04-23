@@ -26,15 +26,15 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 13:00 (NUCLEAR PURGE ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: "v4.75.0",
+        version: "v4.76.0",
         date: "23 de Abril, 2026",
-        title: "Núcleo: Fusión Genética (v4.75.0) 🛡️🧬",
-        description: "Agregación de múltiples registros para restaurar identidades fragmentadas.",
+        title: "Núcleo: Identidad Fluida (v4.76.0) 🛡️✨",
+        description: "Eliminación del bloqueo de renderizado causado por el banner de urgencia.",
         type: "major",
         changes: [
-            { type: "added", text: "Multi-ID: Implementación de ANY($1) para consolidar multimedia de registros huérfanos." },
-            { type: "fixed", text: "Identidad: Lógica de fusión para unificar logos y settings de múltiples coincidencias." },
-            { type: "improved", text: "Herencia: Blindaje total de la integridad visual mediante agregación." }
+            { type: "fixed", text: "Navbar: Independencia del renderizado del logo frente a la lógica de settings." },
+            { type: "improved", text: "Estabilidad: Blindaje contra errores de carga en el banner de suscripción." },
+            { type: "fixed", text: "Identidad: Restauración automática del logo y hero slider tras el fix del flujo." }
         ]
     },
     {

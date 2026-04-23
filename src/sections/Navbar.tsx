@@ -132,14 +132,14 @@ const Navbar = () => {
 
   return (
     <>
-      {/* Top Notification Banner (Urgency Alert) */}
-      {(club.settings as any)?.billing_banner_active && (
-        <div className="w-full bg-gradient-to-r from-red-600 via-red-700 to-red-900 border-b border-red-800/20 py-2.5 px-4 shadow-lg animate-in slide-in-from-top duration-700">
+      {/* Top Notification Banner (Urgency Alert) - Only render if explicitly active to avoid layout blocking */}
+      {club && club.settings && (club.settings as any).billing_banner_active === 'true' && (
+        <div className="w-full bg-gradient-to-r from-red-600 via-red-700 to-red-900 border-b border-red-800/20 py-2.5 px-4 shadow-lg animate-in slide-in-from-top duration-700 relative z-[60]">
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-center gap-3 text-white text-center sm:text-left">
             <div className="flex items-center gap-2">
               <span className="text-xl animate-pulse">🚨</span>
               <p className="text-sm font-bold tracking-tight">
-                {(club.settings as any)?.billing_banner_message || 'Su servicio está próximo a vencer. Por favor renueve su suscripción.'}
+                {(club.settings as any).billing_banner_message || 'Su servicio está próximo a vencer. Por favor renueve su suscripción.'}
               </p>
             </div>
             <button
