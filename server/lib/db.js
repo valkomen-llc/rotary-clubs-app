@@ -1,19 +1,26 @@
-import { PrismaClient } from '@prisma/client';
+import pkg from 'pg';
+const { Pool } = pkg;
+import dotenv from 'dotenv';
+import prisma from './prisma.js';
 
-const prismaClientSingleton = () => {
-  return new PrismaClient();
-};
+dotenv.config({ path: './server/.env' });
 
-const globalForPrisma = global;
-const prisma = globalForPrisma.prisma ?? prismaClientSingleton();
+// Singleton pattern for PG Pool to prevent connection leaks in serverless
+let pool;
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+if (!global.pgPool) {
+  global.pgPool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+    max: 10, // Limit connections
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 2000,
+  });
+}
+pool = global.pgPool;
 
 export default {
-  query: async (text, params) => {
-    // Fallback for legacy raw queries if needed, but Prisma should be used
-    return prisma.$queryRawUnsafe(text.replace(/\$\d/g, '?'), ...(params || []))
-      .then(rows => ({ rows }));
-  },
-  prisma
+  query: (text, params) => pool.query(text, params),
+  prisma,
+  pool
 };

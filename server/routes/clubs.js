@@ -80,18 +80,18 @@ router.get('/by-domain', async (req, res) => {
         const globalMapStyle = globalSettingsResult.rows[0]?.value || 'm';
 
         const mappedClub = {
-            ...clubDataRaw,
+            ...activeClub,
             // Map Style: Priority 1: Club Setting, Priority 2: Global Platform Setting
             mapStyle: settings['map_style'] || globalMapStyle,
             // LOGO INHERITANCE RULE:
             // 1. Header Logo: Use club's, fallback to master's
-            logo: clubDataRaw.logo || masterLogos.logo,
+            logo: activeClub.logo || masterLogos.logo,
             // 2. Footer Logo: Use club's, fallback to master's, fallback to hardcoded
-            footerLogo: clubDataRaw.footerLogo || masterLogos.footerLogo || defaultFooter,
+            footerLogo: activeClub.footerLogo || masterLogos.footerLogo || defaultFooter,
             // 3. End Polio Logo: Use club's, fallback to master's
-            endPolioLogo: clubDataRaw.endPolioLogo || masterLogos.endPolioLogo,
+            endPolioLogo: activeClub.endPolioLogo || masterLogos.endPolioLogo,
             // 4. Favicon: Use club's, fallback to master's
-            favicon: clubDataRaw.favicon || masterLogos.favicon,
+            favicon: activeClub.favicon || masterLogos.favicon,
 
             contact: {
                 email: settings['contact_email'] || '',
@@ -105,7 +105,7 @@ router.get('/by-domain', async (req, res) => {
             siteImages: await (async () => {
                 const imgRes = await db.query(
                     `SELECT content FROM "ContentSection" WHERE page = 'home' AND section = 'images' AND ("clubId" = $1 OR "clubId" IS NULL) ORDER BY "clubId" DESC LIMIT 1`,
-                    [clubDataRaw.id]
+                    [activeClub.id]
                 );
                 if (imgRes.rows.length === 0) return {};
                 const c = imgRes.rows[0].content;
@@ -128,9 +128,9 @@ router.get('/by-domain', async (req, res) => {
                 primary: settings['color_primary'] || '#013388',
                 secondary: settings['color_secondary'] || '#E29C00',
             },
-            logoText: clubDataRaw.name?.split(' ').pop(),
-            productsCount: parseInt(clubDataRaw.productsCount) || 0,
-            eventsCount: parseInt(clubDataRaw.eventsCount) || 0,
+            logoText: activeClub.name?.split(' ').pop(),
+            productsCount: activeClub._count?.products || 0,
+            eventsCount: activeClub._count?.events || 0,
             // Logo Size Inheritance: Priority 1: Club Setting, Priority 2: Master Club Setting, Priority 3: Default 200
             logoHeaderSize: parseInt(settings['logo_header_size']) || parseInt(masterSettings['logo_header_size']) || 200,
             onboardingCompleted: settings['onboarding_completed'] === 'true',
@@ -152,7 +152,7 @@ router.get('/by-domain', async (req, res) => {
             members: (await db.query(
                 `SELECT id, name, image, description, "isBoard", "boardRole", position 
                  FROM "ClubMember" WHERE "clubId" = $1 ORDER BY position ASC, "createdAt" DESC`,
-                [clubDataRaw.id]
+                [activeClub.id]
             )).rows
         };
 

@@ -292,7 +292,13 @@ const Navbar = () => {
                 onClick={() => setLanguageOpen(!languageOpen)}
                 className="flex items-center gap-1.5 px-2.5 py-1 border border-rotary-blue rounded-full text-xs text-rotary-blue hover:bg-sky-50 transition-colors"
               >
-                <span className="text-base leading-none">{currentLanguage.flag}</span>
+                <div className="w-5 h-3.5 overflow-hidden rounded-sm flex-shrink-0 shadow-sm border border-black/5">
+                  <img 
+                    src={`https://flagcdn.com/w40/${currentLanguage.flag}.png`} 
+                    alt="" 
+                    className="w-full h-full object-cover"
+                  />
+                </div>
                 <span className="font-semibold tracking-wide">{currentLanguage.code.toUpperCase()}</span>
                 <ChevronDown className={`w-3.5 h-3.5 transition-transform ${languageOpen ? 'rotate-180' : ''}`} />
               </button>
@@ -303,9 +309,15 @@ const Navbar = () => {
                     <button
                       key={l.code}
                       onClick={() => { setLang(l.code); setLanguageOpen(false); }}
-                      className={`w-full flex items-center gap-2.5 px-4 py-1.5 text-sm hover:bg-sky-50 transition-colors ${currentLanguage.code === l.code ? 'text-rotary-blue font-medium' : 'text-gray-700'}`}
+                      className={`w-full flex items-center gap-3 px-4 py-1.5 text-sm hover:bg-sky-50 transition-colors ${currentLanguage.code === l.code ? 'text-rotary-blue font-medium' : 'text-gray-700'}`}
                     >
-                      <span className="text-lg">{l.flag}</span>
+                      <div className="w-5 h-3.5 overflow-hidden rounded-sm flex-shrink-0 shadow-sm border border-black/5">
+                        <img 
+                          src={`https://flagcdn.com/w40/${l.flag}.png`} 
+                          alt="" 
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
                       <span>{l.name}</span>
                       {currentLanguage.code === l.code && (
                         <span className="ml-auto w-2 h-2 bg-rotary-blue rounded-full"></span>

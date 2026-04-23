@@ -21,6 +21,7 @@ export const ClubContext = createContext<ClubContextType | undefined>(undefined)
 export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [club, setClub] = useState<ClubConfig | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const hostname = window.location.hostname;
     const isMainPlatform = hostname === 'clubplatform.org' || hostname === 'www.clubplatform.org';
     const isAppPortal = hostname === 'app.clubplatform.org' || hostname === 'localhost' && window.location.port === '5174';
@@ -97,11 +98,15 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         });
                     }
                 } else {
+                    if (response.status >= 500) {
+                        setError('Database connection error. Please check quotas.');
+                    }
                     // Fallback to local config if API fails or club not found
                     setClub(getClubByHostname(hostname));
                 }
             } catch (error) {
                 console.error('Error loading club config:', error);
+                setError('Network error or platform maintenance.');
                 setClub(getClubByHostname(window.location.hostname));
             } finally {
                 setIsLoading(false);
@@ -112,11 +117,33 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, []);
 
     if (isLoading) {
-        return <div className="min-h-screen flex items-center justify-center bg-rotary-blue text-white">Cargando...</div>;
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center bg-[#0B1120] text-white">
+                <div className="w-10 h-10 border-2 border-white/20 border-t-blue-500 rounded-full animate-spin mb-4" />
+                <p className="text-sm text-gray-400 font-medium tracking-wide">Cargando plataforma...</p>
+            </div>
+        );
     }
 
-    if (!club) {
-        return <div className="min-h-screen flex items-center justify-center bg-red-600 text-white">Error: Club no encontrado</div>;
+    if (error && !club?.id) {
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center bg-[#0B1120] p-6 text-center">
+                <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center mb-6 border border-red-500/20">
+                    <span className="text-2xl">⚠️</span>
+                </div>
+                <h1 className="text-2xl font-black text-white mb-2">Mantenimiento de Infraestructura</h1>
+                <p className="text-gray-400 max-w-md leading-relaxed">
+                    Estamos experimentando una alta demanda en nuestros servidores. 
+                    Por favor, intenta de nuevo en unos minutos o contacta a soporte si el problema persiste.
+                </p>
+                <button 
+                    onClick={() => window.location.reload()}
+                    className="mt-8 px-6 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-900/20"
+                >
+                    Reintentar conexión
+                </button>
+            </div>
+        );
     }
 
     const isDraft = club?.status === 'draft';

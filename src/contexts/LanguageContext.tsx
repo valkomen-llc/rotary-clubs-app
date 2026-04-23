@@ -5,14 +5,14 @@ import React, {
 } from 'react';
 
 export const SUPPORTED_LANGUAGES = [
-    { code: 'es', name: 'Español', flag: '🇪🇸' },
-    { code: 'en', name: 'English', flag: '🇺🇸' },
-    { code: 'fr', name: 'Français', flag: '🇫🇷' },
-    { code: 'pt', name: 'Português', flag: '🇧🇷' },
-    { code: 'de', name: 'Deutsch', flag: '🇩🇪' },
-    { code: 'it', name: 'Italiano', flag: '🇮🇹' },
-    { code: 'ja', name: '日本語', flag: '🇯🇵' },
-    { code: 'ko', name: '한국어', flag: '🇰🇷' },
+    { code: 'es', name: 'Español', flag: 'es' },
+    { code: 'en', name: 'English', flag: 'us' },
+    { code: 'fr', name: 'Français', flag: 'fr' },
+    { code: 'pt', name: 'Português', flag: 'br' },
+    { code: 'de', name: 'Deutsch', flag: 'de' },
+    { code: 'it', name: 'Italiano', flag: 'it' },
+    { code: 'ja', name: '日本語', flag: 'jp' },
+    { code: 'ko', name: '한국어', flag: 'kr' },
 ];
 
 // ─── Cache ────────────────────────────────────────────────────────────────────

@@ -984,11 +984,10 @@ const BlogPost = () => {
                          </div>
                        ) : (
                          <>
-                           <img
+                            <img
                              src={item.url}
                              alt={`Galería ${index + 1}`}
                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                             crossOrigin="anonymous"
                            />
                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
                               <Maximize2 className="w-5 h-5 text-white" />
