@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-23 09:50 (FORCED PURGE)
+// Cache bust: 2026-04-23 10:42 (MEGA PURGE)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: "v4.52.0",
+        date: "23 de Abril, 2026",
+        title: "Omnicanalidad & Social Hub: Despliegue Épico 🚀💎",
+        description: "Versión final consolidada con selector de Fan Pages y optimización visual.",
+        type: "major",
+        changes: [
+            { type: "added", text: "Social Hub: Selector dinámico de Fan Pages para Facebook." },
+            { type: "improved", text: "UI: Contraste premium en el panel de omnicanalidad." },
+            { type: "fixed", text: "Sintaxis: Limpieza de etiquetas redundantes en el motor de proyectos." }
+        ]
+    },
     {
         version: "v4.51.0",
         date: "23 de Abril, 2026",
