@@ -13,6 +13,7 @@ import {
 import {
     getUsers, createUser, updateUser, deleteUser
 } from '../controllers/userController.js';
+import prisma from '../lib/prisma.js'; // IMPORTACIÓN CRÍTICA PARA EL DASHBOARD
 
 const router = express.Router();
 
