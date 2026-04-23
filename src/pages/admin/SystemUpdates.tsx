@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 20:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.49.0",
+        date: "23 de Abril, 2026",
+        title: "Pie de Página Omnicanal 🌐✨",
+        description: "Visualización dinámica de redes sociales en el sitio público.",
+        type: "major",
+        changes: [
+            { type: "added", text: "Sitio: Integrados iconos de las 6 redes sociales (LinkedIn, TikTok, etc.) en el Footer público." },
+            { type: "improved", text: "API: Mapeo automático de enlaces sociales desde la administración a la web pública." },
+            { type: "fixed", text: "Consistencia: Sincronización de llaves de datos entre el panel y el sitio web." }
+        ]
+    },
+    {
         version: "v4.48.1",
         date: "23 de Abril, 2026",
         title: "Build Fix: Compatibilidad de Iconos 🛠️",

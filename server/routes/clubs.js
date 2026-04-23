@@ -155,7 +155,14 @@ router.get('/by-domain', async (req, res) => {
                 rotaract_logo: settings['rotaract_logo'] || masterSettings['rotaract_logo'] || null,
                 interact_logo: settings['interact_logo'] || masterSettings['interact_logo'] || null,
                 youth_exchange_logo: settings['youth_exchange_logo'] || masterSettings['youth_exchange_logo'] || null,
-                hide_sample_news: settings['hide_sample_news'] === 'true'
+                hide_sample_news: settings['hide_sample_news'] === 'true',
+                // Social Media URLs
+                facebook_url: settings['social_facebook'] || '',
+                instagram_url: settings['social_instagram'] || '',
+                twitter_url: settings['social_twitter'] || '',
+                youtube_url: settings['social_youtube'] || '',
+                linkedin_url: settings['social_linkedin'] || '',
+                tiktok_url: settings['social_tiktok'] || '',
             },
             members: (await db.query(
                 `SELECT id, name, image, description, "isBoard", "boardRole", position 

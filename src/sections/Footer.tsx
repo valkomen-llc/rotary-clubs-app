@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Facebook, Twitter, Instagram, Youtube, Twitter as TwitterIcon, ArrowRight } from 'lucide-react';
+import { Facebook, Twitter, Instagram, Youtube, Linkedin, Music, ArrowRight } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useClub } from '../contexts/ClubContext';
@@ -138,7 +138,7 @@ const Footer = () => {
                              <div className="flex items-center gap-4">
                                 {club.settings?.twitter_url && (
                                     <a href={club.settings.twitter_url} target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all border border-white/5">
-                                        <TwitterIcon className="w-5 h-5 fill-white" />
+                                        <Twitter className="w-5 h-5 fill-white" />
                                     </a>
                                 )}
                                 {club.settings?.facebook_url && (
@@ -154,6 +154,16 @@ const Footer = () => {
                                 {club.settings?.youtube_url && (
                                     <a href={club.settings.youtube_url} target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all border border-white/5">
                                         <Youtube className="w-5 h-5 text-white fill-white" />
+                                    </a>
+                                )}
+                                {club.settings?.linkedin_url && (
+                                    <a href={club.settings.linkedin_url} target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all border border-white/5">
+                                        <Linkedin className="w-5 h-5 text-white fill-white" />
+                                    </a>
+                                )}
+                                {club.settings?.tiktok_url && (
+                                    <a href={club.settings.tiktok_url} target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all border border-white/5">
+                                        <Music className="w-5 h-5 text-white" />
                                     </a>
                                 )}
                              </div>
@@ -234,9 +244,12 @@ const Footer = () => {
                             <a href="https://my.rotary.org/terms-of-use" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Términos del Servicio</a>
                         </div>
                         <div className="flex items-center gap-6">
-                                {club.settings?.twitter_url && <TwitterIcon className="w-4 h-4 text-white/30 hover:text-white cursor-pointer transition-colors" />}
+                                {club.settings?.twitter_url && <Twitter className="w-4 h-4 text-white/30 hover:text-white cursor-pointer transition-colors" />}
                                 {club.settings?.facebook_url && <Facebook className="w-4 h-4 text-white/30 hover:text-white cursor-pointer transition-colors" />}
                                 {club.settings?.instagram_url && <Instagram className="w-4 h-4 text-white/30 hover:text-white cursor-pointer transition-colors" />}
+                                {club.settings?.youtube_url && <Youtube className="w-4 h-4 text-white/30 hover:text-white cursor-pointer transition-colors" />}
+                                {club.settings?.linkedin_url && <Linkedin className="w-4 h-4 text-white/30 hover:text-white cursor-pointer transition-colors" />}
+                                {club.settings?.tiktok_url && <Music className="w-4 h-4 text-white/30 hover:text-white cursor-pointer transition-colors" />}
                         </div>
                     </div>
                 </div>
