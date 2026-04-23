@@ -8,6 +8,7 @@ import {
 import { useAuth } from '../../hooks/useAuth';
 import Cropper from 'react-easy-crop';
 import { getCroppedImg } from '../../utils/cropImage';
+import { getAutoCropCanvas, fileToImage, canvasToFile } from '../../utils/cropUtils';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -1236,32 +1237,67 @@ const OnboardingFlow: React.FC = () => {
     };
 
     const handleLogoUpload = async (file: File) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-            setImageToCrop({
-                url: reader.result as string,
-                // No aspect for logo, allow free crop
-                name: file.name,
-                onSave: async (blob) => {
-                    setImageToCrop(null);
-                    setUploading(true);
-                    try {
-                        const formData = new FormData();
-                        formData.append('file', new File([blob], file.name, { type: blob.type }));
-                        const res = await fetch(`${API}/media/upload-logo?folder=logos`, {
-                            method: 'POST',
-                            headers: { Authorization: `Bearer ${token}` },
-                            body: formData,
-                        });
-                        const data = await res.json();
-                        const url = data.url || data.secure_url || '';
-                        if (url) setBranding(b => ({ ...b, logo: url }));
-                    } catch { /* ignore */ }
-                    setUploading(false);
-                }
-            });
-        };
-        reader.readAsDataURL(file);
+        try {
+            // Auto-crop logo content BEFORE showing crop modal (v4.46.0)
+            const img = await fileToImage(file);
+            const canvas = getAutoCropCanvas(img);
+            const finalFile = canvas ? await canvasToFile(canvas, file.name.replace(/\.[^.]+$/, '.png')) : file;
+
+            const reader = new FileReader();
+            reader.onload = () => {
+                setImageToCrop({
+                    url: reader.result as string,
+                    // No aspect for logo, allow free crop
+                    name: finalFile.name,
+                    onSave: async (blob) => {
+                        setImageToCrop(null);
+                        setUploading(true);
+                        try {
+                            const formData = new FormData();
+                            formData.append('file', new File([blob], finalFile.name, { type: blob.type }));
+                            const res = await fetch(`${API}/media/upload-logo?folder=logos`, {
+                                method: 'POST',
+                                headers: { Authorization: `Bearer ${token}` },
+                                body: formData,
+                            });
+                            const data = await res.json();
+                            const url = data.url || data.secure_url || '';
+                            if (url) setBranding(b => ({ ...b, logo: url }));
+                        } catch { /* ignore */ }
+                        setUploading(false);
+                    }
+                });
+            };
+            reader.readAsDataURL(finalFile);
+        } catch (error) {
+            console.error('Auto-crop error in onboarding:', error);
+            // Fallback to original file
+            const reader = new FileReader();
+            reader.onload = () => {
+                setImageToCrop({
+                    url: reader.result as string,
+                    name: file.name,
+                    onSave: async (blob) => {
+                        setImageToCrop(null);
+                        setUploading(true);
+                        try {
+                            const formData = new FormData();
+                            formData.append('file', new File([blob], file.name, { type: blob.type }));
+                            const res = await fetch(`${API}/media/upload-logo?folder=logos`, {
+                                method: 'POST',
+                                headers: { Authorization: `Bearer ${token}` },
+                                body: formData,
+                            });
+                            const data = await res.json();
+                            const url = data.url || data.secure_url || '';
+                            if (url) setBranding(b => ({ ...b, logo: url }));
+                        } catch { /* ignore */ }
+                        setUploading(false);
+                    }
+                });
+            };
+            reader.readAsDataURL(file);
+        }
     };
 
     const handleSiteImageUpload = async (key: string, file: File, index: number) => {

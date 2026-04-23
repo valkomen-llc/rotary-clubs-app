@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-22 20:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.46.0",
+        date: "23 de Abril, 2026",
+        title: "Identidad Visual: Precision Auto-Crop 🎞️",
+        description: "Implementación de motor de detección de bordes para logos institucionales.",
+        type: "major",
+        changes: [
+            { type: "improved", text: "Estética: Recorte automático de márgenes blancos en logos de clubes/distritos/asociaciones." },
+            { type: "major", text: "Consistencia: Sincronización del motor de precisión en Onboarding y Ajustes." },
+            { type: "improved", text: "UX: Pre-selección inteligente del área de contenido para imágenes corporativas." }
+        ]
+    },
+    {
         version: "v4.45.0",
         date: "22 de Abril, 2026",
         title: "Content Studio: Black Box Diagnostics 📡",

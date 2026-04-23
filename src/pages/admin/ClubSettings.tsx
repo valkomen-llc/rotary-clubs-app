@@ -5,6 +5,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { Save, Globe, MessageSquare, Phone, Palette, Upload, Image as ImageIcon, Store, Dna, Settings as SettingsIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
+import { getAutoCropCanvas, fileToImage, canvasToFile } from '../../utils/cropUtils';
 
 const ClubSettings: React.FC = () => {
     const { club } = useClub();
@@ -131,62 +132,19 @@ const ClubSettings: React.FC = () => {
         }
     }, [club]);
 
-    // Auto-crop whitespace from logo on the client using Canvas API
-    const autoCropImage = (file: File): Promise<Blob> => {
-        return new Promise((resolve) => {
-            const img = new Image();
-            const url = URL.createObjectURL(file);
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                const ctx = canvas.getContext('2d')!;
-                ctx.drawImage(img, 0, 0);
-                URL.revokeObjectURL(url);
-
-                const { data, width, height } = ctx.getImageData(0, 0, img.width, img.height);
-
-                let top = height, bottom = 0, left = width, right = 0;
-                for (let y = 0; y < height; y++) {
-                    for (let x = 0; x < width; x++) {
-                        const idx = (y * width + x) * 4;
-                        const r = data[idx], g = data[idx + 1], b = data[idx + 2], a = data[idx + 3];
-                        // Consider pixel as "content" if not near-white and not transparent
-                        const isContent = a > 10 && !(r > 225 && g > 225 && b > 225);
-                        if (isContent) {
-                            if (y < top) top = y;
-                            if (y > bottom) bottom = y;
-                            if (x < left) left = x;
-                            if (x > right) right = x;
-                        }
-                    }
-                }
-
-                // Add small padding (4px) around the detected content
-                const pad = 4;
-                top = Math.max(0, top - pad);
-                left = Math.max(0, left - pad);
-                bottom = Math.min(height - 1, bottom + pad);
-                right = Math.min(width - 1, right + pad);
-
-                const cropW = right - left + 1;
-                const cropH = bottom - top + 1;
-
-                // If crop found valid content, crop; otherwise return original
-                if (cropW > 0 && cropH > 0 && (cropW < width || cropH < height)) {
-                    const cropped = document.createElement('canvas');
-                    cropped.width = cropW;
-                    cropped.height = cropH;
-                    cropped.getContext('2d')!.drawImage(canvas, left, top, cropW, cropH, 0, 0, cropW, cropH);
-                    cropped.toBlob((blob) => resolve(blob || file), 'image/png');
-                } else {
-                    // No crop needed, return original
-                    canvas.toBlob((blob) => resolve(blob || file), 'image/png');
-                }
-            };
-            img.onerror = () => resolve(file); // Fallback to original on error
-            img.src = url;
-        });
+    // Auto-crop whitespace from logo on the client using refined detection (v4.46.0)
+    const handleAutoCrop = async (file: File): Promise<File> => {
+        try {
+            const img = await fileToImage(file);
+            const canvas = getAutoCropCanvas(img);
+            if (canvas) {
+                return await canvasToFile(canvas, file.name.replace(/\.[^.]+$/, '.png'));
+            }
+            return file;
+        } catch (error) {
+            console.error('Auto-crop error:', error);
+            return file;
+        }
     };
 
     const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -195,9 +153,8 @@ const ClubSettings: React.FC = () => {
 
         setUploading(true);
         try {
-            // Auto-crop whitespace on client side using Canvas
-            const croppedBlob = await autoCropImage(file);
-            const croppedFile = new File([croppedBlob], file.name.replace(/\.[^.]+$/, '.png'), { type: 'image/png' });
+            // Auto-crop whitespace on client side using Refined Detection (v4.46.0)
+            const croppedFile = await handleAutoCrop(file);
 
             const uploadData = new FormData();
             uploadData.append('file', croppedFile);
@@ -235,11 +192,11 @@ const ClubSettings: React.FC = () => {
         if (!file) return;
 
         setUploading(true);
-        const formDataUpload = new FormData();
-        formDataUpload.append('file', file);
-        formDataUpload.append('folder', 'logos-footer');
-
         try {
+            const croppedFile = await handleAutoCrop(file);
+            const formDataUpload = new FormData();
+            formDataUpload.append('file', croppedFile);
+            formDataUpload.append('folder', 'logos-footer');
             const token = localStorage.getItem('rotary_token');
             const apiUrl = import.meta.env.VITE_API_URL || '/api';
             const targetUrl = `${apiUrl}/media/upload?folder=logos-footer&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
@@ -272,11 +229,11 @@ const ClubSettings: React.FC = () => {
         if (!file) return;
 
         setUploading(true);
-        const formDataUpload = new FormData();
-        formDataUpload.append('file', file);
-        formDataUpload.append('folder', 'logos-endpolio');
-
         try {
+            const croppedFile = await handleAutoCrop(file);
+            const formDataUpload = new FormData();
+            formDataUpload.append('file', croppedFile);
+            formDataUpload.append('folder', 'logos-endpolio');
             const token = localStorage.getItem('rotary_token');
             const apiUrl = import.meta.env.VITE_API_URL || '/api';
             const targetUrl = `${apiUrl}/media/upload?folder=logos-endpolio&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
@@ -309,11 +266,11 @@ const ClubSettings: React.FC = () => {
         if (!file) return;
 
         setUploading(true);
-        const formDataUpload = new FormData();
-        formDataUpload.append('file', file);
-        formDataUpload.append('folder', 'logos-rotaract');
-
         try {
+            const croppedFile = await handleAutoCrop(file);
+            const formDataUpload = new FormData();
+            formDataUpload.append('file', croppedFile);
+            formDataUpload.append('folder', 'logos-rotaract');
             const token = localStorage.getItem('rotary_token');
             const apiUrl = import.meta.env.VITE_API_URL || '/api';
             const targetUrl = `${apiUrl}/media/upload?folder=logos-rotaract&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
@@ -345,14 +302,11 @@ const ClubSettings: React.FC = () => {
         if (!e.target.files || e.target.files.length === 0) return;
 
         setUploading(true);
-        const file = e.target.files[0];
-
-        // Ensure we send it to specific folder 'logos-interact'
-        const formDataUpload = new FormData();
-        formDataUpload.append('file', file);
-        formDataUpload.append('folder', 'logos-interact');
-
         try {
+            const croppedFile = await handleAutoCrop(file);
+            const formDataUpload = new FormData();
+            formDataUpload.append('file', croppedFile);
+            formDataUpload.append('folder', 'logos-interact');
             const token = localStorage.getItem('rotary_token');
             const apiUrl = import.meta.env.VITE_API_URL || '/api';
             const targetUrl = `${apiUrl}/media/upload-logo?folder=logos-interact&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
@@ -384,14 +338,11 @@ const ClubSettings: React.FC = () => {
         if (!e.target.files || e.target.files.length === 0) return;
 
         setUploading(true);
-        const file = e.target.files[0];
-
-        // Ensure we send it to specific folder 'logos-exchange'
-        const formDataUpload = new FormData();
-        formDataUpload.append('file', file);
-        formDataUpload.append('folder', 'logos-exchange');
-
         try {
+            const croppedFile = await handleAutoCrop(file);
+            const formDataUpload = new FormData();
+            formDataUpload.append('file', croppedFile);
+            formDataUpload.append('folder', 'logos-exchange');
             const token = localStorage.getItem('rotary_token');
             const apiUrl = import.meta.env.VITE_API_URL || '/api';
             const targetUrl = `${apiUrl}/media/upload-logo?folder=logos-exchange&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
@@ -424,11 +375,11 @@ const ClubSettings: React.FC = () => {
         if (!file) return;
 
         setUploading(true);
-        const formDataUpload = new FormData();
-        formDataUpload.append('file', file);
-        formDataUpload.append('folder', 'favicons');
-
         try {
+            const croppedFile = await handleAutoCrop(file);
+            const formDataUpload = new FormData();
+            formDataUpload.append('file', croppedFile);
+            formDataUpload.append('folder', 'favicons');
             const token = localStorage.getItem('rotary_token');
             const apiUrl = import.meta.env.VITE_API_URL || '/api';
             const targetUrl = `${apiUrl}/media/upload?folder=favicons&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
@@ -486,8 +437,9 @@ const ClubSettings: React.FC = () => {
         if (!file) return;
         setUploadingPlatformLogo(true);
         try {
+            const croppedFile = await handleAutoCrop(file);
             const formData = new FormData();
-            formData.append('file', file);
+            formData.append('file', croppedFile);
             const token = localStorage.getItem('rotary_token');
             const apiUrl = import.meta.env.VITE_API_URL || '/api';
             const res = await fetch(`${apiUrl}/platform-config/logo/upload`.replace(/\/+/g, '/').replace(':/', '://'), {

@@ -8,6 +8,7 @@ import {
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
 import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
+import { getAutoCropCanvas, fileToImage, canvasToFile } from '../../utils/cropUtils';
 
 const ClubProfile: React.FC = () => {
     const { user } = useAuth();
@@ -117,10 +118,15 @@ const ClubProfile: React.FC = () => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        const formDataUpload = new FormData();
-        formDataUpload.append('file', file);
-
         try {
+            // Auto-crop logo content (v4.46.0)
+            const img = await fileToImage(file);
+            const canvas = getAutoCropCanvas(img);
+            const finalFile = canvas ? await canvasToFile(canvas, file.name.replace(/\.[^.]+$/, '.png')) : file;
+
+            const formDataUpload = new FormData();
+            formDataUpload.append('file', finalFile);
+
             const token = localStorage.getItem('rotary_token');
             const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/media/upload-logo`, {
                 method: 'POST',
@@ -131,7 +137,7 @@ const ClubProfile: React.FC = () => {
             if (response.ok) {
                 const data = await response.json();
                 setFormData(prev => ({ ...prev, logo: data.url }));
-                toast.success('Logo cargado correctamente');
+                toast.success('Logo cargado y recortado correctamente');
             }
         } catch (error) {
             toast.error('Error al subir el logo');
