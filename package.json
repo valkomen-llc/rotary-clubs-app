@@ -1,7 +1,7 @@
 {
   "name": "rotary-clubs-app-v4-51",
   "private": true,
-  "version": "4.57.0",
+  "version": "4.58.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -76,7 +76,6 @@
     "react-router-dom": "^7.13.0",
     "recharts": "^2.15.4",
     "sharp": "^0.34.5",
-    "sonner": "^2.0.7",
     "stripe": "^20.4.1",
     "tailwind-merge": "^3.4.0",
     "vaul": "^1.1.2",

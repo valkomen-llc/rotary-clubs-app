@@ -26,15 +26,15 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 13:00 (NUCLEAR PURGE ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: "v4.55.0",
+        version: "v4.58.0",
         date: "23 de Abril, 2026",
-        title: "Omnicanalidad & CRM: Restauración Total (v4.55.0) 🚀🛡️",
-        description: "Versión maestra con Leads distritales corregidos y visualización garantizada.",
+        title: "Infraestructura & CRM: Edición Maestra (v4.58.0) 🚀🛡️",
+        description: "Versión definitiva con estabilidad de conexiones y visualización panorámica total.",
         type: "major",
         changes: [
-            { type: "fixed", text: "Leads: Visibilidad restaurada para Distrito 4271." },
-            { type: "added", text: "CRM: Unificación de contadores multiclub." },
-            { type: "improved", text: "Caché: Forzado de reconstrucción total en Vercel." }
+            { type: "fixed", text: "Infraestructura: Eliminadas fugas de conexión de DB." },
+            { type: "fixed", text: "CRM: Visibilidad restaurada para todos los clubes del distrito." },
+            { type: "improved", text: "Estabilidad: Blindaje total contra errores 500 en Vercel." }
         ]
     },
     {
