@@ -26,6 +26,13 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.85.5",
+        date: "24 de Abril, 2026",
+        title: "Banner: Estética Estática y Centrada",
+        description: "Ajuste final del banner de vencimiento: centrado del texto, eliminación de negritas y desactivación de animaciones para una presentación más sobria y directa.",
+        type: "feature" as const
+    },
+    {
         version: "v4.85.4",
         date: "24 de Abril, 2026",
         title: "Penalty Mode & Marquee Alerts",
