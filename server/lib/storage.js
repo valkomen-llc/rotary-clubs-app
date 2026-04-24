@@ -7,16 +7,19 @@ import path from 'path';
 
 console.log(`Initializing S3 for bucket: ${process.env.AWS_BUCKET_NAME} in region: ${process.env.AWS_REGION}`);
 
+import { NodeHttpHandler } from "@smithy/node-http-handler";
+
 export const s3 = new S3Client({
     region: process.env.AWS_REGION || 'us-east-1',
     credentials: {
         accessKeyId: process.env.ROTARY_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID,
         secretAccessKey: process.env.ROTARY_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY,
     },
-    // Prevent hanging in serverless environments
+    requestHandler: new NodeHttpHandler({
+        connectionTimeout: 5000,
+        socketTimeout: 5000,
+    }),
     maxAttempts: 2,
-    requestTimeout: 5000, // 5 seconds
-    connectionTimeout: 5000,
 });
 
 export const upload = multer({

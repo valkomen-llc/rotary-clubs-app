@@ -26,6 +26,13 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.86.7",
+        date: "24 de Abril, 2026",
+        title: "Doble Protección de Timeout",
+        description: "Se implementó una capa redundante de timeout por software para garantizar que el servidor responda incluso si los servicios de infraestructura (S3) no responden a tiempo.",
+        type: "improvement" as const
+    },
+    {
         version: "v4.86.6",
         date: "24 de Abril, 2026",
         title: "Mitigación de Timeouts (S3)",

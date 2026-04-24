@@ -49,12 +49,19 @@ router.post('/logo/upload', (req, res) => {
 
             console.log(`[PlatformConfig] Uploading logo to S3: ${s3Key} in bucket: ${bucket}`);
 
-            await s3.send(new PutObjectCommand({
+            // Manual timeout for S3 operation
+            const s3UploadPromise = s3.send(new PutObjectCommand({
                 Bucket: bucket,
                 Key: s3Key,
                 Body: req.file.buffer,
                 ContentType: req.file.mimetype,
             }));
+
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('S3_TIMEOUT')), 8000)
+            );
+
+            await Promise.race([s3UploadPromise, timeoutPromise]);
 
             const encodedKey = s3Key.split('/').map(seg => encodeURIComponent(seg)).join('/');
             const url = `https://${bucket}.s3.${region}.amazonaws.com/${encodedKey}`;
