@@ -26,6 +26,13 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.86.4",
+        date: "24 de Abril, 2026",
+        title: "Diagnóstico Avanzado de Errores",
+        description: "Se mejoró el sistema de alertas para capturar errores de texto plano del servidor y se migró la persistencia de configuración global a Prisma para mayor estabilidad.",
+        type: "improvement" as const
+    },
+    {
         version: "v4.86.3",
         date: "24 de Abril, 2026",
         title: "Robustez en Conexión de Carga",

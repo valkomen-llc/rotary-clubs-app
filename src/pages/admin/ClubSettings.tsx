@@ -456,8 +456,15 @@ const ClubSettings: React.FC = () => {
                 setPlatformLogo(data.url);
                 toast.success('Logo del panel de acceso actualizado');
             } else {
-                const err = await res.json();
-                toast.error(err.error || 'Error al subir el logo');
+                let errorMsg = 'Error al subir el logo';
+                try {
+                    const err = await res.json();
+                    errorMsg = err.error || errorMsg;
+                } catch {
+                    const text = await res.text();
+                    errorMsg = text || errorMsg;
+                }
+                toast.error(errorMsg);
             }
         } catch (error: any) {
             console.error('Platform logo upload error:', error);

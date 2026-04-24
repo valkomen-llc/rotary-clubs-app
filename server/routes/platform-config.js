@@ -59,12 +59,11 @@ router.post('/logo/upload', (req, res) => {
 
             console.log(`[PlatformConfig] Logo uploaded to S3. URL: ${url}`);
 
-            await db.query(
-                `INSERT INTO "PlatformConfig" (id, key, value, "updatedAt")
-                 VALUES (gen_random_uuid(), 'platform_logo', $1, NOW())
-                 ON CONFLICT (key) DO UPDATE SET value = $1, "updatedAt" = NOW()`,
-                [url]
-            );
+            await db.prisma.platformConfig.upsert({
+                where: { key: 'platform_logo' },
+                update: { value: url, updatedAt: new Date() },
+                create: { key: 'platform_logo', value: url }
+            });
 
             res.json({ url });
         } catch (error) {
@@ -84,12 +83,11 @@ router.post('/logo/size', async (req, res) => {
         return res.status(400).json({ error: 'Tamaño inválido (24–200px)' });
     }
     try {
-        await db.query(
-            `INSERT INTO "PlatformConfig" (id, key, value, "updatedAt")
-             VALUES (gen_random_uuid(), 'platform_logo_size', $1, NOW())
-             ON CONFLICT (key) DO UPDATE SET value = $1, "updatedAt" = NOW()`,
-            [String(size)]
-        );
+        await db.prisma.platformConfig.upsert({
+            where: { key: 'platform_logo_size' },
+            update: { value: String(size), updatedAt: new Date() },
+            create: { key: 'platform_logo_size', value: String(size) }
+        });
         res.json({ size });
     } catch (error) {
         console.error('[PlatformConfig] Logo size error:', error);
@@ -101,12 +99,11 @@ router.post('/logo/size', async (req, res) => {
 router.post('/redirect', async (req, res) => {
     const { active } = req.body;
     try {
-        await db.query(
-            `INSERT INTO "PlatformConfig" (id, key, value, "updatedAt")
-             VALUES (gen_random_uuid(), 'saas_redirect', $1, NOW())
-             ON CONFLICT (key) DO UPDATE SET value = $1, "updatedAt" = NOW()`,
-            [active ? 'true' : 'false']
-        );
+        await db.prisma.platformConfig.upsert({
+            where: { key: 'saas_redirect' },
+            update: { value: active ? 'true' : 'false', updatedAt: new Date() },
+            create: { key: 'saas_redirect', value: active ? 'true' : 'false' }
+        });
         res.json({ active: !!active });
     } catch (error) {
         console.error('[PlatformConfig] Redirect save error:', error);
