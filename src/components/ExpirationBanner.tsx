@@ -21,8 +21,8 @@ const ExpirationBanner: React.FC = () => {
                         <span className="font-black uppercase tracking-[0.25em] text-[11px] text-white">Vencimiento</span>
                     </div>
                 </div>
-                <p className="text-sm leading-6 text-white font-normal">
-                    Sitio en periodo de renovación {currentYear}-{nextYear}. Evite suspensión, contacte a soporte técnico para asegurar su continuidad.
+                <p className="text-[13px] leading-6 text-white font-normal">
+                    Sitio en periodo de renovación {currentYear}-{nextYear}. Evite suspensión y bloqueos, contacte a soporte para asegurar su continuidad.
                 </p>
             </div>
         </div>

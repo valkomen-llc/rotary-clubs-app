@@ -26,6 +26,13 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.85.7",
+        date: "24 de Abril, 2026",
+        title: "Banner: Ajuste de Copy y Tipografía",
+        description: "Actualización del mensaje de advertencia para incluir 'bloqueos' y ajuste preciso del tamaño de fuente a 13px para mayor claridad.",
+        type: "feature" as const
+    },
+    {
         version: "v4.85.6",
         date: "24 de Abril, 2026",
         title: "Aviso: Restauración de Etiqueta Premium",
