@@ -26,6 +26,13 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.85.4",
+        date: "24 de Abril, 2026",
+        title: "Penalty Mode & Marquee Alerts",
+        description: "Activación del modo de penalización: el banner ahora es no-cerrable (X removida) y cuenta con un efecto 'marquee' para asegurar que el mensaje completo sea legible sin importar su longitud.",
+        type: "feature" as const
+    },
+    {
         version: "v4.85.3",
         date: "24 de Abril, 2026",
         title: "Dynamic Alerts & Sticky Layout",
