@@ -9,7 +9,7 @@ const ExpirationBanner: React.FC = () => {
     if (!club || !club.expirationBannerActive || !isVisible) return null;
 
     // Use a professional default message if none is provided
-    const defaultMessage = "Estimado usuario: Este sitio web se encuentra en periodo de renovación. Por favor contacte al administrador o a soporte técnico para asegurar la continuidad de los servicios y evitar la suspensión próxima.";
+    const defaultMessage = "Sitio en periodo de renovación. Contacte a soporte para asegurar la continuidad de los servicios y evitar la suspensión.";
     const message = club.expirationBannerMessage || defaultMessage;
 
     return (
@@ -20,12 +20,11 @@ const ExpirationBanner: React.FC = () => {
             <div className="absolute left-[max(45rem,calc(50%+8rem))] top-1/2 -z-10 -translate-y-1/2 transform-gpu blur-2xl" aria-hidden="true">
                 <div className="aspect-[577/310] w-[36.0625rem] bg-gradient-to-r from-[#ff80b5] to-[#9089fc] opacity-30" style={{ clipPath: 'polygon(74.8% 41.9%, 97.2% 73.2%, 100% 34.9%, 92.5% 0.4%, 87.5% 0%, 75% 28.6%, 58.5% 54.6%, 50.1% 56.8%, 46.9% 44%, 48.3% 17.4%, 24.7% 53.9%, 0% 27.9%, 11.9% 74.2%, 24.9% 54.1%, 44.1% 35.2%, 74.8% 41.9%)' }}></div>
             </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <p className="text-sm leading-6 text-white flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-yellow-300 animate-pulse" />
-                    <strong className="font-semibold uppercase tracking-wider text-[11px]">Aviso de Vencimiento</strong>
-                    <svg viewBox="0 0 2 2" className="mx-2 inline h-0.5 w-0.5 fill-current" aria-hidden="true"><circle cx="1" cy="1" r="1" /></svg>
-                    <span className="text-red-50 font-medium">{message}</span>
+            <div className="flex items-center gap-x-4 flex-1 min-w-0">
+                <p className="text-sm leading-6 text-white flex items-center gap-2 truncate">
+                    <AlertTriangle className="w-4 h-4 text-yellow-300 animate-pulse flex-shrink-0" />
+                    <strong className="font-black uppercase tracking-[0.2em] text-[10px] bg-red-700/50 px-2 py-0.5 rounded flex-shrink-0">Vencimiento</strong>
+                    <span className="text-red-50 font-medium truncate">{message}</span>
                 </p>
             </div>
             <div className="flex flex-1 justify-end">

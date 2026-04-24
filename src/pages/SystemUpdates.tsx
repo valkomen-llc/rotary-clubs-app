@@ -26,6 +26,13 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.85.2",
+        date: "24 de Abril, 2026",
+        title: "Aesthetix: Optimización de Banner Global",
+        description: "Refinamiento estético del banner de notificaciones para garantizar una visualización en una sola línea y mejorar la legibilidad en dispositivos móviles y escritorio.",
+        type: "feature" as const
+    },
+    {
         version: "v4.85.1",
         date: "24 de Abril, 2026",
         title: "HOTFIX: Restauración de Visibilidad Administrativa",
