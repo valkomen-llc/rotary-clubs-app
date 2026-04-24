@@ -82,6 +82,14 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
     },
     {
         version: "v4.3.4",
+        date: "14 Abril 2026",
+        title: "Integración de Perplexity & Refactorización de Mission Control",
+        type: "update",
+        changes: [
+            { type: "added", text: "Conectividad total con Perplexity Pro para la búsqueda de subvenciones en tiempo real." },
+            { type: "changed", text: "Nueva interfaz Kanban VIP con soporte para Peer Review y logs de agentes." }
+        ]
+    },
     {
         version: "v4.3.0",
         date: "13 Abril 2026",

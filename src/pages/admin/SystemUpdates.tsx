@@ -625,7 +625,6 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
     },
     {
         version: "v4.12.4",
-        status: "Beta",
         date: "22 de Abril, 2026",
         title: "ArticulIA: Asistente de Redacción Profesional",
         description: "Lanzamiento de la herramienta de redacción asistida, capaz de transformar notas breves en artículos estructurados de alta calidad con SEO y material promocional.",
@@ -1444,7 +1443,7 @@ const SystemUpdates: React.FC = () => {
     const filteredUpdates = SYSTEM_UPDATES.filter(update => 
         update.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
         update.version.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        update.changes.some(c => c.text.toLowerCase().includes(searchTerm.toLowerCase()))
+        update.changes?.some(c => c.text.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
     return (
@@ -1520,7 +1519,7 @@ const SystemUpdates: React.FC = () => {
                                     </div>
 
                                     <div className="bg-gray-50/50 rounded-2xl border border-gray-100 p-5 space-y-3">
-                                        {update.changes.map((change, i) => (
+                                        {update.changes?.map((change, i) => (
                                             <div key={i} className="flex gap-3">
                                                 <div className="mt-0.5 flex-shrink-0">
                                                     {getChangeIcon(change.type)}
