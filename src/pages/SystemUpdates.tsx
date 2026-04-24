@@ -26,6 +26,13 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.86.5",
+        date: "24 de Abril, 2026",
+        title: "Estabilidad de Respuesta del Servidor",
+        description: "Se corrigió un fallo en el procesamiento de errores del frontend (clonación de respuesta) y se habilitaron herramientas de diagnóstico de red en tiempo real.",
+        type: "improvement" as const
+    },
+    {
         version: "v4.86.4",
         date: "24 de Abril, 2026",
         title: "Diagnóstico Avanzado de Errores",

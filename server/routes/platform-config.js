@@ -25,6 +25,8 @@ router.get('/logo', async (_req, res) => {
     }
 });
 
+router.get('/ping', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+
 // All routes below require authentication + administrator role (super admin)
 router.use(authMiddleware);
 router.use(roleMiddleware('administrator'));

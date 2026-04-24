@@ -458,11 +458,16 @@ const ClubSettings: React.FC = () => {
             } else {
                 let errorMsg = 'Error al subir el logo';
                 try {
-                    const err = await res.json();
-                    errorMsg = err.error || errorMsg;
+                    const resClone = res.clone();
+                    try {
+                        const err = await resClone.json();
+                        errorMsg = err.error || errorMsg;
+                    } catch {
+                        const text = await res.text();
+                        errorMsg = text || errorMsg;
+                    }
                 } catch {
-                    const text = await res.text();
-                    errorMsg = text || errorMsg;
+                    errorMsg = 'Error al procesar la respuesta del servidor';
                 }
                 toast.error(errorMsg);
             }
