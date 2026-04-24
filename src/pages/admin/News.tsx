@@ -309,13 +309,16 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         const token = localStorage.getItem('rotary_token');
         const apiUrl = import.meta.env.VITE_API_URL || '/api';
 
-        try {
-            for (let i = 0; i < files.length; i++) {
+        let successCount = 0;
+        let failCount = 0;
+
+        for (let i = 0; i < files.length; i++) {
+            try {
                 const uploadData = new FormData();
                 uploadData.append('file', files[i]);
                 uploadData.append('folder', 'news');
 
-                const targetUrl = `${apiUrl}/media/upload?folder=news&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
+                const targetUrl = `${apiUrl}/media/upload?folder=news${club?.id ? `&clubId=${club.id}` : ''}`.replace(/\/+/g, '/').replace(':/', '://');
                 const response = await fetch(targetUrl, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}` },
@@ -332,14 +335,22 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                     } else {
                         setFormData(prev => ({ ...prev, images: [...prev.images, data.url] }));
                     }
+                    successCount++;
+                } else {
+                    failCount++;
+                    const err = await response.json();
+                    console.error('Upload failed:', err);
                 }
+            } catch (error) {
+                console.error('Upload error:', error);
+                failCount++;
             }
-            toast.success('Fotos añadidas a la galería');
-        } catch (error) {
-            toast.error('Error al subir imagen');
-        } finally {
-            setUploading(false);
         }
+
+        if (successCount > 0) toast.success(`${successCount} archivo(s) subidos con éxito`);
+        if (failCount > 0) toast.error(`${failCount} archivo(s) fallaron al subir`);
+        
+        setUploading(false);
     };
 
     const handleCropModalConfirm = async (blob: Blob) => {
@@ -353,7 +364,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
             uploadData.append('file', blob, 'cropped_cover.jpg');
             uploadData.append('folder', 'news');
 
-            const targetUrl = `${apiUrl}/media/upload?folder=news&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
+            const targetUrl = `${apiUrl}/media/upload?folder=news${club?.id ? `&clubId=${club.id}` : ''}`.replace(/\/+/g, '/').replace(':/', '://');
             const response = await fetch(targetUrl, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` },
@@ -365,10 +376,11 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 setFormData(prev => ({ ...prev, [cropTarget]: data.url }));
                 toast.success(cropTarget === 'image' ? 'Imagen de portada actualizada' : 'Imagen SEO actualizada');
             } else {
-                toast.error('Error al subir imagen recortada');
+                const errData = await response.json().catch(() => ({ error: 'Error desconocido' }));
+                toast.error(`Error al subir imagen: ${errData.error || response.statusText}`);
             }
-        } catch (error) {
-            toast.error('Error de conexión al subir imagen');
+        } catch (error: any) {
+            toast.error(`Error de conexión: ${error.message}`);
         } finally {
             setUploading(false);
             setImageToCrop(null);
@@ -1145,7 +1157,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                     <label className="block text-sm font-bold mb-1">Galería de Imágenes</label>
                                                     <p className="text-[10px] text-gray-400 font-bold uppercase mb-4">Click para seleccionar múltiples</p>
                                                 </div>
-                                                <input type="file" multiple className="absolute inset-0 opacity-0 cursor-pointer" accept=".jpg,.jpeg,.png,.mov,.mp4" onChange={(e) => handleImageUpload(e, true)} disabled={uploading} />
+                                                <input type="file" multiple className="absolute inset-0 opacity-0 cursor-pointer" accept=".jpg,.jpeg,.png,.webp,.svg,.mov,.mp4" onChange={(e) => handleImageUpload(e, true)} disabled={uploading} />
                                                 <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                                             </div>
                                         </div>

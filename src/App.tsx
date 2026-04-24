@@ -13,7 +13,7 @@ const HashRedirector = () => {
             const cleanPath = hash.replace(/^#/, '') || '/';
             navigate(cleanPath, { replace: true });
         }
-    }, [navigate]);
+    }, [navigate, location]);
 
     return null;
 };

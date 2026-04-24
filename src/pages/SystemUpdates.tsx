@@ -26,6 +26,19 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.83.0",
+        date: "24 de Abril, 2026",
+        title: "SISTEMA ACTUALIZADO: Multimedia & Eventos (v4.83.0) 🚀💎",
+        description: "Reparación del sistema de eventos LATIR e incremento masivo en capacidad de carga multimedia.",
+        type: "update",
+        changes: [
+            { type: "fixed", text: "Eventos: Restaurada la carga de detalles mediante la sincronización del campo 'metadata' en la base de datos." },
+            { type: "improved", text: "Conferencia: Reparado el enlace /conferencia y optimizada la navegación en la sección especial de LATIR." },
+            { type: "improved", text: "Multimedia: Límite de subida aumentado de 15MB a 50MB para soportar videos de WhatsApp y fotos pesadas." },
+            { type: "added", text: "Admin: Nuevo sistema de reporte de errores detallado en la subida de imágenes de portada y galería." }
+        ]
+    },
+    {
         version: "v4.80.0",
         date: "23 de Abril, 2026",
         title: "Núcleo: Estabilidad Elástica (v4.80.0) 🛡️🛠️",

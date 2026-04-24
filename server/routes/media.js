@@ -19,33 +19,47 @@ router.post('/upload', authMiddleware, (req, res) => {
         if (!req.file) return res.status(400).json({ error: 'No se seleccionó ningún archivo' });
 
         try {
-            const targetClubId = (req.user.role === 'administrator') ? (req.query.clubId || req.body.clubId || req.user.clubId) : req.user.clubId;
+            const targetClubIdRaw = (req.user.role === 'administrator') ? (req.query.clubId || req.body.clubId || req.user.clubId) : req.user.clubId;
             
+            // Validate UUID format to prevent database errors
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+            const targetClubId = (targetClubIdRaw && uuidRegex.test(targetClubIdRaw)) ? targetClubIdRaw : null;
+
             const fileTypeLocal = getMediaType(req.file.mimetype);
             const folderStr = fileTypeLocal === 'image' ? 'images' : fileTypeLocal === 'video' ? 'videos' : 'documents';
             const fileName = `${Date.now()}-${req.file.originalname.replace(/\s+/g, '_')}`;
-            const s3Key = `clubs/${targetClubId}/${folderStr}/${fileName}`;
+            const s3Key = `clubs/${targetClubId || 'global'}/${folderStr}/${fileName}`;
             const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
 
-            await s3.send(new PutObjectCommand({
-                Bucket: bucket,
-                Key: s3Key,
-                Body: req.file.buffer,
-                ContentType: req.file.mimetype,
-            }));
+            try {
+                await s3.send(new PutObjectCommand({
+                    Bucket: bucket,
+                    Key: s3Key,
+                    Body: req.file.buffer,
+                    ContentType: req.file.mimetype,
+                }));
+            } catch (s3Error) {
+                console.error('S3 Upload Error:', s3Error);
+                return res.status(500).json({ error: 'Error al subir archivo a S3', details: s3Error.message });
+            }
 
             const encodedKey = s3Key.split('/').map(segment => encodeURIComponent(segment)).join('/');
             const fileUrl = `https://${bucket}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${encodedKey}`;
 
-            const result = await db.query(
-                `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "createdAt")
-                 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING *`,
-                [req.file.originalname, fileUrl, getMediaType(req.file.mimetype), req.file.buffer.length, bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, s3Key]
-            );
-            res.json(result.rows[0]);
+            try {
+                const result = await db.query(
+                    `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "createdAt")
+                     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING *`,
+                    [req.file.originalname, fileUrl, fileTypeLocal, req.file.buffer.length, bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, s3Key]
+                );
+                res.json(result.rows[0]);
+            } catch (dbError) {
+                console.error('Database Media Error:', dbError);
+                res.status(500).json({ error: 'Error al registrar en base de datos', details: dbError.message });
+            }
         } catch (error) {
-            console.error('Media upload error:', error);
-            res.status(500).json({ error: 'Error al subir en la base de datos' });
+            console.error('General Media upload error:', error);
+            res.status(500).json({ error: 'Error interno en el servidor de medios' });
         }
     });
 });

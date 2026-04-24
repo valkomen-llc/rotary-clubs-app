@@ -27,13 +27,7 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const isAppPortal = hostname === 'app.clubplatform.org' || hostname === 'localhost' && window.location.port === '5174';
 
     useEffect(() => {
-        // --- REDIRECCIÓN ESPECIAL CONFERENCIA LATIR ---
-        const currentPath = window.location.pathname.toLowerCase();
-        const currentHash = window.location.hash.toLowerCase();
-        if (currentPath.includes('/conferencia') || currentHash.includes('/conferencia')) {
-            window.location.href = 'https://rotarylatir.org/#/eventos/2038324a-0e04-497c-9328-fbaeb9ce2992';
-            return;
-        }
+
 
         // FORCED REDIRECTION RULE (Nuclear Option)
         // If we are on the main domain root, redirect to app subdomain IMMEDIATELY.

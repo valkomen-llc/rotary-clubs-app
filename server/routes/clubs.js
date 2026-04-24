@@ -188,12 +188,15 @@ router.get('/:clubId/search', async (req, res) => {
                 [clubId, query]
             ),
             db.query(
-                `SELECT id, title, description, location, "startDate" FROM "Event"
+                `SELECT id, title, description, location, "startDate" FROM "CalendarEvent"
                  WHERE "clubId" = $1
                  AND (LOWER(title) LIKE $2 OR LOWER(description) LIKE $2)
                  ORDER BY "startDate" DESC LIMIT 5`,
                 [clubId, query]
-            ).catch(() => ({ rows: [] })), // Event table may not exist
+            ).catch((err) => {
+                console.warn('[SEARCH] CalendarEvent fallback:', err.message);
+                return { rows: [] };
+            }),
         ]);
         res.json({
             posts: posts.rows,

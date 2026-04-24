@@ -1,6 +1,8 @@
 import { Plane, Calendar, Search, Users, Globe, ArrowRight, Sparkles, MapPin, Award } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const LatirSpecialSection = () => {
+  const navigate = useNavigate();
   return (
     <section className="py-24 bg-rotary-concrete relative overflow-hidden">
       {/* Background Decorative Elements */}
@@ -171,7 +173,7 @@ const LatirSpecialSection = () => {
 
               <div className="mt-auto">
                 <button
-                  onClick={() => window.location.hash = '#/conferencia'}
+                  onClick={() => navigate('/conferencia')}
                   className="group/btn relative w-full inline-flex items-center justify-center gap-3 bg-rotary-blue hover:bg-rotary-blue-700 text-white font-bold px-8 py-5 rounded-2xl transition-all duration-300 shadow-xl shadow-blue-500/20 overflow-hidden"
                 >
                   <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-sky-400 to-rotary-blue opacity-0 group-hover/btn:opacity-100 transition-opacity duration-500"></div>

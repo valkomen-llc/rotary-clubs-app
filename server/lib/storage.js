@@ -56,7 +56,7 @@ export const uploadMemory = multer({
         if (mimetype || extname) return cb(null, true);
         cb(new Error("Error: Archivo no admitido (Formatos permitidos: imágenes, PDF, doc, videos pequeños)."));
     },
-    limits: { fileSize: 15 * 1024 * 1024 }
+    limits: { fileSize: 50 * 1024 * 1024 }
 });
 
 export const uploadDocuments = multer({
