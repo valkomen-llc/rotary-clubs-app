@@ -115,6 +115,7 @@ import ClubPreview from './pages/ClubPreview';
 import ChatBot from './components/ChatBot';
 import LandingPage from './pages/LandingPage';
 import RegistroPage from './pages/RegistroPage';
+import ExpirationBanner from './components/ExpirationBanner';
 import VerifyEmail from './pages/VerifyEmail';
 import AppLogin from './pages/AppLogin';
 import ComingSoon from './pages/ComingSoon';
@@ -336,6 +337,7 @@ function App() {
       <LanguageProvider>
         <AuthProvider>
           <CartProvider>
+            <ExpirationBanner />
             <Router>
               <HashRedirector />
               <AnalyticsTracker />

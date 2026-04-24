@@ -34,6 +34,8 @@ export interface ClubConfig {
     archetype?: any;
     settings?: any;
     members?: any[];
+    expirationBannerActive?: boolean;
+    expirationBannerMessage?: string;
 }
 
 // Default/Fallback configuration for when API is loading or fails

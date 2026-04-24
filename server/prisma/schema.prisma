@@ -98,6 +98,8 @@ model Club {
   testimonials           Testimonial[]
   users                  User[]
   whatsAppCampaigns      WhatsAppCampaign[]
+  expirationBannerActive Boolean                 @default(false)
+  expirationBannerMessage String?
   socialAccounts         SocialAccount[]
 
   whatsAppConfig         WhatsAppConfig?

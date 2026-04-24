@@ -14,6 +14,8 @@ interface Club {
     status: string;
     type: string;
     description: string | null;
+    expirationBannerActive?: boolean;
+    expirationBannerMessage?: string | null;
     _count?: {
         users: number;
         projects: number;
@@ -49,6 +51,8 @@ const ClubsManagement: React.FC = () => {
         moduleNgse: false,
         moduleRotex: false,
         adminUserId: '',
+        expirationBannerActive: false,
+        expirationBannerMessage: '',
     });
     const [isFetchingDetails, setIsFetchingDetails] = useState(false);
 
@@ -95,6 +99,8 @@ const ClubsManagement: React.FC = () => {
                 adminUserId: '',
                 moduleProjects: true, moduleEvents: true, moduleRotaract: false, moduleInteract: false,
                 moduleEcommerce: false, moduleDian: false, moduleYouthExchange: false, moduleNgse: false, moduleRotex: false,
+                expirationBannerActive: club.expirationBannerActive || false,
+                expirationBannerMessage: club.expirationBannerMessage || '',
             });
             setIsFetchingDetails(true);
             try {
@@ -116,6 +122,8 @@ const ClubsManagement: React.FC = () => {
                         moduleYouthExchange: m.youth_exchange ?? false,
                         moduleNgse: m.ngse ?? false,
                         moduleRotex: m.rotex ?? false,
+                        expirationBannerActive: fullData.expirationBannerActive || false,
+                        expirationBannerMessage: fullData.expirationBannerMessage || '',
                     }));
                 }
             } catch (error) {
@@ -137,6 +145,8 @@ const ClubsManagement: React.FC = () => {
                 adminUserId: '',
                 moduleProjects: true, moduleEvents: true, moduleRotaract: false, moduleInteract: false,
                 moduleEcommerce: false, moduleDian: false, moduleYouthExchange: false, moduleNgse: false, moduleRotex: false,
+                expirationBannerActive: false,
+                expirationBannerMessage: '',
             });
         }
     };
@@ -452,6 +462,40 @@ const ClubsManagement: React.FC = () => {
                                         ))}
                                     </select>
                                     <p className="text-[10px] text-gray-400 mt-1">Si seleccionas un administrador, se asignará a este club. Puedes ajustarlo individualmente en "Usuarios".</p>
+                                </div>
+                            </div>
+
+                            {/* ADMINISTRATIVE SUPERVISION */}
+                            <div className="mt-8 pt-6 border-t border-red-100 bg-red-50/30 p-4 rounded-xl">
+                                <h3 className="text-sm font-bold text-red-900 mb-4 flex items-center gap-2">
+                                    🚨 Supervisión Administrativa
+                                </h3>
+                                <div className="space-y-4">
+                                    <label className="flex items-center gap-3 cursor-pointer p-3 border border-red-100 rounded-xl bg-white hover:bg-red-50 transition-colors">
+                                        <input 
+                                            type="checkbox" 
+                                            className="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" 
+                                            checked={formData.expirationBannerActive} 
+                                            onChange={(e) => setFormData({ ...formData, expirationBannerActive: e.target.checked })} 
+                                        />
+                                        <div className="flex flex-col">
+                                            <span className="text-[13px] font-bold text-red-700">Activar Banner de Vencimiento</span>
+                                            <span className="text-[10px] text-red-500">Muestra una alerta global sobre el vencimiento del servicio.</span>
+                                        </div>
+                                    </label>
+                                    
+                                    {formData.expirationBannerActive && (
+                                        <div className="animate-in slide-in-from-top-2 duration-200">
+                                            <label className="block text-[11px] font-bold text-red-700 mb-1 uppercase tracking-wider">Mensaje de Advertencia (Profesional)</label>
+                                            <textarea
+                                                className="w-full px-4 py-2 border border-red-200 rounded-lg focus:ring-2 focus:ring-red-500 outline-none transition-all text-sm bg-white h-20"
+                                                value={formData.expirationBannerMessage}
+                                                onChange={(e) => setFormData({ ...formData, expirationBannerMessage: e.target.value })}
+                                                placeholder="Ej: Este sitio web se encuentra en periodo de renovación. Por favor contacte a soporte para evitar la suspensión del servicio."
+                                            />
+                                            <p className="text-[10px] text-red-400 mt-1 italic">Si se deja vacío, se usará un mensaje profesional por defecto.</p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 

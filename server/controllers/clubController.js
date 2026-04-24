@@ -72,11 +72,13 @@ export const getClubById = async (req, res) => {
 };
 
 export const createClub = async (req, res) => {
-    const { name, city, country, district, domain, subdomain, description, status, type, adminUserId } = req.body;
+        status, type, adminUserId,
+        expirationBannerActive, expirationBannerMessage
+    } = req.body;
     try {
         const result = await db.query(
-            `INSERT INTO "Club" (id, name, city, country, district, domain, subdomain, description, status, type, "createdAt", "updatedAt")
-             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()) RETURNING *`,
+            `INSERT INTO "Club" (id, name, city, country, district, domain, subdomain, description, status, type, "expirationBannerActive", "expirationBannerMessage", "createdAt", "updatedAt")
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW()) RETURNING *`,
             [
                 name, 
                 city || null, 
@@ -86,7 +88,9 @@ export const createClub = async (req, res) => {
                 subdomain || null, 
                 description || null, 
                 status || 'active', 
-                type || 'club'
+                type || 'club',
+                !!expirationBannerActive,
+                expirationBannerMessage || null
             ]
         );
 
@@ -122,7 +126,8 @@ export const updateClub = async (req, res) => {
             usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
             storeActive, logoHeaderSize, autoGenerateCalendar, mapStyle,
             memberCount, moduleProjects, moduleEvents, moduleRotaract, moduleInteract, moduleEcommerce, moduleDian,
-            moduleYouthExchange, moduleNgse, moduleRotex
+            moduleYouthExchange, moduleNgse, moduleRotex,
+            expirationBannerActive, expirationBannerMessage
         } = req.body;
 
         try {
@@ -158,6 +163,8 @@ export const updateClub = async (req, res) => {
             addField('favicon', favicon);
             addField('status', status);
             addField('type', type);
+            addField('expirationBannerActive', expirationBannerActive);
+            addField('expirationBannerMessage', expirationBannerMessage);
 
             const hasClubUpdates = updateFields.length > 0;
             let result;

@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.85.0",
+        date: "24 de Abril, 2026",
+        title: "Supervisión: Alertas de Vencimiento (v4.85.0) 🚨🛡️",
+        description: "Nueva herramienta de gestión para Super Administradores sobre el estado de suscripción de los clubes.",
+        type: "update",
+        changes: [
+            { type: "added", text: "Superadmin: Implementado panel de 'Supervisión Administrativa' para activar banners de advertencia por vencimiento." },
+            { type: "added", text: "Frontend: Nuevo componente global de alerta profesional para sitios con periodos de renovación pendientes." },
+            { type: "improved", text: "Backend: Extendida la infraestructura de datos de Clubes para soportar estados de suspensión y avisos globales." }
+        ]
+    },
+    {
         version: "v4.84.0",
         date: "24 de Abril, 2026",
         title: "Enrutamiento: Navegación Limpia (v4.84.0) 🔗💎",
