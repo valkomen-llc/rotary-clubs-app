@@ -754,7 +754,7 @@ const ImageDistribution: React.FC = () => {
                                 <label className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold cursor-pointer transition-all ${uploading ? 'bg-gray-100 text-gray-400' : 'bg-violet-600 text-white hover:bg-violet-700 shadow-lg'}`}>
                                     {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                                     {uploading ? 'Subiendo...' : 'Subir imagen'}
-                                    <input type="file" accept="image/*" className="hidden" onChange={handleUpload} disabled={uploading} />
+                                    <input type="file" accept=".jpg,.jpeg,.png" className="hidden" onChange={handleUpload} disabled={uploading} />
                                 </label>
                                 <button onClick={() => setPickerOpen(false)} className="text-gray-400 hover:text-gray-600 p-1">
                                     <X className="w-6 h-6" />

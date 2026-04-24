@@ -324,7 +324,14 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
 
                 if (response.ok) {
                     const data = await response.json();
-                    setFormData(prev => ({ ...prev, images: [...prev.images, data.url] }));
+                    if (data.type === 'video') {
+                        setFormData(prev => ({ 
+                            ...prev, 
+                            videoGallery: [...(prev.videoGallery || []), data.url] 
+                        }));
+                    } else {
+                        setFormData(prev => ({ ...prev, images: [...prev.images, data.url] }));
+                    }
                 }
             }
             toast.success('Fotos añadidas a la galería');
@@ -1062,7 +1069,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                             <p className="text-[10px] text-gray-400 font-bold uppercase">Haz clic para subir portada</p>
                                                         </div>
                                                     )}
-                                                    <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={(e) => handleImageUpload(e)} disabled={uploading} />
+                                                    <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept=".jpg,.jpeg,.png" onChange={(e) => handleImageUpload(e)} disabled={uploading} />
                                                 </div>
                                             </div>
 
@@ -1138,7 +1145,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                     <label className="block text-sm font-bold mb-1">Galería de Imágenes</label>
                                                     <p className="text-[10px] text-gray-400 font-bold uppercase mb-4">Click para seleccionar múltiples</p>
                                                 </div>
-                                                <input type="file" multiple className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={(e) => handleImageUpload(e, true)} disabled={uploading} />
+                                                <input type="file" multiple className="absolute inset-0 opacity-0 cursor-pointer" accept=".jpg,.jpeg,.png,.mov,.mp4" onChange={(e) => handleImageUpload(e, true)} disabled={uploading} />
                                                 <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                                             </div>
                                         </div>
@@ -1502,6 +1509,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                             <input 
                                                                 type="file" 
                                                                 className="absolute inset-0 opacity-0 cursor-pointer" 
+                                                                accept=".jpg,.jpeg,.png"
                                                                 onChange={(e) => handleImageUpload(e, false, 'seoImage')} 
                                                             />
                                                         </div>

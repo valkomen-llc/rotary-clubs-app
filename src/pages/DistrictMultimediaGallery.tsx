@@ -208,7 +208,7 @@ const DistrictMultimediaGallery: React.FC = () => {
                     </p>
 
                     <ul className="list-disc list-inside space-y-2 font-medium text-gray-800">
-                        <li>Máximo <strong>10 fotografías</strong> por envío (formatos <strong>JPG</strong> o <strong>PNG</strong>, hasta <strong>10 MB</strong> cada una) y <strong>3 videos</strong> (formatos .mov, .mp4).</li>
+                        <li>Máximo <strong>10 fotografías</strong> por envío (formatos <strong>JPG, JPEG, PNG</strong>, hasta <strong>10 MB</strong> cada una) y <strong>3 videos</strong> (formatos <strong>MOV, MP4</strong>).</li>
                     </ul>
                 </div>
 
@@ -325,7 +325,7 @@ const DistrictMultimediaGallery: React.FC = () => {
                                 >
                                     <input 
                                         type="file" multiple ref={fileInputRef} className="hidden"
-                                        accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/x-m4v,video/*"
+                                        accept=".jpg,.jpeg,.png,.mov,.mp4"
                                         onChange={e => { if (e.target.files) handleFiles(Array.from(e.target.files)); }}
                                     />
                                     <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">

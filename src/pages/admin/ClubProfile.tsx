@@ -254,7 +254,7 @@ const ClubProfile: React.FC = () => {
                                 </div>
                                 <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-2xl">
                                     <Upload className="text-white w-8 h-8" />
-                                    <input type="file" className="hidden" onChange={handleLogoUpload} accept="image/*" />
+                                    <input type="file" className="hidden" onChange={handleLogoUpload} accept=".jpg,.jpeg,.png" />
                                 </label>
                                 {formData.logo && (
                                     <button

@@ -318,7 +318,7 @@ export default function StoreManagement() {
                                             <div className="aspect-square rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 transition-colors relative">
                                                 <Upload className="w-6 h-6 text-gray-400 mb-2" />
                                                 <span className="text-[10px] font-bold text-gray-400 uppercase">Añadir Foto</span>
-                                                <input type="file" multiple accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageUpload} disabled={uploading} />
+                                                <input type="file" multiple accept=".jpg,.jpeg,.png" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageUpload} disabled={uploading} />
                                             </div>
                                         </div>
                                     </div>

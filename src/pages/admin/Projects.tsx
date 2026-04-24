@@ -1075,7 +1075,7 @@ const ProjectsManagement: React.FC = () => {
                                                             <p className="text-[10px] text-gray-400 font-bold uppercase">Click para subir foto</p>
                                                         </div>
                                                     )}
-                                                    <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={(e) => handleImageUpload(e)} disabled={uploading} />
+                                                    <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept=".jpg,.jpeg,.png" onChange={(e) => handleImageUpload(e)} disabled={uploading} />
                                                 </div>
                                             </div>
 
@@ -1230,7 +1230,7 @@ const ProjectsManagement: React.FC = () => {
                                                         <span className="px-3 py-1 bg-white/10 rounded-full text-white text-[10px] font-bold">MAX 5MB</span>
                                                     </div>
                                                 </div>
-                                                <input type="file" multiple className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={(e) => handleImageUpload(e, true)} disabled={uploading} />
+                                                <input type="file" multiple className="absolute inset-0 opacity-0 cursor-pointer" accept=".jpg,.jpeg,.png" onChange={(e) => handleImageUpload(e, true)} disabled={uploading} />
                                                 <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                                             </div>
                                         </div>
