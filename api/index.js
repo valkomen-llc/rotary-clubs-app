@@ -1,4 +1,4 @@
-// REBOOT V4.80.0 | ELASTIC STABILITY RESTORATION | 2026-04-23T17:06:00
+// MULTIMEDIA & EVENTOS V4.83.0 | 2026-04-24T03:17:00
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
