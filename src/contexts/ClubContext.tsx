@@ -25,6 +25,16 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [bannerVisible, setBannerVisible] = useState(true);
+
+    // Auto-reactivation logic (Penalty mode)
+    useEffect(() => {
+        if (!bannerVisible) {
+            const timer = setTimeout(() => {
+                setBannerVisible(true);
+            }, 10000);
+            return () => clearTimeout(timer);
+        }
+    }, [bannerVisible]);
     const hostname = window.location.hostname;
     const isMainPlatform = hostname === 'clubplatform.org' || hostname === 'www.clubplatform.org';
     const isAppPortal = hostname === 'app.clubplatform.org' || hostname === 'localhost' && window.location.port === '5174';

@@ -26,6 +26,13 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.85.8",
+        date: "24 de Abril, 2026",
+        title: "Penalty Mode: Auto-Reactivación",
+        description: "Mejora del sistema de penalización: el banner ahora permite ser cerrado pero se reactiva automáticamente cada 10 segundos, manteniendo la presión administrativa de forma inteligente.",
+        type: "feature" as const
+    },
+    {
         version: "v4.85.7",
         date: "24 de Abril, 2026",
         title: "Banner: Ajuste de Copy y Tipografía",
