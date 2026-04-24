@@ -26,6 +26,13 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.86.0",
+        date: "24 de Abril, 2026",
+        title: "Rebranding: Club Platform for Rotary",
+        description: "Actualización de la identidad de marca en el footer: transición de 'Valkomen' a 'Club Platform for Rotary' con enlace directo al portal administrativo.",
+        type: "feature" as const
+    },
+    {
         version: "v4.85.9",
         date: "24 de Abril, 2026",
         title: "BUGFIX: Funcionamiento del Botón de Cierre",

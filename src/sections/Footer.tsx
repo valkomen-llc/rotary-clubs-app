@@ -237,7 +237,7 @@ const Footer = () => {
                     <div className="flex flex-col md:flex-row items-center justify-between gap-6">
                         <div className="text-white/50 text-[11px] leading-loose no-uppercase text-center md:text-left">
                             © {new Date().getFullYear()} {club.name}. Todos los derechos reservados. <br className="md:hidden" />
-                            Powered by <a href="https://valkomen.com" target="_blank" rel="noopener noreferrer" className="text-white/80 hover:text-white transition-colors">Valkomen</a>
+                            Powered by <a href="https://app.clubplatform.org/" target="_blank" rel="noopener noreferrer" className="text-white/80 hover:text-white transition-colors">Club Platform for Rotary</a>
                             {' | '}
                             <a href="https://my.rotary.org/privacy-policy" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Privacidad</a>
                             {' · '}
