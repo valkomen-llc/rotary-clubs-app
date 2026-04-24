@@ -26,6 +26,13 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.86.1",
+        date: "24 de Abril, 2026",
+        title: "Reparación de Logo en Login",
+        description: "Se corrigió un error en el fetch del logo del panel de administración que impedía su visualización. Se aplicó también el rebranding de 'Club Platform for Rotary' en el footer del login.",
+        type: "bugfix" as const
+    },
+    {
         version: "v4.86.0",
         date: "24 de Abril, 2026",
         title: "Rebranding: Club Platform for Rotary",

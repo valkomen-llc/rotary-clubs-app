@@ -17,9 +17,15 @@ export default function AppLogin() {
     const [platformLogoSize, setPlatformLogoSize] = useState<number>(cached?.size || 48);
     const [logoReady, setLogoReady] = useState(!!cached);
 
+    const getApiUrl = () => {
+        const envApi = import.meta.env.VITE_API_URL;
+        if (envApi && envApi !== "/api") return envApi.replace(/\/$/, "");
+        return `${window.location.origin}/api`;
+    };
+
     useEffect(() => {
-        const apiUrl = import.meta.env.VITE_API_URL || '/api';
-        fetch(`${apiUrl}/platform-config/logo`.replace(/\/+/g, '/').replace(':/', '://'))
+        const apiUrl = getApiUrl();
+        fetch(`${apiUrl}/platform-config/logo`)
             .then(r => r.json())
             .then(data => {
                 const url = data.url || null;
@@ -67,7 +73,7 @@ export default function AppLogin() {
                 {/* Header */}
                 <div className="text-center mb-8">
                     <div className="flex items-center justify-center gap-2.5 mb-4" style={{ minHeight: '40px' }}>
-                        {logoReady && (platformLogo ? (
+                        {platformLogo ? (
                             <img src={platformLogo} alt="ClubPlatform" style={{ height: platformLogoSize + 'px', width: 'auto', maxWidth: '320px' }} />
                         ) : (
                             <>
@@ -76,7 +82,7 @@ export default function AppLogin() {
                                 </div>
                                 <span className="font-black text-gray-900 text-xl">ClubPlatform</span>
                             </>
-                        ))}
+                        )}
                     </div>
                     <h1 className="text-3xl font-normal text-gray-900 mb-2">Panel de Administración</h1>
                     <p className="text-gray-500">Accede al panel de control</p>
@@ -152,7 +158,7 @@ export default function AppLogin() {
                 </div>
 
                 <p className="text-center text-gray-400 text-[11px] mt-6">
-                    © {new Date().getFullYear()} ClubPlatform — Plataforma de marketing digital para Rotary · Por <a href="https://valkomen.com" target="_blank" rel="noopener noreferrer" className="font-bold hover:text-gray-600 transition-colors">Valkomen</a>
+                    © {new Date().getFullYear()} ClubPlatform — Plataforma de marketing digital para Rotary · Por <a href="https://app.clubplatform.org/" target="_blank" rel="noopener noreferrer" className="font-bold hover:text-gray-600 transition-colors">Club Platform for Rotary</a>
                 </p>
             </div>
         </div>
