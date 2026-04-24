@@ -26,6 +26,13 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.85.6",
+        date: "24 de Abril, 2026",
+        title: "Aviso: Restauración de Etiqueta Premium",
+        description: "Restauración del diseño original de la etiqueta 'Vencimiento' en caja de alto contraste, manteniendo el texto centrado y estático para una legibilidad óptima.",
+        type: "feature" as const
+    },
+    {
         version: "v4.85.5",
         date: "24 de Abril, 2026",
         title: "Banner: Estética Estática y Centrada",
