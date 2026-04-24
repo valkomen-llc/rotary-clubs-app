@@ -72,6 +72,8 @@ export const getClubById = async (req, res) => {
 };
 
 export const createClub = async (req, res) => {
+    const { 
+        name, city, country, district, domain, subdomain, description, 
         status, type, adminUserId,
         expirationBannerActive, expirationBannerMessage
     } = req.body;
@@ -117,18 +119,18 @@ export const createClub = async (req, res) => {
 
 export const updateClub = async (req, res) => {
     const { id } = req.params;
-        const {
-            name, description, city, country, district, domain, subdomain, type,
-            email, phone, address, state, facebook, instagram, twitter, youtube, linkedin, tiktok, 
-            socialLinks, customSocialLinks, siteImages, galleryImages,
-            primaryColor, secondaryColor, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, status,
-            stripePublicKey, stripeSecretKey, useStripe,
-            usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
-            storeActive, logoHeaderSize, autoGenerateCalendar, mapStyle,
-            memberCount, moduleProjects, moduleEvents, moduleRotaract, moduleInteract, moduleEcommerce, moduleDian,
-            moduleYouthExchange, moduleNgse, moduleRotex,
-            expirationBannerActive, expirationBannerMessage
-        } = req.body;
+    const {
+        name, description, city, country, district, domain, subdomain, type,
+        email, phone, address, state, facebook, instagram, twitter, youtube, linkedin, tiktok, 
+        socialLinks, customSocialLinks, siteImages, galleryImages,
+        primaryColor, secondaryColor, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, status,
+        stripePublicKey, stripeSecretKey, useStripe,
+        usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
+        storeActive, logoHeaderSize, autoGenerateCalendar, mapStyle,
+        memberCount, moduleProjects, moduleEvents, moduleRotaract, moduleInteract, moduleEcommerce, moduleDian,
+        moduleYouthExchange, moduleNgse, moduleRotex,
+        expirationBannerActive, expirationBannerMessage
+    } = req.body;
 
         try {
             if (req.user.role !== 'administrator' && req.user.clubId !== id) {

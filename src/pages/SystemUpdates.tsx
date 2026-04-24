@@ -26,6 +26,13 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.85.1",
+        date: "24 de Abril, 2026",
+        title: "HOTFIX: Restauración de Visibilidad Administrativa",
+        description: "Corrección crítica de error de sintaxis en el controlador central que impedía la visualización de datos en las tablas de gestión (Clubes, Usuarios, Asociaciones).",
+        type: "urgent" as const
+    },
+    {
         version: "v4.85.0",
         date: "24 de Abril, 2026",
         title: "Supervisión: Alertas de Vencimiento (v4.85.0) 🚨🛡️",
