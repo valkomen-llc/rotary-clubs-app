@@ -442,6 +442,8 @@ const ClubSettings: React.FC = () => {
         setUploadingPlatformLogo(true);
         try {
             const croppedFile = await handleAutoCrop(file);
+            console.log(`[PlatformLogo] Final cropped file size: ${(croppedFile.size / 1024).toFixed(2)}KB`);
+            
             const formData = new FormData();
             formData.append('file', croppedFile);
             const token = localStorage.getItem('rotary_token');

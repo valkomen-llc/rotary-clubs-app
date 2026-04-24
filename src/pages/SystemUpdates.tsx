@@ -26,6 +26,13 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.86.8",
+        date: "24 de Abril, 2026",
+        title: "Trazabilidad de Carga",
+        description: "Se habilitó telemetría avanzada tanto en cliente como en servidor para identificar el punto exacto de fallo en las subidas de archivos pesados.",
+        type: "improvement" as const
+    },
+    {
         version: "v4.86.7",
         date: "24 de Abril, 2026",
         title: "Doble Protección de Timeout",

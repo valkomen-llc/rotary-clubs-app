@@ -37,7 +37,9 @@ router.post('/email/test', sendTestEmail);
 
 // ── Upload platform login logo ────────────────────────────────
 router.post('/logo/upload', (req, res) => {
+    console.log('[PlatformConfig] Incoming logo upload request...');
     uploadMemory.single('file')(req, res, async (err) => {
+        console.log('[PlatformConfig] Multer processing finished');
         if (err) return res.status(400).json({ error: err.message });
         if (!req.file) return res.status(400).json({ error: 'No se seleccionó ningún archivo' });
 
