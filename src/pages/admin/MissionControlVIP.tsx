@@ -826,7 +826,8 @@ const HQDashboard: React.FC = () => {
                   </div>
                 ))}
               </div>
-            </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
