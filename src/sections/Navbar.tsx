@@ -12,7 +12,7 @@ import CartDrawer from '../components/ui/CartDrawer';
 // kept for reference — we now use SUPPORTED_LANGUAGES from context
 
 const Navbar = () => {
-  const { club } = useClub();
+  const { club, bannerVisible } = useClub();
   const { itemCount, setCartOpen } = useCart();
   const { login, logout, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
@@ -130,8 +130,10 @@ const Navbar = () => {
     { label: 'Estados Financieros', href: '/estados-financieros' }
   ];
 
+  const showBannerOffset = club?.expirationBannerActive && bannerVisible;
+
   return (
-    <nav className="bg-white shadow-sm sticky top-0 z-50">
+    <nav className={`bg-white shadow-sm sticky ${showBannerOffset ? 'top-11' : 'top-0'} z-50 transition-all duration-300`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between min-h-[4rem] py-2 cursor-default">
           {/* Logo */}

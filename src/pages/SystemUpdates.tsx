@@ -26,6 +26,13 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.85.3",
+        date: "24 de Abril, 2026",
+        title: "Dynamic Alerts & Sticky Layout",
+        description: "Implementación de años de renovación dinámicos (Auto-update 2026-2027) y sistema de 'Sticky Stacking' para que el banner permanezca visible durante el desplazamiento sin cubrir el menú principal.",
+        type: "feature" as const
+    },
+    {
         version: "v4.85.2",
         date: "24 de Abril, 2026",
         title: "Aesthetix: Optimización de Banner Global",

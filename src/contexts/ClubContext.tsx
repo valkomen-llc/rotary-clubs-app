@@ -14,6 +14,8 @@ interface ClubContextType {
     isMainPlatform: boolean;
     isAppPortal: boolean;
     isDraft: boolean;
+    bannerVisible: boolean;
+    setBannerVisible: (visible: boolean) => void;
 }
 
 export const ClubContext = createContext<ClubContextType | undefined>(undefined);
@@ -22,6 +24,7 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [club, setClub] = useState<ClubConfig | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [bannerVisible, setBannerVisible] = useState(true);
     const hostname = window.location.hostname;
     const isMainPlatform = hostname === 'clubplatform.org' || hostname === 'www.clubplatform.org';
     const isAppPortal = hostname === 'app.clubplatform.org' || hostname === 'localhost' && window.location.port === '5174';
@@ -143,7 +146,7 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const isDraft = club?.status === 'draft';
 
     return (
-        <ClubContext.Provider value={{ club, isLoading, isMainPlatform, isAppPortal, isDraft }}>
+        <ClubContext.Provider value={{ club, isLoading, isMainPlatform, isAppPortal, isDraft, bannerVisible, setBannerVisible }}>
             {children}
         </ClubContext.Provider>
     );
