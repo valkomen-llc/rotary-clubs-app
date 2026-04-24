@@ -13,6 +13,10 @@ export const s3 = new S3Client({
         accessKeyId: process.env.ROTARY_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID,
         secretAccessKey: process.env.ROTARY_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY,
     },
+    // Prevent hanging in serverless environments
+    maxAttempts: 2,
+    requestTimeout: 5000, // 5 seconds
+    connectionTimeout: 5000,
 });
 
 export const upload = multer({

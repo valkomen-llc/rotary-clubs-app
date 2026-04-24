@@ -26,6 +26,13 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.86.6",
+        date: "24 de Abril, 2026",
+        title: "Mitigación de Timeouts (S3)",
+        description: "Se configuraron tiempos de espera agresivos (5s) en la conexión con la infraestructura de almacenamiento para evitar bloqueos prolongados y caídas por timeout de función.",
+        type: "improvement" as const
+    },
+    {
         version: "v4.86.5",
         date: "24 de Abril, 2026",
         title: "Estabilidad de Respuesta del Servidor",
