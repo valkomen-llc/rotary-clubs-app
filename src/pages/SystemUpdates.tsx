@@ -26,6 +26,13 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.85.9",
+        date: "24 de Abril, 2026",
+        title: "BUGFIX: Funcionamiento del Botón de Cierre",
+        description: "Corrección de un error de referencia que impedía cerrar el banner de vencimiento. El botón 'X' ahora funciona correctamente y activa el ciclo de reactivación de 10 segundos.",
+        type: "bugfix" as const
+    },
+    {
         version: "v4.85.8",
         date: "24 de Abril, 2026",
         title: "Penalty Mode: Auto-Reactivación",

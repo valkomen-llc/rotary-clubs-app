@@ -27,7 +27,7 @@ const ExpirationBanner: React.FC = () => {
 
                 <button 
                     type="button" 
-                    onClick={() => setIsVisible(false)} 
+                    onClick={() => setBannerVisible(false)} 
                     className="absolute right-0 p-1.5 hover:bg-red-500/20 rounded-full transition-colors group"
                     title="Cerrar (se reactivará en 10s)"
                 >
