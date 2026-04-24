@@ -49,7 +49,7 @@ import {
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import { useSetupProgress, SETUP_ALLOWED_PATHS } from '../../hooks/useSetupProgress';
-import { SYSTEM_UPDATES } from '../../pages/admin/SystemUpdates';
+import { SYSTEM_UPDATES } from '../../pages/SystemUpdates';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const fmtN = (n: number) => n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
@@ -410,7 +410,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     <span>Estamos desarrollando mejoras en la plataforma. Los módulos y herramientas se habilitarán progresivamente.</span>
                 </div>
                 <div className="hidden sm:block h-3 w-[1px] bg-slate-600 mx-1" />
-                <Link to="/admin/system-updates" className="flex items-center gap-1.5 text-amber-400 hover:text-amber-300 transition-colors font-bold tracking-wide">
+                <Link to="/system-updates" className="flex items-center gap-1.5 text-amber-400 hover:text-amber-300 transition-colors font-bold tracking-wide">
                     <span>Release {SYSTEM_UPDATES[0].version}</span>
                     <FileText className="w-3 h-3" />
                 </Link>

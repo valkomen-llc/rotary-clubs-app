@@ -94,7 +94,7 @@ const LeadsManagement = React.lazy(() => import('./pages/admin/Leads'));
 const FAQManagement = React.lazy(() => import('./pages/admin/FAQs'));
 const AgentsManagement = React.lazy(() => import('./pages/admin/Agents'));
 const MissionControlVIP = React.lazy(() => import('./pages/admin/MissionControlVIP'));
-const SystemUpdates = React.lazy(() => import('./pages/admin/SystemUpdates'));
+const SystemUpdates = React.lazy(() => import('./pages/SystemUpdates'));
 const ImageDistribution = React.lazy(() => import('./pages/admin/ImageDistribution'));
 const OnboardingFlow = React.lazy(() => import('./pages/admin/OnboardingFlow'));
 const MembersPage = React.lazy(() => import('./pages/admin/MembersPage'));
@@ -381,6 +381,7 @@ function App() {
                 <Route path="/order/success" element={<OrderSuccess />} />
                 <Route path="/shop" element={<Shop />} />
                 <Route path="/shop/product/:slug" element={<ProductDetail />} />
+                <Route path="/system-updates" element={<SystemUpdates />} />
 
                 {/* Club preview (provisional URL) */}
                 <Route path="/preview/:subdomain" element={<ClubPreview />} />
@@ -690,11 +691,7 @@ function App() {
                 />
                 <Route
                   path="/admin/system-updates"
-                  element={
-                    <PrivateRoute>
-                      <SystemUpdates />
-                    </PrivateRoute>
-                  }
+                  element={<Navigate to="/system-updates" replace />}
                 />
                 <Route
                   path="/admin/imagenes-sitio"
