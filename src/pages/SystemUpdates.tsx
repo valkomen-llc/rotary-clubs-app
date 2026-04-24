@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.84.0",
+        date: "24 de Abril, 2026",
+        title: "Enrutamiento: Navegación Limpia (v4.84.0) 🔗💎",
+        description: "Optimización de enlaces permanentes para la Conferencia LATIR.",
+        type: "update",
+        changes: [
+            { type: "fixed", text: "Navegación: Eliminado el símbolo '#' (hash) de la redirección de /conferencia para un acceso más rápido y limpio." },
+            { type: "improved", text: "Estabilidad: Sincronización del enrutamiento de Vercel con el motor de navegación de la aplicación." }
+        ]
+    },
+    {
         version: "v4.83.0",
         date: "24 de Abril, 2026",
         title: "SISTEMA ACTUALIZADO: Multimedia & Eventos (v4.83.0) 🚀💎",
