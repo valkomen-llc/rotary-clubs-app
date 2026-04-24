@@ -26,6 +26,13 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.86.2",
+        date: "24 de Abril, 2026",
+        title: "Estabilización de Carga de Archivos",
+        description: "Se corrigieron errores críticos en los selectores de archivos y se optimizó el procesamiento de imágenes (toBlob) para evitar bloqueos en la subida. Se activó el recorte inteligente (auto-trim) en el servidor para logos.",
+        type: "improvement" as const
+    },
+    {
         version: "v4.86.1",
         date: "24 de Abril, 2026",
         title: "Reparación de Logo en Login",

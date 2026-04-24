@@ -90,6 +90,9 @@ export const canvasToFile = (canvas: HTMLCanvasElement, filename: string): Promi
         canvas.toBlob((blob) => {
             if (blob) {
                 resolve(new File([blob], filename, { type: 'image/png' }));
+            } else {
+                console.error('Canvas toBlob failed');
+                resolve(new File([], filename, { type: 'image/png' })); // Fallback to avoid hanging
             }
         }, 'image/png');
     });

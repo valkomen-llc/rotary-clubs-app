@@ -59,6 +59,12 @@ const ClubSettings: React.FC = () => {
 
     const [saasRedirect, setSaasRedirect] = useState(false);
     const [updatingRedirect, setUpdatingRedirect] = useState(false);
+    
+    const getApiUrl = () => {
+        const envApi = import.meta.env.VITE_API_URL;
+        if (envApi && envApi !== "/api") return envApi.replace(/\/$/, "");
+        return `${window.location.origin}/api`;
+    };
 
     useEffect(() => {
         if (isSuperAdmin) {
@@ -299,8 +305,7 @@ const ClubSettings: React.FC = () => {
     };
 
     const handleInteractLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files || e.target.files.length === 0) return;
-
+        const file = e.target.files[0];
         setUploading(true);
         try {
             const croppedFile = await handleAutoCrop(file);
@@ -335,8 +340,7 @@ const ClubSettings: React.FC = () => {
     };
 
     const handleYouthExchangeLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files || e.target.files.length === 0) return;
-
+        const file = e.target.files[0];
         setUploading(true);
         try {
             const croppedFile = await handleAutoCrop(file);
@@ -441,8 +445,8 @@ const ClubSettings: React.FC = () => {
             const formData = new FormData();
             formData.append('file', croppedFile);
             const token = localStorage.getItem('rotary_token');
-            const apiUrl = import.meta.env.VITE_API_URL || '/api';
-            const res = await fetch(`${apiUrl}/platform-config/logo/upload`.replace(/\/+/g, '/').replace(':/', '://'), {
+            const apiUrl = getApiUrl();
+            const res = await fetch(`${apiUrl}/platform-config/logo/upload`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },
                 body: formData,

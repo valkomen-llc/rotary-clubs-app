@@ -41,8 +41,11 @@ router.post('/logo/upload', (req, res) => {
 
         try {
             const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
+            const region = process.env.AWS_REGION || 'us-east-1';
             const fileName = `${Date.now()}-${req.file.originalname.replace(/\s+/g, '_')}`;
             const s3Key = `platform/logo/${fileName}`;
+
+            console.log(`[PlatformConfig] Uploading logo to S3: ${s3Key} in bucket: ${bucket}`);
 
             await s3.send(new PutObjectCommand({
                 Bucket: bucket,
@@ -52,7 +55,9 @@ router.post('/logo/upload', (req, res) => {
             }));
 
             const encodedKey = s3Key.split('/').map(seg => encodeURIComponent(seg)).join('/');
-            const url = `https://${bucket}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${encodedKey}`;
+            const url = `https://${bucket}.s3.${region}.amazonaws.com/${encodedKey}`;
+
+            console.log(`[PlatformConfig] Logo uploaded to S3. URL: ${url}`);
 
             await db.query(
                 `INSERT INTO "PlatformConfig" (id, key, value, "updatedAt")
@@ -64,7 +69,10 @@ router.post('/logo/upload', (req, res) => {
             res.json({ url });
         } catch (error) {
             console.error('[PlatformConfig] Logo upload error:', error);
-            res.status(500).json({ error: 'Error al subir el logo' });
+            res.status(500).json({ 
+                error: 'Error al subir el logo a la infraestructura de la plataforma',
+                details: error.message 
+            });
         }
     });
 });
