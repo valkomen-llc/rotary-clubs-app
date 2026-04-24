@@ -26,6 +26,13 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.86.3",
+        date: "24 de Abril, 2026",
+        title: "Robustez en Conexión de Carga",
+        description: "Se optimizó el enrutamiento de API para mejorar la compatibilidad en redes restringidas y se habilitó el soporte oficial para logos en formato SVG.",
+        type: "improvement" as const
+    },
+    {
         version: "v4.86.2",
         date: "24 de Abril, 2026",
         title: "Estabilización de Carga de Archivos",

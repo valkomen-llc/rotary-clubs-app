@@ -50,7 +50,7 @@ export const upload = multer({
 export const uploadMemory = multer({
     storage: multer.memoryStorage(),
     fileFilter: (req, file, cb) => {
-        const filetypes = /jpeg|jpg|png|webp|pdf|doc|docx|csv|xlsx|xls/;
+        const filetypes = /jpeg|jpg|png|webp|svg|pdf|doc|docx|csv|xlsx|xls/;
         const mimetype = filetypes.test(file.mimetype) || file.mimetype.startsWith('image/') || file.mimetype.startsWith('application/') || file.mimetype.startsWith('video/');
         const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
         if (mimetype || extname) return cb(null, true);

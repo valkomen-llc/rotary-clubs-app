@@ -63,7 +63,7 @@ const ClubSettings: React.FC = () => {
     const getApiUrl = () => {
         const envApi = import.meta.env.VITE_API_URL;
         if (envApi && envApi !== "/api") return envApi.replace(/\/$/, "");
-        return `${window.location.origin}/api`;
+        return '/api'; // Use relative path for same-origin robustness
     };
 
     useEffect(() => {
@@ -459,8 +459,9 @@ const ClubSettings: React.FC = () => {
                 const err = await res.json();
                 toast.error(err.error || 'Error al subir el logo');
             }
-        } catch {
-            toast.error('Error de conexión');
+        } catch (error: any) {
+            console.error('Platform logo upload error:', error);
+            toast.error(error.message || 'Error de conexión al subir el logo');
         } finally {
             setUploadingPlatformLogo(false);
             if (e.target) e.target.value = '';
