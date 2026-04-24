@@ -28,21 +28,19 @@ const ensureTable = async () => {
         CREATE INDEX IF NOT EXISTS idx_lead_club ON "Lead" ("clubId", "createdAt" DESC);
         CREATE INDEX IF NOT EXISTS idx_lead_status ON "Lead" (status);
 
-        // --- MIGRACIÓN DE RESCATE (REBOOT v4.65.0) ---
-        // Intentamos rescatar de tablas que podrían haber existido en versiones previas
-        await db.query(`
-            DO $$ 
-            BEGIN 
-                -- De 'leads' (minúscula) a '\"Lead\"'
-                IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'leads') THEN
-                    INSERT INTO "Lead" (name, email, phone, subject, message, "clubId", source, status, "createdAt")
-                    SELECT name, email, phone, subject, message, "clubId", source, status, "createdAt" FROM leads
-                    ON CONFLICT DO NOTHING;
-                END IF;
-            END $$;
-        `).catch(() => {});
-        // --- FIN MIGRACIÓN ---
-    `);
+        -- --- MIGRACIÓN DE RESCATE (REBOOT v4.65.0) ---
+        -- Intentamos rescatar de tablas que podrían haber existido en versiones previas
+        DO $$ 
+        BEGIN 
+            -- De 'leads' (minúscula) a '\"Lead\"'
+            IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'leads') THEN
+                INSERT INTO "Lead" (name, email, phone, subject, message, "clubId", source, status, "createdAt")
+                SELECT name, email, phone, subject, message, "clubId", source, status, "createdAt" FROM leads
+                ON CONFLICT DO NOTHING;
+            END IF;
+        END $$;
+        -- --- FIN MIGRACIÓN ---
+    `).catch(() => {});
     // Add metadata column if table already existed without it
     await db.query(`ALTER TABLE "Lead" ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'`).catch(() => { });
 };
@@ -164,33 +162,64 @@ router.get('/', authMiddleware, async (req, res) => {
         }
         // --- END AUTO-HEALING ---
 
-        // --- SONDA DE RESCATE (REBOOT v4.69.0) ---
-        // Buscamos tablas que suenen a contactos
-        const tRes = await db.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND (table_name ILIKE '%lead%' OR table_name ILIKE '%contact%' OR table_name ILIKE '%multimedia%' OR table_name ILIKE '%formulario%')", []);
-        const suspectedTables = tRes.rows.map(t => t.table_name);
-        
-        let discovery = "Buscando...";
-        for (const table of suspectedTables) {
-            try {
-                const check = await db.query(`SELECT COUNT(*) FROM "${table}" WHERE name ILIKE '%Maria%' OR "firstName" ILIKE '%Maria%' OR email ILIKE '%Maria%'`);
-                if (parseInt(check.rows[0].count) > 0) {
-                    discovery = `¡ENCONTRADO! Los datos están en la tabla: [${table}]`;
-                    break;
-                }
-            } catch (e) {}
+        const status = req.query.status;
+        const search = req.query.search;
+
+        let where = [];
+        let params = [];
+        let idx = 1;
+
+        if (req.user.role === 'district_admin' && districtId) {
+            // Admin de Distrito: Ver leads de su club (distrito) Y de cualquier club del distrito
+            where.push(`("clubId" = $${idx} OR "clubId" IN (SELECT id FROM "Club" WHERE "districtId" = $${idx+1}))`);
+            params.push(clubId || districtId, districtId);
+            idx += 2;
+        } else if (clubId) {
+            where.push(`"clubId" = $${idx++}`);
+            params.push(clubId);
+        }
+        if (status && status !== 'all') {
+            where.push(`status = $${idx++}`);
+            params.push(status);
+        }
+        if (search) {
+            where.push(`(name ILIKE $${idx} OR email ILIKE $${idx} OR subject ILIKE $${idx})`);
+            params.push(`%${search}%`);
+            idx++;
         }
 
+        const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+        const result = await db.query(
+            `SELECT * FROM "Lead" ${whereClause} ORDER BY "createdAt" DESC LIMIT 500`,
+            params
+        );
+
+        // Also return counts by status
+        let finalCountsParams = [];
+        let countsWhereClause = '';
+        if (req.user.role === 'district_admin' && districtId) {
+            countsWhereClause = `WHERE ("clubId" = $1 OR "clubId" IN (SELECT id FROM "Club" WHERE "districtId" = $2))`;
+            finalCountsParams = [clubId || districtId, districtId];
+        } else if (clubId) {
+            countsWhereClause = `WHERE "clubId" = $1`;
+            finalCountsParams = [clubId];
+        }
+
+        const counts = await db.query(
+            `SELECT status, COUNT(*) as count FROM "Lead" ${countsWhereClause} GROUP BY status`,
+            finalCountsParams
+        );
+
+        const totalResult = await db.query(
+            `SELECT COUNT(*) FROM "Lead" ${countsWhereClause}`,
+            finalCountsParams
+        );
+
         res.json({
-            leads: [],
-            total: 0,
-            statusCounts: { "NUEVO": 0, "CONTACTADO": 0 },
-            debug: {
-                suspectedTables: suspectedTables,
-                discovery: discovery,
-                message: "PROBE_MODE_ACTIVE"
-            }
+            leads: result.rows,
+            total: parseInt(totalResult.rows[0].count),
+            statusCounts: counts.rows.reduce((acc, r) => ({ ...acc, [(r.status || 'new').toLowerCase()]: parseInt(r.count) }), {}),
         });
-        return;
     } catch (error) {
         console.error('Lead list error:', error);
         res.status(500).json({ error: 'Error fetching leads' });

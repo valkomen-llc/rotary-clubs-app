@@ -16,9 +16,9 @@ interface UpdateItem {
     title: string;
     description?: string;
     author?: string;
-    type: 'hotfix' | 'feature' | 'update' | 'rollback' | 'feat' | 'major' | 'maintenance' | 'fix';
+    type: 'hotfix' | 'feature' | 'update' | 'rollback' | 'feat' | 'major' | 'maintenance' | 'fix' | 'improvement' | 'bugfix' | 'urgent' | 'patch';
     changes?: Array<{
-        type: 'added' | 'fixed' | 'changed' | 'removed' | 'rollback' | 'improved';
+        type: 'added' | 'fixed' | 'changed' | 'removed' | 'rollback' | 'improved' | 'major' | 'fix';
         text: string;
     }>;
 }
@@ -26,10 +26,22 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: "v4.86.8",
+        version: "v4.87.0",
         date: "24 de Abril, 2026",
-        title: "Trazabilidad de Carga",
-        description: "Se habilitó telemetría avanzada tanto en cliente como en servidor para identificar el punto exacto de fallo en las subidas de archivos pesados.",
+        title: "Lead Dashboard Stabilization & Forensic Recovery",
+        description: "Estabilización final del panel de leads. Se restauraron 62 registros históricos desde S3 y se corrigió la lógica de agregación para administradores de distrito.",
+        type: "improvement" as const,
+        changes: [
+            { type: "fixed", text: "Forensic Lead Recovery (62 records)" },
+            { type: "fixed", text: "District aggregation logic patch" },
+            { type: "improved", text: "Status casing normalization" }
+        ]
+    },
+    {
+        version: "v4.86.9",
+        date: "24 de Abril, 2026",
+        title: "Trazabilidad de Carga & Lead Recovery Init",
+        description: "Se habilitó telemetría avanzada y se inició el proceso de recuperación de leads históricos mediante escaneo de S3.",
         type: "improvement" as const
     },
     {
@@ -1581,9 +1593,14 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
 
 const getTypeStyles = (type: UpdateItem['type']) => {
     switch (type) {
-        case 'hotfix': return 'bg-red-50 text-red-700 border-red-200';
-        case 'feature': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+        case 'hotfix': 
+        case 'urgent': return 'bg-red-50 text-red-700 border-red-200';
+        case 'feature': 
+        case 'feat': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
         case 'rollback': return 'bg-amber-50 text-amber-700 border-amber-200';
+        case 'improvement': 
+        case 'patch':
+        case 'bugfix':
         case 'update':
         default: return 'bg-blue-50 text-rotary-blue border-blue-200';
     }
@@ -1592,7 +1609,10 @@ const getTypeStyles = (type: UpdateItem['type']) => {
 const getChangeIcon = (type: string) => {
     switch (type) {
         case 'added': return <PlusCircle className="w-3.5 h-3.5 text-emerald-500" />;
-        case 'fixed': return <CheckCircle2 className="w-3.5 h-3.5 text-blue-500" />;
+        case 'fixed': 
+        case 'fix':
+        case 'improved':
+        case 'major': return <CheckCircle2 className="w-3.5 h-3.5 text-blue-500" />;
         case 'changed': return <RefreshCw className="w-3.5 h-3.5 text-amber-500" />;
         case 'removed': return <AlertCircle className="w-3.5 h-3.5 text-red-500" />;
         default: return <AlertCircle className="w-3.5 h-3.5 text-gray-500" />;
