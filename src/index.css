@@ -165,8 +165,9 @@
     line-height: 1.6;
     font-size: 14px;
     word-break: normal !important;
-    overflow-wrap: normal !important;
-    word-wrap: normal !important;
+    overflow-wrap: break-word !important;
+    word-wrap: break-word !important;
+    white-space: normal !important;
     hyphens: none !important;
     -webkit-hyphens: none !important;
     text-align: left !important;
@@ -174,8 +175,9 @@
   .prose * {
     text-align: left !important;
     word-break: normal !important;
-    overflow-wrap: normal !important;
-    word-wrap: normal !important;
+    overflow-wrap: break-word !important;
+    word-wrap: break-word !important;
+    white-space: normal !important;
     hyphens: none !important;
     -webkit-hyphens: none !important;
   }

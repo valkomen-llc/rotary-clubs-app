@@ -926,6 +926,9 @@ const BlogPost = () => {
               .replace(/word-break\s*:\s*[^;"]+;?/gi, '')
               .replace(/word-wrap\s*:\s*[^;"]+;?/gi, '')
               .replace(/overflow-wrap\s*:\s*[^;"]+;?/gi, '')
+              .replace(/white-space\s*:\s*[^;"]+;?/gi, '')
+              .replace(/&nbsp;/gi, ' ')
+              .replace(/\u00A0/g, ' ')
             }}
           />
 
