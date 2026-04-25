@@ -32,7 +32,7 @@ export const login = async (req, res) => {
 
         const jwtLib = await getJwt();
         const token = jwtLib.sign(
-            { id: user.id, email: user.email, role: user.role, clubId: user.clubId },
+            { id: user.id, email: user.email, role: user.role, clubId: user.clubId, districtId: user.districtId },
             process.env.JWT_SECRET || 'rotary_secret_key',
             { expiresIn: '1d' }
         );

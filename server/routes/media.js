@@ -155,12 +155,16 @@ router.get('/', authMiddleware, async (req, res) => {
         } else if (role === 'district_admin') {
             // District admin sees media from their club OR any club in their district
             // Also include media where clubId is NULL if they are at the district level
-            query += ` WHERE ("clubId" = $1 OR "clubId" IN (SELECT id FROM "Club" WHERE "districtId" = $2) OR ("clubId" IS NULL AND $1 = $1))`;
-            params.push(userClubId || districtId, districtId);
-        } else {
+            const dId = districtId || userClubId;
+            query += ` WHERE ("clubId" = $1 OR "clubId" IN (SELECT id FROM "Club" WHERE "districtId" = $2) OR "clubId" IS NULL)`;
+            params.push(userClubId, dId);
+        } else if (userClubId) {
             // Regular club admin only sees their own club's media
             query += ' WHERE "clubId" = $1';
             params.push(userClubId);
+        } else {
+            // Fallback for users without clubId
+            query += ' WHERE "clubId" IS NULL';
         }
 
         query += ' ORDER BY "createdAt" DESC';
