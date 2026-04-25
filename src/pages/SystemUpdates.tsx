@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.88.1",
+        date: "25 de Abril, 2026",
+        title: "Media Upload Fix",
+        description: "Reparada la subida de archivos en la Librería de Medios, corrigiendo la compatibilidad de módulos en el servidor.",
+        type: "urgent" as const,
+        changes: [
+            { type: "fixed", text: "Corregida la incompatibilidad CJS/ESM en los comandos de AWS S3." },
+            { type: "fixed", text: "Instancia local de multer para parseo inmediato de archivos sin dependencias pesadas." },
+            { type: "improved", text: "Separación de lazy-loaders para S3 Client y AWS Commands." }
+        ]
+    },
+    {
         version: "v4.88.0",
         date: "25 de Abril, 2026",
         title: "Media Library Cold-Start Fix",

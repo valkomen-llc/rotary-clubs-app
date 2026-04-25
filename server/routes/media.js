@@ -1,33 +1,45 @@
 import express from 'express';
+import multer from 'multer';
 import db from '../lib/db.js';
 import { authMiddleware } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// ── Local lightweight multer (memory-only, no S3 dependency) ──
+const localUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 50 * 1024 * 1024 } // 50MB
+});
+
 // ── Lazy loaders for heavy native modules (prevents cold-start timeout) ──
-let _s3Deps = null;
-const getS3Deps = async () => {
-    if (!_s3Deps) {
-        const [s3Mod, awsMod] = await Promise.all([
-            import('../lib/storage.js'),
-            import('@aws-sdk/client-s3')
-        ]);
-        _s3Deps = {
-            s3: s3Mod.s3,
-            upload: s3Mod.upload,
-            uploadMemory: s3Mod.uploadMemory,
-            PutObjectCommand: awsMod.PutObjectCommand,
-            DeleteObjectCommand: awsMod.DeleteObjectCommand
+let _s3Client = null;
+let _awsCmds = null;
+
+const getS3Client = async () => {
+    if (!_s3Client) {
+        const storageMod = await import('../lib/storage.js');
+        _s3Client = storageMod.s3;
+    }
+    return _s3Client;
+};
+
+const getAwsCommands = async () => {
+    if (!_awsCmds) {
+        const mod = await import('@aws-sdk/client-s3');
+        // Handle CJS/ESM interop: commands could be on mod directly or on mod.default
+        _awsCmds = {
+            PutObjectCommand: mod.PutObjectCommand || mod.default?.PutObjectCommand,
+            DeleteObjectCommand: mod.DeleteObjectCommand || mod.default?.DeleteObjectCommand
         };
     }
-    return _s3Deps;
+    return _awsCmds;
 };
 
 let _sharp = null;
 const getSharp = async () => {
     if (!_sharp) {
         const mod = await import('sharp');
-        _sharp = mod.default;
+        _sharp = mod.default || mod;
     }
     return _sharp;
 };
@@ -38,13 +50,14 @@ const getMediaType = (mimetype) => {
     return 'document';
 };
 
-router.post('/upload', authMiddleware, async (req, res) => {
-    const { uploadMemory, s3, PutObjectCommand } = await getS3Deps();
-    uploadMemory.single('file')(req, res, async (err) => {
+router.post('/upload', authMiddleware, (req, res) => {
+    localUpload.single('file')(req, res, async (err) => {
         if (err) return res.status(400).json({ error: err.message });
         if (!req.file) return res.status(400).json({ error: 'No se seleccionó ningún archivo' });
 
         try {
+            const s3 = await getS3Client();
+            const { PutObjectCommand } = await getAwsCommands();
             const targetClubIdRaw = (req.user.role === 'administrator') ? (req.query.clubId || req.body.clubId || req.user.clubId) : req.user.clubId;
             
             const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -92,14 +105,15 @@ router.post('/upload', authMiddleware, async (req, res) => {
 // ── Auto-Crop Logo Upload ──────────────────────────────────────
 // Receives image in memory, trims whitespace/transparent margins
 // using sharp, then uploads the clean result to S3.
-router.post('/upload-logo', authMiddleware, async (req, res) => {
-    const { uploadMemory, s3, PutObjectCommand } = await getS3Deps();
-    const sharp = await getSharp();
-    uploadMemory.single('file')(req, res, async (err) => {
+router.post('/upload-logo', authMiddleware, (req, res) => {
+    localUpload.single('file')(req, res, async (err) => {
         if (err) return res.status(400).json({ error: err.message });
         if (!req.file) return res.status(400).json({ error: 'No se seleccionó ningún archivo' });
 
         try {
+            const s3 = await getS3Client();
+            const { PutObjectCommand } = await getAwsCommands();
+            const sharp = await getSharp();
             const targetClubId = (req.user.role === 'administrator')
                 ? (req.query.clubId || req.body.clubId || req.user.clubId)
                 : req.user.clubId;
@@ -224,7 +238,8 @@ router.delete('/:id', authMiddleware, async (req, res) => {
         }
         if (media.rows[0].s3Key && media.rows[0].bucket) {
             try {
-                const { s3, DeleteObjectCommand } = await getS3Deps();
+                const s3 = await getS3Client();
+                const { DeleteObjectCommand } = await getAwsCommands();
                 await s3.send(new DeleteObjectCommand({ Bucket: media.rows[0].bucket, Key: media.rows[0].s3Key }));
             } catch (s3Err) {
                 console.error('S3 delete error:', s3Err);
