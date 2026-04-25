@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.88.2",
+        date: "25 de Abril, 2026",
+        title: "Media Library Stability Fix",
+        description: "Corregida regresión en la carga de archivos: multer y todas las dependencias ahora son 100% lazy-loaded.",
+        type: "urgent" as const,
+        changes: [
+            { type: "fixed", text: "Eliminado import top-level de multer que causaba fallo en la carga del módulo." },
+            { type: "fixed", text: "GET /api/media ahora solo depende de express, db y auth para respuesta instantánea." },
+            { type: "improved", text: "Subida de archivos usa multer lazy-loaded para compatibilidad total con Vercel." }
+        ]
+    },
+    {
         version: "v4.88.1",
         date: "25 de Abril, 2026",
         title: "Media Upload Fix",

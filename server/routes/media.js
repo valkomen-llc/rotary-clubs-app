@@ -1,15 +1,22 @@
 import express from 'express';
-import multer from 'multer';
 import db from '../lib/db.js';
 import { authMiddleware } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// ── Local lightweight multer (memory-only, no S3 dependency) ──
-const localUpload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 50 * 1024 * 1024 } // 50MB
-});
+// ── Lazy loader for multer (not in package.json as direct dep) ──
+let _localUpload = null;
+const getLocalUpload = async () => {
+    if (!_localUpload) {
+        const multerMod = await import('multer');
+        const multer = multerMod.default || multerMod;
+        _localUpload = multer({
+            storage: multer.memoryStorage(),
+            limits: { fileSize: 50 * 1024 * 1024 }
+        });
+    }
+    return _localUpload;
+};
 
 // ── Lazy loaders for heavy native modules (prevents cold-start timeout) ──
 let _s3Client = null;
@@ -50,7 +57,8 @@ const getMediaType = (mimetype) => {
     return 'document';
 };
 
-router.post('/upload', authMiddleware, (req, res) => {
+router.post('/upload', authMiddleware, async (req, res) => {
+    const localUpload = await getLocalUpload();
     localUpload.single('file')(req, res, async (err) => {
         if (err) return res.status(400).json({ error: err.message });
         if (!req.file) return res.status(400).json({ error: 'No se seleccionó ningún archivo' });
@@ -105,7 +113,8 @@ router.post('/upload', authMiddleware, (req, res) => {
 // ── Auto-Crop Logo Upload ──────────────────────────────────────
 // Receives image in memory, trims whitespace/transparent margins
 // using sharp, then uploads the clean result to S3.
-router.post('/upload-logo', authMiddleware, (req, res) => {
+router.post('/upload-logo', authMiddleware, async (req, res) => {
+    const localUpload = await getLocalUpload();
     localUpload.single('file')(req, res, async (err) => {
         if (err) return res.status(400).json({ error: err.message });
         if (!req.file) return res.status(400).json({ error: 'No se seleccionó ningún archivo' });
