@@ -925,20 +925,33 @@ const BlogPost = () => {
           />
 
           {/* Video Principal si existe */}
-          {articulo.videoUrl && (
-            <div className="mt-12 mb-16">
-              <div className="relative aspect-video rounded-3xl overflow-hidden shadow-2xl border-8 border-gray-100/50 group">
-                <iframe
-                  className="absolute inset-0 w-full h-full"
-                  src={`https://www.youtube.com/embed/${articulo.videoUrl.split('v=')[1]?.split('&')[0] || articulo.videoUrl.split('/').pop()}`}
-                  title="Video principal"
-                  frameBorder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                ></iframe>
+          {articulo.videoUrl && (() => {
+            const mainVideoUrl = articulo.videoUrl;
+            const isMainYT = mainVideoUrl.includes('youtube.com') || mainVideoUrl.includes('youtu.be');
+            return (
+              <div className="mt-12 mb-16">
+                <div className="relative aspect-video rounded-3xl overflow-hidden shadow-2xl border-8 border-gray-100/50 group">
+                  {isMainYT ? (
+                    <iframe
+                      className="absolute inset-0 w-full h-full"
+                      src={`https://www.youtube.com/embed/${mainVideoUrl.split('v=')[1]?.split('&')[0] || mainVideoUrl.split('/').pop()}`}
+                      title="Video principal"
+                      frameBorder="0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    ></iframe>
+                  ) : (
+                    <video
+                      className="absolute inset-0 w-full h-full object-contain bg-black"
+                      src={mainVideoUrl}
+                      controls
+                      playsInline
+                    />
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Galería Adaptativa (Imágenes y Videos) */}
           {((articulo.images && articulo.images.length > 0) || (articulo.videoGallery && articulo.videoGallery.length > 0)) && (
@@ -953,6 +966,7 @@ const BlogPost = () => {
                 {allMedia.map((item: any, index: number) => {
                    // Patrón para que la primera sea grande y ocupe 2x2 en un grid de 3 columnas
                    const isFirstLarge = index === 0;
+                   const isYouTube = item.type === 'video' && (item.url.includes('youtube.com') || item.url.includes('youtu.be'));
                    
                    return (
                      <motion.div 
@@ -966,14 +980,22 @@ const BlogPost = () => {
                      >
                        {item.type === 'video' ? (
                          <div className="w-full h-full bg-gray-900 flex items-center justify-center relative">
-                            {/* Miniatura del video (usando el ID de youtube si es posible) */}
-                            <div className="absolute inset-0 opacity-40">
-                               <img 
-                                 src={`https://img.youtube.com/vi/${item.url.split('v=')[1]?.split('&')[0] || item.url.split('/').pop()}/0.jpg`} 
-                                 className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all"
-                                 alt=""
-                               />
-                            </div>
+                            {isYouTube ? (
+                              <div className="absolute inset-0 opacity-40">
+                                <img 
+                                  src={`https://img.youtube.com/vi/${item.url.split('v=')[1]?.split('&')[0] || item.url.split('/').pop()}/0.jpg`} 
+                                  className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all"
+                                  alt=""
+                                />
+                              </div>
+                            ) : (
+                              <video 
+                                className="absolute inset-0 w-full h-full object-cover opacity-40 grayscale group-hover:grayscale-0 transition-all"
+                                src={item.url}
+                                muted
+                                preload="metadata"
+                              />
+                            )}
                             <div className="bg-rotary-blue text-white p-4 rounded-full relative z-10 group-hover:scale-110 transition-transform shadow-xl">
                               <Play className="w-6 h-6 fill-white" />
                             </div>
@@ -1050,15 +1072,30 @@ const BlogPost = () => {
                   className="max-w-7xl w-full max-h-full flex items-center justify-center relative"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {allMedia[selectedMediaIndex].type === 'video' ? (
-                    <div className="w-full aspect-video rounded-2xl overflow-hidden shadow-2xl bg-black">
-                      <iframe
-                        className="w-full h-full border-none"
-                        src={`https://www.youtube.com/embed/${allMedia[selectedMediaIndex].url.split('v=')[1]?.split('&')[0] || allMedia[selectedMediaIndex].url.split('/').pop()}?autoplay=1`}
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        allowFullScreen
-                      ></iframe>
-                    </div>
+                  {allMedia[selectedMediaIndex].type === 'video' ? (() => {
+                    const vUrl = allMedia[selectedMediaIndex].url;
+                    const isYT = vUrl.includes('youtube.com') || vUrl.includes('youtu.be');
+                    return (
+                      <div className="w-full aspect-video rounded-2xl overflow-hidden shadow-2xl bg-black">
+                        {isYT ? (
+                          <iframe
+                            className="w-full h-full border-none"
+                            src={`https://www.youtube.com/embed/${vUrl.split('v=')[1]?.split('&')[0] || vUrl.split('/').pop()}?autoplay=1`}
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                          ></iframe>
+                        ) : (
+                          <video
+                            className="w-full h-full object-contain"
+                            src={vUrl}
+                            controls
+                            autoPlay
+                            playsInline
+                          />
+                        )}
+                      </div>
+                    );
+                  })()
                   ) : (
                     <img 
                       src={allMedia[selectedMediaIndex].url} 

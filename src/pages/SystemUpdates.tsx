@@ -26,6 +26,19 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.89.0",
+        date: "25 de Abril, 2026",
+        title: "Galería Multimedia: Soporte de Videos Directos",
+        description: "Los videos subidos directamente a la plataforma (S3) ahora se reproducen correctamente en la galería multimedia del blog, junto con los de YouTube.",
+        type: "feature" as const,
+        changes: [
+            { type: "fixed", text: "Videos subidos a S3 ahora se reproducen con reproductor HTML5 nativo." },
+            { type: "fixed", text: "Lightbox ahora detecta YouTube vs archivos directos automáticamente." },
+            { type: "improved", text: "Thumbnails de video muestran previsualización real del archivo." },
+            { type: "improved", text: "Video principal del artículo también soporta archivos directos." }
+        ]
+    },
+    {
         version: "v4.88.4",
         date: "25 de Abril, 2026",
         title: "Fix Upload Dependencies",
