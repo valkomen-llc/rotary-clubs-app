@@ -10,9 +10,10 @@ const router = express.Router();
 let _uploadDeps = null;
 const getUploadDeps = async () => {
     if (!_uploadDeps) {
-        const [multerMod, awsMod] = await Promise.all([
+        const [multerMod, awsMod, presignerMod] = await Promise.all([
             import('multer'),
-            import('@aws-sdk/client-s3')
+            import('@aws-sdk/client-s3'),
+            import('@aws-sdk/s3-request-presigner')
         ]);
         
         const multer = multerMod.default || multerMod;
@@ -32,7 +33,8 @@ const getUploadDeps = async () => {
             upload: multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } }),
             s3,
             PutObjectCommand: aws.PutObjectCommand,
-            DeleteObjectCommand: aws.DeleteObjectCommand
+            DeleteObjectCommand: aws.DeleteObjectCommand,
+            getSignedUrl: presignerMod.getSignedUrl
         };
     }
     return _uploadDeps;
@@ -103,6 +105,65 @@ router.get('/test-deps', async (req, res) => {
     } catch (error) {
         steps.error = { message: error.message, name: error.name, code: error.code || error.$metadata?.httpStatusCode };
         res.status(500).json({ success: false, steps });
+    }
+});
+
+// ── GET /api/media/presigned-url — Generate direct upload URL ──
+router.get('/presigned-url', authMiddleware, async (req, res) => {
+    try {
+        const { fileName, fileType, clubId } = req.query;
+        if (!fileName || !fileType) return res.status(400).json({ error: 'Faltan parámetros' });
+
+        const targetClubIdRaw = (req.user.role === 'administrator') ? (clubId || req.user.clubId) : req.user.clubId;
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        const targetClubId = (targetClubIdRaw && uuidRegex.test(targetClubIdRaw)) ? targetClubIdRaw : null;
+
+        const fileTypeLocal = getMediaType(fileType);
+        const folderStr = fileTypeLocal === 'image' ? 'images' : fileTypeLocal === 'video' ? 'videos' : 'documents';
+        
+        const key = `clubs/${targetClubId || 'global'}/${folderStr}/${Date.now()}-${fileName.replace(/\s+/g, '_')}`;
+        const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
+
+        const { s3, PutObjectCommand, getSignedUrl } = await getUploadDeps();
+        const command = new PutObjectCommand({
+            Bucket: bucket,
+            Key: key,
+            ContentType: fileType
+        });
+
+        const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
+        const encodedKey = key.split('/').map(segment => encodeURIComponent(segment)).join('/');
+        const fileUrl = `https://${bucket}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${encodedKey}`;
+
+        res.json({ uploadUrl, fileUrl, key, fileTypeLocal });
+    } catch (error) {
+        console.error('[Media] Presigned URL error:', error);
+        res.status(500).json({ error: 'Error al generar URL de subida' });
+    }
+});
+
+// ── POST /api/media/save — Save media record after direct S3 upload ──
+router.post('/save', authMiddleware, async (req, res) => {
+    try {
+        const { clubId, fileName, fileUrl, s3Key, fileType, fileSize } = req.body;
+        
+        const targetClubIdRaw = (req.user.role === 'administrator') ? (clubId || req.user.clubId) : req.user.clubId;
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        const targetClubId = (targetClubIdRaw && uuidRegex.test(targetClubIdRaw)) ? targetClubIdRaw : null;
+        
+        const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
+        const fileTypeLocal = getMediaType(fileType);
+
+        const result = await db.query(
+            `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "createdAt")
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING *`,
+            [fileName, fileUrl, fileTypeLocal, fileSize, bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, s3Key]
+        );
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('[Media] Save error:', error);
+        res.status(500).json({ error: 'Error al registrar en base de datos', details: error.message });
     }
 });
 

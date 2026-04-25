@@ -145,17 +145,51 @@ const MediaLibrary: React.FC = () => {
 
                 const processedFile = await compressImage(file);
 
-                const formData = new FormData();
-                formData.append('file', processedFile);
-                formData.append('clubId', (isSuperAdmin ? selectedClubId : user?.clubId) || '');
+                const targetClubId = (isSuperAdmin ? selectedClubId : user?.clubId) || '';
+                
+                // 1. Obtener Presigned URL
+                const presignRes = await fetch(
+                    `${import.meta.env.VITE_API_URL || '/api'}/media/presigned-url?fileName=${encodeURIComponent(processedFile.name)}&fileType=${encodeURIComponent(processedFile.type)}&clubId=${targetClubId}`,
+                    { headers: { 'Authorization': `Bearer ${token}` } }
+                );
 
-                const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/media/upload`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` },
-                    body: formData
+                if (!presignRes.ok) {
+                    errorCount++;
+                    continue;
+                }
+
+                const { uploadUrl, fileUrl, key, fileTypeLocal } = await presignRes.json();
+
+                // 2. Subir directo a S3
+                const s3Res = await fetch(uploadUrl, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': processedFile.type },
+                    body: processedFile
                 });
 
-                if (response.ok) {
+                if (!s3Res.ok) {
+                    errorCount++;
+                    continue;
+                }
+
+                // 3. Registrar en base de datos
+                const saveRes = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/media/save`, {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        clubId: targetClubId,
+                        fileName: processedFile.name,
+                        fileUrl,
+                        s3Key: key,
+                        fileType: processedFile.type,
+                        fileSize: processedFile.size
+                    })
+                });
+
+                if (saveRes.ok) {
                     successCount++;
                 } else {
                     errorCount++;
