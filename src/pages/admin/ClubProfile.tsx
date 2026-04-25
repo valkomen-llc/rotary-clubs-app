@@ -59,6 +59,40 @@ const ClubProfile: React.FC = () => {
         archetype: null,
     });
 
+    const [domainSearch, setDomainSearch] = useState('');
+    const [domainStatus, setDomainStatus] = useState<'idle' | 'searching' | 'available' | 'unavailable' | 'error'>('idle');
+    const [domainMessage, setDomainMessage] = useState('');
+
+    const checkDomain = async () => {
+        if (!domainSearch) return;
+        setDomainStatus('searching');
+        setDomainMessage('');
+
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/domains/check?domain=${domainSearch}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+                if (data.isAvailable) {
+                    setDomainStatus('available');
+                    setDomainMessage(`¡Felicidades! ${data.domain} está disponible.`);
+                } else {
+                    setDomainStatus('unavailable');
+                    setDomainMessage(`Lo sentimos, ${data.domain} ya está registrado.`);
+                }
+            } else {
+                setDomainStatus('error');
+                setDomainMessage(data.error || 'Error verificando disponibilidad');
+            }
+        } catch (err) {
+            setDomainStatus('error');
+            setDomainMessage('Error de red al verificar el dominio');
+        }
+    };
+
     useEffect(() => {
         if (user?.role === 'administrator') {
             // Super admins can't edit "Mi Club" because they aren't tied to one.
@@ -503,21 +537,78 @@ const ClubProfile: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Sección: Dominio Personalizado e Instrucciones DNS */}
+                {/* Sección: Ecosistema Digital y Dominio */}
                 {user?.role !== 'editor' && (
                 <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
                     <div className="flex items-center gap-3 mb-6">
                         <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
                             <Globe className="w-5 h-5" />
                         </div>
-                        <h2 className="text-lg font-bold text-gray-800">Dominio Personalizado</h2>
+                        <div>
+                            <h2 className="text-lg font-bold text-gray-800">Ecosistema Digital: Dominio y Correos</h2>
+                            <p className="text-sm text-gray-500">Busca el dominio para tu club. El sistema automatizará toda la configuración (Web y Correos).</p>
+                        </div>
                     </div>
 
-                    <div className="space-y-4 max-w-2xl">
-                        <p className="text-sm text-gray-600">
-                            ¿Tienes tu propio dominio (ej: <strong>rotarybogota.org</strong>)? Escríbelo aquí para que tu plataforma sea accesible desde esa dirección web.
-                        </p>
-                        <div className="space-y-1">
+                    <div className="space-y-6 max-w-2xl">
+                        {/* Buscador de Dominios */}
+                        <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                            <label className="text-sm font-bold text-gray-700 block mb-2">
+                                Buscar disponibilidad de dominio
+                            </label>
+                            <div className="flex gap-3">
+                                <div className="relative flex-1">
+                                    <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                                    <input
+                                        type="text"
+                                        className="w-full pl-11 pr-4 py-3 bg-white border border-gray-200 focus:border-rotary-blue focus:ring-2 focus:ring-rotary-blue/20 rounded-xl outline-none transition-all font-medium text-gray-800"
+                                        value={domainSearch}
+                                        onChange={(e) => setDomainSearch(e.target.value.toLowerCase().replace(/\s+/g, ''))}
+                                        placeholder="ej: rotarybogota.org"
+                                        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), checkDomain())}
+                                    />
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={checkDomain}
+                                    disabled={domainStatus === 'searching' || !domainSearch}
+                                    className="bg-gray-800 text-white px-6 py-3 rounded-xl font-bold hover:bg-black transition-colors disabled:opacity-50 whitespace-nowrap"
+                                >
+                                    {domainStatus === 'searching' ? 'Buscando...' : 'Verificar'}
+                                </button>
+                            </div>
+
+                            {/* Resultados de búsqueda */}
+                            {domainStatus !== 'idle' && domainStatus !== 'searching' && (
+                                <div className={`mt-4 p-4 rounded-xl border flex items-start gap-3 ${
+                                    domainStatus === 'available' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' :
+                                    domainStatus === 'unavailable' ? 'bg-red-50 border-red-200 text-red-800' :
+                                    'bg-amber-50 border-amber-200 text-amber-800'
+                                }`}>
+                                    <Info className="w-5 h-5 shrink-0 mt-0.5" />
+                                    <div className="flex-1">
+                                        <p className="font-bold text-sm">{domainMessage}</p>
+                                        {domainStatus === 'available' && (
+                                            <button type="button" className="mt-3 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-emerald-700 transition-colors">
+                                                Adquirir Ecosistema con este Dominio
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="relative flex items-center py-2">
+                            <div className="flex-grow border-t border-gray-200"></div>
+                            <span className="flex-shrink-0 mx-4 text-gray-400 text-xs font-bold uppercase tracking-widest">O</span>
+                            <div className="flex-grow border-t border-gray-200"></div>
+                        </div>
+
+                        {/* Configuración Manual Legacy */}
+                        <div className="space-y-1 opacity-70 hover:opacity-100 transition-opacity">
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1">
+                                Ya tengo un dominio configurado manualmente
+                            </label>
                             <div className="relative">
                                 <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" />
                                 <input
@@ -528,35 +619,10 @@ const ClubProfile: React.FC = () => {
                                     placeholder="ej: tu-club.org"
                                 />
                             </div>
+                            <p className="text-[11px] text-gray-500 mt-2">
+                                Nota: Si usas esta opción, debes configurar los registros DNS (A: 76.76.21.21) manualmente en tu proveedor.
+                            </p>
                         </div>
-
-                        {formData.domain && (
-                            <div className="mt-6 bg-emerald-50 border border-emerald-100 p-6 rounded-2xl">
-                                <h3 className="text-emerald-800 font-bold mb-2 flex items-center gap-2">
-                                    <Info className="w-5 h-5" /> Instrucciones Obligatorias (Paso Final)
-                                </h3>
-                                <p className="text-emerald-700 text-sm mb-4">
-                                    Nuestro sistema matriculará tu dominio automáticamente. Sin embargo, para que el internet sepa que <strong className="font-bold">{formData.domain}</strong> dirige a esta plataforma, <strong>tienes que entrar a donde compraste tu dominio</strong> (GoDaddy, Hostinger, Namecheap, etc.) y configurar los DNS apuntando a nuestro servidor:
-                                </p>
-                                <div className="bg-white p-4 rounded-xl border border-emerald-100 flex flex-col gap-2">
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-gray-500 font-semibold">Tipo de Registro:</span>
-                                        <span className="font-mono text-gray-800 font-bold bg-gray-100 px-2 py-1 rounded">A</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-gray-500 font-semibold">Nombre / Host:</span>
-                                        <span className="font-mono text-gray-800 font-bold bg-gray-100 px-2 py-1 rounded">@</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-gray-500 font-semibold">Valor / Apunta a:</span>
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-mono text-rotary-blue font-bold bg-blue-50 px-2 py-1 rounded">76.76.21.21</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <p className="text-xs text-emerald-600 mt-4 italic font-medium">Nota: Los cambios de DNS suelen tardar algunas horas en propagarse por el mundo.</p>
-                            </div>
-                        )}
                     </div>
                 </div>
                 )}
