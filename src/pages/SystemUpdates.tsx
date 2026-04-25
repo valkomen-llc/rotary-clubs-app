@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.87.3",
+        date: "25 de Abril, 2026",
+        title: "Forensic Media Library Inspection",
+        description: "Se implementaron herramientas de diagnóstico forense para identificar fallas en la visibilidad de archivos en sitios individuales.",
+        type: "urgent" as const,
+        changes: [
+            { type: "fixed", text: "Reparada inconsistencia de districtId en clubes del distrito 4271." },
+            { type: "improved", text: "Inyección de hooks de diagnóstico para auditoría de sesión en tiempo real." }
+        ]
+    },
+    {
         version: "v4.87.1",
         date: "25 de Abril, 2026",
         title: "Media Library District Scope Fix",
