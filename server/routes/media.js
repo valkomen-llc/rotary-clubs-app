@@ -53,6 +53,59 @@ const getMediaType = (mimetype) => {
     return 'document';
 };
 
+// ── Diagnostic: test if upload deps can load ──
+router.get('/test-deps', async (req, res) => {
+    const steps = {};
+    try {
+        // Step 1: load multer
+        const t1 = Date.now();
+        const multerMod = await import('multer');
+        steps.multer = { ok: true, ms: Date.now() - t1, type: typeof (multerMod.default || multerMod) };
+        
+        // Step 2: load AWS SDK
+        const t2 = Date.now();
+        const awsMod = await import('@aws-sdk/client-s3');
+        const aws = awsMod.default || awsMod;
+        steps.aws = { ok: true, ms: Date.now() - t2, hasS3Client: !!aws.S3Client, hasPut: !!aws.PutObjectCommand };
+        
+        // Step 3: create S3 client
+        const t3 = Date.now();
+        const s3 = new aws.S3Client({
+            region: process.env.AWS_REGION || 'us-east-1',
+            credentials: {
+                accessKeyId: process.env.ROTARY_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID || 'MISSING',
+                secretAccessKey: process.env.ROTARY_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY || 'MISSING',
+            },
+            maxAttempts: 2,
+        });
+        steps.s3Client = { ok: true, ms: Date.now() - t3 };
+        
+        // Step 4: test small S3 put (1 byte)
+        const t4 = Date.now();
+        const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
+        await s3.send(new aws.PutObjectCommand({
+            Bucket: bucket,
+            Key: `_test/ping-${Date.now()}.txt`,
+            Body: Buffer.from('ok'),
+            ContentType: 'text/plain',
+        }));
+        steps.s3Upload = { ok: true, ms: Date.now() - t4, bucket };
+        
+        // Step 5: check env vars
+        steps.env = {
+            AWS_REGION: process.env.AWS_REGION || 'NOT SET',
+            AWS_BUCKET: process.env.AWS_BUCKET_NAME || 'NOT SET',
+            HAS_ACCESS_KEY: !!(process.env.ROTARY_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID),
+            HAS_SECRET_KEY: !!(process.env.ROTARY_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY),
+        };
+        
+        res.json({ success: true, steps });
+    } catch (error) {
+        steps.error = { message: error.message, name: error.name, code: error.code || error.$metadata?.httpStatusCode };
+        res.status(500).json({ success: false, steps });
+    }
+});
+
 router.post('/upload', authMiddleware, async (req, res) => {
     const { upload, s3, PutObjectCommand } = await getUploadDeps();
     upload.single('file')(req, res, async (err) => {
