@@ -1,11 +1,36 @@
 import express from 'express';
 import db from '../lib/db.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { DeleteObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
-import { s3, upload, uploadMemory } from '../lib/storage.js';
-import sharp from 'sharp';
 
 const router = express.Router();
+
+// ── Lazy loaders for heavy native modules (prevents cold-start timeout) ──
+let _s3Deps = null;
+const getS3Deps = async () => {
+    if (!_s3Deps) {
+        const [s3Mod, awsMod] = await Promise.all([
+            import('../lib/storage.js'),
+            import('@aws-sdk/client-s3')
+        ]);
+        _s3Deps = {
+            s3: s3Mod.s3,
+            upload: s3Mod.upload,
+            uploadMemory: s3Mod.uploadMemory,
+            PutObjectCommand: awsMod.PutObjectCommand,
+            DeleteObjectCommand: awsMod.DeleteObjectCommand
+        };
+    }
+    return _s3Deps;
+};
+
+let _sharp = null;
+const getSharp = async () => {
+    if (!_sharp) {
+        const mod = await import('sharp');
+        _sharp = mod.default;
+    }
+    return _sharp;
+};
 
 const getMediaType = (mimetype) => {
     if (mimetype.startsWith('image/')) return 'image';
@@ -13,7 +38,8 @@ const getMediaType = (mimetype) => {
     return 'document';
 };
 
-router.post('/upload', authMiddleware, (req, res) => {
+router.post('/upload', authMiddleware, async (req, res) => {
+    const { uploadMemory, s3, PutObjectCommand } = await getS3Deps();
     uploadMemory.single('file')(req, res, async (err) => {
         if (err) return res.status(400).json({ error: err.message });
         if (!req.file) return res.status(400).json({ error: 'No se seleccionó ningún archivo' });
@@ -21,7 +47,6 @@ router.post('/upload', authMiddleware, (req, res) => {
         try {
             const targetClubIdRaw = (req.user.role === 'administrator') ? (req.query.clubId || req.body.clubId || req.user.clubId) : req.user.clubId;
             
-            // Validate UUID format to prevent database errors
             const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
             const targetClubId = (targetClubIdRaw && uuidRegex.test(targetClubIdRaw)) ? targetClubIdRaw : null;
 
@@ -67,7 +92,9 @@ router.post('/upload', authMiddleware, (req, res) => {
 // ── Auto-Crop Logo Upload ──────────────────────────────────────
 // Receives image in memory, trims whitespace/transparent margins
 // using sharp, then uploads the clean result to S3.
-router.post('/upload-logo', authMiddleware, (req, res) => {
+router.post('/upload-logo', authMiddleware, async (req, res) => {
+    const { uploadMemory, s3, PutObjectCommand } = await getS3Deps();
+    const sharp = await getSharp();
     uploadMemory.single('file')(req, res, async (err) => {
         if (err) return res.status(400).json({ error: err.message });
         if (!req.file) return res.status(400).json({ error: 'No se seleccionó ningún archivo' });
@@ -78,30 +105,24 @@ router.post('/upload-logo', authMiddleware, (req, res) => {
                 : req.user.clubId;
             const folder = req.query.folder || req.body.folder || 'logos';
 
-            // Auto-trim whitespace/transparent margins
-            // threshold:30 catches near-white pixels (Rotary logos have white bg)
             let trimmedBuffer;
             let finalContentType = 'image/png';
             try {
-                // threshold:30 catches near-white pixels (Rotary logos often have white bg)
                 trimmedBuffer = await sharp(req.file.buffer)
                     .trim(30) 
                     .png()
                     .toBuffer();
                 console.log('✅ Logo auto-trimmed successfully via Sharp');
             } catch (trimError) {
-                // Fallback: if trim fails for any reason, upload original image
                 console.warn('⚠️ Auto-trim failed, uploading original image:', trimError.message);
                 trimmedBuffer = req.file.buffer;
-                finalContentType = req.file.mimetype; // Use original if we did not encode as PNG
+                finalContentType = req.file.mimetype;
             }
 
-            // Build S3 key the same way as regular uploads
             const fileName = `${Date.now()}-${req.file.originalname.replace(/\s+/g, '_')}`;
             const s3Key = `clubs/${targetClubId}/${folder}/${fileName}`;
             const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
 
-            // Upload trimmed image to S3
             await s3.send(new PutObjectCommand({
                 Bucket: bucket,
                 Key: s3Key,
@@ -112,7 +133,6 @@ router.post('/upload-logo', authMiddleware, (req, res) => {
             const encodedKey = s3Key.split('/').map(segment => encodeURIComponent(segment)).join('/');
             const fileUrl = `https://${bucket}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${encodedKey}`;
 
-            // Save record to Media table
             const result = await db.query(
                 `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "createdAt")
                  VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING *`,
@@ -204,6 +224,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
         }
         if (media.rows[0].s3Key && media.rows[0].bucket) {
             try {
+                const { s3, DeleteObjectCommand } = await getS3Deps();
                 await s3.send(new DeleteObjectCommand({ Bucket: media.rows[0].bucket, Key: media.rows[0].s3Key }));
             } catch (s3Err) {
                 console.error('S3 delete error:', s3Err);

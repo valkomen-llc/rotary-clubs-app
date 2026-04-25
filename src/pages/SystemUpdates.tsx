@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.88.0",
+        date: "25 de Abril, 2026",
+        title: "Media Library Cold-Start Fix",
+        description: "Se resolvió el timeout crítico en la Librería de Medios causado por la inicialización de módulos nativos pesados (sharp/S3) durante el arranque en frío del servidor.",
+        type: "urgent" as const,
+        changes: [
+            { type: "fixed", text: "Convertida la importación de sharp y S3 a carga diferida (lazy loading)." },
+            { type: "fixed", text: "La ruta GET /api/media ahora responde instantáneamente sin cargar módulos innecesarios." },
+            { type: "improved", text: "Los módulos pesados solo se cargan cuando se necesitan (upload, delete)." }
+        ]
+    },
+    {
         version: "v4.87.3",
         date: "25 de Abril, 2026",
         title: "Forensic Media Library Inspection",
