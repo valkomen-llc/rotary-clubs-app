@@ -1095,8 +1095,7 @@ const BlogPost = () => {
                         )}
                       </div>
                     );
-                  })()
-                  ) : (
+                  })()) : (
                     <img 
                       src={allMedia[selectedMediaIndex].url} 
                       className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl select-none"
