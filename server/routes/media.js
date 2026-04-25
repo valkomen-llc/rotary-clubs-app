@@ -177,6 +177,23 @@ router.get('/', authMiddleware, async (req, res) => {
     }
 });
 
+router.get('/debug-me', authMiddleware, async (req, res) => {
+    try {
+        const { role, clubId, districtId, email } = req.user;
+        const mediaCount = await db.query('SELECT COUNT(*) FROM \"Media\" WHERE \"clubId\" = $1', [clubId]);
+        const club = await db.query('SELECT name, domain FROM \"Club\" WHERE id = $1', [clubId]);
+        
+        res.json({
+            user: { role, clubId, districtId, email },
+            club: club.rows[0],
+            mediaInDb: mediaCount.rows[0].count,
+            paramsUsed: [clubId]
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 router.delete('/:id', authMiddleware, async (req, res) => {
     const { id } = req.params;
     try {

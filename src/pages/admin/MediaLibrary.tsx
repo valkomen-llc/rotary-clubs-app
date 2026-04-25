@@ -119,6 +119,15 @@ const MediaLibrary: React.FC = () => {
             if (response.ok) {
                 const data = await response.json();
                 setMedia(data);
+                
+                // Diagnostic log
+                const debugResp = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/media/debug-me`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (debugResp.ok) {
+                    const debugData = await debugResp.json();
+                    console.log('MEDIA DEBUG:', debugData);
+                }
             }
         } catch (error) {
             toast.error('Error al cargar la librería de medios');
