@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.88.3",
+        date: "25 de Abril, 2026",
+        title: "Upload Engine Rewrite",
+        description: "Motor de subida completamente reescrito con S3 client minimalista integrado, eliminando dependencia de storage.js para subidas.",
+        type: "urgent" as const,
+        changes: [
+            { type: "fixed", text: "S3 client creado directamente en media.js — ya no carga storage.js pesado." },
+            { type: "fixed", text: "Carga paralela de multer + AWS SDK en un solo await." },
+            { type: "improved", text: "Tiempo de cold-start para subidas reducido dramáticamente." }
+        ]
+    },
+    {
         version: "v4.88.2",
         date: "25 de Abril, 2026",
         title: "Media Library Stability Fix",

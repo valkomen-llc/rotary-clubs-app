@@ -4,42 +4,38 @@ import { authMiddleware } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// ── Lazy loader for multer (not in package.json as direct dep) ──
-let _localUpload = null;
-const getLocalUpload = async () => {
-    if (!_localUpload) {
-        const multerMod = await import('multer');
+// ── Single lazy loader for ALL upload dependencies ──
+// Creates a minimal S3 client directly — avoids loading storage.js
+// which drags in multer-s3, s3-request-presigner, etc.
+let _uploadDeps = null;
+const getUploadDeps = async () => {
+    if (!_uploadDeps) {
+        const [multerMod, awsMod] = await Promise.all([
+            import('multer'),
+            import('@aws-sdk/client-s3')
+        ]);
+        
         const multer = multerMod.default || multerMod;
-        _localUpload = multer({
-            storage: multer.memoryStorage(),
-            limits: { fileSize: 50 * 1024 * 1024 }
+        const aws = awsMod.default || awsMod;
+        
+        // Create minimal S3 client (no storage.js needed)
+        const s3 = new aws.S3Client({
+            region: process.env.AWS_REGION || 'us-east-1',
+            credentials: {
+                accessKeyId: process.env.ROTARY_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID,
+                secretAccessKey: process.env.ROTARY_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY,
+            },
+            maxAttempts: 2,
         });
-    }
-    return _localUpload;
-};
 
-// ── Lazy loaders for heavy native modules (prevents cold-start timeout) ──
-let _s3Client = null;
-let _awsCmds = null;
-
-const getS3Client = async () => {
-    if (!_s3Client) {
-        const storageMod = await import('../lib/storage.js');
-        _s3Client = storageMod.s3;
-    }
-    return _s3Client;
-};
-
-const getAwsCommands = async () => {
-    if (!_awsCmds) {
-        const mod = await import('@aws-sdk/client-s3');
-        // Handle CJS/ESM interop: commands could be on mod directly or on mod.default
-        _awsCmds = {
-            PutObjectCommand: mod.PutObjectCommand || mod.default?.PutObjectCommand,
-            DeleteObjectCommand: mod.DeleteObjectCommand || mod.default?.DeleteObjectCommand
+        _uploadDeps = {
+            upload: multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } }),
+            s3,
+            PutObjectCommand: aws.PutObjectCommand,
+            DeleteObjectCommand: aws.DeleteObjectCommand
         };
     }
-    return _awsCmds;
+    return _uploadDeps;
 };
 
 let _sharp = null;
@@ -58,14 +54,12 @@ const getMediaType = (mimetype) => {
 };
 
 router.post('/upload', authMiddleware, async (req, res) => {
-    const localUpload = await getLocalUpload();
-    localUpload.single('file')(req, res, async (err) => {
+    const { upload, s3, PutObjectCommand } = await getUploadDeps();
+    upload.single('file')(req, res, async (err) => {
         if (err) return res.status(400).json({ error: err.message });
         if (!req.file) return res.status(400).json({ error: 'No se seleccionó ningún archivo' });
 
         try {
-            const s3 = await getS3Client();
-            const { PutObjectCommand } = await getAwsCommands();
             const targetClubIdRaw = (req.user.role === 'administrator') ? (req.query.clubId || req.body.clubId || req.user.clubId) : req.user.clubId;
             
             const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -114,15 +108,13 @@ router.post('/upload', authMiddleware, async (req, res) => {
 // Receives image in memory, trims whitespace/transparent margins
 // using sharp, then uploads the clean result to S3.
 router.post('/upload-logo', authMiddleware, async (req, res) => {
-    const localUpload = await getLocalUpload();
-    localUpload.single('file')(req, res, async (err) => {
+    const { upload, s3, PutObjectCommand } = await getUploadDeps();
+    const sharp = await getSharp();
+    upload.single('file')(req, res, async (err) => {
         if (err) return res.status(400).json({ error: err.message });
         if (!req.file) return res.status(400).json({ error: 'No se seleccionó ningún archivo' });
 
         try {
-            const s3 = await getS3Client();
-            const { PutObjectCommand } = await getAwsCommands();
-            const sharp = await getSharp();
             const targetClubId = (req.user.role === 'administrator')
                 ? (req.query.clubId || req.body.clubId || req.user.clubId)
                 : req.user.clubId;
@@ -247,8 +239,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
         }
         if (media.rows[0].s3Key && media.rows[0].bucket) {
             try {
-                const s3 = await getS3Client();
-                const { DeleteObjectCommand } = await getAwsCommands();
+                const { s3, DeleteObjectCommand } = await getUploadDeps();
                 await s3.send(new DeleteObjectCommand({ Bucket: media.rows[0].bucket, Key: media.rows[0].s3Key }));
             } catch (s3Err) {
                 console.error('S3 delete error:', s3Err);
