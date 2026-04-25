@@ -76,10 +76,11 @@ const getScoutGrants = async () => _scoutGrants || (({ default: _scoutGrants } =
 let _documents;
 const getDocuments = async () => _documents || (({ default: _documents } = await import('../server/routes/documents.js')), _documents);
 
-let _system, _whatsappQr, _contentStudio;
+let _system, _whatsappQr, _contentStudio, _domains;
 const getSystem = async () => _system || (({ default: _system } = await import('../server/routes/system.js')), _system);
 const getWhatsappQr = async () => _whatsappQr || (({ default: _whatsappQr } = await import('../server/routes/whatsapp-qr.js')), _whatsappQr);
 const getContentStudio = async () => _contentStudio || (({ default: _contentStudio } = await import('../server/routes/contentStudio.js')), _contentStudio);
+const getDomains = async () => _domains || (({ default: _domains } = await import('../server/routes/domains.js')), _domains);
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 app.use('/api/auth', async (req, res, next) => (await getAuth())(req, res, next));
@@ -111,6 +112,7 @@ app.post('/api/debug-url', (req, res) => {
 app.use('/api/system', async (req, res, next) => (await getSystem())(req, res, next));
 app.use('/api/whatsapp-qr', async (req, res, next) => (await getWhatsappQr())(req, res, next));
 app.use('/api/content-studio', async (req, res, next) => (await getContentStudio())(req, res, next));
+app.use('/api/domains', async (req, res, next) => (await getDomains())(req, res, next));
 
 
 // ── Social OAuth Callbacks ───────────────────────────────────────────────────
