@@ -164,12 +164,17 @@
     color: #374151; /* gray-700 */
     line-height: 1.6;
     font-size: 14px;
-    word-break: break-word;
+    word-break: normal !important;
     overflow-wrap: break-word;
+    hyphens: none !important;
+    -webkit-hyphens: none !important;
     text-align: left !important;
   }
   .prose * {
     text-align: left !important;
+    word-break: normal !important;
+    hyphens: none !important;
+    -webkit-hyphens: none !important;
   }
   .prose p {
     margin-top: 1em;
