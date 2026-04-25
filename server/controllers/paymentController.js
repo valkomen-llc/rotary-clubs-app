@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import Stripe from 'stripe';
 import EmailService from '../services/EmailService.js';
+import DomainProvisioningService from '../services/DomainProvisioningService.js';
 
 const prisma = new PrismaClient();
 const DEFAULT_PLATFORM_FEE_PERCENTAGE = 0.05; // 5% fee when using Valkomen's master account
@@ -117,6 +118,10 @@ export const stripeWebhook = async (req, res) => {
                 const failedIntent = event.data.object;
                 await handleFailedPayment(failedIntent);
                 break;
+            case 'checkout.session.completed':
+                const session = event.data.object;
+                await handleSuccessfulCheckoutSession(session);
+                break;
             default:
                 console.log(`Unhandled event type ${event.type}`);
         }
@@ -127,6 +132,25 @@ export const stripeWebhook = async (req, res) => {
         res.status(500).json({ error: 'Webhook handler error' });
     }
 };
+
+async function handleSuccessfulCheckoutSession(session) {
+    console.log(`[Stripe Webhook] Checkout session completed: ${session.id}`);
+    
+    // Verificamos si es un pago del paquete "Ecosistema Digital"
+    if (session.metadata && session.metadata.type === 'ecosystem_purchase') {
+        const { clubId, domainName } = session.metadata;
+        console.log(`[Stripe Webhook] Detonando provisión de Ecosistema para Club: ${clubId}, Dominio: ${domainName}`);
+        
+        try {
+            // Ejecutamos el orquestador Zero-Touch de AWS
+            await DomainProvisioningService.provisionEcosystem(clubId, domainName);
+            console.log(`[Stripe Webhook] Provisión de dominio completada con éxito.`);
+        } catch (error) {
+            console.error(`[Stripe Webhook] ERROR en la provisión del dominio:`, error);
+            // NOTA: En producción aquí se debería notificar al equipo técnico (Sentry, Email, etc.)
+        }
+    }
+}
 
 async function handleSuccessfulPayment(paymentIntent) {
     const { orderId, clubId, customerEmail, customerName } = paymentIntent.metadata;
