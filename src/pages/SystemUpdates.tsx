@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.88.4",
+        date: "25 de Abril, 2026",
+        title: "Fix Upload Dependencies",
+        description: "Agregadas dependencias faltantes (multer, multer-s3) al registro de paquetes para compatibilidad con Vercel serverless.",
+        type: "urgent" as const,
+        changes: [
+            { type: "fixed", text: "multer y multer-s3 agregados a package.json (faltaban como dependencias directas)." },
+            { type: "fixed", text: "Resuelto ERR_MODULE_NOT_FOUND en subida de archivos en producción." }
+        ]
+    },
+    {
         version: "v4.88.3",
         date: "25 de Abril, 2026",
         title: "Upload Engine Rewrite",
