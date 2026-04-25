@@ -166,6 +166,10 @@
     font-size: 14px;
     word-break: break-word;
     overflow-wrap: break-word;
+    text-align: left !important;
+  }
+  .prose * {
+    text-align: left !important;
   }
   .prose p {
     margin-top: 1em;
