@@ -93,6 +93,30 @@ const ClubProfile: React.FC = () => {
         }
     };
 
+    const handleCheckout = async () => {
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/domains/checkout`, {
+                method: 'POST',
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ domain: domainSearch })
+            });
+
+            const data = await res.json();
+            if (res.ok && data.url) {
+                // Redirect to Stripe
+                window.location.href = data.url;
+            } else {
+                toast.error(data.error || 'Error al procesar el pago');
+            }
+        } catch (err) {
+            toast.error('Error de red al conectar con pasarela de pagos');
+        }
+    };
+
     useEffect(() => {
         if (user?.role === 'administrator') {
             // Super admins can't edit "Mi Club" because they aren't tied to one.
@@ -589,8 +613,12 @@ const ClubProfile: React.FC = () => {
                                     <div className="flex-1">
                                         <p className="font-bold text-sm">{domainMessage}</p>
                                         {domainStatus === 'available' && (
-                                            <button type="button" className="mt-3 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-emerald-700 transition-colors">
-                                                Adquirir Ecosistema con este Dominio
+                                            <button 
+                                                type="button" 
+                                                onClick={handleCheckout}
+                                                className="mt-3 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-emerald-700 transition-colors"
+                                            >
+                                                Adquirir Ecosistema con este Dominio ($150/Año)
                                             </button>
                                         )}
                                     </div>
