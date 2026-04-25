@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.87.1",
+        date: "25 de Abril, 2026",
+        title: "Media Library District Scope Fix",
+        description: "Se habilitó la visibilidad de archivos multimedia de todos los clubes del distrito para administradores de distrito.",
+        type: "improvement" as const,
+        changes: [
+            { type: "fixed", text: "Corregido el alcance de la consulta de medios para roles de district_admin." },
+            { type: "improved", text: "Agregación automática de archivos huérfanos en la vista de distrito." }
+        ]
+    },
+    {
         version: "v4.87.0",
         date: "24 de Abril, 2026",
         title: "Lead Dashboard Stabilization & Forensic Recovery",

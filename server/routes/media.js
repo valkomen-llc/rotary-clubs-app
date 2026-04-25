@@ -141,12 +141,34 @@ router.get('/folders', authMiddleware, async (req, res) => {
 
 router.get('/', authMiddleware, async (req, res) => {
     try {
-        const clubId = req.user.role === 'administrator' ? req.query.clubId : req.user.clubId;
-        const result = clubId
-            ? await db.query('SELECT * FROM "Media" WHERE "clubId" = $1 ORDER BY "createdAt" DESC', [clubId])
-            : await db.query('SELECT * FROM "Media" ORDER BY "createdAt" DESC');
+        const { role, clubId: userClubId, districtId } = req.user;
+        const requestedClubId = req.query.clubId;
+        
+        let query = 'SELECT * FROM "Media"';
+        let params = [];
+
+        if (role === 'administrator') {
+            if (requestedClubId) {
+                query += ' WHERE "clubId" = $1';
+                params.push(requestedClubId);
+            }
+        } else if (role === 'district_admin') {
+            // District admin sees media from their club OR any club in their district
+            // Also include media where clubId is NULL if they are at the district level
+            query += ` WHERE ("clubId" = $1 OR "clubId" IN (SELECT id FROM "Club" WHERE "districtId" = $2) OR ("clubId" IS NULL AND $1 = $1))`;
+            params.push(userClubId || districtId, districtId);
+        } else {
+            // Regular club admin only sees their own club's media
+            query += ' WHERE "clubId" = $1';
+            params.push(userClubId);
+        }
+
+        query += ' ORDER BY "createdAt" DESC';
+        
+        const result = await db.query(query, params);
         res.json(result.rows);
     } catch (error) {
+        console.error('Fetch media error:', error);
         res.status(500).json({ error: 'Error fetching media library' });
     }
 });
