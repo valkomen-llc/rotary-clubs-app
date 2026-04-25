@@ -920,8 +920,13 @@ const BlogPost = () => {
 
           {/* Contenido */}
           <div
-            className="prose max-w-none mb-12 w-full break-words"
-            dangerouslySetInnerHTML={{ __html: articulo.contenido }}
+            className="prose max-w-none mb-12 w-full"
+            dangerouslySetInnerHTML={{ __html: (articulo.contenido || '')
+              .replace(/text-align\s*:\s*justify/gi, 'text-align: left')
+              .replace(/word-break\s*:\s*[^;"]+;?/gi, '')
+              .replace(/word-wrap\s*:\s*[^;"]+;?/gi, '')
+              .replace(/overflow-wrap\s*:\s*[^;"]+;?/gi, '')
+            }}
           />
 
           {articulo.videoUrl && (
