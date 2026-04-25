@@ -17,10 +17,10 @@ const ExpirationBanner: React.FC = () => {
                     <div className="flex items-center gap-3 flex-shrink-0">
                         <AlertTriangle className="w-5 h-5 text-yellow-300 animate-pulse" />
                         <div className="bg-red-800/80 px-4 py-1 rounded-lg shadow-inner border border-red-900/20">
-                            <span className="font-black uppercase tracking-[0.25em] text-[11px] text-white">Vencimiento</span>
+                            <span className="font-black uppercase tracking-[0.25em] text-[10px] text-white">Vencimiento</span>
                         </div>
                     </div>
-                    <p className="text-[13px] leading-6 text-white font-normal">
+                    <p className="text-[12px] leading-6 text-white font-normal">
                         Sitio en periodo de renovación {currentYear}-{nextYear}. Evite suspensión y bloqueos, contacte a soporte para asegurar su continuidad.
                     </p>
                 </div>
