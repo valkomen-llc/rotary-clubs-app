@@ -3,17 +3,20 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import { Link } from 'react-router-dom';
 import {
     Building2, Save, Upload, MapPin, Globe, Mail, Phone,
-    Facebook, Instagram, Twitter, Youtube, Linkedin, Music, Info, Trash2, Dna
+    Facebook, Instagram, Twitter, Youtube, Linkedin, Music, Info, Trash2, Dna,
+    Image as ImageIcon
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
 import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
 import { getAutoCropCanvas, fileToImage, canvasToFile } from '../../utils/cropUtils';
+import MediaLibraryModal from '../../components/admin/content-studio/MediaLibraryModal';
 
 const ClubProfile: React.FC = () => {
     const { user } = useAuth();
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
+    const [isMediaModalOpen, setIsMediaModalOpen] = useState(false);
 
     const [clubType, setClubType] = useState('');
     const [formData, setFormData] = useState<{
@@ -324,7 +327,19 @@ const ClubProfile: React.FC = () => {
                                     </button>
                                 )}
                             </div>
-                            <p className="text-[10px] text-gray-400 text-center font-medium">Recomendado: PNG fondo transparente, min 400x400px.</p>
+                            
+                            <div className="flex justify-center mt-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsMediaModalOpen(true)}
+                                    className="flex items-center gap-2 px-3 py-1.5 bg-sky-50 text-rotary-blue rounded-lg text-xs font-bold hover:bg-sky-100 transition-colors"
+                                >
+                                    <ImageIcon className="w-3.5 h-3.5" />
+                                    Elegir de la Librería
+                                </button>
+                            </div>
+                            
+                            <p className="text-[10px] text-gray-400 text-center font-medium mt-1">Recomendado: PNG fondo transparente, min 400x400px.</p>
 
                             {/* Logo Size Slider — Foundation and Association only */}
                             {(clubType === 'foundation' || clubType === 'association') && (
@@ -719,6 +734,18 @@ const ClubProfile: React.FC = () => {
                     </div>
                 )}
             </form>
+            
+            {/* Media Library Modal for Logo Selection */}
+            {isMediaModalOpen && (
+                <MediaLibraryModal
+                    isOpen={isMediaModalOpen}
+                    onClose={() => setIsMediaModalOpen(false)}
+                    onSelect={(url) => {
+                        setFormData({ ...formData, logo: url });
+                        setIsMediaModalOpen(false);
+                    }}
+                />
+            )}
         </AdminLayout>
     );
 };
