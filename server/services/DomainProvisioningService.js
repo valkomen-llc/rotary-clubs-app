@@ -37,9 +37,9 @@ class DomainProvisioningService {
                 PrivacyProtectTechContact: true
             });
 
-            // En producción, descomentar la siguiente línea cuando los permisos IAM estén listos.
-            // const registerResponse = await route53DomainsClient.send(registerCommand);
-            // console.log(`[DomainProvisioning] Dominio registrado exitosamente. Operation ID: ${registerResponse.OperationId}`);
+            // En producción, ejecutamos la orden real
+            const registerResponse = await route53DomainsClient.send(registerCommand);
+            console.log(`[DomainProvisioning] Dominio registrado exitosamente. Operation ID: ${registerResponse.OperationId}`);
 
             // 2. Crear Hosted Zone en Route 53
             console.log(`[DomainProvisioning] Creando Zona DNS (Hosted Zone) para ${domainName}...`);
@@ -51,12 +51,9 @@ class DomainProvisioningService {
                     PrivateZone: false
                 }
             });
-            // const zoneResponse = await route53Client.send(createZoneCommand);
-            // const hostedZoneId = zoneResponse.HostedZone.Id.split('/').pop();
-            // console.log(`[DomainProvisioning] Zona DNS creada con ID: ${hostedZoneId}`);
-
-            const mockHostedZoneId = 'Z0123456789ABCDEF'; // MOCK - Remover en prod
-            const hostedZoneId = mockHostedZoneId; 
+            const zoneResponse = await route53Client.send(createZoneCommand);
+            const hostedZoneId = zoneResponse.HostedZone.Id.split('/').pop();
+            console.log(`[DomainProvisioning] Zona DNS creada con ID: ${hostedZoneId}`);
 
             // 3. Inyectar registros DNS de Vercel y Correo Base
             console.log(`[DomainProvisioning] Inyectando registros DNS en la Zona ${hostedZoneId}...`);
@@ -98,8 +95,8 @@ class DomainProvisioningService {
                 }
             });
 
-            // await route53Client.send(changeDnsCommand);
-            // console.log(`[DomainProvisioning] Registros DNS inyectados con éxito.`);
+            await route53Client.send(changeDnsCommand);
+            console.log(`[DomainProvisioning] Registros DNS inyectados con éxito.`);
 
             // 4. Actualizar la base de datos (Asignar dominio al club)
             console.log(`[DomainProvisioning] Asignando el dominio al Club en la Base de Datos...`);
