@@ -11,21 +11,19 @@ const app = express();
 const prisma = new PrismaClient();
 
 app.use(cors());
-app.use(express.json());
-
-// RUTAS SOCIAL HUB (Omnicanalidad Real)
-app.get('/api/social/connect/facebook', socialController.getFacebookAuthUrl);
-app.get('/api/social/callback/facebook', socialController.handleFacebookCallback);
-app.get('/api/social/accounts', socialController.getConnectedAccounts);
-
-app.use(cors({ origin: true, credentials: true }));
-app.use(express.json());
 
 // Parse raw body for Stripe Webhooks BEFORE express.json()
 app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), async (req, res, next) => {
     const { stripeWebhook } = await import('../server/controllers/paymentController.js');
     return stripeWebhook(req, res, next);
 });
+
+app.use(express.json());
+
+// RUTAS SOCIAL HUB (Omnicanalidad Real)
+app.get('/api/social/connect/facebook', socialController.getFacebookAuthUrl);
+app.get('/api/social/callback/facebook', socialController.handleFacebookCallback);
+app.get('/api/social/accounts', socialController.getConnectedAccounts);
 
 // ── Static endpoints ─────────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
