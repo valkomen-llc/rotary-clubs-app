@@ -1,15 +1,19 @@
 import { Route53DomainsClient, RegisterDomainCommand } from '@aws-sdk/client-route-53-domains';
+import { Route53Client, CreateHostedZoneCommand, ChangeResourceRecordSetsCommand } from '@aws-sdk/client-route-53';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-const route53DomainsClient = new Route53DomainsClient({
+const awsConfig = {
     region: 'us-east-1',
     credentials: {
         accessKeyId: process.env.ROTARY_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID,
         secretAccessKey: process.env.ROTARY_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY,
     }
-});
+};
+
+const route53DomainsClient = new Route53DomainsClient(awsConfig);
+const route53Client = new Route53Client(awsConfig);
 
 class DomainProvisioningService {
     
@@ -37,10 +41,67 @@ class DomainProvisioningService {
             // const registerResponse = await route53DomainsClient.send(registerCommand);
             // console.log(`[DomainProvisioning] Dominio registrado exitosamente. Operation ID: ${registerResponse.OperationId}`);
 
-            // 2. Aquí iría la lógica de Route 53 (Crear Hosted Zone y setear DNS)
-            // (Se implementará en el siguiente paso de la fase técnica)
+            // 2. Crear Hosted Zone en Route 53
+            console.log(`[DomainProvisioning] Creando Zona DNS (Hosted Zone) para ${domainName}...`);
+            const createZoneCommand = new CreateHostedZoneCommand({
+                Name: domainName,
+                CallerReference: `${Date.now()}-${domainName}`,
+                HostedZoneConfig: {
+                    Comment: `Zona DNS gestionada automáticamente por Rotary Platform para el club ${clubId}`,
+                    PrivateZone: false
+                }
+            });
+            // const zoneResponse = await route53Client.send(createZoneCommand);
+            // const hostedZoneId = zoneResponse.HostedZone.Id.split('/').pop();
+            // console.log(`[DomainProvisioning] Zona DNS creada con ID: ${hostedZoneId}`);
 
-            // 3. Actualizar la base de datos (Asignar dominio al club)
+            const mockHostedZoneId = 'Z0123456789ABCDEF'; // MOCK - Remover en prod
+            const hostedZoneId = mockHostedZoneId; 
+
+            // 3. Inyectar registros DNS de Vercel y Correo Base
+            console.log(`[DomainProvisioning] Inyectando registros DNS en la Zona ${hostedZoneId}...`);
+            
+            const changeDnsCommand = new ChangeResourceRecordSetsCommand({
+                HostedZoneId: hostedZoneId,
+                ChangeBatch: {
+                    Comment: "Aprovisionamiento automático Vercel y Correo Base",
+                    Changes: [
+                        {
+                            Action: "UPSERT",
+                            ResourceRecordSet: {
+                                Name: domainName,
+                                Type: "A",
+                                TTL: 300,
+                                ResourceRecords: [{ Value: "76.76.21.21" }] // Vercel IP
+                            }
+                        },
+                        {
+                            Action: "UPSERT",
+                            ResourceRecordSet: {
+                                Name: `www.${domainName}`,
+                                Type: "CNAME",
+                                TTL: 300,
+                                ResourceRecords: [{ Value: "cname.vercel-dns.com" }] // Vercel CNAME
+                            }
+                        },
+                        {
+                            // MX genérico o el que exija el proveedor
+                            Action: "UPSERT",
+                            ResourceRecordSet: {
+                                Name: domainName,
+                                Type: "MX",
+                                TTL: 300,
+                                ResourceRecords: [{ Value: "10 handled.resend.com" }] // Resend base MX
+                            }
+                        }
+                    ]
+                }
+            });
+
+            // await route53Client.send(changeDnsCommand);
+            // console.log(`[DomainProvisioning] Registros DNS inyectados con éxito.`);
+
+            // 4. Actualizar la base de datos (Asignar dominio al club)
             console.log(`[DomainProvisioning] Asignando el dominio al Club en la Base de Datos...`);
             await prisma.club.update({
                 where: { id: clubId },
