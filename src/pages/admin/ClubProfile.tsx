@@ -211,6 +211,48 @@ const ClubProfile: React.FC = () => {
         }
     };
 
+    const handleMediaLibrarySelect = async (items: any[]) => {
+        if (!items || items.length === 0) return;
+        setIsMediaModalOpen(false);
+
+        try {
+            toast.info('Aplicando recorte inteligente al logo...');
+            
+            // 1. Fetch the image to process it locally
+            const response = await fetch(items[0].url);
+            const blob = await response.blob();
+            const file = new File([blob], items[0].filename || 'logo.png', { type: blob.type });
+
+            // 2. Apply auto-crop
+            const img = await fileToImage(file);
+            const canvas = getAutoCropCanvas(img);
+            const finalFile = canvas ? await canvasToFile(canvas, file.name.replace(/\.[^.]+$/, '.png')) : file;
+
+            // 3. Upload the cropped result
+            const formDataUpload = new FormData();
+            formDataUpload.append('file', finalFile);
+
+            const token = localStorage.getItem('rotary_token');
+            const uploadRes = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/media/upload-logo`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formDataUpload
+            });
+
+            if (uploadRes.ok) {
+                const data = await uploadRes.json();
+                setFormData(prev => ({ ...prev, logo: data.url }));
+                toast.success('Logo seleccionado y recortado correctamente');
+            } else {
+                setFormData(prev => ({ ...prev, logo: items[0].url }));
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error('No se pudo aplicar el recorte. Se usará la imagen original.');
+            setFormData(prev => ({ ...prev, logo: items[0].url }));
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSaving(true);
@@ -741,12 +783,7 @@ const ClubProfile: React.FC = () => {
                     isOpen={isMediaModalOpen}
                     onClose={() => setIsMediaModalOpen(false)}
                     maxSelection={1}
-                    onSelect={(items) => {
-                        if (items && items.length > 0) {
-                            setFormData({ ...formData, logo: items[0].url });
-                        }
-                        setIsMediaModalOpen(false);
-                    }}
+                    onSelect={handleMediaLibrarySelect}
                 />
             )}
         </AdminLayout>
