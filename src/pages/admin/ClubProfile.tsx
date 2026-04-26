@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
 import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
 import { getAutoCropCanvas, fileToImage, canvasToFile } from '../../utils/cropUtils';
-import MediaLibraryModal from '../../components/admin/content-studio/MediaLibraryModal';
+import MediaPicker from '../../components/admin/content-studio/MediaPicker';
 
 const ClubProfile: React.FC = () => {
     const { user } = useAuth();
@@ -737,11 +737,14 @@ const ClubProfile: React.FC = () => {
             
             {/* Media Library Modal for Logo Selection */}
             {isMediaModalOpen && (
-                <MediaLibraryModal
+                <MediaPicker
                     isOpen={isMediaModalOpen}
                     onClose={() => setIsMediaModalOpen(false)}
-                    onSelect={(url) => {
-                        setFormData({ ...formData, logo: url });
+                    maxSelection={1}
+                    onSelect={(items) => {
+                        if (items && items.length > 0) {
+                            setFormData({ ...formData, logo: items[0].url });
+                        }
                         setIsMediaModalOpen(false);
                     }}
                 />
