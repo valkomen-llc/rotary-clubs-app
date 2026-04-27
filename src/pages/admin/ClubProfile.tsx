@@ -239,7 +239,6 @@ const ClubProfile: React.FC = () => {
             const formDataUpload = new FormData();
             formDataUpload.append('file', finalFile);
 
-            const token = localStorage.getItem('rotary_token');
             const uploadRes = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/media/upload-logo`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` },
