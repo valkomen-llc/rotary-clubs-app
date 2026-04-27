@@ -55,6 +55,28 @@ const getMediaType = (mimetype) => {
     return 'document';
 };
 
+// ── Proxy Endpoint to Bypass CORS for Canvas Operations ──
+router.get('/proxy', authMiddleware, async (req, res) => {
+    try {
+        const { url } = req.query;
+        if (!url) return res.status(400).json({ error: 'URL is required' });
+        
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to fetch image');
+        
+        const buffer = await response.arrayBuffer();
+        const contentType = response.headers.get('content-type');
+        
+        if (contentType) res.setHeader('Content-Type', contentType);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        
+        res.send(Buffer.from(buffer));
+    } catch (error) {
+        console.error('Proxy Error:', error);
+        res.status(500).json({ error: 'Proxy failed' });
+    }
+});
+
 // ── Diagnostic: test if upload deps can load ──
 router.get('/test-deps', async (req, res) => {
     const steps = {};

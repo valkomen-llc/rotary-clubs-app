@@ -218,8 +218,15 @@ const ClubProfile: React.FC = () => {
         try {
             toast.info('Aplicando recorte inteligente al logo...');
             
-            // 1. Fetch the image to process it locally
-            const response = await fetch(items[0].url);
+            // 1. Fetch the image to process it locally (via proxy to bypass CORS)
+            const token = localStorage.getItem('rotary_token');
+            const proxyUrl = `${import.meta.env.VITE_API_URL || '/api'}/media/proxy?url=${encodeURIComponent(items[0].url)}`;
+            const response = await fetch(proxyUrl, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            
+            if (!response.ok) throw new Error('CORS Proxy failed');
+            
             const blob = await response.blob();
             const file = new File([blob], items[0].filename || 'logo.png', { type: blob.type });
 
