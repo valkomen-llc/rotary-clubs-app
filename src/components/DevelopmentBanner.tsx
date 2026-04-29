@@ -25,7 +25,7 @@ const DevelopmentBanner: React.FC = () => {
         const phoneNumber = '573205028376';
         const currentUrl = window.location.href;
         const clubName = club?.name || 'mi club rotario';
-        const message = `Activar sitio y ecosistema digital para mi club rotario ${clubName} ${currentUrl}`;
+        const message = `Activar sitio y ecosistema digital para: ${clubName} ${currentUrl}`;
         const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
         window.open(whatsappUrl, '_blank');
     };

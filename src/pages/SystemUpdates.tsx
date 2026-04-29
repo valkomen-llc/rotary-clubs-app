@@ -26,6 +26,16 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.90.2",
+        date: "29 de Abril, 2026",
+        title: "Refinamiento de Mensajería WhatsApp",
+        description: "Optimización del copy automatizado para el contacto con soporte técnico.",
+        type: "patch" as const,
+        changes: [
+            { type: "improved", text: "Mensajería: Se eliminó la redundancia de 'mi club rotario' en el mensaje de WhatsApp para una comunicación más limpia y profesional." }
+        ]
+    },
+    {
         version: "v4.90.1",
         date: "29 de Abril, 2026",
         title: "Integración de Soporte WhatsApp",
