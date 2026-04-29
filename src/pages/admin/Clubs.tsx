@@ -395,14 +395,13 @@ const ClubsManagement: React.FC = () => {
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Subdominio</label>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Subdominio (Opcional)</label>
                                     <div className="flex items-center">
                                         <input
                                             type="text"
-                                            required
                                             className="w-full px-4 py-2 border border-gray-200 rounded-l-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all"
                                             value={formData.subdomain}
-                                            onChange={(e) => setFormData({ ...formData, subdomain: e.target.value })}
+                                            onChange={(e) => setFormData({ ...formData, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
                                             placeholder="ej-club"
                                         />
                                         <span className="bg-gray-100 border border-l-0 border-gray-200 px-3 py-2 rounded-r-lg text-xs text-gray-400">
