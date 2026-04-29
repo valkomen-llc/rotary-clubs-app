@@ -338,9 +338,9 @@ function App() {
       <LanguageProvider>
         <AuthProvider>
           <CartProvider>
-            <ExpirationBanner />
-            <DevelopmentBanner />
             <Router>
+              <ExpirationBanner />
+              <DevelopmentBanner />
               <HashRedirector />
               <AnalyticsTracker />
               <SEOTracker />
