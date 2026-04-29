@@ -22,7 +22,12 @@ const DevelopmentBanner: React.FC = () => {
     if (!club || !club.developmentBannerActive || !developmentBannerVisible || !shouldRender) return null;
 
     const handleSupportClick = () => {
-        navigate('/admin/dashboard'); // For now redirect to admin dashboard as requested
+        const phoneNumber = '573205028376';
+        const currentUrl = window.location.href;
+        const clubName = club?.name || 'mi club rotario';
+        const message = `Activar sitio y ecosistema digital para mi club rotario ${clubName} ${currentUrl}`;
+        const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
+        window.open(whatsappUrl, '_blank');
     };
 
     return (

@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.90.1",
+        date: "29 de Abril, 2026",
+        title: "Integración de Soporte WhatsApp",
+        description: "Automatización del contacto a soporte desde el banner de desarrollo con mensajes personalizados por club.",
+        type: "patch" as const,
+        changes: [
+            { type: "added", text: "Banner Desarrollo: El botón de soporte ahora abre WhatsApp con un mensaje pre-llenado que incluye el nombre del club y el enlace del sitio." },
+            { type: "improved", text: "UX: Configurado el número de soporte oficial (+57 320 5028376) para atención inmediata." }
+        ]
+    },
+    {
         version: "v4.90.0",
         date: "29 de Abril, 2026",
         title: "Modo Desarrollo y Estabilización Administrativa",
