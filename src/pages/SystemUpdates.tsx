@@ -26,6 +26,19 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.90.0",
+        date: "29 de Abril, 2026",
+        title: "Modo Desarrollo y Estabilización Administrativa",
+        description: "Implementación del sistema de banners de 'Modo Desarrollo' y optimización de formularios para clubes con dominios propios.",
+        type: "major" as const,
+        changes: [
+            { type: "added", text: "Superadmin: Nuevo sistema de 'Banner de Desarrollo' para marcar sitios en construcción." },
+            { type: "fixed", text: "Estabilidad: Corregido error crítico de enrutamiento que causaba pantalla en blanco tras inyectar componentes globales." },
+            { type: "improved", text: "Gestión: El campo 'Subdominio' ahora es opcional en la gestión de clubes para facilitar el manejo de dominios externos." },
+            { type: "improved", text: "UI: El banner de desarrollo incluye una espera de 15 segundos antes de aparecer para una experiencia menos intrusiva." }
+        ]
+    },
+    {
         version: "v4.89.0",
         date: "25 de Abril, 2026",
         title: "Galería Multimedia: Soporte de Videos Directos",
