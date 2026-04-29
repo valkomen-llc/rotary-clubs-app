@@ -116,6 +116,7 @@ import ChatBot from './components/ChatBot';
 import LandingPage from './pages/LandingPage';
 import RegistroPage from './pages/RegistroPage';
 import ExpirationBanner from './components/ExpirationBanner';
+import DevelopmentBanner from './components/DevelopmentBanner';
 import VerifyEmail from './pages/VerifyEmail';
 import AppLogin from './pages/AppLogin';
 import ComingSoon from './pages/ComingSoon';
@@ -338,6 +339,7 @@ function App() {
         <AuthProvider>
           <CartProvider>
             <ExpirationBanner />
+            <DevelopmentBanner />
             <Router>
               <HashRedirector />
               <AnalyticsTracker />

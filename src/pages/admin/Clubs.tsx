@@ -16,6 +16,8 @@ interface Club {
     description: string | null;
     expirationBannerActive?: boolean;
     expirationBannerMessage?: string | null;
+    developmentBannerActive?: boolean;
+    developmentBannerMessage?: string | null;
     _count?: {
         users: number;
         projects: number;
@@ -53,6 +55,8 @@ const ClubsManagement: React.FC = () => {
         adminUserId: '',
         expirationBannerActive: false,
         expirationBannerMessage: '',
+        developmentBannerActive: false,
+        developmentBannerMessage: '',
     });
     const [isFetchingDetails, setIsFetchingDetails] = useState(false);
 
@@ -101,6 +105,8 @@ const ClubsManagement: React.FC = () => {
                 moduleEcommerce: false, moduleDian: false, moduleYouthExchange: false, moduleNgse: false, moduleRotex: false,
                 expirationBannerActive: club.expirationBannerActive || false,
                 expirationBannerMessage: club.expirationBannerMessage || '',
+                developmentBannerActive: club.developmentBannerActive || false,
+                developmentBannerMessage: club.developmentBannerMessage || '',
             });
             setIsFetchingDetails(true);
             try {
@@ -124,6 +130,8 @@ const ClubsManagement: React.FC = () => {
                         moduleRotex: m.rotex ?? false,
                         expirationBannerActive: fullData.expirationBannerActive || false,
                         expirationBannerMessage: fullData.expirationBannerMessage || '',
+                        developmentBannerActive: fullData.developmentBannerActive || false,
+                        developmentBannerMessage: fullData.developmentBannerMessage || '',
                     }));
                 }
             } catch (error) {
@@ -147,6 +155,8 @@ const ClubsManagement: React.FC = () => {
                 moduleEcommerce: false, moduleDian: false, moduleYouthExchange: false, moduleNgse: false, moduleRotex: false,
                 expirationBannerActive: false,
                 expirationBannerMessage: '',
+                developmentBannerActive: false,
+                developmentBannerMessage: '',
             });
         }
     };
@@ -496,6 +506,20 @@ const ClubsManagement: React.FC = () => {
                                             <p className="text-[10px] text-red-400 mt-1 italic">Si se deja vacío, se usará un mensaje profesional por defecto.</p>
                                         </div>
                                     )}
+                                </div>
+                                <div className="space-y-4 mt-6 pt-6 border-t border-red-100">
+                                    <label className="flex items-center gap-3 cursor-pointer p-3 border border-yellow-200 rounded-xl bg-white hover:bg-yellow-50 transition-colors">
+                                        <input 
+                                            type="checkbox" 
+                                            className="w-4 h-4 text-yellow-600 rounded border-gray-300 focus:ring-yellow-500" 
+                                            checked={formData.developmentBannerActive} 
+                                            onChange={(e) => setFormData({ ...formData, developmentBannerActive: e.target.checked })} 
+                                        />
+                                        <div className="flex flex-col">
+                                            <span className="text-[13px] font-bold text-yellow-700">Activar Banner de Desarrollo</span>
+                                            <span className="text-[10px] text-yellow-600">Muestra una alerta indicando que el sitio está en construcción.</span>
+                                        </div>
+                                    </label>
                                 </div>
                             </div>
 

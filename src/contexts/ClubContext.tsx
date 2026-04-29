@@ -16,6 +16,8 @@ interface ClubContextType {
     isDraft: boolean;
     bannerVisible: boolean;
     setBannerVisible: (visible: boolean) => void;
+    developmentBannerVisible: boolean;
+    setDevelopmentBannerVisible: (visible: boolean) => void;
 }
 
 export const ClubContext = createContext<ClubContextType | undefined>(undefined);
@@ -25,6 +27,7 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [bannerVisible, setBannerVisible] = useState(true);
+    const [developmentBannerVisible, setDevelopmentBannerVisible] = useState(true);
 
     // Auto-reactivation logic (Penalty mode)
     useEffect(() => {
@@ -35,6 +38,15 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return () => clearTimeout(timer);
         }
     }, [bannerVisible]);
+
+    useEffect(() => {
+        if (!developmentBannerVisible) {
+            const timer = setTimeout(() => {
+                setDevelopmentBannerVisible(true);
+            }, 10000);
+            return () => clearTimeout(timer);
+        }
+    }, [developmentBannerVisible]);
     const hostname = window.location.hostname;
     const isMainPlatform = hostname === 'clubplatform.org' || hostname === 'www.clubplatform.org';
     const isAppPortal = hostname === 'app.clubplatform.org' || hostname === 'localhost' && window.location.port === '5174';
@@ -156,7 +168,7 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const isDraft = club?.status === 'draft';
 
     return (
-        <ClubContext.Provider value={{ club, isLoading, isMainPlatform, isAppPortal, isDraft, bannerVisible, setBannerVisible }}>
+        <ClubContext.Provider value={{ club, isLoading, isMainPlatform, isAppPortal, isDraft, bannerVisible, setBannerVisible, developmentBannerVisible, setDevelopmentBannerVisible }}>
             {children}
         </ClubContext.Provider>
     );

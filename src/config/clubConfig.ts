@@ -36,6 +36,8 @@ export interface ClubConfig {
     members?: any[];
     expirationBannerActive?: boolean;
     expirationBannerMessage?: string;
+    developmentBannerActive?: boolean;
+    developmentBannerMessage?: string;
 }
 
 // Default/Fallback configuration for when API is loading or fails

@@ -75,12 +75,13 @@ export const createClub = async (req, res) => {
     const { 
         name, city, country, district, domain, subdomain, description, 
         status, type, adminUserId,
-        expirationBannerActive, expirationBannerMessage
+        expirationBannerActive, expirationBannerMessage,
+        developmentBannerActive, developmentBannerMessage
     } = req.body;
     try {
         const result = await db.query(
-            `INSERT INTO "Club" (id, name, city, country, district, domain, subdomain, description, status, type, "expirationBannerActive", "expirationBannerMessage", "createdAt", "updatedAt")
-             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW()) RETURNING *`,
+            `INSERT INTO "Club" (id, name, city, country, district, domain, subdomain, description, status, type, "expirationBannerActive", "expirationBannerMessage", "developmentBannerActive", "developmentBannerMessage", "createdAt", "updatedAt")
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW()) RETURNING *`,
             [
                 name, 
                 city || null, 
@@ -92,7 +93,9 @@ export const createClub = async (req, res) => {
                 status || 'active', 
                 type || 'club',
                 !!expirationBannerActive,
-                expirationBannerMessage || null
+                expirationBannerMessage || null,
+                !!developmentBannerActive,
+                developmentBannerMessage || null
             ]
         );
 
@@ -129,7 +132,8 @@ export const updateClub = async (req, res) => {
         storeActive, logoHeaderSize, autoGenerateCalendar, mapStyle,
         memberCount, moduleProjects, moduleEvents, moduleRotaract, moduleInteract, moduleEcommerce, moduleDian,
         moduleYouthExchange, moduleNgse, moduleRotex,
-        expirationBannerActive, expirationBannerMessage
+        expirationBannerActive, expirationBannerMessage,
+        developmentBannerActive, developmentBannerMessage
     } = req.body;
 
         try {
@@ -167,6 +171,8 @@ export const updateClub = async (req, res) => {
             addField('type', type);
             addField('expirationBannerActive', expirationBannerActive);
             addField('expirationBannerMessage', expirationBannerMessage);
+            addField('developmentBannerActive', developmentBannerActive);
+            addField('developmentBannerMessage', developmentBannerMessage);
 
             const hasClubUpdates = updateFields.length > 0;
             let result;
