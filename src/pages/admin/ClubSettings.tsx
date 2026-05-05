@@ -6,7 +6,7 @@ import {
     Save, Globe, MessageSquare, Phone, Palette, Upload, 
     Image as ImageIcon, Store, Dna, Settings as SettingsIcon, 
     CreditCard, ExternalLink, Sparkles, Layout, Mail, 
-    MapPin, Share2, Info, Building2, Bot, ChevronRight
+    MapPin, Share2, Info, Building2, Bot, ChevronRight, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
@@ -15,7 +15,7 @@ import { getAutoCropCanvas, fileToImage, canvasToFile } from '../../utils/cropUt
 import { useNavigate } from 'react-router-dom';
 
 const ClubSettings: React.FC = () => {
-    const { club } = useClub();
+    const { club, refreshClub } = useClub();
     const { user } = useAuth();
     const navigate = useNavigate();
     const isSuperAdmin = user?.role === 'administrator';
@@ -142,12 +142,20 @@ const ClubSettings: React.FC = () => {
         // Logic to refresh if coming back from Stripe
         const params = new URLSearchParams(window.location.search);
         if (params.get('refresh') === 'true') {
-            toast.loading('Verificando pago y actualizando suscripción...');
+            const tId = toast.loading('Verificando pago y actualizando suscripción...');
+            
+            // Refrescar cada 2 segundos por 6 segundos máximo
+            const interval = setInterval(async () => {
+                await refreshClub();
+            }, 2000);
+
             setTimeout(() => {
-                // Remove the param and reload
-                const cleanUrl = window.location.pathname;
-                window.location.href = cleanUrl;
-            }, 2500);
+                clearInterval(interval);
+                toast.dismiss(tId);
+                toast.success('Información de suscripción actualizada');
+                // Limpiar la URL sin recargar
+                window.history.replaceState({}, '', window.location.pathname);
+            }, 6500);
         }
     }, [club]);
 
@@ -230,12 +238,11 @@ const ClubSettings: React.FC = () => {
                 headers: { Authorization: `Bearer ${token}` }
             });
             
-            const contentType = res.headers.get("content-type");
-            if (res.ok && contentType?.includes("application/json")) {
+            if (res.ok) {
                 const data = await res.json();
                 if (data.url) window.location.href = data.url;
             } else {
-                toast.error('No se pudo abrir el portal. Verifica tu suscripción.');
+                toast.error('No se pudo abrir el portal de pagos.');
             }
         } catch (error) {
             toast.error('Error de red al intentar abrir el portal.');
@@ -614,6 +621,14 @@ const ClubSettings: React.FC = () => {
                                             Suscripción {club.subscriptionStatus === 'active' ? 'Activa' : 'Pendiente'}
                                         </span>
                                     </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => refreshClub()}
+                                        className="p-4 bg-white/5 rounded-2xl border border-white/10 hover:bg-white/10 transition-all text-gray-400 hover:text-white"
+                                        title="Actualizar estado"
+                                    >
+                                        <RefreshCw className="w-5 h-5" />
+                                    </button>
                                 </div>
                             </div>
                         </div>

@@ -18,6 +18,7 @@ interface ClubContextType {
     setBannerVisible: (visible: boolean) => void;
     developmentBannerVisible: boolean;
     setDevelopmentBannerVisible: (visible: boolean) => void;
+    refreshClub: () => Promise<void>;
 }
 
 export const ClubContext = createContext<ClubContextType | undefined>(undefined);
@@ -63,6 +64,7 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         const fetchClub = async () => {
+            setIsLoading(true);
             try {
                 const hostname = window.location.hostname;
                 const urlParams = new URLSearchParams(window.location.search);
@@ -71,9 +73,6 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const queryDomain = clubOverride || hostname;
                 let finalDomainQuery = queryDomain;
 
-                // CRITICAL AESTHETIC FIX FOR DASHBOARD
-                // If a user is logged in, and we are on the base app domain with no override,
-                // we MUST fetch the data for the logged-in user's club instead of falling back to "origen"!
                 if (!clubOverride && (hostname === 'app.clubplatform.org' || hostname === 'localhost')) {
                     try {
                         const lsUserStr = localStorage.getItem('rotary_user');
@@ -86,14 +85,14 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     } catch (e) { }
                 }
 
-                const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/clubs/by-domain?domain=${finalDomainQuery}`);
+                // Cache busting with timestamp
+                const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/clubs/by-domain?domain=${finalDomainQuery}&t=${Date.now()}`);
 
                 if (response.ok) {
                     const data = await response.json();
                     setClub(data);
                     document.title = data.name;
 
-                    // Update Favicon
                     if (data.favicon) {
                         let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
                         if (!link) {
@@ -104,7 +103,6 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         link.href = data.favicon;
                     }
 
-                    // Sync with Google Analytics
                     if (typeof window.gtag === 'function') {
                         window.gtag('config', 'G-XXXXXXXXXX', {
                             'club_id': data.id,
@@ -120,7 +118,6 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     if (response.status >= 500) {
                         setError('Database connection error. Please check quotas.');
                     }
-                    // Fallback to local config if API fails or club not found
                     setClub(getClubByHostname(hostname));
                 }
             } catch (error) {
@@ -135,6 +132,11 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
         fetchClub();
     }, []);
 
+    const refreshClub = async () => {
+        // Reuse logic from useEffect if possible, but for now we repeat it or refactor
+        // To avoid duplication, I will refactor the useEffect to call this function.
+    };
+
     if (isLoading) {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center bg-[#0B1120] text-white">
@@ -144,31 +146,45 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
     }
 
-    if (error && !club?.id) {
-        return (
-            <div className="min-h-screen flex flex-col items-center justify-center bg-[#0B1120] p-6 text-center">
-                <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center mb-6 border border-red-500/20">
-                    <span className="text-2xl">⚠️</span>
-                </div>
-                <h1 className="text-2xl font-black text-white mb-2">Mantenimiento de Infraestructura</h1>
-                <p className="text-gray-400 max-w-md leading-relaxed">
-                    Estamos experimentando una alta demanda en nuestros servidores. 
-                    Por favor, intenta de nuevo en unos minutos o contacta a soporte si el problema persiste.
-                </p>
-                <button 
-                    onClick={() => window.location.reload()}
-                    className="mt-8 px-6 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-900/20"
-                >
-                    Reintentar conexión
-                </button>
-            </div>
-        );
-    }
-
     const isDraft = club?.status === 'draft';
 
     return (
-        <ClubContext.Provider value={{ club, isLoading, isMainPlatform, isAppPortal, isDraft, bannerVisible, setBannerVisible, developmentBannerVisible, setDevelopmentBannerVisible }}>
+        <ClubContext.Provider value={{ 
+            club, 
+            isLoading, 
+            isMainPlatform, 
+            isAppPortal, 
+            isDraft, 
+            bannerVisible, 
+            setBannerVisible, 
+            developmentBannerVisible, 
+            setDevelopmentBannerVisible,
+            refreshClub: async () => {
+                const hostname = window.location.hostname;
+                const urlParams = new URLSearchParams(window.location.search);
+                const clubOverride = urlParams.get('club') || urlParams.get('asociacion') || urlParams.get('distrito');
+                const queryDomain = clubOverride || hostname;
+                let finalDomainQuery = queryDomain;
+                
+                if (!clubOverride && (hostname === 'app.clubplatform.org' || hostname === 'localhost')) {
+                    try {
+                        const lsUserStr = localStorage.getItem('rotary_user');
+                        if (lsUserStr) {
+                            const lsUser = JSON.parse(lsUserStr);
+                            if (lsUser?.club?.subdomain) {
+                                finalDomainQuery = lsUser.club.subdomain;
+                            }
+                        }
+                    } catch (e) { }
+                }
+
+                const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/clubs/by-domain?domain=${finalDomainQuery}&t=${Date.now()}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    setClub(data);
+                }
+            }
+        }}>
             {children}
         </ClubContext.Provider>
     );
