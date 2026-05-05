@@ -409,7 +409,7 @@ function App() {
                   path="/admin/configuracion-sitio"
                   element={
                     <PrivateRoute>
-                      <SiteSetupPage />
+                      <ClubSettings />
                     </PrivateRoute>
                   }
                 />
@@ -513,7 +513,7 @@ function App() {
                   path="/admin/mi-club"
                   element={
                     <PrivateRoute>
-                      <ClubProfile />
+                      <ClubSettings />
                     </PrivateRoute>
                   }
                 />

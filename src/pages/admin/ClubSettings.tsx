@@ -2,15 +2,26 @@ import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useClub } from '../../contexts/ClubContext';
 import { useAuth } from '../../hooks/useAuth';
-import { Save, Globe, MessageSquare, Phone, Palette, Upload, Image as ImageIcon, Store, Dna, Settings as SettingsIcon, CreditCard, ExternalLink } from 'lucide-react';
+import { 
+    Save, Globe, MessageSquare, Phone, Palette, Upload, 
+    Image as ImageIcon, Store, Dna, Settings as SettingsIcon, 
+    CreditCard, ExternalLink, Sparkles, Layout, Mail, 
+    MapPin, Share2, Info, Building2, Bot, ChevronRight
+} from 'lucide-react';
 import { toast } from 'sonner';
 import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
+import SiteSetupCard from '../../components/admin/SiteSetupCard';
 import { getAutoCropCanvas, fileToImage, canvasToFile } from '../../utils/cropUtils';
+import { useNavigate } from 'react-router-dom';
 
 const ClubSettings: React.FC = () => {
     const { club } = useClub();
     const { user } = useAuth();
+    const navigate = useNavigate();
     const isSuperAdmin = user?.role === 'administrator';
+
+    const [activeTab, setActiveTab] = useState<'estado' | 'identidad' | 'avanzado' | 'facturacion'>('estado');
+    const [stats, setStats] = useState<any>(null);
 
     const [formData, setFormData] = useState({
         name: '',
@@ -35,7 +46,9 @@ const ClubSettings: React.FC = () => {
         logoHeaderSize: 200,
         autoGenerateCalendar: true,
         mapStyle: 'm',
+        storeActive: true,
     });
+    
     const [uploading, setUploading] = useState(false);
     const [loading, setLoading] = useState(false);
 
@@ -44,32 +57,27 @@ const ClubSettings: React.FC = () => {
     const [stripePublicKey, setStripePublicKey] = useState('');
     const [stripeSecretKey, setStripeSecretKey] = useState('');
 
-    const [usePaypal, setUsePaypal] = useState(false);
-    const [paypalSandbox, setPaypalSandbox] = useState(true);
-    const [paypalClientId, setPaypalClientId] = useState('');
-    const [paypalSecretKey, setPaypalSecretKey] = useState('');
-
     const [mapStyle, setMapStyle] = useState<string>('m');
     const [savingMap, setSavingMap] = useState(false);
 
     const [platformLogo, setPlatformLogo] = useState<string>('');
-    const [uploadingPlatformLogo, setUploadingPlatformLogo] = useState(false);
     const [platformLogoSize, setPlatformLogoSize] = useState<number>(48);
-    const [savingLogoSize, setSavingLogoSize] = useState(false);
-
     const [saasRedirect, setSaasRedirect] = useState(false);
     const [updatingRedirect, setUpdatingRedirect] = useState(false);
-    
-    const getApiUrl = () => {
-        const envApi = import.meta.env.VITE_API_URL;
-        if (envApi && envApi !== "/api") return envApi.replace(/\/$/, "");
-        return '/api'; // Use relative path for same-origin robustness
-    };
+
+    const API_URL = import.meta.env.VITE_API_URL || '/api';
+
+    useEffect(() => {
+        const token = localStorage.getItem('rotary_token');
+        fetch(`${API_URL}/admin/stats`, { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.json())
+            .then(setStats)
+            .catch(() => { });
+    }, []);
 
     useEffect(() => {
         if (isSuperAdmin) {
-            const apiUrl = import.meta.env.VITE_API_URL || '/api';
-            fetch(`${apiUrl}/platform-config/logo`.replace(/\/+/g, '/').replace(':/', '://'))
+            fetch(`${API_URL}/platform-config/logo`)
                 .then(r => r.json())
                 .then(data => {
                     if (data.url) setPlatformLogo(data.url);
@@ -77,13 +85,9 @@ const ClubSettings: React.FC = () => {
                     if (data.saasRedirect !== undefined) setSaasRedirect(data.saasRedirect);
                 })
                 .catch(() => {});
-        }
-    }, [isSuperAdmin]);
-
-    useEffect(() => {
-        if (isSuperAdmin) {
+            
             const token = localStorage.getItem('rotary_token');
-            fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/global-map-style`, { headers: { Authorization: `Bearer ${token}` } })
+            fetch(`${API_URL}/admin/global-map-style`, { headers: { Authorization: `Bearer ${token}` } })
                 .then(r => r.json())
                 .then(data => setMapStyle(data.mapStyle || 'm'))
                 .catch(() => { });
@@ -92,6 +96,16 @@ const ClubSettings: React.FC = () => {
 
     useEffect(() => {
         if (club) {
+            // Map settings to flat fields
+            const settingsMap: any = {};
+            if (club.settings) {
+                if (Array.isArray(club.settings)) {
+                    club.settings.forEach((s: any) => settingsMap[s.key] = s.value);
+                } else {
+                    Object.assign(settingsMap, club.settings);
+                }
+            }
+
             setFormData({
                 name: club.name || '',
                 description: club.description || '',
@@ -99,78 +113,57 @@ const ClubSettings: React.FC = () => {
                 country: club.country || '',
                 domain: club.domain || '',
                 subdomain: club.subdomain || '',
-                email: club.contact?.email || '',
-                phone: club.contact?.phone || '',
-                address: club.contact?.address || '',
+                email: club.contact?.email || settingsMap['contact_email'] || '',
+                phone: club.contact?.phone || settingsMap['contact_phone'] || '',
+                address: club.contact?.address || settingsMap['contact_address'] || '',
                 socialLinks: club.social || [],
                 primaryColor: club.colors?.primary || '#013388',
                 secondaryColor: club.colors?.secondary || '#E29C00',
                 logo: club.logo || '',
                 footerLogo: club.footerLogo || '',
                 endPolioLogo: club.endPolioLogo || '',
-                rotaractLogo: club.settings?.rotaract_logo || '',
-                interactLogo: club.settings?.interact_logo || '',
-                youthExchangeLogo: club.settings?.youth_exchange_logo || '',
+                rotaractLogo: settingsMap['rotaract_logo'] || '',
+                interactLogo: settingsMap['interact_logo'] || '',
+                youthExchangeLogo: settingsMap['youth_exchange_logo'] || '',
                 favicon: club.favicon || '',
                 logoHeaderSize: club.logoHeaderSize ?? 200,
-                autoGenerateCalendar: club.settings?.auto_generate_calendar !== false,
+                autoGenerateCalendar: settingsMap['auto_generate_calendar'] !== 'false',
                 mapStyle: club.mapStyle || 'm',
+                storeActive: settingsMap['store_active'] !== 'false',
             });
 
-            // If platform supports paymentConfigs from populated backend
             if (club.paymentConfigs && Array.isArray(club.paymentConfigs)) {
                 const stripeConfig = club.paymentConfigs.find((c: any) => c.provider === 'stripe');
                 setUseStripe(stripeConfig?.enabled || false);
                 setStripePublicKey(stripeConfig?.publicKey || '');
-                setStripeSecretKey(''); // Don't pre-fill secret for security
-
-                const paypalConfig = club.paymentConfigs.find((c: any) => c.provider === 'paypal');
-                setUsePaypal(paypalConfig?.enabled || false);
-                setPaypalClientId(paypalConfig?.publicKey || '');
-                setPaypalSecretKey('');
-                try {
-                    const settings = paypalConfig?.settings ? JSON.parse(paypalConfig.settings) : {};
-                    setPaypalSandbox(settings.sandbox !== false);
-                } catch (e) {
-                    setPaypalSandbox(true);
-                }
             }
         }
     }, [club]);
 
-    // Auto-crop whitespace from logo on the client using refined detection (v4.46.0)
     const handleAutoCrop = async (file: File): Promise<File> => {
         try {
             const img = await fileToImage(file);
             const canvas = getAutoCropCanvas(img);
-            if (canvas) {
-                return await canvasToFile(canvas, file.name.replace(/\.[^.]+$/, '.png'));
-            }
+            if (canvas) return await canvasToFile(canvas, file.name.replace(/\.[^.]+$/, '.png'));
             return file;
         } catch (error) {
-            console.error('Auto-crop error:', error);
             return file;
         }
     };
 
-    const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, folder: string, fieldName: string) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
         setUploading(true);
         try {
-            // Auto-crop whitespace on client side using Refined Detection (v4.46.0)
             const croppedFile = await handleAutoCrop(file);
-
             const uploadData = new FormData();
             uploadData.append('file', croppedFile);
-            uploadData.append('folder', 'logos');
+            uploadData.append('folder', folder);
 
             const token = localStorage.getItem('rotary_token');
-            const apiUrl = import.meta.env.VITE_API_URL || '/api';
-            const targetUrl = `${apiUrl}/media/upload?folder=logos&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
-
-            const response = await fetch(targetUrl, {
+            const response = await fetch(`${API_URL}/media/upload?folder=${folder}&clubId=${club?.id}`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` },
                 body: uploadData
@@ -178,14 +171,12 @@ const ClubSettings: React.FC = () => {
 
             if (response.ok) {
                 const data = await response.json();
-                setFormData(prev => ({ ...prev, logo: data.url }));
-                toast.success('Logo subido con éxito');
+                setFormData(prev => ({ ...prev, [fieldName]: data.url }));
+                toast.success('Imagen subida con éxito');
             } else {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Falla en el servidor');
+                throw new Error('Falla en el servidor');
             }
         } catch (error: any) {
-            console.error('Upload error:', error);
             toast.error(`Error al subir: ${error.message}`);
         } finally {
             setUploading(false);
@@ -193,396 +184,23 @@ const ClubSettings: React.FC = () => {
         }
     };
 
-    const handleFooterLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        setUploading(true);
-        try {
-            const croppedFile = await handleAutoCrop(file);
-            const formDataUpload = new FormData();
-            formDataUpload.append('file', croppedFile);
-            formDataUpload.append('folder', 'logos-footer');
-            const token = localStorage.getItem('rotary_token');
-            const apiUrl = import.meta.env.VITE_API_URL || '/api';
-            const targetUrl = `${apiUrl}/media/upload?folder=logos-footer&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
-
-            const response = await fetch(targetUrl, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: formDataUpload
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                setFormData(prev => ({ ...prev, footerLogo: data.url }));
-                toast.success('Logo del footer subido con éxito');
-            } else {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Falla en el servidor');
-            }
-        } catch (error: any) {
-            console.error('Footer logo upload error:', error);
-            toast.error(`Error al subir: ${error.message}`);
-        } finally {
-            setUploading(false);
-            if (e.target) e.target.value = '';
-        }
-    };
-
-    const handleEndPolioLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        setUploading(true);
-        try {
-            const croppedFile = await handleAutoCrop(file);
-            const formDataUpload = new FormData();
-            formDataUpload.append('file', croppedFile);
-            formDataUpload.append('folder', 'logos-endpolio');
-            const token = localStorage.getItem('rotary_token');
-            const apiUrl = import.meta.env.VITE_API_URL || '/api';
-            const targetUrl = `${apiUrl}/media/upload?folder=logos-endpolio&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
-
-            const response = await fetch(targetUrl, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: formDataUpload
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                setFormData(prev => ({ ...prev, endPolioLogo: data.url }));
-                toast.success('Logo End Polio subido con éxito');
-            } else {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Falla en el servidor');
-            }
-        } catch (error: any) {
-            console.error('End Polio logo upload error:', error);
-            toast.error(`Error al subir: ${error.message}`);
-        } finally {
-            setUploading(false);
-            if (e.target) e.target.value = '';
-        }
-    };
-
-    const handleRotaractLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        setUploading(true);
-        try {
-            const croppedFile = await handleAutoCrop(file);
-            const formDataUpload = new FormData();
-            formDataUpload.append('file', croppedFile);
-            formDataUpload.append('folder', 'logos-rotaract');
-            const token = localStorage.getItem('rotary_token');
-            const apiUrl = import.meta.env.VITE_API_URL || '/api';
-            const targetUrl = `${apiUrl}/media/upload?folder=logos-rotaract&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
-
-            const response = await fetch(targetUrl, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: formDataUpload
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                setFormData(prev => ({ ...prev, rotaractLogo: data.url }));
-                toast.success('Logo Rotaract subido con éxito');
-            } else {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Falla en el servidor');
-            }
-        } catch (error: any) {
-            console.error('Rotaract logo upload error:', error);
-            toast.error(`Error al subir: ${error.message}`);
-        } finally {
-            setUploading(false);
-            if (e.target) e.target.value = '';
-        }
-    };
-
-    const handleInteractLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files[0];
-        setUploading(true);
-        try {
-            const croppedFile = await handleAutoCrop(file);
-            const formDataUpload = new FormData();
-            formDataUpload.append('file', croppedFile);
-            formDataUpload.append('folder', 'logos-interact');
-            const token = localStorage.getItem('rotary_token');
-            const apiUrl = import.meta.env.VITE_API_URL || '/api';
-            const targetUrl = `${apiUrl}/media/upload-logo?folder=logos-interact&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
-
-            const response = await fetch(targetUrl, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: formDataUpload
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                setFormData(prev => ({ ...prev, interactLogo: data.url }));
-                toast.success('Logo Interact subido con éxito');
-            } else {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Falla en el servidor');
-            }
-        } catch (error: any) {
-            console.error('Interact logo upload error:', error);
-            toast.error(`Error al subir: ${error.message}`);
-        } finally {
-            setUploading(false);
-            if (e.target) e.target.value = '';
-        }
-    };
-
-    const handleYouthExchangeLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files[0];
-        setUploading(true);
-        try {
-            const croppedFile = await handleAutoCrop(file);
-            const formDataUpload = new FormData();
-            formDataUpload.append('file', croppedFile);
-            formDataUpload.append('folder', 'logos-exchange');
-            const token = localStorage.getItem('rotary_token');
-            const apiUrl = import.meta.env.VITE_API_URL || '/api';
-            const targetUrl = `${apiUrl}/media/upload-logo?folder=logos-exchange&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
-
-            const response = await fetch(targetUrl, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: formDataUpload
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                setFormData(prev => ({ ...prev, youthExchangeLogo: data.url }));
-                toast.success('Logo de Intercambio subido con éxito');
-            } else {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Falla en el servidor');
-            }
-        } catch (error: any) {
-            console.error('Youth Exchange logo upload error:', error);
-            toast.error(`Error al subir: ${error.message}`);
-        } finally {
-            setUploading(false);
-            if (e.target) e.target.value = '';
-        }
-    };
-
-    const handleFaviconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        setUploading(true);
-        try {
-            const croppedFile = await handleAutoCrop(file);
-            const formDataUpload = new FormData();
-            formDataUpload.append('file', croppedFile);
-            formDataUpload.append('folder', 'favicons');
-            const token = localStorage.getItem('rotary_token');
-            const apiUrl = import.meta.env.VITE_API_URL || '/api';
-            const targetUrl = `${apiUrl}/media/upload?folder=favicons&clubId=${club.id}`.replace(/\/+/g, '/').replace(':/', '://');
-
-            const response = await fetch(targetUrl, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: formDataUpload
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                setFormData(prev => ({ ...prev, favicon: data.url }));
-                toast.success('Favicon subido con éxito');
-            } else {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Falla en el servidor');
-            }
-        } catch (error: any) {
-            console.error('Favicon upload error:', error);
-            toast.error(`Error al subir: ${error.message}`);
-        } finally {
-            setUploading(false);
-            if (e.target) e.target.value = '';
-        }
-    };
-
-    const handleSaveMapStyle = async () => {
-        setSavingMap(true);
-        try {
-            const token = localStorage.getItem('rotary_token');
-            const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/global-map-style`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify({ mapStyle })
-            });
-
-            if (res.ok) {
-                toast.success('Estilo de mapa guardado globalmente');
-            } else {
-                toast.error('Error al guardar el estilo de mapa');
-            }
-        } catch (error) {
-            toast.error('Error de conexión');
-        } finally {
-            setSavingMap(false);
-        }
-    };
-
-    const handlePlatformLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        setUploadingPlatformLogo(true);
-        try {
-            const croppedFile = await handleAutoCrop(file);
-            console.log(`[PlatformLogo] Final cropped file size: ${(croppedFile.size / 1024).toFixed(2)}KB`);
-            
-            const formData = new FormData();
-            formData.append('file', croppedFile);
-            const token = localStorage.getItem('rotary_token');
-            const apiUrl = getApiUrl();
-            const res = await fetch(`${apiUrl}/platform-config/logo/upload`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
-                body: formData,
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setPlatformLogo(data.url);
-                toast.success('Logo del panel de acceso actualizado');
-            } else {
-                let errorMsg = 'Error al subir el logo';
-                try {
-                    const resClone = res.clone();
-                    try {
-                        const err = await resClone.json();
-                        errorMsg = err.error || errorMsg;
-                    } catch {
-                        const text = await res.text();
-                        errorMsg = text || errorMsg;
-                    }
-                } catch {
-                    errorMsg = 'Error al procesar la respuesta del servidor';
-                }
-                toast.error(errorMsg);
-            }
-        } catch (error: any) {
-            console.error('Platform logo upload error:', error);
-            toast.error(error.message || 'Error de conexión al subir el logo');
-        } finally {
-            setUploadingPlatformLogo(false);
-            if (e.target) e.target.value = '';
-        }
-    };
-
-    const handleSaveLogoSize = async () => {
-        setSavingLogoSize(true);
-        try {
-            const token = localStorage.getItem('rotary_token');
-            const apiUrl = import.meta.env.VITE_API_URL || '/api';
-            const res = await fetch(`${apiUrl}/platform-config/logo/size`.replace(/\/+/g, '/').replace(':/', '://'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ size: platformLogoSize }),
-            });
-            if (res.ok) {
-                toast.success('Tamaño del logo guardado');
-            } else {
-                toast.error('Error al guardar el tamaño');
-            }
-        } catch {
-            toast.error('Error de conexión');
-        } finally {
-            setSavingLogoSize(false);
-        }
-    };
-
-    const handleToggleRedirect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const newState = e.target.checked;
-        setUpdatingRedirect(true);
-        try {
-            const token = localStorage.getItem('rotary_token');
-            const apiUrl = import.meta.env.VITE_API_URL || '/api';
-            const r = await fetch(`${apiUrl}/platform-config/redirect`.replace(/\/+/g, '/').replace(':/', '://'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ active: newState })
-            });
-            if (r.ok) {
-                setSaasRedirect(newState);
-                toast.success(newState ? 'Redirección a la app activada.' : 'El landing público de ClubPlatform está activo.');
-            } else {
-                toast.error('Error al actualizar redirección.');
-            }
-        } catch {
-            toast.error('Error de red al actualizar.');
-        } finally {
-            setUpdatingRedirect(false);
-        }
-    };
-
-    const handleOpenBillingPortal = async () => {
-        try {
-            const token = localStorage.getItem('rotary_token');
-            const apiUrl = import.meta.env.VITE_API_URL || '/api';
-            const res = await fetch(`${apiUrl}/admin/clubs/${club.id}/billing-portal`.replace(/\/+/g, '/').replace(':/', '://'), {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            
-            const contentType = res.headers.get("content-type");
-            if (res.ok && contentType && contentType.includes("application/json")) {
-                const data = await res.json();
-                if (data.url) {
-                    window.location.href = data.url;
-                } else {
-                    toast.error('No se recibió la URL del portal');
-                }
-            } else {
-                let errorMsg = 'Error al abrir el portal';
-                if (contentType && contentType.includes("application/json")) {
-                    const data = await res.json();
-                    errorMsg = data.error || errorMsg;
-                } else {
-                    errorMsg = `Error del servidor (${res.status}). Es posible que la configuración de Stripe no esté completa.`;
-                }
-                toast.error(errorMsg);
-            }
-        } catch (error: any) {
-            console.error('Billing portal error:', error);
-            toast.error('Error de red o de configuración al intentar abrir el portal.');
-        }
-    };
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSave = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
         setLoading(true);
         try {
             const token = localStorage.getItem('rotary_token');
-            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs/${club.id}`, {
+            const response = await fetch(`${API_URL}/admin/clubs/${club?.id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({
-                    ...formData,
-                    useStripe, stripePublicKey, stripeSecretKey,
-                    usePaypal, paypalSandbox, paypalClientId, paypalSecretKey
-                })
+                body: JSON.stringify(formData)
             });
 
             if (response.ok) {
-                toast.success('Configuración actualizada correctamente');
-                // Optional: reload to see changes
-                setTimeout(() => window.location.reload(), 1500);
+                toast.success('Configuración actualizada');
+                setTimeout(() => window.location.reload(), 1000);
             } else {
                 throw new Error('Error al actualizar');
             }
@@ -593,841 +211,442 @@ const ClubSettings: React.FC = () => {
         }
     };
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+    const handleOpenBillingPortal = async () => {
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const res = await fetch(`${API_URL}/admin/clubs/${club?.id}/billing-portal`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            
+            const contentType = res.headers.get("content-type");
+            if (res.ok && contentType?.includes("application/json")) {
+                const data = await res.json();
+                if (data.url) window.location.href = data.url;
+            } else {
+                toast.error('No se pudo abrir el portal. Verifica tu suscripción.');
+            }
+        } catch (error) {
+            toast.error('Error de red al intentar abrir el portal.');
+        }
     };
 
-    if (!club) {
-        return (
-            <AdminLayout>
-                <div className="flex items-center justify-center p-12 bg-white rounded-xl shadow-sm border border-gray-100">
-                    <p className="text-gray-500 italic">Cargando información del club...</p>
-                </div>
-            </AdminLayout>
-        );
-    }
+    const TABS = [
+        { id: 'estado', label: 'Estado', icon: Sparkles },
+        { id: 'identidad', label: 'Identidad', icon: Building2 },
+        { id: 'avanzado', label: 'Avanzado', icon: SettingsIcon },
+        { id: 'facturacion', label: 'Facturación', icon: CreditCard },
+    ] as const;
+
+    if (!club) return <AdminLayout><div className="p-12 text-center text-gray-500 italic">Cargando...</div></AdminLayout>;
 
     return (
         <AdminLayout>
-            <div className="mb-8">
-                <h1 className="text-2xl font-bold text-gray-800">
-                    Configuración de{club?.type === 'association' ? ' la Asociación' : club?.type === 'district' ? 'l Distrito' : 'l Club'}
-                </h1>
-                <p className="text-gray-500 text-sm">Gestiona la identidad y contacto de tu organización.</p>
+            <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-black text-gray-900 tracking-tight flex items-center gap-3">
+                        Configuración <span className="text-rotary-blue font-light">/ {TABS.find(t => t.id === activeTab)?.label}</span>
+                    </h1>
+                    <p className="text-sm text-gray-400 font-medium mt-1">Gestiona todo lo relacionado con tu sitio y organización en un solo lugar.</p>
+                </div>
+                <button
+                    onClick={() => handleSave()}
+                    disabled={loading}
+                    className="flex items-center justify-center gap-2 bg-rotary-blue text-white px-6 py-2.5 rounded-xl font-bold hover:bg-sky-800 transition-all shadow-lg shadow-rotary-blue/20 disabled:opacity-50"
+                >
+                    <Save className="w-5 h-5" /> {loading ? 'Guardando...' : 'Guardar Cambios'}
+                </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-8">
-                {/* Facturación y Suscripción */}
-                <div className="bg-gradient-to-br from-gray-900 to-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 text-white relative overflow-hidden">
-                    <div className="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-white opacity-5 rounded-full blur-2xl"></div>
-                    <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
-                        <CreditCard className="w-5 h-5 text-rotary-gold" /> Facturación y Suscripción
-                    </h3>
-                    <p className="text-gray-300 text-sm mb-6 max-w-2xl">
-                        Gestiona el pago de tu plataforma tecnológica, descarga tus facturas emitidas a nombre del club y actualiza tu método de pago de forma segura a través de nuestro portal asociado (Stripe).
-                    </p>
+            {/* Navigation Tabs */}
+            <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-2xl mb-8 w-fit">
+                {TABS.map(tab => (
                     <button
-                        type="button"
-                        onClick={handleOpenBillingPortal}
-                        className="bg-white text-gray-900 hover:bg-gray-100 px-6 py-2.5 rounded-lg font-bold text-sm transition-colors flex items-center gap-2"
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                            activeTab === tab.id 
+                                ? 'bg-white text-gray-900 shadow-sm' 
+                                : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'
+                        }`}
                     >
-                        Ir al Portal de Facturación <ExternalLink className="w-4 h-4" />
+                        <tab.icon className={`w-4 h-4 ${activeTab === tab.id ? 'text-rotary-blue' : 'text-gray-400'}`} />
+                        {tab.label}
                     </button>
-                </div>
+                ))}
+            </div>
 
-                {/* Información Básica */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
-                        <Globe className="w-5 h-5 text-rotary-blue" /> Información del Club
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="md:col-span-2">
-                            <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Nombre del Club</label>
-                            <input
-                                type="text"
-                                name="name"
-                                value={formData.name}
-                                onChange={handleChange}
-                                className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-rotary-blue outline-none"
-                            />
-                        </div>
-                        <div className="md:col-span-2">
-                            <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Descripción / Misión</label>
-                            <textarea
-                                name="description"
-                                value={formData.description}
-                                onChange={handleChange}
-                                rows={3}
-                                className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-rotary-blue outline-none"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Ciudad</label>
-                            <input
-                                type="text"
-                                name="city"
-                                value={formData.city}
-                                onChange={handleChange}
-                                className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-rotary-blue outline-none"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-400 uppercase mb-2">País</label>
-                            <input
-                                type="text"
-                                name="country"
-                                value={formData.country}
-                                onChange={handleChange}
-                                className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-rotary-blue outline-none"
-                            />
-                        </div>
-
-                        {isSuperAdmin && (
-                            <div className="md:col-span-2 mt-4 pt-4 border-t border-gray-100">
-                                <label className="block text-xs font-bold text-gray-800 uppercase mb-2 flex items-center gap-2">
-                                    Dominio Personalizado
-                                    <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                                        Solo Súper Admin
-                                    </span>
-                                </label>
-                                <input
-                                    type="text"
-                                    name="domain"
-                                    value={formData.domain}
-                                    onChange={handleChange}
-                                    placeholder="ej. rotarymiciudad.org"
-                                    className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-rotary-blue outline-none bg-gray-50"
-                                />
-                                {formData.domain && !formData.domain.includes('.vercel.app') && (
-                                    <div className="mt-4 bg-emerald-50 border border-emerald-200 rounded-lg p-5">
-                                        <h4 className="font-bold text-emerald-800 flex items-center gap-2 mb-2">
-                                            <Globe className="w-4 h-4" /> Instrucciones de Configuración DNS
-                                        </h4>
-                                        <p className="text-sm text-emerald-700 mb-3">
-                                            Hemos ordenado a nuestro servidor web ({formData.domain}) aceptar tráfico en tu nombre. Para que tu página funcione, debes ir a la empresa donde compraste tu dominio (GoDaddy, Hostinger, etc.) y crear el siguiente registro:
-                                        </p>
-                                        <div className="bg-white p-4 rounded border border-emerald-100 flex items-center justify-between shadow-sm">
-                                            <div className="grid grid-cols-3 gap-8 w-full">
-                                                <div>
-                                                    <span className="block text-xs text-gray-500 uppercase font-bold">Tipo</span>
-                                                    <span className="font-mono font-bold">A</span>
-                                                </div>
-                                                <div>
-                                                    <span className="block text-xs text-gray-500 uppercase font-bold">Nombre / Host</span>
-                                                    <span className="font-mono font-bold">@</span>
-                                                </div>
-                                                <div>
-                                                    <span className="block text-xs text-gray-500 uppercase font-bold">Valor (Punta hacia)</span>
-                                                    <span className="font-mono font-bold text-sky-600 bg-sky-50 px-2 py-0.5 rounded">76.76.21.21</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <p className="text-xs text-emerald-600 mt-3 font-medium">✨ La propagación de DNS suele demorar entre 15 y 60 minutos en internet global. Durante este tiempo el dominio se auto-conectará y generará un Certificado SSL (candado verde) automáticamente.</p>
+            <div className="space-y-8 pb-24">
+                {activeTab === 'estado' && (
+                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <SiteSetupCard stats={stats} onOpenWizard={() => navigate('/admin/onboarding')} />
+                        
+                        {/* Summary DNA if available */}
+                        {club.archetype && (
+                            <div className="mt-8">
+                                <div className="flex bg-white rounded-t-3xl border-x border-t border-gray-100 px-8 py-5 items-center gap-3">
+                                    <Dna className="w-6 h-6 text-rotary-blue" />
+                                    <div>
+                                        <h2 className="text-xl font-black text-gray-800 tracking-tight">ADN de tu Club</h2>
+                                        <p className="text-xs text-gray-500 font-medium mt-0.5">Perfil estratégico generado por IA.</p>
                                     </div>
-                                )}
+                                </div>
+                                <div className="bg-white border-x border-b border-gray-100 rounded-b-3xl p-8 pt-4 shadow-sm">
+                                    <ClubArchetypeCard result={club.archetype} clubName={club.name} hideCTAs={true} />
+                                </div>
                             </div>
                         )}
                     </div>
-                </div>
-
-                {/* Logo Section */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
-                        <ImageIcon className="w-5 h-5 text-rotary-blue" /> Logo del Header (Principal)
-                    </h3>
-                    <div className="flex flex-col md:flex-row items-center gap-8">
-                        <div className="w-48 h-48 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden bg-gray-50">
-                            {formData.logo ? (
-                                <img src={formData.logo} alt="Logo preview" className="w-full h-full object-contain p-4" />
-                            ) : (
-                                <ImageIcon className="w-12 h-12 text-gray-300" />
-                            )}
-                        </div>
-                        <div className="flex-1 space-y-4">
-                            <p className="text-sm text-gray-500">
-                                Sube el logo oficial que se mostrará en la barra de navegación superior.
-                            </p>
-                            <label className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2.5 rounded-full font-bold cursor-pointer transition-colors">
-                                <Upload className="w-4 h-4" />
-                                {uploading ? 'Subiendo...' : 'Seleccionar Logo Header'}
-                                <input type="file" className="hidden" accept="image/*" onChange={(e) => {
-                                    handleLogoUpload(e);
-                                }} disabled={uploading} />
-                            </label>
-
-                            {/* Logo size slider — Super Admin & Associations */}
-                            {(isSuperAdmin || club?.type === 'association') && (
-                                <div className="mt-4 pt-4 border-t border-gray-100">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <label className="text-xs font-bold text-gray-400 uppercase">Tamaño del Logo en el Header</label>
-                                        <span className="text-xs font-mono font-bold text-rotary-blue bg-blue-50 px-2 py-0.5 rounded-full">
-                                            {formData.logoHeaderSize}px
-                                        </span>
-                                    </div>
-                                    <input
-                                        type="range"
-                                        min={60}
-                                        max={300}
-                                        step={5}
-                                        value={formData.logoHeaderSize}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, logoHeaderSize: Number(e.target.value) }))}
-                                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-rotary-blue"
-                                    />
-                                    <div className="flex justify-between text-[10px] text-gray-400 mt-1">
-                                        <span>60px</span>
-                                        <span>300px</span>
-                                    </div>
-                                    {formData.logo && (
-                                        <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-100 flex items-center gap-3">
-                                            <span className="text-xs text-gray-400 flex-shrink-0">Vista previa:</span>
-                                            <img
-                                                src={formData.logo}
-                                                alt="Logo preview"
-                                                style={{ width: `${formData.logoHeaderSize}px`, maxWidth: '100%' }}
-                                                className="h-auto object-contain"
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Footer Logo Section - Limited to Super Admin */}
-                {isSuperAdmin && (
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <div className="flex justify-between items-start mb-6">
-                            <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                                <ImageIcon className="w-5 h-5 text-rotary-blue" /> Logo del Footer
-                            </h3>
-                        </div>
-                        <div className="flex flex-col md:flex-row items-center gap-8">
-                            <div className="w-48 h-48 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden bg-gray-50">
-                                {formData.footerLogo ? (
-                                    <img src={formData.footerLogo} alt="Footer Logo preview" className="w-full h-full object-contain p-4" />
-                                ) : (
-                                    <ImageIcon className="w-12 h-12 text-gray-300" />
-                                )}
-                            </div>
-                            <div className="flex-1 space-y-4">
-                                <p className="text-sm text-gray-500">
-                                    Sube el logo que se mostrará en el pie de página de tu sitio. Como Súper Admin, puedes cambiar este logo para este club.
-                                </p>
-                                <label className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2.5 rounded-full font-bold cursor-pointer transition-colors">
-                                    <Upload className="w-4 h-4" />
-                                    {uploading ? 'Subiendo...' : 'Seleccionar Logo Footer'}
-                                    <input type="file" className="hidden" accept="image/*" onChange={(e) => {
-                                        handleFooterLogoUpload(e);
-                                    }} disabled={uploading} />
-                                </label>
-                            </div>
-                        </div>
-                    </div>
                 )}
 
-                {/* End Polio Logo Section - Limited to Super Admin */}
-                {isSuperAdmin && (
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <div className="flex justify-between items-start mb-6">
-                            <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                                <ImageIcon className="w-5 h-5 text-rotary-blue" /> Logo End Polio Now
+                {activeTab === 'identidad' && (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {/* Basic Info */}
+                        <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                            <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-3">
+                                <Layout className="w-5 h-5 text-rotary-blue" /> Información Institucional
                             </h3>
-                        </div>
-                        <div className="flex flex-col md:flex-row items-center gap-8">
-                            <div className="w-48 h-48 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden bg-gray-50">
-                                {formData.endPolioLogo ? (
-                                    <img src={formData.endPolioLogo} alt="End Polio Logo preview" className="w-full h-full object-contain p-4" />
-                                ) : (
-                                    <ImageIcon className="w-12 h-12 text-gray-300" />
-                                )}
-                            </div>
-                            <div className="flex-1 space-y-4">
-                                <p className="text-sm text-gray-500">
-                                    Sube el logo oficial de End Polio Now para tu footer. Puedes actualizar el logo de la causa para este club.
-                                </p>
-                                <label className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2.5 rounded-full font-bold cursor-pointer transition-colors">
-                                    <Upload className="w-4 h-4" />
-                                    {uploading ? 'Subiendo...' : 'Seleccionar Logo End Polio'}
-                                    <input type="file" className="hidden" accept="image/*" onChange={(e) => {
-                                        handleEndPolioLogoUpload(e);
-                                    }} disabled={uploading} />
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Rotaract Logo Section - Limited to Super Admin */}
-                {isSuperAdmin && (
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <div className="flex justify-between items-start mb-6">
-                            <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                                <ImageIcon className="w-5 h-5 text-rotary-blue" /> Logo Rotaract
-                            </h3>
-                        </div>
-                        <div className="flex flex-col md:flex-row items-center gap-8">
-                            <div className="w-48 h-48 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden bg-gray-50">
-                                {formData.rotaractLogo ? (
-                                    <img src={formData.rotaractLogo} alt="Rotaract Logo preview" className="w-full h-full object-contain p-4" />
-                                ) : (
-                                    <ImageIcon className="w-12 h-12 text-gray-300" />
-                                )}
-                            </div>
-                            <div className="flex-1 space-y-4">
-                                <p className="text-sm text-gray-500">
-                                    Sube el logo de Rotaract del club. Se mostrará en la sección y portal de Rotaract.
-                                </p>
-                                <label className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2.5 rounded-full font-bold cursor-pointer transition-colors">
-                                    <Upload className="w-4 h-4" />
-                                    {uploading ? 'Subiendo...' : 'Seleccionar Logo Rotaract'}
-                                    <input type="file" className="hidden" accept="image/*" onChange={(e) => {
-                                        handleRotaractLogoUpload(e);
-                                    }} disabled={uploading} />
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Interact Logo Section - Limited to Super Admin */}
-                {isSuperAdmin && (
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mt-6">
-                        <div className="flex justify-between items-start mb-6">
-                            <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                                <ImageIcon className="w-5 h-5 text-rotary-blue" /> Logo Interact
-                            </h3>
-                        </div>
-                        <div className="flex flex-col md:flex-row items-center gap-8">
-                            <div className="w-48 h-48 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden bg-gray-50">
-                                {formData.interactLogo ? (
-                                    <img src={formData.interactLogo} alt="Interact Logo preview" className="w-full h-full object-contain p-4" />
-                                ) : (
-                                    <ImageIcon className="w-12 h-12 text-gray-300" />
-                                )}
-                            </div>
-                            <div className="flex-1 space-y-4">
-                                <p className="text-sm text-gray-500">
-                                    Sube el logo de Interact del club. Se mostrará en la sección y portal de Interact.
-                                </p>
-                                <label className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2.5 rounded-full font-bold cursor-pointer transition-colors">
-                                    <Upload className="w-4 h-4" />
-                                    {uploading ? 'Subiendo...' : 'Seleccionar Logo Interact'}
-                                    <input type="file" className="hidden" accept="image/*" onChange={(e) => {
-                                        handleInteractLogoUpload(e);
-                                    }} disabled={uploading} />
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Youth Exchange Logo Section - Limited to Super Admin */}
-                {isSuperAdmin && (
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mt-6">
-                        <div className="flex justify-between items-start mb-6">
-                            <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                                <ImageIcon className="w-5 h-5 text-rotary-blue" /> Logo Intercambio de Jóvenes
-                            </h3>
-                        </div>
-                        <div className="flex flex-col md:flex-row items-center gap-8">
-                            <div className="w-48 h-48 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden bg-gray-50">
-                                {formData.youthExchangeLogo ? (
-                                    <img src={formData.youthExchangeLogo} alt="Youth Exchange Logo preview" className="w-full h-full object-contain p-4" />
-                                ) : (
-                                    <ImageIcon className="w-12 h-12 text-gray-300" />
-                                )}
-                            </div>
-                            <div className="flex-1 space-y-4">
-                                <p className="text-sm text-gray-500">
-                                    Sube el logo oficial del programa Intercambio de Jóvenes. <strong>Nota:</strong> En sitios de intercambio (como Rotary LATIR), este logo reemplazará automáticamente al logo de "End Polio Now" en el footer para mantener la identidad del programa.
-                                </p>
-                                <label className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2.5 rounded-full font-bold cursor-pointer transition-colors">
-                                    <Upload className="w-4 h-4" />
-                                    {uploading ? 'Subiendo...' : 'Seleccionar Logo'}
-                                    <input type="file" className="hidden" accept="image/*" onChange={(e) => {
-                                        handleYouthExchangeLogoUpload(e);
-                                    }} disabled={uploading} />
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Favicon Section - Limited to Super Admin */}
-                {isSuperAdmin && (
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <div className="flex justify-between items-start mb-6">
-                            <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                                <ImageIcon className="w-5 h-5 text-rotary-blue" /> Favicon del Sitio
-                            </h3>
-                        </div>
-                        <div className="flex flex-col md:flex-row items-center gap-8">
-                            <div className="w-24 h-24 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden bg-gray-50">
-                                {formData.favicon ? (
-                                    <img src={formData.favicon} alt="Favicon preview" className="w-full h-full object-contain p-2" />
-                                ) : (
-                                    <ImageIcon className="w-8 h-8 text-gray-300" />
-                                )}
-                            </div>
-                            <div className="flex-1 space-y-4">
-                                <p className="text-sm text-gray-500">
-                                    Sube el ícono que se mostrará en la pestaña del navegador. Se recomienda un archivo .png cuadrado o .ico. Como Súper Admin, puedes cambiar esto para el sitio.
-                                </p>
-                                <label className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2.5 rounded-full font-bold cursor-pointer transition-colors">
-                                    <Upload className="w-4 h-4" />
-                                    {uploading ? 'Subiendo...' : 'Seleccionar Favicon'}
-                                    <input type="file" className="hidden" accept="image/*" onChange={(e) => {
-                                        handleFaviconUpload(e);
-                                    }} disabled={uploading} />
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Contacto */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
-                        <Phone className="w-5 h-5 text-rotary-blue" /> Contacto
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Email de Contacto</label>
-                            <input
-                                type="email"
-                                name="email"
-                                value={formData.email}
-                                onChange={handleChange}
-                                className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-rotary-blue outline-none"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Teléfono</label>
-                            <input
-                                type="text"
-                                name="phone"
-                                value={formData.phone}
-                                onChange={handleChange}
-                                className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-rotary-blue outline-none"
-                            />
-                        </div>
-                        <div className="md:col-span-2">
-                            <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Dirección Física</label>
-                            <input
-                                type="text"
-                                name="address"
-                                value={formData.address}
-                                onChange={handleChange}
-                                className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-rotary-blue outline-none"
-                            />
-                        </div>
-                        <div className="md:col-span-2 mt-4 p-4 bg-blue-50/50 rounded-xl border border-blue-100/50">
-                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                <div className="flex-1">
-                                    <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                                        <Globe className="w-4 h-4 text-rotary-blue" />
-                                        Estilo de Mapa Personalizado
-                                    </h4>
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        Elige cómo se verá el mapa de contacto en tu sitio público. Esto sobrescribe la configuración global.
-                                    </p>
-                                </div>
-                                <select
-                                    name="mapStyle"
-                                    value={formData.mapStyle}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, mapStyle: e.target.value }))}
-                                    className="bg-white border border-gray-200 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-rotary-blue/20 outline-none transition-all min-w-[200px]"
-                                >
-                                    <option value="m">Estándar (Predeterminado)</option>
-                                    <option value="k">Satélite (Sin etiquetas)</option>
-                                    <option value="h">Híbrido (Satélite + Etiquetas)</option>
-                                    <option value="p">Terreno / Relieve</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                    {/* Redes Sociales */}
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                                <MessageSquare className="w-5 h-5 text-rotary-blue" /> Redes Sociales Dinámicas
-                            </h3>
-                            <button
-                                type="button"
-                                onClick={() => setFormData({ ...formData, socialLinks: [...formData.socialLinks, { platform: 'Nueva Red', url: '' }] })}
-                                className="text-xs bg-rotary-blue text-white px-3 py-1.5 rounded-lg hover:bg-blue-800 font-bold transition-colors"
-                            >
-                                + Añadir Red Social
-                            </button>
-                        </div>
-                        {formData.socialLinks.length === 0 ? (
-                            <p className="text-sm text-gray-500 italic text-center py-4 bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                                No hay redes sociales configuradas. Haz clic en "Añadir Red Social" para comenzar.
-                            </p>
-                        ) : (
-                            <div className="space-y-4">
-                                {formData.socialLinks.map((link, index) => (
-                                    <div key={index} className="flex flex-col md:flex-row gap-4 items-start md:items-center bg-gray-50 p-3 rounded-lg border border-gray-100">
-                                        <div className="w-full md:w-1/3">
-                                            <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Plataforma / Nombre</label>
-                                            <input
-                                                type="text"
-                                                value={link.platform}
-                                                onChange={(e) => {
-                                                    const newLinks = [...formData.socialLinks];
-                                                    newLinks[index].platform = e.target.value;
-                                                    setFormData({ ...formData, socialLinks: newLinks });
-                                                }}
-                                                placeholder="ej. Facebook, Linktree..."
-                                                className="w-full px-4 py-2 rounded-lg border border-gray-200 outline-none"
-                                            />
-                                        </div>
-                                        <div className="w-full md:w-flex-1 md:flex-grow">
-                                            <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Enlace / URL Completa</label>
-                                            <input
-                                                type="url"
-                                                value={link.url}
-                                                onChange={(e) => {
-                                                    const newLinks = [...formData.socialLinks];
-                                                    newLinks[index].url = e.target.value;
-                                                    setFormData({ ...formData, socialLinks: newLinks });
-                                                }}
-                                                placeholder="https://..."
-                                                className="w-full px-4 py-2 rounded-lg border border-gray-200 outline-none"
-                                            />
-                                        </div>
-                                        <div className="pt-5 md:pt-6">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const newLinks = formData.socialLinks.filter((_, i) => i !== index);
-                                                    setFormData({ ...formData, socialLinks: newLinks });
-                                                }}
-                                                className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded transition-colors text-sm font-bold"
-                                            >
-                                                Eliminar
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Apariencia */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
-                        <Palette className="w-5 h-5 text-rotary-blue" /> Identidad Visual
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Color Primario</label>
-                            <div className="flex gap-2">
-                                <input type="color" name="primaryColor" value={formData.primaryColor} onChange={handleChange} className="w-10 h-10 rounded cursor-pointer border-none" />
-                                <input type="text" value={formData.primaryColor} readOnly className="flex-1 px-4 py-2 rounded-lg border border-gray-200 bg-gray-50 text-gray-500" />
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Color Secundario</label>
-                            <div className="flex gap-2">
-                                <input type="color" name="secondaryColor" value={formData.secondaryColor} onChange={handleChange} className="w-10 h-10 rounded cursor-pointer border-none" />
-                                <input type="text" value={formData.secondaryColor} readOnly className="flex-1 px-4 py-2 rounded-lg border border-gray-200 bg-gray-50 text-gray-500" />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                {/* Pagos / E-commerce */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
-                        <Store className="w-5 h-5 text-rotary-blue" /> Pagos y Tienda (Gateway API)
-                    </h3>
-
-                    <div className="space-y-6">
-                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-4 border border-gray-100 rounded-xl bg-gray-50">
-                            <div>
-                                <h4 className="font-bold text-gray-900">Procesar pagos de la página de mi Club de forma Directa</h4>
-                                <p className="text-sm text-gray-500">Si se desactiva, todo aporte será procesado por la cuenta matriz y se retendrá un 5% de comisión + costos de plataforma.</p>
-                            </div>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" className="sr-only peer" checked={useStripe} onChange={(e) => setUseStripe(e.target.checked)} />
-                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rotary-blue"></div>
-                            </label>
-                        </div>
-
-                        {useStripe && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 border border-blue-100 rounded-xl bg-blue-50/30">
-                                <div className="md:col-span-2">
-                                    <p className="text-sm text-blue-800 font-medium">
-                                        Para recibir el 100% de los fondos de tus aportes a tu cuenta propia en tiempo real, ingresa tus llaves API de la pasarela. (Stripe)
-                                    </p>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Clave Pública (Publishable Key)</label>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="md:col-span-2 space-y-1">
+                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Nombre</label>
                                     <input
                                         type="text"
-                                        value={stripePublicKey}
-                                        onChange={(e) => setStripePublicKey(e.target.value)}
-                                        className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-rotary-blue outline-none"
-                                        placeholder="pk_live_..."
+                                        className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:border-rotary-blue/20 rounded-xl outline-none transition-all font-medium"
+                                        value={formData.name}
+                                        onChange={e => setFormData({...formData, name: e.target.value})}
                                     />
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Clave Secreta (Secret Key)</label>
+                                <div className="md:col-span-2 space-y-1">
+                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Descripción / Misión</label>
+                                    <textarea
+                                        rows={3}
+                                        className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:border-rotary-blue/20 rounded-xl outline-none transition-all font-medium resize-none"
+                                        value={formData.description}
+                                        onChange={e => setFormData({...formData, description: e.target.value})}
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Ciudad</label>
                                     <input
-                                        type="password"
-                                        value={stripeSecretKey}
-                                        onChange={(e) => setStripeSecretKey(e.target.value)}
-                                        className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-rotary-blue outline-none"
-                                        placeholder="sk_live_... (déjalo vacío si no la actualizarás)"
+                                        type="text"
+                                        className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:border-rotary-blue/20 rounded-xl outline-none transition-all font-medium"
+                                        value={formData.city}
+                                        onChange={e => setFormData({...formData, city: e.target.value})}
                                     />
-                                    <p className="text-[10px] mt-1 text-gray-500">Se ocultará al instante.</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">País</label>
+                                    <input
+                                        type="text"
+                                        className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:border-rotary-blue/20 rounded-xl outline-none transition-all font-medium"
+                                        value={formData.country}
+                                        onChange={e => setFormData({...formData, country: e.target.value})}
+                                    />
                                 </div>
                             </div>
-                        )}
-
-                        {/* PayPal Module */}
-                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-4 border border-gray-100 rounded-xl bg-gray-50 mt-8">
-                            <div>
-                                <h4 className="font-bold text-gray-900">Activar PayPal como Método Alternativo</h4>
-                                <p className="text-sm text-gray-500">Permite procesar pagos a través de una cuenta de PayPal separada.</p>
-                            </div>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" className="sr-only peer" checked={usePaypal} onChange={(e) => setUsePaypal(e.target.checked)} />
-                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rotary-blue"></div>
-                            </label>
                         </div>
 
-                        {usePaypal && (
-                            <div className="flex flex-col gap-6 p-4 border border-blue-100 rounded-xl bg-blue-50/30">
-                                <div className="flex items-center justify-between bg-white p-4 rounded-lg border border-gray-100 shadow-sm">
-                                    <div>
-                                        <p className="font-bold text-gray-800 text-sm">Modo Sandbox (Pruebas)</p>
-                                        <p className="text-xs text-gray-500">Habilita esta opción para realizar transacciones ficticias sin cobrar dinero real.</p>
+                        {/* Logos */}
+                        <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                            <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-3">
+                                <ImageIcon className="w-5 h-5 text-rotary-blue" /> Logos y Favicon
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                                <div className="space-y-4">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block text-center">Logo Header (Principal)</label>
+                                    <div className="relative group mx-auto w-40 h-40">
+                                        <div className="w-40 h-40 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden transition-all group-hover:border-rotary-blue/40">
+                                            {formData.logo ? <img src={formData.logo} className="w-full h-full object-contain p-4" /> : <Building2 className="w-12 h-12 text-gray-300" />}
+                                        </div>
+                                        <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-2xl">
+                                            <Upload className="text-white w-8 h-8" />
+                                            <input type="file" className="hidden" onChange={e => handleFileUpload(e, 'logos', 'logo')} accept="image/*" />
+                                        </label>
                                     </div>
-                                    <label className="relative inline-flex items-center cursor-pointer">
-                                        <input type="checkbox" className="sr-only peer" checked={paypalSandbox} onChange={(e) => setPaypalSandbox(e.target.checked)} />
-                                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
-                                    </label>
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-[10px] font-bold text-gray-400">
+                                            <span>Tamaño: {formData.logoHeaderSize}px</span>
+                                        </div>
+                                        <input
+                                            type="range" min={60} max={300} step={5}
+                                            value={formData.logoHeaderSize}
+                                            onChange={e => setFormData({...formData, logoHeaderSize: Number(e.target.value)})}
+                                            className="w-full h-1.5 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-rotary-blue"
+                                        />
+                                    </div>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Client ID (API Key)</label>
+
+                                <div className="space-y-4">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block text-center">Logo Footer</label>
+                                    <div className="relative group mx-auto w-40 h-40">
+                                        <div className="w-40 h-40 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden transition-all group-hover:border-rotary-blue/40">
+                                            {formData.footerLogo ? <img src={formData.footerLogo} className="w-full h-full object-contain p-4" /> : <Building2 className="w-12 h-12 text-gray-300" />}
+                                        </div>
+                                        <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-2xl">
+                                            <Upload className="text-white w-8 h-8" />
+                                            <input type="file" className="hidden" onChange={e => handleFileUpload(e, 'logos-footer', 'footerLogo')} accept="image/*" />
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block text-center">Favicon (32x32)</label>
+                                    <div className="relative group mx-auto w-40 h-40">
+                                        <div className="w-40 h-40 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden transition-all group-hover:border-rotary-blue/40">
+                                            {formData.favicon ? <img src={formData.favicon} className="w-8 h-8 object-contain" /> : <Globe className="w-8 h-8 text-gray-300" />}
+                                        </div>
+                                        <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-2xl">
+                                            <Upload className="text-white w-8 h-8" />
+                                            <input type="file" className="hidden" onChange={e => handleFileUpload(e, 'favicons', 'favicon')} accept="image/*" />
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Contact and Social */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                                <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-3">
+                                    <Mail className="w-5 h-5 text-emerald-500" /> Contacto Oficial
+                                </h3>
+                                <div className="space-y-4">
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-bold text-gray-400 uppercase">Email</label>
+                                        <input
+                                            type="email"
+                                            className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:border-rotary-blue/20 rounded-xl outline-none transition-all font-medium"
+                                            value={formData.email}
+                                            onChange={e => setFormData({...formData, email: e.target.value})}
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-bold text-gray-400 uppercase">Teléfono</label>
                                         <input
                                             type="text"
-                                            value={paypalClientId}
-                                            onChange={(e) => setPaypalClientId(e.target.value)}
-                                            className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-rotary-blue outline-none"
-                                            placeholder="AfT_..."
+                                            className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:border-rotary-blue/20 rounded-xl outline-none transition-all font-medium"
+                                            value={formData.phone}
+                                            onChange={e => setFormData({...formData, phone: e.target.value})}
                                         />
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Secret Key</label>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-bold text-gray-400 uppercase">Dirección</label>
                                         <input
-                                            type="password"
-                                            value={paypalSecretKey}
-                                            onChange={(e) => setPaypalSecretKey(e.target.value)}
-                                            className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-rotary-blue outline-none"
-                                            placeholder="EE2_... (déjalo vacío si no la actualizarás)"
+                                            type="text"
+                                            className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:border-rotary-blue/20 rounded-xl outline-none transition-all font-medium"
+                                            value={formData.address}
+                                            onChange={e => setFormData({...formData, address: e.target.value})}
                                         />
                                     </div>
                                 </div>
                             </div>
-                        )}
-                    </div>
-                </div>
 
-                {/* SUPER ADMIN: Global Configuration */}
-                {isSuperAdmin && (
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-emerald-100 ring-1 ring-emerald-500/10 relative overflow-hidden">
-                        <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl tracking-wider">
-                            GLOBAL PLATFORM
-                        </div>
-                        <h3 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
-                            <Globe className="w-5 h-5 text-emerald-600" /> Configuración Global de la Plataforma
-                        </h3>
-
-                        {/* Platform Login Logo */}
-                        <div className="flex flex-col md:flex-row gap-6 p-5 border border-gray-100 rounded-xl bg-gray-50/50 mb-4">
-                            <div className="md:w-1/3">
-                                <h4 className="font-bold text-gray-900 text-sm mb-1">Logo del Panel de Acceso</h4>
-                                <p className="text-xs text-gray-500">
-                                    Logo que aparece en la pantalla de inicio de sesión de ClubPlatform. Si no se configura, se muestra el ícono y nombre por defecto.
-                                </p>
-                            </div>
-                            <div className="md:w-2/3 flex flex-col gap-4">
-                                <div className="flex items-center gap-5">
-                                    {platformLogo ? (
-                                        <img src={platformLogo} alt="Logo actual" style={{ height: platformLogoSize + 'px' }} className="max-w-[160px] object-contain rounded-lg border border-gray-200 bg-white p-2" />
-                                    ) : (
-                                        <div className="w-14 h-14 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center bg-white">
-                                            <Upload className="w-5 h-5 text-gray-300" />
-                                        </div>
-                                    )}
-                                    <label className={`cursor-pointer inline-flex items-center gap-2 bg-white border border-emerald-200 hover:bg-emerald-50 text-emerald-700 font-bold text-sm px-4 py-2.5 rounded-lg transition-colors ${uploadingPlatformLogo ? 'opacity-50 pointer-events-none' : ''}`}>
-                                        <Upload className="w-4 h-4" />
-                                        {uploadingPlatformLogo ? 'Subiendo...' : platformLogo ? 'Cambiar logo' : 'Subir logo'}
-                                        <input type="file" accept="image/*" className="hidden" onChange={handlePlatformLogoUpload} disabled={uploadingPlatformLogo} />
-                                    </label>
-                                </div>
-                                {platformLogo && (
-                                    <div className="flex items-center gap-4">
+                            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                                <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-3">
+                                    <Share2 className="w-5 h-5 text-indigo-500" /> Presencia Digital
+                                </h3>
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                                        <Store className="w-5 h-5 text-rotary-blue" />
                                         <div className="flex-1">
-                                            <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
-                                                Tamaño — {platformLogoSize}px
-                                            </label>
-                                            <input
-                                                type="range"
-                                                min={24}
-                                                max={200}
-                                                value={platformLogoSize}
-                                                onChange={e => setPlatformLogoSize(Number(e.target.value))}
-                                                className="w-full accent-emerald-600"
-                                            />
-                                            <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
-                                                <span>24px</span><span>200px</span>
-                                            </div>
+                                            <p className="text-sm font-bold text-gray-700">Activar Tienda Pública</p>
+                                            <p className="text-[10px] text-gray-400">Habilita el módulo de aportes y recaudación</p>
                                         </div>
                                         <button
                                             type="button"
-                                            onClick={handleSaveLogoSize}
-                                            disabled={savingLogoSize}
-                                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg flex items-center gap-2 font-bold text-sm transition-colors disabled:opacity-50 shrink-0"
+                                            onClick={() => setFormData({...formData, storeActive: !formData.storeActive})}
+                                            className={`w-10 h-6 rounded-full transition-all relative ${formData.storeActive ? 'bg-rotary-blue' : 'bg-gray-300'}`}
                                         >
-                                            <Save className="w-4 h-4" />
-                                            {savingLogoSize ? 'Guardando...' : 'Aplicar'}
+                                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${formData.storeActive ? 'left-5' : 'left-1'}`} />
                                         </button>
                                     </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Enrutamiento SaaS Redirect */}
-                        <div className="flex flex-col md:flex-row gap-6 p-5 border border-indigo-100 rounded-xl bg-indigo-50/30">
-                            <div className="md:w-1/3">
-                                <h4 className="font-bold text-gray-900 text-sm mb-1 flex items-center gap-2">
-                                    <Globe className="w-4 h-4 text-indigo-500" />
-                                    Enrutamiento Principal
-                                </h4>
-                                <p className="text-xs text-gray-500">
-                                    Si esto está activado, los usuarios que ingresen a <span className="font-mono bg-white px-1 py-0.5 rounded border border-gray-200">clubplatform.org</span> serán redirigidos a <span className="font-mono bg-white px-1 py-0.5 rounded border border-gray-200">app.clubplatform.org</span>.
-                                </p>
-                            </div>
-                            <div className="md:w-2/3 flex items-center">
-                                <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
-                                    <input type="checkbox" className="sr-only peer" checked={saasRedirect} onChange={handleToggleRedirect} disabled={updatingRedirect} />
-                                    <div className="w-14 h-7 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-indigo-600 disabled:opacity-50"></div>
-                                </label>
-                                {saasRedirect && <span className="ml-3 px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded-full uppercase">Activo</span>}
-                                {updatingRedirect && <span className="ml-3 text-xs text-gray-400">Actualizando...</span>}
-                            </div>
-                        </div>
-
-                        {/* Map Style */}
-                        <div className="flex flex-col md:flex-row gap-6 p-5 border border-gray-100 rounded-xl bg-gray-50/50">
-                            <div className="md:w-1/3">
-                                <h4 className="font-bold text-gray-900 text-sm mb-1">Mapas de Google</h4>
-                                <p className="text-xs text-gray-500">
-                                    Aplica un estilo visual a los mapas de las <strong>secciones de contacto</strong> de TODOS los clubes que usen la plataforma.
-                                </p>
-                            </div>
-                            <div className="md:w-2/3">
-                                <label className="block text-xs font-bold text-gray-700 uppercase mb-2">
-                                    Estilo del Mapa
-                                </label>
-                                <div className="flex gap-3">
-                                    <select
-                                        value={mapStyle}
-                                        onChange={(e) => setMapStyle(e.target.value)}
-                                        className="flex-1 bg-white border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-rotary-blue/20 outline-none transition-all"
-                                    >
-                                        <option value="m">Estándar (Predeterminado)</option>
-                                        <option value="k">Satélite (Sin etiquetas)</option>
-                                        <option value="h">Híbrido (Satélite + Etiquetas)</option>
-                                        <option value="p">Terreno / Relieve</option>
-                                    </select>
-                                    <button
-                                        type="button"
-                                        onClick={handleSaveMapStyle}
-                                        disabled={savingMap}
-                                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg flex items-center justify-center gap-2 font-bold text-sm transition-colors disabled:opacity-50"
-                                    >
-                                        {savingMap ? 'Guardando...' : (
-                                            <>
-                                                <Save className="w-4 h-4" /> Aplicar Estilo
-                                            </>
-                                        )}
-                                    </button>
+                                    <p className="text-xs text-gray-400 px-2 italic">Configura tus redes sociales en la base de datos para verlas reflejadas en el footer.</p>
                                 </div>
                             </div>
                         </div>
                     </div>
                 )}
 
-                {/* AI & Strategy Settings */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
-                        <Dna className="w-5 h-5 text-rotary-blue" /> Inteligencia Artificial & Estrategia
-                    </h3>
+                {activeTab === 'avanzado' && (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {/* Domain Management */}
+                        <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                            <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-3">
+                                <Globe className="w-5 h-5 text-emerald-600" /> Ecosistema y Dominio
+                            </h3>
+                            <div className="max-w-2xl space-y-6">
+                                <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Dominio Personalizado</label>
+                                    <div className="flex gap-3">
+                                        <div className="relative flex-1">
+                                            <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                            <input
+                                                type="text"
+                                                className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl outline-none focus:border-rotary-blue transition-all"
+                                                value={formData.domain}
+                                                onChange={e => setFormData({...formData, domain: e.target.value.toLowerCase()})}
+                                                placeholder="ej: rotaryclub.org"
+                                            />
+                                        </div>
+                                        <button 
+                                            type="button"
+                                            className="px-6 py-3 bg-gray-800 text-white rounded-xl font-bold text-sm hover:bg-black transition-colors"
+                                            onClick={() => toast.info('Validando configuración DNS...')}
+                                        >
+                                            Verificar
+                                        </button>
+                                    </div>
+                                    {formData.domain && (
+                                        <div className="mt-4 p-4 bg-emerald-50 border border-emerald-100 rounded-xl">
+                                            <p className="text-xs text-emerald-800 font-bold mb-2">Instrucciones DNS:</p>
+                                            <code className="text-[10px] block bg-white p-2 rounded border border-emerald-200 font-mono">
+                                                Tipo A | Host @ | Valor 76.76.21.21
+                                            </code>
+                                        </div>
+                                    )}
+                                </div>
 
-                    {isSuperAdmin && (
-                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-5 mb-8 border border-emerald-100 rounded-xl bg-emerald-50 max-w-2xl">
-                            <div>
-                                <h4 className="font-bold text-gray-900 border-b border-emerald-200 pb-2 mb-2 flex items-center gap-2">
-                                    <SettingsIcon className="w-4 h-4 text-emerald-600" />
-                                    Generación Automática de Parrilla
-                                    <span className="bg-emerald-600 text-white text-[9px] px-2 py-0.5 rounded uppercase tracking-wider">Super Admin</span>
-                                </h4>
-                                <p className="text-sm text-gray-600 mt-1">
-                                    Si esta opción está activa, la plataforma ordenará automáticamente al equipo de Agentes IA diseñar el calendario editorial completo del mes al finalizar el Onboarding.
-                                </p>
+                                {/* Platform Settings for SuperAdmin */}
+                                {isSuperAdmin && (
+                                    <div className="p-6 bg-purple-50 rounded-2xl border border-purple-100 space-y-6">
+                                        <h4 className="font-bold text-purple-900 flex items-center gap-2">
+                                            <SettingsIcon className="w-4 h-4" /> Configuración Global de Plataforma
+                                        </h4>
+                                        <div className="space-y-4">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-sm font-bold text-purple-900">Redirección SaaS</p>
+                                                    <p className="text-[10px] text-purple-700">Envía a los usuarios del home a la app directamente</p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSaasRedirect(!saasRedirect)}
+                                                    className={`w-12 h-6 rounded-full transition-all relative ${saasRedirect ? 'bg-purple-600' : 'bg-gray-300'}`}
+                                                >
+                                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${saasRedirect ? 'left-7' : 'left-1'}`} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                            <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
-                                <input
-                                    type="checkbox"
-                                    className="sr-only peer"
-                                    checked={formData.autoGenerateCalendar}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, autoGenerateCalendar: e.target.checked }))}
-                                />
-                                <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
-                            </label>
                         </div>
-                    )}
 
-                    {club.archetype ? (
-                        <div className="mt-8 border-t border-gray-100 pt-8">
-                            <ClubArchetypeCard
-                                result={club.archetype}
-                                clubName={club.name}
-                                clubColors={{ primary: club.colors?.primary || '#013388', secondary: club.colors?.secondary || '#E29C00' }}
-                                onFinish={() => toast.success('Arquetipo guardado en la configuración')}
-                                saving={false}
-                            />
+                        {/* Visual Theme */}
+                        <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                            <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-3">
+                                <Palette className="w-5 h-5 text-rotary-blue" /> Estética y Colores
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                <div className="space-y-4">
+                                    <label className="text-xs font-bold text-gray-400 uppercase">Color Primario</label>
+                                    <div className="flex items-center gap-4">
+                                        <input
+                                            type="color"
+                                            value={formData.primaryColor}
+                                            onChange={e => setFormData({...formData, primaryColor: e.target.value})}
+                                            className="w-12 h-12 rounded-xl cursor-pointer border-none"
+                                        />
+                                        <input
+                                            type="text"
+                                            value={formData.primaryColor}
+                                            onChange={e => setFormData({...formData, primaryColor: e.target.value})}
+                                            className="flex-1 px-4 py-2 bg-gray-50 rounded-lg text-sm font-mono font-bold"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-4">
+                                    <label className="text-xs font-bold text-gray-400 uppercase">Color Secundario (Botones/Acentos)</label>
+                                    <div className="flex items-center gap-4">
+                                        <input
+                                            type="color"
+                                            value={formData.secondaryColor}
+                                            onChange={e => setFormData({...formData, secondaryColor: e.target.value})}
+                                            className="w-12 h-12 rounded-xl cursor-pointer border-none"
+                                        />
+                                        <input
+                                            type="text"
+                                            value={formData.secondaryColor}
+                                            onChange={e => setFormData({...formData, secondaryColor: e.target.value})}
+                                            className="flex-1 px-4 py-2 bg-gray-50 rounded-lg text-sm font-mono font-bold"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                    ) : (
-                        <p className="text-sm text-gray-500 italic text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                            Aún no se ha generado el Club DNA Profile (Arquetipo) para este club. Este proceso sucede automáticamente al terminar el Onboarding.
-                        </p>
-                    )}
-                </div>
+                    </div>
+                )}
 
-                <div className="flex justify-end">
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="flex items-center gap-2 bg-rotary-blue text-white px-8 py-3 rounded-full font-bold hover:bg-sky-800 transition-all shadow-lg active:scale-95 disabled:opacity-50"
-                    >
-                        <Save className="w-5 h-5" />
-                        {loading ? 'Guardando...' : 'Guardar Cambios'}
-                    </button>
+                {activeTab === 'facturacion' && (
+                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="bg-gradient-to-br from-gray-900 to-gray-800 p-10 rounded-[2rem] shadow-2xl border border-gray-700 text-white relative overflow-hidden">
+                            <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-rotary-blue opacity-10 rounded-full blur-3xl animate-pulse"></div>
+                            <div className="relative z-10">
+                                <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mb-8 backdrop-blur-xl border border-white/10">
+                                    <CreditCard className="w-8 h-8 text-rotary-gold" />
+                                </div>
+                                <h3 className="text-3xl font-black mb-4">Portal de Facturación y Suscripción</h3>
+                                <p className="text-gray-300 text-lg mb-10 max-w-2xl leading-relaxed">
+                                    Accede a tu historial de pagos, descarga facturas legales y gestiona tus métodos de pago de forma segura a través de Stripe.
+                                </p>
+                                <div className="flex flex-col sm:flex-row gap-4">
+                                    <button
+                                        type="button"
+                                        onClick={handleOpenBillingPortal}
+                                        className="bg-white text-gray-900 hover:bg-rotary-gold hover:text-white px-8 py-4 rounded-2xl font-black text-base transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95"
+                                    >
+                                        Ir al Portal Seguro <ExternalLink className="w-5 h-5" />
+                                    </button>
+                                    <div className="flex items-center gap-4 px-6 py-4 bg-white/5 rounded-2xl border border-white/10">
+                                        <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+                                        <span className="text-sm font-bold text-gray-300 uppercase tracking-widest">Suscripción Activa</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+                            {[
+                                { title: 'Facturas', desc: 'Descarga comprobantes fiscales automáticos.' },
+                                { title: 'Métodos de Pago', desc: 'Actualiza tarjetas de crédito o débito.' },
+                                { title: 'Planes', desc: 'Gestiona la renovación de tu plataforma.' }
+                            ].map((item, idx) => (
+                                <div key={idx} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+                                    <h4 className="font-bold text-gray-800 mb-2">{item.title}</h4>
+                                    <p className="text-xs text-gray-500 leading-relaxed">{item.desc}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Bottom sticky bar for save when in identity/advanced */}
+            {(activeTab === 'identidad' || activeTab === 'avanzado') && (
+                <div className="fixed bottom-0 left-0 lg:left-72 right-0 bg-white/80 backdrop-blur-xl border-t border-gray-100 p-4 z-40 flex items-center justify-between px-8 animate-in slide-in-from-bottom-full duration-300">
+                    <div className="flex items-center gap-3">
+                        <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
+                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Tienes cambios sin guardar</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => window.location.reload()}
+                            className="px-6 py-2.5 rounded-xl text-sm font-bold text-gray-500 hover:bg-gray-100 transition-all"
+                        >
+                            Descartar
+                        </button>
+                        <button
+                            onClick={() => handleSave()}
+                            disabled={loading}
+                            className="bg-rotary-blue text-white px-8 py-2.5 rounded-xl font-bold text-sm hover:bg-sky-800 shadow-lg shadow-rotary-blue/20 transition-all flex items-center gap-2"
+                        >
+                            {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+                            Guardar Configuración
+                        </button>
+                    </div>
                 </div>
-                <div className="hidden">
-                    <span className="text-[10px] text-gray-300">v1.2.9</span>
-                </div>
-            </form >
-        </AdminLayout >
+            )}
+        </AdminLayout>
     );
 };
 

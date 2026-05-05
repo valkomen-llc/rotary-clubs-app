@@ -299,8 +299,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             const orgTypeLabel = isAssoc ? 'Asociación' : isDistrict ? 'Distrito' : 'Sitio';
             
             items.push(
-                { icon: Building2, label: `Mi ${orgTypeLabel}`, path: '/admin/mi-club', category: orgTypeLabel, keywords: ['logo', 'nombre', 'perfil', 'identidad', 'contacto', 'redes'] },
-                { icon: Share2, label: 'Hub Social', path: '/admin/social-hub', category: orgTypeLabel, keywords: ['facebook', 'linkedin', 'twitter', 'x', 'oauth', 'conexiones'], badge: 'premium' }
+                { icon: SettingsIcon, label: 'Configuración', path: '/admin/configuracion', category: orgTypeLabel, keywords: ['logo', 'nombre', 'perfil', 'identidad', 'contacto', 'redes', 'facturacion', 'stripe', 'pago', 'configurar'], badge: 'config' }
             );
 
             if (user?.role !== 'editor') {
@@ -583,6 +582,11 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                                             : isSetup ? 'text-amber-500' : 'text-gray-400 group-hover:text-gray-600'
                                                             }`} />
                                                         <span className="flex-1">{item.label}</span>
+                                                        {item.badge === 'config' && user?.role !== 'administrator' && (
+                                                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${pctColor} border`}>
+                                                                {setupPct}%
+                                                            </span>
+                                                        )}
                                                         {isSetup && (
                                                             <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
                                                         )}
@@ -600,22 +604,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     <div className="p-4 border-t border-gray-100 bg-white sticky bottom-0">
                         <div className="flex flex-col gap-1 mb-4">
                             {/* Club users: Configurar Sitio with % | Super admin: Settings */}
-                            {user?.role === 'administrator' ? (
-                                <Link to="/admin/configuracion" className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-500 hover:text-gray-900 rounded-xl hover:bg-gray-50 transition-all group">
-                                    <Settings className="w-5 h-5 text-gray-400 group-hover:text-gray-600" />
-                                    Settings
-                                </Link>
-                            ) : (
-                                user?.role !== 'editor' && (
-                                    <Link to="/admin/configuracion-sitio" className="flex items-center gap-3 px-4 py-2.5 text-sm rounded-xl hover:bg-gray-50 transition-all group font-semibold text-gray-700">
-                                        <Sparkles className="w-5 h-5 text-rotary-blue" />
-                                        <span className="flex-1">Configurar Sitio</span>
-                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${pctColor}`}>
-                                            {setupPct}%
-                                        </span>
-                                    </Link>
-                                )
-                            )}
+                            {/* Unified configuration link is now in the main menu items */}
+                            <div className="h-4"></div>
                             <button onClick={handleLogout} className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-500 hover:text-red-600 rounded-xl hover:bg-red-50 transition-all group">
                                 <LogOut className="w-5 h-5 text-gray-400 group-hover:text-red-500" />
                                 Logout

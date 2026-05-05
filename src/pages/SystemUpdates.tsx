@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.91.0",
+        date: "05 de Mayo, 2026",
+        title: "Consolidación de Configuración del Club",
+        description: "Reorganización estructural del panel de control para mejorar la UX y centralizar la gestión administrativa.",
+        type: "major",
+        changes: [
+            { type: "improved", text: "Consolidación: Se unificaron las secciones de configuración, anteriormente dispersas, en un panel jerárquico único." },
+            { type: "fixed", text: "Navegación: Corregido el overflow de menús laterales en dispositivos de escritorio de baja resolución." }
+        ]
+    },
+    {
         version: "v4.90.6",
         date: "05 de Mayo, 2026",
         title: "FIX: Estabilidad del Portal de Facturación",
