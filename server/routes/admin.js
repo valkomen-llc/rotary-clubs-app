@@ -321,15 +321,31 @@ router.post('/clubs/:id/billing-portal', roleMiddleware(['administrator', 'club_
             return res.status(404).json({ error: 'Club no encontrado.' });
         }
 
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
         if (!club.stripeCustomerId) {
-            // Si aún no tiene customerId, le devolvemos un error amigable
-            return res.status(400).json({ 
-                error: 'Este club aún no tiene un perfil de facturación activo. Para activarlo, debe realizar su primer pago de suscripción a través del enlace de renovación enviado por WhatsApp o correo.' 
+            // Si no tiene customerId, creamos una sesión de Checkout para el primer pago
+            const session = await stripe.checkout.sessions.create({
+                payment_method_types: ['card'],
+                line_items: [{
+                    price_data: {
+                        currency: 'usd',
+                        product_data: {
+                            name: 'Renovación Anual - Rotary ClubPlatform',
+                            description: `Renovación de servicios digitales para el club: ${club.name}`,
+                        },
+                        unit_amount: 15000, // $150.00 USD (Ajustar según sea necesario)
+                    },
+                    quantity: 1,
+                }],
+                mode: 'payment',
+                client_reference_id: club.id,
+                success_url: `${req.headers.origin || 'https://' + req.headers.host}/admin/configuracion?refresh=true`,
+                cancel_url: `${req.headers.origin || 'https://' + req.headers.host}/admin/configuracion`,
             });
+            return res.json({ url: session.url });
         }
 
-        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-        
         const session = await stripe.billingPortal.sessions.create({
             customer: club.stripeCustomerId,
             return_url: `${req.headers.origin || 'https://' + req.headers.host}/admin/configuracion?refresh=true`,
