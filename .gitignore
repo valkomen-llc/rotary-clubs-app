@@ -32,8 +32,30 @@ pnpm-debug.log*
 *.sln
 *.sw?
 
-# Vite
+# Vite & Vercel
 *.timestamp-*
 .vercel
 .env*.local
 .env.prod
+
+# App Specific Ignores
+.agent/
+scratch/
+tmp/
+*.txt
+*.py
+*.cjs
+*.mjs
+check_*.js
+test_*.js
+test-*.js
+siteimages.json
+colrotarios.json
+components.json
+event.json
+temp.json
+*.jpg
+*.png
+!public/*.png
+!public/*.jpg
+
