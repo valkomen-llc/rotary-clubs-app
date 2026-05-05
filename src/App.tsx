@@ -82,14 +82,12 @@ const OrdersManagement = React.lazy(() => import('./pages/admin/OrdersManagement
 const WalletManagement = React.lazy(() => import('./pages/admin/WalletManagement'));
 const NotificationSettings = React.lazy(() => import('./pages/admin/NotificationSettings'));
 const CRMManagement = React.lazy(() => import('./pages/admin/CRM'));
-const ClubProfile = React.lazy(() => import('./pages/admin/ClubProfile'));
 const AIAssistant = React.lazy(() => import('./pages/admin/AIAssistant'));
 const MediaLibrary = React.lazy(() => import('./pages/admin/MediaLibrary'));
 const ContentCalendar = React.lazy(() => import('./pages/admin/ContentCalendar'));
 const KnowledgeBase = React.lazy(() => import('./pages/admin/KnowledgeBase'));
 const Integrations = React.lazy(() => import('./pages/admin/Integrations'));
 const AnalyticsPage = React.lazy(() => import('./pages/admin/Analytics'));
-const SiteSetupPage = React.lazy(() => import('./pages/admin/SiteSetup'));
 const LeadsManagement = React.lazy(() => import('./pages/admin/Leads'));
 const FAQManagement = React.lazy(() => import('./pages/admin/FAQs'));
 const AgentsManagement = React.lazy(() => import('./pages/admin/Agents'));
