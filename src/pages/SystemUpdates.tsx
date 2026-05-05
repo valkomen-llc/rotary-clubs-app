@@ -26,6 +26,16 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.90.5",
+        date: "05 de Mayo, 2026",
+        title: "Permisos: Visibilidad del Portal de Facturación",
+        description: "Se actualizó la matriz de permisos para permitir que los administradores globales (Súper Admins) puedan auditar y asistir a los clubes en su facturación.",
+        type: "patch",
+        changes: [
+            { type: "fixed", text: "Visibilidad: El botón de Facturación y Suscripción ahora es visible para los Súper Administradores en el panel de configuración de cualquier club." }
+        ]
+    },
+    {
         version: "v4.90.4",
         date: "05 de Mayo, 2026",
         title: "Renovación Autónoma SaaS & Portal de Facturación",
