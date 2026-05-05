@@ -305,5 +305,41 @@ router.patch('/:id/save-archetype', roleMiddleware(['administrator', 'club_admin
     }
 });
 
+import Stripe from 'stripe';
+
+router.post('/clubs/:id/billing-portal', roleMiddleware(['administrator', 'club_admin', 'district_admin']), async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        if (!process.env.STRIPE_SECRET_KEY) {
+            return res.status(500).json({ error: 'La llave secreta de Stripe no está configurada en el servidor.' });
+        }
+
+        const club = await prisma.club.findUnique({ where: { id } });
+        
+        if (!club) {
+            return res.status(404).json({ error: 'Club no encontrado.' });
+        }
+
+        if (!club.stripeCustomerId) {
+            // Si aún no tiene customerId, le devolvemos un error amigable
+            return res.status(400).json({ 
+                error: 'Este club aún no tiene un perfil de facturación activo. Para activarlo, debe realizar su primer pago de suscripción a través del enlace de renovación enviado por WhatsApp o correo.' 
+            });
+        }
+
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+        
+        const session = await stripe.billingPortal.sessions.create({
+            customer: club.stripeCustomerId,
+            return_url: `${req.headers.origin || 'https://' + req.headers.host}/admin/configuracion`,
+        });
+
+        res.json({ url: session.url });
+    } catch (error) {
+        console.error('Stripe Portal Error:', error);
+        res.status(500).json({ error: `Error de Stripe: ${error.message || 'Error desconocido'}` });
+    }
+});
 
 export default router;

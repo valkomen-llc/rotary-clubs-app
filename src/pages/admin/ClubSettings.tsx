@@ -536,14 +536,28 @@ const ClubSettings: React.FC = () => {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` }
             });
-            const data = await res.json();
-            if (res.ok && data.url) {
-                window.location.href = data.url;
+            
+            const contentType = res.headers.get("content-type");
+            if (res.ok && contentType && contentType.includes("application/json")) {
+                const data = await res.json();
+                if (data.url) {
+                    window.location.href = data.url;
+                } else {
+                    toast.error('No se recibió la URL del portal');
+                }
             } else {
-                toast.error(data.error || 'Error al abrir el portal de facturación');
+                let errorMsg = 'Error al abrir el portal';
+                if (contentType && contentType.includes("application/json")) {
+                    const data = await res.json();
+                    errorMsg = data.error || errorMsg;
+                } else {
+                    errorMsg = `Error del servidor (${res.status}). Es posible que la configuración de Stripe no esté completa.`;
+                }
+                toast.error(errorMsg);
             }
-        } catch (error) {
-            toast.error('Error de red al intentar abrir el portal.');
+        } catch (error: any) {
+            console.error('Billing portal error:', error);
+            toast.error('Error de red o de configuración al intentar abrir el portal.');
         }
     };
 

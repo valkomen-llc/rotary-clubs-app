@@ -1,7 +1,7 @@
 {
-  "name": "rotary-clubs-app-v4-51",
+  "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.90.5",
+  "version": "4.90.6",
   "type": "module",
   "scripts": {
     "dev": "vite",

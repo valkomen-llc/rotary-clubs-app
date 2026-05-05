@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.90.6",
+        date: "05 de Mayo, 2026",
+        title: "FIX: Estabilidad del Portal de Facturación",
+        description: "Se optimizó el manejo de errores en la conexión con Stripe para evitar fallos de red silenciosos.",
+        type: "patch",
+        changes: [
+            { type: "fixed", text: "Robustez: Implementado parseo seguro de respuestas del servidor para reportar errores técnicos de Stripe de forma clara." },
+            { type: "improved", text: "UX: Mensajes amigables para clubes que aún no han realizado su primer pago de suscripción." }
+        ]
+    },
+    {
         version: "v4.90.5",
         date: "05 de Mayo, 2026",
         title: "Permisos: Visibilidad del Portal de Facturación",
