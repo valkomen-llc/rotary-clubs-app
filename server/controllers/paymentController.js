@@ -122,6 +122,10 @@ export const stripeWebhook = async (req, res) => {
                 const session = event.data.object;
                 await handleSuccessfulCheckoutSession(session);
                 break;
+            case 'invoice.paid':
+                const invoice = event.data.object;
+                await handleSaaSReactivation(null, invoice.customer);
+                break;
             default:
                 console.log(`Unhandled event type ${event.type}`);
         }
@@ -152,14 +156,18 @@ async function handleSuccessfulCheckoutSession(session) {
     }
 
     // FASE 5: Reactivación Mágica (Renovación de Suscripción Anual)
+    if (session.client_reference_id || session.customer) {
+        await handleSaaSReactivation(session.client_reference_id, session.customer);
+    }
+}
+
+async function handleSaaSReactivation(clubId, customerId) {
     let targetClub = null;
 
-    if (session.client_reference_id) {
-        // 1. Viene del Payment Link disparado por el Cron (A través del parámetro en URL)
-        targetClub = await prisma.club.findUnique({ where: { id: session.client_reference_id } });
-    } else if (session.customer) {
-        // 2. Viene desde el Customer Portal o de un pago directo previo
-        targetClub = await prisma.club.findFirst({ where: { stripeCustomerId: session.customer } });
+    if (clubId) {
+        targetClub = await prisma.club.findUnique({ where: { id: clubId } });
+    } else if (customerId) {
+        targetClub = await prisma.club.findFirst({ where: { stripeCustomerId: customerId } });
     }
 
     if (targetClub) {
@@ -173,15 +181,16 @@ async function handleSuccessfulCheckoutSession(session) {
             data: {
                 subscriptionStatus: 'active',
                 expirationDate: newExp,
+                expirationBannerActive: false, // ¡Quitar la barra automáticamente!
                 // Si es su primer pago, anclamos el Customer ID para futuras facturaciones
-                stripeCustomerId: session.customer || targetClub.stripeCustomerId
+                stripeCustomerId: customerId || targetClub.stripeCustomerId
             }
         });
         
         console.log(`✅ Plataforma de ${targetClub.name} reactivada mágicamente hasta ${newExp.toISOString()}`);
     } else {
-        if (session.customer) {
-             console.log(`⚠️ [Stripe Webhook] Checkout completado (Customer: ${session.customer}), pero no se pudo asociar a la renovación de ningún club.`);
+        if (customerId) {
+             console.log(`⚠️ [Stripe Webhook] Intento de reactivación (Customer: ${customerId}), pero no se pudo asociar a ningún club.`);
         }
     }
 }

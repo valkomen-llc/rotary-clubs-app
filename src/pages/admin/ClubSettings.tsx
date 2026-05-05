@@ -138,6 +138,17 @@ const ClubSettings: React.FC = () => {
                 setStripePublicKey(stripeConfig?.publicKey || '');
             }
         }
+
+        // Logic to refresh if coming back from Stripe
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('refresh') === 'true') {
+            toast.loading('Verificando pago y actualizando suscripción...');
+            setTimeout(() => {
+                // Remove the param and reload
+                const cleanUrl = window.location.pathname;
+                window.location.href = cleanUrl;
+            }, 2500);
+        }
     }, [club]);
 
     const handleAutoCrop = async (file: File): Promise<File> => {
@@ -598,8 +609,10 @@ const ClubSettings: React.FC = () => {
                                         Ir al Portal Seguro <ExternalLink className="w-5 h-5" />
                                     </button>
                                     <div className="flex items-center gap-4 px-6 py-4 bg-white/5 rounded-2xl border border-white/10">
-                                        <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
-                                        <span className="text-sm font-bold text-gray-300 uppercase tracking-widest">Suscripción Activa</span>
+                                        <div className={`w-2 h-2 rounded-full ${club.subscriptionStatus === 'active' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></div>
+                                        <span className="text-sm font-bold text-gray-300 uppercase tracking-widest">
+                                            Suscripción {club.subscriptionStatus === 'active' ? 'Activa' : 'Pendiente'}
+                                        </span>
                                     </div>
                                 </div>
                             </div>

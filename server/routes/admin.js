@@ -332,7 +332,7 @@ router.post('/clubs/:id/billing-portal', roleMiddleware(['administrator', 'club_
         
         const session = await stripe.billingPortal.sessions.create({
             customer: club.stripeCustomerId,
-            return_url: `${req.headers.origin || 'https://' + req.headers.host}/admin/configuracion`,
+            return_url: `${req.headers.origin || 'https://' + req.headers.host}/admin/configuracion?refresh=true`,
         });
 
         res.json({ url: session.url });
