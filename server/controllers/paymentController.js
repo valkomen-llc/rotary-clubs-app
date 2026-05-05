@@ -150,6 +150,40 @@ async function handleSuccessfulCheckoutSession(session) {
             // NOTA: En producción aquí se debería notificar al equipo técnico (Sentry, Email, etc.)
         }
     }
+
+    // FASE 5: Reactivación Mágica (Renovación de Suscripción Anual)
+    let targetClub = null;
+
+    if (session.client_reference_id) {
+        // 1. Viene del Payment Link disparado por el Cron (A través del parámetro en URL)
+        targetClub = await prisma.club.findUnique({ where: { id: session.client_reference_id } });
+    } else if (session.customer) {
+        // 2. Viene desde el Customer Portal o de un pago directo previo
+        targetClub = await prisma.club.findFirst({ where: { stripeCustomerId: session.customer } });
+    }
+
+    if (targetClub) {
+        console.log(`[Stripe Webhook] Renovación SaaS detectada para Club: ${targetClub.name}`);
+        
+        const newExp = new Date();
+        newExp.setFullYear(newExp.getFullYear() + 1); // Sumar 1 año de servicio
+        
+        await prisma.club.update({
+            where: { id: targetClub.id },
+            data: {
+                subscriptionStatus: 'active',
+                expirationDate: newExp,
+                // Si es su primer pago, anclamos el Customer ID para futuras facturaciones
+                stripeCustomerId: session.customer || targetClub.stripeCustomerId
+            }
+        });
+        
+        console.log(`✅ Plataforma de ${targetClub.name} reactivada mágicamente hasta ${newExp.toISOString()}`);
+    } else {
+        if (session.customer) {
+             console.log(`⚠️ [Stripe Webhook] Checkout completado (Customer: ${session.customer}), pero no se pudo asociar a la renovación de ningún club.`);
+        }
+    }
 }
 
 async function handleSuccessfulPayment(paymentIntent) {

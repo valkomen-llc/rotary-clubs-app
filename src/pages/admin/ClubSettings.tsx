@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useClub } from '../../contexts/ClubContext';
 import { useAuth } from '../../hooks/useAuth';
-import { Save, Globe, MessageSquare, Phone, Palette, Upload, Image as ImageIcon, Store, Dna, Settings as SettingsIcon } from 'lucide-react';
+import { Save, Globe, MessageSquare, Phone, Palette, Upload, Image as ImageIcon, Store, Dna, Settings as SettingsIcon, CreditCard, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
 import { getAutoCropCanvas, fileToImage, canvasToFile } from '../../utils/cropUtils';
@@ -528,6 +528,25 @@ const ClubSettings: React.FC = () => {
         }
     };
 
+    const handleOpenBillingPortal = async () => {
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const apiUrl = import.meta.env.VITE_API_URL || '/api';
+            const res = await fetch(`${apiUrl}/admin/clubs/${club.id}/billing-portal`.replace(/\/+/g, '/').replace(':/', '://'), {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (res.ok && data.url) {
+                window.location.href = data.url;
+            } else {
+                toast.error(data.error || 'Error al abrir el portal de facturación');
+            }
+        } catch (error) {
+            toast.error('Error de red al intentar abrir el portal.');
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
@@ -585,6 +604,26 @@ const ClubSettings: React.FC = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-8">
+                {/* Facturación y Suscripción */}
+                {!isSuperAdmin && (
+                    <div className="bg-gradient-to-br from-gray-900 to-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 text-white relative overflow-hidden">
+                        <div className="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-white opacity-5 rounded-full blur-2xl"></div>
+                        <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
+                            <CreditCard className="w-5 h-5 text-rotary-gold" /> Facturación y Suscripción
+                        </h3>
+                        <p className="text-gray-300 text-sm mb-6 max-w-2xl">
+                            Gestiona el pago de tu plataforma tecnológica, descarga tus facturas emitidas a nombre del club y actualiza tu método de pago de forma segura a través de nuestro portal asociado (Stripe).
+                        </p>
+                        <button
+                            type="button"
+                            onClick={handleOpenBillingPortal}
+                            className="bg-white text-gray-900 hover:bg-gray-100 px-6 py-2.5 rounded-lg font-bold text-sm transition-colors flex items-center gap-2"
+                        >
+                            Ir al Portal de Facturación <ExternalLink className="w-4 h-4" />
+                        </button>
+                    </div>
+                )}
+
                 {/* Información Básica */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                     <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
