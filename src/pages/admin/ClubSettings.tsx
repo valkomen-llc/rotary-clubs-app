@@ -605,24 +605,22 @@ const ClubSettings: React.FC = () => {
 
             <form onSubmit={handleSubmit} className="space-y-8">
                 {/* Facturación y Suscripción */}
-                {!isSuperAdmin && (
-                    <div className="bg-gradient-to-br from-gray-900 to-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 text-white relative overflow-hidden">
-                        <div className="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-white opacity-5 rounded-full blur-2xl"></div>
-                        <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
-                            <CreditCard className="w-5 h-5 text-rotary-gold" /> Facturación y Suscripción
-                        </h3>
-                        <p className="text-gray-300 text-sm mb-6 max-w-2xl">
-                            Gestiona el pago de tu plataforma tecnológica, descarga tus facturas emitidas a nombre del club y actualiza tu método de pago de forma segura a través de nuestro portal asociado (Stripe).
-                        </p>
-                        <button
-                            type="button"
-                            onClick={handleOpenBillingPortal}
-                            className="bg-white text-gray-900 hover:bg-gray-100 px-6 py-2.5 rounded-lg font-bold text-sm transition-colors flex items-center gap-2"
-                        >
-                            Ir al Portal de Facturación <ExternalLink className="w-4 h-4" />
-                        </button>
-                    </div>
-                )}
+                <div className="bg-gradient-to-br from-gray-900 to-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 text-white relative overflow-hidden">
+                    <div className="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-white opacity-5 rounded-full blur-2xl"></div>
+                    <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
+                        <CreditCard className="w-5 h-5 text-rotary-gold" /> Facturación y Suscripción
+                    </h3>
+                    <p className="text-gray-300 text-sm mb-6 max-w-2xl">
+                        Gestiona el pago de tu plataforma tecnológica, descarga tus facturas emitidas a nombre del club y actualiza tu método de pago de forma segura a través de nuestro portal asociado (Stripe).
+                    </p>
+                    <button
+                        type="button"
+                        onClick={handleOpenBillingPortal}
+                        className="bg-white text-gray-900 hover:bg-gray-100 px-6 py-2.5 rounded-lg font-bold text-sm transition-colors flex items-center gap-2"
+                    >
+                        Ir al Portal de Facturación <ExternalLink className="w-4 h-4" />
+                    </button>
+                </div>
 
                 {/* Información Básica */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
