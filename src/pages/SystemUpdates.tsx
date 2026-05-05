@@ -26,6 +26,30 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.90.4",
+        date: "05 de Mayo, 2026",
+        title: "Renovación Autónoma SaaS & Portal de Facturación",
+        description: "Implementación del ecosistema de autogestión financiera para los clubes.",
+        type: "major",
+        changes: [
+            { type: "added", text: "Automatización de Renovaciones (Cron Job): Generación dinámica de mensajes persuasivos usando IA y envío masivo vía WhatsApp Business API." },
+            { type: "added", text: "Portal de Autoservicio: Integración de Billing Portal de Stripe para gestionar métodos de pago y descargar facturas." },
+            { type: "fixed", text: "Reactivación Automática: Webhook para extender la fecha de expiración y habilitar el estatus 'active' automáticamente tras el pago." }
+        ]
+    },
+    {
+        version: "v4.90.3",
+        date: "29 de Abril, 2026",
+        description: "Core Fix: Persistencia de Formularios y Checkout",
+        updates: [
+            "Implementación real del flujo de Checkout: ahora las donaciones y pagos de membresía se guardan en la base de datos.",
+            "Mejora en la resolución de clubId para el formulario de contacto (fallback automático vía URL).",
+            "Enriquecimiento de metadatos en leads para trazabilidad de dominio y origen.",
+            "Corrección en el trigger de orquestación de agentes para nuevos contactos."
+        ],
+        type: "fix"
+    },
+    {
         version: "v4.90.2",
         date: "29 de Abril, 2026",
         title: "Refinamiento de Mensajería WhatsApp",
