@@ -18,6 +18,8 @@ interface Club {
     expirationBannerMessage?: string | null;
     developmentBannerActive?: boolean;
     developmentBannerMessage?: string | null;
+    subscriptionStatus?: string | null;
+    expirationDate?: string | null;
     _count?: {
         users: number;
         projects: number;
@@ -265,6 +267,7 @@ const ClubsManagement: React.FC = () => {
                             <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Ubicación</th>
                             <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Dominios</th>
                             <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Stats</th>
+                            <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Suscripción</th>
                             <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Estado</th>
                             <th className="px-6 py-4 text-xs font-semibold text-gray-400 uppercase tracking-wider text-right">Acciones</th>
                         </tr>
@@ -308,9 +311,25 @@ const ClubsManagement: React.FC = () => {
                                     </div>
                                 </td>
                                 <td className="px-6 py-4">
-                                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${club.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                    <div className="flex flex-col gap-1">
+                                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase w-fit ${
+                                            club.subscriptionStatus === 'active' ? 'bg-emerald-100 text-emerald-700' : 
+                                            club.subscriptionStatus === 'expired' ? 'bg-rose-100 text-rose-700 animate-pulse' : 
+                                            'bg-amber-100 text-amber-700'
                                         }`}>
-                                        {club.status}
+                                            {club.subscriptionStatus || 'Pendiente'}
+                                        </span>
+                                        {club.expirationDate && (
+                                            <span className="text-[10px] text-gray-400 font-medium">
+                                                Exp: {new Date(club.expirationDate).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                            </span>
+                                        )}
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${club.status === 'active' ? 'bg-blue-50 text-rotary-blue' : 'bg-gray-100 text-gray-500'
+                                        }`}>
+                                        {club.status === 'active' ? 'Activo' : 'Inactivo'}
                                     </span>
                                 </td>
                                 <td className="px-6 py-4 text-right">

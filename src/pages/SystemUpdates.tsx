@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.94.0",
+        date: "05 de Mayo, 2026",
+        title: "DASHBOARD: Gestión Global de Suscripciones SaaS",
+        description: "Nueva visualización centralizada para el SuperAdmin que permite monitorear el estado financiero y técnico de cada club.",
+        type: "feat",
+        changes: [
+            { type: "added", text: "Visibilidad: Nueva columna de 'Suscripción' en la gestión de clubes." },
+            { type: "added", text: "Alertas: Indicadores visuales de expiración (Activo, Vencido, Pendiente)." },
+            { type: "added", text: "Control: Fecha exacta de vencimiento visible para seguimiento comercial." }
+        ]
+    },
+    {
         version: "v4.93.4",
         date: "05 de Mayo, 2026",
         title: "DEPLOY: Sincronización Forzada de Servidor",
