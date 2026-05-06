@@ -36,7 +36,17 @@ export const createCheckoutSession = async (req, res) => {
             include: { club: true }
         });
 
-        if (!request) return res.status(404).json({ error: 'Request not found' });
+        if (!request) {
+            console.error(`[Stripe Checkout] Request not found for ID: ${requestId}`);
+            return res.status(404).json({ error: 'Request not found' });
+        }
+
+        // Construct base URL from club domain or origin
+        const protocol = req.headers['x-forwarded-proto'] || 'https';
+        const host = request.club?.domain || req.headers.host;
+        const baseUrl = `${protocol}://${host}`;
+
+        console.log(`[Stripe Checkout] Creating session for request ${requestId}. Base URL: ${baseUrl}`);
 
         // Create Stripe Checkout Session
         const session = await stripe.checkout.sessions.create({
@@ -47,7 +57,7 @@ export const createCheckoutSession = async (req, res) => {
                         currency: 'usd',
                         product_data: {
                             name: `Servicio Técnico: ${request.subject}`,
-                            description: `Costo de renovación del registrador para liberación de dominio (${request.details.domainName || ''}).`,
+                            description: `Costo de renovación y liberación de dominio (${request.details.domainName || ''}). Solicitado por ${request.details.requester?.name || 'Admin'}.`,
                             images: ['https://rotary.clubplatform.org/logo-main.png'],
                         },
                         unit_amount: Math.round(request.amount * 100),
@@ -56,8 +66,8 @@ export const createCheckoutSession = async (req, res) => {
                 },
             ],
             mode: 'payment',
-            success_url: `${process.env.FRONTEND_URL || req.headers.origin}/admin/technical-requests?success=true&session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${process.env.FRONTEND_URL || req.headers.origin}/admin/technical-requests?canceled=true`,
+            success_url: `${baseUrl}/admin/technical-requests?success=true&session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${baseUrl}/admin/technical-requests?canceled=true`,
             metadata: {
                 requestId: request.id,
                 clubId: request.clubId,
