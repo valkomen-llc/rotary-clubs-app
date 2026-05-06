@@ -26,6 +26,16 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.92.4",
+        date: "05 de Mayo, 2026",
+        title: "FEATURE: Gestión de Redes Sociales",
+        description: "Se han reintegrado los campos de redes sociales en la pestaña de Identidad para facilitar la gestión de la presencia digital del club.",
+        type: "feature",
+        changes: [
+            { type: "added", text: "Social: Inputs para Facebook, Instagram, X (Twitter), LinkedIn y YouTube ahora disponibles en Identidad." }
+        ]
+    },
+    {
         version: "v4.92.3",
         date: "05 de Mayo, 2026",
         title: "SECURITY: Restricción de Ajustes Avanzados",

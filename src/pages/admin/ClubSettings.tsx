@@ -6,7 +6,8 @@ import {
     Save, Globe, MessageSquare, Phone, Palette, Upload, 
     Image as ImageIcon, Store, Dna, Settings as SettingsIcon, 
     CreditCard, ExternalLink, Sparkles, Layout, Mail, 
-    MapPin, Share2, Info, Building2, Bot, ChevronRight, RefreshCw
+    MapPin, Share2, Info, Building2, Bot, ChevronRight, RefreshCw,
+    Facebook, Instagram, Twitter, Linkedin, Youtube
 } from 'lucide-react';
 import { toast } from 'sonner';
 import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
@@ -479,7 +480,44 @@ const ClubSettings: React.FC = () => {
                                             <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${formData.storeActive ? 'left-5' : 'left-1'}`} />
                                         </button>
                                     </div>
-                                    <p className="text-xs text-gray-400 px-2 italic">Configura tus redes sociales en la base de datos para verlas reflejadas en el footer.</p>
+                                    <div className="pt-4 border-t border-gray-100 space-y-4">
+                                        <p className="text-xs font-black text-gray-400 uppercase tracking-widest px-2">Redes Sociales</p>
+                                        
+                                        {[
+                                            { id: 'facebook', label: 'Facebook', icon: Facebook, color: 'text-blue-600' },
+                                            { id: 'instagram', label: 'Instagram', icon: Instagram, color: 'text-pink-600' },
+                                            { id: 'twitter', label: 'X (Twitter)', icon: Twitter, color: 'text-gray-900' },
+                                            { id: 'linkedin', label: 'LinkedIn', icon: Linkedin, color: 'text-blue-700' },
+                                            { id: 'youtube', label: 'YouTube', icon: Youtube, color: 'text-red-600' },
+                                        ].map(plat => {
+                                            const existing = formData.socialLinks.find(s => s.platform === plat.id);
+                                            return (
+                                                <div key={plat.id} className="relative group">
+                                                    <plat.icon className={`absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 ${plat.color}`} />
+                                                    <input
+                                                        type="text"
+                                                        placeholder={`URL de ${plat.label}`}
+                                                        className="w-full pl-11 pr-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:border-rotary-blue/20 rounded-xl outline-none transition-all text-xs font-medium"
+                                                        value={existing?.url || ''}
+                                                        onChange={e => {
+                                                            const val = e.target.value;
+                                                            if (existing) {
+                                                                setFormData({
+                                                                    ...formData,
+                                                                    socialLinks: formData.socialLinks.map(s => s.platform === plat.id ? { ...s, url: val } : s)
+                                                                });
+                                                            } else {
+                                                                setFormData({
+                                                                    ...formData,
+                                                                    socialLinks: [...formData.socialLinks, { platform: plat.id, url: val }]
+                                                                });
+                                                            }
+                                                        }}
+                                                    />
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                             </div>
                         </div>
