@@ -34,6 +34,26 @@ interface TechnicalRequest {
     createdAt: string;
 }
 
+const COUNTRY_CODES = [
+    { code: '+57', country: 'CO', flag: '🇨🇴' },
+    { code: '+52', country: 'MX', flag: '🇲🇽' },
+    { code: '+1', country: 'US', flag: '🇺🇸' },
+    { code: '+34', country: 'ES', flag: '🇪🇸' },
+    { code: '+54', country: 'AR', flag: '🇦🇷' },
+    { code: '+56', country: 'CL', flag: '🇨🇱' },
+    { code: '+51', country: 'PE', flag: '🇵🇪' },
+    { code: '+593', country: 'EC', flag: '🇪🇨' },
+    { code: '+502', country: 'GT', flag: '🇬🇹' },
+    { code: '+506', country: 'CR', flag: '🇨🇷' },
+    { code: '+507', country: 'PA', flag: '🇵🇦' },
+    { code: '+58', country: 'VE', flag: '🇻🇪' },
+    { code: '+591', country: 'BO', flag: '🇧🇴' },
+    { code: '+595', country: 'PY', flag: '🇵🇾' },
+    { code: '+598', country: 'UY', flag: '🇺🇾' },
+    { code: '+1', country: 'PR', flag: '🇵🇷' },
+    { code: '+1', country: 'DO', flag: '🇩🇴' },
+];
+
 const TechnicalRequests: React.FC = () => {
     const { token } = useAuth();
     const { club } = useClub();
@@ -45,11 +65,13 @@ const TechnicalRequests: React.FC = () => {
     const [domainName, setDomainName] = useState('');
     const [requesterName, setRequesterName] = useState('');
     const [requesterRole, setRequesterRole] = useState('');
+    const [requesterClub, setRequesterClub] = useState('');
+    const [requesterDistrict, setRequesterDistrict] = useState('');
+    const [countryCode, setCountryCode] = useState('+57');
     const [requesterWhatsApp, setRequesterWhatsApp] = useState('');
     const [requesterEmail, setRequesterEmail] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // Initial load and URL query params handling
     useEffect(() => {
         const query = new URLSearchParams(window.location.search);
         if (query.get('success')) {
@@ -57,19 +79,19 @@ const TechnicalRequests: React.FC = () => {
             window.history.replaceState({}, '', window.location.pathname);
         }
         if (query.get('canceled')) {
-            toast.error('El pago fue cancelado. Puedes intentarlo de nuevo cuando estés listo.');
+            toast.error('El pago fue cancelado. Puedes intentarlo de nuevo.');
             window.history.replaceState({}, '', window.location.pathname);
         }
     }, []);
 
-    // Sync club data to form
     useEffect(() => {
         if (club) {
             setDomainName(club.domain || '');
+            setRequesterClub(club.name || '');
+            setRequesterDistrict(club.districtId || '');
         }
     }, [club]);
 
-    // Fetch previous requests
     useEffect(() => {
         if (club?.id && token) {
             fetchRequests();
@@ -101,7 +123,6 @@ const TechnicalRequests: React.FC = () => {
 
         setIsSubmitting(true);
         try {
-            // 1. Create the request
             const res = await fetch('/api/technical-requests', {
                 method: 'POST',
                 headers: {
@@ -111,28 +132,30 @@ const TechnicalRequests: React.FC = () => {
                 body: JSON.stringify({
                     clubId: club.id,
                     type: 'domain_transfer',
-                    subject: `Liberación de Dominio: ${domainName}`,
-                    description: `Solicitud de transferencia de salida para ${domainName} (Vía Valkomen).`,
+                    subject: `Transferencia: ${domainName}`,
+                    description: `Transferencia solicitada por ${requesterName}.`,
                     details: {
                         domainName,
                         currentRegistrar: 'AWS Route 53 / Valkomen LLC',
                         requester: {
                             name: requesterName,
                             role: requesterRole,
-                            whatsapp: requesterWhatsApp,
+                            whatsapp: `${countryCode}${requesterWhatsApp}`,
                             email: requesterEmail,
-                            clubName: club?.name,
-                            districtId: club?.districtId
+                            clubName: requesterClub,
+                            districtId: requesterDistrict
                         }
                     },
                     amount: 29.00
                 })
             });
 
-            if (!res.ok) throw new Error('Error al registrar la solicitud');
-            const requestData = await res.json();
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.error || 'Error al registrar la solicitud');
+            }
 
-            // 2. Create Stripe Session
+            const requestData = await res.json();
             const stripeRes = await fetch('/api/technical-requests/checkout', {
                 method: 'POST',
                 headers: {
@@ -142,10 +165,7 @@ const TechnicalRequests: React.FC = () => {
                 body: JSON.stringify({ requestId: requestData.id })
             });
 
-            if (!stripeRes.ok) {
-                const errData = await stripeRes.json();
-                throw new Error(errData.error || 'Error al generar link de pago');
-            }
+            if (!stripeRes.ok) throw new Error('Error al generar link de pago');
 
             const { url } = await stripeRes.json();
             window.location.href = url;
@@ -206,7 +226,7 @@ const TechnicalRequests: React.FC = () => {
                     </div>
                     <h3 className="text-xl font-black text-slate-800 mb-2">No hay solicitudes activas</h3>
                     <p className="text-slate-500 max-w-md font-medium mb-8">
-                        ¿Necesitas transferir tu dominio o requieres algún ajuste técnico avanzado? Inicia una nueva solicitud aquí.
+                        Inicia una nueva solicitud de transferencia o servicio técnico aquí.
                     </p>
                     <button 
                         onClick={() => setIsModalOpen(true)}
@@ -218,7 +238,7 @@ const TechnicalRequests: React.FC = () => {
             ) : (
                 <div className="grid grid-cols-1 gap-4">
                     {requests.map((req) => (
-                        <div key={req.id} className="bg-white border border-slate-100 rounded-[24px] p-6 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row md:items-center justify-between gap-6">
+                        <div key={req.id} className="bg-white border border-slate-100 rounded-[24px] p-6 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row md:items-center justify-between gap-6 group">
                             <div className="flex items-center gap-4">
                                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 border ${getStatusStyle(req.status)}`}>
                                     <Globe className="w-7 h-7" />
@@ -259,7 +279,7 @@ const TechnicalRequests: React.FC = () => {
             {isModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[1000] flex items-center justify-center p-4">
                     <div className="bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
-                        <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+                        <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50 sticky top-0 z-10 backdrop-blur-md">
                             <div className="flex items-center gap-4">
                                 <div className="w-12 h-12 bg-[#013388] rounded-2xl flex items-center justify-center text-white">
                                     <Globe className="w-6 h-6" />
@@ -278,61 +298,53 @@ const TechnicalRequests: React.FC = () => {
                             <div className="bg-blue-50 border border-blue-100 rounded-3xl p-6 flex gap-4">
                                 <Info className="w-6 h-6 text-[#013388] shrink-0 mt-0.5" />
                                 <div className="space-y-2">
-                                    <p className="text-sm text-[#013388] font-bold">Instrucciones de Transferencia</p>
+                                    <p className="text-sm text-[#013388] font-bold">Instrucciones Técnicas</p>
                                     <p className="text-xs text-[#013388]/80 font-medium leading-relaxed">
-                                        Este proceso liberará tu dominio para ser transferido a otro registrador. El cargo de **$29.00 USD** incluye la renovación final necesaria y la emisión del código **Auth/EPP**, el cual será enviado a tu correo tras el pago.
+                                        Este proceso liberará tu dominio para ser transferido a otro registrador. El cargo **no incluye la renovación final necesaria**, sino incluye el trámite de transferencia de registrador a otro proveedor de dominio.
                                     </p>
                                 </div>
                             </div>
 
                             <form onSubmit={handleSubmit} className="space-y-8">
-                                {/* Seccion Dominio */}
+                                {/* Dominio */}
                                 <div className="space-y-4">
-                                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 px-1">
                                         <Globe className="w-3 h-3" /> Información del Dominio
                                     </h4>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Nombre del Dominio</label>
-                                            <div className="relative">
-                                                <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                                <input 
-                                                    type="text" 
-                                                    value={domainName}
-                                                    onChange={(e) => setDomainName(e.target.value)}
-                                                    placeholder="ejemplo.com"
-                                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-[#013388] transition-all"
-                                                />
-                                            </div>
+                                            <input 
+                                                type="text" 
+                                                value={domainName}
+                                                onChange={(e) => setDomainName(e.target.value)}
+                                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-[#013388] transition-all"
+                                            />
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Registrador Actual</label>
-                                            <div className="w-full bg-slate-100 border border-slate-200 rounded-2xl py-4 px-4 text-sm font-black text-slate-400 flex items-center gap-2">
+                                            <div className="w-full bg-slate-100 border border-slate-200 rounded-2xl p-4 text-sm font-black text-slate-400 flex items-center gap-2">
                                                 <Lock className="w-4 h-4" /> AWS Route 53 / Valkomen LLC
                                             </div>
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Seccion Contacto */}
+                                {/* Contacto */}
                                 <div className="space-y-4">
-                                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 px-1">
                                         <User className="w-3 h-3" /> Datos del Solicitante
                                     </h4>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Nombre y Apellido *</label>
-                                            <div className="relative">
-                                                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                                <input 
-                                                    type="text" 
-                                                    required
-                                                    value={requesterName}
-                                                    onChange={(e) => setRequesterName(e.target.value)}
-                                                    placeholder="Ej: Juan Pérez"
-                                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-[#013388] transition-all"
-                                                />
-                                            </div>
+                                            <input 
+                                                type="text" 
+                                                required
+                                                value={requesterName}
+                                                onChange={(e) => setRequesterName(e.target.value)}
+                                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-[#013388] transition-all"
+                                            />
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Cargo / Rol</label>
@@ -340,49 +352,60 @@ const TechnicalRequests: React.FC = () => {
                                                 type="text" 
                                                 value={requesterRole}
                                                 onChange={(e) => setRequesterRole(e.target.value)}
-                                                placeholder="Ej: Presidente"
-                                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl py-4 px-4 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-[#013388] transition-all"
+                                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-[#013388] transition-all"
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">WhatsApp *</label>
-                                            <div className="relative">
-                                                <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">WhatsApp de Contacto *</label>
+                                            <div className="flex gap-2">
+                                                <select 
+                                                    value={countryCode}
+                                                    onChange={(e) => setCountryCode(e.target.value)}
+                                                    className="bg-slate-50 border border-slate-100 rounded-2xl px-3 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/5 transition-all"
+                                                >
+                                                    {COUNTRY_CODES.map(c => (
+                                                        <option key={c.country} value={c.code}>{c.flag} {c.code}</option>
+                                                    ))}
+                                                </select>
                                                 <input 
                                                     type="text" 
                                                     required
                                                     value={requesterWhatsApp}
                                                     onChange={(e) => setRequesterWhatsApp(e.target.value)}
-                                                    placeholder="+57 300..."
-                                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-[#013388] transition-all"
+                                                    placeholder="300 123 4567"
+                                                    className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-[#013388] transition-all"
                                                 />
                                             </div>
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Email Institucional *</label>
-                                            <div className="relative">
-                                                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                                <input 
-                                                    type="email" 
-                                                    required
-                                                    value={requesterEmail}
-                                                    onChange={(e) => setRequesterEmail(e.target.value)}
-                                                    placeholder="admin@club.org"
-                                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-[#013388] transition-all"
-                                                />
-                                            </div>
+                                            <input 
+                                                type="email" 
+                                                required
+                                                value={requesterEmail}
+                                                onChange={(e) => setRequesterEmail(e.target.value)}
+                                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-[#013388] transition-all"
+                                            />
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Club</label>
-                                            <div className="w-full bg-slate-100 border border-slate-200 rounded-2xl py-4 px-4 text-sm font-bold text-slate-400 flex items-center gap-2">
-                                                <Building2 className="w-4 h-4" /> {club?.name}
-                                            </div>
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Club *</label>
+                                            <input 
+                                                type="text" 
+                                                required
+                                                value={requesterClub}
+                                                onChange={(e) => setRequesterClub(e.target.value)}
+                                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-[#013388] transition-all"
+                                            />
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Distrito</label>
-                                            <div className="w-full bg-slate-100 border border-slate-200 rounded-2xl py-4 px-4 text-sm font-bold text-slate-400 flex items-center gap-2">
-                                                <MapPin className="w-4 h-4" /> {club?.districtId}
-                                            </div>
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Distrito *</label>
+                                            <input 
+                                                type="text" 
+                                                required
+                                                value={requesterDistrict}
+                                                onChange={(e) => setRequesterDistrict(e.target.value)}
+                                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-[#013388] transition-all"
+                                            />
                                         </div>
                                     </div>
                                 </div>

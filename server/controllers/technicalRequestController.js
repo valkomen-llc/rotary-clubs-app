@@ -8,6 +8,8 @@ export const createTechnicalRequest = async (req, res) => {
     try {
         const { clubId, type, subject, description, details, amount } = req.body;
         
+        console.log(`[TechnicalRequest] Creating request for club ${clubId}...`);
+
         const request = await prisma.technicalRequest.create({
             data: {
                 clubId,
@@ -22,6 +24,7 @@ export const createTechnicalRequest = async (req, res) => {
         });
         res.status(201).json(request);
     } catch (error) {
+        console.error('[TechnicalRequest Error]:', error);
         res.status(500).json({ error: error.message });
     }
 };
