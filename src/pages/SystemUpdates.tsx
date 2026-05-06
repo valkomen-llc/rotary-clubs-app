@@ -26,6 +26,16 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.92.2",
+        date: "05 de Mayo, 2026",
+        title: "FIX: Ajuste de Tarifa de Renovación",
+        description: "Sincronización del precio de renovación con el catálogo oficial de productos ($299 USD).",
+        type: "fix",
+        changes: [
+            { type: "fixed", text: "Checkout: Se actualizó el monto de renovación de $150 a $299 USD para el primer pago de los clubes." }
+        ]
+    },
+    {
         version: "v4.92.1",
         date: "05 de Mayo, 2026",
         title: "FIX: Permisos y Etiquetas de Renovación",

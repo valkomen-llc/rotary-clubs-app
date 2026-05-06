@@ -334,7 +334,7 @@ router.post('/clubs/:id/billing-portal', roleMiddleware(['administrator', 'club_
                             name: 'Renovación Anual - Rotary ClubPlatform',
                             description: `Renovación de servicios digitales para el club: ${club.name}`,
                         },
-                        unit_amount: 15000, // $150.00 USD (Ajustar según sea necesario)
+                        unit_amount: 29900, // $299.00 USD
                     },
                     quantity: 1,
                 }],
