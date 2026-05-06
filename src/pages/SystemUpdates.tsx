@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.95.2",
+        date: "05 de Mayo, 2026",
+        title: "DEPLOY: Sincronización de Etiquetas (Nuclear)",
+        description: "Forzado de despliegue para asegurar que los cambios en las etiquetas de suscripción se reflejen en todos los nodos de la red.",
+        type: "fix",
+        changes: [
+            { type: "improved", text: "Cache: Invalidez de caché forzada en el punto de entrada de la API." },
+            { type: "fixed", text: "Sync: Garantía de visualización del estado 'Inactivo' para clubes prospectos." }
+        ]
+    },
+    {
         version: "v4.95.1",
         date: "05 de Mayo, 2026",
         title: "FIX: Claridad en Estados de Suscripción",
