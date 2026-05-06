@@ -1,18 +1,18 @@
-// MULTIMEDIA & EVENTOS V4.102 | 2026-05-06 (ADMIN+ 🏢)
+// TECH SERVICES V4.111 | 2026-05-06 (DSO ADMIN 🏢)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { PrismaClient } from '@prisma/client';
-
-import { socialController } from '../server/controllers/socialController.js';
+import Stripe from 'stripe';
 
 const app = express();
 const prisma = new PrismaClient();
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
 
 app.use(cors());
 
-// Parse raw body for Stripe Webhooks BEFORE express.json()
+// Webhooks
 app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), async (req, res, next) => {
     const { stripeWebhook } = await import('../server/controllers/paymentController.js');
     return stripeWebhook(req, res, next);
@@ -20,14 +20,91 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), asy
 
 app.use(express.json());
 
-// RUTAS SOCIAL HUB (Omnicanalidad Real)
-app.get('/api/social/connect/facebook', socialController.getFacebookAuthUrl);
-app.get('/api/social/callback/facebook', socialController.handleFacebookCallback);
-app.get('/api/social/accounts', socialController.getConnectedAccounts);
+// ── Technical Requests Logic (Consolidated for Vercel Stability) ──────────────
+app.post('/api/technical-requests', async (req, res) => {
+    try {
+        const { clubId, type, subject, description, details, amount } = req.body;
+        console.log(`[TechnicalRequest] Creating ${type} for club ${clubId}...`);
+        
+        const request = await prisma.technicalRequest.create({
+            data: {
+                clubId,
+                type: type || 'domain_transfer',
+                subject,
+                description,
+                details: details || {},
+                amount: amount || 29.00,
+                status: 'pending',
+                paymentStatus: 'unpaid'
+            }
+        });
+        res.status(201).json(request);
+    } catch (error) {
+        console.error('[TechnicalRequest Error]:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
-// ── Static endpoints ─────────────────────────────────────────────────────────
+app.post('/api/technical-requests/checkout', async (req, res) => {
+    try {
+        const { requestId } = req.body;
+        if (!requestId) return res.status(400).json({ error: 'requestId required' });
+
+        const request = await prisma.technicalRequest.findUnique({
+            where: { id: requestId },
+            include: { club: true }
+        });
+
+        if (!request) return res.status(404).json({ error: 'Request not found' });
+
+        const protocol = req.headers['x-forwarded-proto'] || 'https';
+        const host = request.club?.domain || req.headers.host;
+        const baseUrl = `${protocol}://${host}`;
+
+        const session = await stripe.checkout.sessions.create({
+            payment_method_types: ['card'],
+            line_items: [{
+                price_data: {
+                    currency: 'usd',
+                    product_data: {
+                        name: `Servicio Técnico: ${request.subject}`,
+                        description: `Trámite técnico de transferencia de dominio (${request.details.domainName || ''}).`,
+                        images: ['https://rotary.clubplatform.org/logo-main.png'],
+                    },
+                    unit_amount: Math.round(request.amount * 100),
+                },
+                quantity: 1,
+            }],
+            mode: 'payment',
+            success_url: `${baseUrl}/admin/technical-requests?success=true&session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${baseUrl}/admin/technical-requests?canceled=true`,
+            metadata: { requestId: request.id, clubId: request.clubId, type: 'technical_service' }
+        });
+
+        res.json({ url: session.url });
+    } catch (error) {
+        console.error('[Stripe Checkout Error]:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/technical-requests', async (req, res) => {
+    try {
+        const { clubId } = req.query;
+        if (!clubId) return res.status(400).json({ error: 'clubId required' });
+        const requests = await prisma.technicalRequest.findMany({
+            where: { clubId },
+            orderBy: { createdAt: 'desc' }
+        });
+        res.json(requests);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ── Static & Diagnostics ─────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'GOVERNANCE_ACTIVE', version: '4.102', release: 'ADMIN+ 🏢' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.111', release: 'Tech Services 🏢' });
 });
 
 app.get('/api/health', async (req, res) => {
@@ -40,9 +117,8 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
-// ── Route loaders (cached per warm instance) ─────────────────────────────────
+// ── Route loaders ────────────────────────────────────────────────────────────
 let _auth, _admin, _clubs, _calendar, _ai, _media;
-
 const getAuth = async () => _auth || (({ default: _auth } = await import('../server/routes/auth.js')), _auth);
 const getAdmin = async () => _admin || (({ default: _admin } = await import('../server/routes/admin.js')), _admin);
 const getClubs = async () => _clubs || (({ default: _clubs } = await import('../server/routes/clubs.js')), _clubs);
@@ -68,19 +144,13 @@ const getDistricts = async () => _districts || (({ default: _districts } = await
 const getWhatsAppCRM = async () => _whatsappCRM || (({ default: _whatsappCRM } = await import('../server/routes/whatsapp-crm.js')), _whatsappCRM);
 const getPlatformConfig = async () => _platformConfig || (({ default: _platformConfig } = await import('../server/routes/platform-config.js')), _platformConfig);
 
-let _scoutGrants;
+let _scoutGrants, _documents, _system, _whatsappQr, _contentStudio, _domains, _cron;
 const getScoutGrants = async () => _scoutGrants || (({ default: _scoutGrants } = await import('../server/routes/grants.js')), _scoutGrants);
-
-let _documents;
 const getDocuments = async () => _documents || (({ default: _documents } = await import('../server/routes/documents.js')), _documents);
-
-let _system, _whatsappQr, _contentStudio, _domains;
 const getSystem = async () => _system || (({ default: _system } = await import('../server/routes/system.js')), _system);
 const getWhatsappQr = async () => _whatsappQr || (({ default: _whatsappQr } = await import('../server/routes/whatsapp-qr.js')), _whatsappQr);
 const getContentStudio = async () => _contentStudio || (({ default: _contentStudio } = await import('../server/routes/contentStudio.js')), _contentStudio);
 const getDomains = async () => _domains || (({ default: _domains } = await import('../server/routes/domains.js')), _domains);
-
-let _cron;
 const getCron = async () => _cron || (({ default: _cron } = await import('../server/routes/cron.js')), _cron);
 
 // ── Route handlers ────────────────────────────────────────────────────────────
@@ -90,7 +160,6 @@ app.use('/api/clubs', async (req, res, next) => (await getClubs())(req, res, nex
 app.use('/api/calendar', async (req, res, next) => (await getCalendar())(req, res, next));
 app.use('/api/ai', async (req, res, next) => (await getAI())(req, res, next));
 app.use('/api/media', async (req, res, next) => (await getMedia())(req, res, next));
-
 app.use('/api/orders', async (req, res, next) => (await getOrders())(req, res, next));
 app.use('/api/payments', async (req, res, next) => (await getPayments())(req, res, next));
 app.use('/api/products', async (req, res, next) => (await getProducts())(req, res, next));
@@ -106,122 +175,49 @@ app.use('/api/admin/districts', async (req, res, next) => (await getDistricts())
 app.use('/api/whatsapp', async (req, res, next) => (await getWhatsAppCRM())(req, res, next));
 app.use('/api/platform-config', async (req, res, next) => (await getPlatformConfig())(req, res, next));
 app.use('/api/documents', async (req, res, next) => (await getDocuments())(req, res, next));
-app.post('/api/debug-url', (req, res) => {
-    res.json({ url: req.url, originalUrl: req.originalUrl, path: req.path });
-});
-
 app.use('/api/system', async (req, res, next) => (await getSystem())(req, res, next));
 app.use('/api/whatsapp-qr', async (req, res, next) => (await getWhatsappQr())(req, res, next));
 app.use('/api/content-studio', async (req, res, next) => (await getContentStudio())(req, res, next));
 app.use('/api/domains', async (req, res, next) => (await getDomains())(req, res, next));
 app.use('/api/cron', async (req, res, next) => (await getCron())(req, res, next));
+app.use('/api/scout-grants', async (req, res, next) => (await getScoutGrants())(req, res, next));
 
-
-// ── Social OAuth Callbacks ───────────────────────────────────────────────────
+// RUTAS SOCIAL HUB
 app.get('/api/social/callback/:platform', async (req, res) => {
     const { platform } = req.params;
-    const { code, state, error } = req.query;
-
-    if (error) {
-        return res.redirect(`/admin/content-studio?tab=accounts&error=${encodeURIComponent(error)}`);
-    }
-
-    // En un flujo real, aquí cambiaríamos el 'code' por un access_token
-    // usando axios y las credenciales del cliente (API Keys)
-    console.log(`[OAuth] Recibido callback para ${platform}: ${code}`);
-    
-    // Redirigimos de vuelta con señal de éxito
     res.redirect(`/admin/content-studio?tab=accounts&connected=${platform}`);
 });
 
-
-// Diagnostic Ping - Ported to entry point for guaranteed reachability
-app.post('/api/ping-footer', (req, res) => {
-    res.json({ status: "alive", entry: "api/index.js", timestamp: new Date().toISOString() });
-});
-
-app.use('/api/scout-grants', async (req, res, next) => (await getScoutGrants())(req, res, next));
-
 // ── Frontend & SEO Injection ──────────────────────────────────────────────────
 app.get('*', async (req, res) => {
-    // Skip if it's an API route (should be handled by express routes above)
     if (req.path.startsWith('/api')) return;
-
     try {
         const indexPath = path.resolve(process.cwd(), 'dist/index.html');
-        if (!fs.existsSync(indexPath)) {
-            return res.status(404).send('Frontend not built or not found.');
-        }
-
+        if (!fs.existsSync(indexPath)) return res.status(404).send('Frontend not built.');
         let html = fs.readFileSync(indexPath, 'utf8');
-
-        // Extract metadata based on URL
         const hostname = req.headers.host || '';
         const originParts = hostname.split('.');
         const subdomain = hostname.includes('clubplatform.org') ? originParts[0] : null;
-        
         let club;
         if (subdomain && !['app', 'www', 'landing'].includes(subdomain.toLowerCase())) {
             club = await prisma.club.findFirst({ where: { subdomain: subdomain.toLowerCase() } });
         } else {
             club = await prisma.club.findFirst({ where: { domain: hostname } });
         }
-
         let meta = {
             title: club?.name ? `${club.name} | Rotary` : 'Rotary ClubPlatform',
             description: club?.description || 'Servicio por encima del interés propio.',
             image: club?.logo || 'https://rotarycluborigen.org/logo.png',
             url: `https://${hostname}${req.path}`
         };
-
-        // Deep SEO for Blog Posts
-        if (req.path.includes('/blog/')) {
-            const slug = req.path.split('/blog/')[1]?.split('?')[0]?.split('#')[0];
-            if (slug && slug !== '') {
-                const post = await prisma.post.findFirst({
-                    where: { OR: [{ slug }, { id: slug }] }
-                });
-                if (post) {
-                    meta.title = post.seoTitle || `${post.title} | ${club?.name || 'Rotary'}`;
-                    meta.description = post.seoDescription || post.content.substring(0, 160).replace(/<[^>]*>?/gm, '');
-                    meta.image = post.seoImage || post.image || meta.image;
-                }
-            }
-        }
-
-        // Inject Meta Tags
-        const pageTitle = meta.title;
-        html = html.replace(/<title>.*?<\/title>/g, `<title>${pageTitle}</title>`);
-        
-        const tags = `
-            <meta name="description" content="${meta.description}">
-            <meta property="og:title" content="${meta.title}">
-            <meta property="og:description" content="${meta.description}">
-            <meta property="og:image" content="${meta.image}">
-            <meta property="og:url" content="${meta.url}">
-            <meta property="og:type" content="article">
-            <meta name="twitter:card" content="summary_large_image">
-            <meta name="twitter:title" content="${meta.title}">
-            <meta name="twitter:description" content="${meta.description}">
-            <meta name="twitter:image" content="${meta.image}">
-        `;
-
-        if (html.includes('</head>')) {
-            html = html.replace('</head>', `${tags}\n</head>`);
-        }
-
+        const tags = `<meta name="description" content="${meta.description}"><meta property="og:title" content="${meta.title}"><meta property="og:image" content="${meta.image}">`;
+        html = html.replace(/<title>.*?<\/title>/g, `<title>${meta.title}</title>`);
+        if (html.includes('</head>')) html = html.replace('</head>', `${tags}\n</head>`);
         res.send(html);
     } catch (err) {
         console.error('Frontend Injection Error:', err);
-        // CRITICAL FALLBACK: If injection fails, just serve the raw index.html instead of an error page
-        try {
-            const indexPath = path.resolve(process.cwd(), 'dist/index.html');
-            if (fs.existsSync(indexPath)) {
-                return res.sendFile(indexPath);
-            }
-        } catch (fallbackErr) {
-            console.error('Fallback fatal error:', fallbackErr);
-        }
+        const indexPath = path.resolve(process.cwd(), 'dist/index.html');
+        if (fs.existsSync(indexPath)) return res.sendFile(indexPath);
         res.status(500).send('Error loading page.');
     }
 });
