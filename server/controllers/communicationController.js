@@ -152,8 +152,25 @@ export const getCommunicationLogs = async (req, res) => {
 // Send Communication
 export const sendCommunication = async (req, res) => {
     try {
-        const clubId = req.user.role === 'administrator' && req.body.clubId ? req.body.clubId : req.user.clubId;
-        const { type, recipient, subject, content } = req.body;
+        let clubId = req.user.role === 'administrator' && req.body.clubId ? req.body.clubId : req.user.clubId;
+        const { type, recipient, subject, content, districtId } = req.body;
+
+        // If districtId is provided, we need to find the mirror club for that district
+        if (districtId && !clubId) {
+            const district = await prisma.district.findUnique({
+                where: { id: districtId },
+                select: { number: true }
+            });
+            
+            if (district) {
+                const mirrorClub = await prisma.club.findFirst({
+                    where: { type: 'district', district: String(district.number) }
+                });
+                if (mirrorClub) {
+                    clubId = mirrorClub.id;
+                }
+            }
+        }
 
         if (!type || !recipient || !content) {
             return res.status(400).json({ error: 'Missing required fields (type, recipient, content)' });

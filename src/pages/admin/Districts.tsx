@@ -4,7 +4,8 @@ import {
     Plus, Edit2, Trash2, Globe, MapPin, X, Search, Users,
     Network, Building2, Mail, ExternalLink, CheckCircle,
     Loader2, ArrowLeft, Shield, Copy, RefreshCw, AlertTriangle,
-    Eye, EyeOff, Lock, UserPlus, Wifi, WifiOff, Settings, LogIn
+    Eye, EyeOff, Lock, UserPlus, Wifi, WifiOff, Settings, LogIn,
+    MessageSquare, Download, Send, FileText
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
@@ -27,6 +28,10 @@ interface District {
     adminCount?: number;
     clubs?: Club[];
     admins?: DistrictAdmin[];
+    subscriptionStatus?: string;
+    expirationDate?: string | null;
+    billingContactEmail?: string | null;
+    billingContactPhone?: string | null;
     createdAt: string;
 }
 
@@ -35,7 +40,8 @@ interface DistrictAdmin { id: string; email: string; role: string; createdAt: st
 
 const emptyForm = {
     number: '', name: '', governor: '', governorEmail: '',
-    countries: '', website: '', subdomain: '', domain: '', description: '', status: 'active', adminUserId: ''
+    countries: '', website: '', subdomain: '', domain: '', description: '', status: 'active', adminUserId: '',
+    subscriptionStatus: 'active', expirationDate: '', billingContactEmail: '', billingContactPhone: ''
 };
 
 const DNS_IP = '76.76.21.21';
@@ -62,6 +68,13 @@ const DistrictsManagement: React.FC = () => {
     const [addingAdmin, setAddingAdmin] = useState(false);
     const [showAdminForm, setShowAdminForm] = useState(false);
     const { impersonate } = useAuth();
+
+    // Notification State
+    const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
+    const [selectedDistrictForNotify, setSelectedDistrictForNotify] = useState<District | null>(null);
+    const [notifyMethod, setNotifyMethod] = useState<'whatsapp' | 'email'>('whatsapp');
+    const [notifyContent, setNotifyContent] = useState('');
+    const [isSendingNotify, setIsSendingNotify] = useState(false);
 
     useEffect(() => { fetchDistricts(); }, []);
 
@@ -163,7 +176,11 @@ const DistrictsManagement: React.FC = () => {
                 countries: (dist.countries || []).join(', '), website: dist.website || '',
                 subdomain: dist.subdomain || '', domain: dist.domain || '',
                 description: dist.description || '', status: dist.status || 'active',
-                adminUserId: ''
+                adminUserId: '',
+                subscriptionStatus: dist.subscriptionStatus || 'active',
+                expirationDate: dist.expirationDate ? new Date(dist.expirationDate).toISOString().split('T')[0] : '',
+                billingContactEmail: dist.billingContactEmail || '',
+                billingContactPhone: dist.billingContactPhone || ''
             });
         } else {
             setEditingDistrict(null);
@@ -207,6 +224,72 @@ const DistrictsManagement: React.FC = () => {
             if (res.ok) { toast.success('Distrito eliminado'); fetchDistricts(); if (detailDistrict?.id === dist.id) setDetailDistrict(null); }
             else toast.error('No se pudo eliminar');
         } catch { toast.error('Error'); }
+    };
+
+    const exportToCSV = () => {
+        const headers = ['Numero', 'Nombre', 'Gobernador', 'Email Billing', 'Telefono Billing', 'Estado SaaS', 'Vencimiento', 'Dominios'];
+        const rows = districts.map(d => [
+            d.number,
+            d.name,
+            d.governor || 'N/A',
+            d.billingContactEmail || 'N/A',
+            d.billingContactPhone || 'N/A',
+            d.subscriptionStatus || 'active',
+            d.expirationDate ? new Date(d.expirationDate).toLocaleDateString() : 'N/A',
+            `${d.domain || 'N/A'} / ${d.subdomain || 'N/A'}`
+        ]);
+
+        const csvContent = "data:text/csv;charset=utf-8," 
+            + headers.join(",") + "\n" 
+            + rows.map(e => e.join(",")).join("\n");
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `distritos_rotary_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const handleSendNotification = async () => {
+        if (!selectedDistrictForNotify || !notifyContent) return;
+        setIsSendingNotify(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            // Nota: Para distritos enviamos districtId en lugar de clubId si el backend lo soporta, 
+            // o usamos el mirrorClubId. Sin embargo, el controller actual de comunicaciones espera clubId.
+            // Para distritos, usaremos el endpoint de comunicaciones pero necesitamos asegurar que el backend maneje districtId
+            // o simplemente pasar el ID y que el controller busque en ambas tablas.
+            
+            const response = await fetch(`${API}/communications/send`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    districtId: selectedDistrictForNotify.id,
+                    type: notifyMethod,
+                    content: notifyContent,
+                    recipient: notifyMethod === 'whatsapp' ? selectedDistrictForNotify.billingContactPhone : selectedDistrictForNotify.billingContactEmail,
+                    subject: notifyMethod === 'email' ? `Estado de Suscripción - Distrito ${selectedDistrictForNotify.number}` : undefined
+                })
+            });
+
+            if (response.ok) {
+                toast.success('Notificación enviada correctamente');
+                setIsNotificationModalOpen(false);
+                setNotifyContent('');
+            } else {
+                const data = await response.json();
+                throw new Error(data.error || 'Error al enviar notificación');
+            }
+        } catch (error: any) {
+            toast.error(error.message);
+        } finally {
+            setIsSendingNotify(false);
+        }
     };
 
     const copyToClipboard = (text: string) => {
@@ -368,10 +451,42 @@ const DistrictsManagement: React.FC = () => {
                         </div>
 
                         <div className="md:col-span-2">
-                            <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wider">Descripción</label>
+                            <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wider">Descripción del Distrito</label>
                             <textarea rows={3} placeholder="Descripción del distrito, su alcance y objetivos..."
                                 className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none text-sm resize-none"
                                 value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
+                        </div>
+
+                        {/* SECCIÓN SAAS Y FACTURACIÓN */}
+                        <div className="md:col-span-2 bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
+                            <h3 className="text-xs font-black text-rotary-blue uppercase tracking-widest mb-4">💳 Gestión SaaS y Facturación</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-600 mb-1 uppercase">Estado de Suscripción</label>
+                                    <select className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none text-sm bg-white"
+                                        value={formData.subscriptionStatus} onChange={e => setFormData({ ...formData, subscriptionStatus: e.target.value })}>
+                                        <option value="active">Activo (Full Access)</option>
+                                        <option value="expired">Vencido (Modo Lectura)</option>
+                                        <option value="trial">Prueba Gratuita</option>
+                                        <option value="suspended">Suspendido</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-600 mb-1 uppercase">Vencimiento</label>
+                                    <input type="date" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none text-sm bg-white"
+                                        value={formData.expirationDate} onChange={e => setFormData({ ...formData, expirationDate: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-600 mb-1 uppercase">Email Facturación</label>
+                                    <input type="email" placeholder="tesoreria@distrito.org" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none text-sm bg-white"
+                                        value={formData.billingContactEmail} onChange={e => setFormData({ ...formData, billingContactEmail: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-600 mb-1 uppercase">WhatsApp Facturación</label>
+                                    <input type="tel" placeholder="+57310..." className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none text-sm bg-white"
+                                        value={formData.billingContactPhone} onChange={e => setFormData({ ...formData, billingContactPhone: e.target.value })} />
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
@@ -745,10 +860,16 @@ const DistrictsManagement: React.FC = () => {
                         </h1>
                         <p className="text-gray-500 text-sm mt-1">Administra distritos Rotary, sus dominios, clubes y administradores.</p>
                     </div>
-                    <button onClick={() => openModal()}
-                        className="flex items-center gap-2 bg-rotary-blue text-white px-5 py-2.5 rounded-xl hover:bg-sky-800 transition-colors font-bold text-sm shadow-md shadow-rotary-blue/20">
-                        <Plus className="w-4 h-4" /> Nuevo Distrito
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <button onClick={exportToCSV}
+                            className="flex items-center gap-2 bg-emerald-600 text-white px-5 py-2.5 rounded-xl hover:bg-emerald-700 transition-colors font-bold text-sm shadow-md shadow-emerald-600/20">
+                            Descargar CSV
+                        </button>
+                        <button onClick={() => openModal()}
+                            className="flex items-center gap-2 bg-rotary-blue text-white px-5 py-2.5 rounded-xl hover:bg-sky-800 transition-colors font-bold text-sm shadow-md shadow-rotary-blue/20">
+                            <Plus className="w-4 h-4" /> Nuevo Distrito
+                        </button>
+                    </div>
                 </div>
 
                 <div className="relative max-w-md">
@@ -786,6 +907,11 @@ const DistrictsManagement: React.FC = () => {
                             <div key={dist.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden group">
                                 <div className="bg-gradient-to-br from-rotary-blue to-blue-700 p-5 text-white relative">
                                     <div className="absolute top-3 right-3 flex gap-1">
+                                        <button onClick={() => {
+                                            setSelectedDistrictForNotify(dist);
+                                            setNotifyContent(`Estimado Gobernador y equipo del Distrito ${dist.number}, le informamos que su suscripción se encuentra en estado: ${dist.subscriptionStatus}.`);
+                                            setIsNotificationModalOpen(true);
+                                        }} title="Notificación SaaS" className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 hover:text-amber-300 transition-colors opacity-0 group-hover:opacity-100"><MessageSquare className="w-3.5 h-3.5" /></button>
                                         <button onClick={() => handleImpersonate(dist.id, dist.name)} title="Ingresar como este distrito" className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 hover:text-green-300 transition-colors opacity-0 group-hover:opacity-100"><LogIn className="w-3.5 h-3.5" /></button>
                                         <button onClick={() => openModal(dist)} title="Editar" className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors opacity-0 group-hover:opacity-100"><Edit2 className="w-3.5 h-3.5" /></button>
                                         <button onClick={() => handleDelete(dist)} title="Eliminar" className="p-1.5 rounded-lg bg-white/10 hover:bg-red-500/60 transition-colors opacity-0 group-hover:opacity-100"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -838,7 +964,64 @@ const DistrictsManagement: React.FC = () => {
                     </div>
                 )}
             </div>
+
             {isModalOpen && renderModal()}
+
+            {/* Notification Modal */}
+            {isNotificationModalOpen && selectedDistrictForNotify && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in duration-200">
+                        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                            <div>
+                                <h2 className="text-lg font-black text-gray-800">Comunicar con Distrito {selectedDistrictForNotify.number}</h2>
+                                <p className="text-xs text-gray-400">Canal directo de administración SaaS</p>
+                            </div>
+                            <button onClick={() => setIsNotificationModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
+                                <button 
+                                    onClick={() => setNotifyMethod('whatsapp')}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg font-bold text-sm transition-all ${notifyMethod === 'whatsapp' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    WhatsApp
+                                </button>
+                                <button 
+                                    onClick={() => setNotifyMethod('email')}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg font-bold text-sm transition-all ${notifyMethod === 'email' ? 'bg-white text-rotary-blue shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    Email
+                                </button>
+                            </div>
+
+                            <div className="p-3 bg-blue-50 rounded-lg text-xs text-blue-700 border border-blue-100">
+                                <strong>Destinatario:</strong> {notifyMethod === 'whatsapp' ? (selectedDistrictForNotify.billingContactPhone || 'Sin teléfono') : (selectedDistrictForNotify.billingContactEmail || 'Sin email')}
+                            </div>
+
+                            <div>
+                                <label className="block text-[11px] font-black text-gray-500 mb-1 uppercase tracking-wider">Mensaje Personalizado</label>
+                                <textarea
+                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue outline-none transition-all text-sm h-32 resize-none"
+                                    value={notifyContent}
+                                    onChange={(e) => setNotifyContent(e.target.value)}
+                                    placeholder="Escriba el mensaje aquí..."
+                                />
+                            </div>
+
+                            <button
+                                onClick={handleSendNotification}
+                                disabled={isSendingNotify || (notifyMethod === 'whatsapp' && !selectedDistrictForNotify.billingContactPhone) || (notifyMethod === 'email' && !selectedDistrictForNotify.billingContactEmail)}
+                                className="w-full bg-rotary-blue text-white py-3 rounded-xl font-bold hover:bg-sky-800 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                {isSendingNotify ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                {isSendingNotify ? 'Enviando...' : 'Enviar Notificación Ahora'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </AdminLayout>
     );
 };

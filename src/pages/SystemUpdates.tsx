@@ -23,8 +23,15 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
+// Cache bust: 2026-05-06 00:00 (SAAS GOVERNANCE 🏢)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.102',
+        date: '06 de Mayo, 2026',
+        title: 'ADMIN: Gobernanza SaaS y Redes',
+        description: 'Expansión de herramientas de gestión SaaS para Distritos y Asociaciones LATIR. Incluye exportación de datos (CSV) y centro de comunicaciones unificado para toda la red.',
+        type: 'feature'
+    },
     {
         version: "v4.101.1",
         date: "05 de Mayo, 2026",
@@ -191,7 +198,7 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
         date: "05 de Mayo, 2026",
         title: "BRANDING: Logo de Producto y Refinamiento",
         description: "Se ha actualizado el logotipo al oficial de 'Club Platform for Rotary' y se han refinado los textos para asociaciones.",
-        type: "ui",
+        type: "update",
         changes: [
             { type: "improved", text: "Branding: Logotipo oficial de la plataforma activado." },
             { type: "improved", text: "Textos: Eliminación de referencias genéricas a 'Club' en descripciones de asociaciones." }
@@ -202,7 +209,7 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
         date: "05 de Mayo, 2026",
         title: "BRANDING: Mejora Visual en Checkout",
         description: "Se ha añadido el logotipo institucional y una descripción detallada de los beneficios de la plataforma en la página de pago de Stripe.",
-        type: "ui",
+        type: "update",
         changes: [
             { type: "added", text: "Branding: Imagen de producto Club Platform activada en Stripe Checkout." },
             { type: "improved", text: "Transparencia: Descripción detallada de servicios (Hosting, IA, Seguridad) visible para el usuario al pagar." }
@@ -213,12 +220,12 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
         date: "05 de Mayo, 2026",
         title: "RELEASE: Sistema Automatizado de Renovaciones SaaS",
         description: "Se ha completado la infraestructura de cobro automático, notificaciones por IA y gestión de suscripciones.",
-        type: "release",
+        type: "major",
         changes: [
             { type: "added", text: "Cron Job: Cobrador automático activado con inteligencia artificial (Gemini) para WhatsApp y Email." },
             { type: "added", text: "Billing: Portal de facturación de Stripe integrado en el dashboard administrativo." },
             { type: "improved", text: "Webhooks: Sincronización mágica de pagos; la plataforma se reactiva automáticamente al detectar el pago." },
-            { type: "security", text: "Acceso: Se han restringido los ajustes avanzados solo para Super Administradores." }
+            { type: "changed", text: "Acceso: Se han restringido los ajustes avanzados solo para Super Administradores." }
         ]
     },
     {
@@ -236,7 +243,7 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
         date: "05 de Mayo, 2026",
         title: "SECURITY: Restricción de Ajustes Avanzados",
         description: "Se ha ocultado la pestaña de configuración avanzada para administradores de clubes, restringiéndola exclusivamente al Super Administrador.",
-        type: "security",
+        type: "fix",
         changes: [
             { type: "fixed", text: "Privacidad: La gestión de dominios y configuraciones globales ahora solo es visible para el rol 'administrator'." }
         ]
@@ -270,9 +277,9 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
         description: "Implementación de acceso directo a pagos desde la barra de vencimiento y mejoras en la sincronización de estado tras la renovación.",
         type: "feat",
         changes: [
-            { type: "feat", text: "CTA Directo: Se añadió un botón de 'Renovar Ahora' en la barra de alerta roja para facilitar el flujo de pago." },
+            { type: "added", text: "CTA Directo: Se añadió un botón de 'Renovar Ahora' en la barra de alerta roja para facilitar el flujo de pago." },
             { type: "improved", text: "Sincronización: El sistema ahora detecta automáticamente el éxito del pago y actualiza el estado del sitio sin recargas manuales." },
-            { type: "hotfix", text: "Conectividad: Se optimizaron las rutas de despliegue para superar bloqueos de red locales." }
+            { type: "fix", text: "Conectividad: Se optimizaron las rutas de despliegue para superar bloqueos de red locales." }
         ]
     },
     {
@@ -322,12 +329,13 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
     {
         version: "v4.90.3",
         date: "29 de Abril, 2026",
+        title: "FIX: Persistencia de Leads y Checkout",
         description: "Core Fix: Persistencia de Formularios y Checkout",
-        updates: [
-            "Implementación real del flujo de Checkout: ahora las donaciones y pagos de membresía se guardan en la base de datos.",
-            "Mejora en la resolución de clubId para el formulario de contacto (fallback automático vía URL).",
-            "Enriquecimiento de metadatos en leads para trazabilidad de dominio y origen.",
-            "Corrección en el trigger de orquestación de agentes para nuevos contactos."
+        changes: [
+            { type: "added", text: "Implementación real del flujo de Checkout: ahora las donaciones y pagos de membresía se guardan en la base de datos." },
+            { type: "improved", text: "Mejora en la resolución de clubId para el formulario de contacto (fallback automático vía URL)." },
+            { type: "added", text: "Enriquecimiento de metadatos en leads para trazabilidad de dominio y origen." },
+            { type: "fixed", text: "Corrección en el trigger de orquestación de agentes para nuevos contactos." }
         ],
         type: "fix"
     },

@@ -45,6 +45,12 @@ model District {
   status        String   @default("active")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  subscriptionStatus       String                  @default("active")
+  expirationDate           DateTime?
+  billingContactEmail      String?
+  billingContactPhone      String?
+  lastNotificationSent     DateTime?
+  notificationLevel        Int                     @default(0)
   clubs         Club[]
   admins        User[]
 }

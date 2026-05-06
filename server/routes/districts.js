@@ -59,17 +59,29 @@ router.get('/:id', authMiddleware, superAdminOnly, async (req, res) => {
 
 // ── POST /api/admin/districts — crear nuevo distrito
 router.post('/', authMiddleware, superAdminOnly, async (req, res) => {
-    const { number, name, governor, governorEmail, countries, website, subdomain, domain, description, status, adminUserId } = req.body;
+    const { 
+        number, name, governor, governorEmail, countries, website, 
+        subdomain, domain, description, status, adminUserId,
+        subscriptionStatus, expirationDate, billingContactEmail, billingContactPhone 
+    } = req.body;
     if (!number || !name) return res.status(400).json({ error: 'Número y nombre son requeridos' });
 
     try {
         const result = await db.query(
-            `INSERT INTO "District" (id, number, name, governor, "governorEmail", countries, website, subdomain, domain, description, status, "updatedAt")
-             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+            `INSERT INTO "District" (
+                id, number, name, governor, "governorEmail", countries, website, 
+                subdomain, domain, description, status, "updatedAt",
+                "subscriptionStatus", "expirationDate", "billingContactEmail", "billingContactPhone"
+             )
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11, $12, $13, $14)
              RETURNING *`,
-            [number, name, governor || null, governorEmail || null,
-             countries || [], website || null, subdomain || null, domain || null,
-             description || null, status || 'active']
+            [
+                number, name, governor || null, governorEmail || null,
+                countries || [], website || null, subdomain || null, domain || null,
+                description || null, status || 'active',
+                subscriptionStatus || 'active', expirationDate || null, 
+                billingContactEmail || null, billingContactPhone || null
+            ]
         );
         const district = result.rows[0];
 
@@ -113,7 +125,11 @@ router.post('/', authMiddleware, superAdminOnly, async (req, res) => {
 // ── PUT /api/admin/districts/:id — actualizar distrito
 router.put('/:id', authMiddleware, superAdminOnly, async (req, res) => {
     const { id } = req.params;
-    const { number, name, governor, governorEmail, countries, website, subdomain, domain, description, status } = req.body;
+    const { 
+        number, name, governor, governorEmail, countries, website, 
+        subdomain, domain, description, status,
+        subscriptionStatus, expirationDate, billingContactEmail, billingContactPhone 
+    } = req.body;
 
     try {
         // Obtener dominio actual para comparar
@@ -124,12 +140,20 @@ router.put('/:id', authMiddleware, superAdminOnly, async (req, res) => {
             `UPDATE "District"
              SET number = $1, name = $2, governor = $3, "governorEmail" = $4,
                  countries = $5, website = $6, subdomain = $7, domain = $8,
-                 description = $9, status = $10, "updatedAt" = NOW()
-             WHERE id = $11
+                 description = $9, status = $10, 
+                 "subscriptionStatus" = $11, "expirationDate" = $12, 
+                 "billingContactEmail" = $13, "billingContactPhone" = $14,
+                 "updatedAt" = NOW()
+             WHERE id = $15
              RETURNING *`,
-            [number, name, governor || null, governorEmail || null,
-             countries || [], website || null, subdomain || null, domain || null,
-             description || null, status || 'active', id]
+            [
+                number, name, governor || null, governorEmail || null,
+                countries || [], website || null, subdomain || null, domain || null,
+                description || null, status || 'active',
+                subscriptionStatus || 'active', expirationDate || null,
+                billingContactEmail || null, billingContactPhone || null,
+                id
+            ]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Distrito no encontrado' });
 

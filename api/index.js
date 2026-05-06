@@ -1,4 +1,4 @@
-// MULTIMEDIA & EVENTOS V4.101.1 | 2026-05-06T04:40:00 (MESSAGING+ ✉️)
+// MULTIMEDIA & EVENTOS V4.102 | 2026-05-06 (ADMIN+ 🏢)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -27,7 +27,7 @@ app.get('/api/social/accounts', socialController.getConnectedAccounts);
 
 // ── Static endpoints ─────────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'ok', version: '4.101.1' });
+    res.json({ status: 'GOVERNANCE_ACTIVE', version: '4.102', release: 'ADMIN+ 🏢' });
 });
 
 app.get('/api/health', async (req, res) => {

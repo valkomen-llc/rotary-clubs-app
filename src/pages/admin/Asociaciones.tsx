@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
-import { Plus, Edit2, Trash2, Globe, MapPin, X, LogIn } from 'lucide-react';
+import { 
+    Plus, Edit2, Trash2, Globe, MapPin, X, LogIn, 
+    MessageSquare, Mail, FileText, Download, RefreshCw, Send, AlertTriangle, 
+    Shield, Calendar, CreditCard, Building2 
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -22,6 +26,12 @@ interface Club {
         projects: number;
         posts: number;
     };
+    subscriptionStatus?: string;
+    expirationDate?: string | null;
+    billingContactEmail?: string | null;
+    billingContactPhone?: string | null;
+    type?: string;
+    district?: string | null;
 }
 
 const AsociacionesManagement: React.FC = () => {
@@ -32,6 +42,13 @@ const AsociacionesManagement: React.FC = () => {
     const [editingClub, setEditingClub] = useState<Club | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { impersonate } = useAuth();
+    
+    // Notification Center State
+    const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
+    const [selectedClubForNotify, setSelectedClubForNotify] = useState<Club | null>(null);
+    const [notifyMethod, setNotifyMethod] = useState<'whatsapp' | 'email'>('whatsapp');
+    const [notifyContent, setNotifyContent] = useState('');
+    const [isSendingNotify, setIsSendingNotify] = useState(false);
 
     const [formData, setFormData] = useState({
         name: '',
@@ -56,6 +73,11 @@ const AsociacionesManagement: React.FC = () => {
         expirationBannerMessage: '',
         developmentBannerActive: false,
         developmentBannerMessage: '',
+        subscriptionStatus: 'active',
+        expirationDate: '',
+        billingContactEmail: '',
+        billingContactPhone: '',
+        district: '',
     });
     const [isFetchingDetails, setIsFetchingDetails] = useState(false);
 
@@ -108,6 +130,10 @@ const AsociacionesManagement: React.FC = () => {
                 expirationBannerMessage: (club as any).expirationBannerMessage || '',
                 developmentBannerActive: (club as any).developmentBannerActive || false,
                 developmentBannerMessage: (club as any).developmentBannerMessage || '',
+                subscriptionStatus: club.subscriptionStatus || 'active',
+                expirationDate: club.expirationDate ? new Date(club.expirationDate).toISOString().split('T')[0] : '',
+                billingContactEmail: club.billingContactEmail || '',
+                billingContactPhone: club.billingContactPhone || '',
             });
             setIsFetchingDetails(true);
             try {
@@ -133,6 +159,10 @@ const AsociacionesManagement: React.FC = () => {
                         expirationBannerMessage: fullData.expirationBannerMessage || '',
                         developmentBannerActive: fullData.developmentBannerActive || false,
                         developmentBannerMessage: fullData.developmentBannerMessage || '',
+                        subscriptionStatus: fullData.subscriptionStatus || 'active',
+                        expirationDate: fullData.expirationDate ? new Date(fullData.expirationDate).toISOString().split('T')[0] : '',
+                        billingContactEmail: fullData.billingContactEmail || '',
+                        billingContactPhone: fullData.billingContactPhone || '',
                     }));
                 }
             } catch (error) {
@@ -158,6 +188,10 @@ const AsociacionesManagement: React.FC = () => {
                 expirationBannerMessage: '',
                 developmentBannerActive: false,
                 developmentBannerMessage: '',
+                subscriptionStatus: 'active',
+                expirationDate: '',
+                billingContactEmail: '',
+                billingContactPhone: '',
             });
         }
     };
@@ -222,6 +256,68 @@ const AsociacionesManagement: React.FC = () => {
         }
     };
 
+    const exportToCSV = () => {
+        const headers = ['Nombre', 'Ciudad', 'Pais', 'Email Billing', 'Telefono Billing', 'Estado SaaS', 'Vencimiento', 'Dominio', 'Subdominio'];
+        const rows = associations.map(c => [
+            c.name,
+            c.city,
+            c.country,
+            c.billingContactEmail || 'N/A',
+            c.billingContactPhone || 'N/A',
+            c.subscriptionStatus || 'active',
+            c.expirationDate ? new Date(c.expirationDate).toLocaleDateString() : 'N/A',
+            c.domain || 'N/A',
+            c.subdomain || 'N/A'
+        ]);
+
+        const csvContent = "data:text/csv;charset=utf-8," 
+            + headers.join(",") + "\n" 
+            + rows.map(e => e.join(",")).join("\n");
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `asociaciones_rotary_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const handleSendNotification = async () => {
+        if (!selectedClubForNotify || !notifyContent) return;
+        setIsSendingNotify(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/communications/send`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    clubId: selectedClubForNotify.id,
+                    type: notifyMethod,
+                    content: notifyContent,
+                    recipient: notifyMethod === 'whatsapp' ? selectedClubForNotify.billingContactPhone : selectedClubForNotify.billingContactEmail,
+                    subject: notifyMethod === 'email' ? `Aviso de suscripción: ${selectedClubForNotify.name}` : undefined
+                })
+            });
+
+            if (response.ok) {
+                toast.success('Notificación enviada correctamente');
+                setIsNotificationModalOpen(false);
+                setNotifyContent('');
+            } else {
+                const data = await response.json();
+                throw new Error(data.error || 'Error al enviar notificación');
+            }
+        } catch (error: any) {
+            toast.error(error.message);
+        } finally {
+            setIsSendingNotify(false);
+        }
+    };
+
     const handleImpersonate = async (clubId: string, clubName: string) => {
         try {
             const token = localStorage.getItem('rotary_token');
@@ -254,12 +350,20 @@ const AsociacionesManagement: React.FC = () => {
                     <h1 className="text-2xl font-bold text-gray-800">Gestión de Asociaciones y Redes (LATIR)</h1>
                     <p className="text-gray-500 text-sm">Administra redes multidistritales, EMAR, fondos y asociaciones.</p>
                 </div>
-                <button
-                    onClick={() => handleOpenModal()}
-                    className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2 rounded-lg hover:bg-sky-800 transition-colors"
-                >
-                    <Plus className="w-4 h-4" /> Nueva Asociación
-                </button>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={exportToCSV}
+                        className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors"
+                    >
+                        Descargar CSV
+                    </button>
+                    <button
+                        onClick={() => handleOpenModal()}
+                        className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2 rounded-lg hover:bg-sky-800 transition-colors"
+                    >
+                        <Plus className="w-4 h-4" /> Nueva Asociación
+                    </button>
+                </div>
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -320,6 +424,17 @@ const AsociacionesManagement: React.FC = () => {
                                 </td>
                                 <td className="px-6 py-4 text-right">
                                     <div className="flex justify-end gap-2">
+                                        <button
+                                            onClick={() => {
+                                                setSelectedClubForNotify(club);
+                                                setNotifyContent(`Estimado equipo de ${club.name}, le informamos que su suscripción a la plataforma se encuentra en estado: ${club.subscriptionStatus}. Por favor contacte con administración.`);
+                                                setIsNotificationModalOpen(true);
+                                            }}
+                                            className="p-2 text-gray-400 hover:text-[#019fcb] transition-colors"
+                                            title="Enviar notificación SaaS"
+                                        >
+                                            <LogIn className="w-4 h-4 rotate-90" />
+                                        </button>
                                         <button
                                             onClick={() => handleImpersonate(club.id, club.name)}
                                             className="p-2 text-gray-400 hover:text-green-500 transition-colors"
@@ -535,6 +650,57 @@ const AsociacionesManagement: React.FC = () => {
                                 </div>
                             </div>
 
+                            {/* SAAS & BILLING SECTION */}
+                            <div className="mt-8 pt-6 border-t border-blue-100 bg-blue-50/20 p-4 rounded-xl">
+                                <h3 className="text-sm font-bold text-rotary-blue mb-4 flex items-center gap-2">
+                                    💳 Gestión SaaS y Facturación
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-gray-600 mb-1 uppercase tracking-wider">Estado de Suscripción</label>
+                                        <select
+                                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all text-sm"
+                                            value={formData.subscriptionStatus}
+                                            onChange={(e) => setFormData({ ...formData, subscriptionStatus: e.target.value })}
+                                        >
+                                            <option value="active">Activo (Full Access)</option>
+                                            <option value="expired">Vencido (Modo Lectura)</option>
+                                            <option value="trial">Prueba Gratuita</option>
+                                            <option value="suspended">Suspendido</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-gray-600 mb-1 uppercase tracking-wider">Fecha de Vencimiento</label>
+                                        <input
+                                            type="date"
+                                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all text-sm"
+                                            value={formData.expirationDate || ''}
+                                            onChange={(e) => setFormData({ ...formData, expirationDate: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-gray-600 mb-1 uppercase tracking-wider">Email de Facturación</label>
+                                        <input
+                                            type="email"
+                                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all text-sm"
+                                            value={formData.billingContactEmail || ''}
+                                            onChange={(e) => setFormData({ ...formData, billingContactEmail: e.target.value })}
+                                            placeholder="tesoreria@club.org"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-gray-600 mb-1 uppercase tracking-wider">Teléfono de Facturación (WhatsApp)</label>
+                                        <input
+                                            type="tel"
+                                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all text-sm"
+                                            value={formData.billingContactPhone || ''}
+                                            onChange={(e) => setFormData({ ...formData, billingContactPhone: e.target.value })}
+                                            placeholder="+57310..."
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* MODULES SECTION */}
                             <div className="mt-8 pt-6 border-t border-gray-100">
                                 <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -598,6 +764,62 @@ const AsociacionesManagement: React.FC = () => {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Notification Modal */}
+            {isNotificationModalOpen && selectedClubForNotify && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in duration-200">
+                        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                            <div>
+                                <h2 className="text-lg font-black text-gray-800">Comunicar con {selectedClubForNotify.name}</h2>
+                                <p className="text-xs text-gray-400">Canal directo de administración SaaS</p>
+                            </div>
+                            <button onClick={() => setIsNotificationModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
+                                <button 
+                                    onClick={() => setNotifyMethod('whatsapp')}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg font-bold text-sm transition-all ${notifyMethod === 'whatsapp' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    WhatsApp
+                                </button>
+                                <button 
+                                    onClick={() => setNotifyMethod('email')}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg font-bold text-sm transition-all ${notifyMethod === 'email' ? 'bg-white text-rotary-blue shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    Email
+                                </button>
+                            </div>
+
+                            <div className="p-3 bg-blue-50 rounded-lg text-xs text-blue-700 border border-blue-100">
+                                <strong>Destinatario:</strong> {notifyMethod === 'whatsapp' ? (selectedClubForNotify.billingContactPhone || 'Sin teléfono') : (selectedClubForNotify.billingContactEmail || 'Sin email')}
+                            </div>
+
+                            <div>
+                                <label className="block text-[11px] font-black text-gray-500 mb-1 uppercase tracking-wider">Mensaje Personalizado</label>
+                                <textarea
+                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue outline-none transition-all text-sm h-32 resize-none"
+                                    value={notifyContent}
+                                    onChange={(e) => setNotifyContent(e.target.value)}
+                                    placeholder="Escriba el mensaje aquí..."
+                                />
+                            </div>
+
+                            <button
+                                onClick={handleSendNotification}
+                                disabled={isSendingNotify || (notifyMethod === 'whatsapp' && !selectedClubForNotify.billingContactPhone) || (notifyMethod === 'email' && !selectedClubForNotify.billingContactEmail)}
+                                className="w-full bg-[#019fcb] text-white py-3 rounded-xl font-bold hover:bg-sky-800 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                {isSendingNotify ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                {isSendingNotify ? 'Enviando...' : 'Enviar Notificación Ahora'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
