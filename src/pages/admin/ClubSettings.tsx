@@ -253,7 +253,7 @@ const ClubSettings: React.FC = () => {
     const TABS = [
         { id: 'estado', label: 'Estado', icon: Sparkles },
         { id: 'identidad', label: 'Identidad', icon: Building2 },
-        { id: 'avanzado', label: 'Avanzado', icon: SettingsIcon },
+        ...(isSuperAdmin ? [{ id: 'avanzado', label: 'Avanzado', icon: SettingsIcon }] : []),
         { id: 'facturacion', label: 'Facturación', icon: CreditCard },
     ] as const;
 
@@ -486,7 +486,7 @@ const ClubSettings: React.FC = () => {
                     </div>
                 )}
 
-                {activeTab === 'avanzado' && (
+                {activeTab === 'avanzado' && isSuperAdmin && (
                     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         {/* Domain Management */}
                         <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">

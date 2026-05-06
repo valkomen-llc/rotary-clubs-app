@@ -26,6 +26,16 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.92.3",
+        date: "05 de Mayo, 2026",
+        title: "SECURITY: Restricción de Ajustes Avanzados",
+        description: "Se ha ocultado la pestaña de configuración avanzada para administradores de clubes, restringiéndola exclusivamente al Super Administrador.",
+        type: "security",
+        changes: [
+            { type: "fixed", text: "Privacidad: La gestión de dominios y configuraciones globales ahora solo es visible para el rol 'administrator'." }
+        ]
+    },
+    {
         version: "v4.92.2",
         date: "05 de Mayo, 2026",
         title: "FIX: Ajuste de Tarifa de Renovación",
