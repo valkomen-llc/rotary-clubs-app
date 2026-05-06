@@ -331,8 +331,9 @@ router.post('/clubs/:id/billing-portal', roleMiddleware(['administrator', 'club_
                     price_data: {
                         currency: 'usd',
                         product_data: {
-                            name: 'Renovación Anual - Rotary ClubPlatform',
-                            description: `Renovación de servicios digitales para el club: ${club.name}`,
+                            name: 'Club Platform for Rotary - Renovación Anual',
+                            description: `Acceso Premium al ecosistema digital multitenant. Incluye hosting administrado, seguridad avanzada, agentes de IA personalizados y soporte técnico institucional para el club: ${club.name}.`,
+                            images: ['https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/3c648ce7-3c47-41e2-9461-6e40a8615ae6/favicons/1773021284022-RotaryMoE-R_CMYK-C_%281%29.png'],
                         },
                         unit_amount: 29900, // $299.00 USD
                     },

@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.93.1",
+        date: "05 de Mayo, 2026",
+        title: "BRANDING: Mejora Visual en Checkout",
+        description: "Se ha añadido el logotipo institucional y una descripción detallada de los beneficios de la plataforma en la página de pago de Stripe.",
+        type: "ui",
+        changes: [
+            { type: "added", text: "Branding: Imagen de producto Club Platform activada en Stripe Checkout." },
+            { type: "improved", text: "Transparencia: Descripción detallada de servicios (Hosting, IA, Seguridad) visible para el usuario al pagar." }
+        ]
+    },
+    {
         version: "v4.93.0",
         date: "05 de Mayo, 2026",
         title: "RELEASE: Sistema Automatizado de Renovaciones SaaS",
