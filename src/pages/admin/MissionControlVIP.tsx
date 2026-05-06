@@ -179,6 +179,14 @@ const HQDashboard: React.FC = () => {
   const [viewDensity, setViewDensity] = useState<'compact' | 'normal' | 'expanded'>('normal');
   const [showCovers, setShowCovers] = useState(true);
   const [missionControlLogo, setMissionControlLogo] = useState<string | null>(null);
+  const [crmPulse, setCrmPulse] = useState<any>(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/analytics/crm-pulse`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => setCrmPulse(data))
+      .catch(console.error);
+  }, []);
 
   useEffect(() => {
     // Fetch Global Setup Images
@@ -1071,6 +1079,28 @@ const HQDashboard: React.FC = () => {
                   {selectedGoal.description}
                 </p>
               </div>
+
+              {/* CRM PULSE DATA INTEGRATION */}
+              {selectedGoal.id === 'crm-pulse' && crmPulse && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 p-6 rounded-[24px]">
+                    <div className="flex items-center gap-3 text-emerald-400 mb-2">
+                      <Target className="w-4 h-4" />
+                      <span className="text-[10px] font-black uppercase tracking-widest">Conversion Rate</span>
+                    </div>
+                    <p className="text-3xl font-black text-white">{crmPulse.leads.conversionRate}%</p>
+                    <p className="text-[10px] text-emerald-400/60 font-bold mt-1 uppercase tracking-tight">Leads convertidos hoy</p>
+                  </div>
+                  <div className="bg-blue-500/10 border border-blue-500/20 p-6 rounded-[24px]">
+                    <div className="flex items-center gap-3 text-blue-400 mb-2">
+                      <Users className="w-4 h-4" />
+                      <span className="text-[10px] font-black uppercase tracking-widest">Active Members</span>
+                    </div>
+                    <p className="text-3xl font-black text-white">{crmPulse.membership.total}</p>
+                    <p className="text-[10px] text-blue-400/60 font-bold mt-1 uppercase tracking-tight">Total base de datos</p>
+                  </div>
+                </div>
+              )}
 
               <div className="p-6 bg-slate-900 border border-white/5 rounded-3xl">
                 <h3 className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-4">
