@@ -353,27 +353,38 @@ const HQDashboard: React.FC = () => {
       console.error("Error fetching AI image:", e);
     }
 
-    for (const chatId of selectedChats) {
-      try {
-        const endpoint = mediaData
-          ? `${QR_API}/whatsapp-qr/send-media`
-          : `${QR_API}/whatsapp-qr/send-message`;
-        const body = mediaData
-          ? { chatId, caption: parsed, mediaData, filename, mimetype }
-          : { chatId, message: parsed };
+    const n8nWebhook = "https://n8n-n8n.urnhq7.easypanel.host/webhook/grant-distribution";
+    
+    try {
+      const response = await fetch(n8nWebhook, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          network: "whatsapp",
+          chats: selectedChats,
+          message: parsed,
+          mediaData,
+          mimetype,
+          filename,
+          grant: {
+            id: showPublish.id,
+            title: showPublish.title,
+            category: showPublish.category,
+            link: sourceLink
+          }
+        }),
+      });
 
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(body),
-        });
-        if (res.ok) succeses++;
-      } catch (e) {
-        console.error(e);
+      if (response.ok) {
+        succeses = selectedChats.length;
+      } else {
+        throw new Error("Falla en la señal de despacho n8n");
       }
+    } catch (e: any) {
+      console.error("n8n Dispatch Error:", e);
+      toast.error(`Error de conexión con el motor de despacho: ${e.message}`);
+      toast.dismiss(loadingToast);
+      return;
     }
 
     try {

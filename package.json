@@ -1,9 +1,9 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.103",
+  "version": "4.104",
   "type": "module",
-  "//": "SAAS GOVERNANCE v4.103 | 2026-05-06T10:45:00 (RELEASE+ 🏢)",
+  "//": "AGENTIC PHASE v4.104 | 2026-05-06T11:00:00 (WORKFLOWS 🤖)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
