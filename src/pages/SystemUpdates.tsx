@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.92.1",
+        date: "05 de Mayo, 2026",
+        title: "FIX: Permisos y Etiquetas de Renovación",
+        description: "Corrección de acceso al portal de pagos para roles administrativos y sincronización de etiquetas de estado.",
+        type: "fix",
+        changes: [
+            { type: "fixed", text: "Acceso Billing: Se habilitó el acceso al portal de Stripe para editores y usuarios administrativos del club." },
+            { type: "fixed", text: "UI Sync: Forzado el estado 'Vencida' en la interfaz cuando el banner de renovación está activo." },
+            { type: "improved", text: "Seguridad: Limpieza de variables de entorno en el historial de despliegue." }
+        ]
+    },
+    {
         version: "v4.92.0",
         date: "05 de Mayo, 2026",
         title: "Botón de Renovación Directa y Sincronización",
