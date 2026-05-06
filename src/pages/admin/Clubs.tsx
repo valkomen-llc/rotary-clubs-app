@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
-import { Plus, Edit2, Trash2, Globe, MapPin, X, LogIn } from 'lucide-react';
+import { 
+    Plus, Edit2, Trash2, Globe, MapPin, X, LogIn, RefreshCw, 
+    Shield, DollarSign, Users, TrendingUp, AlertTriangle, Clock 
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -244,21 +247,81 @@ const ClubsManagement: React.FC = () => {
         } catch (error: any) {
             toast.error(error.message);
         }
+       // Calcular estadísticas financieras (Fase 4: Financial Oversight)
+    const stats = {
+        totalActive: clubs.filter(c => c.subscriptionStatus === 'active').length,
+        totalProspects: clubs.filter(c => c.subscriptionStatus === 'inactive' || !c.subscriptionStatus).length,
+        totalExpired: clubs.filter(c => c.subscriptionStatus === 'expired').length,
+        estimatedMRR: clubs.filter(c => c.subscriptionStatus === 'active').length * 25, // Estimación base $25/mes
+        expiringSoon: clubs.filter(c => {
+            if (!c.expirationDate || c.subscriptionStatus !== 'active') return false;
+            const daysLeft = Math.ceil((new Date(c.expirationDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+            return daysLeft > 0 && daysLeft <= 30;
+        }).length
     };
 
     return (
         <AdminLayout>
-            <div className="flex justify-between items-center mb-8">
+            <div className="flex justify-between items-center mb-6">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800">Gestión de Clubes</h1>
-                    <p className="text-gray-500 text-sm">Administra todos los clubes de la plataforma.</p>
+                    <h1 className="text-2xl font-black text-rotary-blue flex items-center gap-2">
+                        <Shield className="w-6 h-6" /> Gestión Global de Clubes
+                    </h1>
+                    <p className="text-gray-500 text-sm">Control central de infraestructura y facturación SaaS.</p>
                 </div>
                 <button
                     onClick={() => handleOpenModal()}
-                    className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2 rounded-lg hover:bg-sky-800 transition-colors"
+                    className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2 rounded-lg hover:bg-sky-800 transition-all shadow-lg shadow-sky-100 font-bold"
                 >
                     <Plus className="w-4 h-4" /> Nuevo Club
                 </button>
+            </div>
+
+            {/* MÉTRICAS FINANCIERAS (Fase 4) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
+                    <div className="flex justify-between items-start mb-2">
+                        <div className="p-2 bg-emerald-50 rounded-xl">
+                            <TrendingUp className="w-5 h-5 text-emerald-600" />
+                        </div>
+                        <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full uppercase">Ingresos Est.</span>
+                    </div>
+                    <p className="text-2xl font-black text-gray-800">${stats.estimatedMRR.toLocaleString()}</p>
+                    <p className="text-[10px] text-gray-400 mt-1 uppercase font-bold tracking-wider">MRR Proyectado (USD)</p>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
+                    <div className="flex justify-between items-start mb-2">
+                        <div className="p-2 bg-blue-50 rounded-xl">
+                            <Users className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full uppercase">Suscripciones</span>
+                    </div>
+                    <p className="text-2xl font-black text-gray-800">{stats.totalActive}</p>
+                    <p className="text-[10px] text-gray-400 mt-1 uppercase font-bold tracking-wider">Nodos activos en la red</p>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
+                    <div className="flex justify-between items-start mb-2">
+                        <div className="p-2 bg-amber-50 rounded-xl">
+                            <Clock className="w-5 h-5 text-amber-600" />
+                        </div>
+                        <span className="text-[10px] font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full uppercase">Por Vencer</span>
+                    </div>
+                    <p className="text-2xl font-black text-gray-800">{stats.expiringSoon}</p>
+                    <p className="text-[10px] text-gray-400 mt-1 uppercase font-bold tracking-wider">Renovaciones próximas (30d)</p>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
+                    <div className="flex justify-between items-start mb-2">
+                        <div className="p-2 bg-rose-50 rounded-xl">
+                            <AlertTriangle className="w-5 h-5 text-rose-600" />
+                        </div>
+                        <span className="text-[10px] font-black text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full uppercase">Inactivos</span>
+                    </div>
+                    <p className="text-2xl font-black text-gray-800">{stats.totalExpired + stats.totalProspects}</p>
+                    <p className="text-[10px] text-gray-400 mt-1 uppercase font-bold tracking-wider">Atención comercial requerida</p>
+                </div>
             </div>
 
             <div className="bg-white p-4 rounded-xl border border-gray-100 mb-6 flex flex-col md:flex-row gap-4 justify-between items-center shadow-sm">
