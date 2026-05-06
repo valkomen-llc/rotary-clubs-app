@@ -27,7 +27,7 @@ app.get('/api/social/accounts', socialController.getConnectedAccounts);
 
 // ── Static endpoints ─────────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'ok', version: '4.93.3' });
+    res.json({ status: 'ok', version: '4.93.4' });
 });
 
 app.get('/api/health', async (req, res) => {

@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.93.4",
+        date: "05 de Mayo, 2026",
+        title: "DEPLOY: Sincronización Forzada de Servidor",
+        description: "Se ha forzado un despliegue completo para asegurar que todos los cambios de branding y descripciones institucionales estén activos.",
+        type: "feat",
+        changes: [
+            { type: "improved", text: "Branding: Sincronización total de logotipo y descripciones en Stripe." },
+            { type: "fix", text: "Despliegue: Eliminación de caché persistente en el entorno de producción." }
+        ]
+    },
+    {
         version: "v4.93.3",
         date: "05 de Mayo, 2026",
         title: "BRANDING: Logo de Producto y Refinamiento",
