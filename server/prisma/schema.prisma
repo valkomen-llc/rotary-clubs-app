@@ -132,6 +132,7 @@ model Club {
   whatsAppLists            WhatsAppContactList[]
   WhatsAppCustomField      WhatsAppCustomField[]
   whatsAppTemplates        WhatsAppTemplate[]
+  technicalRequests         TechnicalRequest[]
 }
 
 model ClubDocument {
@@ -992,4 +993,19 @@ model Lead {
 
   @@index([clubId, createdAt(sort: Desc)], map: "idx_lead_club")
   @@index([status], map: "idx_lead_status")
+}
+
+model TechnicalRequest {
+  id            String    @id @default(uuid())
+  clubId        String
+  type          String    @default("domain_transfer")
+  status        String    @default("pending")
+  subject       String
+  description   String?
+  details       Json?     @default("{}")
+  amount        Float?
+  paymentStatus String    @default("unpaid")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  club          Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
 }

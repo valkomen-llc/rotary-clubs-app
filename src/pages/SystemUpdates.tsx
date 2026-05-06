@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-05-06 11:30 (MEMBERSHIP IQ 🐺)
+// Cache bust: 2026-05-06 11:45 (TECH SERVICES 🌐)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.107',
+        date: '06 de Mayo, 2026',
+        title: 'ADMIN: Phase 9 - Technical Requests (Domain Transfer) 🌐',
+        description: 'Lanzamiento del centro de solicitudes técnicas y gestión de dominios.',
+        type: 'feature',
+        changes: [
+            { type: "major", text: "Phase 9: Infraestructura de 'Solicitudes Técnicas' desplegada." },
+            { type: "added", text: "Dominios: Nuevo flujo de transferencia con costo estandarizado de $29.00 USD." },
+            { type: "added", text: "Backend: API de solicitudes técnicas con trazabilidad de estado y pagos." }
+        ]
+    },
     {
         version: 'v4.106',
         date: '06 de Mayo, 2026',

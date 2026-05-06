@@ -299,6 +299,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             const orgTypeLabel = isAssoc ? 'Asociación' : isDistrict ? 'Distrito' : 'Sitio';
             
             items.push(
+                { icon: ShieldCheck, label: 'Solicitudes Técnicas', path: '/admin/technical-requests', category: orgTypeLabel, keywords: ['dominio', 'transferencia', 'soporte', 'tecnico', 'ayuda'] },
                 { icon: Settings, label: 'Configuración', path: '/admin/configuracion', category: orgTypeLabel, keywords: ['logo', 'nombre', 'perfil', 'identidad', 'contacto', 'redes', 'facturacion', 'stripe', 'pago', 'configurar'], badge: 'config' }
             );
 

@@ -109,6 +109,7 @@ const SuperAssistantChat = React.lazy(() => import('./pages/admin/SuperAssistant
 const ContentStudio = React.lazy(() => import('./pages/admin/ContentStudio'));
 const FooterSystem = React.lazy(() => import('./pages/admin/FooterSystem'));
 const SocialHub = React.lazy(() => import('./pages/admin/SocialHub'));
+const TechnicalRequests = React.lazy(() => import('./pages/admin/TechnicalRequests'));
 import ClubPreview from './pages/ClubPreview';
 import ChatBot from './components/ChatBot';
 import LandingPage from './pages/LandingPage';
@@ -716,6 +717,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <SocialHub />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/technical-requests"
+                  element={
+                    <PrivateRoute>
+                      <TechnicalRequests />
                     </PrivateRoute>
                   }
                 />
