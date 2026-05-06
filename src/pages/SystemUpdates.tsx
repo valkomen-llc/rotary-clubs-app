@@ -26,6 +26,19 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.93.0",
+        date: "05 de Mayo, 2026",
+        title: "RELEASE: Sistema Automatizado de Renovaciones SaaS",
+        description: "Se ha completado la infraestructura de cobro automático, notificaciones por IA y gestión de suscripciones.",
+        type: "release",
+        changes: [
+            { type: "added", text: "Cron Job: Cobrador automático activado con inteligencia artificial (Gemini) para WhatsApp y Email." },
+            { type: "added", text: "Billing: Portal de facturación de Stripe integrado en el dashboard administrativo." },
+            { type: "improved", text: "Webhooks: Sincronización mágica de pagos; la plataforma se reactiva automáticamente al detectar el pago." },
+            { type: "security", text: "Acceso: Se han restringido los ajustes avanzados solo para Super Administradores." }
+        ]
+    },
+    {
         version: "v4.92.4",
         date: "05 de Mayo, 2026",
         title: "FEATURE: Gestión de Redes Sociales",

@@ -109,6 +109,47 @@ export class WhatsAppService {
     }
 
     /**
+     * Sends a master-level WhatsApp message using Valkomen's master account.
+     * Used for system alerts, billing reminders, and platform-wide notifications.
+     */
+    static async sendPlatformMessage({ to, message }) {
+        const masterPhoneId = process.env.WA_MASTER_PHONE_ID;
+        const masterToken = process.env.WA_MASTER_ACCESS_TOKEN;
+        
+        if (!masterPhoneId || !masterToken) {
+            console.warn('[WhatsAppService] Faltan credenciales maestras (WA_MASTER_PHONE_ID) para notificaciones del sistema.');
+            return { success: false, error: 'Master credentials missing' };
+        }
+
+        const normalizedTo = this.normalizePhoneNumber(to);
+        // Using v21.0 as seen in other parts of the app for master account
+        const metaApiUrl = `https://graph.facebook.com/v21.0/${masterPhoneId}/messages`;
+
+        try {
+            const response = await axios.post(metaApiUrl, {
+                messaging_product: "whatsapp",
+                recipient_type: "individual",
+                to: normalizedTo,
+                type: "text",
+                text: { 
+                    preview_url: true, 
+                    body: message 
+                }
+            }, {
+                headers: { 
+                    'Authorization': `Bearer ${masterToken}`, 
+                    'Content-Type': 'application/json' 
+                }
+            });
+            return { success: true, response: response.data };
+        } catch (error) {
+            const errorMsg = error.response?.data?.error?.message || error.message;
+            console.error(`[WhatsAppService] Platform message failed:`, errorMsg);
+            return { success: false, error: errorMsg };
+        }
+    }
+
+    /**
      * Internal logger
      */
     static async logCommunication({ clubId, type, recipient, content, status, errorMsg, sentById }) {

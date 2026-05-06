@@ -173,8 +173,13 @@ async function handleSaaSReactivation(clubId, customerId) {
     if (targetClub) {
         console.log(`[Stripe Webhook] Renovación SaaS detectada para Club: ${targetClub.name}`);
         
-        const newExp = new Date();
-        newExp.setFullYear(newExp.getFullYear() + 1); // Sumar 1 año de servicio
+        // Si ya tiene una fecha y no ha vencido, sumamos desde ahí. Si ya venció, sumamos desde hoy.
+        const baseDate = (targetClub.expirationDate && new Date(targetClub.expirationDate) > new Date()) 
+            ? new Date(targetClub.expirationDate) 
+            : new Date();
+            
+        const newExp = new Date(baseDate);
+        newExp.setFullYear(newExp.getFullYear() + 1);
         
         await prisma.club.update({
             where: { id: targetClub.id },
