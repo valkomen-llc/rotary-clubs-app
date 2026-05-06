@@ -1,0 +1,471 @@
+[
+  {
+    "id": "a4ba7ba4-9cd1-4432-9e01-bfcdb4595c09",
+    "name": "Club Rotario Fonseca",
+    "domain": "rotaryfonseca.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "7a29a4e7-3fda-4a18-9087-809385ed627d",
+    "name": "Club Rotario Villa del Rosario",
+    "domain": "rotaryvilladelrosario.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "d6a4e086-8668-4ea9-9c91-cce806390b95",
+    "name": "Club Rotario Medellín Bolivariana",
+    "domain": "rotarymedellinbolivariana.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "5ea7f14a-0335-46c7-8145-94ca5d80ec07",
+    "name": "Club Rotario Cúcuta Ciudad de los Árboles",
+    "domain": "rotarycucutaciudaddelosarboles.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "5e815906-9d60-4308-9bc8-9dafa73ebe8f",
+    "name": "Club Rotario Cúcuta II",
+    "domain": "rotarycucuta2.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "3e0f85ea-3df6-4b7b-b4d5-1983164b92f3",
+    "name": "Club Rotario Cartagena Empresarial",
+    "domain": "rotarycartagenaempresarial.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "4b6f0051-1f3b-48ad-8781-5cf2af615d96",
+    "name": "Club Rotario Bucaramanga Sur",
+    "domain": "rotarybucaramangasur.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "f6962067-c7a2-4ff4-bf82-07a61cc53acb",
+    "name": "Club Rotario Bucaramanga Ciudad de los Parques",
+    "domain": "rotarybucaramangaciudaddelosparques.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "99a8e733-c943-4afa-8281-c4a0666f8443",
+    "name": "Club Rotario Barranquilla Centro",
+    "domain": "rotarybarranquillacentro.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "3d51f920-538d-4e54-b7ea-42ef7443874a",
+    "name": "Club Rotario Cartagena de Indias",
+    "domain": "rotarycartagenadeindias.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "205b02d0-a612-4f50-8c5e-ed1c50f27582",
+    "name": "Club Rotario Medellín Nutibara",
+    "domain": "rotarymedellinnutibara.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "80ff85f0-58ce-4472-9dee-b32deda75fc8",
+    "name": "Club Rotario Magangué",
+    "domain": "rotarymagangue.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "d2136bb8-031a-478d-83f6-2e36662587ea",
+    "name": "Club Rotario Cartagena Caribe",
+    "domain": "rotarycartagenacaribe.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "daaf5bc2-6ce6-4bfe-a593-3b8fbd826a7e",
+    "name": "Rotary Bogotá Usaquén",
+    "domain": "rotarybogotausaquen.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "f11cf249-af7d-4e6b-8d8c-d12688160f0d",
+    "name": "Club Rotario Nuevo Cali",
+    "domain": "rotarynuevocali.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "c0afcf12-7981-4a84-aa22-d37956a53cda",
+    "name": "Rotary Pasto",
+    "domain": "rotarypasto.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "14e2070b-11c2-48dd-8df7-ce2c70d38729",
+    "name": "Club Rotario Montería",
+    "domain": "rotarymonteria.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "8a83587c-ed34-4e8d-8cec-8a4c4793f7bf",
+    "name": "Club Rotario Pasto Ciudad Sorpresa",
+    "domain": "rotarypastociudadsorpresa.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "30f4d5b9-3a14-4824-a1da-0609bdc44287",
+    "name": "Club Rotario Bogotá Inter",
+    "domain": "rotarybogotainter.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "fbf93750-81b6-41db-ac30-d3483f2882ac",
+    "name": "Club Rotario Caldas",
+    "domain": "rotarycaldas.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "d8700614-f1e2-4f19-b252-76a006e0f9b6",
+    "name": "Club Rotario Yumbo Arroyo Hondo",
+    "domain": "rotaryyumboarroyohondo.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "10c99446-7d25-46ce-bc02-b2fe0c26f87a",
+    "name": "Club Rotario Sabaneta",
+    "domain": "rotarysabaneta.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "4150f138-5f68-4f62-95e9-fca0feb37e8a",
+    "name": "Club Rotario Villa de Leyva El Alto Ricaurte",
+    "domain": "rotaryvilladeleyvaelaltoricaurte.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "857498f8-4836-4c5b-95b2-80d8c073edfc",
+    "name": "Rotary E-Club Origen",
+    "domain": "rotaryecluborigen.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "0dcff5c9-a860-41d7-93d9-f34ed98758c0",
+    "name": "Club Rotario Envigado",
+    "domain": "rotaryenvigado.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "3794c606-3ca2-47bd-af9c-eb6f09830be1",
+    "name": "Club Rotario Santa Marta",
+    "domain": "rotarysantamarta.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "34431159-dc89-4eb5-bae5-abee6fc84e9a",
+    "name": "Club Rotario Medellín El Poblado",
+    "domain": "rotarymedellinelpoblado.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "aba5061e-8f6e-4e81-aa19-30a2cccc5230",
+    "name": "Club Rotario San Gil",
+    "domain": "rotarysangil.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "62da1f08-5d52-4028-87ed-a72462126727",
+    "name": "Club Rotario Nuevo Medellín",
+    "domain": "rotarynuevomedellin.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "13f19116-81f8-47f1-aa38-4e6b2878feb9",
+    "name": "Club Rotario Itagüí Santa Marta",
+    "domain": "rotaryitaguisantamarta.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "16af759f-b611-4753-bf07-07c183440285",
+    "name": "Club Rotario Cartagena",
+    "domain": "rotarycartagena.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "66b2dc0e-b529-480e-a039-2ecb9676f78c",
+    "name": "Club Rotario Bucaramanga",
+    "domain": "rotarybucaramanga.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "210ce6a1-d40f-4997-99e6-bbe6f33766a5",
+    "name": "Club Rotario Ciénaga",
+    "domain": "rotarycienaga.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "2dcefad0-c2fa-4752-85d9-1ca90dc2ee4c",
+    "name": "Distrito 4271",
+    "domain": "rotary4271.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "63e37d1a-39f1-4304-ad77-552d46af7f40",
+    "name": "Tuluá",
+    "domain": "tulua.clubplatform.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "3c648ce7-3c47-41e2-9461-6e40a8615ae6",
+    "name": "Club Platform for Rotary",
+    "domain": "localhost",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "b852b70b-7eac-4525-bad1-0eb6f4ea165d",
+    "name": "Prueba",
+    "domain": "prueba.clubplatform.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "dab00da6-ca14-4068-b524-ab4330946941",
+    "name": "Club Verify Final",
+    "domain": "club-verify-final.clubplatform.org",
+    "status": "draft",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "68999d91-94fa-4320-a8e1-f8fbff94ea91",
+    "name": "Club Rotario Prueba Email",
+    "domain": "club-prueba-email.clubplatform.org",
+    "status": "draft",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "899d2755-5280-4342-bef8-6015032c1770",
+    "name": "COLROTARIOS",
+    "domain": null,
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "de6bd37d-1998-4e22-8c1e-12395096fa93",
+    "name": "COLROTARIOS",
+    "domain": "colrotarios.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "e279a48c-a64b-4a57-ade9-e598ea1a6cb6",
+    "name": "Rotary Buenaventura Pacífico",
+    "domain": "rotarybuenaventurapacifico.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "0fbfaa0f-426e-44e6-a622-7950b4671328",
+    "name": "Club Rotario Programa de Intercambio de Jóvenes",
+    "domain": "rotaryprogramadeintercambiodejovenes.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "b5e9f6a7-5ccc-40c8-8237-2f0082c053c1",
+    "name": "Club Rotario Cúcuta Ciudad de Los Patios",
+    "domain": "rotarycucutaciudaddelospatios.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "82d73e45-060c-4f19-85f6-6a32ac40f177",
+    "name": "Club Rotario San José de Cúcuta",
+    "domain": "rotarysanjosedecucuta.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "afec7d30-35db-4595-941a-e4ef49ea4703",
+    "name": "Club Rotario Envigado Ayurá",
+    "domain": "rotaryenvigadoayura.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "a5868df5-6593-4711-b7e7-ad9936b96faf",
+    "name": "Rotary LATIR",
+    "domain": "rotarylatir.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "c7b5dae3-dde5-4711-9d60-1a965a3b3c88",
+    "name": "Club Rotario Bogotá Centenario",
+    "domain": "rotarybogotacentenario.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "aa251154-18ba-4d7b-8518-f3bf114b6bab",
+    "name": "Club Rotario Armenia Palma de Cera",
+    "domain": "rotaryarmeniapalmadecera.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "2f1b35eb-11f6-4874-85de-ddb593de8bdc",
+    "name": "Rotary Armenia International",
+    "domain": "rotaryarmeniainternational.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "972d23e5-d0f8-4ee8-9815-57e569aec88a",
+    "name": "Club Rotario Duitama",
+    "domain": "rotaryduitama.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "fc7f8b90-6f56-4dce-bb88-799b6d23bba4",
+    "name": "Club Rotario Neiva Las Ceibas",
+    "domain": "rotaryneivalasceibas.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "45c05609-8375-4b6b-99b6-d21241818358",
+    "name": "Rotary E-Club Sogamoso Global",
+    "domain": "rotaryeclubsogamosoglobal.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "ee5b3b7a-8fdb-4535-a633-2361958fc659",
+    "name": "Club Rotario Cali San Fernando",
+    "domain": "rotarycalisanfernando.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "bf5f85cb-9773-4678-85b5-a4af57671bbc",
+    "name": "Club Rotario Bogotá Chicó",
+    "domain": "rotarybogotachico.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "66cce092-5429-4848-a9ae-e5235551f485",
+    "name": "Club Rotario Garagoa",
+    "domain": "rotarygaragoa.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "7bf00685-643b-4efc-861d-93cacce8eb8d",
+    "name": "Club Rotario Yopal",
+    "domain": "rotaryyopal.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "ce7a89d5-a87e-49db-9751-8b32c799981d",
+    "name": "Club Rotario Popayán",
+    "domain": "rotarypopayan.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "a84aca35-8e13-4d00-a3e4-438a5f1cbca3",
+    "name": "Club Rotario Pereira Perla del Otún",
+    "domain": "rotarypereiraperladelotun.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "88d9ff5f-b4bf-4c1d-b018-413630e27698",
+    "name": "Club Rotario Pereira Nuevo",
+    "domain": "rotarypereiranuevo.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "7042d482-126b-4f34-b424-23e69ef18d9b",
+    "name": "Club Rotario Santa Fe de Bogotá",
+    "domain": "rotarysantafedebogota.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "e0587e92-00c0-4075-9bef-8176bc75f4ba",
+    "name": "Club Rotario Quimbaya",
+    "domain": "rotaryquimbaya.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "4a8f3f70-55e4-4143-8642-63e272690fb4",
+    "name": "Club Rotario Nuevo Ibagué",
+    "domain": "rotarynuevoibague.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "e82ca76d-705c-404b-86b3-9161f64112e8",
+    "name": "Club Rotario Global Zipaquirá",
+    "domain": "rotaryglobalzipaquira.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "ac0cf5d9-23f9-4ee6-b862-cb9f4e1a8750",
+    "name": "Club Rotario La Vega",
+    "domain": "rotarylavega.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "3d81f275-3fa6-450d-9232-a703686d2bf3",
+    "name": "Club Rotario Buga",
+    "domain": "rotarybuga.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  },
+  {
+    "id": "217b891b-b276-4343-a671-c6755c56c1ee",
+    "name": "Club Rotario Fusagasugá",
+    "domain": "rotaryfusagasuga.org",
+    "status": "active",
+    "subscriptionStatus": "active"
+  }
+]

@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.95.0",
+        date: "05 de Mayo, 2026",
+        title: "AUTOMATION: Suspensión Automática por Falta de Pago",
+        description: "Se ha activado el sistema de protección de recursos que suspende automáticamente los sitios vencidos tras el periodo de gracia.",
+        type: "feat",
+        changes: [
+            { type: "added", text: "Cron: Lógica de suspensión automática activada (5 días de gracia)." },
+            { type: "improved", text: "Seguridad: Desactivación automática de acceso y dominios para clubes expirados." },
+            { type: "added", text: "Notificaciones: Sistema de alertas críticas para clubes suspendidos." }
+        ]
+    },
+    {
         version: "v4.94.0",
         date: "05 de Mayo, 2026",
         title: "DASHBOARD: Gestión Global de Suscripciones SaaS",

@@ -19,6 +19,30 @@ router.get('/process-expirations', async (req, res) => {
         }
 
         console.log('[CRON] 🚀 Iniciando procesamiento de expiraciones de suscripción...');
+        
+        // 1.5 LOGICA DE SUSPENSIÓN AUTOMÁTICA (Periodo de Gracia)
+        const gracePeriodDays = 5;
+        const suspensionDate = new Date();
+        suspensionDate.setDate(suspensionDate.getDate() - gracePeriodDays);
+
+        const suspensionResult = await prisma.club.updateMany({
+            where: {
+                status: 'active',
+                expirationDate: { 
+                    not: null,
+                    lt: suspensionDate 
+                },
+                // No suspendemos si el club tiene algún arreglo especial (status != active ya cubierto)
+            },
+            data: {
+                status: 'inactive',
+                subscriptionStatus: 'expired'
+            }
+        });
+
+        if (suspensionResult.count > 0) {
+            console.log(`[CRON] 🚨 SUSPENSIÓN AUTOMÁTICA: ${suspensionResult.count} clubes pasados a inactivos por falta de pago.`);
+        }
 
         // 2. Obtener clubes que necesitan notificación
         // Notificamos si:
