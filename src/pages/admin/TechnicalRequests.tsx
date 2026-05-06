@@ -38,8 +38,6 @@ const TechnicalRequests: React.FC = () => {
     
     // Form state
     const [domainName, setDomainName] = useState('');
-    const [currentRegistrar, setCurrentRegistrar] = useState('');
-    const [authCode, setAuthCode] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
@@ -66,12 +64,13 @@ const TechnicalRequests: React.FC = () => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!domainName || !currentRegistrar) {
-            return toast.error('Por favor completa los campos obligatorios');
+        if (!domainName) {
+            return toast.error('Por favor introduce el nombre del dominio');
         }
 
         setIsSubmitting(true);
         try {
+            // 1. Create the request in our DB
             const res = await fetch('/api/technical-requests', {
                 method: 'POST',
                 headers: {
@@ -81,27 +80,39 @@ const TechnicalRequests: React.FC = () => {
                 body: JSON.stringify({
                     clubId: club.id,
                     type: 'domain_transfer',
-                    subject: `Transferencia de Dominio: ${domainName}`,
-                    description: `Solicitud de transferencia del dominio ${domainName} desde ${currentRegistrar}.`,
+                    subject: `Liberación de Dominio: ${domainName}`,
+                    description: `Solicitud de código Auth/EPP para transferencia de salida del dominio ${domainName}.`,
                     details: {
                         domainName,
-                        currentRegistrar,
-                        authCode
+                        currentRegistrar: 'AWS Route 53 / Valkomen LLC',
+                        authCode: 'Pendiente de emisión tras pago'
                     },
                     amount: 29.00
                 })
             });
 
             if (res.ok) {
-                toast.success('Solicitud enviada correctamente');
-                setIsModalOpen(false);
-                fetchRequests();
-                // Reset form
-                setDomainName('');
-                setCurrentRegistrar('');
-                setAuthCode('');
+                const requestData = await res.json();
+                
+                // 2. Create Stripe Checkout Session
+                const stripeRes = await fetch('/api/technical-requests/checkout', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ requestId: requestData.id })
+                });
+
+                if (stripeRes.ok) {
+                    const { url } = await stripeRes.json();
+                    // Redirect to Stripe
+                    window.location.href = url;
+                } else {
+                    toast.error('Error al generar el link de pago');
+                }
             } else {
-                toast.error('Error al enviar la solicitud');
+                toast.error('Error al registrar la solicitud');
             }
         } catch (error) {
             toast.error('Error de conexión');
@@ -231,7 +242,7 @@ const TechnicalRequests: React.FC = () => {
                             <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex gap-4">
                                 <Info className="w-5 h-5 text-[#013388] shrink-0 mt-0.5" />
                                 <p className="text-xs text-[#013388] font-medium leading-relaxed">
-                                    Este servicio incluye la transferencia técnica a nuestra infraestructura y la **renovación automática por 1 año adicional**. El proceso suele tardar entre 5 y 7 días hábiles una vez aprobado.
+                                    Esta solicitud es para **liberar tu dominio** y transferirlo a otro proveedor. El costo incluye la renovación final necesaria para emitir el **Código Auth/EPP**.
                                 </p>
                             </div>
 
@@ -248,24 +259,13 @@ const TechnicalRequests: React.FC = () => {
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Registrador Actual</label>
-                                    <input 
-                                        type="text" 
-                                        placeholder="GoDaddy, Google Domains, etc."
-                                        value={currentRegistrar}
-                                        onChange={(e) => setCurrentRegistrar(e.target.value)}
-                                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold text-slate-800 focus:ring-4 focus:ring-[#013388]/5 focus:border-[#013388] outline-none transition-all"
-                                    />
+                                    <div className="w-full bg-slate-100 border border-slate-200 rounded-2xl p-4 text-sm font-black text-slate-500 flex items-center gap-2">
+                                        <Lock className="w-4 h-4" /> AWS Route 53 / Valkomen LLC
+                                    </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Código Auth / EPP (Opcional)</label>
-                                    <input 
-                                        type="password" 
-                                        placeholder="••••••••"
-                                        value={authCode}
-                                        onChange={(e) => setAuthCode(e.target.value)}
-                                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold text-slate-800 focus:ring-4 focus:ring-[#013388]/5 focus:border-[#013388] outline-none transition-all"
-                                    />
-                                    <p className="text-[10px] text-slate-400 font-medium px-1">Puedes proporcionarlo luego si aún no lo has solicitado a tu proveedor.</p>
+                                <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl">
+                                    <p className="text-[10px] text-amber-700 font-bold uppercase tracking-widest mb-1">Código de Transferencia</p>
+                                    <p className="text-[11px] text-amber-600 font-medium">El código Auth/EPP se generará automáticamente y se enviará a tu correo electrónico una vez se confirme el pago del servicio.</p>
                                 </div>
                             </div>
 
