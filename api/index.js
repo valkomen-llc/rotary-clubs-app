@@ -1,4 +1,4 @@
-// MULTIMEDIA & EVENTOS V4.83.0 | 2026-04-24T03:17:00
+// MULTIMEDIA & EVENTOS V4.93.4 | 2026-05-06T02:52:00
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
