@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.95.4",
+        date: "05 de Mayo, 2026",
+        title: "ROUTING: Actualización de Enlaces de Acceso",
+        description: "Transición de subdominios a enlaces parametrizados para garantizar el acceso inmediato a todos los clubes sin dependencia de DNS wildcard.",
+        type: "fix",
+        changes: [
+            { type: "improved", text: "Dashboard: Enlaces de acceso cambiados a formato ?club= para mayor fiabilidad." },
+            { type: "fixed", text: "Reachability: Eliminación de cuellos de botella por propagación de subdominios." }
+        ]
+    },
+    {
         version: "v4.95.3",
         date: "05 de Mayo, 2026",
         title: "SYNC: Despliegue Masivo de Subdominios",

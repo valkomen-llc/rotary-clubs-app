@@ -293,8 +293,8 @@ const ClubsManagement: React.FC = () => {
                                         <Globe className="w-3 h-3 text-rotary-blue" /> {club.domain || 'N/A'}
                                     </div>
                                     <div className="text-sm text-gray-500 truncate whitespace-normal">
-                                        <a href={`https://${club.subdomain || 'no-sub'}.clubplatform.org`} target="_blank" rel="noopener noreferrer" className="text-rotary-blue hover:underline">
-                                            {club.subdomain || 'no-sub'}.clubplatform.org
+                                        <a href={`https://app.clubplatform.org/?club=${club.subdomain || 'no-sub'}`} target="_blank" rel="noopener noreferrer" className="text-rotary-blue hover:underline text-[10px]">
+                                            app.clubplatform.org/?club={club.subdomain || 'no-sub'}
                                         </a>
                                     </div>
                                 </td>
