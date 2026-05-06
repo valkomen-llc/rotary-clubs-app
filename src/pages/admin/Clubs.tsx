@@ -247,7 +247,9 @@ const ClubsManagement: React.FC = () => {
         } catch (error: any) {
             toast.error(error.message);
         }
-       // Calcular estadísticas financieras (Fase 4: Financial Oversight)
+    };
+
+    // Calcular estadísticas financieras (Fase 4: Financial Oversight)
     const stats = {
         totalActive: clubs.filter(c => c.subscriptionStatus === 'active').length,
         totalProspects: clubs.filter(c => c.subscriptionStatus === 'inactive' || !c.subscriptionStatus).length,

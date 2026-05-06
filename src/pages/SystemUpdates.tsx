@@ -26,6 +26,28 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.97.1",
+        date: "05 de Mayo, 2026",
+        title: "HOTFIX: Reparación de Dashboard Administrativo",
+        description: "Corrección de error de sintaxis que bloqueaba el despliegue de la Fase 4 en producción.",
+        type: "hotfix",
+        changes: [
+            { type: "fixed", text: "Syntax: Cierre de función handleImpersonate restaurado." },
+            { type: "improved", text: "Build: Estabilización del flujo de CI/CD para métricas financieras." }
+        ]
+    },
+    {
+        version: "v4.97.0",
+        date: "05 de Mayo, 2026",
+        title: "FINANCIAL: Oversight y Métricas de Red",
+        description: "Lanzamiento de la Fase 4 con herramientas de supervisión financiera y proyección de ingresos SaaS.",
+        type: "feat",
+        changes: [
+            { type: "added", text: "Dashboard: Barra de métricas con MRR, nodos activos y renovaciones próximas." },
+            { type: "improved", text: "Visibilidad: Proyección financiera en tiempo real para SuperAdmin." }
+        ]
+    },
+    {
         version: "v4.96.0",
         date: "05 de Mayo, 2026",
         title: "DASHBOARD+: Filtros y Búsqueda Avanzada",

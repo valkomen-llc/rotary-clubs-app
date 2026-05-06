@@ -1,9 +1,9 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.97.0",
+  "version": "4.97.1",
   "type": "module",
-  "//": "MULTIMEDIA & EVENTOS V4.95.3 | 2026-05-06T03:36:00 (SYNC REPAIR 📶)",
+  "//": "MULTIMEDIA & EVENTOS V4.97.1 | 2026-05-06T03:55:00 (HOTFIX 🛠️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
