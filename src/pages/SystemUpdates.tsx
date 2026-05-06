@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.100.0",
+        date: "05 de Mayo, 2026",
+        title: "REPORTING: Exportación de Datos Administrativos",
+        description: "Lanzamiento de la Fase 3 con herramientas de exportación para conciliación financiera.",
+        type: "feat",
+        changes: [
+            { type: "added", text: "Dashboard: Botón de exportación a CSV para la base de datos de clubes." },
+            { type: "improved", text: "Auditoría: El reporte incluye estatus SaaS, fechas de expiración y conteo de usuarios." },
+            { type: "improved", text: "UI: Nueva barra de herramientas con acciones globales en el panel de clubes." }
+        ]
+    },
+    {
         version: "v4.99.0",
         date: "05 de Mayo, 2026",
         title: "SYNC+: Persistencia de Control SaaS",

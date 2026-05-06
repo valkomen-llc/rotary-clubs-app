@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { 
     Plus, Edit2, Trash2, Globe, MapPin, X, LogIn, RefreshCw, 
-    Shield, DollarSign, Users, TrendingUp, AlertTriangle, Clock 
+    Shield, DollarSign, Users, TrendingUp, AlertTriangle, Clock,
+    Download, FileSpreadsheet
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
@@ -255,6 +256,33 @@ const ClubsManagement: React.FC = () => {
         }
     };
 
+    const handleExportCSV = () => {
+        const headers = ['Nombre', 'Ciudad', 'País', 'Subdominio', 'Dominio', 'Estado SaaS', 'Fecha Expiración', 'Usuarios', 'Proyectos'];
+        const csvData = clubs.map(c => [
+            `"${c.name}"`,
+            `"${c.city || ''}"`,
+            `"${c.country || ''}"`,
+            `"${c.subdomain || ''}"`,
+            `"${c.domain || ''}"`,
+            `"${c.subscriptionStatus || 'inactive'}"`,
+            `"${c.expirationDate || 'N/A'}"`,
+            c.userCount || 0,
+            c.projectCount || 0
+        ]);
+
+        const csvContent = [headers.join(','), ...csvData.map(row => row.join(','))].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `reporte_clubes_rotary_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success('Reporte exportado correctamente');
+    };
+
     // Calcular estadísticas financieras (Fase 4: Financial Oversight)
     const stats = {
         totalActive: clubs.filter(c => c.subscriptionStatus === 'active').length,
@@ -277,12 +305,21 @@ const ClubsManagement: React.FC = () => {
                     </h1>
                     <p className="text-gray-500 text-sm">Control central de infraestructura y facturación SaaS.</p>
                 </div>
-                <button
-                    onClick={() => handleOpenModal()}
-                    className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2 rounded-lg hover:bg-sky-800 transition-all shadow-lg shadow-sky-100 font-bold"
-                >
-                    <Plus className="w-4 h-4" /> Nuevo Club
-                </button>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={handleExportCSV}
+                        className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-2 rounded-lg hover:bg-emerald-100 transition-all font-bold text-xs"
+                        title="Exportar base de datos a Excel/CSV"
+                    >
+                        <FileSpreadsheet className="w-4 h-4" /> Exportar
+                    </button>
+                    <button
+                        onClick={() => handleOpenModal()}
+                        className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2 rounded-lg hover:bg-sky-800 transition-all shadow-lg shadow-sky-100 font-bold"
+                    >
+                        <Plus className="w-4 h-4" /> Nuevo Club
+                    </button>
+                </div>
             </div>
 
             {/* MÉTRICAS FINANCIERAS (Fase 4) */}
