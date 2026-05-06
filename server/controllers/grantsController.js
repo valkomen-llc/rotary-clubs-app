@@ -43,9 +43,21 @@ export const getGrants = async (req, res) => {
 export const updateGrantStatus = async (req, res) => {
     try {
         const { id } = req.params;
-        const { status, metadata } = req.body;
+        const { status, metadata, details, priority, agentId } = req.body;
         
-        const updateData = { status, updatedAt: new Date() };
+        const updateData = { updatedAt: new Date() };
+        if (status) updateData.status = status;
+        if (priority) updateData.priority = priority;
+        if (agentId) updateData.agentId = agentId;
+
+        if (details) {
+            try {
+                updateData.details = typeof details === 'string' ? JSON.parse(details) : details;
+            } catch (e) {
+                updateData.details = details;
+            }
+        }
+
         if (metadata) {
             try {
                 updateData.metadata = typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
@@ -60,8 +72,8 @@ export const updateGrantStatus = async (req, res) => {
         });
         res.json(updatedGrant);
     } catch (error) {
-        console.error("Error updating grant status:", error);
-        res.status(500).json({ error: "Failed to update grant status." });
+        console.error("Error updating grant:", error);
+        res.status(500).json({ error: "Failed to update grant opportunity." });
     }
 };
 

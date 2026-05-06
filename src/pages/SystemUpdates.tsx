@@ -23,22 +23,22 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-05-06 11:00 (AGENTIC WORKFLOWS 🤖)
+// Cache bust: 2026-05-06 11:15 (CONTENT ENGINE 🐲)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: 'v4.104',
+        version: 'v4.105',
         date: '06 de Mayo, 2026',
-        title: 'AGENTIC: Phase 6 - El Despachador (n8n) 🤖',
-        description: 'Inicio de la era de autonomía pura. Conexión del Mission Control con orquestadores externos n8n.',
+        title: 'AGENTIC: Phase 7 - Content Engine (IA Redacción) 🐲',
+        description: 'Activación de la infraestructura para agentes de redacción y peritaje de calidad.',
         type: 'feature',
         changes: [
-            { type: "major", text: "Phase 6: 'El Despachador' activado. El envío de oportunidades ahora es gestionado por n8n." },
-            { type: "added", text: "Integración Webhook: Conexión directa entre el UI y el motor de distribución masiva." },
-            { type: "improved", text: "Performance: Eliminado el bucle de envío frontal por un despacho asíncrono robusto." }
+            { type: "major", text: "Phase 7: Content Engine habilitado. El backend ahora permite que los agentes guarden redacciones IA directamente." },
+            { type: "added", text: "Database: Nuevo campo 'details' (JSON) en FundingOpportunity para albergar plantillas de WhatsApp." },
+            { type: "improved", text: "API: Controlador polymorphic para actualizaciones granulares de estatus, prioridad y metadatos IA." }
         ]
     },
     {
-        version: 'v4.103',
+        version: 'v4.104',
         date: '06 de Mayo, 2026',
         title: 'GOVERNANCE: Phase 5 - Stripe Autogestión 🏢',
         description: 'Lanzamiento final del sistema de Gobernanza SaaS. Reactivación automática de servicios, soporte para Distritos y facturación inteligente.',
