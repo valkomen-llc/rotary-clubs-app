@@ -59,3 +59,4 @@ temp.json
 !public/*.png
 !public/*.jpg
 
+.env.production

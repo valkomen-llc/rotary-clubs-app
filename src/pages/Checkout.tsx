@@ -10,11 +10,12 @@ type CheckoutStep = 'details' | 'shipping' | 'payment';
 
 export default function Checkout() {
     const { items, subtotal, clearCart } = useCart();
-    // const { club } = useClub(); // Eliminado temporalmente por falta de uso
+    const { club } = useClub();
     const navigate = useNavigate();
 
     const [step, setStep] = useState<CheckoutStep>('details');
     const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     // Form states
     const [customer, setCustomer] = useState({ firstName: '', lastName: '', email: '', phone: '' });
@@ -45,6 +46,7 @@ export default function Checkout() {
 
     const handleNextStep = (e: React.FormEvent) => {
         e.preventDefault();
+        setError(null);
         if (step === 'details') {
             setStep(hasPhysicalProducts ? 'shipping' : 'payment');
         } else if (step === 'shipping') {
@@ -54,19 +56,34 @@ export default function Checkout() {
 
     const handleCheckout = async () => {
         setIsLoading(true);
+        setError(null);
         try {
-            // TODO: Here we will call /api/orders to create the order
-            // and /api/payments/create-intent for Stripe
+            const API = import.meta.env.VITE_API_URL || '/api';
+            const res = await fetch(`${API}/orders`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    items,
+                    customer,
+                    shipping,
+                    clubId: club.id,
+                    total: subtotal
+                }),
+            });
 
-            // Simulating API call for UI purposes
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || 'Error al procesar el pedido');
+            }
+
+            const { order } = await res.json();
 
             // Success
             clearCart();
-            navigate('/order/success', { state: { customerEmail: customer.email } });
-        } catch (error) {
-            console.error('Error during checkout', error);
-            // Handle error, toast, etc
+            navigate('/order/success', { state: { orderId: order.id, customerEmail: customer.email } });
+        } catch (err: any) {
+            console.error('Error during checkout:', err);
+            setError(err.message || 'Error inesperado al procesar el pago. Por favor intente de nuevo.');
         } finally {
             setIsLoading(false);
         }

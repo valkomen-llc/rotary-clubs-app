@@ -5,6 +5,12 @@
             "maxDuration": 60
         }
     },
+    "crons": [
+        {
+            "path": "/api/cron/process-expirations",
+            "schedule": "0 14 * * *"
+        }
+    ],
     "redirects": [
         {
             "source": "/(.*)",

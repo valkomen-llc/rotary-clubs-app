@@ -80,6 +80,9 @@ const getWhatsappQr = async () => _whatsappQr || (({ default: _whatsappQr } = aw
 const getContentStudio = async () => _contentStudio || (({ default: _contentStudio } = await import('../server/routes/contentStudio.js')), _contentStudio);
 const getDomains = async () => _domains || (({ default: _domains } = await import('../server/routes/domains.js')), _domains);
 
+let _cron;
+const getCron = async () => _cron || (({ default: _cron } = await import('../server/routes/cron.js')), _cron);
+
 // ── Route handlers ────────────────────────────────────────────────────────────
 app.use('/api/auth', async (req, res, next) => (await getAuth())(req, res, next));
 app.use('/api/admin', async (req, res, next) => (await getAdmin())(req, res, next));
@@ -111,6 +114,7 @@ app.use('/api/system', async (req, res, next) => (await getSystem())(req, res, n
 app.use('/api/whatsapp-qr', async (req, res, next) => (await getWhatsappQr())(req, res, next));
 app.use('/api/content-studio', async (req, res, next) => (await getContentStudio())(req, res, next));
 app.use('/api/domains', async (req, res, next) => (await getDomains())(req, res, next));
+app.use('/api/cron', async (req, res, next) => (await getCron())(req, res, next));
 
 
 // ── Social OAuth Callbacks ───────────────────────────────────────────────────

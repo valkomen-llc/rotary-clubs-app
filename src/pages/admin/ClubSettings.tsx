@@ -242,7 +242,8 @@ const ClubSettings: React.FC = () => {
                 const data = await res.json();
                 if (data.url) window.location.href = data.url;
             } else {
-                toast.error('No se pudo abrir el portal de pagos.');
+                const errData = await res.json().catch(() => ({}));
+                toast.error(errData.error || 'No se pudo abrir el portal de pagos.');
             }
         } catch (error) {
             toast.error('Error de red al intentar abrir el portal.');
@@ -616,9 +617,9 @@ const ClubSettings: React.FC = () => {
                                         Ir al Portal Seguro <ExternalLink className="w-5 h-5" />
                                     </button>
                                     <div className="flex items-center gap-4 px-6 py-4 bg-white/5 rounded-2xl border border-white/10">
-                                        <div className={`w-2 h-2 rounded-full ${club.subscriptionStatus === 'active' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></div>
+                                        <div className={`w-2 h-2 rounded-full ${(club.subscriptionStatus === 'active' && !club.expirationBannerActive) ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></div>
                                         <span className="text-sm font-bold text-gray-300 uppercase tracking-widest">
-                                            Suscripción {club.subscriptionStatus === 'active' ? 'Activa' : 'Pendiente'}
+                                            Suscripción {(club.subscriptionStatus === 'active' && !club.expirationBannerActive) ? 'Activa' : 'Vencida'}
                                         </span>
                                     </div>
                                     <button

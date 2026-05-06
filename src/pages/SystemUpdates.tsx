@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.92.0",
+        date: "05 de Mayo, 2026",
+        title: "Botón de Renovación Directa y Sincronización",
+        description: "Implementación de acceso directo a pagos desde la barra de vencimiento y mejoras en la sincronización de estado tras la renovación.",
+        type: "feat",
+        changes: [
+            { type: "feat", text: "CTA Directo: Se añadió un botón de 'Renovar Ahora' en la barra de alerta roja para facilitar el flujo de pago." },
+            { type: "improved", text: "Sincronización: El sistema ahora detecta automáticamente el éxito del pago y actualiza el estado del sitio sin recargas manuales." },
+            { type: "hotfix", text: "Conectividad: Se optimizaron las rutas de despliegue para superar bloqueos de red locales." }
+        ]
+    },
+    {
         version: "v4.91.0",
         date: "05 de Mayo, 2026",
         title: "Consolidación de Configuración del Club",

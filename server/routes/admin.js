@@ -307,7 +307,7 @@ router.patch('/:id/save-archetype', roleMiddleware(['administrator', 'club_admin
 
 import Stripe from 'stripe';
 
-router.post('/clubs/:id/billing-portal', roleMiddleware(['administrator', 'club_admin', 'district_admin']), async (req, res) => {
+router.post('/clubs/:id/billing-portal', roleMiddleware(['administrator', 'club_admin', 'district_admin', 'editor', 'user']), async (req, res) => {
     try {
         const { id } = req.params;
         

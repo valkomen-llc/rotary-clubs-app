@@ -50,65 +50,72 @@ model District {
 }
 
 model Club {
-  id                     String                  @id @default(uuid())
-  name                   String
-  city                   String?
-  country                String?
-  district               String?
-  domain                 String?                 @unique
-  subdomain              String?                 @unique
-  logo                   String?
-  footerLogo             String?
-  endPolioLogo           String?
-  description            String?
-  status                 String                  @default("active")
-  createdAt              DateTime                @default(now())
-  updatedAt              DateTime                @updatedAt
-  favicon                String?
-  type                   String                  @default("club")
-  districtId             String?
-  events                 CalendarEvent[]
-  affiliatedDistrict     District?               @relation(fields: [districtId], references: [id])
-  documents              ClubDocument[]
-  members                ClubMember[]
-  communicationLogs      CommunicationLog[]
-  communicationTemplates CommunicationTemplate[]
-  content                ContentSection[]
-  donations              Donation[]
-  exchangeHostFamilies   ExchangeHostFamily[]
-  exchangeStudents       ExchangeStudent[]
-  financialReports       FinancialReport[]
-  fundingOpportunities   FundingOpportunity[]
-  knowledge              KnowledgeSource[]
-  ngseHostFamilies       NgseHostFamily[]
-  ngseParticipants       NgseParticipant[]
-  notificationConfigs    NotificationConfig[]
-  orders                 Order[]
-  payments               Payment[]
-  paymentConfigs         PaymentProviderConfig[]
-  payouts                PayoutRequest[]
-  posts                  Post[]
-  products               Product[]
-  categories             ProductCategory[]
-  projects               Project[]
-  publications           Publication[]
-  rotexMembers           RotexMember[]
-  settings               Setting[]
-  sponsoredClubs         SponsoredClub[]
-  testimonials           Testimonial[]
-  users                  User[]
-  whatsAppCampaigns      WhatsAppCampaign[]
-  expirationBannerActive Boolean                 @default(false)
-  expirationBannerMessage String?
-  developmentBannerActive Boolean                 @default(false)
+  id                       String                  @id @default(uuid())
+  name                     String
+  city                     String?
+  country                  String?
+  district                 String?
+  domain                   String?                 @unique
+  subdomain                String?                 @unique
+  logo                     String?
+  footerLogo               String?
+  endPolioLogo             String?
+  description              String?
+  status                   String                  @default("active")
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+  favicon                  String?
+  type                     String                  @default("club")
+  districtId               String?
+  expirationBannerActive   Boolean                 @default(false)
+  expirationBannerMessage  String?
+  developmentBannerActive  Boolean                 @default(false)
   developmentBannerMessage String?
-  socialAccounts         SocialAccount[]
-
-  whatsAppConfig         WhatsAppConfig?
-  whatsAppContacts       WhatsAppContact[]
-  whatsAppLists          WhatsAppContactList[]
-  WhatsAppCustomField    WhatsAppCustomField[]
-  whatsAppTemplates      WhatsAppTemplate[]
+  subscriptionStatus       String                  @default("active")
+  expirationDate           DateTime?
+  stripeCustomerId         String?
+  billingContactEmail      String?
+  billingContactPhone      String?
+  lastNotificationSent     DateTime?
+  notificationLevel        Int                     @default(0)
+  events                   CalendarEvent[]
+  affiliatedDistrict       District?               @relation(fields: [districtId], references: [id])
+  documents                ClubDocument[]
+  members                  ClubMember[]
+  communicationLogs        CommunicationLog[]
+  communicationTemplates   CommunicationTemplate[]
+  content                  ContentSection[]
+  donations                Donation[]
+  exchangeHostFamilies     ExchangeHostFamily[]
+  exchangeStudents         ExchangeStudent[]
+  financialReports         FinancialReport[]
+  fundingOpportunities     FundingOpportunity[]
+  knowledge                KnowledgeSource[]
+  Lead                     Lead[]
+  ngseHostFamilies         NgseHostFamily[]
+  ngseParticipants         NgseParticipant[]
+  notificationConfigs      NotificationConfig[]
+  orders                   Order[]
+  payments                 Payment[]
+  paymentConfigs           PaymentProviderConfig[]
+  payouts                  PayoutRequest[]
+  posts                    Post[]
+  products                 Product[]
+  categories               ProductCategory[]
+  projects                 Project[]
+  publications             Publication[]
+  rotexMembers             RotexMember[]
+  settings                 Setting[]
+  socialAccounts           SocialAccount[]
+  sponsoredClubs           SponsoredClub[]
+  testimonials             Testimonial[]
+  users                    User[]
+  whatsAppCampaigns        WhatsAppCampaign[]
+  whatsAppConfig           WhatsAppConfig?
+  whatsAppContacts         WhatsAppContact[]
+  whatsAppLists            WhatsAppContactList[]
+  WhatsAppCustomField      WhatsAppCustomField[]
+  whatsAppTemplates        WhatsAppTemplate[]
 }
 
 model ClubDocument {
@@ -165,29 +172,29 @@ model Project {
 }
 
 model Post {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   title          String
-  slug           String?  @unique
   content        String
   image          String?
-  published      Boolean  @default(false)
+  published      Boolean   @default(false)
   category       String?
   tags           String[]
   keywords       String?
   seoTitle       String?
   seoDescription String?
+  videoUrl       String?
+  images         String[]
+  isAI           Boolean   @default(false)
+  clubId         String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  slug           String?   @unique
   seoImage       String?
   socialCopy     String?
   ctaCopy        String?
-  videoUrl       String?
-  images         String[]
   videoGallery   String[]
-  isAI           Boolean  @default(false)
-  clubId         String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  club           Club?    @relation(fields: [clubId], references: [id])
   comments       Comment[]
+  club           Club?     @relation(fields: [clubId], references: [id])
 }
 
 model Donation {
@@ -250,15 +257,15 @@ model CalendarEvent {
   id          String    @id @default(uuid())
   title       String
   description String?
-  htmlContent String?
   startDate   DateTime
   endDate     DateTime?
   location    String?
   type        String    @default("meeting")
-  image       String?
-  images      String[]  @default([])
   clubId      String
   createdAt   DateTime  @default(now())
+  htmlContent String?
+  image       String?
+  images      String[]  @default([])
   metadata    Json?     @default("{}")
   club        Club      @relation(fields: [clubId], references: [id])
 }
@@ -282,9 +289,9 @@ model ClubMember {
   isBoard     Boolean  @default(false)
   boardRole   String?
   clubId      String
-  position    Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  position    Int      @default(0)
   club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
 }
 
@@ -883,28 +890,25 @@ model FundingOpportunity {
   clubId        String?
   agentId       String?   @default("rafael")
   metadata      Json?
-
   club          Club?     @relation(fields: [clubId], references: [id])
 }
 
 model SocialAccount {
-  id            String    @id @default(uuid())
-  clubId        String?
-  platform      String    // 'instagram', 'tiktok', 'youtube', 'facebook'
-  platformId    String    // ID del usuario en la plataforma
-  accountName   String?
-  accessToken   String    @db.Text
-  refreshToken  String?   @db.Text
-  expiresAt     DateTime?
-  avatar        String?
-  status        String    @default("active") // 'active', 'expired', 'revoked'
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  club          Club?     @relation(fields: [clubId], references: [id])
+  id             String          @id @default(uuid())
+  clubId         String?
+  platform       String
+  platformId     String
+  accountName    String?
+  accessToken    String
+  refreshToken   String?
+  expiresAt      DateTime?
+  avatar         String?
+  status         String          @default("active")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
   scheduledPosts ScheduledPost[]
+  club           Club?           @relation(fields: [clubId], references: [id])
 }
-
 
 model Comment {
   id        String   @id @default(uuid())
@@ -922,34 +926,53 @@ model Comment {
   post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
 }
 
-
 model VideoProject {
-  id            String   @id @default(uuid())
-  title         String
-  videoUrl      String?
-  sourceImages  Json     // Array of image IDs/URLs
-  config        Json     // { transitions, duration, kenBurns, etc }
-  status          String   @default("draft") // "draft", "processing", "ready", "failed"
+  id              String          @id @default(uuid())
+  title           String
+  videoUrl        String?
+  sourceImages    Json
+  config          Json
+  status          String          @default("draft")
   kieJobId        String?
-  lastKieResponse Json?
   clubId          String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  scheduledPosts ScheduledPost[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  lastKieResponse Json?
+  scheduledPosts  ScheduledPost[]
 }
 
 model ScheduledPost {
-  id             String        @id @default(uuid())
-  projectId      String
+  id              String        @id @default(uuid())
+  projectId       String
   socialAccountId String
-  caption        String?
-  status         String        @default("pending") // "pending", "scheduled", "published", "failed"
-  scheduledFor   DateTime?
-  publishedAt    DateTime?
-  platformPostId String?
-  error          String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  video          VideoProject  @relation(fields: [projectId], references: [id])
-  account        SocialAccount @relation(fields: [socialAccountId], references: [id])
+  caption         String?
+  status          String        @default("pending")
+  scheduledFor    DateTime?
+  publishedAt     DateTime?
+  platformPostId  String?
+  error           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  video           VideoProject  @relation(fields: [projectId], references: [id])
+  account         SocialAccount @relation(fields: [socialAccountId], references: [id])
+}
+
+model Lead {
+  id        String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  clubId    String?
+  name      String    @db.VarChar(255)
+  email     String    @db.VarChar(255)
+  phone     String?   @db.VarChar(50)
+  subject   String?   @db.VarChar(255)
+  message   String?
+  source    String?   @default("contact_form") @db.VarChar(50)
+  status    String?   @default("new") @db.VarChar(30)
+  notes     String?
+  metadata  Json?     @default("{}")
+  createdAt DateTime? @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime? @default(now()) @db.Timestamptz(6)
+  Club      Club?     @relation(fields: [clubId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([clubId, createdAt(sort: Desc)], map: "idx_lead_club")
+  @@index([status], map: "idx_lead_status")
 }

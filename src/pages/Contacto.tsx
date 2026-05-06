@@ -182,6 +182,11 @@ const Contacto = () => {
         comentarios: formData.comentarios,
       } : {};
 
+      // Get clubId from context or URL param as fallback
+      const urlParams = new URLSearchParams(window.location.search);
+      const clubOverride = urlParams.get('club') || urlParams.get('distrito') || urlParams.get('asociacion');
+      const finalClubId = (club.id && club.id !== 'loading') ? club.id : null;
+
       const res = await fetch(`${API}/leads/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -191,9 +196,13 @@ const Contacto = () => {
           phone: formData.telefono || null,
           subject: formData.asunto,
           message: formData.mensaje,
-          clubId: club.id,
+          clubId: finalClubId,
           source: showExtended ? 'involucrate_form' : 'contact_form',
-          metadata,
+          metadata: {
+            ...metadata,
+            domainQuery: clubOverride,
+            url: window.location.href
+          },
         }),
       });
       if (res.ok) {
@@ -204,17 +213,17 @@ const Contacto = () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            clubId: club.id,
+            clubId: finalClubId,
             type: 'new_contact_lead',
             payload: {
               name: fullName,
+              email: formData.email,
+              phone: formData.telefono || null,
               subject: formData.asunto,
               message: formData.mensaje,
-              contact_info: { email: formData.email, phone: formData.telefono },
-              source: showExtended ? 'involucrate_form' : 'contact_form',
-              metadata
+              source: showExtended ? 'involucrate_form' : 'contact_form'
             }
-          })
+          }),
         }).catch(err => console.error('[Orchestration] Dispatch failed:', err));
 
         setFormData({
