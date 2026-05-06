@@ -3,7 +3,8 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import { 
     Plus, Edit2, Trash2, Globe, MapPin, X, LogIn, RefreshCw, 
     Shield, DollarSign, Users, TrendingUp, AlertTriangle, Clock,
-    Download, FileSpreadsheet
+    Download, FileSpreadsheet,
+    MessageSquare, Mail, Send, Layout
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
@@ -22,8 +23,11 @@ interface Club {
     expirationBannerMessage?: string | null;
     developmentBannerActive?: boolean;
     developmentBannerMessage?: string | null;
-    subscriptionStatus?: string | null;
-    expirationDate?: string | null;
+    subscriptionStatus?: 'active' | 'inactive' | 'expired' | 'pending';
+    expirationDate?: string;
+    billingContactEmail?: string;
+    billingContactPhone?: string;
+    userCount?: number;
     _count?: {
         users: number;
         projects: number;
@@ -41,6 +45,15 @@ const ClubsManagement: React.FC = () => {
     const { impersonate } = useAuth();
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'expired'>('all');
+    const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
+    const [notifyingClub, setNotifyingClub] = useState<Club | null>(null);
+    const [notificationData, setNotificationData] = useState({
+        type: 'whatsapp' as 'whatsapp' | 'email',
+        recipient: '',
+        subject: 'Renovación de Plataforma ClubPlatform',
+        content: ''
+    });
+    const [templates, setTemplates] = useState<any[]>([]);
 
     const [formData, setFormData] = useState({
         name: '',
@@ -63,6 +76,8 @@ const ClubsManagement: React.FC = () => {
         adminUserId: '',
         subscriptionStatus: 'inactive',
         expirationDate: '',
+        billingContactEmail: '',
+        billingContactPhone: '',
         expirationBannerActive: false,
         expirationBannerMessage: '',
         developmentBannerActive: false,
@@ -117,6 +132,8 @@ const ClubsManagement: React.FC = () => {
                 adminUserId: club.users?.[0]?.id || '',
                 subscriptionStatus: club.subscriptionStatus || 'inactive',
                 expirationDate: club.expirationDate ? new Date(club.expirationDate).toISOString().split('T')[0] : '',
+                billingContactEmail: club.billingContactEmail || '',
+                billingContactPhone: club.billingContactPhone || '',
                 expirationBannerActive: club.expirationBannerActive || false,
                 expirationBannerMessage: club.expirationBannerMessage || '',
                 developmentBannerActive: club.developmentBannerActive || false,
@@ -253,6 +270,57 @@ const ClubsManagement: React.FC = () => {
             }
         } catch (error: any) {
             toast.error(error.message);
+        }
+    };
+
+    const handleOpenNotificationModal = (club: Club) => {
+        setNotifyingClub(club);
+        setNotificationData({
+            ...notificationData,
+            recipient: notificationData.type === 'email' ? (club.billingContactEmail || '') : (club.billingContactPhone || ''),
+            content: `Estimados amigos de ${club.name},\n\nLes recordamos que su suscripción a la plataforma ClubPlatform para Rotary está próxima a vencer (${club.expirationDate || 'N/A'}).\n\nPueden realizar su renovación en el siguiente enlace: https://app.clubplatform.org/checkout?club=${club.subdomain}\n\nQuedamos atentos a cualquier duda.\nAtentamente,\nEquipo de Soporte Rotary.`
+        });
+        setIsNotificationModalOpen(true);
+    };
+
+    const handleSendNotification = async () => {
+        if (!notifyingClub) return;
+        if (!notificationData.recipient) {
+            toast.error('El destinatario es obligatorio');
+            return;
+        }
+        setIsSubmitting(true);
+
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const apiUrl = import.meta.env.VITE_API_URL || '/api';
+            
+            const response = await fetch(`${apiUrl}/communications/send`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    type: notificationData.type,
+                    recipient: notificationData.recipient,
+                    subject: notificationData.subject,
+                    content: notificationData.content,
+                    clubId: notifyingClub.id
+                })
+            });
+
+            if (response.ok) {
+                toast.success('Notificación enviada con éxito');
+                setIsNotificationModalOpen(false);
+            } else {
+                const data = await response.json();
+                throw new Error(data.error || 'Error al enviar la notificación');
+            }
+        } catch (error: any) {
+            toast.error(error.message);
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -505,8 +573,16 @@ const ClubsManagement: React.FC = () => {
                                             <LogIn className="w-4 h-4" />
                                         </button>
                                         <button
+                                            onClick={() => handleOpenNotificationModal(club)}
+                                            className="p-2 text-gray-400 hover:text-blue-500 transition-colors"
+                                            title="Enviar Notificación"
+                                        >
+                                            <MessageSquare className="w-4 h-4" />
+                                        </button>
+                                        <button
                                             onClick={() => handleOpenModal(club)}
                                             className="p-2 text-gray-400 hover:text-rotary-blue transition-colors"
+                                            title="Editar"
                                         >
                                             <Edit2 className="w-4 h-4" />
                                         </button>
@@ -664,6 +740,28 @@ const ClubsManagement: React.FC = () => {
                                      />
                                  </div>
 
+                                 <div className="md:col-span-1">
+                                     <label className="block text-sm font-bold text-gray-700 mb-1">Email de Contacto Facturación</label>
+                                     <input
+                                         type="email"
+                                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all"
+                                         value={formData.billingContactEmail}
+                                         onChange={(e) => setFormData({ ...formData, billingContactEmail: e.target.value })}
+                                         placeholder="ej: presidente@club.org"
+                                     />
+                                 </div>
+
+                                 <div className="md:col-span-1">
+                                     <label className="block text-sm font-bold text-gray-700 mb-1">WhatsApp de Contacto (con 57...)</label>
+                                     <input
+                                         type="text"
+                                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all"
+                                         value={formData.billingContactPhone}
+                                         onChange={(e) => setFormData({ ...formData, billingContactPhone: e.target.value })}
+                                         placeholder="ej: 573001234567"
+                                     />
+                                 </div>
+
                                 <div className="md:col-span-2">
                                     <label className="block text-sm font-bold text-gray-700 mb-1">Usuario Administrador (Opcional)</label>
                                     <select
@@ -791,6 +889,107 @@ const ClubsManagement: React.FC = () => {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Notification Modal (Communication Center) */}
+            {isNotificationModalOpen && notifyingClub && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 border border-gray-100">
+                        <div className="bg-rotary-blue p-6 text-white flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-white/20 rounded-xl">
+                                    <MessageSquare className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-black">Centro de Comunicación</h2>
+                                    <p className="text-sky-100 text-xs font-medium">Enviando a: {notifyingClub.name}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setIsNotificationModalOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        <div className="p-8">
+                            <div className="flex gap-4 mb-8 p-1 bg-gray-50 rounded-2xl border border-gray-100">
+                                <button
+                                    onClick={() => setNotificationData({ ...notificationData, type: 'whatsapp', recipient: notifyingClub.billingContactPhone || '' })}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${notificationData.type === 'whatsapp' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
+                                >
+                                    <MessageSquare className="w-4 h-4" /> WhatsApp
+                                </button>
+                                <button
+                                    onClick={() => setNotificationData({ ...notificationData, type: 'email', recipient: notifyingClub.billingContactEmail || '' })}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${notificationData.type === 'email' ? 'bg-white text-rotary-blue shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
+                                >
+                                    <Mail className="w-4 h-4" /> Email
+                                </button>
+                            </div>
+
+                            <div className="space-y-6">
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-2">Destinatario ({notificationData.type === 'email' ? 'Email' : 'WhatsApp'})</label>
+                                    <input
+                                        type="text"
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue outline-none transition-all font-medium"
+                                        value={notificationData.recipient}
+                                        onChange={(e) => setNotificationData({ ...notificationData, recipient: e.target.value })}
+                                        placeholder={notificationData.type === 'email' ? "correo@ejemplo.com" : "573001234567"}
+                                    />
+                                    {!notificationData.recipient && (
+                                        <p className="mt-2 text-xs text-amber-600 font-bold flex items-center gap-1">
+                                            <AlertTriangle className="w-3 h-3" /> Este club no tiene configurado un contacto de facturación.
+                                        </p>
+                                    )}
+                                </div>
+
+                                {notificationData.type === 'email' && (
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-700 mb-2">Asunto del Correo</label>
+                                        <input
+                                            type="text"
+                                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue outline-none transition-all font-medium"
+                                            value={notificationData.subject}
+                                            onChange={(e) => setNotificationData({ ...notificationData, subject: e.target.value })}
+                                        />
+                                    </div>
+                                )}
+
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-2">Mensaje (Personalizable)</label>
+                                    <textarea
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue outline-none transition-all font-medium min-h-[200px]"
+                                        value={notificationData.content}
+                                        onChange={(e) => setNotificationData({ ...notificationData, content: e.target.value })}
+                                    />
+                                    <p className="mt-2 text-[10px] text-gray-400 font-medium">
+                                        Consejo: Mantén un tono cordial e institucional (Diplomacia Rotary).
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-3 mt-8">
+                                <button
+                                    onClick={() => setIsNotificationModalOpen(false)}
+                                    className="px-6 py-3 text-gray-500 font-bold hover:bg-gray-50 rounded-xl transition-all"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={handleSendNotification}
+                                    disabled={isSubmitting || !notificationData.recipient}
+                                    className="bg-rotary-blue text-white px-8 py-3 rounded-xl font-bold hover:bg-sky-800 transition-all disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-sky-100"
+                                >
+                                    {isSubmitting ? (
+                                        <><RefreshCw className="w-4 h-4 animate-spin" /> Enviando...</>
+                                    ) : (
+                                        <><Send className="w-4 h-4" /> Enviar Notificación</>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}

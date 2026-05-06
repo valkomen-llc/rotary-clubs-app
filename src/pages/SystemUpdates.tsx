@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.101.1",
+        date: "05 de Mayo, 2026",
+        title: "MESSAGING: Centro de Comunicación SaaS",
+        description: "Lanzamiento de la Fase 4 con herramientas de notificación omnicanal para renovaciones.",
+        type: "feat",
+        changes: [
+            { type: "added", text: "Dashboard: Centro de Comunicación integrado para envío de alertas vía WhatsApp y Email." },
+            { type: "added", text: "Database: Nuevos campos de contacto de facturación (billingContactEmail/Phone)." },
+            { type: "improved", text: "UI: Botón de notificación rápida en la lista de clubes con plantillas dinámicas." }
+        ]
+    },
+    {
         version: "v4.100.0",
         date: "05 de Mayo, 2026",
         title: "REPORTING: Exportación de Datos Administrativos",

@@ -76,13 +76,14 @@ export const createClub = async (req, res) => {
         name, city, country, district, domain, subdomain, description, 
         status, type, adminUserId,
         subscriptionStatus, expirationDate,
+        billingContactEmail, billingContactPhone,
         expirationBannerActive, expirationBannerMessage,
         developmentBannerActive, developmentBannerMessage
     } = req.body;
     try {
         const result = await db.query(
-            `INSERT INTO "Club" (id, name, city, country, district, domain, subdomain, description, status, type, "subscriptionStatus", "expirationDate", "expirationBannerActive", "expirationBannerMessage", "developmentBannerActive", "developmentBannerMessage", "createdAt", "updatedAt")
-             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW()) RETURNING *`,
+            `INSERT INTO "Club" (id, name, city, country, district, domain, subdomain, description, status, type, "subscriptionStatus", "expirationDate", "billingContactEmail", "billingContactPhone", "expirationBannerActive", "expirationBannerMessage", "developmentBannerActive", "developmentBannerMessage", "createdAt", "updatedAt")
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW()) RETURNING *`,
             [
                 name, 
                 city || null, 
@@ -95,6 +96,8 @@ export const createClub = async (req, res) => {
                 type || 'club',
                 subscriptionStatus || 'inactive',
                 expirationDate ? new Date(expirationDate) : null,
+                billingContactEmail || null,
+                billingContactPhone || null,
                 !!expirationBannerActive,
                 expirationBannerMessage || null,
                 !!developmentBannerActive,
@@ -137,7 +140,8 @@ export const updateClub = async (req, res) => {
         moduleYouthExchange, moduleNgse, moduleRotex,
         expirationBannerActive, expirationBannerMessage,
         developmentBannerActive, developmentBannerMessage,
-        subscriptionStatus, expirationDate
+        subscriptionStatus, expirationDate,
+        billingContactEmail, billingContactPhone
     } = req.body;
 
         try {
@@ -171,14 +175,15 @@ export const updateClub = async (req, res) => {
             addField('footerLogo', footerLogo);
             addField('endPolioLogo', endPolioLogo);
             addField('favicon', favicon);
-            addField('status', status);
             addField('type', type);
+            addField('subscriptionStatus', subscriptionStatus);
+            addField('expirationDate', expirationDate ? new Date(expirationDate) : undefined);
+            addField('billingContactEmail', billingContactEmail);
+            addField('billingContactPhone', billingContactPhone);
             addField('expirationBannerActive', expirationBannerActive);
             addField('expirationBannerMessage', expirationBannerMessage);
             addField('developmentBannerActive', developmentBannerActive);
             addField('developmentBannerMessage', developmentBannerMessage);
-            addField('subscriptionStatus', subscriptionStatus);
-            addField('expirationDate', expirationDate);
 
             const hasClubUpdates = updateFields.length > 0;
             let result;
