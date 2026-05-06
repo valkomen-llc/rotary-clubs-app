@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
-import { toast } from 'react-hot-toast';
+import { toast } from 'sonner';
 
 interface TechnicalRequest {
     id: string;
