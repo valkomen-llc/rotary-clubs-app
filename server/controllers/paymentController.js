@@ -140,22 +140,47 @@ export const stripeWebhook = async (req, res) => {
 async function handleSuccessfulCheckoutSession(session) {
     console.log(`[Stripe Webhook] Checkout session completed: ${session.id}`);
     
-    // Verificamos si es un pago del paquete "Ecosistema Digital"
+    // 1. Pago de "Ecosistema Digital" (Provisión Automática)
     if (session.metadata && session.metadata.type === 'ecosystem_purchase') {
         const { clubId, domainName } = session.metadata;
         console.log(`[Stripe Webhook] Detonando provisión de Ecosistema para Club: ${clubId}, Dominio: ${domainName}`);
-        
         try {
-            // Ejecutamos el orquestador Zero-Touch de AWS
             await DomainProvisioningService.provisionEcosystem(clubId, domainName);
             console.log(`[Stripe Webhook] Provisión de dominio completada con éxito.`);
         } catch (error) {
             console.error(`[Stripe Webhook] ERROR en la provisión del dominio:`, error);
-            // NOTA: En producción aquí se debería notificar al equipo técnico (Sentry, Email, etc.)
         }
     }
 
-    // FASE 5: Reactivación Mágica (Renovación de Suscripción Anual)
+    // 2. FASE 10: Pago de Solicitud Técnica (Transferencia de Dominio, etc.)
+    if (session.metadata && session.metadata.type === 'technical_service') {
+        const { requestId, clubId } = session.metadata;
+        console.log(`[Stripe Webhook] Pago recibido para Solicitud Técnica: ${requestId}`);
+        
+        try {
+            const request = await prisma.technicalRequest.update({
+                where: { id: requestId },
+                data: {
+                    paymentStatus: 'paid',
+                    status: 'in_progress', // El equipo técnico ya puede empezar a trabajar
+                    details: {
+                        ...(await prisma.technicalRequest.findUnique({ where: { id: requestId } })).details,
+                        paymentConfirmedAt: new Date().toISOString(),
+                        stripeSessionId: session.id
+                    }
+                }
+            });
+
+            console.log(`✅ Solicitud Técnica ${requestId} marcada como PAGADA.`);
+            
+            // Aquí se dispararía n8n en el futuro
+            // fetch('https://n8n.valkomen.com/webhook/technical-request-paid', { ... })
+        } catch (error) {
+            console.error(`[Stripe Webhook] ERROR al actualizar Solicitud Técnica:`, error);
+        }
+    }
+
+    // 3. FASE 5: Reactivación Mágica (Renovación de Suscripción Anual)
     if (session.client_reference_id || session.customer) {
         await handleSaaSReactivation(session.client_reference_id, session.customer);
     }
