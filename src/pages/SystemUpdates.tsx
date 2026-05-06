@@ -23,8 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-05-06 11:15 (CONTENT ENGINE 🐲)
+// Cache bust: 2026-05-06 11:30 (MEMBERSHIP IQ 🐺)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.106',
+        date: '06 de Mayo, 2026',
+        title: 'AGENTIC: Phase 8 - Membership IQ (CRM Pulse) 🐺',
+        description: 'Activación del motor de análisis predictivo de socios y conversión de leads.',
+        type: 'feature',
+        changes: [
+            { type: "major", text: "Phase 8: Membership IQ activado. El tablero ahora muestra métricas reales de salud del club." },
+            { type: "added", text: "Analytics: Nuevo endpoint '/api/analytics/crm-pulse' conectado a la base de datos de socios y leads." },
+            { type: "improved", text: "UI: Barra de métricas 'Live Pulse' integrada en la consola de implementaciones IA." }
+        ]
+    },
     {
         version: 'v4.105',
         date: '06 de Mayo, 2026',

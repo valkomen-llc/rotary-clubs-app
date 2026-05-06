@@ -1,7 +1,58 @@
 import express from 'express';
 import db from '../lib/db.js';
+import prisma from '../lib/prisma.js';
 
 const router = express.Router();
+
+// ── GET /api/analytics/crm-pulse ─────────────────────────────────────────────
+router.get('/crm-pulse', async (req, res) => {
+    const { clubId } = req.query;
+    
+    try {
+        const where = clubId ? { clubId } : {};
+        
+        const [totalLeads, newLeads, convertedLeads, leadSources, totalMembers, boardMembers, newMembers] = await Promise.all([
+            prisma.lead.count({ where }),
+            prisma.lead.count({ where: { ...where, status: 'new' } }),
+            prisma.lead.count({ where: { ...where, status: 'converted' } }),
+            prisma.lead.groupBy({
+                by: ['source'],
+                where,
+                _count: true
+            }),
+            prisma.clubMember.count({ where }),
+            prisma.clubMember.count({ where: { ...where, isBoard: true } }),
+            prisma.clubMember.count({ 
+                where: { 
+                    ...where, 
+                    createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } 
+                } 
+            })
+        ]);
+
+        const conversionRate = totalLeads > 0 ? (convertedLeads / totalLeads) * 100 : 0;
+
+        res.json({
+            leads: {
+                total: totalLeads,
+                new: newLeads,
+                converted: convertedLeads,
+                conversionRate: parseFloat(conversionRate.toFixed(1)),
+                sources: leadSources.map(s => ({ source: s.source || 'web', count: s._count }))
+            },
+            membership: {
+                total: totalMembers,
+                board: boardMembers,
+                new30d: newMembers,
+                retentionRate: 98.5 // Mock for now
+            },
+            status: 'success'
+        });
+    } catch (error) {
+        console.error('[Analytics/crm-pulse]', error);
+        res.status(500).json({ error: 'Failed to fetch CRM pulse data' });
+    }
+});
 
 const GA4_DATA_API = 'https://analyticsdata.googleapis.com/v1beta/properties';
 

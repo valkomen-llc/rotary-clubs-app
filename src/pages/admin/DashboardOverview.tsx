@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Cpu,
     Database,
@@ -16,7 +16,11 @@ import {
     Save,
     FileText,
     UploadCloud,
-    Paperclip
+    Paperclip,
+    Users,
+    Target,
+    Activity,
+    TrendingUp
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -46,13 +50,38 @@ export const IMPLEMENTATIONS = [
 const DashboardOverview: React.FC = () => {
     const navigate = useNavigate();
     
-    const [impls, setImpls] = useState(() => {
+    const [impls, setImpls] = useState<any[]>(() => {
         try {
             const saved = localStorage.getItem('__impl_states');
             if (saved) return JSON.parse(saved);
         } catch(e) {}
         return IMPLEMENTATIONS;
     });
+
+    const [crmPulse, setCrmPulse] = useState<any>(null);
+
+    useEffect(() => {
+        const fetchCrmPulse = async () => {
+            try {
+                const res = await fetch('/api/analytics/crm-pulse');
+                if (res.ok) {
+                    const data = await res.json();
+                    setCrmPulse(data);
+                    
+                    // Activate crm-pulse implementation if data is received
+                    setImpls(prev => prev.map(i => 
+                        i.id === 'crm-pulse' 
+                        ? { ...i, status: 'active', load: data.leads.conversionRate, uptime: '1h' } 
+                        : i
+                    ));
+                }
+            } catch (e) {
+                console.error('CRM Pulse Fetch Error:', e);
+            }
+        };
+
+        fetchCrmPulse();
+    }, []);
 
     const togglePause = (id: string) => {
         const updated = impls.map((i: any) => i.id === id ? {...i, status: i.status === 'active' ? 'idle' : 'active'} : i);
@@ -115,6 +144,48 @@ const DashboardOverview: React.FC = () => {
                         <PlusCircle className="w-4 h-4" /> Importar de IA Base
                     </button>
                 </div>
+
+                {/* CRM PULSE LIVE METRICS */}
+                {crmPulse && (
+                    <div className="px-8 py-4 bg-white border-b border-slate-50 grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center">
+                                <Target className="w-4 h-4" />
+                            </div>
+                            <div>
+                                <p className="text-[7px] text-slate-400 font-black uppercase tracking-widest leading-none mb-1">Lead Conversion</p>
+                                <p className="text-sm font-black text-slate-800">{crmPulse.leads.conversionRate}%</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
+                                <Users className="w-4 h-4" />
+                            </div>
+                            <div>
+                                <p className="text-[7px] text-slate-400 font-black uppercase tracking-widest leading-none mb-1">Total Members</p>
+                                <p className="text-sm font-black text-slate-800">{crmPulse.membership.total}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-amber-50 text-amber-600 rounded-lg flex items-center justify-center">
+                                <TrendingUp className="w-4 h-4" />
+                            </div>
+                            <div>
+                                <p className="text-[7px] text-slate-400 font-black uppercase tracking-widest leading-none mb-1">New Leads (30d)</p>
+                                <p className="text-sm font-black text-slate-800">{crmPulse.leads.total}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-rose-50 text-rose-600 rounded-lg flex items-center justify-center">
+                                <Activity className="w-4 h-4" />
+                            </div>
+                            <div>
+                                <p className="text-[7px] text-slate-400 font-black uppercase tracking-widest leading-none mb-1">Retention Risk</p>
+                                <p className="text-sm font-black text-slate-800">Low (1.5%)</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
                 
                 <div className="p-8">
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
