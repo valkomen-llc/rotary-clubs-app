@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.96.0",
+        date: "05 de Mayo, 2026",
+        title: "DASHBOARD+: Filtros y Búsqueda Avanzada",
+        description: "Optimización del panel de administración para gestionar grandes volúmenes de clubes con herramientas de filtrado en tiempo real.",
+        type: "feat",
+        changes: [
+            { type: "added", text: "Búsqueda: Barra de búsqueda global por nombre, ciudad o subdominio." },
+            { type: "added", text: "Filtros: Segmentación rápida por estado de suscripción (Activos, Prospectos, Vencidos)." },
+            { type: "improved", text: "UI: Nueva barra de herramientas superior en la gestión de clubes." }
+        ]
+    },
+    {
         version: "v4.95.4",
         date: "05 de Mayo, 2026",
         title: "ROUTING: Actualización de Enlaces de Acceso",

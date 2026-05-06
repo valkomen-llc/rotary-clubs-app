@@ -35,6 +35,8 @@ const ClubsManagement: React.FC = () => {
     const [editingClub, setEditingClub] = useState<Club | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { impersonate } = useAuth();
+    const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'expired'>('all');
 
     const [formData, setFormData] = useState({
         name: '',
@@ -259,6 +261,45 @@ const ClubsManagement: React.FC = () => {
                 </button>
             </div>
 
+            <div className="bg-white p-4 rounded-xl border border-gray-100 mb-6 flex flex-col md:flex-row gap-4 justify-between items-center shadow-sm">
+                <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200 w-full md:max-w-xs transition-all focus-within:ring-2 focus-within:ring-rotary-blue">
+                    <Globe className="w-4 h-4 text-gray-400" />
+                    <input 
+                        type="text" 
+                        placeholder="Buscar club, ciudad o subdominio..."
+                        className="bg-transparent border-none outline-none text-sm w-full"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                </div>
+                <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+                    <button 
+                        onClick={() => setStatusFilter('all')}
+                        className={`px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all whitespace-nowrap ${statusFilter === 'all' ? 'bg-rotary-blue text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}
+                    >
+                        Todos
+                    </button>
+                    <button 
+                        onClick={() => setStatusFilter('active')}
+                        className={`px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all whitespace-nowrap ${statusFilter === 'active' ? 'bg-emerald-500 text-white shadow-md' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}
+                    >
+                        Activos
+                    </button>
+                    <button 
+                        onClick={() => setStatusFilter('expired')}
+                        className={`px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all whitespace-nowrap ${statusFilter === 'expired' ? 'bg-rose-500 text-white shadow-md' : 'bg-rose-50 text-rose-600 hover:bg-rose-100'}`}
+                    >
+                        Vencidos
+                    </button>
+                    <button 
+                        onClick={() => setStatusFilter('inactive')}
+                        className={`px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all whitespace-nowrap ${statusFilter === 'inactive' ? 'bg-gray-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                    >
+                        Prospectos
+                    </button>
+                </div>
+            </div>
+
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <table className="w-full text-left">
                     <thead className="bg-gray-50 border-b border-gray-100">
@@ -273,7 +314,17 @@ const ClubsManagement: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                        {clubs.map((club) => (
+                        {clubs
+                            .filter(club => {
+                                const search = searchQuery.toLowerCase();
+                                const matchesSearch = (club.name || '').toLowerCase().includes(search) || 
+                                                     (club.city || '').toLowerCase().includes(search) ||
+                                                     (club.subdomain || '').toLowerCase().includes(search);
+                                
+                                if (statusFilter === 'all') return matchesSearch;
+                                return matchesSearch && club.subscriptionStatus === statusFilter;
+                            })
+                            .map((club) => (
                             <tr key={club.id} className="hover:bg-gray-50 transition-colors">
                                 <td className="px-6 py-4">
                                     <div className="flex items-center gap-3">

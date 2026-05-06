@@ -1,4 +1,4 @@
-// MULTIMEDIA & EVENTOS V4.95.4 | 2026-05-06T03:40:00 (LINK REPAIR 🔗)
+// MULTIMEDIA & EVENTOS V4.96.0 | 2026-05-06T03:46:00 (MANAGEMENT+ 🚀)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -27,7 +27,7 @@ app.get('/api/social/accounts', socialController.getConnectedAccounts);
 
 // ── Static endpoints ─────────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'ok', version: '4.95.4' });
+    res.json({ status: 'ok', version: '4.96.0' });
 });
 
 app.get('/api/health', async (req, res) => {
