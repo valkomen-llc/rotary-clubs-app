@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.95.3",
+        date: "05 de Mayo, 2026",
+        title: "SYNC: Despliegue Masivo de Subdominios",
+        description: "Actualización de la estructura de subdominios para 52 clubes de los distritos de Colombia, asegurando coherencia en los enlaces de la plataforma.",
+        type: "feat",
+        changes: [
+            { type: "added", text: "Database: Actualización de 52 subdominios (santafedebogota, yumbo-arroyohondo, etc)." },
+            { type: "improved", text: "Despliegue: Sincronización forzada para reflejar cambios en producción." }
+        ]
+    },
+    {
         version: "v4.95.2",
         date: "05 de Mayo, 2026",
         title: "DEPLOY: Sincronización de Etiquetas (Nuclear)",
