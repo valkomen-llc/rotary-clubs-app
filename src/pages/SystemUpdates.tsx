@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.99.0",
+        date: "05 de Mayo, 2026",
+        title: "SYNC+: Persistencia de Control SaaS",
+        description: "Sincronización total del backend para permitir la persistencia de cambios manuales en estados de suscripción.",
+        type: "update",
+        changes: [
+            { type: "fixed", text: "Backend: Los cambios manuales en 'subscriptionStatus' ahora se guardan correctamente." },
+            { type: "fixed", text: "Database: Mapeo de campos SaaS en controladores de creación y actualización." },
+            { type: "improved", text: "Integridad: Sincronización de estados financieros con la capa de persistencia." }
+        ]
+    },
+    {
         version: "v4.98.0",
         date: "05 de Mayo, 2026",
         title: "OPERATIONS: Control Manual de Suscripciones",

@@ -75,13 +75,14 @@ export const createClub = async (req, res) => {
     const { 
         name, city, country, district, domain, subdomain, description, 
         status, type, adminUserId,
+        subscriptionStatus, expirationDate,
         expirationBannerActive, expirationBannerMessage,
         developmentBannerActive, developmentBannerMessage
     } = req.body;
     try {
         const result = await db.query(
-            `INSERT INTO "Club" (id, name, city, country, district, domain, subdomain, description, status, type, "expirationBannerActive", "expirationBannerMessage", "developmentBannerActive", "developmentBannerMessage", "createdAt", "updatedAt")
-             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW()) RETURNING *`,
+            `INSERT INTO "Club" (id, name, city, country, district, domain, subdomain, description, status, type, "subscriptionStatus", "expirationDate", "expirationBannerActive", "expirationBannerMessage", "developmentBannerActive", "developmentBannerMessage", "createdAt", "updatedAt")
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW()) RETURNING *`,
             [
                 name, 
                 city || null, 
@@ -92,6 +93,8 @@ export const createClub = async (req, res) => {
                 description || null, 
                 status || 'active', 
                 type || 'club',
+                subscriptionStatus || 'inactive',
+                expirationDate ? new Date(expirationDate) : null,
                 !!expirationBannerActive,
                 expirationBannerMessage || null,
                 !!developmentBannerActive,
@@ -133,7 +136,8 @@ export const updateClub = async (req, res) => {
         memberCount, moduleProjects, moduleEvents, moduleRotaract, moduleInteract, moduleEcommerce, moduleDian,
         moduleYouthExchange, moduleNgse, moduleRotex,
         expirationBannerActive, expirationBannerMessage,
-        developmentBannerActive, developmentBannerMessage
+        developmentBannerActive, developmentBannerMessage,
+        subscriptionStatus, expirationDate
     } = req.body;
 
         try {
@@ -173,6 +177,8 @@ export const updateClub = async (req, res) => {
             addField('expirationBannerMessage', expirationBannerMessage);
             addField('developmentBannerActive', developmentBannerActive);
             addField('developmentBannerMessage', developmentBannerMessage);
+            addField('subscriptionStatus', subscriptionStatus);
+            addField('expirationDate', expirationDate);
 
             const hasClubUpdates = updateFields.length > 0;
             let result;
