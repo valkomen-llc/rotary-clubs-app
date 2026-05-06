@@ -23,19 +23,19 @@ interface UpdateItem {
     }>;
 }
 
-// Cache bust: 2026-05-06 00:00 (SAAS GOVERNANCE 🏢)
+// Cache bust: 2026-05-06 10:45 (UI FIX 🏢)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: 'v4.102',
+        version: 'v4.103',
         date: '06 de Mayo, 2026',
-        title: 'ADMIN: Gobernanza SaaS y Redes',
-        description: 'Expansión de herramientas de gestión SaaS para Distritos y Asociaciones LATIR. Incluye exportación de datos (CSV) y centro de comunicaciones unificado para toda la red.',
+        title: 'GOVERNANCE: Phase 5 - Stripe Autogestión 🏢',
+        description: 'Lanzamiento final del sistema de Gobernanza SaaS. Reactivación automática de servicios, soporte para Distritos y facturación inteligente.',
         type: 'feature',
         changes: [
-            { type: "added", text: "Gobernanza: Nuevo panel administrativo para Distritos y Asociaciones con gestión de dominios." },
-            { type: "added", text: "Messaging Center: Centro de notificaciones unificado (WhatsApp/Email) para alertas de renovación." },
-            { type: "added", text: "Reporting: Exportación masiva de datos a CSV para auditoría y conciliación financiera." },
-            { type: "improved", text: "Seguridad: Roles de 'district_admin' y 'association_admin' con accesos granulares protegidos." }
+            { type: "major", text: "Phase 5: Stripe Autogestión activada. Renovación inmediata con un solo click para toda la plataforma." },
+            { type: "added", text: "Soporte Polymorphic: Districts y Asociaciones ahora cuentan con panel de facturación y dominios propios." },
+            { type: "added", text: "Vercel Cron v2: Automatización total de suspensiones y alertas IA para gobernadores y presidentes." },
+            { type: "fixed", text: "UI: Reparado el scroll en modales de gestión (Asociaciones/Clubes/Distritos) para pantallas pequeñas." }
         ]
     },
     {

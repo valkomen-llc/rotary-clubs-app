@@ -315,15 +315,21 @@ router.post('/clubs/:id/billing-portal', roleMiddleware(['administrator', 'club_
             return res.status(500).json({ error: 'La llave secreta de Stripe no está configurada en el servidor.' });
         }
 
-        const club = await prisma.club.findUnique({ where: { id } });
+        let entity = await prisma.club.findUnique({ where: { id } });
+        let type = 'club';
+
+        if (!entity) {
+            entity = await prisma.district.findUnique({ where: { id } });
+            if (entity) type = 'district';
+        }
         
-        if (!club) {
-            return res.status(404).json({ error: 'Club no encontrado.' });
+        if (!entity) {
+            return res.status(404).json({ error: 'Entidad (Club o Distrito) no encontrada.' });
         }
 
         const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-        if (!club.stripeCustomerId) {
+        if (!entity.stripeCustomerId) {
             // Si no tiene customerId, creamos una sesión de Checkout para el primer pago
             const session = await stripe.checkout.sessions.create({
                 payment_method_types: ['card'],
@@ -331,16 +337,16 @@ router.post('/clubs/:id/billing-portal', roleMiddleware(['administrator', 'club_
                     price_data: {
                         currency: 'usd',
                         product_data: {
-                            name: 'Club Platform for Rotary',
-                            description: `Aporte destinado íntegramente a sostener la arquitectura Multi-Cloud de su plataforma. Garantiza el despliegue Serverless ininterrumpido, renovación de dominios y seguridad SSL. Cubre el aprovisionamiento de bases de datos, buckets de almacenamiento (AWS), recursos en Google Cloud y consumo de APIs de Inteligencia Artificial. No tiene fines de lucro comercial; es una inversión directa para mantener un ecosistema digital moderno, seguro y de alto rendimiento al servicio durante el año.`,
+                            name: `Ecosistema Digital - ${type === 'club' ? 'Club' : 'Distrito'} ${entity.name || entity.number}`,
+                            description: `Inversión en infraestructura SaaS para la red Rotaria. Incluye hosting, dominios, IA, SSL y mantenimiento anual del ecosistema digital.`,
                             images: ['https://rotary-platform-assets.s3.us-east-1.amazonaws.com/platform/logo_clubplatform_premium.png'],
                         },
-                        unit_amount: 29900, // $299.00 USD
+                        unit_amount: type === 'club' ? 29900 : 89900, // $299 Club, $899 Distrito (ejemplo)
                     },
                     quantity: 1,
                 }],
                 mode: 'payment',
-                client_reference_id: club.id,
+                client_reference_id: entity.id,
                 success_url: `${req.headers.origin || 'https://' + req.headers.host}/admin/configuracion?refresh=true`,
                 cancel_url: `${req.headers.origin || 'https://' + req.headers.host}/admin/configuracion`,
             });
@@ -348,7 +354,7 @@ router.post('/clubs/:id/billing-portal', roleMiddleware(['administrator', 'club_
         }
 
         const session = await stripe.billingPortal.sessions.create({
-            customer: club.stripeCustomerId,
+            customer: entity.stripeCustomerId,
             return_url: `${req.headers.origin || 'https://' + req.headers.host}/admin/configuracion?refresh=true`,
         });
 

@@ -608,8 +608,8 @@ const ClubsManagement: React.FC = () => {
             {/* Club Modal */}
             {isModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate-in zoom-in duration-200">
-                        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate-in zoom-in duration-200 flex flex-col max-h-[90vh]">
+                        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 flex-shrink-0">
                             <h2 className="text-lg font-bold text-gray-800">
                                 {editingClub ? 'Editar Club' : 'Nuevo Club'}
                             </h2>
@@ -618,7 +618,7 @@ const ClubsManagement: React.FC = () => {
                             </button>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="p-6">
+                        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto flex-1 scrollbar-thin scrollbar-thumb-gray-200">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="md:col-span-2">
                                     <label className="block text-sm font-bold text-gray-700 mb-1">Nombre del Club</label>

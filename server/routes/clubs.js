@@ -41,8 +41,8 @@ router.get('/by-domain', async (req, res) => {
             masterSettings[s.key] = s.value;
         });
 
-        // 2. Fetch Current Club with Prisma (FAILSIGHT)
-        const club = await db.prisma.club.findFirst({
+        // 2. Fetch Current Entity with Prisma (Club or District)
+        let activeEntity = await db.prisma.club.findFirst({
             where: {
                 OR: [
                     { domain: { equals: cleanDomain, mode: 'insensitive' } },
@@ -58,20 +58,51 @@ router.get('/by-domain', async (req, res) => {
             }
         });
 
-        let activeClub = club;
-        if (!activeClub) {
+        let entityType = 'club';
+
+        if (!activeEntity) {
+            // Check District table
+            const district = await db.prisma.district.findFirst({
+                where: {
+                    OR: [
+                        { domain: { equals: cleanDomain, mode: 'insensitive' } },
+                        { subdomain: { equals: cleanDomain.split('.')[0], mode: 'insensitive' } },
+                        { domain: { equals: domain, mode: 'insensitive' } }
+                    ]
+                }
+            });
+
+            if (district) {
+                activeEntity = {
+                    ...district,
+                    settings: [], 
+                    type: 'district',
+                    // Map branding fields explicitly if they exist on District table
+                    logo: district.logo,
+                    footerLogo: district.footerLogo,
+                    favicon: district.favicon,
+                    colors: district.colors,
+                    logoHeaderSize: district.logoHeaderSize
+                };
+                entityType = 'district';
+            }
+        }
+
+        if (!activeEntity) {
             console.warn(`[IDENTITY] Fallback to Origen for ${cleanDomain}`);
-            activeClub = masterClub;
+            activeEntity = { ...masterClub, type: 'club' };
         }
 
-        if (!activeClub) {
-            return res.status(404).json({ error: 'Club not found' });
-        }
-
+        const activeClub = activeEntity;
         const settings = {};
-        activeClub.settings.forEach(s => {
-            settings[s.key] = s.value;
-        });
+        if (activeClub.settings) {
+            activeClub.settings.forEach(s => {
+                settings[s.key] = s.value;
+            });
+        }
+
+        // Merge colors from JSON field if it exists (for Districts or Clubs that use the new field)
+        const entityColors = typeof activeClub.colors === 'string' ? JSON.parse(activeClub.colors) : (activeClub.colors || {});
 
         const defaultFooter = "https://rotary-platform-assets.s3.amazonaws.com/logos/rotary-logo-white-main.png";
 
@@ -84,14 +115,13 @@ router.get('/by-domain', async (req, res) => {
             // Map Style: Priority 1: Club Setting, Priority 2: Global Platform Setting
             mapStyle: settings['map_style'] || globalMapStyle,
             // LOGO INHERITANCE RULE:
-            // 1. Header Logo: Use club's, fallback to master's
             logo: activeClub.logo || masterLogos.logo,
-            // 2. Footer Logo: Use club's, fallback to master's, fallback to hardcoded
             footerLogo: activeClub.footerLogo || masterLogos.footerLogo || defaultFooter,
-            // 3. End Polio Logo: Use club's, fallback to master's
-            endPolioLogo: activeClub.endPolioLogo || masterLogos.endPolioLogo,
-            // 4. Favicon: Use club's, fallback to master's
             favicon: activeClub.favicon || masterLogos.favicon,
+            colors: {
+                primary: entityColors.primary || settings['color_primary'] || '#013388',
+                secondary: entityColors.secondary || settings['color_secondary'] || '#E29C00',
+            },
 
             contact: {
                 email: settings['contact_email'] || '',

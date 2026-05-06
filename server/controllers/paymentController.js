@@ -161,41 +161,59 @@ async function handleSuccessfulCheckoutSession(session) {
     }
 }
 
-async function handleSaaSReactivation(clubId, customerId) {
-    let targetClub = null;
+async function handleSaaSReactivation(id, customerId) {
+    let target = null;
+    let type = null;
 
-    if (clubId) {
-        targetClub = await prisma.club.findUnique({ where: { id: clubId } });
-    } else if (customerId) {
-        targetClub = await prisma.club.findFirst({ where: { stripeCustomerId: customerId } });
+    // 1. Intentar buscar por ID (Club o Distrito)
+    if (id) {
+        target = await prisma.club.findUnique({ where: { id } });
+        if (target) type = 'club';
+        
+        if (!target) {
+            target = await prisma.district.findUnique({ where: { id } });
+            if (target) type = 'district';
+        }
+    } 
+    
+    // 2. Intentar buscar por Stripe Customer ID si no se encontró por ID
+    if (!target && customerId) {
+        target = await prisma.club.findFirst({ where: { stripeCustomerId: customerId } });
+        if (target) type = 'club';
+
+        if (!target) {
+            target = await prisma.district.findUnique({ where: { stripeCustomerId: customerId } });
+            if (target) type = 'district';
+        }
     }
 
-    if (targetClub) {
-        console.log(`[Stripe Webhook] Renovación SaaS detectada para Club: ${targetClub.name}`);
+    if (target && type) {
+        console.log(`[Stripe Webhook] Renovación SaaS detectada para ${type === 'club' ? 'Club' : 'Distrito'}: ${target.name || target.number}`);
         
-        // Si ya tiene una fecha y no ha vencido, sumamos desde ahí. Si ya venció, sumamos desde hoy.
-        const baseDate = (targetClub.expirationDate && new Date(targetClub.expirationDate) > new Date()) 
-            ? new Date(targetClub.expirationDate) 
+        const baseDate = (target.expirationDate && new Date(target.expirationDate) > new Date()) 
+            ? new Date(target.expirationDate) 
             : new Date();
             
         const newExp = new Date(baseDate);
         newExp.setFullYear(newExp.getFullYear() + 1);
         
-        await prisma.club.update({
-            where: { id: targetClub.id },
-            data: {
-                subscriptionStatus: 'active',
-                expirationDate: newExp,
-                expirationBannerActive: false, // ¡Quitar la barra automáticamente!
-                // Si es su primer pago, anclamos el Customer ID para futuras facturaciones
-                stripeCustomerId: customerId || targetClub.stripeCustomerId
-            }
-        });
+        const updateData = {
+            subscriptionStatus: 'active',
+            expirationDate: newExp,
+            expirationBannerActive: false,
+            stripeCustomerId: customerId || target.stripeCustomerId
+        };
+
+        if (type === 'club') {
+            await prisma.club.update({ where: { id: target.id }, data: updateData });
+        } else {
+            await prisma.district.update({ where: { id: target.id }, data: updateData });
+        }
         
-        console.log(`✅ Plataforma de ${targetClub.name} reactivada mágicamente hasta ${newExp.toISOString()}`);
+        console.log(`✅ Plataforma de ${target.name || target.number} reactivada mágicamente (${type}) hasta ${newExp.toISOString()}`);
     } else {
-        if (customerId) {
-             console.log(`⚠️ [Stripe Webhook] Intento de reactivación (Customer: ${customerId}), pero no se pudo asociar a ningún club.`);
+        if (customerId || id) {
+             console.log(`⚠️ [Stripe Webhook] Intento de reactivación (ID: ${id}, Customer: ${customerId}), pero no se pudo asociar a ninguna entidad.`);
         }
     }
 }

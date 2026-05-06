@@ -20,61 +20,57 @@ router.get('/process-expirations', async (req, res) => {
 
         console.log('[CRON] 🚀 Iniciando procesamiento de expiraciones de suscripción...');
         
-        // 1.5 LOGICA DE SUSPENSIÓN AUTOMÁTICA (Periodo de Gracia)
         const gracePeriodDays = 5;
         const suspensionDate = new Date();
         suspensionDate.setDate(suspensionDate.getDate() - gracePeriodDays);
 
-        const suspensionResult = await prisma.club.updateMany({
-            where: {
-                status: 'active',
-                expirationDate: { 
-                    not: null,
-                    lt: suspensionDate 
-                },
-                // No suspendemos si el club tiene algún arreglo especial (status != active ya cubierto)
-            },
-            data: {
-                status: 'inactive',
-                subscriptionStatus: 'expired'
-            }
-        });
+        // 1.5 SUSPENSIÓN AUTOMÁTICA (Clubs y Distritos)
+        const [suspensionClubs, suspensionDistricts] = await Promise.all([
+            prisma.club.updateMany({
+                where: { status: 'active', expirationDate: { not: null, lt: suspensionDate } },
+                data: { status: 'inactive', subscriptionStatus: 'expired' }
+            }),
+            prisma.district.updateMany({
+                where: { status: 'active', expirationDate: { not: null, lt: suspensionDate } },
+                data: { status: 'inactive', subscriptionStatus: 'expired' }
+            })
+        ]);
 
-        if (suspensionResult.count > 0) {
-            console.log(`[CRON] 🚨 SUSPENSIÓN AUTOMÁTICA: ${suspensionResult.count} clubes pasados a inactivos por falta de pago.`);
+        if (suspensionClubs.count > 0 || suspensionDistricts.count > 0) {
+            console.log(`[CRON] 🚨 SUSPENSIÓN AUTOMÁTICA: ${suspensionClubs.count} clubes y ${suspensionDistricts.count} distritos pasados a inactivos.`);
         }
 
-        // 2. Obtener clubes que necesitan notificación
-        // Notificamos si:
-        // - El estado es 'active' pero la fecha de expiración está cerca (15, 7, 1 días)
-        // - El estado es 'expired' (vencido)
-        // - Y no se ha notificado hoy
-        const clubs = await prisma.club.findMany({
-            where: {
-                expirationDate: { not: null },
-                OR: [
-                    { subscriptionStatus: 'expired' },
-                    { 
-                        subscriptionStatus: 'active',
-                        expirationDate: { lt: new Date(Date.now() + 16 * 24 * 60 * 60 * 1000) } // Menos de 16 días
-                    }
-                ],
-                OR: [
-                    { lastNotificationSent: null },
-                    { lastNotificationSent: { lt: new Date(Date.now() - 23 * 60 * 60 * 1000) } }
-                ]
-            }
-        });
+        // 2. Obtener Entidades (Clubs y Distritos) para evaluar
+        const [clubs, districts] = await Promise.all([
+            prisma.club.findMany({
+                where: {
+                    expirationDate: { not: null },
+                    OR: [ { subscriptionStatus: 'expired' }, { subscriptionStatus: 'active', expirationDate: { lt: new Date(Date.now() + 16 * 24 * 60 * 60 * 1000) } } ],
+                    OR: [ { lastNotificationSent: null }, { lastNotificationSent: { lt: new Date(Date.now() - 23 * 60 * 60 * 1000) } } ]
+                }
+            }),
+            prisma.district.findMany({
+                where: {
+                    expirationDate: { not: null },
+                    OR: [ { subscriptionStatus: 'expired' }, { subscriptionStatus: 'active', expirationDate: { lt: new Date(Date.now() + 16 * 24 * 60 * 60 * 1000) } } ],
+                    OR: [ { lastNotificationSent: null }, { lastNotificationSent: { lt: new Date(Date.now() - 23 * 60 * 60 * 1000) } } ]
+                }
+            })
+        ]);
 
-        console.log(`[CRON] Se encontraron ${clubs.length} clubes para evaluar.`);
+        const allEntities = [
+            ...clubs.map(c => ({ ...c, entityType: 'club' })),
+            ...districts.map(d => ({ ...d, entityType: 'district', name: d.name || `Distrito ${d.number}` }))
+        ];
+
+        console.log(`[CRON] Se encontraron ${allEntities.length} entidades para evaluar (${clubs.length} clubes, ${districts.length} distritos).`);
         let processedCount = 0;
 
-        for (const club of clubs) {
+        for (const entity of allEntities) {
             const today = new Date();
-            const expDate = new Date(club.expirationDate);
+            const expDate = new Date(entity.expirationDate);
             const diffDays = Math.ceil((expDate - today) / (1000 * 60 * 60 * 24));
             
-            // Determinar si corresponde notificar hoy según el nivel de urgencia
             let shouldNotify = false;
             let urgencyLevel = '';
 
@@ -92,23 +88,24 @@ router.get('/process-expirations', async (req, res) => {
                 urgencyLevel = 'AVISO: 15 DÍAS';
             }
 
-            if (!shouldNotify && club.subscriptionStatus !== 'expired') continue;
-            if (club.subscriptionStatus === 'expired') urgencyLevel = 'CRÍTICA: PLATAFORMA SUSPENDIDA';
+            if (!shouldNotify && entity.subscriptionStatus !== 'expired') continue;
+            if (entity.subscriptionStatus === 'expired') urgencyLevel = 'CRÍTICA: PLATAFORMA SUSPENDIDA';
 
-            console.log(`[CRON] Notificando a ${club.name} (Días: ${diffDays}, Nivel: ${urgencyLevel})`);
+            console.log(`[CRON] Notificando a ${entity.entityType === 'club' ? 'Club' : 'Distrito'} ${entity.name} (Días: ${diffDays}, Nivel: ${urgencyLevel})`);
 
-            // 3. Generar mensaje con IA (Gemini 2.5 Flash)
+            // 3. Generar mensaje con IA
             let messageContent = '';
             try {
-                const systemPrompt = `Eres el "Concierge de Renovaciones" de Rotary ClubPlatform. Tu misión es redactar mensajes diplomáticos, persuasivos y cálidos para que los clubes rotarios renueven su infraestructura digital.
-Tono: Institucional, agradecido, resaltando el impacto que su club tiene en la comunidad a través de su sitio web.
+                const isDistrict = entity.entityType === 'district';
+                const systemPrompt = `Eres el "Concierge de Renovaciones" de Rotary ClubPlatform. Tu misión es redactar mensajes diplomáticos, persuasivos y cálidos para que los ${isDistrict ? 'distritos' : 'clubes'} rotarios renueven su infraestructura digital.
+Tono: Institucional, agradecido, resaltando el impacto que su ${isDistrict ? 'distrito' : 'club'} tiene en la comunidad a través de su sitio web.
 Instrucciones: Genera un texto para WhatsApp (con emojis profesionales) y un párrafo para Email. 
-NO uses comillas. NO menciones precios específicos (se gestionan en el portal).`;
+NO uses comillas. NO menciones precios específicos.`;
 
-                const userPrompt = `Club: ${club.name}
+                const userPrompt = `${isDistrict ? 'Distrito' : 'Club'}: ${entity.name}
 Estado: ${urgencyLevel}
 Días restantes: ${diffDays < 0 ? 'Vencido hace ' + Math.abs(diffDays) : diffDays}
-Link de Pago Seguro: https://${club.domain || club.subdomain + '.rotarylatir.org'}/admin/configuracion
+Link de Pago Seguro: https://${entity.domain || entity.subdomain + (isDistrict ? '.distrito.rotarylatir.org' : '.rotarylatir.org')}/admin/configuracion
 Estructura de respuesta:
 WHATSAPP: [Mensaje aquí]
 EMAIL: [Mensaje aquí]`;
@@ -116,29 +113,26 @@ EMAIL: [Mensaje aquí]`;
                 const aiOutput = await routeToModel('gemini-2.5-flash', systemPrompt, userPrompt);
                 messageContent = aiOutput;
             } catch (err) {
-                console.error(`[CRON] Error IA para ${club.name}:`, err.message);
-                messageContent = `WHATSAPP: Estimados directivos de ${club.name}, les recordamos amablemente la renovación de su ecosistema digital Rotary ClubPlatform (${urgencyLevel}).\nEMAIL: Les informamos que su suscripción requiere atención inmediata para asegurar la continuidad del servicio.`;
+                messageContent = `WHATSAPP: Estimados directivos de ${entity.name}, les recordamos la renovación de su plataforma digital (${urgencyLevel}).\nEMAIL: Les informamos que su suscripción requiere atención para asegurar la continuidad.`;
             }
 
-            // Parsear salida de IA
             const waMatch = messageContent.match(/WHATSAPP:\s*([\s\S]*?)(?=EMAIL:|$)/i);
             const emailMatch = messageContent.match(/EMAIL:\s*([\s\S]*)/i);
-            
             const waMessage = waMatch ? waMatch[1].trim() : '';
             const emailBody = emailMatch ? emailMatch[1].trim() : '';
 
-            // 4. Rama WhatsApp
-            if (club.billingContactPhone && waMessage) {
+            // 4. WhatsApp
+            if (entity.billingContactPhone && waMessage) {
                 const waRes = await WhatsAppService.sendPlatformMessage({
-                    to: club.billingContactPhone,
+                    to: entity.billingContactPhone,
                     message: waMessage
                 });
                 if (waRes.success) {
-                    console.log(`[CRON] WhatsApp enviado a ${club.name}`);
                     await EmailService.logCommunication({
-                        clubId: club.id,
+                        clubId: entity.entityType === 'club' ? entity.id : null,
+                        districtId: entity.entityType === 'district' ? entity.id : null,
                         type: 'whatsapp',
-                        recipient: club.billingContactPhone,
+                        recipient: entity.billingContactPhone,
                         content: waMessage,
                         status: 'sent',
                         subject: 'Recordatorio de Renovación (SaaS)'
@@ -146,9 +140,9 @@ EMAIL: [Mensaje aquí]`;
                 }
             }
 
-            // 5. Rama Email
-            if (club.billingContactEmail && emailBody) {
-                const subject = `📌 Acción Requerida: Renovación de Plataforma - ${club.name}`;
+            // 5. Email
+            if (entity.billingContactEmail && emailBody) {
+                const subject = `📌 Acción Requerida: Renovación de Plataforma - ${entity.name}`;
                 const html = `
                     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 15px; overflow: hidden;">
                         <div style="background: #013388; color: white; padding: 30px; text-align: center;">
@@ -158,39 +152,29 @@ EMAIL: [Mensaje aquí]`;
                             <h3 style="color: #013388;">${urgencyLevel}</h3>
                             <p>${emailBody.replace(/\n/g, '<br>')}</p>
                             <div style="text-align: center; margin: 40px 0;">
-                                <a href="https://${club.domain || club.subdomain + '.rotarylatir.org'}/admin/configuracion" 
+                                <a href="https://${entity.domain || entity.subdomain + (entity.entityType === 'district' ? '.distrito.rotarylatir.org' : '.rotarylatir.org')}/admin/configuracion" 
                                    style="background: #E29C00; color: white; padding: 15px 30px; text-decoration: none; border-radius: 10px; font-weight: bold;">
                                    Renovar Ahora en mi Panel
                                 </a>
                             </div>
-                            <p style="font-size: 12px; color: #999;">Este es un mensaje automático del sistema de facturación centralizado de Valkomen LLC para la red rotaria.</p>
+                            <p style="font-size: 12px; color: #999;">Este es un mensaje automático del sistema de facturación centralizado de Valkomen LLC.</p>
                         </div>
                     </div>
                 `;
-                const emailRes = await EmailService.sendPlatformEmail({
-                    to: club.billingContactEmail,
-                    subject,
-                    html
-                });
-                if (emailRes.success) {
-                    console.log(`[CRON] Email enviado a ${club.name}`);
-                }
+                await EmailService.sendPlatformEmail({ to: entity.billingContactEmail, subject, html });
             }
 
-            // 6. Actualizar registro de notificación
-            await prisma.club.update({
-                where: { id: club.id },
-                data: { lastNotificationSent: new Date() }
-            });
+            // 6. Actualizar registro
+            if (entity.entityType === 'club') {
+                await prisma.club.update({ where: { id: entity.id }, data: { lastNotificationSent: new Date() } });
+            } else {
+                await prisma.district.update({ where: { id: entity.id }, data: { lastNotificationSent: new Date() } });
+            }
 
             processedCount++;
         }
 
-        res.json({ 
-            success: true, 
-            processed: processedCount, 
-            message: `Procesamiento completado. ${processedCount} clubes notificados.` 
-        });
+        res.json({ success: true, processed: processedCount, message: `Completado. ${processedCount} entidades notificadas.` });
 
     } catch (error) {
         console.error('[CRON] Error fatal:', error);

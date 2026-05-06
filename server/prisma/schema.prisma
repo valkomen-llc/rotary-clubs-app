@@ -45,8 +45,18 @@ model District {
   status        String   @default("active")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  logo          String?
+  footerLogo    String?
+  favicon       String?
+  colors        Json?    @default("{\"primary\": \"#013388\", \"secondary\": \"#E29C00\"}")
+  logoHeaderSize Int      @default(200)
+  expirationBannerActive   Boolean                 @default(false)
+  expirationBannerMessage  String?
+  developmentBannerActive  Boolean                 @default(false)
+  developmentBannerMessage String?
   subscriptionStatus       String                  @default("active")
   expirationDate           DateTime?
+  stripeCustomerId         String?                 @unique
   billingContactEmail      String?
   billingContactPhone      String?
   lastNotificationSent     DateTime?

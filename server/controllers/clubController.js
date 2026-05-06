@@ -25,25 +25,45 @@ export const getAllClubs = async (req, res) => {
 export const getClubById = async (req, res) => {
     const { id } = req.params;
     try {
-        if (req.user.role !== 'administrator' && req.user.clubId !== id) {
+        // Access Control: Super Admin or Member of the entity
+        const isDistrictAdmin = req.user.role === 'district_admin' && req.user.districtId === id;
+        const isClubAdmin = (req.user.role === 'club_admin' || req.user.role === 'editor') && req.user.clubId === id;
+        
+        if (req.user.role !== 'administrator' && !isClubAdmin && !isDistrictAdmin) {
             return res.status(403).json({ error: 'Access denied' });
         }
-        const clubResult = await db.query('SELECT * FROM "Club" WHERE id = $1', [id]);
+
+        // 1. Try Club
+        let clubResult = await db.query('SELECT * FROM "Club" WHERE id = $1', [id]);
+        let entity = clubResult.rows[0];
+        let entityType = 'club';
+
+        // 2. Try District if not a club
+        if (!entity) {
+            const districtResult = await db.query('SELECT * FROM "District" WHERE id = $1', [id]);
+            entity = districtResult.rows[0];
+            if (entity) {
+                entityType = 'district';
+                entity.type = 'district'; // Ensure type is present
+            }
+        }
+
+        if (!entity) return res.status(404).json({ error: 'Entidad no encontrada' });
+
         const settingsResult = await db.query('SELECT * FROM "Setting" WHERE "clubId" = $1', [id]);
         const paymentConfigs = await prisma.paymentProviderConfig.findMany({ where: { clubId: id } });
         const membersResult = await db.query('SELECT id, name, image, description, "isBoard", "boardRole", position FROM "ClubMember" WHERE "clubId" = $1 ORDER BY position ASC, "createdAt" DESC', [id]);
 
-        const club = clubResult.rows[0];
-        if (!club) return res.status(404).json({ error: 'Club not found' });
+        entity.settings = settingsResult.rows;
+        entity.paymentConfigs = paymentConfigs;
+        entity.members = membersResult.rows;
 
-        club.settings = settingsResult.rows;
-        club.paymentConfigs = paymentConfigs;
-        club.members = membersResult.rows;
-
-        // Build modules map from settings for frontend convenience
+        // Map settings
         const settingsMap = {};
         settingsResult.rows.forEach(s => { settingsMap[s.key] = s.value; });
-        club.modules = {
+        
+        // Modules (Compatibility layer)
+        entity.modules = {
             memberCount: settingsMap['member_count'] || '20',
             projects: settingsMap['module_projects'] !== 'false',
             events: settingsMap['module_events'] !== 'false',
@@ -56,18 +76,16 @@ export const getClubById = async (req, res) => {
             rotex: settingsMap['module_rotex'] === 'true',
         };
         
-        // Expose settings directly as a map for flexible frontend usage
-        club.settings = settingsMap;
+        entity.settings = settingsMap;
         
         if (settingsMap['club_archetype']) {
-            try {
-                club.archetype = JSON.parse(settingsMap['club_archetype']);
-            } catch(e) {}
+            try { entity.archetype = JSON.parse(settingsMap['club_archetype']); } catch(e) {}
         }
 
-        res.json(club);
+        res.json(entity);
     } catch (error) {
-        res.status(500).json({ error: 'Error fetching club' });
+        console.error('getClubById Error:', error);
+        res.status(500).json({ error: 'Error fetching entity' });
     }
 };
 
@@ -145,14 +163,28 @@ export const updateClub = async (req, res) => {
     } = req.body;
 
         try {
-            if (req.user.role !== 'administrator' && req.user.clubId !== id) {
+            // Access Control
+            const isDistrictAdmin = req.user.role === 'district_admin' && req.user.districtId === id;
+            const isClubAdmin = (req.user.role === 'club_admin' || req.user.role === 'editor') && req.user.clubId === id;
+            
+            if (req.user.role !== 'administrator' && !isClubAdmin && !isDistrictAdmin) {
                 return res.status(403).json({ error: 'Access denied' });
             }
 
-            const currentClub = await db.query('SELECT * FROM "Club" WHERE id = $1', [id]);
-            if (!currentClub.rows[0]) return res.status(404).json({ error: 'Club not found' });
+            // 1. Try Club
+            let currentResult = await db.query('SELECT * FROM "Club" WHERE id = $1', [id]);
+            let entity = currentResult.rows[0];
+            let tableName = 'Club';
 
-            // Construir la consulta dinámicamente para permitir setear a null si el frontend envía un string vacío
+            // 2. Try District
+            if (!entity) {
+                currentResult = await db.query('SELECT * FROM "District" WHERE id = $1', [id]);
+                entity = currentResult.rows[0];
+                if (entity) tableName = 'District';
+            }
+
+            if (!entity) return res.status(404).json({ error: 'Entidad no encontrada' });
+
             const updateFields = [];
             const params = [];
             let pIdx = 1;
@@ -166,16 +198,11 @@ export const updateClub = async (req, res) => {
 
             addField('name', name);
             addField('description', description);
-            addField('city', city);
-            addField('country', country);
-            addField('district', district);
             addField('domain', domain);
             addField('subdomain', subdomain);
             addField('logo', logo);
             addField('footerLogo', footerLogo);
-            addField('endPolioLogo', endPolioLogo);
             addField('favicon', favicon);
-            addField('type', type);
             addField('subscriptionStatus', subscriptionStatus);
             addField('expirationDate', expirationDate ? new Date(expirationDate) : undefined);
             addField('billingContactEmail', billingContactEmail);
@@ -184,21 +211,40 @@ export const updateClub = async (req, res) => {
             addField('expirationBannerMessage', expirationBannerMessage);
             addField('developmentBannerActive', developmentBannerActive);
             addField('developmentBannerMessage', developmentBannerMessage);
+            addField('logoHeaderSize', logoHeaderSize ? parseInt(logoHeaderSize) : undefined);
 
-            const hasClubUpdates = updateFields.length > 0;
-            let result;
-
-            if (hasClubUpdates) {
-                updateFields.push(`"updatedAt" = NOW()`);
-                params.push(id);
-                const query = `UPDATE "Club" SET ${updateFields.join(', ')} WHERE id = $${pIdx} RETURNING *`;
-                result = await db.query(query, params);
+            // Special fields for Club
+            if (tableName === 'Club') {
+                addField('city', city);
+                addField('country', country);
+                addField('district', district);
+                addField('type', type);
             } else {
-                result = await db.query(`UPDATE "Club" SET "updatedAt" = NOW() WHERE id = $1 RETURNING *`, [id]);
+                // Special fields for District (if we use the colors column)
+                if (primaryColor || secondaryColor) {
+                    const currentColors = typeof entity.colors === 'string' ? JSON.parse(entity.colors) : (entity.colors || {});
+                    const newColors = {
+                        primary: primaryColor || currentColors.primary || '#013388',
+                        secondary: secondaryColor || currentColors.secondary || '#E29C00'
+                    };
+                    addField('colors', JSON.stringify(newColors));
+                }
             }
 
-            // Vercel Auto-provision: If domain has changed or is being set
-            const existingDomain = currentClub.rows[0].domain;
+            const hasUpdates = updateFields.length > 0;
+            let result;
+
+            if (hasUpdates) {
+                updateFields.push(`"updatedAt" = NOW()`);
+                params.push(id);
+                const query = `UPDATE "${tableName}" SET ${updateFields.join(', ')} WHERE id = $${pIdx} RETURNING *`;
+                result = await db.query(query, params);
+            } else {
+                result = await db.query(`UPDATE "${tableName}" SET "updatedAt" = NOW() WHERE id = $1 RETURNING *`, [id]);
+            }
+
+            // Vercel Auto-provision
+            const existingDomain = entity.domain;
             if (domain && domain !== existingDomain) {
                 await VercelService.addDomain(domain);
             }

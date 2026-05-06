@@ -327,8 +327,8 @@ const DistrictsManagement: React.FC = () => {
     // ─── Modal de creación/edición ─────────────────────────────────────────────
     const renderModal = () => (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 flex-shrink-0">
                     <h2 className="text-lg font-bold text-gray-800">
                         {editingDistrict ? `Editar — Distrito ${editingDistrict.number}` : 'Nuevo Distrito Rotary'}
                     </h2>
@@ -336,7 +336,7 @@ const DistrictsManagement: React.FC = () => {
                         <X className="w-6 h-6" />
                     </button>
                 </div>
-                <form onSubmit={handleSubmit} className="p-6 max-h-[80vh] overflow-y-auto space-y-5">
+                <form onSubmit={handleSubmit} className="p-6 overflow-y-auto flex-1 space-y-5 scrollbar-thin scrollbar-thumb-gray-200">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wider">Número de Distrito *</label>
