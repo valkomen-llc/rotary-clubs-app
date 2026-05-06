@@ -26,6 +26,18 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.98.0",
+        date: "05 de Mayo, 2026",
+        title: "OPERATIONS: Control Manual de Suscripciones",
+        description: "Lanzamiento de herramientas para la gestión manual de estados SaaS y fechas de expiración.",
+        type: "feat",
+        changes: [
+            { type: "added", text: "Dashboard: Campos de estado SaaS y fecha de expiración en el editor de clubes." },
+            { type: "improved", text: "Finanzas: Cálculo de ARR basado en la tarifa anual de $299 USD." },
+            { type: "fixed", text: "Métricas: Sincronización de contadores financieros con los nuevos estados manuales." }
+        ]
+    },
+    {
         version: "v4.97.1",
         date: "05 de Mayo, 2026",
         title: "HOTFIX: Reparación de Dashboard Administrativo",

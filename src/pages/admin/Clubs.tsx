@@ -60,6 +60,8 @@ const ClubsManagement: React.FC = () => {
         moduleNgse: false,
         moduleRotex: false,
         adminUserId: '',
+        subscriptionStatus: 'inactive',
+        expirationDate: '',
         expirationBannerActive: false,
         expirationBannerMessage: '',
         developmentBannerActive: false,
@@ -107,9 +109,13 @@ const ClubsManagement: React.FC = () => {
                 description: club.description || '',
                 status: club.status || 'active',
                 type: club.type || 'club',
-                adminUserId: '',
                 moduleProjects: true, moduleEvents: true, moduleRotaract: false, moduleInteract: false,
-                moduleEcommerce: false, moduleDian: false, moduleYouthExchange: false, moduleNgse: false, moduleRotex: false,
+                moduleEcommerce: false, moduleDian: false, moduleYouthExchange: false,
+                moduleNgse: club.moduleNgse || false,
+                moduleRotex: club.moduleRotex || false,
+                adminUserId: club.users?.[0]?.id || '',
+                subscriptionStatus: club.subscriptionStatus || 'inactive',
+                expirationDate: club.expirationDate ? new Date(club.expirationDate).toISOString().split('T')[0] : '',
                 expirationBannerActive: club.expirationBannerActive || false,
                 expirationBannerMessage: club.expirationBannerMessage || '',
                 developmentBannerActive: club.developmentBannerActive || false,
@@ -254,7 +260,7 @@ const ClubsManagement: React.FC = () => {
         totalActive: clubs.filter(c => c.subscriptionStatus === 'active').length,
         totalProspects: clubs.filter(c => c.subscriptionStatus === 'inactive' || !c.subscriptionStatus).length,
         totalExpired: clubs.filter(c => c.subscriptionStatus === 'expired').length,
-        estimatedMRR: clubs.filter(c => c.subscriptionStatus === 'active').length * 25, // Estimación base $25/mes
+        estimatedARR: clubs.filter(c => c.subscriptionStatus === 'active').length * 299, // $299/año por club
         expiringSoon: clubs.filter(c => {
             if (!c.expirationDate || c.subscriptionStatus !== 'active') return false;
             const daysLeft = Math.ceil((new Date(c.expirationDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
@@ -288,8 +294,8 @@ const ClubsManagement: React.FC = () => {
                         </div>
                         <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full uppercase">Ingresos Est.</span>
                     </div>
-                    <p className="text-2xl font-black text-gray-800">${stats.estimatedMRR.toLocaleString()}</p>
-                    <p className="text-[10px] text-gray-400 mt-1 uppercase font-bold tracking-wider">MRR Proyectado (USD)</p>
+                    <p className="text-2xl font-black text-gray-800">${stats.estimatedARR.toLocaleString()}</p>
+                    <p className="text-[10px] text-gray-400 mt-1 uppercase font-bold tracking-wider">ARR Proyectado (USD)</p>
                 </div>
 
                 <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
@@ -596,6 +602,30 @@ const ClubsManagement: React.FC = () => {
                                         <option value="colrotarios">Skin de Colrotarios (Fundación)</option>
                                     </select>
                                 </div>
+
+                                 <div className="md:col-span-1">
+                                     <label className="block text-sm font-bold text-gray-700 mb-1 italic text-rotary-blue">Estatus Suscripción SaaS</label>
+                                     <select
+                                         className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all bg-white"
+                                         value={formData.subscriptionStatus}
+                                         onChange={(e) => setFormData({ ...formData, subscriptionStatus: e.target.value })}
+                                     >
+                                         <option value="active">Pagado / Activo</option>
+                                         <option value="expired">Expirado / Vencido</option>
+                                         <option value="inactive">Inactivo (Prospecto)</option>
+                                         <option value="pending">Pendiente</option>
+                                     </select>
+                                 </div>
+
+                                 <div className="md:col-span-1">
+                                     <label className="block text-sm font-bold text-gray-700 mb-1 italic text-rotary-blue">Fecha Expiración SaaS</label>
+                                     <input
+                                         type="date"
+                                         className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all"
+                                         value={formData.expirationDate}
+                                         onChange={(e) => setFormData({ ...formData, expirationDate: e.target.value })}
+                                     />
+                                 </div>
 
                                 <div className="md:col-span-2">
                                     <label className="block text-sm font-bold text-gray-700 mb-1">Usuario Administrador (Opcional)</label>
