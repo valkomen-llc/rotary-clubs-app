@@ -315,9 +315,13 @@ const ClubsManagement: React.FC = () => {
                                         <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase w-fit ${
                                             club.subscriptionStatus === 'active' ? 'bg-emerald-100 text-emerald-700' : 
                                             club.subscriptionStatus === 'expired' ? 'bg-rose-100 text-rose-700 animate-pulse' : 
+                                            club.subscriptionStatus === 'inactive' ? 'bg-gray-100 text-gray-500' :
                                             'bg-amber-100 text-amber-700'
                                         }`}>
-                                            {club.subscriptionStatus || 'Pendiente'}
+                                            {club.subscriptionStatus === 'active' ? 'Activo' : 
+                                             club.subscriptionStatus === 'expired' ? 'Expirado' :
+                                             club.subscriptionStatus === 'inactive' ? 'Inactivo' :
+                                             'Pendiente'}
                                         </span>
                                         {club.expirationDate && (
                                             <span className="text-[10px] text-gray-400 font-medium">

@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.95.1",
+        date: "05 de Mayo, 2026",
+        title: "FIX: Claridad en Estados de Suscripción",
+        description: "Se corrigió la etiqueta de los clubes que aún no han contratado el servicio para que aparezcan como 'Inactivos' en lugar de 'Expirados'.",
+        type: "fix",
+        changes: [
+            { type: "improved", text: "UI: Nueva etiqueta 'Inactivo' (gris) para suscripciones no iniciadas." },
+            { type: "fixed", text: "Lógica: Diferenciación semántica entre 'Expirado' (vencido) e 'Inactivo' (nuevo)." }
+        ]
+    },
+    {
         version: "v4.95.0",
         date: "05 de Mayo, 2026",
         title: "AUTOMATION: Suspensión Automática por Falta de Pago",
