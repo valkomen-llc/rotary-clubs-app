@@ -26,6 +26,17 @@ interface UpdateItem {
 // Cache bust: 2026-04-23 17:08 (NUCLEAR REPAIR ☢️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: "v4.93.3",
+        date: "05 de Mayo, 2026",
+        title: "BRANDING: Logo de Producto y Refinamiento",
+        description: "Se ha actualizado el logotipo al oficial de 'Club Platform for Rotary' y se han refinado los textos para asociaciones.",
+        type: "ui",
+        changes: [
+            { type: "improved", text: "Branding: Logotipo oficial de la plataforma activado." },
+            { type: "improved", text: "Textos: Eliminación de referencias genéricas a 'Club' en descripciones de asociaciones." }
+        ]
+    },
+    {
         version: "v4.93.1",
         date: "05 de Mayo, 2026",
         title: "BRANDING: Mejora Visual en Checkout",
