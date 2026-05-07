@@ -1,9 +1,15 @@
-// DISTRICT HEALTH IQ V4.119 | 2026-05-06 (API STABILITY FIX 🔧)
+// DISTRICT HEALTH IQ V4.120 | 2026-05-06 (CORE ROUTES STATIC RESTORATION 🚀)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import prisma from '../server/lib/prisma.js';
+import authRoutes from '../server/routes/auth.js';
+import adminRoutes from '../server/routes/admin.js';
+import clubRoutes from '../server/routes/clubs.js';
+import publicRoutes from '../server/routes/public.js';
+import mediaRoutes from '../server/routes/media.js';
+
 const app = express();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
 
@@ -113,7 +119,7 @@ app.get('/api/district-analytics/health', async (req, res, next) => {
 
 // ── Static & Diagnostics ─────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.119', release: 'API Stability Patch 🔧' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.120', release: 'Core Routes Restoration 🚀' });
 });
 
 app.get('/api/health', async (req, res) => {
@@ -126,21 +132,16 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
-// ── Route loaders ────────────────────────────────────────────────────────────
-let _auth, _admin, _clubs, _calendar, _ai, _media, _orders, _payments, _products, _communications, _translate, _public, _analytics, _leads, _faqs, _agents, _siteProgress, _districts, _whatsappCRM, _platformConfig, _scoutGrants, _documents, _system, _whatsappQr, _contentStudio, _domains, _cron, _distAnalytics;
-const getAuth = async () => _auth || (({ default: _auth } = await import('../server/routes/auth.js')), _auth);
-const getAdmin = async () => _admin || (({ default: _admin } = await import('../server/routes/admin.js')), _admin);
-const getClubs = async () => _clubs || (({ default: _clubs } = await import('../server/routes/clubs.js')), _clubs);
+// ── Route loaders (Legacy Dynamic for less critical routes) ──────────────────
+let _calendar, _ai, _orders, _payments, _products, _communications, _translate, _analytics, _leads, _faqs, _agents, _siteProgress, _districts, _whatsappCRM, _platformConfig, _scoutGrants, _documents, _system, _whatsappQr, _contentStudio, _domains, _cron, _distAnalytics;
 const getCalendar = async () => _calendar || (({ default: _calendar } = await import('../server/routes/calendar.js')), _calendar);
 const getAI = async () => _ai || (({ default: _ai } = await import('../server/routes/ai.js')), _ai);
-const getMedia = async () => _media || (({ default: _media } = await import('../server/routes/media.js')), _media);
 
 const getOrders = async () => _orders || (({ default: _orders } = await import('../server/routes/orders.js')), _orders);
 const getPayments = async () => _payments || (({ default: _payments } = await import('../server/routes/payments.js')), _payments);
 const getProducts = async () => _products || (({ default: _products } = await import('../server/routes/products.js')), _products);
 const getCommunications = async () => _communications || (({ default: _communications } = await import('../server/routes/communications.js')), _communications);
 const getTranslate = async () => _translate || (({ default: _translate } = await import('../server/routes/translate.js')), _translate);
-const getPublicRoutes = async () => _public || (({ default: _public } = await import('../server/routes/public.js')), _public);
 const getAnalytics = async () => _analytics || (({ default: _analytics } = await import('../server/routes/analytics.js')), _analytics);
 const getLeads = async () => _leads || (({ default: _leads } = await import('../server/routes/leads.js')), _leads);
 const getFaqs = async () => _faqs || (({ default: _faqs } = await import('../server/routes/faqs.js')), _faqs);
@@ -160,18 +161,19 @@ const getDomains = async () => _domains || (({ default: _domains } = await impor
 const getCron = async () => _cron || (({ default: _cron } = await import('../server/routes/cron.js')), _cron);
 
 // ── Route handlers ────────────────────────────────────────────────────────────
-app.use('/api/auth', async (req, res, next) => { try { return (await getAuth())(req, res, next); } catch (e) { console.error('API Error [auth]:', e); res.status(500).json({ error: e.message }); } });
-app.use('/api/admin', async (req, res, next) => { try { return (await getAdmin())(req, res, next); } catch (e) { console.error('API Error [admin]:', e); res.status(500).json({ error: e.message }); } });
-app.use('/api/clubs', async (req, res, next) => { try { return (await getClubs())(req, res, next); } catch (e) { console.error('API Error [clubs]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/clubs', clubRoutes);
+app.use('/api/public', publicRoutes);
+app.use('/api/media', mediaRoutes);
+
 app.use('/api/calendar', async (req, res, next) => { try { return (await getCalendar())(req, res, next); } catch (e) { console.error('API Error [calendar]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/ai', async (req, res, next) => { try { return (await getAI())(req, res, next); } catch (e) { console.error('API Error [ai]:', e); res.status(500).json({ error: e.message }); } });
-app.use('/api/media', async (req, res, next) => { try { return (await getMedia())(req, res, next); } catch (e) { console.error('API Error [media]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/orders', async (req, res, next) => { try { return (await getOrders())(req, res, next); } catch (e) { console.error('API Error [orders]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/payments', async (req, res, next) => { try { return (await getPayments())(req, res, next); } catch (e) { console.error('API Error [payments]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/products', async (req, res, next) => { try { return (await getProducts())(req, res, next); } catch (e) { console.error('API Error [products]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/communications', async (req, res, next) => { try { return (await getCommunications())(req, res, next); } catch (e) { console.error('API Error [communications]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/translate', async (req, res, next) => { try { return (await getTranslate())(req, res, next); } catch (e) { console.error('API Error [translate]:', e); res.status(500).json({ error: e.message }); } });
-app.use('/api/public', async (req, res, next) => { try { return (await getPublicRoutes())(req, res, next); } catch (e) { console.error('API Error [public]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/analytics', async (req, res, next) => { try { return (await getAnalytics())(req, res, next); } catch (e) { console.error('API Error [analytics]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/leads', async (req, res, next) => { try { return (await getLeads())(req, res, next); } catch (e) { console.error('API Error [leads]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/faqs', async (req, res, next) => { try { return (await getFaqs())(req, res, next); } catch (e) { console.error('API Error [faqs]:', e); res.status(500).json({ error: e.message }); } });
