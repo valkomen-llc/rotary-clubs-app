@@ -1,6 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma.js';
 
 /**
  * Obtiene métricas de salud y crecimiento de todos los clubes del distrito
@@ -9,10 +7,12 @@ export const getDistrictHealth = async (req, res) => {
     try {
         const { districtId } = req.query;
         
-        // Si no hay districtId, asumimos global (para super admins) o filtramos por el distrito del usuario
+        // Si no hay districtId, asumimos global (para super admins)
         const whereClub = districtId ? { districtId } : {};
 
-        // 1. Obtener todos los clubes del distrito
+        console.log(`[DistrictAnalytics] Fetching health for ${districtId ? `district ${districtId}` : 'all districts'}`);
+
+        // 1. Obtener todos los clubes
         const clubs = await prisma.club.findMany({
             where: whereClub,
             include: {
@@ -37,11 +37,16 @@ export const getDistrictHealth = async (req, res) => {
         const ninetyDaysAgo = new Date();
         ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
+        // Build member filter carefully
+        const memberWhere = {
+            createdAt: { gte: ninetyDaysAgo }
+        };
+        if (districtId) {
+            memberWhere.club = { districtId };
+        }
+
         const newMembers = await prisma.clubMember.findMany({
-            where: {
-                club: { districtId: districtId || undefined },
-                createdAt: { gte: ninetyDaysAgo }
-            },
+            where: memberWhere,
             select: { clubId: true }
         });
 
@@ -86,7 +91,10 @@ export const getDistrictHealth = async (req, res) => {
 
     } catch (error) {
         console.error('[DistrictAnalytics] Error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ 
+            error: 'Error al procesar métricas de distrito',
+            details: error.message 
+        });
     }
 };
 

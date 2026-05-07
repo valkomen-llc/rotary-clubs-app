@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.134',
+        date: '06 de Mayo, 2026',
+        title: '🧠 Estabilidad District Health IQ',
+        description: 'Se corrigió un error en el enrutamiento y la lógica de consulta de base de datos que impedía la carga de métricas globales del distrito.',
+        type: 'fix'
+    },
+    {
         version: 'v4.133',
         date: '06 de Mayo, 2026',
         title: '🎨 Gestión de Logo de Plataforma',

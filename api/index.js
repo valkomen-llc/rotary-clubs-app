@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.133 | 2026-05-06 (CUSTOM PLATFORM LOGO 🎨)
+// DISTRICT HEALTH IQ V4.134 | 2026-05-06 (DISTRICT IQ FIX 🧠)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -109,18 +109,9 @@ app.get('/api/technical-requests', async (req, res) => {
     }
 });
 
-app.get('/api/district-analytics/health', async (req, res, next) => {
-    try {
-        const { getDistrictHealth } = await import('../server/controllers/districtAnalyticsController.js');
-        return getDistrictHealth(req, res, next);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
 // ── Static & Diagnostics ─────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.133', release: 'Custom Platform Logo 🎨' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.134', release: 'District IQ Fix 🧠' });
 });
 
 app.get('/api/health', async (req, res) => {
@@ -190,6 +181,7 @@ app.use('/api/content-studio', async (req, res, next) => { try { return (await g
 app.use('/api/domains', async (req, res, next) => { try { return (await getDomains())(req, res, next); } catch (e) { console.error('API Error [domains]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/cron', async (req, res, next) => { try { return (await getCron())(req, res, next); } catch (e) { console.error('API Error [cron]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/scout-grants', async (req, res, next) => { try { return (await getScoutGrants())(req, res, next); } catch (e) { console.error('API Error [scout-grants]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/district-analytics', async (req, res, next) => { try { return (await getDistAnalytics())(req, res, next); } catch (e) { console.error('API Error [district-analytics]:', e); res.status(500).json({ error: e.message }); } });
 
 // RUTAS SOCIAL HUB
 app.get('/api/social/callback/:platform', async (req, res) => {
