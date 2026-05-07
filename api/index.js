@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.116d | 2026-05-06 (DSO ADMIN 🧠)
+// DISTRICT HEALTH IQ V4.117 | 2026-05-06 (DSO ADMIN 🧠)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -113,7 +113,7 @@ app.get('/api/district-analytics/health', async (req, res, next) => {
 
 // ── Static & Diagnostics ─────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.116d', release: 'District Health IQ 🧠' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.117', release: 'District Health IQ 🧠' });
 });
 
 app.get('/api/health', async (req, res) => {

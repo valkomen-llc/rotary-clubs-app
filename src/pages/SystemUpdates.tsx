@@ -1880,10 +1880,10 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
         ]
     },
     {
-        version: "v4.116d",
+        version: "v4.117",
         date: "2026-05-06",
-        title: "Phase 11: District Health IQ (Live)",
-        description: "Activación oficial del motor de inteligencia para Distritos. Analítica predictiva, salud SaaS y leaderboard de crecimiento operativo.",
+        title: "Phase 11: District Health IQ (Final)",
+        description: "Activación oficial del motor de inteligencia para Distritos. Analítica predictiva, salud SaaS y leaderboard operativo.",
         type: "feature"
     },
     {
