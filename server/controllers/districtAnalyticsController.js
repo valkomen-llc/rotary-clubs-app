@@ -19,7 +19,7 @@ export const getDistrictHealth = async (req, res) => {
                 _count: {
                     select: {
                         members: true,
-                        leads: true,
+                        Lead: true,
                         projects: true,
                         posts: true
                     }
@@ -30,7 +30,7 @@ export const getDistrictHealth = async (req, res) => {
         // 2. Calcular métricas agregadas
         const totalClubs = clubs.length;
         const totalMembers = clubs.reduce((acc, club) => acc + club._count.members, 0);
-        const totalLeads = clubs.reduce((acc, club) => acc + club._count.leads, 0);
+        const totalLeads = clubs.reduce((acc, club) => acc + club._count.Lead, 0);
         const totalProjects = clubs.reduce((acc, club) => acc + club._count.projects, 0);
 
         // 3. Análisis de Crecimiento (Socios en los últimos 90 días)
@@ -102,7 +102,7 @@ export const getDistrictHealth = async (req, res) => {
  * Calcula un score de actividad (0-100) basado en volumen de contenido y gestión
  */
 function calculateActivityScore(counts) {
-    const { members, leads, projects, posts } = counts;
+    const { members, Lead: leads, projects, posts } = counts;
     const score = (posts * 2) + (projects * 5) + (leads * 3);
     return Math.min(100, score);
 }

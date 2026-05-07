@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.134 | 2026-05-06 (DISTRICT IQ FIX 🧠)
+// DISTRICT HEALTH IQ V4.135 | 2026-05-06 (FIELD NAME CASE FIX 🔠)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -111,7 +111,7 @@ app.get('/api/technical-requests', async (req, res) => {
 
 // ── Static & Diagnostics ─────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.134', release: 'District IQ Fix 🧠' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.135', release: 'Field Name Case Fix 🔠' });
 });
 
 app.get('/api/health', async (req, res) => {

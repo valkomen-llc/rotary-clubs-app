@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.135',
+        date: '06 de Mayo, 2026',
+        title: '🔠 Corrección de Esquema (Leads)',
+        description: 'Se ajustó la sensibilidad a mayúsculas en la consulta de base de datos para el conteo de prospectos (Leads), restaurando la visualización del módulo District IQ.',
+        type: 'fix'
+    },
+    {
         version: 'v4.134',
         date: '06 de Mayo, 2026',
         title: '🧠 Estabilidad District Health IQ',
