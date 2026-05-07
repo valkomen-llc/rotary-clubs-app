@@ -3,14 +3,14 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
-import { PrismaClient } from '@prisma/client';
-import Stripe from 'stripe';
-
+import prisma from '../server/lib/prisma.js';
 const app = express();
-const prisma = new PrismaClient();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
 
-app.use(cors());
+app.use(cors({
+    origin: true,
+    credentials: true
+}));
 
 // Webhooks
 app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), async (req, res, next) => {
@@ -160,33 +160,33 @@ const getDomains = async () => _domains || (({ default: _domains } = await impor
 const getCron = async () => _cron || (({ default: _cron } = await import('../server/routes/cron.js')), _cron);
 
 // ── Route handlers ────────────────────────────────────────────────────────────
-app.use('/api/auth', async (req, res, next) => (await getAuth())(req, res, next));
-app.use('/api/admin', async (req, res, next) => (await getAdmin())(req, res, next));
-app.use('/api/clubs', async (req, res, next) => (await getClubs())(req, res, next));
-app.use('/api/calendar', async (req, res, next) => (await getCalendar())(req, res, next));
-app.use('/api/ai', async (req, res, next) => (await getAI())(req, res, next));
-app.use('/api/media', async (req, res, next) => (await getMedia())(req, res, next));
-app.use('/api/orders', async (req, res, next) => (await getOrders())(req, res, next));
-app.use('/api/payments', async (req, res, next) => (await getPayments())(req, res, next));
-app.use('/api/products', async (req, res, next) => (await getProducts())(req, res, next));
-app.use('/api/communications', async (req, res, next) => (await getCommunications())(req, res, next));
-app.use('/api/translate', async (req, res, next) => (await getTranslate())(req, res, next));
-app.use('/api/public', async (req, res, next) => (await getPublicRoutes())(req, res, next));
-app.use('/api/analytics', async (req, res, next) => (await getAnalytics())(req, res, next));
-app.use('/api/leads', async (req, res, next) => (await getLeads())(req, res, next));
-app.use('/api/faqs', async (req, res, next) => (await getFaqs())(req, res, next));
-app.use('/api/agents', async (req, res, next) => (await getAgents())(req, res, next));
-app.use('/api/site-progress', async (req, res, next) => (await getSiteProgress())(req, res, next));
-app.use('/api/admin/districts', async (req, res, next) => (await getDistricts())(req, res, next));
-app.use('/api/whatsapp', async (req, res, next) => (await getWhatsAppCRM())(req, res, next));
-app.use('/api/platform-config', async (req, res, next) => (await getPlatformConfig())(req, res, next));
-app.use('/api/documents', async (req, res, next) => (await getDocuments())(req, res, next));
-app.use('/api/system', async (req, res, next) => (await getSystem())(req, res, next));
-app.use('/api/whatsapp-qr', async (req, res, next) => (await getWhatsappQr())(req, res, next));
-app.use('/api/content-studio', async (req, res, next) => (await getContentStudio())(req, res, next));
-app.use('/api/domains', async (req, res, next) => (await getDomains())(req, res, next));
-app.use('/api/cron', async (req, res, next) => (await getCron())(req, res, next));
-app.use('/api/scout-grants', async (req, res, next) => (await getScoutGrants())(req, res, next));
+app.use('/api/auth', async (req, res, next) => { try { return (await getAuth())(req, res, next); } catch (e) { console.error('API Error [auth]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/admin', async (req, res, next) => { try { return (await getAdmin())(req, res, next); } catch (e) { console.error('API Error [admin]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/clubs', async (req, res, next) => { try { return (await getClubs())(req, res, next); } catch (e) { console.error('API Error [clubs]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/calendar', async (req, res, next) => { try { return (await getCalendar())(req, res, next); } catch (e) { console.error('API Error [calendar]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/ai', async (req, res, next) => { try { return (await getAI())(req, res, next); } catch (e) { console.error('API Error [ai]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/media', async (req, res, next) => { try { return (await getMedia())(req, res, next); } catch (e) { console.error('API Error [media]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/orders', async (req, res, next) => { try { return (await getOrders())(req, res, next); } catch (e) { console.error('API Error [orders]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/payments', async (req, res, next) => { try { return (await getPayments())(req, res, next); } catch (e) { console.error('API Error [payments]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/products', async (req, res, next) => { try { return (await getProducts())(req, res, next); } catch (e) { console.error('API Error [products]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/communications', async (req, res, next) => { try { return (await getCommunications())(req, res, next); } catch (e) { console.error('API Error [communications]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/translate', async (req, res, next) => { try { return (await getTranslate())(req, res, next); } catch (e) { console.error('API Error [translate]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/public', async (req, res, next) => { try { return (await getPublicRoutes())(req, res, next); } catch (e) { console.error('API Error [public]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/analytics', async (req, res, next) => { try { return (await getAnalytics())(req, res, next); } catch (e) { console.error('API Error [analytics]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/leads', async (req, res, next) => { try { return (await getLeads())(req, res, next); } catch (e) { console.error('API Error [leads]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/faqs', async (req, res, next) => { try { return (await getFaqs())(req, res, next); } catch (e) { console.error('API Error [faqs]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/agents', async (req, res, next) => { try { return (await getAgents())(req, res, next); } catch (e) { console.error('API Error [agents]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/site-progress', async (req, res, next) => { try { return (await getSiteProgress())(req, res, next); } catch (e) { console.error('API Error [site-progress]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/admin/districts', async (req, res, next) => { try { return (await getDistricts())(req, res, next); } catch (e) { console.error('API Error [districts]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/whatsapp', async (req, res, next) => { try { return (await getWhatsAppCRM())(req, res, next); } catch (e) { console.error('API Error [whatsapp]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/platform-config', async (req, res, next) => { try { return (await getPlatformConfig())(req, res, next); } catch (e) { console.error('API Error [platform-config]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/documents', async (req, res, next) => { try { return (await getDocuments())(req, res, next); } catch (e) { console.error('API Error [documents]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/system', async (req, res, next) => { try { return (await getSystem())(req, res, next); } catch (e) { console.error('API Error [system]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/whatsapp-qr', async (req, res, next) => { try { return (await getWhatsappQr())(req, res, next); } catch (e) { console.error('API Error [whatsapp-qr]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/content-studio', async (req, res, next) => { try { return (await getContentStudio())(req, res, next); } catch (e) { console.error('API Error [content-studio]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/domains', async (req, res, next) => { try { return (await getDomains())(req, res, next); } catch (e) { console.error('API Error [domains]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/cron', async (req, res, next) => { try { return (await getCron())(req, res, next); } catch (e) { console.error('API Error [cron]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/scout-grants', async (req, res, next) => { try { return (await getScoutGrants())(req, res, next); } catch (e) { console.error('API Error [scout-grants]:', e); res.status(500).json({ error: e.message }); } });
 
 // RUTAS SOCIAL HUB
 app.get('/api/social/callback/:platform', async (req, res) => {
