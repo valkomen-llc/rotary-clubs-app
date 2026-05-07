@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.129 | 2026-05-06 (SETTINGS STABILITY FIX 🛠️)
+// DISTRICT HEALTH IQ V4.130 | 2026-05-06 (INVESTMENT VISIBILITY FIX 🛠️)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -120,7 +120,7 @@ app.get('/api/district-analytics/health', async (req, res, next) => {
 
 // ── Static & Diagnostics ─────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.129', release: 'Settings Stability Fix 🛠️' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.130', release: 'Investment Visibility Fix 🛠️' });
 });
 
 app.get('/api/health', async (req, res) => {

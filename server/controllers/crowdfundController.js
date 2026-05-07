@@ -8,7 +8,7 @@ export const getWalletStats = async (req, res) => {
             include: { club: true }
         });
 
-        if (!user || (user.role !== 'crowdfunder' && user.role !== 'administrator')) {
+        if (!user || (user.role !== 'crowdfunder' && user.role !== 'administrator' && user.role !== 'club_admin')) {
             return res.status(403).json({ error: 'Access denied' });
         }
 

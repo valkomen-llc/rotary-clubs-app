@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.130',
+        date: '06 de Mayo, 2026',
+        title: '💼 Visibilidad de Inversión',
+        description: 'Se habilitó el acceso a la sección de Mi Inversión para los administradores del Rotary E-Club Origen.',
+        type: 'update'
+    },
+    {
         version: 'v4.129',
         date: '06 de Mayo, 2026',
         title: '🛠️ Estabilidad en Configuración',

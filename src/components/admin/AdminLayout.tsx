@@ -375,7 +375,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
         // Module-dependent sections (Programas)
         if (user?.role !== 'editor') {
-            if (user?.role === 'crowdfunder' || isSuperAdmin) {
+            const isOrigenAdmin = user?.role === 'club_admin' && (club?.id === '857498f8-4836-4c5b-95b2-80d8c073edfc' || club?.subdomain === 'rotaryecluborigen');
+            if (user?.role === 'crowdfunder' || isSuperAdmin || isOrigenAdmin) {
                 items.push({ 
                     icon: Wallet, 
                     label: 'Mi Inversión', 
