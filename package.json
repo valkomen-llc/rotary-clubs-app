@@ -1,9 +1,9 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.135",
+  "version": "4.136",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.135 | 2026-05-06 (FIELD NAME CASE FIX 🔠)",
+  "//": "DISTRICT HEALTH IQ V4.136 | 2026-05-06 (UI LAYOUT SYNC 🎨)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

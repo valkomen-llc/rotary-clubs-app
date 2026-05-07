@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.136',
+        date: '06 de Mayo, 2026',
+        title: '🎨 Sincronización de Interfaz',
+        description: 'Se integró el módulo District Health IQ dentro de la estructura estándar del panel administrativo, incluyendo barra lateral y cabecera institucional.',
+        type: 'update'
+    },
+    {
         version: 'v4.135',
         date: '06 de Mayo, 2026',
         title: '🔠 Corrección de Esquema (Leads)',
