@@ -90,7 +90,12 @@ router.get('/by-domain', async (req, res) => {
 
         if (!activeEntity) {
             console.warn(`[IDENTITY] Fallback to Origen for ${cleanDomain}`);
-            activeEntity = { ...masterClub, type: 'club' };
+            activeEntity = { 
+                ...masterClub, 
+                type: 'club',
+                name: masterClub?.name || 'Rotary ClubPlatform',
+                subdomain: masterClub?.subdomain || 'origen'
+            };
         }
 
         const activeClub = activeEntity;

@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.120 | 2026-05-06 (CORE ROUTES STATIC RESTORATION 🚀)
+// DISTRICT HEALTH IQ V4.121 | 2026-05-06 (FAIL-SAFE IDENTITY RESOLUTION 🛡️)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -119,7 +119,7 @@ app.get('/api/district-analytics/health', async (req, res, next) => {
 
 // ── Static & Diagnostics ─────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.120', release: 'Core Routes Restoration 🚀' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.121', release: 'Fail-Safe Identity Restoration 🛡️' });
 });
 
 app.get('/api/health', async (req, res) => {
