@@ -1,9 +1,10 @@
-// DISTRICT HEALTH IQ V4.121 | 2026-05-06 (FAIL-SAFE IDENTITY RESOLUTION 🛡️)
+// DISTRICT HEALTH IQ V4.123 | 2026-05-06 (CRITICAL REFERENCE FIX 🛠️)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import prisma from '../server/lib/prisma.js';
+import Stripe from 'stripe';
 import authRoutes from '../server/routes/auth.js';
 import adminRoutes from '../server/routes/admin.js';
 import clubRoutes from '../server/routes/clubs.js';
@@ -119,7 +120,7 @@ app.get('/api/district-analytics/health', async (req, res, next) => {
 
 // ── Static & Diagnostics ─────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.121', release: 'Fail-Safe Identity Restoration 🛡️' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.123', release: 'Critical Reference Fix 🛠️' });
 });
 
 app.get('/api/health', async (req, res) => {

@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.123',
+        date: '06 de Mayo, 2026',
+        title: '🛠️ Reparación de Referencia Crítica',
+        description: 'Corrección de un error de referencia (importación faltante) que causaba el colapso total de la API, impidiendo la carga de logos y contenido.',
+        type: 'update'
+    },
+    {
         version: 'v4.121',
         date: '06 de Mayo, 2026',
         title: '🛡️ Resolución de Identidad Blindada',
