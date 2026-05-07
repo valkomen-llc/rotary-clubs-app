@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.133',
+        date: '06 de Mayo, 2026',
+        title: '🎨 Gestión de Logo de Plataforma',
+        description: 'Los super administradores ahora pueden subir y ajustar el tamaño del logo de la plataforma directamente desde la configuración avanzada.',
+        type: 'update'
+    },
+    {
         version: 'v4.132',
         date: '06 de Mayo, 2026',
         title: '🎨 Logo Premium Admin',

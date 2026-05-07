@@ -209,6 +209,24 @@ const ClubSettings: React.FC = () => {
         setLoading(true);
         try {
             const token = localStorage.getItem('rotary_token');
+            
+            // If superadmin, also save platform-wide settings
+            if (isSuperAdmin) {
+                // Save platform logo size
+                await fetch(`${API_URL}/platform-config/logo/size`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ size: platformLogoSize })
+                });
+
+                // Save SaaS redirect
+                await fetch(`${API_URL}/platform-config/redirect`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ active: saasRedirect })
+                });
+            }
+
             const response = await fetch(`${API_URL}/admin/clubs/${club?.id}`, {
                 method: 'PUT',
                 headers: {
@@ -571,25 +589,82 @@ const ClubSettings: React.FC = () => {
                                     )}
                                 </div>
 
-                                {/* Platform Settings for SuperAdmin */}
                                 {isSuperAdmin && (
                                     <div className="p-6 bg-purple-50 rounded-2xl border border-purple-100 space-y-6">
                                         <h4 className="font-bold text-purple-900 flex items-center gap-2">
-                                            <SettingsIcon className="w-4 h-4" /> Configuración Global de Plataforma
+                                            <Sparkles className="w-4 h-4" /> Configuración de Plataforma (Exclusivo SuperAdmin)
                                         </h4>
-                                        <div className="space-y-4">
-                                            <div className="flex items-center justify-between">
-                                                <div>
-                                                    <p className="text-sm font-bold text-purple-900">Redirección SaaS</p>
-                                                    <p className="text-[10px] text-purple-700">Envía a los usuarios del home a la app directamente</p>
+                                        
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                            <div className="space-y-4">
+                                                <label className="text-xs font-bold text-purple-700 uppercase tracking-wider block">Logo de Plataforma (Login & Admin)</label>
+                                                <div className="relative group mx-auto w-32 h-32">
+                                                    <div className="w-32 h-32 rounded-2xl bg-white border-2 border-dashed border-purple-200 flex items-center justify-center overflow-hidden transition-all group-hover:border-purple-400">
+                                                        {platformLogo ? (
+                                                            <img src={platformLogo} className="w-full h-full object-contain p-3" />
+                                                        ) : (
+                                                            <img src="/images/platform_logo_premium.png" className="w-full h-full object-contain p-3 opacity-50 grayscale" />
+                                                        )}
+                                                    </div>
+                                                    <label className="absolute inset-0 flex items-center justify-center bg-purple-900/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-2xl">
+                                                        <Upload className="text-white w-6 h-6" />
+                                                        <input 
+                                                            type="file" 
+                                                            className="hidden" 
+                                                            accept="image/*"
+                                                            onChange={async (e) => {
+                                                                const file = e.target.files?.[0];
+                                                                if (!file) return;
+                                                                setUploading(true);
+                                                                try {
+                                                                    const token = localStorage.getItem('rotary_token');
+                                                                    const formData = new FormData();
+                                                                    formData.append('file', file);
+                                                                    const res = await fetch(`${API_URL}/platform-config/logo/upload`, {
+                                                                        method: 'POST',
+                                                                        headers: { Authorization: `Bearer ${token}` },
+                                                                        body: formData
+                                                                    });
+                                                                    if (res.ok) {
+                                                                        const data = await res.json();
+                                                                        setPlatformLogo(data.url);
+                                                                        toast.success('Logo de plataforma actualizado');
+                                                                    }
+                                                                } catch {
+                                                                    toast.error('Error al subir logo de plataforma');
+                                                                } finally {
+                                                                    setUploading(false);
+                                                                }
+                                                            }} 
+                                                        />
+                                                    </label>
                                                 </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setSaasRedirect(!saasRedirect)}
-                                                    className={`w-12 h-6 rounded-full transition-all relative ${saasRedirect ? 'bg-purple-600' : 'bg-gray-300'}`}
-                                                >
-                                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${saasRedirect ? 'left-7' : 'left-1'}`} />
-                                                </button>
+                                            </div>
+
+                                            <div className="space-y-6">
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] font-bold text-purple-700 uppercase">Tamaño del Logo: {platformLogoSize}px</label>
+                                                    <input
+                                                        type="range" min={24} max={120} step={2}
+                                                        value={platformLogoSize}
+                                                        onChange={e => setPlatformLogoSize(Number(e.target.value))}
+                                                        className="w-full h-1.5 bg-purple-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                                                    />
+                                                </div>
+
+                                                <div className="flex items-center justify-between pt-4 border-t border-purple-100">
+                                                    <div>
+                                                        <p className="text-sm font-bold text-purple-900">Redirección SaaS</p>
+                                                        <p className="text-[10px] text-purple-700">Envía a los usuarios del home a la app directamente</p>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSaasRedirect(!saasRedirect)}
+                                                        className={`w-12 h-6 rounded-full transition-all relative ${saasRedirect ? 'bg-purple-600' : 'bg-gray-300'}`}
+                                                    >
+                                                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${saasRedirect ? 'left-7' : 'left-1'}`} />
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>

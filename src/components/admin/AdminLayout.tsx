@@ -86,6 +86,13 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [gaTotals, setGaTotals] = useState<{ users: number; pageViews: number }>({ users: 0, pageViews: 0 });
     const [gaMock, setGaMock] = useState(false);
     const [unreadLeads, setUnreadLeads] = useState(0);
+    const [platformLogo, setPlatformLogo] = useState<string | null>(() => {
+        try {
+            const cached = localStorage.getItem('cp_platform_logo');
+            return cached ? JSON.parse(cached).url : null;
+        } catch { return null; }
+    });
+    const [platformLogoSize, setPlatformLogoSize] = useState<number>(48);
     const [mod, setMod] = useState<Record<string, boolean>>(() => {
         // Read modules from localStorage for immediate sidebar rendering
         try {
@@ -170,6 +177,19 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     useEffect(() => {
         // Fetch dashboard stats
         const token = localStorage.getItem('rotary_token');
+
+        // Fetch platform logo if super admin
+        if (isSuperAdmin) {
+            fetch(`${API}/platform-config/logo`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.url) setPlatformLogo(data.url);
+                    if (data.size) setPlatformLogoSize(data.size);
+                    try { localStorage.setItem('cp_platform_logo', JSON.stringify({ url: data.url, size: data.size })); } catch { }
+                })
+                .catch(() => {});
+        }
+
         // For club domains, pass the club.id from context; for platform, no filter
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const clubId = (club as any)?.id;
@@ -495,7 +515,16 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                             <div className="flex items-center gap-3">
                                 {isSuperAdmin ? (
                                     <div className="flex flex-col">
-                                        <img src="/images/platform_logo_premium.png" alt="ClubPlatform Premium" className="h-auto max-h-12 w-auto max-w-[220px] object-contain rounded-lg" />
+                                        {platformLogo ? (
+                                            <img 
+                                                src={platformLogo} 
+                                                alt="ClubPlatform Premium" 
+                                                className="h-auto w-auto object-contain rounded-lg" 
+                                                style={{ maxHeight: `${Math.min(platformLogoSize * 1.5, 64)}px`, maxWidth: '220px' }}
+                                            />
+                                        ) : (
+                                            <img src="/images/platform_logo_premium.png" alt="ClubPlatform Premium" className="h-auto max-h-12 w-auto max-w-[220px] object-contain rounded-lg" />
+                                        )}
                                         <p className="text-[10px] text-amber-600 font-black uppercase tracking-[0.1em] mt-1.5 flex items-center gap-1.5">
                                             <Sparkles className="w-2.5 h-2.5" />
                                             System Administrator
