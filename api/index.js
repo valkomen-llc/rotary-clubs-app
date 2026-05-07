@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.126 | 2026-05-06 (CROWDFUNDER WALLET SYSTEM 💰)
+// DISTRICT HEALTH IQ V4.127 | 2026-05-06 (CROWDFUNDER UI CONSISTENCY 🎨)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -120,7 +120,7 @@ app.get('/api/district-analytics/health', async (req, res, next) => {
 
 // ── Static & Diagnostics ─────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.126', release: 'Crowdfunder Wallet System 💰' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.127', release: 'Crowdfunder UI Consistency 🎨' });
 });
 
 app.get('/api/health', async (req, res) => {

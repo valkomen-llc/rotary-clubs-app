@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.127',
+        date: '06 de Mayo, 2026',
+        title: '🎨 Consistencia Visual Crowdfunder',
+        description: 'Ajuste del diseño de la Billetera de Inversión para integrarse perfectamente con el Layout global de administración, manteniendo la barra lateral y el encabezado unificado.',
+        type: 'update'
+    },
+    {
         version: 'v4.126',
         date: '06 de Mayo, 2026',
         title: '💰 Billetera de Inversión (Crowdfunder)',

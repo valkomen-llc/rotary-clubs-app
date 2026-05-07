@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import AdminLayout from '../../components/admin/AdminLayout';
 import { 
     Wallet, 
     TrendingUp, 
@@ -81,7 +82,8 @@ const CrowdfundWallet: React.FC = () => {
     const mainPool = pools[0]; // For this exercise, focus on the first pool
 
     return (
-        <div className="p-4 lg:p-10 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-700">
+        <AdminLayout>
+            <div className="p-4 lg:p-0 space-y-8 animate-in fade-in duration-700">
             {/* Header Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-8 opacity-5">
@@ -282,7 +284,7 @@ const CrowdfundWallet: React.FC = () => {
                     </div>
                 </div>
             </div>
-        </div>
+        </AdminLayout>
     );
 };
 
