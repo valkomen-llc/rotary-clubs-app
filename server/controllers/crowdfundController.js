@@ -24,8 +24,8 @@ export const getWalletStats = async (req, res) => {
         // Compute aggregate stats
         const stats = pools.map(pool => {
             const activeActivations = pool.activations.filter(a => a.status === 'active').length;
-            const totalEarned = activeActivations * (32.5 - pool.costPerUnit);
-            const projectedAnnualProfit = activeActivations * (32.5 - pool.costPerUnit); // For now same as earned
+            const totalEarned = activeActivations * (31.25 - pool.costPerUnit);
+            const projectedAnnualProfit = activeActivations * (31.25 - pool.costPerUnit); // For now same as earned
             
             return {
                 id: pool.id,

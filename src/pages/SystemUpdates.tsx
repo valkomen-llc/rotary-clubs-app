@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.131',
+        date: '06 de Mayo, 2026',
+        title: '💼 Automatización Crowdfund',
+        description: 'Las comisiones por activación de dominios se registran ahora automáticamente tras el pago del plan anual.',
+        type: 'update'
+    },
+    {
         version: 'v4.130',
         date: '06 de Mayo, 2026',
         title: '💼 Visibilidad de Inversión',

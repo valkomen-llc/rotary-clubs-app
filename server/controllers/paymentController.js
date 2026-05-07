@@ -144,10 +144,30 @@ async function handleSuccessfulCheckoutSession(session) {
         const { clubId, domainName } = session.metadata;
         console.log(`[Stripe Webhook] Detonando provisión de Ecosistema para Club: ${clubId}, Dominio: ${domainName}`);
         try {
+            // 1. Provision the domain
             await DomainProvisioningService.provisionEcosystem(clubId, domainName);
             console.log(`[Stripe Webhook] Provisión de dominio completada con éxito.`);
+
+            // 2. Record Crowdfund Activation for Origen (if applicable)
+            // Origen has the pool ID 'origen-pool-1' (from seed)
+            const origenPool = await prisma.crowdfundPool.findUnique({
+                where: { id: 'origen-pool-1' }
+            });
+
+            if (origenPool) {
+                await prisma.crowdfundActivation.create({
+                    data: {
+                        poolId: origenPool.id,
+                        targetClubId: clubId,
+                        domainName: domainName,
+                        status: 'active',
+                        activationDate: new Date()
+                    }
+                });
+                console.log(`[Stripe Webhook] Activación de Crowdfund registrada para Origen.`);
+            }
         } catch (error) {
-            console.error(`[Stripe Webhook] ERROR en la provisión del dominio:`, error);
+            console.error(`[Stripe Webhook] ERROR en la provisión o activación de Crowdfund:`, error);
         }
     }
 

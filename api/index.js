@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.130 | 2026-05-06 (INVESTMENT VISIBILITY FIX 🛠️)
+// DISTRICT HEALTH IQ V4.131 | 2026-05-06 (CROWDFUND AUTOMATION 💼)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -120,7 +120,7 @@ app.get('/api/district-analytics/health', async (req, res, next) => {
 
 // ── Static & Diagnostics ─────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.130', release: 'Investment Visibility Fix 🛠️' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.131', release: 'Crowdfund Automation 💼' });
 });
 
 app.get('/api/health', async (req, res) => {

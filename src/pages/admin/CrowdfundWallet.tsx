@@ -207,10 +207,10 @@ const CrowdfundWallet: React.FC = () => {
                                         {new Date(activation.activationDate).toLocaleDateString()}
                                     </td>
                                     <td className="px-8 py-6 text-sm font-bold text-gray-900">${mainPool.costPerUnit}</td>
-                                    <td className="px-8 py-6 text-sm font-bold text-gray-900">$32.50</td>
+                                    <td className="px-8 py-6 text-sm font-bold text-gray-900">$31.25</td>
                                     <td className="px-8 py-6">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-sm font-black text-emerald-600">+$7.50</span>
+                                            <span className="text-sm font-black text-emerald-600">+$6.25</span>
                                             <div className="h-1.5 w-8 bg-emerald-100 rounded-full overflow-hidden">
                                                 <div className="h-full bg-emerald-500 w-full" />
                                             </div>
@@ -250,7 +250,7 @@ const CrowdfundWallet: React.FC = () => {
                         <li className="flex items-start gap-3">
                             <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0 mt-0.5 font-bold text-[10px] text-emerald-700">1</div>
                             <p className="text-xs text-emerald-800 leading-relaxed font-medium">
-                                Por cada dominio activado en un plan de 299USD, recibes una comisión inmediata de <b>$7.50 USD</b> (Precio Oferta $32.50 - Costo $25.00).
+                                Por cada dominio activado en un plan de 299USD, recibes una comisión inmediata de <b>$6.25 USD</b> (Precio Oferta $31.25 - Costo $25.00).
                             </p>
                         </li>
                         <li className="flex items-start gap-3">
