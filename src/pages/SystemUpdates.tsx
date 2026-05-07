@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.128',
+        date: '06 de Mayo, 2026',
+        title: '🛠️ Corrección Crítica JSX',
+        description: 'Reparación de etiquetas mal cerradas en el componente CrowdfundWallet que impedían la compilación en producción (Vercel).',
+        type: 'update'
+    },
+    {
         version: 'v4.127',
         date: '06 de Mayo, 2026',
         title: '🎨 Consistencia Visual Crowdfunder',

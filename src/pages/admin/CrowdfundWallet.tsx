@@ -283,6 +283,7 @@ const CrowdfundWallet: React.FC = () => {
                         </p>
                     </div>
                 </div>
+                </div>
             </div>
         </AdminLayout>
     );
