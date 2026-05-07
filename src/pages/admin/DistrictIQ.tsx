@@ -76,34 +76,41 @@ const DistrictIQ: React.FC = () => {
         }
     };
 
-    if (loading) {
+    const renderContent = () => {
+        if (loading) {
+            return (
+                <div className="flex items-center justify-center min-h-[400px]">
+                    <Activity className="w-8 h-8 text-blue-600 animate-spin" />
+                </div>
+            );
+        }
+
+        if (!stats) {
+            return (
+                <div className="flex flex-col items-center justify-center min-h-[400px] text-slate-500 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
+                    <AlertTriangle className="w-12 h-12 mb-4 opacity-20" />
+                    <p className="font-medium">No se pudieron cargar los datos de inteligencia</p>
+                    <button onClick={fetchStats} className="mt-4 text-blue-600 text-sm font-bold hover:underline">Reintentar</button>
+                </div>
+            );
+        }
+
+        const COLORS = ['#10b981', '#f59e0b', '#ef4444', '#6366f1'];
+        const pieData = [
+            { name: 'Activos', value: stats.saasStatus.active },
+            { name: 'Trial', value: stats.saasStatus.trial },
+            { name: 'Expirados/Susp.', value: stats.saasStatus.expired + stats.saasStatus.suspended },
+        ].filter(d => d.value > 0);
+
         return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <Activity className="w-8 h-8 text-blue-600 animate-spin" />
-            </div>
-        );
-    }
-
-    if (!stats) return null;
-
-    const COLORS = ['#10b981', '#f59e0b', '#ef4444', '#6366f1'];
-    const pieData = [
-        { name: 'Activos', value: stats.saasStatus.active },
-        { name: 'Trial', value: stats.saasStatus.trial },
-        { name: 'Expirados/Susp.', value: stats.saasStatus.expired + stats.saasStatus.suspended },
-    ].filter(d => d.value > 0);
-
-    return (
-        <AdminLayout>
             <div className="space-y-6 animate-in fade-in duration-500">
             {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                 <div>
-                    <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
-                        <Activity className="w-8 h-8 text-blue-600" />
-                        District Health IQ
-                    </h1>
-                    <p className="text-slate-500 mt-1">Análisis predictivo y métricas de gobernanza del distrito.</p>
+                    <h1 className="text-3xl font-black text-gray-900 tracking-tight">District Health IQ</h1>
+                    <p className="text-sm text-gray-400 font-medium mt-1">
+                        Inteligencia y Salud de la Red de Clubes
+                    </p>
                 </div>
                 <button 
                     onClick={() => toast.success('Reporte generado')}
@@ -261,6 +268,12 @@ const DistrictIQ: React.FC = () => {
                 <div className="absolute -right-20 -bottom-20 w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
                 <div className="absolute -left-10 -top-10 w-48 h-48 bg-indigo-400/20 rounded-full blur-3xl"></div>
             </div>
+        );
+    };
+
+    return (
+        <AdminLayout>
+            {renderContent()}
         </AdminLayout>
     );
 };

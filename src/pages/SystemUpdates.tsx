@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.137',
+        date: '06 de Mayo, 2026',
+        title: '🎨 Estandarización de Interfaz Premium',
+        description: 'Se refinó la tipografía y el espaciado de District Health IQ para que coincida exactamente con el estilo premium de Analytics, asegurando una experiencia cohesiva.',
+        type: 'update'
+    },
+    {
         version: 'v4.136',
         date: '06 de Mayo, 2026',
         title: '🎨 Sincronización de Interfaz',
