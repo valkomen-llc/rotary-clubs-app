@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.137 | 2026-05-06 (TYPOGRAPHY SYNC 🎨)
+// DISTRICT HEALTH IQ V4.138 | 2026-05-06 (JSX SYNTAX FIX 🛠️)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -111,7 +111,7 @@ app.get('/api/technical-requests', async (req, res) => {
 
 // ── Static & Diagnostics ─────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.137', release: 'Typography Sync 🎨' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.138', release: 'JSX Syntax Fix 🛠️' });
 });
 
 app.get('/api/health', async (req, res) => {

@@ -268,6 +268,7 @@ const DistrictIQ: React.FC = () => {
                 <div className="absolute -right-20 -bottom-20 w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
                 <div className="absolute -left-10 -top-10 w-48 h-48 bg-indigo-400/20 rounded-full blur-3xl"></div>
             </div>
+            </div>
         );
     };
 

@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.138',
+        date: '06 de Mayo, 2026',
+        title: '🛠️ Estabilidad de Compilación',
+        description: 'Se corrigió un error de sintaxis JSX (etiqueta div sin cerrar) en el módulo District IQ que impedía el despliegue en producción.',
+        type: 'fix'
+    },
+    {
         version: 'v4.137',
         date: '06 de Mayo, 2026',
         title: '🎨 Estandarización de Interfaz Premium',
