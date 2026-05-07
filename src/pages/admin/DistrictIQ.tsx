@@ -5,8 +5,6 @@ import {
     Building2, 
     TrendingUp, 
     AlertTriangle, 
-    ShieldCheck, 
-    BarChart3, 
     PieChart as PieChartIcon,
     Zap,
     Download

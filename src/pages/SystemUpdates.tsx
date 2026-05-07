@@ -23,8 +23,16 @@ interface UpdateItem {
     }>;
 }
 
+// DISTRICT HEALTH IQ V4.118 | 2026-05-06 (DSO ADMIN 🧠)
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.118',
+        date: '06 de Mayo, 2026',
+        title: 'Phase 11: District Health IQ (Official) 🧠',
+        description: 'Lanzamiento oficial del motor de inteligencia para Distritos. Analítica predictiva y salud SaaS.',
+        type: 'feature'
+    },
     {
         version: 'v4.113',
         date: '06 de Mayo, 2026',
@@ -1453,7 +1461,7 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
     },
     {
         version: "v4.11.41",
-        date: "22 de Abril, 2026",
+        date: "21 de Abril, 2026",
         title: "Branding: Refinamiento de Copyright",
         description: "Eliminación de negrilla en el crédito de Valkomen para una estética más limpia.",
         type: "update",
@@ -1878,13 +1886,6 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
             { type: "fixed", text: "Ajuste estricto en el prompt de IA para limitar la Meta Descripción a 155 caracteres." },
             { type: "changed", text: "Refuerzo de las 'Reglas de Oro' en el sistema para evitar truncamiento en Google." }
         ]
-    },
-    {
-        version: "v4.117",
-        date: "2026-05-06",
-        title: "Phase 11: District Health IQ (Final)",
-        description: "Activación oficial del motor de inteligencia para Distritos. Analítica predictiva, salud SaaS y leaderboard operativo.",
-        type: "feature"
     },
     {
         version: "v4.11.3",
