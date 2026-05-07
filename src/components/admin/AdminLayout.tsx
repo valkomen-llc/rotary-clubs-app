@@ -493,7 +493,15 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     <div className="p-6 pb-4">
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center gap-3">
-                                {club?.logo ? (
+                                {isSuperAdmin ? (
+                                    <div className="flex flex-col">
+                                        <img src="/images/platform_logo_premium.png" alt="ClubPlatform Premium" className="h-auto max-h-12 w-auto max-w-[220px] object-contain rounded-lg" />
+                                        <p className="text-[10px] text-amber-600 font-black uppercase tracking-[0.1em] mt-1.5 flex items-center gap-1.5">
+                                            <Sparkles className="w-2.5 h-2.5" />
+                                            System Administrator
+                                        </p>
+                                    </div>
+                                ) : club?.logo ? (
                                     <div className="flex flex-col">
                                         <img src={club.logo} alt={club.name} className="h-auto max-h-12 w-auto max-w-[220px] object-contain" />
                                         <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">Control Panel</p>

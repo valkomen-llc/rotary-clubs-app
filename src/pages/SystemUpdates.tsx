@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.132',
+        date: '06 de Mayo, 2026',
+        title: '🎨 Logo Premium Admin',
+        description: 'Se implementó un logo diferenciado y premium para el panel de super administradores.',
+        type: 'update'
+    },
+    {
         version: 'v4.131',
         date: '06 de Mayo, 2026',
         title: '💼 Automatización Crowdfund',

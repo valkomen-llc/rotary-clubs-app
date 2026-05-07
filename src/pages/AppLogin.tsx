@@ -76,12 +76,13 @@ export default function AppLogin() {
                         {platformLogo ? (
                             <img src={platformLogo} alt="ClubPlatform" style={{ height: platformLogoSize + 'px', width: 'auto', maxWidth: '320px' }} />
                         ) : (
-                            <>
-                                <div className="w-10 h-10 rounded-2xl bg-[#019fcb] flex items-center justify-center shadow-lg shadow-blue-200">
-                                    <Sparkles className="w-5 h-5 text-white" />
+                            <div className="flex flex-col items-center gap-2">
+                                <img src="/images/platform_logo_premium.png" alt="ClubPlatform Premium" className="h-16 w-auto object-contain" />
+                                <div className="flex items-center gap-2">
+                                    <Sparkles className="w-4 h-4 text-amber-500" />
+                                    <span className="font-black text-gray-900 text-xl">ClubPlatform</span>
                                 </div>
-                                <span className="font-black text-gray-900 text-xl">ClubPlatform</span>
-                            </>
+                            </div>
                         )}
                     </div>
                     <h1 className="text-3xl font-normal text-gray-900 mb-2">Panel de Administración</h1>
