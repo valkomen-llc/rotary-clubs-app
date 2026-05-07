@@ -1,9 +1,8 @@
-import { PrismaClient } from '@prisma/client';
 import Stripe from 'stripe';
 import EmailService from '../services/EmailService.js';
 import DomainProvisioningService from '../services/DomainProvisioningService.js';
 
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma.js';
 const DEFAULT_PLATFORM_FEE_PERCENTAGE = 0.05; // 5% fee when using Valkomen's master account
 
 // Helper to get correct Stripe instance based on Club config

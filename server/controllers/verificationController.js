@@ -1,6 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma.js';
 
 // Lazy load EmailService to avoid loading nodemailer on cold start
 let _emailService = null;

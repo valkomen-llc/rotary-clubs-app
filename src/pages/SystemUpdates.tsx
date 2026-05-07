@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.124',
+        date: '06 de Mayo, 2026',
+        title: '🛡️ Estabilización de Conexiones (Singleton)',
+        description: 'Implementación forzada del patrón Singleton para Prisma en todos los entornos. Se eliminaron múltiples instancias en controladores que saturaban la base de datos, resolviendo el estado de "Cargando Club" en producción.',
+        type: 'update'
+    },
+    {
         version: 'v4.123',
         date: '06 de Mayo, 2026',
         title: '🛠️ Reparación de Referencia Crítica',

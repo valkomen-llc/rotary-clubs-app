@@ -106,15 +106,14 @@ router.post('/global-map-style', superAdminOnly, async (req, res) => {
         if (existing.rows.length > 0) {
             await db.query('UPDATE "Setting" SET value = $1, "updatedAt" = NOW() WHERE id = $2', [mapStyle, existing.rows[0].id]);
         } else {
-            const { PrismaClient } = await import('@prisma/client');
-            const prisma = new PrismaClient();
+            const prisma = (await import('../lib/prisma.js')).default;
             await prisma.setting.create({
                 data: {
                     key: 'map_style',
                     value: mapStyle
                 }
             });
-            await prisma.$disconnect();
+            // No disconnect for singleton
         }
         res.json({ success: true });
     } catch (err) {

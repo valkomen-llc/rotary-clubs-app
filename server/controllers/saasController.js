@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import bcrypt from 'bcryptjs';
 import VercelService from '../services/VercelService.js';
-
-const prisma = new PrismaClient();
 
 export const autoRegisterClub = async (req, res) => {
     const { clubName, country, district, adminName, adminEmail, adminPassword, subdomain, phone, phoneCountry, role: clubRole } = req.body;
