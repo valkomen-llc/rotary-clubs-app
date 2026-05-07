@@ -1,47 +1,11 @@
 {
-    "version": 2,
-    "functions": {
-        "api/index.js": {
-            "maxDuration": 60
-        }
-    },
-    "crons": [
-        {
-            "path": "/api/cron/process-expirations",
-            "schedule": "0 14 * * *"
-        }
-    ],
-    "redirects": [
-        {
-            "source": "/(.*)",
-            "has": [{ "type": "host", "value": "clubplatform.org" }],
-            "destination": "https://app.clubplatform.org/$1",
-            "permanent": false
-        },
-        {
-            "source": "/(.*)",
-            "has": [{ "type": "host", "value": "www.clubplatform.org" }],
-            "destination": "https://app.clubplatform.org/$1",
-            "permanent": false
-        },
-        {
-            "source": "/conferencia",
-            "destination": "https://rotarylatir.org/eventos/2038324a-0e04-497c-9328-fbaeb9ce2992",
-            "permanent": false
-        }
-    ],
-    "rewrites": [
-        {
-            "source": "/vps/:path*",
-            "destination": "http://76.13.101.187:5001/api/:path*"
-        },
-        {
-            "source": "/api/:path*",
-            "destination": "/api/index.js"
-        },
-        {
-            "source": "/((?!api/|vps/|assets/|favicon.ico|manifest.json|robots.txt|sitemap.xml).*)",
-            "destination": "/api/index.js"
-        }
-    ]
+  "version": 2,
+  "buildCommand": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
+  "installCommand": "npm install",
+  "framework": "vite",
+  "nodeVersion": "20.x",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index.js" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }

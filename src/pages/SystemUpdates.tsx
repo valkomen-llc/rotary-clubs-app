@@ -1880,6 +1880,13 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
         ]
     },
     {
+        version: "v4.116d",
+        date: "2026-05-06",
+        title: "Phase 11: District Health IQ (Live)",
+        description: "Activación oficial del motor de inteligencia para Distritos. Analítica predictiva, salud SaaS y leaderboard de crecimiento operativo.",
+        type: "feature"
+    },
+    {
         version: "v4.11.3",
         date: "21 Abril 2026",
         title: "Salud SEO: Contadores Inteligentes",

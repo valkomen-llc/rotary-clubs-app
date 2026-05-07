@@ -44,7 +44,8 @@ import {
     Upload,
     MessageSquare,
     Video,
-    Share2
+    Share2,
+    Activity
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -278,6 +279,13 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: Layout, label: 'Sistema Footer', path: '/admin/sistema-footer', category: 'General', keywords: ['footer', 'skin', 'logo', 'pie de pagina'] },
                 { icon: QrCode, label: 'WhatsApp QR Gateway', path: '/admin/whatsapp-qr', category: 'General', keywords: ['whatsapp', 'qr', 'web', 'grupos'] },
                 { icon: ShieldCheck, label: 'System Updates', path: '/admin/system-updates', category: 'General', keywords: ['updates', 'versiones', 'changelog', 'sistema'] },
+            );
+        }
+
+        // Management items for District/Super Admins
+        if (isSuperAdmin || user?.role === 'district_admin') {
+            items.push(
+                { icon: Activity, label: 'District Health IQ', path: '/admin/district-iq', category: 'Management', keywords: ['salud', 'distrito', 'analitica', 'prediccion', 'iq'], badge: 'ia' },
             );
         }
 

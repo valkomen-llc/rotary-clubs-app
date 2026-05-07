@@ -65,6 +65,7 @@ import grantsRoutes from './routes/grants.js';
 import systemRoutes from './routes/system.js';
 import domainsRoutes from './routes/domains.js';
 import technicalRequestsRoutes from './routes/technical-requests.js';
+import districtAnalyticsRoutes from './routes/district-analytics.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -99,6 +100,7 @@ app.use('/api/leads', leadsRoutes);
 app.use('/api/payouts', payoutsRoutes);
 app.use('/api/site-progress', siteProgressRoutes);
 app.use('/api/scout-grants', grantsRoutes);
+app.use('/api/district-analytics', districtAnalyticsRoutes);
 app.use('/api/technical-requests', technicalRequestsRoutes);
 app.use('/api/system', systemRoutes);
 app.use('/api/domains', domainsRoutes);

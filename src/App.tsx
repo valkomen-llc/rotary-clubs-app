@@ -110,6 +110,7 @@ const ContentStudio = React.lazy(() => import('./pages/admin/ContentStudio'));
 const FooterSystem = React.lazy(() => import('./pages/admin/FooterSystem'));
 const SocialHub = React.lazy(() => import('./pages/admin/SocialHub'));
 const TechnicalRequests = React.lazy(() => import('./pages/admin/TechnicalRequests'));
+const DistrictIQ = React.lazy(() => import('./pages/admin/DistrictIQ'));
 import ClubPreview from './pages/ClubPreview';
 import ChatBot from './components/ChatBot';
 import LandingPage from './pages/LandingPage';
@@ -725,6 +726,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <TechnicalRequests />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/district-iq"
+                  element={
+                    <PrivateRoute>
+                      <DistrictIQ />
                     </PrivateRoute>
                   }
                 />

@@ -1,4 +1,4 @@
-// TECH SERVICES V4.111 | 2026-05-06 (DSO ADMIN 🏢)
+// DISTRICT HEALTH IQ V4.116d | 2026-05-06 (DSO ADMIN 🧠)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -102,9 +102,18 @@ app.get('/api/technical-requests', async (req, res) => {
     }
 });
 
+app.get('/api/district-analytics/health', async (req, res, next) => {
+    try {
+        const { getDistrictHealth } = await import('../server/controllers/districtAnalyticsController.js');
+        return getDistrictHealth(req, res, next);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // ── Static & Diagnostics ─────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.111', release: 'Tech Services 🏢' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.116d', release: 'District Health IQ 🧠' });
 });
 
 app.get('/api/health', async (req, res) => {
@@ -118,7 +127,7 @@ app.get('/api/health', async (req, res) => {
 });
 
 // ── Route loaders ────────────────────────────────────────────────────────────
-let _auth, _admin, _clubs, _calendar, _ai, _media;
+let _auth, _admin, _clubs, _calendar, _ai, _media, _orders, _payments, _products, _communications, _translate, _public, _analytics, _leads, _faqs, _agents, _siteProgress, _districts, _whatsappCRM, _platformConfig, _scoutGrants, _documents, _system, _whatsappQr, _contentStudio, _domains, _cron, _distAnalytics;
 const getAuth = async () => _auth || (({ default: _auth } = await import('../server/routes/auth.js')), _auth);
 const getAdmin = async () => _admin || (({ default: _admin } = await import('../server/routes/admin.js')), _admin);
 const getClubs = async () => _clubs || (({ default: _clubs } = await import('../server/routes/clubs.js')), _clubs);
@@ -126,15 +135,12 @@ const getCalendar = async () => _calendar || (({ default: _calendar } = await im
 const getAI = async () => _ai || (({ default: _ai } = await import('../server/routes/ai.js')), _ai);
 const getMedia = async () => _media || (({ default: _media } = await import('../server/routes/media.js')), _media);
 
-let _orders, _payments, _products, _communications, _translate, _public;
 const getOrders = async () => _orders || (({ default: _orders } = await import('../server/routes/orders.js')), _orders);
 const getPayments = async () => _payments || (({ default: _payments } = await import('../server/routes/payments.js')), _payments);
 const getProducts = async () => _products || (({ default: _products } = await import('../server/routes/products.js')), _products);
 const getCommunications = async () => _communications || (({ default: _communications } = await import('../server/routes/communications.js')), _communications);
 const getTranslate = async () => _translate || (({ default: _translate } = await import('../server/routes/translate.js')), _translate);
 const getPublicRoutes = async () => _public || (({ default: _public } = await import('../server/routes/public.js')), _public);
-
-let _analytics, _leads, _faqs, _agents, _siteProgress, _districts, _whatsappCRM, _platformConfig;
 const getAnalytics = async () => _analytics || (({ default: _analytics } = await import('../server/routes/analytics.js')), _analytics);
 const getLeads = async () => _leads || (({ default: _leads } = await import('../server/routes/leads.js')), _leads);
 const getFaqs = async () => _faqs || (({ default: _faqs } = await import('../server/routes/faqs.js')), _faqs);
@@ -144,7 +150,7 @@ const getDistricts = async () => _districts || (({ default: _districts } = await
 const getWhatsAppCRM = async () => _whatsappCRM || (({ default: _whatsappCRM } = await import('../server/routes/whatsapp-crm.js')), _whatsappCRM);
 const getPlatformConfig = async () => _platformConfig || (({ default: _platformConfig } = await import('../server/routes/platform-config.js')), _platformConfig);
 
-let _scoutGrants, _documents, _system, _whatsappQr, _contentStudio, _domains, _cron;
+const getDistAnalytics = async () => _distAnalytics || (({ default: _distAnalytics } = await import('../server/routes/district-analytics.js')), _distAnalytics);
 const getScoutGrants = async () => _scoutGrants || (({ default: _scoutGrants } = await import('../server/routes/grants.js')), _scoutGrants);
 const getDocuments = async () => _documents || (({ default: _documents } = await import('../server/routes/documents.js')), _documents);
 const getSystem = async () => _system || (({ default: _system } = await import('../server/routes/system.js')), _system);
@@ -223,4 +229,4 @@ app.get('*', async (req, res) => {
 });
 
 export default app;
-// FORCE REBUILD 4.112b
+// FORCE REBUILD 4.116d (Intelligence Live 🧠🚀🔥)
