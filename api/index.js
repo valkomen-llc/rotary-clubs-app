@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.124 | 2026-05-06 (SINGLETON PRISMA ENFORCEMENT 🛡️)
+// DISTRICT HEALTH IQ V4.125 | 2026-05-06 (CRITICAL ROUTING FIX 🌐)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -120,7 +120,7 @@ app.get('/api/district-analytics/health', async (req, res, next) => {
 
 // ── Static & Diagnostics ─────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.124', release: 'Singleton Prisma Enforcement 🛡️' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.125', release: 'Critical Routing Fix 🌐' });
 });
 
 app.get('/api/health', async (req, res) => {

@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.125',
+        date: '06 de Mayo, 2026',
+        title: '🌐 Corrección de Enrutamiento en Vercel',
+        description: 'Implementación de vercel.json para garantizar que todas las rutas de la API (/api/*) sean procesadas correctamente por el servidor Express. Esto resuelve los errores 404 en la carga de identidad del club.',
+        type: 'update'
+    },
+    {
         version: 'v4.124',
         date: '06 de Mayo, 2026',
         title: '🛡️ Estabilización de Conexiones (Singleton)',
