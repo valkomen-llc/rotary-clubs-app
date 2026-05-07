@@ -133,6 +133,31 @@ model Club {
   WhatsAppCustomField      WhatsAppCustomField[]
   whatsAppTemplates        WhatsAppTemplate[]
   technicalRequests         TechnicalRequest[]
+  crowdfundPools            CrowdfundPool[]         @relation("ClubPools")
+}
+
+model CrowdfundPool {
+  id           String   @id @default(uuid())
+  clubId       String
+  totalCapital Float
+  costPerUnit  Float
+  totalUnits   Int
+  currency     String   @default("USD")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  club         Club     @relation("ClubPools", fields: [clubId], references: [id])
+  activations  CrowdfundActivation[]
+}
+
+model CrowdfundActivation {
+  id             String   @id @default(uuid())
+  poolId         String
+  targetClubId   String
+  domainName     String?
+  status         String   @default("active")
+  activationDate DateTime @default(now())
+  expirationDate DateTime?
+  pool           CrowdfundPool @relation(fields: [poolId], references: [id])
 }
 
 model ClubDocument {

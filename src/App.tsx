@@ -111,6 +111,7 @@ const FooterSystem = React.lazy(() => import('./pages/admin/FooterSystem'));
 const SocialHub = React.lazy(() => import('./pages/admin/SocialHub'));
 const TechnicalRequests = React.lazy(() => import('./pages/admin/TechnicalRequests'));
 const DistrictIQ = React.lazy(() => import('./pages/admin/DistrictIQ'));
+const CrowdfundWallet = React.lazy(() => import('./pages/admin/CrowdfundWallet'));
 import ClubPreview from './pages/ClubPreview';
 import ChatBot from './components/ChatBot';
 import LandingPage from './pages/LandingPage';
@@ -734,6 +735,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <DistrictIQ />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/inversion"
+                  element={
+                    <PrivateRoute>
+                      <CrowdfundWallet />
                     </PrivateRoute>
                   }
                 />

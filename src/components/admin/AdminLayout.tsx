@@ -375,6 +375,17 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
         // Module-dependent sections (Programas)
         if (user?.role !== 'editor') {
+            if (user?.role === 'crowdfunder' || isSuperAdmin) {
+                items.push({ 
+                    icon: Wallet, 
+                    label: 'Mi Inversión', 
+                    path: '/admin/inversion', 
+                    category: 'Finanzas',
+                    keywords: ['wallet', 'inversion', 'ganancia', 'capital', 'dominio', 'crowdfund'],
+                    badge: 'premium'
+                });
+            }
+
             if (isSuperAdmin || mod.rotaract) {
                 items.push({ icon: Users, label: 'Club Rotaract', path: '/admin/rotaract', category: 'Programas' });
             }

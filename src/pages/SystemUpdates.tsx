@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.126',
+        date: '06 de Mayo, 2026',
+        title: '💰 Billetera de Inversión (Crowdfunder)',
+        description: 'Nueva sección de Wallet para clubes con rol de Crowdfunder. Permite visualizar capital invertido, dominios activos vs. disponibles y ganancias recurrentes por la gestión de activos en la plataforma.',
+        type: 'update'
+    },
+    {
         version: 'v4.125',
         date: '06 de Mayo, 2026',
         title: '🌐 Corrección de Enrutamiento en Vercel',

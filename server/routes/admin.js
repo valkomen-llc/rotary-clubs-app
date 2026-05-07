@@ -13,12 +13,15 @@ import {
 import {
     getUsers, createUser, updateUser, deleteUser
 } from '../controllers/userController.js';
+import { getWalletStats } from '../controllers/crowdfundController.js';
 import prisma from '../lib/prisma.js'; // IMPORTACIÓN CRÍTICA PARA EL DASHBOARD
 
 const router = express.Router();
 
 // All admin routes are protected
 router.use(authMiddleware);
+
+router.get('/crowdfund/wallet', getWalletStats);
 
 // --- DASHBOARD STATS ---
 router.get('/stats', async (req, res) => {
