@@ -194,7 +194,7 @@ router.get('/by-domain', async (req, res) => {
         res.json(mappedClub);
     } catch (error) {
         console.error('Error fetching club:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: 'Internal server error', message: error.message, stack: error.stack });
     }
 });
 
