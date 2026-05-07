@@ -117,7 +117,7 @@ const ClubSettings: React.FC = () => {
                 email: club.contact?.email || settingsMap['contact_email'] || '',
                 phone: club.contact?.phone || settingsMap['contact_phone'] || '',
                 address: club.contact?.address || settingsMap['contact_address'] || '',
-                socialLinks: club.social || [],
+                socialLinks: Array.isArray(club.social) ? club.social : [],
                 primaryColor: club.colors?.primary || '#013388',
                 secondaryColor: club.colors?.secondary || '#E29C00',
                 logo: club.logo || '',
@@ -312,7 +312,15 @@ const ClubSettings: React.FC = () => {
                                     </div>
                                 </div>
                                 <div className="bg-white border-x border-b border-gray-100 rounded-b-3xl p-8 pt-4 shadow-sm">
-                                    <ClubArchetypeCard result={club.archetype} clubName={club.name} hideCTAs={true} />
+                                    <ClubArchetypeCard 
+                                        result={club.archetype} 
+                                        clubName={club.name} 
+                                        clubColors={{ 
+                                            primary: formData.primaryColor, 
+                                            secondary: formData.secondaryColor 
+                                        }}
+                                        hideCTAs={true} 
+                                    />
                                 </div>
                             </div>
                         )}

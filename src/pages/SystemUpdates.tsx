@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.129',
+        date: '06 de Mayo, 2026',
+        title: '🛠️ Estabilidad en Configuración',
+        description: 'Corrección de crash en la sección de Identidad del club y validación de datos para redes sociales y perfiles de ADN.',
+        type: 'update'
+    },
+    {
         version: 'v4.128',
         date: '06 de Mayo, 2026',
         title: '🛠️ Corrección Crítica JSX',
