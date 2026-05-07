@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.119',
+        date: '06 de Mayo, 2026',
+        title: 'Hotfix: Estabilidad de API y Multimedia 🔧',
+        description: 'Corrección crítica de CORS y gestión de conexiones de base de datos para restaurar la carga de sitios.',
+        type: 'update'
+    },
+    {
         version: 'v4.118',
         date: '06 de Mayo, 2026',
         title: 'Phase 11: District Health IQ (Official) 🧠',
