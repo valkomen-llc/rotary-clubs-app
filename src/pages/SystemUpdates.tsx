@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.142',
+        date: '08 de Mayo, 2026',
+        title: '🌐 Corrección Definitiva de Redirección',
+        description: 'Se implementó el uso de trust proxy y req.hostname para una detección precisa del dominio en Vercel, solucionando problemas de redirección con www.',
+        type: 'fix'
+    },
+    {
         version: 'v4.141',
         date: '08 de Mayo, 2026',
         title: '🌐 Redirección Agresiva Anti-Caché',

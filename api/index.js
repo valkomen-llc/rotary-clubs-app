@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.141 | 2026-05-08 (AGGRESSIVE REDIRECT 🌐🚀)
+// DISTRICT HEALTH IQ V4.142 | 2026-05-08 (FINAL REDIRECT FIX 🌐🚀)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -12,6 +12,7 @@ import publicRoutes from '../server/routes/public.js';
 import mediaRoutes from '../server/routes/media.js';
 
 const app = express();
+app.set('trust proxy', true);
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
 
 app.use(cors({
@@ -111,7 +112,7 @@ app.get('/api/technical-requests', async (req, res) => {
 
 // ── Static & Diagnostics ─────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.141', release: 'Aggressive Redirect 🌐🚀' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.142', release: 'Final Redirect Fix 🌐🚀' });
 });
 
 app.get('/api/health', async (req, res) => {
@@ -194,27 +195,31 @@ app.get('*', async (req, res) => {
     if (req.path.startsWith('/api')) return;
 
     // ── Global SaaS Redirect Logic ──
-    const hostname = req.headers['x-forwarded-host'] || req.headers.host || '';
-    const cleanHost = hostname.replace('www.', '').split(':')[0];
-    const isMainDomain = cleanHost === 'clubplatform.org' || cleanHost === 'rotaryclubplatform.org';
+    const hostname = req.hostname || '';
+    const isMainDomain = hostname === 'clubplatform.org' || 
+                         hostname === 'www.clubplatform.org' || 
+                         hostname === 'rotaryclubplatform.org' || 
+                         hostname === 'www.rotaryclubplatform.org';
     
     // Redirect root or any non-system path if active
-    const isSystemPath = req.path.startsWith('/admin') || req.path.startsWith('/api') || req.path.startsWith('/media') || req.path.startsWith('/assets');
+    const isSystemPath = req.path.startsWith('/admin') || 
+                         req.path.startsWith('/api') || 
+                         req.path.startsWith('/media') || 
+                         req.path.startsWith('/assets');
     
     if (isMainDomain && !isSystemPath) {
         try {
-            const redirectConfig = await prisma.platformConfig.findUnique({
+            const redirectConfig = await prisma.platformConfig.findFirst({
                 where: { key: 'saas_redirect' }
             });
             
             if (redirectConfig?.value === 'true') {
                 const targetUrl = `https://app.clubplatform.org${req.path === '/' ? '' : req.path}`;
-                console.log(`[RED-v4.141] REDIRECTING ${hostname}${req.path} -> ${targetUrl}`);
                 res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
                 return res.redirect(302, targetUrl);
             }
         } catch (e) {
-            console.error('[RED-v4.141] Redirect Error:', e);
+            console.error('[RED-v4.142] Redirect Error:', e);
         }
     }
 
