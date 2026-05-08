@@ -213,18 +213,26 @@ const ClubSettings: React.FC = () => {
             // If superadmin, also save platform-wide settings
             if (isSuperAdmin) {
                 // Save platform logo size
-                await fetch(`${API_URL}/platform-config/logo/size`, {
+                const sizeRes = await fetch(`${API_URL}/platform-config/logo/size`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                     body: JSON.stringify({ size: platformLogoSize })
                 });
+                if (!sizeRes.ok) {
+                    const err = await sizeRes.json();
+                    throw new Error(`Logo Size: ${err.error || 'Error'}`);
+                }
 
                 // Save SaaS redirect
-                await fetch(`${API_URL}/platform-config/redirect`, {
+                const redRes = await fetch(`${API_URL}/platform-config/redirect`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                     body: JSON.stringify({ active: saasRedirect })
                 });
+                if (!redRes.ok) {
+                    const err = await redRes.json();
+                    throw new Error(`Redirect Config: ${err.error || 'Error'}`);
+                }
             }
 
             const response = await fetch(`${API_URL}/admin/clubs/${club?.id}`, {
@@ -240,10 +248,12 @@ const ClubSettings: React.FC = () => {
                 toast.success('Configuración actualizada');
                 setTimeout(() => window.location.reload(), 1000);
             } else {
-                throw new Error('Error al actualizar');
+                const errData = await response.json();
+                throw new Error(errData.error || 'Error al actualizar club');
             }
-        } catch (error) {
-            toast.error('Hubo un error al guardar los cambios');
+        } catch (error: any) {
+            console.error('Save error:', error);
+            toast.error(error.message || 'Hubo un error al guardar los cambios');
         } finally {
             setLoading(false);
         }
