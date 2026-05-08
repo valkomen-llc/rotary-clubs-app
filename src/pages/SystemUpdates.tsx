@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.141',
+        date: '08 de Mayo, 2026',
+        title: '🌐 Redirección Agresiva Anti-Caché',
+        description: 'Se implementó una lógica de redirección más agresiva utilizando x-forwarded-host y desactivando la caché del navegador para asegurar la transición inmediata al subdominio app.',
+        type: 'fix'
+    },
+    {
         version: 'v4.140',
         date: '08 de Mayo, 2026',
         title: '🌐 Optimización de Redirección Global',

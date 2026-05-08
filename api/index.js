@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.140 | 2026-05-08 (ROBUST REDIRECT 🌐)
+// DISTRICT HEALTH IQ V4.141 | 2026-05-08 (AGGRESSIVE REDIRECT 🌐🚀)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -111,7 +111,7 @@ app.get('/api/technical-requests', async (req, res) => {
 
 // ── Static & Diagnostics ─────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.140', release: 'Robust Redirect 🌐' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.141', release: 'Aggressive Redirect 🌐🚀' });
 });
 
 app.get('/api/health', async (req, res) => {
@@ -194,24 +194,27 @@ app.get('*', async (req, res) => {
     if (req.path.startsWith('/api')) return;
 
     // ── Global SaaS Redirect Logic ──
-    const hostname = req.headers.host || '';
+    const hostname = req.headers['x-forwarded-host'] || req.headers.host || '';
     const cleanHost = hostname.replace('www.', '').split(':')[0];
-    const isMainDomain = cleanHost === 'clubplatform.org';
+    const isMainDomain = cleanHost === 'clubplatform.org' || cleanHost === 'rotaryclubplatform.org';
     
     // Redirect root or any non-system path if active
-    const isSystemPath = req.path.startsWith('/admin') || req.path.startsWith('/api') || req.path.startsWith('/media');
+    const isSystemPath = req.path.startsWith('/admin') || req.path.startsWith('/api') || req.path.startsWith('/media') || req.path.startsWith('/assets');
     
     if (isMainDomain && !isSystemPath) {
         try {
             const redirectConfig = await prisma.platformConfig.findUnique({
                 where: { key: 'saas_redirect' }
             });
+            
             if (redirectConfig?.value === 'true') {
-                console.log(`[Redirect] Redirecting ${hostname}${req.path} to app.clubplatform.org`);
-                return res.redirect(301, 'https://app.clubplatform.org' + req.path);
+                const targetUrl = `https://app.clubplatform.org${req.path === '/' ? '' : req.path}`;
+                console.log(`[RED-v4.141] REDIRECTING ${hostname}${req.path} -> ${targetUrl}`);
+                res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+                return res.redirect(302, targetUrl);
             }
         } catch (e) {
-            console.error('Error checking SaaS redirect:', e);
+            console.error('[RED-v4.141] Redirect Error:', e);
         }
     }
 
