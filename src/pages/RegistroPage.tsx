@@ -73,6 +73,7 @@ export default function RegistroPage() {
     const totalSteps = 2;
 
     const [form, setForm] = useState({
+        organizationType: 'Club Rotario',
         clubName: '',
         country: 'Colombia',
         district: '',
@@ -142,6 +143,7 @@ export default function RegistroPage() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
+                    organizationType: form.organizationType,
                     clubName: form.clubName,
                     country: form.country,
                     district: form.district || '0000',
@@ -270,6 +272,27 @@ export default function RegistroPage() {
                                     <div>
                                         <h3 className="font-black text-gray-900">Datos del Club</h3>
                                         <p className="text-xs text-gray-400">Información básica del club rotario</p>
+                                    </div>
+                                </div>
+
+                                {/* Tipo de Sitio */}
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-2">Tipo de Entidad / Sitio Web</label>
+                                    <div className="relative">
+                                        <select
+                                            value={form.organizationType}
+                                            onChange={e => updateField('organizationType', e.target.value)}
+                                            className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all bg-white appearance-none pr-10"
+                                        >
+                                            <option value="Club Rotario">Club Rotario</option>
+                                            <option value="Distrito Rotario">Distrito Rotario</option>
+                                            <option value="Zona">Zona</option>
+                                            <option value="Asociación Rotaria">Asociación Rotaria</option>
+                                            <option value="Programa de Intercambio">Programa de Intercambio</option>
+                                            <option value="Feria de Proyectos">Feria de Proyectos</option>
+                                            <option value="Evento o Convención">Evento o Convención</option>
+                                        </select>
+                                        <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                                     </div>
                                 </div>
 

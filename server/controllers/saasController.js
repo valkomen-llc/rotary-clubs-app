@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import VercelService from '../services/VercelService.js';
 
 export const autoRegisterClub = async (req, res) => {
-    const { clubName, country, district, adminName, adminEmail, adminPassword, subdomain, phone, phoneCountry, role: clubRole } = req.body;
+    const { organizationType, clubName, country, district, adminName, adminEmail, adminPassword, subdomain, phone, phoneCountry, role: clubRole } = req.body;
 
     try {
         // Validate required fields
@@ -39,6 +39,7 @@ export const autoRegisterClub = async (req, res) => {
             const newClub = await tx.club.create({
                 data: {
                     name: clubName,
+                    organizationType: organizationType || 'Club Rotario',
                     country,
                     district,
                     domain: fullDomain,
