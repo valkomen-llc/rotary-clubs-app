@@ -147,7 +147,7 @@ export const createClub = async (req, res) => {
 export const updateClub = async (req, res) => {
     const { id } = req.params;
     const {
-        name, description, city, country, district, domain, subdomain, type,
+        name, description, city, country, district, domain, subdomain, type, organizationType,
         email, phone, address, state, facebook, instagram, twitter, youtube, linkedin, tiktok, 
         socialLinks, customSocialLinks, siteImages, galleryImages,
         primaryColor, secondaryColor, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, status,
@@ -218,6 +218,7 @@ export const updateClub = async (req, res) => {
                 addField('country', country);
                 addField('district', district);
                 addField('type', type);
+                addField('organizationType', organizationType);
             } else {
                 // Special fields for District
                 addField('logoHeaderSize', logoHeaderSize ? parseInt(logoHeaderSize) : undefined);

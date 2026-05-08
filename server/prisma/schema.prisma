@@ -82,6 +82,7 @@ model Club {
   updatedAt                DateTime                @updatedAt
   favicon                  String?
   type                     String                  @default("club")
+  organizationType         String                  @default("Club Rotario")
   districtId               String?
   expirationBannerActive   Boolean                 @default(false)
   expirationBannerMessage  String?

@@ -137,6 +137,25 @@ const StepClubInfo: React.FC<{
         <h2 className="text-2xl font-black text-gray-900 mb-2">📋 Cuéntanos sobre tu club</h2>
         <p className="text-sm text-gray-400 mb-8">Esta información aparecerá en tu sitio web público.</p>
         <div className="space-y-5">
+            {/* Tipo de Sitio */}
+            <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Tipo de Sitio Web *</label>
+                <select 
+                    value={data.organizationType || 'Club Rotario'} 
+                    onChange={e => onChange({ ...data, organizationType: e.target.value })}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all"
+                >
+                    <option value="Club Rotario">Club Rotario</option>
+                    <option value="Distrito Rotario">Distrito Rotario</option>
+                    <option value="Zona">Zona</option>
+                    <option value="Asociación Rotaria">Asociación Rotaria</option>
+                    <option value="Programa de Intercambio">Programa de Intercambio</option>
+                    <option value="Feria de Proyectos">Feria de Proyectos</option>
+                    <option value="Evento o Convención">Evento o Convención</option>
+                </select>
+                <p className="text-[10px] text-gray-400 mt-1">Selecciona el tipo de organización o entidad</p>
+            </div>
+
             {/* Row 1: Nombre | Distrito | Fecha constitutiva */}
             <div className="grid grid-cols-3 gap-4">
                 <div>
@@ -1366,6 +1385,7 @@ const OnboardingFlow: React.FC = () => {
                     method: 'PUT', headers,
                     body: JSON.stringify({
                         name: info.name,
+                        organizationType: info.organizationType,
                         description: info.description,
                         district: info.district,
                         city: info.city,
