@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.146',
+        date: '08 de Mayo, 2026',
+        title: '🌐 Soporte Multi-Entidad & Paneles Admin',
+        description: 'Se introdujo el selector dinámico de entidades (Zonas, Eventos, Ferias y Programas) y se crearon paneles de control dedicados para gestionar cada tipo de organización desde el dashboard SuperAdmin.',
+        type: 'feature'
+    },
+    {
         version: 'v4.142',
         date: '08 de Mayo, 2026',
         title: '🌐 Corrección Definitiva de Redirección',

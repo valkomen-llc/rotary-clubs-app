@@ -72,6 +72,10 @@ import { Toaster } from './components/ui/sonner';
 const Dashboard = React.lazy(() => import('./pages/admin/Dashboard'));
 const ClubsManagement = React.lazy(() => import('./pages/admin/Clubs'));
 const AsociacionesManagement = React.lazy(() => import('./pages/admin/Asociaciones'));
+const ZonasManagement = React.lazy(() => import('./pages/admin/Zonas'));
+const EventosManagement = React.lazy(() => import('./pages/admin/Eventos'));
+const FeriasManagement = React.lazy(() => import('./pages/admin/Ferias'));
+const ProgramasManagement = React.lazy(() => import('./pages/admin/Programas'));
 const DistrictsManagement = React.lazy(() => import('./pages/admin/Districts'));
 const ClubSettings = React.lazy(() => import('./pages/admin/ClubSettings'));
 const NewsManagement = React.lazy(() => import('./pages/admin/News'));
@@ -451,6 +455,38 @@ function App() {
                   element={
                     <PrivateRoute>
                       <AsociacionesManagement />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/zonas"
+                  element={
+                    <PrivateRoute>
+                      <ZonasManagement />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/eventos-convenciones"
+                  element={
+                    <PrivateRoute>
+                      <EventosManagement />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/ferias-proyectos"
+                  element={
+                    <PrivateRoute>
+                      <FeriasManagement />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/programas-intercambio"
+                  element={
+                    <PrivateRoute>
+                      <ProgramasManagement />
                     </PrivateRoute>
                   }
                 />
