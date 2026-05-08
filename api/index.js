@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.139 | 2026-05-08 (SAAS REDIRECT 🌐)
+// DISTRICT HEALTH IQ V4.140 | 2026-05-08 (ROBUST REDIRECT 🌐)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -111,7 +111,7 @@ app.get('/api/technical-requests', async (req, res) => {
 
 // ── Static & Diagnostics ─────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.139', release: 'SaaS Redirect 🌐' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.140', release: 'Robust Redirect 🌐' });
 });
 
 app.get('/api/health', async (req, res) => {
@@ -195,15 +195,20 @@ app.get('*', async (req, res) => {
 
     // ── Global SaaS Redirect Logic ──
     const hostname = req.headers.host || '';
-    const isMainDomain = hostname === 'clubplatform.org' || hostname === 'www.clubplatform.org';
+    const cleanHost = hostname.replace('www.', '').split(':')[0];
+    const isMainDomain = cleanHost === 'clubplatform.org';
     
-    if (isMainDomain && req.path === '/') {
+    // Redirect root or any non-system path if active
+    const isSystemPath = req.path.startsWith('/admin') || req.path.startsWith('/api') || req.path.startsWith('/media');
+    
+    if (isMainDomain && !isSystemPath) {
         try {
             const redirectConfig = await prisma.platformConfig.findUnique({
                 where: { key: 'saas_redirect' }
             });
             if (redirectConfig?.value === 'true') {
-                return res.redirect('https://app.clubplatform.org');
+                console.log(`[Redirect] Redirecting ${hostname}${req.path} to app.clubplatform.org`);
+                return res.redirect(301, 'https://app.clubplatform.org' + req.path);
             }
         } catch (e) {
             console.error('Error checking SaaS redirect:', e);

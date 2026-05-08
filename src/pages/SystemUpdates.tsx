@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.140',
+        date: '08 de Mayo, 2026',
+        title: '🌐 Optimización de Redirección Global',
+        description: 'Se robusteció la lógica de redirección SaaS para manejar variaciones en el host y asegurar que todas las rutas del dominio principal apunten correctamente a la app.',
+        type: 'update'
+    },
+    {
         version: 'v4.139',
         date: '08 de Mayo, 2026',
         title: '🌐 Redirección SaaS Inteligente',
