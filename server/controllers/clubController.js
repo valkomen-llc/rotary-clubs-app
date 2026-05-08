@@ -211,7 +211,6 @@ export const updateClub = async (req, res) => {
             addField('expirationBannerMessage', expirationBannerMessage);
             addField('developmentBannerActive', developmentBannerActive);
             addField('developmentBannerMessage', developmentBannerMessage);
-            addField('logoHeaderSize', logoHeaderSize ? parseInt(logoHeaderSize) : undefined);
 
             // Special fields for Club
             if (tableName === 'Club') {
@@ -220,7 +219,8 @@ export const updateClub = async (req, res) => {
                 addField('district', district);
                 addField('type', type);
             } else {
-                // Special fields for District (if we use the colors column)
+                // Special fields for District
+                addField('logoHeaderSize', logoHeaderSize ? parseInt(logoHeaderSize) : undefined);
                 if (primaryColor || secondaryColor) {
                     const currentColors = typeof entity.colors === 'string' ? JSON.parse(entity.colors) : (entity.colors || {});
                     const newColors = {
