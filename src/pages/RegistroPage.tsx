@@ -39,6 +39,19 @@ function slugify(text: string) {
         .substring(0, 40);
 }
 
+const getDynamicLabels = (type: string) => {
+    switch (type) {
+        case 'Distrito Rotario': return { title: 'Crea el sitio web de tu Distrito', stepTitle: 'Datos del Distrito', stepSubtitle: 'Información básica del distrito rotario', nameLabel: 'Nombre del Distrito Rotario', namePlaceholder: 'Ej: Distrito 4281' };
+        case 'Zona': return { title: 'Crea el sitio web de tu Zona', stepTitle: 'Datos de la Zona', stepSubtitle: 'Información básica de la zona rotaria', nameLabel: 'Nombre de la Zona', namePlaceholder: 'Ej: Zona 25A' };
+        case 'Asociación Rotaria': return { title: 'Crea el sitio web de tu Asociación', stepTitle: 'Datos de la Asociación', stepSubtitle: 'Información básica de la asociación', nameLabel: 'Nombre de la Asociación Rotaria', namePlaceholder: 'Ej: Asociación de Exbecarios' };
+        case 'Programa de Intercambio': return { title: 'Crea el sitio web del Programa', stepTitle: 'Datos del Programa', stepSubtitle: 'Información básica del programa', nameLabel: 'Nombre del Programa de Intercambio', namePlaceholder: 'Ej: Intercambio de Jóvenes Rotary' };
+        case 'Feria de Proyectos': return { title: 'Crea el sitio web de la Feria', stepTitle: 'Datos de la Feria', stepSubtitle: 'Información básica de la feria de proyectos', nameLabel: 'Nombre de la Feria de Proyectos', namePlaceholder: 'Ej: Feria de Proyectos Uniendo América' };
+        case 'Evento o Convención': return { title: 'Crea el sitio web del Evento', stepTitle: 'Datos del Evento', stepSubtitle: 'Información básica del evento', nameLabel: 'Nombre del Evento o Convención', namePlaceholder: 'Ej: Convención Internacional 2026' };
+        case 'Club Rotario':
+        default: return { title: 'Crea el sitio web de tu club rotario', stepTitle: 'Datos del Club', stepSubtitle: 'Información básica del club rotario', nameLabel: 'Nombre del Club Rotario', namePlaceholder: 'Ej: Rotary Club Valle del Cauca' };
+    }
+};
+
 /* ═══════════════════════════════════════════════════════════
    Main Component
    ═══════════════════════════════════════════════════════════ */
@@ -214,7 +227,8 @@ export default function RegistroPage() {
     /* ═══════════════════════════════════════════════════════════
        Step indicators
        ═══════════════════════════════════════════════════════════ */
-    const stepLabels = ['Datos del Club', 'Cuenta Admin'];
+    const labels = getDynamicLabels(form.organizationType);
+    const stepLabels = [labels.stepTitle, 'Cuenta Admin'];
 
     return (
         <div className="min-h-screen bg-rotary-concrete bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-6">
@@ -236,7 +250,7 @@ export default function RegistroPage() {
                             </>
                         ))}
                     </div>
-                    <h1 className="text-3xl font-normal text-gray-900 mb-3">Crea el sitio web de tu club rotario</h1>
+                    <h1 className="text-3xl font-normal text-gray-900 mb-3">{labels.title}</h1>
                     <p className="text-gray-500 text-sm leading-relaxed max-w-lg mx-auto">Tu activo digital para imagen pública y comunicaciones, con presencia en línea 24/7, alcance nacional e internacional, posicionamiento de marca, monetización, crowdfunding y fundraising.</p>
                 </div>
 
@@ -270,8 +284,8 @@ export default function RegistroPage() {
                                         <Building2 className="w-5 h-5 text-[#019fcb]" />
                                     </div>
                                     <div>
-                                        <h3 className="font-black text-gray-900">Datos del Club</h3>
-                                        <p className="text-xs text-gray-400">Información básica del club rotario</p>
+                                        <h3 className="font-black text-gray-900">{labels.stepTitle}</h3>
+                                        <p className="text-xs text-gray-400">{labels.stepSubtitle}</p>
                                     </div>
                                 </div>
 
@@ -284,27 +298,27 @@ export default function RegistroPage() {
                                             onChange={e => updateField('organizationType', e.target.value)}
                                             className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all bg-white appearance-none pr-10"
                                         >
+                                            <option value="Asociación Rotaria">Asociación Rotaria</option>
                                             <option value="Club Rotario">Club Rotario</option>
                                             <option value="Distrito Rotario">Distrito Rotario</option>
-                                            <option value="Zona">Zona</option>
-                                            <option value="Asociación Rotaria">Asociación Rotaria</option>
-                                            <option value="Programa de Intercambio">Programa de Intercambio</option>
-                                            <option value="Feria de Proyectos">Feria de Proyectos</option>
                                             <option value="Evento o Convención">Evento o Convención</option>
+                                            <option value="Feria de Proyectos">Feria de Proyectos</option>
+                                            <option value="Programa de Intercambio">Programa de Intercambio</option>
+                                            <option value="Zona">Zona</option>
                                         </select>
                                         <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                                     </div>
                                 </div>
 
-                                {/* Club Name */}
+                                {/* Entity Name */}
                                 <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-2">Nombre del Club Rotario</label>
+                                    <label className="block text-sm font-bold text-gray-700 mb-2">{labels.nameLabel}</label>
                                     <input
                                         type="text"
                                         value={form.clubName}
                                         onChange={e => updateField('clubName', e.target.value)}
                                         className="w-full px-4 py-3.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#019fcb]/20 focus:border-[#019fcb] transition-all"
-                                        placeholder="Ej: Rotary Club Valle del Cauca"
+                                        placeholder={labels.namePlaceholder}
                                     />
                                 </div>
 
