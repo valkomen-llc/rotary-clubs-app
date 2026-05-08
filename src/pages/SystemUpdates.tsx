@@ -27,6 +27,13 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.139',
+        date: '08 de Mayo, 2026',
+        title: '🌐 Redirección SaaS Inteligente',
+        description: 'Se implementó la capacidad de redireccionar el dominio principal (clubplatform.org) directamente a la aplicación (app), gestionable por super administradores.',
+        type: 'update'
+    },
+    {
         version: 'v4.138',
         date: '06 de Mayo, 2026',
         title: '🛠️ Estabilidad de Compilación',

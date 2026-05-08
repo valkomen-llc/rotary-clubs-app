@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.138 | 2026-05-06 (JSX SYNTAX FIX 🛠️)
+// DISTRICT HEALTH IQ V4.139 | 2026-05-08 (SAAS REDIRECT 🌐)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -111,7 +111,7 @@ app.get('/api/technical-requests', async (req, res) => {
 
 // ── Static & Diagnostics ─────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.138', release: 'JSX Syntax Fix 🛠️' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.139', release: 'SaaS Redirect 🌐' });
 });
 
 app.get('/api/health', async (req, res) => {
@@ -192,11 +192,28 @@ app.get('/api/social/callback/:platform', async (req, res) => {
 // ── Frontend & SEO Injection ──────────────────────────────────────────────────
 app.get('*', async (req, res) => {
     if (req.path.startsWith('/api')) return;
+
+    // ── Global SaaS Redirect Logic ──
+    const hostname = req.headers.host || '';
+    const isMainDomain = hostname === 'clubplatform.org' || hostname === 'www.clubplatform.org';
+    
+    if (isMainDomain && req.path === '/') {
+        try {
+            const redirectConfig = await prisma.platformConfig.findUnique({
+                where: { key: 'saas_redirect' }
+            });
+            if (redirectConfig?.value === 'true') {
+                return res.redirect('https://app.clubplatform.org');
+            }
+        } catch (e) {
+            console.error('Error checking SaaS redirect:', e);
+        }
+    }
+
     try {
         const indexPath = path.resolve(process.cwd(), 'dist/index.html');
         if (!fs.existsSync(indexPath)) return res.status(404).send('Frontend not built.');
         let html = fs.readFileSync(indexPath, 'utf8');
-        const hostname = req.headers.host || '';
         const originParts = hostname.split('.');
         const subdomain = hostname.includes('clubplatform.org') ? originParts[0] : null;
         let club;
