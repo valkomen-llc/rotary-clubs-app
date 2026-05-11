@@ -14,6 +14,9 @@ import axios from 'axios';
 const EVO_URL = (process.env.EVOLUTION_API_URL || '').replace(/\/$/, '');
 const EVO_KEY = process.env.EVOLUTION_API_KEY || '';
 const EVO_INSTANCE = process.env.EVOLUTION_INSTANCE_NAME || 'clubplatform-admin';
+// Instance name can include spaces or accents (Evolution allows it via the manager UI),
+// so encode it for every URL segment.
+const EVO_INSTANCE_PATH = encodeURIComponent(EVO_INSTANCE);
 
 const evo = axios.create({
     baseURL: EVO_URL,
@@ -60,7 +63,7 @@ const ensureInstance = async () => {
 };
 
 const fetchConnectionState = async () => {
-    const r = await evo.get(`/instance/connectionState/${EVO_INSTANCE}`);
+    const r = await evo.get(`/instance/connectionState/${EVO_INSTANCE_PATH}`);
     if (r.status === 404) return { state: 'close' };
     return r.data?.instance || r.data || { state: 'close' };
 };
@@ -76,7 +79,7 @@ export const getStatus = async (req, res) => {
         let qr = null;
         if (state !== 'open') {
             // When pairing, Evolution caches the latest QR on the instance/connect endpoint.
-            const qrRes = await evo.get(`/instance/connect/${EVO_INSTANCE}`);
+            const qrRes = await evo.get(`/instance/connect/${EVO_INSTANCE_PATH}`);
             if (qrRes.status < 400) {
                 qr = qrRes.data?.base64 || qrRes.data?.qrcode?.base64 || null;
                 if (qr && !qr.startsWith('data:image')) qr = `data:image/png;base64,${qr}`;
@@ -94,7 +97,7 @@ export const startClient = async (req, res) => {
     if (!requireConfig(res)) return;
     try {
         await ensureInstance();
-        const r = await evo.get(`/instance/connect/${EVO_INSTANCE}`);
+        const r = await evo.get(`/instance/connect/${EVO_INSTANCE_PATH}`);
         let qr = r.data?.base64 || r.data?.qrcode?.base64 || null;
         if (qr && !qr.startsWith('data:image')) qr = `data:image/png;base64,${qr}`;
 
@@ -111,7 +114,7 @@ export const disconnectClient = async (req, res) => {
     if (!requireConfig(res)) return;
     try {
         // Logout is enough for a normal disconnect; the instance stays so we can re-pair fast.
-        await evo.delete(`/instance/logout/${EVO_INSTANCE}`).catch(() => {});
+        await evo.delete(`/instance/logout/${EVO_INSTANCE_PATH}`).catch(() => {});
         res.json({ success: true });
     } catch (e) {
         console.error('[WA-QR] disconnectClient error:', e.response?.data || e.message);
@@ -124,7 +127,7 @@ export const disconnectClient = async (req, res) => {
 export const getChats = async (req, res) => {
     if (!requireConfig(res)) return;
     try {
-        const r = await evo.post(`/chat/findChats/${EVO_INSTANCE}`, {});
+        const r = await evo.post(`/chat/findChats/${EVO_INSTANCE_PATH}`, {});
         if (r.status >= 400) return res.status(400).json({ error: r.data?.message || 'WhatsApp no está conectado.' });
 
         const rows = Array.isArray(r.data) ? r.data : [];
@@ -157,7 +160,7 @@ export const getChatImage = async (req, res) => {
     if (!requireConfig(res)) return;
     const { chatId } = req.params;
     try {
-        const r = await evo.post(`/chat/fetchProfilePictureUrl/${EVO_INSTANCE}`, { number: chatId });
+        const r = await evo.post(`/chat/fetchProfilePictureUrl/${EVO_INSTANCE_PATH}`, { number: chatId });
         const url = r.data?.profilePictureUrl || r.data?.url || null;
         if (!url) return res.status(404).send('No profile picture');
 
@@ -179,7 +182,7 @@ export const getMessages = async (req, res) => {
     if (!requireConfig(res)) return;
     const { chatId } = req.params;
     try {
-        const r = await evo.post(`/chat/findMessages/${EVO_INSTANCE}`, {
+        const r = await evo.post(`/chat/findMessages/${EVO_INSTANCE_PATH}`, {
             where: { key: { remoteJid: chatId } },
             limit: 40
         });
@@ -223,7 +226,7 @@ export const getMessageMedia = async (req, res) => {
     if (!requireConfig(res)) return;
     const { chatId, messageId } = req.params;
     try {
-        const r = await evo.post(`/chat/getBase64FromMediaMessage/${EVO_INSTANCE}`, {
+        const r = await evo.post(`/chat/getBase64FromMediaMessage/${EVO_INSTANCE_PATH}`, {
             message: { key: { id: messageId, remoteJid: chatId } },
             convertToMp4: false
         });
@@ -245,7 +248,7 @@ export const sendMessage = async (req, res) => {
     const { chatId, message } = req.body;
     if (!chatId || !message) return res.status(400).json({ error: 'chatId and message are required' });
     try {
-        const r = await evo.post(`/message/sendText/${EVO_INSTANCE}`, {
+        const r = await evo.post(`/message/sendText/${EVO_INSTANCE_PATH}`, {
             number: chatId,
             text: message
         });
@@ -282,7 +285,7 @@ export const sendMedia = async (req, res) => {
         else if (mimetype.startsWith('video/')) mediatype = 'video';
         else if (mimetype.startsWith('audio/')) mediatype = 'audio';
 
-        const r = await evo.post(`/message/sendMedia/${EVO_INSTANCE}`, {
+        const r = await evo.post(`/message/sendMedia/${EVO_INSTANCE_PATH}`, {
             number: chatId,
             mediatype,
             mimetype,
