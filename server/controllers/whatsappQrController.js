@@ -146,19 +146,39 @@ export const markChatRead = async (req, res) => {
 export const getChats = async (req, res) => {
     if (!requireConfig(res)) return;
     try {
-        const r = await evo.post(`/chat/findChats/${EVO_INSTANCE_PATH}`, {});
-        if (r.status >= 400) return res.status(400).json({ error: r.data?.message || 'WhatsApp no está conectado.' });
+        const chatsRes = await evo.post(`/chat/findChats/${EVO_INSTANCE_PATH}`, {});
+        if (chatsRes.status >= 400) return res.status(400).json({ error: chatsRes.data?.message || 'WhatsApp no está conectado.' });
 
-        const rows = Array.isArray(r.data) ? r.data : [];
+        // Evolution's findChats often returns pushName=null for individual chats,
+        // so cross-reference findContacts (which tracks pushName from incoming
+        // messages and the device's address book) to fill in real display names.
+        const contactNames = new Map();
+        try {
+            const contactsRes = await evo.post(`/chat/findContacts/${EVO_INSTANCE_PATH}`, {});
+            const contactsRows = Array.isArray(contactsRes.data) ? contactsRes.data : [];
+            for (const ct of contactsRows) {
+                const jid = ct.remoteJid || ct.id;
+                const name = ct.pushName || ct.name;
+                if (jid && name) contactNames.set(jid, name);
+            }
+        } catch (e) {
+            console.warn('[WA-QR] findContacts non-fatal:', e.response?.data || e.message);
+        }
+
+        const rows = Array.isArray(chatsRes.data) ? chatsRes.data : [];
         const mapped = rows
             .map(c => {
                 const id = c.remoteJid || c.id || c.chatId;
                 if (!id) return null;
                 const isGroup = id.endsWith('@g.us');
                 const timestampMs = Number(c.updatedAt ? new Date(c.updatedAt).getTime() : (c.messageTimestamp || c.lastMessageTimestamp || 0) * 1000) || 0;
+                const fallback = id.split('@')[0];
+                const name = isGroup
+                    ? (c.subject || c.name || fallback)
+                    : (c.pushName || contactNames.get(id) || c.name || fallback);
                 return {
                     id,
-                    name: c.pushName || c.name || c.subject || id.split('@')[0],
+                    name,
                     isGroup,
                     unreadCount: Number(c.unreadCount || c.unreadMessages || 0),
                     timestamp: Math.floor(timestampMs / 1000)
