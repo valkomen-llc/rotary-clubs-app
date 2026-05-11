@@ -16,7 +16,8 @@ import {
     deletePost,
     disconnectAccount,
     suggestCaption,
-    getDiagnostic
+    getDiagnostic,
+    probeModels
 } from '../controllers/contentStudioController.js';
 
 const router = express.Router();
@@ -51,5 +52,6 @@ router.post('/captions/suggest', authMiddleware, suggestCaption);
 
 // Diagnóstico (admin)
 router.get('/diagnostic', authMiddleware, getDiagnostic);
+router.post('/probe-models', authMiddleware, probeModels);
 
 export default router;

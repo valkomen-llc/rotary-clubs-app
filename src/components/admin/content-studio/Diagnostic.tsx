@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Stethoscope, X, Loader2, CheckCircle2, XCircle, Copy } from 'lucide-react';
+import { Stethoscope, X, Loader2, CheckCircle2, XCircle, Copy, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface DiagnosticData {
@@ -23,6 +23,36 @@ const Diagnostic: React.FC = () => {
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<DiagnosticData | null>(null);
+    const [probing, setProbing] = useState(false);
+    const [probeData, setProbeData] = useState<any>(null);
+
+    const probeKieModels = async () => {
+        setProbing(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/content-studio/probe-models`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({})
+            });
+            const json = await res.json();
+            setProbeData(json);
+            if (res.ok && json.foundWorking) {
+                toast.success(`Modelo encontrado: ${json.foundWorking.model}`);
+            } else if (res.ok) {
+                toast.warning('Ningún candidato funcionó. Mirá los resultados.');
+            } else {
+                toast.error(json.error || 'Error en probe');
+            }
+        } catch {
+            toast.error('Error de conexión');
+        } finally {
+            setProbing(false);
+        }
+    };
 
     const run = async () => {
         setLoading(true);
@@ -162,6 +192,57 @@ const Diagnostic: React.FC = () => {
                                         <Copy className="w-3 h-3 text-indigo-600" />
                                     </button>
                                 </div>
+                            </div>
+
+                            {/* KIE Model Probe */}
+                            <div>
+                                <div className="flex justify-between items-center mb-3">
+                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400">Probe de modelos KIE</h4>
+                                    <button
+                                        onClick={probeKieModels}
+                                        disabled={probing}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-100 rounded-lg text-[10px] font-black uppercase hover:bg-amber-100 disabled:opacity-50"
+                                    >
+                                        {probing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                                        {probing ? 'Probando...' : 'Probar modelos'}
+                                    </button>
+                                </div>
+                                {probeData && (
+                                    <div className="space-y-3">
+                                        {probeData.foundWorking ? (
+                                            <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
+                                                <p className="text-xs font-black text-emerald-900 mb-1">✓ Modelo encontrado</p>
+                                                <code className="text-[11px] font-mono text-emerald-700 break-all">
+                                                    {probeData.foundWorking.model}
+                                                </code>
+                                                <p className="text-[10px] text-emerald-700 font-medium mt-2">{probeData.nextStep}</p>
+                                                <button
+                                                    onClick={() => copy(probeData.foundWorking.model)}
+                                                    className="mt-2 inline-flex items-center gap-1 text-[10px] text-emerald-700 hover:text-emerald-900 font-black"
+                                                >
+                                                    <Copy className="w-3 h-3" /> Copiar al portapapeles
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="bg-red-50 border border-red-100 rounded-2xl p-4">
+                                                <p className="text-xs font-black text-red-900 mb-1">✗ Ningún candidato funcionó</p>
+                                                <p className="text-[10px] text-red-700 font-medium">{probeData.nextStep}</p>
+                                            </div>
+                                        )}
+                                        <details>
+                                            <summary className="cursor-pointer text-[10px] font-bold text-gray-500 hover:text-gray-700">Ver todas las respuestas ({probeData.probed}/{probeData.totalCandidates})</summary>
+                                            <pre className="mt-2 p-2 bg-gray-900 text-emerald-300 rounded-lg text-[9px] font-mono overflow-x-auto max-h-64">
+                                                {JSON.stringify(probeData.results, null, 2)}
+                                            </pre>
+                                        </details>
+                                    </div>
+                                )}
+                                {!probeData && (
+                                    <p className="text-[10px] text-gray-500 font-medium">
+                                        Probar 15+ identificadores comunes contra KIE.ai. Para apenas uno funciona.
+                                        Genera 1 task pequeña ($cost mínimo).
+                                    </p>
+                                )}
                             </div>
 
                             <div>

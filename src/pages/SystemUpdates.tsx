@@ -23,9 +23,16 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.149 | 2026-05-11 (KIE PAYLOAD FIX 🎯)
-// Cache bust: 2026-05-11 12:10 (RENDER VIDEO FIX 🎬)
+// DISTRICT HEALTH IQ V4.150 | 2026-05-11 (KIE MODEL PROBE 🔎)
+// Cache bust: 2026-05-11 12:35 (MODEL DISCOVERY 🎯)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.150',
+        date: '11 de Mayo, 2026',
+        title: '🔎 Content Studio — Probe automático de modelos KIE',
+        description: 'Nuevo endpoint y botón en el panel Diagnóstico que prueba 15+ identificadores comunes de modelos image-to-video contra KIE.ai para descubrir cuál acepta tu cuenta. Para automáticamente al encontrar uno funcional y muestra el valor exacto para setear en KIE_MODEL. Esencial cuando los nombres de modelos varían entre versiones del API.',
+        type: 'feature'
+    },
     {
         version: 'v4.149',
         date: '11 de Mayo, 2026',

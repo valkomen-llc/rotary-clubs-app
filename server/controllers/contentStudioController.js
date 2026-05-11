@@ -412,6 +412,105 @@ export const getDiagnostic = async (req, res) => {
     }
 };
 
+export const probeModels = async (req, res) => {
+    try {
+        if (req.user.role !== 'administrator') {
+            return res.status(403).json({ error: 'Solo administradores' });
+        }
+
+        const apiKey = process.env.KIE_API_KEY;
+        if (!apiKey) return res.status(400).json({ error: 'KIE_API_KEY no configurada' });
+
+        const appUrl = process.env.APP_URL || 'https://app.clubplatform.org';
+        const imageUrl = req.body?.imageUrl
+            || 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/1024px-Cat03.jpg';
+
+        // Lista de candidatos común para image-to-video en KIE.ai.
+        // Si el usuario pasa req.body.models, usamos esa lista.
+        const candidates = (req.body?.models && req.body.models.length > 0)
+            ? req.body.models
+            : [
+                'kling/v2.1/image-to-video',
+                'kling/v2.0/image-to-video',
+                'kling/v1.6-pro/image-to-video',
+                'kling/v1.6/image-to-video',
+                'kling-v2-1-master-image-to-video',
+                'kling-v1-6-pro-image-to-video',
+                'kling/v2.1-master/image-to-video',
+                'bytedance/v1-pro-fast-image-to-video',
+                'bytedance/seedance-v1-pro-fast-image-to-video',
+                'bytedance/seedance-v1-pro-fast/image-to-video',
+                'seedance-v1-pro-fast-image-to-video',
+                'seedance-v1-pro-fast/image-to-video',
+                'runway-gen-3-alpha-turbo/image-to-video',
+                'pixverse/v4/image-to-video',
+                'veo3/image-to-video'
+            ];
+
+        const results = [];
+        let foundWorking = null;
+
+        for (const model of candidates) {
+            try {
+                const r = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model,
+                        callBackUrl: `${appUrl}/api/content-studio/webhook`,
+                        input: {
+                            prompt: 'probe test',
+                            image_url: imageUrl,
+                            duration: '5',
+                            aspect_ratio: '9:16'
+                        },
+                        metadata: { probe: true }
+                    })
+                });
+                const data = await r.json();
+
+                const taskId = data?.task_id || data?.taskId || data?.id
+                    || data?.data?.task_id || data?.data?.taskId || data?.data?.id;
+
+                const result = {
+                    model,
+                    httpStatus: r.status,
+                    kieCode: data?.code || null,
+                    kieMsg: data?.msg || data?.message || null,
+                    accepted: !!taskId,
+                    taskId: taskId || null
+                };
+                results.push(result);
+
+                if (taskId) {
+                    foundWorking = result;
+                    break; // paramos al primer modelo que acepta
+                }
+            } catch (err) {
+                results.push({ model, error: err.message });
+            }
+        }
+
+        res.json({
+            timestamp: new Date().toISOString(),
+            imageUrlUsed: imageUrl,
+            probed: results.length,
+            totalCandidates: candidates.length,
+            foundWorking,
+            results,
+            nextStep: foundWorking
+                ? `Seteá KIE_MODEL="${foundWorking.model}" en Vercel (Production + Preview) y redeployá.`
+                : 'Ninguno de los candidatos funcionó. Mandame las respuestas y pruebo más identificadores.'
+        });
+    } catch (error) {
+        console.error('probeModels error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
 export const suggestCaption = async (req, res) => {
     try {
         const { projectId, prompt: hint } = req.body;
