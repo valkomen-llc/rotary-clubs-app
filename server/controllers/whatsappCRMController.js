@@ -1200,7 +1200,7 @@ export const handleWebhook = async (req, res) => {
         let clubId = null;
         let clubToken = null;
         if (phoneNumberId) {
-            const configR = await db.query(`SELECT "clubId", "accessToken" FROM "WhatsAppConfig" WHERE "phoneNumberId"=$1 LIMIT 1`, [phoneNumberId]);
+            const configR = await db.query(`SELECT "clubId", "accessToken" FROM "WhatsAppConfig" WHERE "phoneNumberId"=$1 ORDER BY "lastVerifiedAt" DESC LIMIT 1`, [phoneNumberId]);
             if (configR.rows.length) {
                 clubId = configR.rows[0].clubId;
                 clubToken = configR.rows[0].accessToken;

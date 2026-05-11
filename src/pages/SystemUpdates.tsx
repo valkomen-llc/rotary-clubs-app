@@ -27,10 +27,10 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: 'v4.154',
+        version: 'v4.155',
         date: '11 de Mayo, 2026',
-        title: '🛠️ Estabilidad Total WhatsApp CRM',
-        description: 'Se corrigió un error adicional de base de datos relacionado con la columna updatedAt. Se aseguraron todos los campos de auditoría (createdAt, updatedAt) en todas las operaciones del módulo WhatsApp.',
+        title: '🌐 Corrección Webhook Multitenencia',
+        description: 'Se optimizó la lógica del Webhook para manejar correctamente casos donde múltiples clubes comparten o heredan un mismo ID de teléfono de Meta, asegurando que los mensajes se asignen a la configuración activa más reciente.',
         type: 'fix'
     },
     {
