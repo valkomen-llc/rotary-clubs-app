@@ -23,9 +23,16 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.118 | 2026-05-06 (DSO ADMIN 🧠)
-// Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
+// DISTRICT HEALTH IQ V4.147 | 2026-05-11 (CONTENT STUDIO END-TO-END 🎬)
+// Cache bust: 2026-05-11 11:30 (CONTENT STUDIO RELEASE 🚀)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.147',
+        date: '11 de Mayo, 2026',
+        title: '🎬 Content Studio — Publicación End-to-End',
+        description: 'Se completó el flujo end-to-end de Content Studio: OAuth real con Meta (Instagram y Facebook Reels), publicación vía Graph API v19, cron que procesa publicaciones programadas cada 5 minutos, generación de captions con IA (Gemini), modal de publicación con multi-cuenta y scheduler, y panel de diagnóstico para verificar configuración. Se conectaron todos los botones de acción que estaban inactivos (Publicar, Desconectar cuenta, Cancelar/Reintentar/Eliminar en cola).',
+        type: 'feature'
+    },
     {
         version: 'v4.146',
         date: '08 de Mayo, 2026',
