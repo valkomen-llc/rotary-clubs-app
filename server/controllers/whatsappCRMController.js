@@ -56,15 +56,19 @@ async function resolveClubId(req, fromBody = false) {
     
     if (req.user?.clubId) return req.user.clubId;
     
-    // Super admin without explicit clubId → use first club that HAS a config
+    // Super admin without explicit clubId → Prioritize Platform Club (Origen)
+    const platformClubId = '3c648ce7-3c47-41e2-9461-6e40a8615ae6';
+    const hasPlatformConfig = await db.query(`SELECT 1 FROM "WhatsAppConfig" WHERE "clubId"=$1`, [platformClubId]);
+    if (hasPlatformConfig.rows.length) return platformClubId;
+
+    // Fallback: use most recent club that HAS a config
     const r = await db.query(`
-        SELECT c.id FROM "Club" c 
-        JOIN "WhatsAppConfig" wc ON wc."clubId" = c.id 
-        ORDER BY wc."lastVerifiedAt" DESC NULLS LAST 
+        SELECT "clubId" FROM "WhatsAppConfig" 
+        ORDER BY "lastVerifiedAt" DESC NULLS LAST 
         LIMIT 1
     `);
     
-    if (r.rows.length) return r.rows[0].id;
+    if (r.rows.length) return r.rows[0].clubId;
 
     // Last resort: first club in system
     const first = await db.query(`SELECT id FROM "Club" LIMIT 1`);
