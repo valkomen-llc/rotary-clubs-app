@@ -45,14 +45,30 @@ async function syncMetaMediaToS3(mediaId, token, clubId, fileExtension = 'jpg', 
     }
 }
 
-/** Resolve clubId — super admins may not have clubId in JWT, fallback to first club */
+/** Resolve clubId — super admins may not have clubId in JWT, fallback to first club with config */
 async function resolveClubId(req, fromBody = false) {
     const src = fromBody ? req.body : req.query;
-    if (req.user.role === 'administrator' && src?.clubId) return src.clubId;
-    if (req.user.clubId) return req.user.clubId;
-    // Super admin without explicit clubId → use first club in system
-    const r = await db.query(`SELECT id FROM "Club" LIMIT 1`);
-    return r.rows[0]?.id || null;
+    const isAdmin = req.user?.role === 'administrator' || req.user?.role === 'superadmin';
+
+    if (isAdmin && (src?.clubId || req.headers['x-club-id'])) {
+        return src?.clubId || req.headers['x-club-id'];
+    }
+    
+    if (req.user?.clubId) return req.user.clubId;
+    
+    // Super admin without explicit clubId → use first club that HAS a config
+    const r = await db.query(`
+        SELECT c.id FROM "Club" c 
+        JOIN "WhatsAppConfig" wc ON wc."clubId" = c.id 
+        ORDER BY wc."lastVerifiedAt" DESC NULLS LAST 
+        LIMIT 1
+    `);
+    
+    if (r.rows.length) return r.rows[0].id;
+
+    // Last resort: first club in system
+    const first = await db.query(`SELECT id FROM "Club" LIMIT 1`);
+    return first.rows[0]?.id || null;
 }
 
 async function getClubConfig(clubId) {

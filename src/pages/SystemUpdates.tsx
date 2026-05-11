@@ -27,10 +27,10 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: 'v4.155',
+        version: 'v4.156',
         date: '11 de Mayo, 2026',
-        title: '🌐 Corrección Webhook Multitenencia',
-        description: 'Se optimizó la lógica del Webhook para manejar correctamente casos donde múltiples clubes comparten o heredan un mismo ID de teléfono de Meta, asegurando que los mensajes se asignen a la configuración activa más reciente.',
+        title: '🏢 Optimización Contexto SuperAdmin',
+        description: 'Se mejoró la resolución de clubes para administradores globales, priorizando automáticamente el club con la configuración de WhatsApp más reciente. Esto asegura que el CRM muestre los datos correctos del club que se está configurando activamente.',
         type: 'fix'
     },
     {
