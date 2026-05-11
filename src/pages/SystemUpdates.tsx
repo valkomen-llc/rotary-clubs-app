@@ -27,10 +27,10 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: 'v4.156',
+        version: 'v4.157',
         date: '11 de Mayo, 2026',
-        title: '🏢 Optimización Contexto SuperAdmin',
-        description: 'Se mejoró la resolución de clubes para administradores globales, priorizando automáticamente el club con la configuración de WhatsApp más reciente. Esto asegura que el CRM muestre los datos correctos del club que se está configurando activamente.',
+        title: '⚙️ Corrección Carga de Configuración',
+        description: 'Se refinó la lógica de recuperación de credenciales para asegurar que la información de la cuenta de WhatsApp se cargue correctamente en el panel administrativo, eliminando estados en blanco intermitentes.',
         type: 'fix'
     },
     {

@@ -187,6 +187,7 @@ export const getConfig = async (req, res) => {
         res.json({
             configured: true,
             id: config.id,
+            clubId: clubId, // Diagnostic
             phoneNumberId: config.phoneNumberId,
             wabaId: config.wabaId,
             appId: config.appId,
@@ -194,6 +195,7 @@ export const getConfig = async (req, res) => {
             lastVerifiedAt: config.lastVerifiedAt,
             accessTokenPreview: config.accessToken
                 ? `${config.accessToken.slice(0, 8)}...${config.accessToken.slice(-4)}` : null,
+            _debug: { role: req.user?.role, clubId: req.user?.clubId }
         });
     } catch (err) {
         console.error('WA getConfig:', err);
