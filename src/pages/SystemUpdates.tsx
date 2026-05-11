@@ -24,13 +24,20 @@ interface UpdateItem {
 }
 
 // DISTRICT HEALTH IQ V4.118 | 2026-05-06 (DSO ADMIN 🧠)
-// Cache bust: 2026-05-11 15:16 (GLOBAL CRM STABILIZED 🌍)
+// Cache bust: 2026-05-11 15:25 (SIDEBAR MENU ADDED 📱)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.162',
+        date: '11 de Mayo, 2026',
+        title: '📱 Acceso Directo a WhatsApp CRM',
+        description: 'Se añadió el acceso directo al módulo de WhatsApp CRM en la barra lateral izquierda para SuperAdministradores, facilitando la navegación rápida al centro de comunicaciones global.',
+        type: 'feature'
+    },
     {
         version: 'v4.161',
         date: '11 de Mayo, 2026',
         title: '🌍 CRM Global Estabilizado',
-        description: 'Se centralizó la configuración de WhatsApp CRM en el Club de la Plataforma para SuperAdministradores. Se eliminó la necesidad de seleccionar clubes manualmente, permitiendo una gestión global simplificada y directa.',
+        description: 'Se centralizó la configuración de WhatsApp CRM en el Club de la Plataforma para SuperAdministradores.',
         type: 'feature'
     },
     {
