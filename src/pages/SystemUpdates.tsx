@@ -24,8 +24,15 @@ interface UpdateItem {
 }
 
 // DISTRICT HEALTH IQ V4.118 | 2026-05-06 (DSO ADMIN 🧠)
-// Cache bust: 2026-05-11 22:25 (WA QR — GRUPOS + PERFILES 🏷️)
+// Cache bust: 2026-05-11 22:40 (WA QR — DISPARADOR MANUAL ✉️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.170',
+        date: '11 de Mayo, 2026',
+        title: '✉️ Disparador manual de mensajes en el Gateway',
+        description: 'Nuevo botón "Nuevo mensaje" en el inbox del WhatsApp QR Gateway que permite enviar a cualquier número, esté o no en los contactos del WhatsApp vinculado. Soporta texto, archivos adjuntos (imagen, video, documento) y el texto como caption del archivo.',
+        type: 'feature'
+    },
     {
         version: 'v4.169',
         date: '11 de Mayo, 2026',

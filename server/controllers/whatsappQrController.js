@@ -42,6 +42,17 @@ const mapState = (state, hasQr) => {
     return 'DISCONNECTED';
 };
 
+// Accept either a raw phone number (with or without "+", spaces, dashes) or a
+// full JID, and normalize to the JID form Evolution expects on send.
+const normalizeJid = (input) => {
+    if (!input) return '';
+    const s = String(input).trim();
+    if (s.includes('@')) return s;
+    const digits = s.replace(/[^0-9]/g, '');
+    if (!digits) return s;
+    return `${digits}@s.whatsapp.net`;
+};
+
 const ensureInstance = async () => {
     // Try to find the instance first; create it if missing.
     const list = await evo.get('/instance/fetchInstances', { params: { instanceName: EVO_INSTANCE } });
@@ -338,7 +349,7 @@ export const sendMessage = async (req, res) => {
     if (!chatId || !message) return res.status(400).json({ error: 'chatId and message are required' });
     try {
         const r = await evo.post(`/message/sendText/${EVO_INSTANCE_PATH}`, {
-            number: chatId,
+            number: normalizeJid(chatId),
             text: message
         });
         if (r.status >= 400) return res.status(400).json({ error: r.data?.message || 'No se pudo enviar el mensaje.' });
@@ -375,7 +386,7 @@ export const sendMedia = async (req, res) => {
         else if (mimetype.startsWith('audio/')) mediatype = 'audio';
 
         const r = await evo.post(`/message/sendMedia/${EVO_INSTANCE_PATH}`, {
-            number: chatId,
+            number: normalizeJid(chatId),
             mediatype,
             mimetype,
             media: mediaData, // base64 (no data: prefix)

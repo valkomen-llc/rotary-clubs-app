@@ -1,9 +1,9 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.169",
+  "version": "4.170",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.169 | 2026-05-11 (WA QR — GRUPOS + PERFILES 🏷️)",
+  "//": "DISTRICT HEALTH IQ V4.170 | 2026-05-11 (WA QR — DISPARADOR MANUAL ✉️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
