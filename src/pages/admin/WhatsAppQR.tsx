@@ -5,9 +5,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { CheckCheck, Sparkles, Paperclip, Smile, Mic, Image as ImageIcon, Copy, Check } from 'lucide-react';
 
 const VITE_API_URL = import.meta.env.VITE_API_URL || '';
-// In production (Vercel), we must use /vps for the QR gateway to trigger vercel.json rewrites 
-// bypassing Vercel's strict /api/ serverless function filesystem lock.
-const API = VITE_API_URL ? VITE_API_URL : (import.meta.env.PROD ? '/vps' : '/api');
+const API = VITE_API_URL ? VITE_API_URL : '/api';
 
 interface Chat {
     id: string;
