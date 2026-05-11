@@ -15,7 +15,8 @@ import {
     retryPost,
     deletePost,
     disconnectAccount,
-    suggestCaption
+    suggestCaption,
+    getDiagnostic
 } from '../controllers/contentStudioController.js';
 
 const router = express.Router();
@@ -47,5 +48,8 @@ router.delete('/posts/:id', authMiddleware, deletePost);
 
 // AI Caption
 router.post('/captions/suggest', authMiddleware, suggestCaption);
+
+// Diagnóstico (admin)
+router.get('/diagnostic', authMiddleware, getDiagnostic);
 
 export default router;

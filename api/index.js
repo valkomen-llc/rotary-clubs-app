@@ -187,15 +187,18 @@ app.use('/api/district-analytics', async (req, res, next) => { try { return (awa
 // RUTAS SOCIAL HUB — OAuth callback real: intercambia el code por access_token y guarda la cuenta
 app.get('/api/social/callback/:platform', async (req, res) => {
     const { platform } = req.params;
-    const { code, state, error: oauthError } = req.query;
+    const { code, state, error: oauthError, error_description } = req.query;
     const REDIRECT_BASE = '/admin/content-studio?tab=accounts';
 
-    if (oauthError) {
-        return res.redirect(`${REDIRECT_BASE}&error=${encodeURIComponent(String(oauthError))}`);
-    }
-    if (!code) {
-        return res.redirect(`${REDIRECT_BASE}&error=missing_code`);
-    }
+    // Helper para responder con error detallado y log
+    const failWith = (step, error) => {
+        const msg = typeof error === 'string' ? error : error?.message || JSON.stringify(error);
+        console.error(`[OAuth ${platform}] FAIL @ ${step}:`, msg);
+        return res.redirect(`${REDIRECT_BASE}&error=${encodeURIComponent(`${step}: ${msg}`.slice(0, 200))}`);
+    };
+
+    if (oauthError) return failWith('meta_oauth', `${oauthError}${error_description ? ': ' + error_description : ''}`);
+    if (!code) return failWith('missing_code', 'Meta no devolvió el authorization code');
 
     try {
         const baseUrl = process.env.APP_URL
@@ -205,62 +208,72 @@ app.get('/api/social/callback/:platform', async (req, res) => {
         const redirectUri = `${baseUrl}/api/social/callback/${platform}`;
         const clubId = state && state !== 'platform' ? state : null;
 
+        console.log(`[OAuth ${platform}] start - redirectUri=${redirectUri}, clubId=${clubId || 'none'}`);
+
+        if (platform !== 'facebook' && platform !== 'instagram') {
+            return failWith('platform_unsupported', `${platform} no está implementado todavía`);
+        }
+
+        const FB_APP_ID = process.env.META_APP_ID || process.env.FB_APP_ID;
+        const FB_APP_SECRET = process.env.META_APP_SECRET || process.env.FB_APP_SECRET;
+        if (!FB_APP_ID) return failWith('config', 'META_APP_ID no configurado en Vercel');
+        if (!FB_APP_SECRET) return failWith('config', 'META_APP_SECRET no configurado en Vercel');
+
+        // Step 1: code → short-lived access_token
+        const tokenUrl = `https://graph.facebook.com/v19.0/oauth/access_token?client_id=${FB_APP_ID}&client_secret=${FB_APP_SECRET}&redirect_uri=${encodeURIComponent(redirectUri)}&code=${code}`;
+        const tokenRes = await fetch(tokenUrl);
+        const tokenData = await tokenRes.json();
+        if (!tokenRes.ok || tokenData.error) {
+            return failWith('token_exchange', tokenData.error?.message || `HTTP ${tokenRes.status}`);
+        }
+
+        // Step 2: short → long-lived (60 días)
+        const llUrl = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${FB_APP_ID}&client_secret=${FB_APP_SECRET}&fb_exchange_token=${tokenData.access_token}`;
+        const llRes = await fetch(llUrl);
+        const llData = await llRes.json();
+        const userAccessToken = llData.access_token || tokenData.access_token;
+        const expiresInSec = llData.expires_in || tokenData.expires_in || (60 * 24 * 3600);
+
+        // Step 3: listar páginas del usuario
+        const pagesRes = await fetch(`https://graph.facebook.com/v19.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,profile_picture_url},picture&access_token=${userAccessToken}`);
+        const pagesData = await pagesRes.json();
+        if (!pagesRes.ok || pagesData.error) {
+            return failWith('list_pages', pagesData.error?.message || `HTTP ${pagesRes.status}`);
+        }
+
+        const pages = pagesData.data || [];
+        if (pages.length === 0) {
+            return failWith('no_pages', 'Tu cuenta de Meta no administra ninguna Page de Facebook. Creá una Page primero en facebook.com/pages/create');
+        }
+
+        console.log(`[OAuth ${platform}] found ${pages.length} page(s)`);
+
+        // Para Instagram, necesitamos una Page con IG Business Account vinculado
         let accountData = null;
-
-        if (platform === 'facebook' || platform === 'instagram') {
-            const FB_APP_ID = process.env.META_APP_ID || process.env.FB_APP_ID;
-            const FB_APP_SECRET = process.env.META_APP_SECRET || process.env.FB_APP_SECRET;
-            if (!FB_APP_ID || !FB_APP_SECRET) throw new Error('META_APP_ID/META_APP_SECRET no configurados');
-
-            const tokenUrl = `https://graph.facebook.com/v19.0/oauth/access_token?client_id=${FB_APP_ID}&client_secret=${FB_APP_SECRET}&redirect_uri=${encodeURIComponent(redirectUri)}&code=${code}`;
-            const tokenRes = await fetch(tokenUrl);
-            const tokenData = await tokenRes.json();
-            if (!tokenRes.ok) throw new Error(tokenData?.error?.message || 'No se pudo obtener el token de Meta');
-
-            // Long-lived token (60 días)
-            const llUrl = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${FB_APP_ID}&client_secret=${FB_APP_SECRET}&fb_exchange_token=${tokenData.access_token}`;
-            const llRes = await fetch(llUrl);
-            const llData = await llRes.json();
-            const userAccessToken = llData.access_token || tokenData.access_token;
-            const expiresInSec = llData.expires_in || tokenData.expires_in || (60 * 24 * 3600);
-
-            // Páginas del usuario (cada página tiene su propio token de larga duración)
-            const pagesRes = await fetch(`https://graph.facebook.com/v19.0/me/accounts?fields=id,name,access_token,instagram_business_account,picture&access_token=${userAccessToken}`);
-            const pagesData = await pagesRes.json();
-            if (!pagesRes.ok) throw new Error(pagesData?.error?.message || 'No se pudieron listar las páginas de Facebook');
-
-            const page = pagesData.data?.[0];
-            if (!page) throw new Error('La cuenta de Meta no tiene páginas de Facebook administradas');
-
-            if (platform === 'facebook') {
-                accountData = {
-                    platform: 'facebook',
-                    platformId: page.id,
-                    accountName: page.name,
-                    accessToken: page.access_token,
-                    avatar: page.picture?.data?.url || null,
-                    expiresAt: new Date(Date.now() + expiresInSec * 1000),
-                };
-            } else {
-                // Instagram: usar el IG Business Account vinculado a la Page
-                const igId = page.instagram_business_account?.id;
-                if (!igId) throw new Error('La Page de Facebook no tiene una cuenta de Instagram Business vinculada');
-
-                const igInfoRes = await fetch(`https://graph.facebook.com/v19.0/${igId}?fields=id,username,profile_picture_url&access_token=${page.access_token}`);
-                const igInfo = await igInfoRes.json();
-
-                accountData = {
-                    platform: 'instagram',
-                    platformId: igId,
-                    accountName: igInfo.username || page.name,
-                    accessToken: page.access_token,
-                    avatar: igInfo.profile_picture_url || null,
-                    expiresAt: new Date(Date.now() + expiresInSec * 1000),
-                };
-            }
+        if (platform === 'facebook') {
+            const page = pages[0]; // TODO: dejar elegir si hay varias
+            accountData = {
+                platform: 'facebook',
+                platformId: page.id,
+                accountName: page.name,
+                accessToken: page.access_token,
+                avatar: page.picture?.data?.url || null,
+                expiresAt: new Date(Date.now() + expiresInSec * 1000),
+            };
         } else {
-            // TikTok / YouTube todavía no implementados en este iteración
-            return res.redirect(`${REDIRECT_BASE}&error=${encodeURIComponent(platform + '_not_implemented')}`);
+            const pageWithIG = pages.find(p => p.instagram_business_account?.id);
+            if (!pageWithIG) {
+                return failWith('no_ig_business', 'Ninguna de tus Pages tiene una cuenta de Instagram Business vinculada. Vinculá una en Configuración de la Page → Instagram');
+            }
+            const ig = pageWithIG.instagram_business_account;
+            accountData = {
+                platform: 'instagram',
+                platformId: ig.id,
+                accountName: ig.username || pageWithIG.name,
+                accessToken: pageWithIG.access_token,
+                avatar: ig.profile_picture_url || pageWithIG.picture?.data?.url || null,
+                expiresAt: new Date(Date.now() + expiresInSec * 1000),
+            };
         }
 
         await prisma.socialAccount.upsert({
@@ -279,10 +292,10 @@ app.get('/api/social/callback/:platform', async (req, res) => {
             },
         });
 
+        console.log(`[OAuth ${platform}] OK - account ${accountData.accountName} (${accountData.platformId})`);
         res.redirect(`${REDIRECT_BASE}&connected=${accountData.platform}`);
     } catch (error) {
-        console.error('[OAuth callback]', platform, error.message);
-        res.redirect(`${REDIRECT_BASE}&error=${encodeURIComponent(error.message.slice(0, 120))}`);
+        return failWith('unexpected', error);
     }
 });
 

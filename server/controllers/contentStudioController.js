@@ -25,25 +25,27 @@ export const createVideoProject = async (req, res) => {
         try {
             const imageUrls = images.map(img => img.url);
             const kieTask = await triggerVideoGeneration(project.id, imageUrls, config);
-            
-            // Update project with KIE task ID
+
             await prisma.videoProject.update({
                 where: { id: project.id },
-                data: { 
+                data: {
                     kieJobId: kieTask.taskId,
                     status: 'processing'
                 }
             });
 
-            res.status(201).json({ 
-                ...project, 
-                externalTaskId: kieTask.taskId 
+            res.status(201).json({
+                ...project,
+                externalTaskId: kieTask.taskId
             });
         } catch (kieError) {
             console.error('KIE Generation failed:', kieError);
             await prisma.videoProject.update({
                 where: { id: project.id },
-                data: { status: 'failed' }
+                data: {
+                    status: 'failed',
+                    lastKieResponse: { error: kieError.message }
+                }
             });
             res.status(500).json({ error: 'Error al iniciar la generación por IA: ' + kieError.message });
         }
@@ -56,12 +58,48 @@ export const createVideoProject = async (req, res) => {
 export const getVideoProjects = async (req, res) => {
     try {
         const clubId = req.user.role === 'administrator' ? req.query.clubId : req.user.clubId;
-        const projects = await prisma.videoProject.findMany({
+        let projects = await prisma.videoProject.findMany({
             where: clubId ? { clubId } : {},
             orderBy: { createdAt: 'desc' }
         });
+
+        // Auto-sync de proyectos atascados en processing por más de 1 minuto.
+        // Útil cuando el webhook de KIE.ai no llegó (callBackUrl mal configurada, dominio no público, etc).
+        const stuck = projects.filter(p =>
+            p.status === 'processing' &&
+            p.kieJobId &&
+            (Date.now() - new Date(p.updatedAt).getTime()) > 60 * 1000
+        ).slice(0, 5); // como máximo 5 syncs por request para no demorar
+
+        if (stuck.length > 0) {
+            const { checkTaskStatus } = await import('../services/kieService.js');
+            await Promise.all(stuck.map(async (p) => {
+                try {
+                    const r = await checkTaskStatus(p.kieJobId);
+                    await prisma.videoProject.update({
+                        where: { id: p.id },
+                        data: {
+                            status: r.status,
+                            videoUrl: r.videoUrl || p.videoUrl,
+                            lastKieResponse: r.raw
+                        }
+                    });
+                } catch (err) {
+                    console.error(`[Auto-sync] proyecto ${p.id}:`, err.message);
+                    // No marcamos failed acá — solo si KIE explícitamente devuelve FAILED
+                }
+            }));
+
+            // Re-fetch para devolver estado actualizado
+            projects = await prisma.videoProject.findMany({
+                where: clubId ? { clubId } : {},
+                orderBy: { createdAt: 'desc' }
+            });
+        }
+
         res.json(projects);
     } catch (error) {
+        console.error('getVideoProjects error:', error);
         res.status(500).json({ error: 'Error al obtener los proyectos' });
     }
 };
@@ -278,6 +316,91 @@ export const disconnectAccount = async (req, res) => {
     } catch (error) {
         console.error('disconnectAccount error:', error);
         res.status(500).json({ error: 'Error al desconectar la cuenta' });
+    }
+};
+
+export const getDiagnostic = async (req, res) => {
+    try {
+        // Solo administradores pueden ver el diagnóstico
+        if (req.user.role !== 'administrator') {
+            return res.status(403).json({ error: 'Solo administradores pueden ver el diagnóstico' });
+        }
+
+        const envCheck = {
+            KIE_API_KEY: !!process.env.KIE_API_KEY,
+            META_APP_ID: !!(process.env.META_APP_ID || process.env.FB_APP_ID),
+            META_APP_SECRET: !!(process.env.META_APP_SECRET || process.env.FB_APP_SECRET),
+            APP_URL: process.env.APP_URL || '(no seteado)',
+            GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
+            CRON_SECRET: !!process.env.CRON_SECRET,
+            AWS_BUCKET_NAME: process.env.AWS_BUCKET_NAME || '(no seteado)',
+            AWS_REGION: process.env.AWS_REGION || '(no seteado)',
+            KIE_MODEL: process.env.KIE_MODEL || 'kling-2.6/image-to-video (default)'
+        };
+
+        // Test de conectividad con KIE.ai
+        let kieTest = { skipped: true, reason: 'KIE_API_KEY no seteada' };
+        if (process.env.KIE_API_KEY) {
+            try {
+                const r = await fetch('https://api.kie.ai/api/v1/jobs/getTaskDetail?task_id=ping', {
+                    headers: { Authorization: `Bearer ${process.env.KIE_API_KEY}` }
+                });
+                kieTest = { reachable: true, status: r.status, statusText: r.statusText };
+            } catch (e) {
+                kieTest = { reachable: false, error: e.message };
+            }
+        }
+
+        // Test de conectividad con Meta Graph API
+        let metaTest = { skipped: true, reason: 'META_APP_ID o META_APP_SECRET no seteados' };
+        if (envCheck.META_APP_ID && envCheck.META_APP_SECRET) {
+            try {
+                const appId = process.env.META_APP_ID || process.env.FB_APP_ID;
+                const appSecret = process.env.META_APP_SECRET || process.env.FB_APP_SECRET;
+                const r = await fetch(`https://graph.facebook.com/v19.0/${appId}?fields=name,namespace&access_token=${appId}|${appSecret}`);
+                const data = await r.json();
+                metaTest = {
+                    reachable: true,
+                    status: r.status,
+                    app: data.name || null,
+                    error: data.error?.message || null
+                };
+            } catch (e) {
+                metaTest = { reachable: false, error: e.message };
+            }
+        }
+
+        // Conteos para entender el estado de la DB
+        const [projectCount, processingCount, accountCount, scheduledCount] = await Promise.all([
+            prisma.videoProject.count(),
+            prisma.videoProject.count({ where: { status: 'processing' } }),
+            prisma.socialAccount.count(),
+            prisma.scheduledPost.count({ where: { status: { in: ['scheduled', 'pending'] } } })
+        ]);
+
+        // OAuth callback URL que tendrías que tener autorizada en la app de Meta
+        const baseUrl = process.env.APP_URL
+            || (process.env.NODE_ENV === 'production' ? 'https://app.clubplatform.org' : `${req.protocol}://${req.get('host')}`);
+
+        res.json({
+            timestamp: new Date().toISOString(),
+            env: envCheck,
+            connectivity: { kie: kieTest, meta: metaTest },
+            db: {
+                videoProjects: projectCount,
+                stuckInProcessing: processingCount,
+                socialAccounts: accountCount,
+                pendingPosts: scheduledCount
+            },
+            oauthCallbackUrls: {
+                facebook: `${baseUrl}/api/social/callback/facebook`,
+                instagram: `${baseUrl}/api/social/callback/instagram`
+            },
+            kieWebhookUrl: `${baseUrl}/api/content-studio/webhook`
+        });
+    } catch (error) {
+        console.error('getDiagnostic error:', error);
+        res.status(500).json({ error: error.message });
     }
 };
 
