@@ -27,10 +27,10 @@ interface UpdateItem {
 // Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: 'v4.153',
+        version: 'v4.154',
         date: '11 de Mayo, 2026',
-        title: '🛠️ Estabilidad WhatsApp CRM',
-        description: 'Se corrigió un error crítico que impedía guardar la configuración de la API de Meta y gestionar contactos/listas debido a la falta de generación de identificadores únicos (UUIDs) en las operaciones de base de datos.',
+        title: '🛠️ Estabilidad Total WhatsApp CRM',
+        description: 'Se corrigió un error adicional de base de datos relacionado con la columna updatedAt. Se aseguraron todos los campos de auditoría (createdAt, updatedAt) en todas las operaciones del módulo WhatsApp.',
         type: 'fix'
     },
     {

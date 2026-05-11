@@ -212,8 +212,8 @@ export const upsertConfig = async (req, res) => {
         } else {
             const configId = crypto.randomUUID();
             const r = await db.query(
-                `INSERT INTO "WhatsAppConfig" (id,"clubId","phoneNumberId","wabaId","accessToken","verifyToken","appId",enabled)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                `INSERT INTO "WhatsAppConfig" (id,"clubId","phoneNumberId","wabaId","accessToken","verifyToken","appId",enabled,"createdAt","updatedAt")
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW())
                  RETURNING id,"phoneNumberId","wabaId",enabled,"lastVerifiedAt"`,
                 [configId, clubId, phoneNumberId, wabaId, newAccessToken, newVerifyToken, appId || null, isEnabled]
             );
@@ -313,8 +313,8 @@ export const createContact = async (req, res) => {
         const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`;
         const contactId = crypto.randomUUID();
         const r = await db.query(
-            `INSERT INTO "WhatsAppContact" (id,"clubId",name,phone,email,tags,source,metadata)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+            `INSERT INTO "WhatsAppContact" (id,"clubId",name,phone,email,tags,source,metadata,"createdAt","updatedAt")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW()) RETURNING *`,
             [contactId, clubId, name, normalizedPhone, email || null, tags, source, JSON.stringify(metadata)]
         );
         res.status(201).json(r.rows[0]);
@@ -595,9 +595,9 @@ export const importContacts = async (req, res) => {
             const metadata = c.metadata || {};
             const contactId = crypto.randomUUID();
             await db.query(
-                `INSERT INTO "WhatsAppContact" (id,"clubId",name,phone,email,tags,source,metadata)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (phone,"clubId") DO UPDATE SET
-                 metadata = "WhatsAppContact".metadata || $8`,
+                `INSERT INTO "WhatsAppContact" (id,"clubId",name,phone,email,tags,source,metadata,"createdAt","updatedAt")
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW()) ON CONFLICT (phone,"clubId") DO UPDATE SET
+                 metadata = "WhatsAppContact".metadata || $8, "updatedAt" = NOW()`,
                 [contactId, clubId, c.name, phone, c.email || null, Array.isArray(c.tags) ? c.tags : [], source, JSON.stringify(metadata)]
             ).then(r => r.rowCount ? imported++ : skipped++).catch(() => skipped++);
         }
@@ -654,8 +654,8 @@ export const importFromLeads = async (req, res) => {
             const phone = lead.phone.startsWith('+') ? lead.phone : `+${lead.phone}`;
             const contactId = crypto.randomUUID();
             await db.query(
-                `INSERT INTO "WhatsAppContact" (id,"clubId",name,phone,email,source,"leadId")
-                 VALUES ($1,$2,$3,$4,$5,'lead_sync',$6) ON CONFLICT (phone,"clubId") DO NOTHING`,
+                `INSERT INTO "WhatsAppContact" (id,"clubId",name,phone,email,source,"leadId","createdAt","updatedAt")
+                 VALUES ($1,$2,$3,$4,$5,'lead_sync',$6,NOW(),NOW()) ON CONFLICT (phone,"clubId") DO NOTHING`,
                 [contactId, clubId, lead.name, phone, lead.email || null, lead.id]
             ).then(r => r.rowCount ? imported++ : skipped++);
         }
@@ -702,7 +702,8 @@ export const createList = async (req, res) => {
         const clubId = await resolveClubId(req, true);
         const listId = crypto.randomUUID();
         const r = await db.query(
-            `INSERT INTO "WhatsAppContactList" (id,"clubId",name,description,color) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+            `INSERT INTO "WhatsAppContactList" (id,"clubId",name,description,color,"createdAt","updatedAt")
+             VALUES ($1,$2,$3,$4,$5,NOW(),NOW()) RETURNING *`,
             [listId, clubId, name, description || null, color]
         );
         res.status(201).json(r.rows[0]);
@@ -800,8 +801,8 @@ export const createTemplate = async (req, res) => {
             return res.status(400).json({ error: 'name, displayName y bodyText son requeridos' });
         const templateId = crypto.randomUUID();
         const r = await db.query(
-            `INSERT INTO "WhatsAppTemplate" (id,"clubId",name,"displayName",category,language,"headerType","headerContent","bodyText","footerText",buttons,status)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'pending') RETURNING *`,
+            `INSERT INTO "WhatsAppTemplate" (id,"clubId",name,"displayName",category,language,"headerType","headerContent","bodyText","footerText",buttons,status,"createdAt","updatedAt")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'pending',NOW(),NOW()) RETURNING *`,
             [templateId, clubId, name, displayName, category, language, headerType || null, headerContent || null, bodyText, footerText || null, JSON.stringify(buttons)]
         );
         res.status(201).json(r.rows[0]);
@@ -896,8 +897,8 @@ export const syncTemplatesFromMeta = async (req, res) => {
                     // Insert new
                     const templateId = crypto.randomUUID();
                     await db.query(
-                        `INSERT INTO "WhatsAppTemplate" (id,"clubId",name,"displayName",category,language,status,"headerType","headerContent","bodyText","footerText",buttons,"metaTemplateId")
-                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+                        `INSERT INTO "WhatsAppTemplate" (id,"clubId",name,"displayName",category,language,status,"headerType","headerContent","bodyText","footerText",buttons,"metaTemplateId","createdAt","updatedAt")
+                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW())`,
                         [templateId, clubId, t.name, displayName, t.category, t.language, t.status?.toLowerCase() || 'pending',
                          headerComp?.format || null, headerContent, bodyComp?.text || '',
                          footerComp?.text || null, JSON.stringify(buttonComp?.buttons || []), t.id]
@@ -942,8 +943,8 @@ export const createCampaign = async (req, res) => {
         const clubId = await resolveClubId(req, true);
         const campId = crypto.randomUUID();
         const r = await db.query(
-            `INSERT INTO "WhatsAppCampaign" (id,"clubId",name,description,"listId","templateId","templateVars","scheduledAt")
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+            `INSERT INTO "WhatsAppCampaign" (id,"clubId",name,description,"listId","templateId","templateVars","scheduledAt","createdAt","updatedAt")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW()) RETURNING *`,
             [campId, clubId, name, description || null, listId || null, templateId || null, JSON.stringify(templateVars), scheduledAt || null]
         );
         res.status(201).json(r.rows[0]);
@@ -1268,7 +1269,7 @@ export const handleWebhook = async (req, res) => {
                     try {
                         const newContactId = crypto.randomUUID();
                         const newContact = await db.query(
-                            `INSERT INTO "WhatsAppContact" (id,"clubId",name,phone,source) VALUES ($1,$2,$3,$4,'whatsapp') RETURNING id`,
+                            `INSERT INTO "WhatsAppContact" (id,"clubId",name,phone,source,"createdAt","updatedAt") VALUES ($1,$2,$3,$4,'whatsapp',NOW(),NOW()) RETURNING id`,
                             [newContactId, clubId, contactName, normalizedPhone]
                         );
                         contactId = newContact.rows[0]?.id || null;
@@ -1510,8 +1511,8 @@ export const createCustomField = async (req, res) => {
         const maxR = await db.query(`SELECT COALESCE(MAX("sortOrder"),0)+1 as next FROM "WhatsAppCustomField" WHERE "clubId"=$1`, [clubId]);
         const fieldId = crypto.randomUUID();
         const r = await db.query(
-            `INSERT INTO "WhatsAppCustomField" (id,"clubId", label, key, type, required, "sortOrder")
-             VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+            `INSERT INTO "WhatsAppCustomField" (id,"clubId", label, key, type, required, "sortOrder","createdAt","updatedAt")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),NOW()) RETURNING *`,
             [fieldId, clubId, label, key, type, required, maxR.rows[0].next]
         );
         res.status(201).json(r.rows[0]);
