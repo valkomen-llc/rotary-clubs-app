@@ -24,13 +24,20 @@ interface UpdateItem {
 }
 
 // DISTRICT HEALTH IQ V4.118 | 2026-05-06 (DSO ADMIN 🧠)
-// Cache bust: 2026-05-11 15:25 (SIDEBAR MENU ADDED 📱)
+// Cache bust: 2026-05-11 15:35 (CRM & SETTINGS RESTRUCTURED 🏗️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.163',
+        date: '11 de Mayo, 2026',
+        title: '🏗️ Reestructuración de CRM y Ajustes',
+        description: 'Se optimizó la usabilidad del CRM: el acceso directo ahora abre el Chat por defecto. Las configuraciones de WhatsApp API y Email/SMTP se movieron al panel de "Settings" de la plataforma.',
+        type: 'feature'
+    },
     {
         version: 'v4.162',
         date: '11 de Mayo, 2026',
         title: '📱 Acceso Directo a WhatsApp CRM',
-        description: 'Se añadió el acceso directo al módulo de WhatsApp CRM en la barra lateral izquierda para SuperAdministradores, facilitando la navegación rápida al centro de comunicaciones global.',
+        description: 'Se añadió el acceso directo al módulo de WhatsApp CRM en la barra lateral izquierda.',
         type: 'feature'
     },
     {
