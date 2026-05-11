@@ -1,16 +1,22 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { 
-    createVideoProject, 
-    getVideoProjects, 
-    connectSocialAccount, 
+import {
+    createVideoProject,
+    getVideoProjects,
+    connectSocialAccount,
     getSocialAccounts,
     schedulePost,
     getScheduledPosts,
     handleKieWebhook,
     syncProjectStatus,
     deleteVideoProject,
-    getOAuthUrl
+    getOAuthUrl,
+    cancelPost,
+    retryPost,
+    deletePost,
+    disconnectAccount,
+    suggestCaption,
+    getDiagnostic
 } from '../controllers/contentStudioController.js';
 
 const router = express.Router();
@@ -31,9 +37,19 @@ router.delete('/projects/:id', authMiddleware, deleteVideoProject);
 // Social Accounts
 router.post('/accounts', authMiddleware, connectSocialAccount);
 router.get('/accounts', authMiddleware, getSocialAccounts);
+router.delete('/accounts/:id', authMiddleware, disconnectAccount);
 
 // Scheduling
 router.post('/posts', authMiddleware, schedulePost);
 router.get('/posts', authMiddleware, getScheduledPosts);
+router.post('/posts/:id/cancel', authMiddleware, cancelPost);
+router.post('/posts/:id/retry', authMiddleware, retryPost);
+router.delete('/posts/:id', authMiddleware, deletePost);
+
+// AI Caption
+router.post('/captions/suggest', authMiddleware, suggestCaption);
+
+// Diagnóstico (admin)
+router.get('/diagnostic', authMiddleware, getDiagnostic);
 
 export default router;

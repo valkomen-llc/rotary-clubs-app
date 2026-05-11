@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { 
-    Video, 
-    Clock, 
-    Share2, 
-    Trash2, 
-    ExternalLink, 
+import {
+    Video,
+    Clock,
+    Share2,
+    Trash2,
+    ExternalLink,
     Loader2,
     Play,
     CheckCircle2,
@@ -12,6 +12,7 @@ import {
     RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
+import PublishModal from './PublishModal';
 
 interface VideoProject {
     id: string;
@@ -25,6 +26,7 @@ interface VideoProject {
 const ProjectLibrary: React.FC = () => {
     const [projects, setProjects] = useState<VideoProject[]>([]);
     const [loading, setLoading] = useState(true);
+    const [publishTarget, setPublishTarget] = useState<VideoProject | null>(null);
 
     useEffect(() => {
         fetchProjects();
@@ -125,6 +127,7 @@ const ProjectLibrary: React.FC = () => {
     }
 
     return (
+        <>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-in fade-in duration-500">
             {projects.map((project) => (
                 <div key={project.id} className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden group hover:shadow-xl hover:-translate-y-1 transition-all">
@@ -196,7 +199,10 @@ const ProjectLibrary: React.FC = () => {
                                 </button>
                             )}
                             {project.status === 'ready' && (
-                                <button className="flex-1 bg-indigo-50 text-indigo-600 py-2 rounded-xl text-[10px] font-black uppercase hover:bg-indigo-600 hover:text-white transition-all flex items-center justify-center gap-2">
+                                <button
+                                    onClick={() => setPublishTarget(project)}
+                                    className="flex-1 bg-indigo-50 text-indigo-600 py-2 rounded-xl text-[10px] font-black uppercase hover:bg-indigo-600 hover:text-white transition-all flex items-center justify-center gap-2"
+                                >
                                     <Share2 className="w-3 h-3" /> Publicar
                                 </button>
                             )}
@@ -212,6 +218,13 @@ const ProjectLibrary: React.FC = () => {
                 </div>
             ))}
         </div>
+        <PublishModal
+            isOpen={!!publishTarget}
+            project={publishTarget}
+            onClose={() => setPublishTarget(null)}
+            onPublished={() => fetchProjects(false)}
+        />
+        </>
     );
 };
 

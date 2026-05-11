@@ -1,93 +1,101 @@
 /**
  * KIE.ai Video Generation Service
  * Module: Content Studio AI
- * Version: v4.12.0
  */
 
 const KIE_API_BASE = 'https://api.kie.ai/api/v1';
+const DEFAULT_MODEL = process.env.KIE_MODEL || 'kling-2.6/image-to-video';
 
 export const triggerVideoGeneration = async (projectId, imageUrls, config) => {
     const apiKey = process.env.KIE_API_KEY;
-    if (!apiKey) {
-        throw new Error('KIE_API_KEY no configurada');
-    }
+    if (!apiKey) throw new Error('KIE_API_KEY no configurada en Vercel');
+    if (!imageUrls?.length) throw new Error('Se requiere al menos una imagen');
 
+    const appUrl = process.env.APP_URL || 'https://app.clubplatform.org';
+    const payload = {
+        model: config.model || DEFAULT_MODEL,
+        callBackUrl: `${appUrl}/api/content-studio/webhook`,
+        input: {
+            prompt: config.prompt || 'Ken Burns effect, smooth transitions, high quality social media content',
+            image_urls: imageUrls,
+            duration: String(config.duration || 10),
+            resolution: config.resolution || '1080p',
+            aspect_ratio: config.format || '9:16'
+        },
+        metadata: { projectId }
+    };
+
+    console.log(`[KIE] createTask projectId=${projectId} model=${payload.model} images=${imageUrls.length}`);
+
+    let response, data;
     try {
-        // Prepare the request for KIE.ai
-        // Using Kling 2.6 as the default high-quality model for short videos
-        const response = await fetch(`${KIE_API_BASE}/jobs/createTask`, {
+        response = await fetch(`${KIE_API_BASE}/jobs/createTask`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${apiKey}`,
+                Authorization: `Bearer ${apiKey}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                model: "kling-2.6/image-to-video",
-                callBackUrl: `${process.env.APP_URL || 'https://app.clubplatform.org'}/api/content-studio/webhook`,
-                input: {
-                    prompt: config.prompt || "Ken Burns effect, smooth transitions, high quality social media content",
-                    image_urls: imageUrls,
-                    duration: config.duration || "10",
-                    resolution: "1080p",
-                    aspect_ratio: "9:16"
-                },
-                metadata: {
-                    projectId: projectId
-                }
-            })
+            body: JSON.stringify(payload)
         });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            console.error('KIE API Error response:', data);
-            throw new Error(data.msg || 'Error al crear la tarea en KIE.ai');
-        }
-
-        return {
-            taskId: data.task_id || data.data?.task_id,
-            status: 'processing'
-        };
-    } catch (error) {
-        console.error('KIE Service Error:', error);
-        throw error;
+        data = await response.json();
+    } catch (e) {
+        throw new Error(`KIE.ai unreachable: ${e.message}`);
     }
+
+    if (!response.ok) {
+        const msg = data?.msg || data?.message || data?.error?.message || `HTTP ${response.status}`;
+        console.error('[KIE] createTask FAIL:', msg, JSON.stringify(data).slice(0, 500));
+        throw new Error(`KIE.ai: ${msg}`);
+    }
+
+    const taskId = data.task_id || data.data?.task_id || data.data?.taskId;
+    if (!taskId) {
+        console.error('[KIE] createTask sin task_id:', JSON.stringify(data).slice(0, 500));
+        throw new Error('KIE.ai aceptó la tarea pero no devolvió task_id');
+    }
+
+    console.log(`[KIE] task created: ${taskId}`);
+    return { taskId, status: 'processing', raw: data };
 };
 
 export const checkTaskStatus = async (taskId) => {
     const apiKey = process.env.KIE_API_KEY;
+    if (!apiKey) throw new Error('KIE_API_KEY no configurada');
+
+    let response, data;
     try {
-        const response = await fetch(`${KIE_API_BASE}/jobs/getTaskDetail?task_id=${taskId}`, {
-            headers: {
-                'Authorization': `Bearer ${apiKey}`
-            }
+        response = await fetch(`${KIE_API_BASE}/jobs/getTaskDetail?task_id=${taskId}`, {
+            headers: { Authorization: `Bearer ${apiKey}` }
         });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(data.msg || 'Error al consultar estado en KIE.ai');
-        }
-
-        // KIE.ai status mapping (Enhanced v4.44.0)
-        const status = data.data?.status || data.status;
-        const videoUrl = data.data?.output?.video_url || data.output?.videoUrl;
-
-        console.log(`KIE Status Check [${taskId}]: ${status}`);
-
-        let mappedStatus = 'processing';
-        if (status === 'COMPLETED' || status === 'SUCCESS') mappedStatus = 'ready';
-        if (status === 'FAILED' || status === 'ERROR') mappedStatus = 'failed';
-        if (status === 'QUEUED' || status === 'PENDING') mappedStatus = 'processing';
-        if (status === 'ACTIVE' || status === 'RUNNING') mappedStatus = 'processing';
-
-        return {
-            status: mappedStatus,
-            videoUrl: videoUrl,
-            raw: data
-        };
-    } catch (error) {
-        console.error('KIE Status Check Error:', error);
-        throw error;
+        data = await response.json();
+    } catch (e) {
+        throw new Error(`KIE.ai unreachable: ${e.message}`);
     }
+
+    if (!response.ok) {
+        const msg = data?.msg || data?.message || `HTTP ${response.status}`;
+        throw new Error(`KIE.ai: ${msg}`);
+    }
+
+    const rawStatus = (data.data?.status || data.status || '').toUpperCase();
+    const videoUrl =
+        data.data?.output?.video_url ||
+        data.data?.output?.videoUrl ||
+        data.output?.video_url ||
+        data.output?.videoUrl ||
+        null;
+    const errorMsg = data.data?.error || data.error?.message || data.message;
+
+    let mappedStatus = 'processing';
+    if (['COMPLETED', 'SUCCESS', 'SUCCEEDED', 'DONE'].includes(rawStatus)) mappedStatus = 'ready';
+    if (['FAILED', 'ERROR', 'CANCELLED'].includes(rawStatus)) mappedStatus = 'failed';
+
+    console.log(`[KIE] status ${taskId}: ${rawStatus} → ${mappedStatus}${videoUrl ? ' (videoUrl present)' : ''}`);
+
+    return {
+        status: mappedStatus,
+        videoUrl,
+        error: errorMsg,
+        raw: data
+    };
 };
