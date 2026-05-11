@@ -23,9 +23,16 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.147 | 2026-05-11 (CONTENT STUDIO END-TO-END 🎬)
-// Cache bust: 2026-05-11 11:30 (CONTENT STUDIO RELEASE 🚀)
+// DISTRICT HEALTH IQ V4.148 | 2026-05-11 (KIE DEBUG + RAW RESPONSE 🔍)
+// Cache bust: 2026-05-11 11:55 (CONTENT STUDIO TROUBLESHOOTING 🛠️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.148',
+        date: '11 de Mayo, 2026',
+        title: '🔍 Content Studio — Mejor diagnóstico de errores KIE',
+        description: 'Cuando KIE.ai rechaza una generación, el proyecto ahora guarda la respuesta cruda completa de la API en lastKieResponse. La Biblioteca muestra un bloque expandible con el JSON exacto para diagnosticar qué falló (modelo inválido, payload mal formado, créditos insuficientes, etc). Se ampliaron los paths donde buscamos task_id para soportar variaciones de la API.',
+        type: 'fix'
+    },
     {
         version: 'v4.147',
         date: '11 de Mayo, 2026',

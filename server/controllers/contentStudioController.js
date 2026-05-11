@@ -44,10 +44,18 @@ export const createVideoProject = async (req, res) => {
                 where: { id: project.id },
                 data: {
                     status: 'failed',
-                    lastKieResponse: { error: kieError.message }
+                    lastKieResponse: {
+                        error: kieError.message,
+                        httpStatus: kieError.httpStatus || null,
+                        rawResponse: kieError.rawResponse || null,
+                        timestamp: new Date().toISOString()
+                    }
                 }
             });
-            res.status(500).json({ error: 'Error al iniciar la generación por IA: ' + kieError.message });
+            res.status(500).json({
+                error: 'Error al iniciar la generación por IA: ' + kieError.message,
+                rawResponse: kieError.rawResponse || null
+            });
         }
     } catch (error) {
         console.error('Error creating video project:', error);

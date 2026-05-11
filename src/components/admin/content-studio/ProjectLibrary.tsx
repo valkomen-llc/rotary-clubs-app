@@ -175,6 +175,25 @@ const ProjectLibrary: React.FC = () => {
                              </div>
                          )}
 
+                         {project.status === 'failed' && project.lastKieResponse && (
+                             <details className="mb-3">
+                                <summary className="cursor-pointer p-2 bg-red-50/50 rounded-lg border border-red-100/50 list-none">
+                                    <div className="flex items-center gap-1 mb-1">
+                                        <div className="w-1 h-1 rounded-full bg-red-500" />
+                                        <span className="text-[8px] font-black text-red-500 uppercase tracking-tighter">Error · click para detalle</span>
+                                    </div>
+                                    <p className="text-[10px] font-bold text-red-700 line-clamp-2">
+                                        {typeof project.lastKieResponse === 'object' && project.lastKieResponse.error
+                                            ? project.lastKieResponse.error
+                                            : 'Falló el render'}
+                                    </p>
+                                </summary>
+                                <pre className="mt-2 p-2 bg-gray-900 text-emerald-300 rounded-lg text-[8px] font-mono overflow-x-auto max-h-40 leading-relaxed">
+                                    {JSON.stringify(project.lastKieResponse, null, 2)}
+                                </pre>
+                             </details>
+                         )}
+
                         <div className="flex gap-2">
                             {project.status === 'processing' && (
                                 <button 

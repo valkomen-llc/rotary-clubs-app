@@ -45,13 +45,30 @@ export const triggerVideoGeneration = async (projectId, imageUrls, config) => {
     if (!response.ok) {
         const msg = data?.msg || data?.message || data?.error?.message || `HTTP ${response.status}`;
         console.error('[KIE] createTask FAIL:', msg, JSON.stringify(data).slice(0, 500));
-        throw new Error(`KIE.ai: ${msg}`);
+        const err = new Error(`KIE.ai: ${msg}`);
+        err.rawResponse = data;
+        err.httpStatus = response.status;
+        throw err;
     }
 
-    const taskId = data.task_id || data.data?.task_id || data.data?.taskId;
+    // KIE.ai puede devolver el task_id en varias formas según versión del API:
+    const taskId =
+        data?.task_id ||
+        data?.taskId ||
+        data?.id ||
+        data?.data?.task_id ||
+        data?.data?.taskId ||
+        data?.data?.id ||
+        data?.result?.task_id ||
+        data?.result?.taskId;
+
+    console.log(`[KIE] createTask response:`, JSON.stringify(data).slice(0, 800));
+
     if (!taskId) {
-        console.error('[KIE] createTask sin task_id:', JSON.stringify(data).slice(0, 500));
-        throw new Error('KIE.ai aceptó la tarea pero no devolvió task_id');
+        const err = new Error('KIE.ai aceptó la tarea pero no devolvió task_id. Revisar lastKieResponse del proyecto.');
+        err.rawResponse = data;
+        err.httpStatus = response.status;
+        throw err;
     }
 
     console.log(`[KIE] task created: ${taskId}`);
