@@ -124,6 +124,25 @@ export const disconnectClient = async (req, res) => {
 
 // ── CRM Endpoints ─────────────────────────────────────────────────────────────
 
+export const markChatRead = async (req, res) => {
+    if (!requireConfig(res)) return;
+    const { chatId } = req.params;
+    const messageIds = Array.isArray(req.body?.messageIds) ? req.body.messageIds : [];
+    if (!chatId || messageIds.length === 0) {
+        return res.json({ success: true, skipped: true });
+    }
+    try {
+        const r = await evo.post(`/chat/markMessageAsRead/${EVO_INSTANCE_PATH}`, {
+            readMessages: messageIds.map(id => ({ remoteJid: chatId, fromMe: false, id }))
+        });
+        res.json({ success: r.status < 400, count: messageIds.length });
+    } catch (e) {
+        // Don't fail the UI flow if marking-as-read fails — it's best-effort.
+        console.warn('[WA-QR] markChatRead non-fatal:', e.response?.data || e.message);
+        res.json({ success: false });
+    }
+};
+
 export const getChats = async (req, res) => {
     if (!requireConfig(res)) return;
     try {
@@ -201,7 +220,10 @@ export const getMessages = async (req, res) => {
                     msg.videoMessage?.caption ||
                     msg.documentMessage?.caption ||
                     '';
-                const hasMedia = !!(msg.imageMessage || msg.videoMessage || msg.audioMessage || msg.documentMessage || msg.stickerMessage);
+                const mediaNode = msg.documentMessage || msg.imageMessage || msg.videoMessage || msg.audioMessage || msg.stickerMessage;
+                const hasMedia = !!mediaNode;
+                const filename = mediaNode?.fileName || mediaNode?.title || '';
+                const mimetype = mediaNode?.mimetype || '';
                 const ts = Number(m.messageTimestamp || m.timestamp || 0);
                 return {
                     id: key.id || m.id || '',
@@ -209,7 +231,9 @@ export const getMessages = async (req, res) => {
                     body,
                     timestamp: ts > 1e12 ? Math.floor(ts / 1000) : ts,
                     hasMedia,
-                    type
+                    type,
+                    filename,
+                    mimetype
                 };
             })
             .filter(m => m.id)

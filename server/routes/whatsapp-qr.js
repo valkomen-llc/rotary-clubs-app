@@ -17,6 +17,7 @@ router.get('/chats', authMiddleware, superAdminMiddleware, whatsappQrController.
 router.get('/chats/:chatId/messages', authMiddleware, superAdminMiddleware, whatsappQrController.getMessages);
 router.get('/chats/:chatId/image', authMiddleware, superAdminMiddleware, whatsappQrController.getChatImage);
 router.get('/chats/:chatId/messages/:messageId/media', authMiddleware, superAdminMiddleware, whatsappQrController.getMessageMedia);
+router.post('/chats/:chatId/mark-read', authMiddleware, superAdminMiddleware, whatsappQrController.markChatRead);
 router.post('/send-message', authMiddleware, superAdminMiddleware, whatsappQrController.sendMessage);
 router.post('/send-media', authMiddleware, superAdminMiddleware, whatsappQrController.sendMedia);
 

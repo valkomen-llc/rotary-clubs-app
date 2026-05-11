@@ -24,8 +24,15 @@ interface UpdateItem {
 }
 
 // DISTRICT HEALTH IQ V4.118 | 2026-05-06 (DSO ADMIN 🧠)
-// Cache bust: 2026-05-11 21:35 (WA QR → EVOLUTION API 📲)
+// Cache bust: 2026-05-11 21:55 (WA QR SPRINT 1 — UX REFINE 🧹)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.167',
+        date: '11 de Mayo, 2026',
+        title: '🧹 WhatsApp QR — Refinamiento UX (Sprint 1)',
+        description: 'Header colapsable cuando la sesión está activa para ganar altura visible del inbox; se muestra el nombre real del archivo adjunto en lugar del mime-type; al abrir un chat los mensajes se marcan como leídos también en WhatsApp (deja de aparecer como no leído en el teléfono vinculado).',
+        type: 'improvement'
+    },
     {
         version: 'v4.166',
         date: '11 de Mayo, 2026',
