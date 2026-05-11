@@ -24,8 +24,15 @@ interface UpdateItem {
 }
 
 // DISTRICT HEALTH IQ V4.118 | 2026-05-06 (DSO ADMIN 🧠)
-// Cache bust: 2026-05-11 15:43 (WA PROFILE PHOTOS SYNC 📸)
+// Cache bust: 2026-05-11 16:05 (WA REAL-TIME & GLOBAL SYNC ⚡📸)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.165',
+        date: '11 de Mayo, 2026',
+        title: '⚡ Mensajes en Tiempo Real y Sincronización Global',
+        description: 'Se corrigió un problema de aislamiento que impedía ver mensajes entrantes en el CRM central. Además, se mejoró la sincronización de fotos buscando coincidencias por nombre en toda la base de datos de socios.',
+        type: 'fix'
+    },
     {
         version: 'v4.164',
         date: '11 de Mayo, 2026',

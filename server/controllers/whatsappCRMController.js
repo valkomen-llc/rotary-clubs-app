@@ -1223,20 +1223,61 @@ export const handleWebhook = async (req, res) => {
         let clubId = null;
         let clubToken = null;
         if (phoneNumberId) {
-            const configR = await db.query(`SELECT "clubId", "accessToken" FROM "WhatsAppConfig" WHERE "phoneNumberId"=$1 ORDER BY "lastVerifiedAt" DESC LIMIT 1`, [phoneNumberId]);
+            const configR = await db.query(`SELECT \"clubId\", \"accessToken\" FROM \"WhatsAppConfig\" WHERE \"phoneNumberId\"=$1 ORDER BY \"lastVerifiedAt\" DESC LIMIT 1`, [phoneNumberId]);
             if (configR.rows.length) {
                 clubId = configR.rows[0].clubId;
                 clubToken = configR.rows[0].accessToken;
             }
         }
 
+        if (!clubId) {
+            console.warn(`[WA-CRM] Webhook received for unknown phoneNumberId: ${phoneNumberId}`);
+            return;
+        }
+
         // Handle incoming messages
-        if (changes.messages && clubId) {
+        if (changes.messages) {
             for (const msg of changes.messages) {
                 const from = msg.from; // sender phone number
                 const normalizedPhone = from.startsWith('+') ? from : `+${from}`;
                 const messageId = msg.id;
                 const timestamp = msg.timestamp ? new Date(parseInt(msg.timestamp) * 1000) : new Date();
+
+                // Find or create contact
+                let contactId = null;
+                let contactName = changes.contacts?.[0]?.profile?.name || normalizedPhone;
+                
+                const contactR = await db.query(
+                    `SELECT id, \"profilePictureUrl\", \"name\" FROM \"WhatsAppContact\" WHERE \"clubId\"=$1 AND phone=$2 LIMIT 1`,
+                    [clubId, normalizedPhone]
+                );
+                
+                if (contactR.rows.length) {
+                    contactId = contactR.rows[0].id;
+                    contactName = contactR.rows[0].name;
+                    // If no picture, try sync
+                    if (!contactR.rows[0].profilePictureUrl) {
+                        await trySyncContactPhoto(contactId, normalizedPhone, contactName, clubId);
+                    }
+                } else {
+                    // Auto-create
+                    try {
+                        const newContactId = crypto.randomUUID();
+                        const r = await db.query(
+                            `INSERT INTO \"WhatsAppContact\" (id, \"clubId\", name, phone, source, \"createdAt\", \"updatedAt\") 
+                             VALUES ($1, $2, $3, $4, 'whatsapp', NOW(), NOW()) RETURNING id`,
+                            [newContactId, clubId, contactName, normalizedPhone]
+                        );
+                        contactId = r.rows[0].id;
+                        await trySyncContactPhoto(contactId, normalizedPhone, contactName, clubId);
+                    } catch(e) { 
+                        // Race condition or other error
+                        const retryR = await db.query(`SELECT id FROM \"WhatsAppContact\" WHERE \"clubId\"=$1 AND phone=$2 LIMIT 1`, [clubId, normalizedPhone]);
+                        contactId = retryR.rows[0]?.id;
+                    }
+                }
+
+                if (!contactId) continue;
 
                 // Extract message text based on type
                 let bodyText = '';

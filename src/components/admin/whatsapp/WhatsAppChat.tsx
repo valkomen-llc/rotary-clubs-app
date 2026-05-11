@@ -108,8 +108,10 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
     const fetchContacts = async () => {
         setLoading(true);
         try {
+            const h: any = { Authorization: `Bearer ${token}` };
+            if (clubId) h['x-club-id'] = clubId;
             const filterParam = activeFilter === 'all' ? '' : `&filter=${activeFilter}`;
-            const res = await fetch(`${API}/whatsapp/contacts?limit=500${filterParam}`, { headers: { Authorization: `Bearer ${token}` } });
+            const res = await fetch(`${API}/whatsapp/contacts?limit=500${filterParam}`, { headers: h });
             const data = await res.json();
             setContacts(data.contacts || []);
         } catch { } finally { setLoading(false); }
@@ -118,7 +120,9 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
     const fetchMessages = async (contactId: string) => {
         setLoadingMsgs(true);
         try {
-            const res = await fetch(`${API}/whatsapp/contacts/${contactId}/messages`, { headers: { Authorization: `Bearer ${token}` } });
+            const h: any = { Authorization: `Bearer ${token}` };
+            if (clubId) h['x-club-id'] = clubId;
+            const res = await fetch(`${API}/whatsapp/contacts/${contactId}/messages`, { headers: h });
             if (res.ok) {
                 const data = await res.json();
                 setMessages(data.messages || []);
@@ -135,12 +139,13 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
         // Mark as read if there are unread messages
         if (contact.unreadCount && contact.unreadCount > 0) {
             try {
+                const h: any = { Authorization: `Bearer ${token}` };
+                if (clubId) h['x-club-id'] = clubId;
                 await fetch(`${API}/whatsapp/contacts/${contact.id}/read`, {
                     method: 'POST',
-                    headers: { Authorization: `Bearer ${token}` },
+                    headers: h
                 });
-                // Update local state
-                setContacts(prev => prev.map(c => c.id === contact.id ? { ...c, unreadCount: 0 } : c));
+                fetchContactsSilent();
             } catch { }
         }
     };
@@ -187,7 +192,9 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
 
     const fetchTemplates = async () => {
         try {
-            const res = await fetch(`${API}/whatsapp/templates`, { headers: { Authorization: `Bearer ${token}` } });
+            const h: any = { Authorization: `Bearer ${token}` };
+            if (clubId) h['x-club-id'] = clubId;
+            const res = await fetch(`${API}/whatsapp/templates`, { headers: h });
             if (res.ok) {
                 const data = await res.json();
                 const tpls = Array.isArray(data) ? data : (data.templates || []);
@@ -200,9 +207,11 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
         if (!selectedContact || sending) return;
         setSending(true);
         try {
+            const h: any = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+            if (clubId) h['x-club-id'] = clubId;
             const res = await fetch(`${API}/whatsapp/contacts/${selectedContact.id}/send`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                headers: h,
                 body: JSON.stringify(payload),
             });
             const data = await res.json();
@@ -237,11 +246,13 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
 
         setUploadingMedia(true);
         try {
+            const h: any = { Authorization: `Bearer ${token}` };
+            if (clubId) h['x-club-id'] = clubId;
             const formData = new FormData();
             formData.append('file', file);
             const uploadRes = await fetch(`${API}/whatsapp/upload-media`, {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
+                headers: h,
                 body: formData,
             });
             const uploadData = await uploadRes.json();
