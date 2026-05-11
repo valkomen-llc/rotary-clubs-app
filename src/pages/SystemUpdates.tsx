@@ -27,10 +27,10 @@ interface UpdateItem {
 // Cache bust: 2026-05-11 14:48 (WHATSAPP CONFIG FIX ⚙️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: 'v4.158',
+        version: 'v4.159',
         date: '11 de Mayo, 2026',
-        title: '🚀 Purga de Caché del Sistema',
-        description: 'Se forzó una invalidación global de caché para asegurar que todas las mejoras del CRM WhatsApp se desplieguen correctamente en todos los navegadores.',
+        title: '🚀 Actualización de Infraestructura (Node 22)',
+        description: 'Se actualizó el motor del sistema a Node 22 para cumplir con los requerimientos de las últimas versiones de las herramientas de construcción (Vite/Rolldown), solucionando los problemas de despliegue en Vercel.',
         type: 'fix'
     },
     {

@@ -1,9 +1,9 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.158",
+  "version": "4.159",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.158 | 2026-05-11 (SYSTEM CACHE PURGE 🚀)",
+  "//": "DISTRICT HEALTH IQ V4.159 | 2026-05-11 (NODE 22 UPGRADE 🚀)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
@@ -13,7 +13,7 @@
     "preview": "vite preview"
   },
   "engines": {
-    "node": "20.x"
+    "node": "22.x"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1003.0",
