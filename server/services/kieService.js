@@ -23,11 +23,12 @@ export const triggerVideoGeneration = async (projectId, imageUrls, config) => {
     // separadas y concatenar los videos (futuro).
     const firstImage = imageUrls[0];
 
-    // Duración: Seedance/Bytedance acepta solo 5 o 10. Kling acepta 5 o 10.
-    // Clampeamos a valores válidos para evitar "duration not within range".
-    const requestedDuration = Number(config.duration) || 5;
-    const validDurations = [5, 10];
-    const finalDuration = validDurations.includes(requestedDuration) ? requestedDuration : 5;
+    // Duración: Seedance Pro Fast solo tiene operation registrada para 10 segundos.
+    // ("Operation not found: Market_bytedance_v1-pro-fast-image-to-video_5" → _5 no existe en su catalog).
+    // Forzamos 10 hasta que confirmemos qué otros valores tiene cada modelo.
+    const requestedDuration = Number(config.duration) || 10;
+    const validDurations = [10]; // expandir cuando confirmemos qué otras durations existen
+    const finalDuration = validDurations.includes(requestedDuration) ? requestedDuration : 10;
 
     const payload = {
         model: config.model || DEFAULT_MODEL,

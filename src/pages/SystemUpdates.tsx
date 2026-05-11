@@ -23,9 +23,16 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.151 | 2026-05-11 (KIE DURATION FIX 🕐)
-// Cache bust: 2026-05-11 12:45 (LAST KIE FIX 🎯)
+// DISTRICT HEALTH IQ V4.152 | 2026-05-11 (FORCE DURATION 10 ⚡)
+// Cache bust: 2026-05-11 12:55 (BYTEDANCE OPERATION FIX ⚡)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.152',
+        date: '11 de Mayo, 2026',
+        title: '⚡ Content Studio — Forzar duración 10s (Seedance Pro Fast)',
+        description: 'KIE.ai reveló que Seedance v1-pro-fast solo tiene operation registrada para 10 segundos (no 5). El backend ahora fuerza siempre 10s. UI simplificada con una sola opción visible.',
+        type: 'fix'
+    },
     {
         version: 'v4.151',
         date: '11 de Mayo, 2026',

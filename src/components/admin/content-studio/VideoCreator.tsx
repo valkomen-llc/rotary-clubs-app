@@ -30,7 +30,7 @@ const VideoCreator: React.FC = () => {
     // Config states
     const [config, setConfig] = useState({
         format: '9:16',
-        duration: 5, // segundos. Seedance/Kling solo aceptan 5 o 10
+        duration: 10, // Seedance v1-pro-fast solo soporta 10s
         transition: 'fade',
         animation: 'ken_burns',
         caption: '',
@@ -216,9 +216,9 @@ const VideoCreator: React.FC = () => {
                                     value={config.duration}
                                     onChange={(e) => setConfig({...config, duration: Number(e.target.value)})}
                                 >
-                                    <option value={5}>5 segundos</option>
                                     <option value={10}>10 segundos</option>
                                 </select>
+                                <p className="text-[9px] font-medium text-gray-400">Seedance Pro Fast solo soporta 10s por ahora.</p>
                             </div>
                         </div>
                     </div>
