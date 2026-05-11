@@ -23,50 +23,15 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.152 | 2026-05-11 (FORCE DURATION 10 ⚡)
-// Cache bust: 2026-05-11 12:55 (BYTEDANCE OPERATION FIX ⚡)
+// DISTRICT HEALTH IQ V4.118 | 2026-05-06 (DSO ADMIN 🧠)
+// Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: 'v4.152',
+        version: 'v4.153',
         date: '11 de Mayo, 2026',
-        title: '⚡ Content Studio — Forzar duración 10s (Seedance Pro Fast)',
-        description: 'KIE.ai reveló que Seedance v1-pro-fast solo tiene operation registrada para 10 segundos (no 5). El backend ahora fuerza siempre 10s. UI simplificada con una sola opción visible.',
+        title: '🛠️ Estabilidad WhatsApp CRM',
+        description: 'Se corrigió un error crítico que impedía guardar la configuración de la API de Meta y gestionar contactos/listas debido a la falta de generación de identificadores únicos (UUIDs) en las operaciones de base de datos.',
         type: 'fix'
-    },
-    {
-        version: 'v4.151',
-        date: '11 de Mayo, 2026',
-        title: '🕐 Content Studio — Duración válida + Modelo Seedance confirmado',
-        description: 'KIE.ai con Bytedance Seedance solo acepta duración de 5 o 10 segundos (antes mandábamos 15 por default). Clampeamos automáticamente en backend a valores válidos. UI ahora tiene selector de duración (5 o 10 segundos) en la sección Efectos & IA. Default cambiado a 5 segundos para renders más rápidos y económicos.',
-        type: 'fix'
-    },
-    {
-        version: 'v4.150',
-        date: '11 de Mayo, 2026',
-        title: '🔎 Content Studio — Probe automático de modelos KIE',
-        description: 'Nuevo endpoint y botón en el panel Diagnóstico que prueba 15+ identificadores comunes de modelos image-to-video contra KIE.ai para descubrir cuál acepta tu cuenta. Para automáticamente al encontrar uno funcional y muestra el valor exacto para setear en KIE_MODEL. Esencial cuando los nombres de modelos varían entre versiones del API.',
-        type: 'feature'
-    },
-    {
-        version: 'v4.149',
-        date: '11 de Mayo, 2026',
-        title: '🎯 Content Studio — Fix de payload KIE.ai',
-        description: 'Ajustamos el payload que enviamos a KIE.ai para image-to-video: campo image_url singular (no plural), modelo por defecto a kling/v1.6-pro/image-to-video, removido el campo resolution que no es válido para Kling. Cuando se seleccionan varias imágenes, animamos la primera (image-to-video anima una sola). La UI ahora muestra esta nota cuando hay más de 1 imagen.',
-        type: 'fix'
-    },
-    {
-        version: 'v4.148',
-        date: '11 de Mayo, 2026',
-        title: '🔍 Content Studio — Mejor diagnóstico de errores KIE',
-        description: 'Cuando KIE.ai rechaza una generación, el proyecto ahora guarda la respuesta cruda completa de la API en lastKieResponse. La Biblioteca muestra un bloque expandible con el JSON exacto para diagnosticar qué falló (modelo inválido, payload mal formado, créditos insuficientes, etc). Se ampliaron los paths donde buscamos task_id para soportar variaciones de la API.',
-        type: 'fix'
-    },
-    {
-        version: 'v4.147',
-        date: '11 de Mayo, 2026',
-        title: '🎬 Content Studio — Publicación End-to-End',
-        description: 'Se completó el flujo end-to-end de Content Studio: OAuth real con Meta (Instagram y Facebook Reels), publicación vía Graph API v19, cron que procesa publicaciones programadas cada 5 minutos, generación de captions con IA (Gemini), modal de publicación con multi-cuenta y scheduler, y panel de diagnóstico para verificar configuración. Se conectaron todos los botones de acción que estaban inactivos (Publicar, Desconectar cuenta, Cancelar/Reintentar/Eliminar en cola).',
-        type: 'feature'
     },
     {
         version: 'v4.146',
