@@ -26,7 +26,7 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), asy
     return stripeWebhook(req, res, next);
 });
 
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
 
 // ── Technical Requests Logic (Consolidated for Vercel Stability) ──────────────
 app.post('/api/technical-requests', async (req, res) => {
