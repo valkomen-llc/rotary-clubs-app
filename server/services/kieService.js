@@ -4,7 +4,12 @@
  */
 
 const KIE_API_BASE = 'https://api.kie.ai/api/v1';
-const DEFAULT_MODEL = process.env.KIE_MODEL || 'kling-2.6/image-to-video';
+// Modelo por defecto. Override con KIE_MODEL en Vercel si querés probar otro.
+// Modelos comunes de KIE.ai para image-to-video:
+//   - kling/v1.6-pro/image-to-video  (calidad alta, recomendado)
+//   - kling/v1.6-standard/image-to-video  (más barato/rápido)
+//   - runway-gen-3-alpha-turbo/image-to-video  (alternativa)
+const DEFAULT_MODEL = process.env.KIE_MODEL || 'kling/v1.6-pro/image-to-video';
 
 export const triggerVideoGeneration = async (projectId, imageUrls, config) => {
     const apiKey = process.env.KIE_API_KEY;
@@ -12,20 +17,25 @@ export const triggerVideoGeneration = async (projectId, imageUrls, config) => {
     if (!imageUrls?.length) throw new Error('Se requiere al menos una imagen');
 
     const appUrl = process.env.APP_URL || 'https://app.clubplatform.org';
+
+    // NOTA: los modelos image-to-video animan UNA sola imagen, no una secuencia.
+    // Usamos la primera imagen del set. Para animar varias hay que crear tareas
+    // separadas y concatenar los videos (futuro).
+    const firstImage = imageUrls[0];
+
     const payload = {
         model: config.model || DEFAULT_MODEL,
         callBackUrl: `${appUrl}/api/content-studio/webhook`,
         input: {
-            prompt: config.prompt || 'Ken Burns effect, smooth transitions, high quality social media content',
-            image_urls: imageUrls,
-            duration: String(config.duration || 10),
-            resolution: config.resolution || '1080p',
+            prompt: config.prompt || 'Smooth cinematic camera movement, high quality social media content',
+            image_url: firstImage,
+            duration: String(config.duration || 5),
             aspect_ratio: config.format || '9:16'
         },
-        metadata: { projectId }
+        metadata: { projectId, totalImagesProvided: imageUrls.length }
     };
 
-    console.log(`[KIE] createTask projectId=${projectId} model=${payload.model} images=${imageUrls.length}`);
+    console.log(`[KIE] createTask projectId=${projectId} model=${payload.model} firstImage=${firstImage.slice(0, 80)}`);
 
     let response, data;
     try {

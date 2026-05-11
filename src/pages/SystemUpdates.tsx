@@ -23,9 +23,16 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.148 | 2026-05-11 (KIE DEBUG + RAW RESPONSE 🔍)
-// Cache bust: 2026-05-11 11:55 (CONTENT STUDIO TROUBLESHOOTING 🛠️)
+// DISTRICT HEALTH IQ V4.149 | 2026-05-11 (KIE PAYLOAD FIX 🎯)
+// Cache bust: 2026-05-11 12:10 (RENDER VIDEO FIX 🎬)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.149',
+        date: '11 de Mayo, 2026',
+        title: '🎯 Content Studio — Fix de payload KIE.ai',
+        description: 'Ajustamos el payload que enviamos a KIE.ai para image-to-video: campo image_url singular (no plural), modelo por defecto a kling/v1.6-pro/image-to-video, removido el campo resolution que no es válido para Kling. Cuando se seleccionan varias imágenes, animamos la primera (image-to-video anima una sola). La UI ahora muestra esta nota cuando hay más de 1 imagen.',
+        type: 'fix'
+    },
     {
         version: 'v4.148',
         date: '11 de Mayo, 2026',

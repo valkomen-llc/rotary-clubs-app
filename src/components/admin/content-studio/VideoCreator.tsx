@@ -115,7 +115,11 @@ const VideoCreator: React.FC = () => {
                     <div className="flex justify-between items-center mb-6">
                         <div>
                             <h3 className="text-lg font-black text-gray-900">Imágenes del Video</h3>
-                            <p className="text-sm text-gray-500 font-medium">Ordena tus clips arrastrando las tarjetas</p>
+                            <p className="text-sm text-gray-500 font-medium">
+                                {selectedMedia.length > 1
+                                    ? `Animaremos la primera imagen (KIE.ai image-to-video). Las otras ${selectedMedia.length - 1} quedarán como referencia.`
+                                    : 'La primera imagen se animará con KIE.ai'}
+                            </p>
                         </div>
                         <button 
                             onClick={() => setShowPicker(true)}
