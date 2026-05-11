@@ -27,11 +27,11 @@ interface UpdateItem {
 // Cache bust: 2026-05-11 14:48 (WHATSAPP CONFIG FIX ⚙️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: 'v4.159',
+        version: 'v4.160',
         date: '11 de Mayo, 2026',
-        title: '🚀 Actualización de Infraestructura (Node 22)',
-        description: 'Se actualizó el motor del sistema a Node 22 para cumplir con los requerimientos de las últimas versiones de las herramientas de construcción (Vite/Rolldown), solucionando los problemas de despliegue en Vercel.',
-        type: 'fix'
+        title: '🏛️ Selector de Clubes (SuperAdmin)',
+        description: 'Se implementó un selector de clubes en el panel de CRM para administradores globales, permitiendo alternar entre diferentes contextos y gestionar la comunicación de cualquier club de forma independiente.',
+        type: 'feature'
     },
     {
         version: 'v4.146',

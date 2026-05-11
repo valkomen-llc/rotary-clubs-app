@@ -5,7 +5,11 @@ import { toast } from 'sonner';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
-const WhatsAppConfig: React.FC = () => {
+interface Props {
+    clubId?: string;
+}
+
+const WhatsAppConfig: React.FC<Props> = ({ clubId }) => {
     const { token } = useAuth();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -17,11 +21,15 @@ const WhatsAppConfig: React.FC = () => {
     });
     const [verifyResult, setVerifyResult] = useState<any>(null);
 
-    useEffect(() => { fetchConfig(); }, []);
+    useEffect(() => { fetchConfig(); }, [clubId]);
 
     const fetchConfig = async () => {
+        setLoading(true);
         try {
-            const res = await fetch(`${API}/whatsapp/config`, { headers: { Authorization: `Bearer ${token}` } });
+            const headers: any = { Authorization: `Bearer ${token}` };
+            if (clubId) headers['x-club-id'] = clubId;
+
+            const res = await fetch(`${API}/whatsapp/config`, { headers });
             const data = await res.json();
             if (data.configured) {
                 setConfig(data);
@@ -33,6 +41,9 @@ const WhatsAppConfig: React.FC = () => {
                     appId: data.appId || '',
                     enabled: data.enabled ?? true,
                 });
+            } else {
+                setConfig(null);
+                setForm({ phoneNumberId: '', wabaId: '', accessToken: '', verifyToken: '', appId: '', enabled: true });
             }
         } catch (err) { console.error(err); } finally { setLoading(false); }
     };
@@ -41,10 +52,13 @@ const WhatsAppConfig: React.FC = () => {
         e.preventDefault();
         setSaving(true);
         try {
+            const headers: any = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+            if (clubId) headers['x-club-id'] = clubId;
+
             const res = await fetch(`${API}/whatsapp/config`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify(form),
+                headers,
+                body: JSON.stringify({ ...form, clubId }),
             });
             const data = await res.json();
             if (data.success) { toast.success('Configuración guardada'); fetchConfig(); }

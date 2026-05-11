@@ -21,7 +21,11 @@ interface Message {
 
 type ChatFilter = 'all' | 'unread' | 'archived';
 
-const WhatsAppChat: React.FC = () => {
+interface Props {
+    clubId?: string;
+}
+
+const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
     const { token } = useAuth();
     const [contacts, setContacts] = useState<Contact[]>([]);
     const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
@@ -43,8 +47,8 @@ const WhatsAppChat: React.FC = () => {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    useEffect(() => { fetchContacts(); fetchTemplates(); }, []);
-    useEffect(() => { fetchContacts(); }, [activeFilter]);
+    useEffect(() => { fetchContacts(); fetchTemplates(); }, [clubId]);
+    useEffect(() => { fetchContacts(); }, [activeFilter, clubId]);
     useEffect(() => {
         if (!searchQuery.trim()) { setFilteredContacts(contacts); return; }
         const q = searchQuery.toLowerCase();
@@ -60,8 +64,10 @@ const WhatsAppChat: React.FC = () => {
     // --- POLLING ENGINE (Phase 2) ---
     const fetchContactsSilent = async () => {
         try {
+            const h: any = { Authorization: `Bearer ${token}` };
+            if (clubId) h['x-club-id'] = clubId;
             const filterParam = activeFilter === 'all' ? '' : `&filter=${activeFilter}`;
-            const res = await fetch(`${API}/whatsapp/contacts?limit=500${filterParam}`, { headers: { Authorization: `Bearer ${token}` } });
+            const res = await fetch(`${API}/whatsapp/contacts?limit=500${filterParam}`, { headers: h });
             const data = await res.json();
             setContacts(data.contacts || []);
         } catch { }
@@ -69,7 +75,9 @@ const WhatsAppChat: React.FC = () => {
 
     const fetchMessagesSilent = async (contactId: string) => {
         try {
-            const res = await fetch(`${API}/whatsapp/contacts/${contactId}/messages`, { headers: { Authorization: `Bearer ${token}` } });
+            const h: any = { Authorization: `Bearer ${token}` };
+            if (clubId) h['x-club-id'] = clubId;
+            const res = await fetch(`${API}/whatsapp/contacts/${contactId}/messages`, { headers: h });
             if (res.ok) {
                 const data = await res.json();
                 const newMsgs = data.messages || [];
@@ -93,7 +101,7 @@ const WhatsAppChat: React.FC = () => {
             }
         }, 8000);
         return () => clearInterval(interval);
-    }, [activeFilter, selectedContact, token]);
+    }, [activeFilter, selectedContact, token, clubId]);
     // -------------------------------
 
     const fetchContacts = async () => {

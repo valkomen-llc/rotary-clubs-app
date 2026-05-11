@@ -23,18 +23,38 @@ type TabKey = 'send' | 'templates' | 'logs' | 'wa-config' | 'wa-contacts' | 'wa-
  * Incluye el CRM completo de WhatsApp Business Cloud API.
  */
 const CRMManagement: React.FC = () => {
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const [loading, setLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState<TabKey>('send');
+    const [activeTab, setActiveTab] = useState<TabKey>('wa-config');
+    const [clubs, setClubs] = useState<any[]>([]);
+    const [selectedClubId, setSelectedClubId] = useState<string>('');
 
     // Mocks / States for basic UI iteration
     const [logs, setLogs] = useState<any[]>([]);
     const [emailTemplates, setEmailTemplates] = useState<any[]>([]);
 
+    const isAdmin = user?.role === 'administrator' || user?.role === 'superadmin';
+
     useEffect(() => {
+        if (isAdmin) fetchClubs();
         if (activeTab === 'logs') fetchLogs();
         if (activeTab === 'templates') fetchEmailTemplates();
     }, [activeTab]);
+
+    const fetchClubs = async () => {
+        try {
+            const res = await fetch(`${API}/admin/clubs`, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (res.ok) {
+                const data = await res.json();
+                setClubs(data);
+                // Try to find the club that was recently verified if nothing selected
+                if (data.length > 0 && !selectedClubId) {
+                    // We'll let the backend resolve the default if nothing is selected,
+                    // but we can pre-select if we want.
+                }
+            }
+        } catch (error) { console.error('Error fetching clubs', error); }
+    };
 
     const fetchLogs = async () => {
         try {
@@ -120,6 +140,26 @@ const CRMManagement: React.FC = () => {
                     </div>
                     WhatsApp CRM
                 </button>
+
+                {isAdmin && (
+                    <div className="flex-1 flex justify-end">
+                        <div className="flex items-center gap-3 bg-white border border-gray-100 rounded-xl px-4 py-2 shadow-sm">
+                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Club Seleccionado</span>
+                            <select
+                                value={selectedClubId}
+                                onChange={(e) => setSelectedClubId(e.target.value)}
+                                className="bg-transparent border-none text-sm font-bold text-gray-900 focus:ring-0 outline-none cursor-pointer min-w-[200px]"
+                            >
+                                <option value="">Auto-Detectar (Reciente)</option>
+                                {clubs.map(club => (
+                                    <option key={club.id} value={club.id}>
+                                        {club.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Sub-tabs */}
@@ -243,13 +283,13 @@ const CRMManagement: React.FC = () => {
             )}
 
             {/* ═══ WHATSAPP TABS ═══ */}
-            {activeTab === 'wa-config' && <WhatsAppConfig />}
-            {activeTab === 'wa-contacts' && <WhatsAppContacts />}
-            {activeTab === 'wa-lists' && <WhatsAppLists />}
-            {activeTab === 'wa-templates' && <WhatsAppTemplates />}
-            {activeTab === 'wa-campaigns' && <WhatsAppCampaigns />}
-            {activeTab === 'wa-chat' && <WhatsAppChat />}
-            {activeTab === 'wa-analytics' && <WhatsAppDashboard />}
+            {activeTab === 'wa-config' && <WhatsAppConfig clubId={selectedClubId} />}
+            {activeTab === 'wa-contacts' && <WhatsAppContacts clubId={selectedClubId} />}
+            {activeTab === 'wa-lists' && <WhatsAppLists clubId={selectedClubId} />}
+            {activeTab === 'wa-templates' && <WhatsAppTemplates clubId={selectedClubId} />}
+            {activeTab === 'wa-campaigns' && <WhatsAppCampaigns clubId={selectedClubId} />}
+            {activeTab === 'wa-chat' && <WhatsAppChat clubId={selectedClubId} />}
+            {activeTab === 'wa-analytics' && <WhatsAppDashboard clubId={selectedClubId} />}
         </AdminLayout>
     );
 };
