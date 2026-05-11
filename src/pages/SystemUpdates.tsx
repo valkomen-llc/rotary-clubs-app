@@ -24,8 +24,15 @@ interface UpdateItem {
 }
 
 // DISTRICT HEALTH IQ V4.118 | 2026-05-06 (DSO ADMIN 🧠)
-// Cache bust: 2026-05-11 21:55 (WA QR SPRINT 1 — UX REFINE 🧹)
+// Cache bust: 2026-05-11 22:10 (WA QR — NOMBRES DE CONTACTOS 🪪)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.168',
+        date: '11 de Mayo, 2026',
+        title: '🪪 Nombres reales de los contactos en el Gateway',
+        description: 'El inbox del WhatsApp QR Gateway ahora cruza la lista de chats con la libreta de contactos de Evolution, de modo que las conversaciones individuales muestran el nombre del contacto en lugar del número crudo cuando el dato está disponible.',
+        type: 'fix'
+    },
     {
         version: 'v4.167',
         date: '11 de Mayo, 2026',
