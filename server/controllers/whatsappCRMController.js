@@ -330,14 +330,14 @@ export const getContacts = async (req, res) => {
 export const createContact = async (req, res) => {
     try {
         const clubId = await resolveClubId(req, true);
-        const { name, phone, email, tags = [], source = 'manual', metadata = {} } = req.body;
+        const { name, phone, email, tags = [], source = 'manual', metadata = {}, profilePictureUrl = null } = req.body;
         if (!name || !phone) return res.status(400).json({ error: 'name y phone son requeridos' });
         const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`;
         const contactId = crypto.randomUUID();
         const r = await db.query(
-            `INSERT INTO "WhatsAppContact" (id,"clubId",name,phone,email,tags,source,metadata,"createdAt","updatedAt")
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW()) RETURNING *`,
-            [contactId, clubId, name, normalizedPhone, email || null, tags, source, JSON.stringify(metadata)]
+            `INSERT INTO "WhatsAppContact" (id,"clubId",name,phone,email,tags,source,metadata,"profilePictureUrl","createdAt","updatedAt")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW()) RETURNING *`,
+            [contactId, clubId, name, normalizedPhone, email || null, tags, source, JSON.stringify(metadata), profilePictureUrl]
         );
         res.status(201).json(r.rows[0]);
     } catch (err) {
@@ -351,12 +351,13 @@ export const updateContact = async (req, res) => {
     try {
         const { id } = req.params;
         const clubId = await resolveClubId(req);
-        const { name, phone, email, tags, status, metadata } = req.body;
+        const { name, phone, email, tags, status, metadata, profilePictureUrl } = req.body;
         const fields = [], params = []; let idx = 1;
         if (name !== undefined) { fields.push(`name=$${idx++}`); params.push(name); }
         if (phone !== undefined) { fields.push(`phone=$${idx++}`); params.push(phone); }
         if (email !== undefined) { fields.push(`email=$${idx++}`); params.push(email); }
         if (tags !== undefined) { fields.push(`tags=$${idx++}`); params.push(tags); }
+        if (profilePictureUrl !== undefined) { fields.push(`"profilePictureUrl"=$${idx++}`); params.push(profilePictureUrl); }
         if (status !== undefined) {
             fields.push(`status=$${idx++}`); params.push(status);
             if (status === 'opted_out') fields.push(`"optedOutAt"=NOW()`);
@@ -1280,19 +1281,46 @@ export const handleWebhook = async (req, res) => {
                 // Find or create contact
                 let contactId = null;
                 const contactR = await db.query(
-                    `SELECT id FROM "WhatsAppContact" WHERE "clubId"=$1 AND phone=$2 LIMIT 1`,
+                    `SELECT id, "profilePictureUrl" FROM "WhatsAppContact" WHERE "clubId"=$1 AND phone=$2 LIMIT 1`,
                     [clubId, normalizedPhone]
                 );
+                
                 if (contactR.rows.length) {
                     contactId = contactR.rows[0].id;
+                    // If contact exists but has no picture, try to sync from system users/members
+                    if (!contactR.rows[0].profilePictureUrl) {
+                        const systemImgR = await db.query(
+                            `SELECT image FROM "User" WHERE phone=$1 OR phone=$2 
+                             UNION 
+                             SELECT image FROM "ClubMember" WHERE phone=$1 OR phone=$2
+                             LIMIT 1`, [normalizedPhone, from]
+                        );
+                        if (systemImgR.rows.length && systemImgR.rows[0].image) {
+                            await db.query(`UPDATE "WhatsAppContact" SET "profilePictureUrl"=$1 WHERE id=$2`, [systemImgR.rows[0].image, contactId]);
+                        }
+                    }
                 } else {
                     // Auto-create contact from incoming message
                     const contactName = changes.contacts?.[0]?.profile?.name || normalizedPhone;
+                    let profilePictureUrl = null;
+                    
+                    // Try to find image from system users/members
+                    const systemImgR = await db.query(
+                        `SELECT image FROM "User" WHERE phone=$1 OR phone=$2 
+                         UNION 
+                         SELECT image FROM "ClubMember" WHERE phone=$1 OR phone=$2
+                         LIMIT 1`, [normalizedPhone, from]
+                    );
+                    if (systemImgR.rows.length && systemImgR.rows[0].image) {
+                        profilePictureUrl = systemImgR.rows[0].image;
+                    }
+
                     try {
                         const newContactId = crypto.randomUUID();
                         const newContact = await db.query(
-                            `INSERT INTO "WhatsAppContact" (id,"clubId",name,phone,source,"createdAt","updatedAt") VALUES ($1,$2,$3,$4,'whatsapp',NOW(),NOW()) RETURNING id`,
-                            [newContactId, clubId, contactName, normalizedPhone]
+                            `INSERT INTO "WhatsAppContact" (id,"clubId",name,phone,source,"profilePictureUrl","createdAt","updatedAt") 
+                             VALUES ($1,$2,$3,$4,'whatsapp',$5,NOW(),NOW()) RETURNING id`,
+                            [newContactId, clubId, contactName, normalizedPhone, profilePictureUrl]
                         );
                         contactId = newContact.rows[0]?.id || null;
                     } catch { /* contact might already exist due to race condition */ }
@@ -1358,6 +1386,7 @@ export const ensureWATables = async () => {
             await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_template_meta_id ON "WhatsAppTemplate" ("metaTemplateId") WHERE "metaTemplateId" IS NOT NULL`).catch(() => {});
             await db.query(`ALTER TABLE "WhatsAppMessageLog" ADD COLUMN IF NOT EXISTS direction VARCHAR(20) DEFAULT 'outgoing'`).catch(() => {});
             await db.query(`ALTER TABLE "WhatsAppContact" ADD COLUMN IF NOT EXISTS "archivedAt" TIMESTAMPTZ DEFAULT NULL`).catch(() => {});
+            await db.query(`ALTER TABLE "WhatsAppContact" ADD COLUMN IF NOT EXISTS "profilePictureUrl" TEXT`).catch(() => {});
             return;
         }
 
@@ -1386,6 +1415,7 @@ export const ensureWATables = async () => {
                 "totalSent" INT NOT NULL DEFAULT 0, "totalDelivered" INT NOT NULL DEFAULT 0,
                 "totalRead" INT NOT NULL DEFAULT 0, "totalFailed" INT NOT NULL DEFAULT 0,
                 "optedOutAt" TIMESTAMPTZ, "leadId" TEXT,
+                "profilePictureUrl" TEXT,
                 "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 UNIQUE(phone,"clubId")

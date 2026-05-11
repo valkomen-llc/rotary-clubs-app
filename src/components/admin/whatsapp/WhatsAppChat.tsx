@@ -8,6 +8,7 @@ const API = import.meta.env.VITE_API_URL || '/api';
 
 interface Contact {
     id: string; name: string; phone: string; email?: string;
+    profilePictureUrl?: string;
     tags?: string[]; status: string; lists?: any[];
     metadata?: any; createdAt: string; archivedAt?: string | null;
     lastMessage?: { bodyText?: string; templateName?: string; direction: string; status: string; createdAt: string } | null;
@@ -412,9 +413,13 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
                             >
                                 {/* Avatar */}
                                 <div className="relative flex-shrink-0">
-                                    <div className="w-11 h-11 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">
-                                        {getInitials(contact.name)}
-                                    </div>
+                                    {contact.profilePictureUrl ? (
+                                        <img src={contact.profilePictureUrl} alt={contact.name} className="w-11 h-11 rounded-full object-cover shadow-sm border border-gray-100" />
+                                    ) : (
+                                        <div className="w-11 h-11 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                                            {getInitials(contact.name)}
+                                        </div>
+                                    )}
                                     <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${getStatusColor(contact)}`} />
                                 </div>
                                 {/* Info */}
@@ -486,9 +491,13 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
                                     <button onClick={() => setSelectedContact(null)} className="md:hidden text-gray-400 mr-1">
                                         <ChevronLeft className="w-5 h-5" />
                                     </button>
-                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-bold text-sm">
-                                        {getInitials(selectedContact.name)}
-                                    </div>
+                                    {selectedContact.profilePictureUrl ? (
+                                        <img src={selectedContact.profilePictureUrl} alt={selectedContact.name} className="w-10 h-10 rounded-full object-cover shadow-sm border border-gray-100" />
+                                    ) : (
+                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-bold text-sm">
+                                            {getInitials(selectedContact.name)}
+                                        </div>
+                                    )}
                                     <div>
                                         <p className="font-bold text-gray-900 text-sm">{selectedContact.name}</p>
                                         <p className="text-xs text-gray-500">{selectedContact.phone}</p>
@@ -728,9 +737,13 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
 
                         {/* Contact Card */}
                         <div className="p-6 flex flex-col items-center border-b border-gray-100">
-                            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-black text-2xl shadow-lg mb-3">
-                                {getInitials(selectedContact.name)}
-                            </div>
+                            {selectedContact.profilePictureUrl ? (
+                                <img src={selectedContact.profilePictureUrl} alt={selectedContact.name} className="w-20 h-20 rounded-full object-cover shadow-lg mb-3 border-2 border-white" />
+                            ) : (
+                                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-black text-2xl shadow-lg mb-3">
+                                    {getInitials(selectedContact.name)}
+                                </div>
+                            )}
                             <p className="font-black text-gray-900 text-lg">{selectedContact.name}</p>
                             <p className="text-sm text-gray-500 mt-0.5">{selectedContact.phone}</p>
                             {selectedContact.email && <p className="text-xs text-gray-400 mt-0.5">{selectedContact.email}</p>}

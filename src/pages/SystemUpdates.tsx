@@ -24,8 +24,15 @@ interface UpdateItem {
 }
 
 // DISTRICT HEALTH IQ V4.118 | 2026-05-06 (DSO ADMIN 🧠)
-// Cache bust: 2026-05-11 15:35 (CRM & SETTINGS RESTRUCTURED 🏗️)
+// Cache bust: 2026-05-11 15:43 (WA PROFILE PHOTOS SYNC 📸)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.164',
+        date: '11 de Mayo, 2026',
+        title: '📸 Fotos de Perfil en WhatsApp CRM',
+        description: 'Ahora los contactos del CRM muestran su foto de perfil si están registrados como socios o participantes en la plataforma. Se implementó sincronización automática por número de teléfono.',
+        type: 'feature'
+    },
     {
         version: 'v4.163',
         date: '11 de Mayo, 2026',
