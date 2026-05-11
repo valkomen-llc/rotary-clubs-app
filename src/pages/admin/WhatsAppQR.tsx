@@ -23,12 +23,22 @@ interface Message {
     timestamp: number;
     hasMedia: boolean;
     type: string;
+    filename?: string;
+    mimetype?: string;
     localUrl?: string; // Cache for immediate local preview
 }
 
-const MediaLoader: React.FC<{ chatId: string; messageId: string; token: string | null; localUrl?: string; localType?: string }> = ({ chatId, messageId, token, localUrl: initialLocalUrl, localType: initialLocalType }) => {
+const prettySize = (bytes: number) => {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const MediaLoader: React.FC<{ chatId: string; messageId: string; token: string | null; localUrl?: string; localType?: string; filename?: string; mimetype?: string }> = ({ chatId, messageId, token, localUrl: initialLocalUrl, localType: initialLocalType, filename, mimetype }) => {
     const [mediaUrl, setMediaUrl] = useState<string | null>(initialLocalUrl || null);
-    const [mediaType, setMediaType] = useState<string>(initialLocalType || '');
+    const [mediaType, setMediaType] = useState<string>(initialLocalType || mimetype || '');
+    const [mediaSize, setMediaSize] = useState<number>(0);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -51,6 +61,7 @@ const MediaLoader: React.FC<{ chatId: string; messageId: string; token: string |
             const blob = await res.blob();
             const objectUrl = URL.createObjectURL(blob);
             setMediaType(contentType);
+            setMediaSize(blob.size);
             setMediaUrl(objectUrl);
         } catch (e) {
             setError('Error de conectividad');
@@ -103,13 +114,19 @@ const MediaLoader: React.FC<{ chatId: string; messageId: string; token: string |
                 </div>
             );
         }
+        const displayName = filename || 'archivo_adjunto';
+        const sizeLabel = prettySize(mediaSize);
         return (
-            <a 
-                href={mediaUrl} 
-                download={`archivo_adjunto`} 
-                className="flex items-center gap-2 p-2 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 mb-2 mt-1 transition-colors cursor-pointer text-blue-700"
+            <a
+                href={mediaUrl}
+                download={displayName}
+                className="flex items-center gap-2 p-2 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 mb-2 mt-1 transition-colors cursor-pointer text-blue-700 max-w-xs"
             >
-                <div className="text-xs font-bold px-2 py-1 flex items-center gap-2"><ImageIcon className="w-4 h-4"/> ⬇️ Descargar archivo ({mediaType})</div>
+                <Paperclip className="w-4 h-4 flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold truncate" title={displayName}>{displayName}</div>
+                    <div className="text-[10px] opacity-70 truncate">⬇️ Descargar{sizeLabel ? ` · ${sizeLabel}` : ''}</div>
+                </div>
             </a>
         );
     }
@@ -269,11 +286,32 @@ const WhatsAppQR: React.FC = () => {
         setLoadingChats(false);
     };
 
+    const markChatRead = async (chatId: string, fetchedMessages: Message[]) => {
+        const messageIds = fetchedMessages
+            .filter(m => !m.fromMe)
+            .slice(-20)
+            .map(m => m.id)
+            .filter(Boolean);
+        if (messageIds.length === 0) return;
+        try {
+            await fetch(`${API}/whatsapp-qr/chats/${encodeURIComponent(chatId)}/mark-read`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messageIds })
+            });
+            // Optimistic: reset unread badge for this chat in the sidebar.
+            setChats(prev => prev.map(c => c.id === chatId ? { ...c, unreadCount: 0 } : c));
+        } catch (e) {
+            // Best-effort; the next chats poll will sync the real state.
+            console.warn('markChatRead failed', e);
+        }
+    };
+
     const fetchMessages = async (chatId: string, silent = false) => {
         if (!silent) setLoadingMessages(true);
         try {
             const res = await fetch(`${API}/whatsapp-qr/chats/${chatId}/messages?_t=${Date.now()}`, {
-                headers: { 
+                headers: {
                     'Authorization': `Bearer ${token}`,
                     'Cache-Control': 'no-cache, no-store, must-revalidate',
                     'Pragma': 'no-cache'
@@ -282,14 +320,18 @@ const WhatsAppQR: React.FC = () => {
             const data = await res.json();
             if (data.success) {
                 // Reverse to show oldest first in UI flow
+                const fetchedMessages = data.messages.reverse();
                 setMessages(prev => {
-                    // Safe merge to ensure locally appended messages stay visible 
+                    // Safe merge to ensure locally appended messages stay visible
                     // even if the WhatsApp core hasn't synced them to the fetch db yet
-                    const fetchedMessages = data.messages.reverse();
                     const fetchedIds = new Set(fetchedMessages.map((m: any) => m.id));
                     const missingLocals = prev.filter(m => m.fromMe && !fetchedIds.has(m.id) && (Date.now() / 1000 - m.timestamp < 60));
                     return [...fetchedMessages, ...missingLocals].sort((a, b) => a.timestamp - b.timestamp);
                 });
+                if (!silent) {
+                    // First open of the chat — best-effort mark as read on WhatsApp's side.
+                    markChatRead(chatId, fetchedMessages);
+                }
             }
         } catch (e) { console.error(e); }
         if (!silent) setLoadingMessages(false);
@@ -368,53 +410,65 @@ const WhatsAppQR: React.FC = () => {
         <AdminLayout>
             <div className={`mx-auto space-y-6 ${status === 'CONNECTED' ? 'max-w-7xl' : 'max-w-4xl'}`}>
                 
-                {/* Header */}
-                <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm overflow-hidden relative">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
-                    
-                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 relative z-10">
-                        <div className="flex items-start gap-4">
-                            <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center flex-shrink-0 text-emerald-600">
-                                <QrCode className="w-7 h-7" />
+                {/* Header — collapsed when connected to give the inbox more vertical room */}
+                {status === 'CONNECTED' ? (
+                    <div className="bg-white rounded-xl border border-gray-200 px-4 py-2.5 shadow-sm flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 flex-shrink-0">
+                                <QrCode className="w-4 h-4" />
                             </div>
-                            <div>
-                                <h1 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
-                                    WhatsApp Web Gateway
-                                </h1>
-                                <p className="text-sm text-gray-500 mt-1 max-w-xl leading-relaxed">
-                                    Sistema nativo reservado para el Super Administrador. Empareja el número de WhatsApp oficial del Distrito para comunicarse masivamente con Grupos y Comunidades de Rotary por fuera de la API Meta.
-                                </p>
+                            <div className="min-w-0">
+                                <h1 className="text-sm font-black text-gray-900 tracking-tight truncate">WhatsApp Web Gateway</h1>
+                                <p className="text-xs text-gray-500 truncate">Línea oficial vinculada del Super Administrador</p>
                             </div>
                         </div>
-
-                        {/* Status Badge */}
-                        <div className="flex-shrink-0 flex items-center gap-3">
-                            {status === 'CONNECTED' && (
-                                <button onClick={disconnectSession} className="text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg border border-red-100 transition-colors">
-                                    Cerrar Sesión
-                                </button>
-                            )}
-                            {status === 'CONNECTED' && (
-                                <div className="bg-emerald-50 text-emerald-700 px-4 py-2 rounded-xl flex items-center gap-2 border border-emerald-200 font-bold text-sm shadow-sm">
-                                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                                    Vínculo Activo
-                                </div>
-                            )}
-                            {status === 'DISCONNECTED' && (
-                                <div className="bg-red-50 text-red-700 px-4 py-2 rounded-xl flex items-center gap-2 border border-red-200 font-bold text-sm shadow-sm">
-                                    <WifiOff className="w-4 h-4" />
-                                    Sin Conexión
-                                </div>
-                            )}
-                             {status === 'INITIALIZING' && (
-                                <div className="bg-amber-50 text-amber-700 px-4 py-2 rounded-xl flex items-center gap-2 border border-amber-200 font-bold text-sm shadow-sm">
-                                    <Loader className="w-4 h-4 animate-spin" />
-                                    Iniciando Servidor...
-                                </div>
-                            )}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                            <button onClick={disconnectSession} className="text-[11px] font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2.5 py-1.5 rounded-lg border border-red-100 transition-colors">
+                                Cerrar Sesión
+                            </button>
+                            <div className="bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-emerald-200 font-bold text-[11px]">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                Vínculo Activo
+                            </div>
                         </div>
                     </div>
-                </div>
+                ) : (
+                    <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm overflow-hidden relative">
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
+
+                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 relative z-10">
+                            <div className="flex items-start gap-4">
+                                <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center flex-shrink-0 text-emerald-600">
+                                    <QrCode className="w-7 h-7" />
+                                </div>
+                                <div>
+                                    <h1 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
+                                        WhatsApp Web Gateway
+                                    </h1>
+                                    <p className="text-sm text-gray-500 mt-1 max-w-xl leading-relaxed">
+                                        Sistema nativo reservado para el Super Administrador. Empareja el número de WhatsApp oficial del Distrito para comunicarse masivamente con Grupos y Comunidades de Rotary por fuera de la API Meta.
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Status Badge */}
+                            <div className="flex-shrink-0 flex items-center gap-3">
+                                {status === 'DISCONNECTED' && (
+                                    <div className="bg-red-50 text-red-700 px-4 py-2 rounded-xl flex items-center gap-2 border border-red-200 font-bold text-sm shadow-sm">
+                                        <WifiOff className="w-4 h-4" />
+                                        Sin Conexión
+                                    </div>
+                                )}
+                                {status === 'INITIALIZING' && (
+                                    <div className="bg-amber-50 text-amber-700 px-4 py-2 rounded-xl flex items-center gap-2 border border-amber-200 font-bold text-sm shadow-sm">
+                                        <Loader className="w-4 h-4 animate-spin" />
+                                        Iniciando Servidor...
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Conditional UI based on connection */}
                 {status !== 'CONNECTED' ? (
@@ -641,7 +695,7 @@ const WhatsAppQR: React.FC = () => {
                                                             msg.fromMe ? 'bg-[#D9FDD3] text-gray-900 rounded-tr-none' : 'bg-white text-gray-900 rounded-tl-none'
                                                         }`}>
                                                             {msg.hasMedia && selectedChat && (
-                                                                <MediaLoader chatId={selectedChat.id} messageId={msg.id} token={token} localUrl={msg.localUrl} localType={msg.type} />
+                                                                <MediaLoader chatId={selectedChat.id} messageId={msg.id} token={token} localUrl={msg.localUrl} localType={msg.type} filename={msg.filename} mimetype={msg.mimetype} />
                                                             )}
                                                             <div className="whitespace-pre-wrap break-words">{msg.body}</div>
                                                             <div className={`text-[10px] text-right mt-1 opacity-60 flex items-center justify-end gap-1 ${msg.fromMe ? 'text-gray-600' : 'text-gray-400'}`}>
