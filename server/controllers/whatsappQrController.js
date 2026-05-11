@@ -158,15 +158,32 @@ export const getChats = async (req, res) => {
             const contactsRows = Array.isArray(contactsRes.data) ? contactsRes.data : [];
             for (const ct of contactsRows) {
                 const jid = ct.remoteJid || ct.id;
-                const name = ct.pushName || ct.name;
+                const name = ct.pushName || ct.name || ct.notify;
                 if (jid && name) contactNames.set(jid, name);
             }
         } catch (e) {
             console.warn('[WA-QR] findContacts non-fatal:', e.response?.data || e.message);
         }
 
+        // Group chats from findChats rarely include `subject`; fetch the group
+        // metadata explicitly so they show their real name in the inbox.
+        const groupSubjects = new Map();
+        try {
+            const groupsRes = await evo.get(`/group/fetchAllGroups/${EVO_INSTANCE_PATH}`, {
+                params: { getParticipants: 'false' }
+            });
+            const groupsRows = Array.isArray(groupsRes.data) ? groupsRes.data : [];
+            for (const g of groupsRows) {
+                const jid = g.id || g.remoteJid;
+                const subject = g.subject || g.name;
+                if (jid && subject) groupSubjects.set(jid, subject);
+            }
+        } catch (e) {
+            console.warn('[WA-QR] fetchAllGroups non-fatal:', e.response?.data || e.message);
+        }
+
         const rows = Array.isArray(chatsRes.data) ? chatsRes.data : [];
-        const mapped = rows
+        const enriched = rows
             .map(c => {
                 const id = c.remoteJid || c.id || c.chatId;
                 if (!id) return null;
@@ -174,20 +191,48 @@ export const getChats = async (req, res) => {
                 const timestampMs = Number(c.updatedAt ? new Date(c.updatedAt).getTime() : (c.messageTimestamp || c.lastMessageTimestamp || 0) * 1000) || 0;
                 const fallback = id.split('@')[0];
                 const name = isGroup
-                    ? (c.subject || c.name || fallback)
+                    ? (groupSubjects.get(id) || c.subject || c.name || fallback)
                     : (c.pushName || contactNames.get(id) || c.name || fallback);
                 return {
                     id,
                     name,
                     isGroup,
                     unreadCount: Number(c.unreadCount || c.unreadMessages || 0),
-                    timestamp: Math.floor(timestampMs / 1000)
+                    timestamp: Math.floor(timestampMs / 1000),
+                    nameIsFallback: name === fallback
                 };
             })
             .filter(Boolean)
             .sort((a, b) => b.timestamp - a.timestamp)
             .slice(0, 50);
 
+        // Last-resort: for the top chats that still don't have a real name,
+        // hit Evolution's profile endpoint per JID. Capped to keep latency
+        // bounded (max 10 lookups, 1s each, in parallel).
+        const needsProfile = enriched.filter(c => c.nameIsFallback).slice(0, 10);
+        if (needsProfile.length > 0) {
+            await Promise.all(needsProfile.map(async (c) => {
+                const endpoints = c.isGroup
+                    ? [`/group/findGroupInfos/${EVO_INSTANCE_PATH}`]
+                    : [`/chat/fetchProfile/${EVO_INSTANCE_PATH}`, `/chat/whatsappProfile/${EVO_INSTANCE_PATH}`];
+                for (const ep of endpoints) {
+                    try {
+                        const r = c.isGroup
+                            ? await evo.get(ep, { params: { groupJid: c.id }, timeout: 1500 })
+                            : await evo.post(ep, { number: c.id }, { timeout: 1500 });
+                        const data = r.data || {};
+                        const candidate = data.subject || data.pushName || data.name || data.verifiedName || data.notify;
+                        if (candidate && r.status < 400) {
+                            c.name = candidate;
+                            c.nameIsFallback = false;
+                            break;
+                        }
+                    } catch (_) { /* try the next endpoint */ }
+                }
+            }));
+        }
+
+        const mapped = enriched.map(({ nameIsFallback, ...rest }) => rest);
         res.json({ success: true, chats: mapped });
     } catch (e) {
         console.error('[WA-QR] getChats error:', e.response?.data || e.message);

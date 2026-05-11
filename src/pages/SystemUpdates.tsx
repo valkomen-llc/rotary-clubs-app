@@ -24,8 +24,15 @@ interface UpdateItem {
 }
 
 // DISTRICT HEALTH IQ V4.118 | 2026-05-06 (DSO ADMIN 🧠)
-// Cache bust: 2026-05-11 22:10 (WA QR — NOMBRES DE CONTACTOS 🪪)
+// Cache bust: 2026-05-11 22:25 (WA QR — GRUPOS + PERFILES 🏷️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.169',
+        date: '11 de Mayo, 2026',
+        title: '🏷️ Nombres de grupos y perfiles de WhatsApp en el inbox',
+        description: 'El Gateway ahora obtiene el subject real de cada grupo via /group/fetchAllGroups y, como último recurso, pide el perfil individual de los chats que aún aparezcan como número crudo. Resultado: muchos menos contactos y grupos mostrándose como números largos sin etiqueta.',
+        type: 'fix'
+    },
     {
         version: 'v4.168',
         date: '11 de Mayo, 2026',
