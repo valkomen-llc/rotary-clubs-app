@@ -24,13 +24,13 @@ interface UpdateItem {
 }
 
 // DISTRICT HEALTH IQ V4.118 | 2026-05-06 (DSO ADMIN 🧠)
-// Cache bust: 2026-05-06 13:41 (TECH SERVICES AUTOMATION 🤖)
+// Cache bust: 2026-05-11 14:48 (WHATSAPP CONFIG FIX ⚙️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: 'v4.157',
+        version: 'v4.158',
         date: '11 de Mayo, 2026',
-        title: '⚙️ Corrección Carga de Configuración',
-        description: 'Se refinó la lógica de recuperación de credenciales para asegurar que la información de la cuenta de WhatsApp se cargue correctamente en el panel administrativo, eliminando estados en blanco intermitentes.',
+        title: '🚀 Purga de Caché del Sistema',
+        description: 'Se forzó una invalidación global de caché para asegurar que todas las mejoras del CRM WhatsApp se desplieguen correctamente en todos los navegadores.',
         type: 'fix'
     },
     {
