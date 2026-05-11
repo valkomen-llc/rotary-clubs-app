@@ -25,7 +25,12 @@ type TabKey = 'send' | 'templates' | 'logs' | 'wa-config' | 'wa-contacts' | 'wa-
 const CRMManagement: React.FC = () => {
     const { token, user } = useAuth();
     const [loading, setLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState<TabKey>('wa-config');
+    
+    // Default to 'wa-chat' as per user request for direct access to functional tool
+    const [activeTab, setActiveTab] = useState<TabKey>(() => {
+        const params = new URLSearchParams(window.location.search);
+        return (params.get('tab') as TabKey) || 'wa-chat';
+    });
 
     // Mocks / States for basic UI iteration
     const [logs, setLogs] = useState<any[]>([]);
@@ -82,7 +87,6 @@ const CRMManagement: React.FC = () => {
     ];
 
     const whatsappTabs: { key: TabKey; label: string; icon: React.ReactNode }[] = [
-        { key: 'wa-config', label: 'Configuración', icon: <Settings className="w-4 h-4" /> },
         { key: 'wa-contacts', label: 'Contactos', icon: <Users className="w-4 h-4" /> },
         { key: 'wa-lists', label: 'Listas', icon: <List className="w-4 h-4" /> },
         { key: 'wa-templates', label: 'Templates', icon: <FileText className="w-4 h-4" /> },

@@ -14,6 +14,8 @@ import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
 import SiteSetupCard from '../../components/admin/SiteSetupCard';
 import { getAutoCropCanvas, fileToImage, canvasToFile } from '../../utils/cropUtils';
 import { useNavigate } from 'react-router-dom';
+import WhatsAppConfig from '../../components/admin/whatsapp/WhatsAppConfig';
+import SystemCommunicationsConfig from '../../components/admin/SystemCommunicationsConfig';
 
 const ClubSettings: React.FC = () => {
     const { club, refreshClub } = useClub();
@@ -21,7 +23,8 @@ const ClubSettings: React.FC = () => {
     const navigate = useNavigate();
     const isSuperAdmin = user?.role === 'administrator';
 
-    const [activeTab, setActiveTab] = useState<'estado' | 'identidad' | 'avanzado' | 'facturacion'>('estado');
+    type TabType = 'estado' | 'identidad' | 'avanzado' | 'facturacion' | 'wa-api' | 'comms';
+    const [activeTab, setActiveTab] = useState<TabType>('estado');
     const [stats, setStats] = useState<any>(null);
 
     const [formData, setFormData] = useState({
@@ -282,7 +285,11 @@ const ClubSettings: React.FC = () => {
     const TABS = [
         { id: 'estado', label: 'Estado', icon: Sparkles },
         { id: 'identidad', label: 'Identidad', icon: Building2 },
-        ...(isSuperAdmin ? [{ id: 'avanzado', label: 'Avanzado', icon: SettingsIcon }] : []),
+        ...(isSuperAdmin ? [
+            { id: 'wa-api', label: 'WhatsApp API', icon: MessageSquare },
+            { id: 'comms', label: 'Comunicaciones', icon: Mail },
+            { id: 'avanzado', label: 'Avanzado', icon: SettingsIcon }
+        ] : []),
         { id: 'facturacion', label: 'Facturación', icon: CreditCard },
     ] as const;
 
@@ -557,6 +564,18 @@ const ClubSettings: React.FC = () => {
                                 </div>
                             </div>
                         </div>
+                    </div>
+                )}
+                
+                {activeTab === 'wa-api' && isSuperAdmin && (
+                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <WhatsAppConfig />
+                    </div>
+                )}
+
+                {activeTab === 'comms' && isSuperAdmin && (
+                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <SystemCommunicationsConfig />
                     </div>
                 )}
 
