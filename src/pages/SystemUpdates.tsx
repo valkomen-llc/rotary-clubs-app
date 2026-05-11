@@ -24,8 +24,15 @@ interface UpdateItem {
 }
 
 // DISTRICT HEALTH IQ V4.118 | 2026-05-06 (DSO ADMIN 🧠)
-// Cache bust: 2026-05-11 22:40 (WA QR — DISPARADOR MANUAL ✉️)
+// Cache bust: 2026-05-11 22:45 (WA QR — UPLOADS DE 25MB 📎)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.171',
+        date: '11 de Mayo, 2026',
+        title: '📎 Adjuntos grandes en el Gateway (hasta 25 MB)',
+        description: 'Se corrigió el "Error de conectividad" al enviar archivos pesados desde el disparador manual o el chat: el parser JSON del backend estaba limitado al default de 100 KB y rechazaba imágenes/videos más grandes. Ahora acepta hasta 25 MB y el modal explica el motivo si el archivo excede el límite.',
+        type: 'fix'
+    },
     {
         version: 'v4.170',
         date: '11 de Mayo, 2026',

@@ -412,9 +412,20 @@ const WhatsAppQR: React.FC = () => {
                     body: JSON.stringify({ chatId: digits, message: composeMessage })
                 });
             }
-            const data = await res.json();
-            if (!data.success) {
-                setComposeError(data.error || 'No se pudo enviar el mensaje.');
+            let data: any = null;
+            try {
+                data = await res.json();
+            } catch {
+                if (res.status === 413) {
+                    setComposeError('El archivo adjunto es demasiado grande para el servidor. Probá uno más liviano (≤ 20 MB).');
+                } else {
+                    setComposeError(`Respuesta inesperada del servidor (HTTP ${res.status}).`);
+                }
+                setComposeSending(false);
+                return;
+            }
+            if (!res.ok || !data.success) {
+                setComposeError(data?.error || `No se pudo enviar el mensaje (HTTP ${res.status}).`);
                 setComposeSending(false);
                 return;
             }
