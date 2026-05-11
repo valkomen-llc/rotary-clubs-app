@@ -30,7 +30,7 @@ const VideoCreator: React.FC = () => {
     // Config states
     const [config, setConfig] = useState({
         format: '9:16',
-        duration: 15,
+        duration: 5, // segundos. Seedance/Kling solo aceptan 5 o 10
         transition: 'fade',
         animation: 'ken_burns',
         caption: '',
@@ -199,7 +199,7 @@ const VideoCreator: React.FC = () => {
                             </div>
                             <div className="space-y-2">
                                 <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest block">Animación IA</label>
-                                <select 
+                                <select
                                     className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-600/10 focus:border-indigo-600 transition-all font-sans"
                                     value={config.animation}
                                     onChange={(e) => setConfig({...config, animation: e.target.value})}
@@ -207,6 +207,17 @@ const VideoCreator: React.FC = () => {
                                     <option value="ken_burns">Efecto Ken Burns (Pan/Zoom)</option>
                                     <option value="motion_ia">Motion Pro AI</option>
                                     <option value="static">Estático (Sin Movimiento)</option>
+                                </select>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest block">Duración</label>
+                                <select
+                                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-600/10 focus:border-indigo-600 transition-all font-sans"
+                                    value={config.duration}
+                                    onChange={(e) => setConfig({...config, duration: Number(e.target.value)})}
+                                >
+                                    <option value={5}>5 segundos</option>
+                                    <option value={10}>10 segundos</option>
                                 </select>
                             </div>
                         </div>

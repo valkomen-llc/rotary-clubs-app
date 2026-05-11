@@ -23,13 +23,19 @@ export const triggerVideoGeneration = async (projectId, imageUrls, config) => {
     // separadas y concatenar los videos (futuro).
     const firstImage = imageUrls[0];
 
+    // Duración: Seedance/Bytedance acepta solo 5 o 10. Kling acepta 5 o 10.
+    // Clampeamos a valores válidos para evitar "duration not within range".
+    const requestedDuration = Number(config.duration) || 5;
+    const validDurations = [5, 10];
+    const finalDuration = validDurations.includes(requestedDuration) ? requestedDuration : 5;
+
     const payload = {
         model: config.model || DEFAULT_MODEL,
         callBackUrl: `${appUrl}/api/content-studio/webhook`,
         input: {
             prompt: config.prompt || 'Smooth cinematic camera movement, high quality social media content',
             image_url: firstImage,
-            duration: String(config.duration || 5),
+            duration: String(finalDuration),
             aspect_ratio: config.format || '9:16'
         },
         metadata: { projectId, totalImagesProvided: imageUrls.length }

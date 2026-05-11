@@ -23,9 +23,16 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.150 | 2026-05-11 (KIE MODEL PROBE 🔎)
-// Cache bust: 2026-05-11 12:35 (MODEL DISCOVERY 🎯)
+// DISTRICT HEALTH IQ V4.151 | 2026-05-11 (KIE DURATION FIX 🕐)
+// Cache bust: 2026-05-11 12:45 (LAST KIE FIX 🎯)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.151',
+        date: '11 de Mayo, 2026',
+        title: '🕐 Content Studio — Duración válida + Modelo Seedance confirmado',
+        description: 'KIE.ai con Bytedance Seedance solo acepta duración de 5 o 10 segundos (antes mandábamos 15 por default). Clampeamos automáticamente en backend a valores válidos. UI ahora tiene selector de duración (5 o 10 segundos) en la sección Efectos & IA. Default cambiado a 5 segundos para renders más rápidos y económicos.',
+        type: 'fix'
+    },
     {
         version: 'v4.150',
         date: '11 de Mayo, 2026',
