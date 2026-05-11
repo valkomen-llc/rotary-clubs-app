@@ -24,8 +24,15 @@ interface UpdateItem {
 }
 
 // DISTRICT HEALTH IQ V4.118 | 2026-05-06 (DSO ADMIN 🧠)
-// Cache bust: 2026-05-11 16:05 (WA REAL-TIME & GLOBAL SYNC ⚡📸)
+// Cache bust: 2026-05-11 21:35 (WA QR → EVOLUTION API 📲)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.166',
+        date: '11 de Mayo, 2026',
+        title: '📲 WhatsApp QR Gateway sobre Evolution API',
+        description: 'Se migró el módulo nativo de WhatsApp QR (SuperAdmin) de whatsapp-web.js + Puppeteer a Evolution API por HTTP. Se eliminan dependencias pesadas, se quita el hack /vps del frontend y el gateway corre de manera estable sobre la línea oficial vinculada en producción.',
+        type: 'feature'
+    },
     {
         version: 'v4.165',
         date: '11 de Mayo, 2026',

@@ -1,270 +1,315 @@
-import pkg from 'whatsapp-web.js';
-const { Client, LocalAuth, MessageMedia } = pkg;
-import qrcode from 'qrcode';
+import axios from 'axios';
 
-// Global state for the SuperAdmin WhatsApp Web connection
-let waClient = null;
-let qrCodeData = null;
-let clientStatus = 'DISCONNECTED'; // DISCONNECTED, INITIALIZING, QR_READY, CONNECTED
+// ── Evolution API client (single SuperAdmin instance for Club Platform) ────────
+//
+// We talk to a self-hosted Evolution API (https://github.com/EvolutionAPI/evolution-api).
+// It exposes WhatsApp via REST, so the Vercel serverless function only proxies HTTP
+// calls — no Puppeteer, no persistent process, no global state in this Node runtime.
+//
+// Required env vars:
+//   EVOLUTION_API_URL          e.g. https://evo.clubplatform.org
+//   EVOLUTION_API_KEY          global API key configured in Evolution
+//   EVOLUTION_INSTANCE_NAME    instance to use (default: 'clubplatform-admin')
+
+const EVO_URL = (process.env.EVOLUTION_API_URL || '').replace(/\/$/, '');
+const EVO_KEY = process.env.EVOLUTION_API_KEY || '';
+const EVO_INSTANCE = process.env.EVOLUTION_INSTANCE_NAME || 'clubplatform-admin';
+// Instance name can include spaces or accents (Evolution allows it via the manager UI),
+// so encode it for every URL segment.
+const EVO_INSTANCE_PATH = encodeURIComponent(EVO_INSTANCE);
+
+const evo = axios.create({
+    baseURL: EVO_URL,
+    headers: { 'apikey': EVO_KEY, 'Content-Type': 'application/json' },
+    timeout: 20000,
+    validateStatus: (s) => s < 500 // surface 4xx as data instead of throw
+});
+
+const requireConfig = (res) => {
+    if (!EVO_URL || !EVO_KEY) {
+        res.status(500).json({ error: 'Evolution API no está configurada. Falta EVOLUTION_API_URL / EVOLUTION_API_KEY.' });
+        return false;
+    }
+    return true;
+};
+
+// Evolution returns connection state as 'open' | 'close' | 'connecting'.
+// Map it to the four states the frontend expects.
+const mapState = (state, hasQr) => {
+    if (state === 'open') return 'CONNECTED';
+    if (state === 'connecting' && hasQr) return 'QR_READY';
+    if (state === 'connecting') return 'INITIALIZING';
+    return 'DISCONNECTED';
+};
+
+const ensureInstance = async () => {
+    // Try to find the instance first; create it if missing.
+    const list = await evo.get('/instance/fetchInstances', { params: { instanceName: EVO_INSTANCE } });
+    const found = Array.isArray(list.data)
+        ? list.data.find(i => (i?.instance?.instanceName || i?.name) === EVO_INSTANCE)
+        : null;
+    if (found) return found;
+
+    const create = await evo.post('/instance/create', {
+        instanceName: EVO_INSTANCE,
+        qrcode: true,
+        integration: 'WHATSAPP-BAILEYS'
+    });
+    if (create.status >= 400) {
+        const msg = create.data?.message || create.data?.error || 'No se pudo crear la instancia';
+        throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    }
+    return create.data;
+};
+
+const fetchConnectionState = async () => {
+    const r = await evo.get(`/instance/connectionState/${EVO_INSTANCE_PATH}`);
+    if (r.status === 404) return { state: 'close' };
+    return r.data?.instance || r.data || { state: 'close' };
+};
+
+// ── Public endpoints ──────────────────────────────────────────────────────────
 
 export const getStatus = async (req, res) => {
-    res.json({
-        status: clientStatus,
-        qr: clientStatus === 'QR_READY' ? qrCodeData : null
-    });
+    if (!requireConfig(res)) return;
+    try {
+        const conn = await fetchConnectionState();
+        const state = conn.state || conn.status || 'close';
+
+        let qr = null;
+        if (state !== 'open') {
+            // When pairing, Evolution caches the latest QR on the instance/connect endpoint.
+            const qrRes = await evo.get(`/instance/connect/${EVO_INSTANCE_PATH}`);
+            if (qrRes.status < 400) {
+                qr = qrRes.data?.base64 || qrRes.data?.qrcode?.base64 || null;
+                if (qr && !qr.startsWith('data:image')) qr = `data:image/png;base64,${qr}`;
+            }
+        }
+
+        res.json({ status: mapState(state, !!qr), qr });
+    } catch (e) {
+        console.error('[WA-QR] getStatus error:', e.response?.data || e.message);
+        res.status(500).json({ error: e.response?.data?.message || e.message });
+    }
 };
 
 export const startClient = async (req, res) => {
-    // If it's already initializing or connected, just return current state
-    if (clientStatus !== 'DISCONNECTED') {
-        return res.json({ success: true, status: clientStatus, qr: qrCodeData });
-    }
-
-    clientStatus = 'INITIALIZING';
-    qrCodeData = null;
-
+    if (!requireConfig(res)) return;
     try {
-        console.log('[WA-QR] Starting WhatsApp Web Client...');
-        waClient = new Client({
-            authStrategy: new LocalAuth({ clientId: 'superadmin-wa-session' }),
-            puppeteer: {
-                headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-accelerated-2d-canvas', '--no-first-run', '--no-zygote']
-            }
-        });
+        await ensureInstance();
+        const r = await evo.get(`/instance/connect/${EVO_INSTANCE_PATH}`);
+        let qr = r.data?.base64 || r.data?.qrcode?.base64 || null;
+        if (qr && !qr.startsWith('data:image')) qr = `data:image/png;base64,${qr}`;
 
-        waClient.on('qr', async (qr) => {
-            console.log('[WA-QR] QR Code received');
-            clientStatus = 'QR_READY';
-            qrCodeData = await qrcode.toDataURL(qr);
-        });
-
-        waClient.on('ready', () => {
-            console.log('[WA-QR] WhatsApp Web Client is ready and connected!');
-            clientStatus = 'CONNECTED';
-            qrCodeData = null;
-        });
-
-        waClient.on('authenticated', () => {
-            console.log('[WA-QR] Authenticated successfully');
-        });
-
-        waClient.on('auth_failure', msg => {
-            console.error('[WA-QR] Authentication failure', msg);
-            clientStatus = 'DISCONNECTED';
-            qrCodeData = null;
-            if (waClient) {
-                waClient.destroy().catch(console.error);
-                waClient = null;
-            }
-        });
-
-        waClient.on('disconnected', (reason) => {
-            console.log('[WA-QR] Client was disconnected:', reason);
-            clientStatus = 'DISCONNECTED';
-            qrCodeData = null;
-            if (waClient) {
-                waClient.destroy().catch(console.error);
-                waClient = null;
-            }
-        });
-
-        // Event listener mapping out future integration with Agentes
-        waClient.on('message', async (msg) => {
-            // Optional: Forward incoming messages to the CRM or AI Agent logic 
-            // Only listen if it's the connected super admin session
-            if(msg.from === 'status@broadcast') return;
-            // console.log(`[WA-QR] Incoming message from ${msg.from}: ${msg.body}`);
-        });
-
-        waClient.initialize();
-        
-        res.json({ success: true, status: clientStatus });
+        const conn = await fetchConnectionState();
+        const state = conn.state || conn.status || 'connecting';
+        res.json({ success: true, status: mapState(state, !!qr), qr });
     } catch (e) {
-        console.error('[WA-QR] Error starting client:', e);
-        clientStatus = 'DISCONNECTED';
-        res.status(500).json({ error: e.message });
+        console.error('[WA-QR] startClient error:', e.response?.data || e.message);
+        res.status(500).json({ error: e.response?.data?.message || e.message });
     }
 };
 
 export const disconnectClient = async (req, res) => {
-    console.log('[WA-QR] Disconnecting client...');
+    if (!requireConfig(res)) return;
     try {
-        if (waClient) {
-            try { await waClient.logout(); } catch(e) {}
-            try { await waClient.destroy(); } catch(e) {}
-            waClient = null;
-        }
-        clientStatus = 'DISCONNECTED';
-        qrCodeData = null;
+        // Logout is enough for a normal disconnect; the instance stays so we can re-pair fast.
+        await evo.delete(`/instance/logout/${EVO_INSTANCE_PATH}`).catch(() => {});
         res.json({ success: true });
     } catch (e) {
-        console.error('[WA-QR] Error disconnecting:', e);
-        // Force reset
-        clientStatus = 'DISCONNECTED';
-        waClient = null;
-        res.status(500).json({ error: e.message });
+        console.error('[WA-QR] disconnectClient error:', e.response?.data || e.message);
+        res.status(500).json({ error: e.response?.data?.message || e.message });
     }
 };
 
-// ── CRM Endpoints ───────────────────────────────────────────────────────────
+// ── CRM Endpoints ─────────────────────────────────────────────────────────────
 
 export const getChats = async (req, res) => {
-    if (clientStatus !== 'CONNECTED' || !waClient) {
-        return res.status(400).json({ error: 'WhatsApp Web no está conectado.' });
-    }
+    if (!requireConfig(res)) return;
     try {
-        const chats = await waClient.getChats();
-        // Fetch top 50 recent to prioritize
-        const recentChats = chats.sort((a, b) => b.timestamp - a.timestamp).slice(0, 50);
+        const r = await evo.post(`/chat/findChats/${EVO_INSTANCE_PATH}`, {});
+        if (r.status >= 400) return res.status(400).json({ error: r.data?.message || 'WhatsApp no está conectado.' });
 
-        const mappedChats = recentChats.map(c => ({
-            id: c.id._serialized,
-            name: c.name || c.id.user,
-            isGroup: c.isGroup,
-            unreadCount: c.unreadCount,
-            timestamp: c.timestamp
-        }));
-        
-        res.json({ success: true, chats: mappedChats });
+        const rows = Array.isArray(r.data) ? r.data : [];
+        const mapped = rows
+            .map(c => {
+                const id = c.remoteJid || c.id || c.chatId;
+                if (!id) return null;
+                const isGroup = id.endsWith('@g.us');
+                const timestampMs = Number(c.updatedAt ? new Date(c.updatedAt).getTime() : (c.messageTimestamp || c.lastMessageTimestamp || 0) * 1000) || 0;
+                return {
+                    id,
+                    name: c.pushName || c.name || c.subject || id.split('@')[0],
+                    isGroup,
+                    unreadCount: Number(c.unreadCount || c.unreadMessages || 0),
+                    timestamp: Math.floor(timestampMs / 1000)
+                };
+            })
+            .filter(Boolean)
+            .sort((a, b) => b.timestamp - a.timestamp)
+            .slice(0, 50);
+
+        res.json({ success: true, chats: mapped });
     } catch (e) {
-        console.error('[WA-QR] Error getting chats:', e);
-        res.status(500).json({ error: e.message });
+        console.error('[WA-QR] getChats error:', e.response?.data || e.message);
+        res.status(500).json({ error: e.response?.data?.message || e.message });
     }
 };
 
 export const getChatImage = async (req, res) => {
-    if (clientStatus !== 'CONNECTED' || !waClient) {
-        return res.status(400).json({ error: 'WhatsApp Web no está conectado.' });
-    }
+    if (!requireConfig(res)) return;
     const { chatId } = req.params;
     try {
-        const profilePicUrl = await waClient.getProfilePicUrl(chatId);
-        if (!profilePicUrl) {
-            return res.status(404).send('No profile picture');
-        }
+        const r = await evo.post(`/chat/fetchProfilePictureUrl/${EVO_INSTANCE_PATH}`, { number: chatId });
+        const url = r.data?.profilePictureUrl || r.data?.url || null;
+        if (!url) return res.status(404).send('No profile picture');
 
-        // Acting as a full proxy to avoid CORS and browser blocks
-        const imgRes = await fetch(profilePicUrl);
+        // Proxy the WhatsApp CDN through our server to dodge CORS and short-lived URLs in the browser.
+        const imgRes = await fetch(url);
         if (!imgRes.ok) throw new Error('WhatsApp CDN error');
-        
+
         const buffer = Buffer.from(await imgRes.arrayBuffer());
         res.setHeader('Content-Type', imgRes.headers.get('Content-Type') || 'image/jpeg');
-        res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+        res.setHeader('Cache-Control', 'public, max-age=3600');
         res.send(buffer);
     } catch (e) {
-        console.error('[WA-QR] Error getting chat image:', e);
-        // Silently return 404 for frontend fallback
+        console.error('[WA-QR] getChatImage error:', e.response?.data || e.message);
         res.status(404).send('Error');
     }
 };
 
 export const getMessages = async (req, res) => {
-    if (clientStatus !== 'CONNECTED' || !waClient) {
-        return res.status(400).json({ error: 'WhatsApp Web no está conectado.' });
-    }
+    if (!requireConfig(res)) return;
     const { chatId } = req.params;
     try {
-        const chat = await waClient.getChatById(chatId);
-        if (!chat) return res.status(404).json({ error: 'Chat not found' });
-        
-        const messages = await chat.fetchMessages({ limit: 40 });
-        
-        const mappedMsgs = messages.map(m => ({
-            id: m.id._serialized,
-            fromMe: m.fromMe,
-            body: m.body || '',
-            timestamp: m.timestamp,
-            hasMedia: m.hasMedia,
-            type: m.type
-        }));
-        
-        res.json({ success: true, messages: mappedMsgs });
+        const r = await evo.post(`/chat/findMessages/${EVO_INSTANCE_PATH}`, {
+            where: { key: { remoteJid: chatId } },
+            limit: 40
+        });
+        if (r.status >= 400) return res.status(400).json({ error: r.data?.message || 'No se pudieron obtener mensajes.' });
+
+        const rows = Array.isArray(r.data) ? r.data : (r.data?.messages?.records || r.data?.records || []);
+        const mapped = rows
+            .map(m => {
+                const key = m.key || {};
+                const msg = m.message || {};
+                const type = m.messageType || Object.keys(msg)[0] || 'unknown';
+                const body =
+                    msg.conversation ||
+                    msg.extendedTextMessage?.text ||
+                    msg.imageMessage?.caption ||
+                    msg.videoMessage?.caption ||
+                    msg.documentMessage?.caption ||
+                    '';
+                const hasMedia = !!(msg.imageMessage || msg.videoMessage || msg.audioMessage || msg.documentMessage || msg.stickerMessage);
+                const ts = Number(m.messageTimestamp || m.timestamp || 0);
+                return {
+                    id: key.id || m.id || '',
+                    fromMe: !!key.fromMe,
+                    body,
+                    timestamp: ts > 1e12 ? Math.floor(ts / 1000) : ts,
+                    hasMedia,
+                    type
+                };
+            })
+            .filter(m => m.id)
+            .sort((a, b) => b.timestamp - a.timestamp);
+
+        res.json({ success: true, messages: mapped });
     } catch (e) {
-        console.error('[WA-QR] Error getting messages:', e);
-        res.status(500).json({ error: e.message });
+        console.error('[WA-QR] getMessages error:', e.response?.data || e.message);
+        res.status(500).json({ error: e.response?.data?.message || e.message });
     }
 };
 
 export const getMessageMedia = async (req, res) => {
-    if (clientStatus !== 'CONNECTED' || !waClient) {
-        return res.status(400).json({ error: 'WhatsApp Web no está conectado.' });
-    }
+    if (!requireConfig(res)) return;
     const { chatId, messageId } = req.params;
     try {
-        const chat = await waClient.getChatById(chatId);
-        if (!chat) return res.status(404).json({ error: 'Chat not found' });
-        
-        const messages = await chat.fetchMessages({ limit: 40 });
-        const msg = messages.find(m => m.id._serialized === messageId || m.id.id === messageId);
-        
-        if (!msg) return res.status(404).json({ error: 'Message not found in recent history' });
-        if (!msg.hasMedia) return res.status(400).json({ error: 'Message does not contain media' });
-        
-        const media = await msg.downloadMedia();
-        if (!media) return res.status(404).json({ error: 'Media expired or unavailable' });
-        
-        const buffer = Buffer.from(media.data, 'base64');
-        res.setHeader('Content-Type', media.mimetype);
-        res.setHeader('Content-Disposition', `inline; filename="${media.filename || 'media'}"`);
+        const r = await evo.post(`/chat/getBase64FromMediaMessage/${EVO_INSTANCE_PATH}`, {
+            message: { key: { id: messageId, remoteJid: chatId } },
+            convertToMp4: false
+        });
+        if (r.status >= 400 || !r.data?.base64) {
+            return res.status(404).json({ error: r.data?.message || 'Media expired or unavailable' });
+        }
+        const buffer = Buffer.from(r.data.base64, 'base64');
+        res.setHeader('Content-Type', r.data.mimetype || 'application/octet-stream');
+        res.setHeader('Content-Disposition', `inline; filename="${r.data.fileName || 'media'}"`);
         res.send(buffer);
     } catch (e) {
-        console.error('[WA-QR] Error getting media for message:', e);
-        res.status(500).json({ error: e.message });
+        console.error('[WA-QR] getMessageMedia error:', e.response?.data || e.message);
+        res.status(500).json({ error: e.response?.data?.message || e.message });
     }
 };
 
 export const sendMessage = async (req, res) => {
-    if (clientStatus !== 'CONNECTED' || !waClient) {
-        return res.status(400).json({ error: 'WhatsApp Web no está conectado.' });
-    }
+    if (!requireConfig(res)) return;
     const { chatId, message } = req.body;
-    if (!chatId || !message) {
-         return res.status(400).json({ error: 'chatId and message are required' });
-    }
+    if (!chatId || !message) return res.status(400).json({ error: 'chatId and message are required' });
     try {
-        const response = await waClient.sendMessage(chatId, message);
-        res.json({ 
-            success: true, 
+        const r = await evo.post(`/message/sendText/${EVO_INSTANCE_PATH}`, {
+            number: chatId,
+            text: message
+        });
+        if (r.status >= 400) return res.status(400).json({ error: r.data?.message || 'No se pudo enviar el mensaje.' });
+
+        const key = r.data?.key || {};
+        const ts = Number(r.data?.messageTimestamp || Date.now() / 1000);
+        res.json({
+            success: true,
             message: {
-                id: response.id._serialized,
-                fromMe: response.fromMe,
-                body: response.body,
-                timestamp: response.timestamp,
+                id: key.id || `local-${Date.now()}`,
+                fromMe: true,
+                body: message,
+                timestamp: ts > 1e12 ? Math.floor(ts / 1000) : ts,
                 hasMedia: false,
-                type: response.type
+                type: 'conversation'
             }
         });
     } catch (e) {
-        console.error('[WA-QR] Error sending message:', e);
-        res.status(500).json({ error: e.message });
+        console.error('[WA-QR] sendMessage error:', e.response?.data || e.message);
+        res.status(500).json({ error: e.response?.data?.message || e.message });
     }
 };
 
 export const sendMedia = async (req, res) => {
-    if (clientStatus !== 'CONNECTED' || !waClient) {
-        return res.status(400).json({ error: 'WhatsApp Web no está conectado.' });
-    }
+    if (!requireConfig(res)) return;
     const { chatId, caption, mediaData, filename, mimetype } = req.body;
     if (!chatId || !mediaData || !mimetype) {
-         return res.status(400).json({ error: 'chatId, mediaData and mimetype are required' });
+        return res.status(400).json({ error: 'chatId, mediaData and mimetype are required' });
     }
     try {
-        const media = new MessageMedia(mimetype, mediaData, filename);
-        const response = await waClient.sendMessage(chatId, media, { caption });
-        res.json({ 
-            success: true, 
+        let mediatype = 'document';
+        if (mimetype.startsWith('image/')) mediatype = 'image';
+        else if (mimetype.startsWith('video/')) mediatype = 'video';
+        else if (mimetype.startsWith('audio/')) mediatype = 'audio';
+
+        const r = await evo.post(`/message/sendMedia/${EVO_INSTANCE_PATH}`, {
+            number: chatId,
+            mediatype,
+            mimetype,
+            media: mediaData, // base64 (no data: prefix)
+            fileName: filename || 'media',
+            caption: caption || ''
+        });
+        if (r.status >= 400) return res.status(400).json({ error: r.data?.message || 'No se pudo enviar el archivo.' });
+
+        const key = r.data?.key || {};
+        const ts = Number(r.data?.messageTimestamp || Date.now() / 1000);
+        res.json({
+            success: true,
             message: {
-                id: response.id._serialized,
-                fromMe: response.fromMe,
-                body: response.body || caption || '[Multimedia]',
-                timestamp: response.timestamp,
+                id: key.id || `local-${Date.now()}`,
+                fromMe: true,
+                body: caption || '[Multimedia]',
+                timestamp: ts > 1e12 ? Math.floor(ts / 1000) : ts,
                 hasMedia: true,
-                type: response.type
+                type: mediatype
             }
         });
     } catch (e) {
-        console.error('[WA-QR] Error sending media:', e);
-        res.status(500).json({ error: e.message });
+        console.error('[WA-QR] sendMedia error:', e.response?.data || e.message);
+        res.status(500).json({ error: e.response?.data?.message || e.message });
     }
 };
