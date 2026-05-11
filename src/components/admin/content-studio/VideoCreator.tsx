@@ -25,7 +25,8 @@ const VideoCreator: React.FC = () => {
     const [selectedMedia, setSelectedMedia] = useState<MediaItem[]>([]);
     const [showPicker, setShowPicker] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
-    
+    const [generatingCaption, setGeneratingCaption] = useState(false);
+
     // Config states
     const [config, setConfig] = useState({
         format: '9:16',
@@ -35,6 +36,38 @@ const VideoCreator: React.FC = () => {
         caption: '',
         music: 'default'
     });
+
+    const generateCaptionAI = async () => {
+        if (selectedMedia.length === 0) {
+            toast.error('Agregá imágenes primero para generar un caption acorde');
+            return;
+        }
+        setGeneratingCaption(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/content-studio/captions/suggest`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    prompt: `Video de ${selectedMedia.length} imágenes. Nombres: ${selectedMedia.map(m => m.filename).join(', ')}`
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.caption) {
+                setConfig((c) => ({ ...c, caption: data.caption }));
+                toast.success('Caption generado con IA');
+            } else {
+                toast.error(data.error || 'No se pudo generar el caption');
+            }
+        } catch {
+            toast.error('Error de conexión con IA');
+        } finally {
+            setGeneratingCaption(false);
+        }
+    };
 
     const handleGenerate = async () => {
         if (selectedMedia.length === 0) {
@@ -190,8 +223,23 @@ const VideoCreator: React.FC = () => {
                                 </div>
                             </div>
                             <div className="space-y-2">
-                                <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest block">Caption Sugerido</label>
-                                <textarea 
+                                <div className="flex justify-between items-center">
+                                    <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Caption Sugerido</label>
+                                    <button
+                                        type="button"
+                                        onClick={generateCaptionAI}
+                                        disabled={generatingCaption}
+                                        className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-black uppercase hover:bg-indigo-100 transition-all disabled:opacity-50"
+                                    >
+                                        {generatingCaption ? (
+                                            <Loader2 className="w-3 h-3 animate-spin" />
+                                        ) : (
+                                            <Sparkles className="w-3 h-3" />
+                                        )}
+                                        {generatingCaption ? 'Generando' : 'Sugerir IA'}
+                                    </button>
+                                </div>
+                                <textarea
                                     className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-indigo-600/10 focus:border-indigo-600 transition-all font-sans resize-none h-20"
                                     placeholder="Añade un caption para redes sociales..."
                                     value={config.caption}

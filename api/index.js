@@ -184,10 +184,106 @@ app.use('/api/cron', async (req, res, next) => { try { return (await getCron())(
 app.use('/api/scout-grants', async (req, res, next) => { try { return (await getScoutGrants())(req, res, next); } catch (e) { console.error('API Error [scout-grants]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/district-analytics', async (req, res, next) => { try { return (await getDistAnalytics())(req, res, next); } catch (e) { console.error('API Error [district-analytics]:', e); res.status(500).json({ error: e.message }); } });
 
-// RUTAS SOCIAL HUB
+// RUTAS SOCIAL HUB — OAuth callback real: intercambia el code por access_token y guarda la cuenta
 app.get('/api/social/callback/:platform', async (req, res) => {
     const { platform } = req.params;
-    res.redirect(`/admin/content-studio?tab=accounts&connected=${platform}`);
+    const { code, state, error: oauthError } = req.query;
+    const REDIRECT_BASE = '/admin/content-studio?tab=accounts';
+
+    if (oauthError) {
+        return res.redirect(`${REDIRECT_BASE}&error=${encodeURIComponent(String(oauthError))}`);
+    }
+    if (!code) {
+        return res.redirect(`${REDIRECT_BASE}&error=missing_code`);
+    }
+
+    try {
+        const baseUrl = process.env.APP_URL
+            || (process.env.NODE_ENV === 'production'
+                ? 'https://app.clubplatform.org'
+                : `${req.protocol}://${req.get('host')}`);
+        const redirectUri = `${baseUrl}/api/social/callback/${platform}`;
+        const clubId = state && state !== 'platform' ? state : null;
+
+        let accountData = null;
+
+        if (platform === 'facebook' || platform === 'instagram') {
+            const FB_APP_ID = process.env.META_APP_ID || process.env.FB_APP_ID;
+            const FB_APP_SECRET = process.env.META_APP_SECRET || process.env.FB_APP_SECRET;
+            if (!FB_APP_ID || !FB_APP_SECRET) throw new Error('META_APP_ID/META_APP_SECRET no configurados');
+
+            const tokenUrl = `https://graph.facebook.com/v19.0/oauth/access_token?client_id=${FB_APP_ID}&client_secret=${FB_APP_SECRET}&redirect_uri=${encodeURIComponent(redirectUri)}&code=${code}`;
+            const tokenRes = await fetch(tokenUrl);
+            const tokenData = await tokenRes.json();
+            if (!tokenRes.ok) throw new Error(tokenData?.error?.message || 'No se pudo obtener el token de Meta');
+
+            // Long-lived token (60 días)
+            const llUrl = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${FB_APP_ID}&client_secret=${FB_APP_SECRET}&fb_exchange_token=${tokenData.access_token}`;
+            const llRes = await fetch(llUrl);
+            const llData = await llRes.json();
+            const userAccessToken = llData.access_token || tokenData.access_token;
+            const expiresInSec = llData.expires_in || tokenData.expires_in || (60 * 24 * 3600);
+
+            // Páginas del usuario (cada página tiene su propio token de larga duración)
+            const pagesRes = await fetch(`https://graph.facebook.com/v19.0/me/accounts?fields=id,name,access_token,instagram_business_account,picture&access_token=${userAccessToken}`);
+            const pagesData = await pagesRes.json();
+            if (!pagesRes.ok) throw new Error(pagesData?.error?.message || 'No se pudieron listar las páginas de Facebook');
+
+            const page = pagesData.data?.[0];
+            if (!page) throw new Error('La cuenta de Meta no tiene páginas de Facebook administradas');
+
+            if (platform === 'facebook') {
+                accountData = {
+                    platform: 'facebook',
+                    platformId: page.id,
+                    accountName: page.name,
+                    accessToken: page.access_token,
+                    avatar: page.picture?.data?.url || null,
+                    expiresAt: new Date(Date.now() + expiresInSec * 1000),
+                };
+            } else {
+                // Instagram: usar el IG Business Account vinculado a la Page
+                const igId = page.instagram_business_account?.id;
+                if (!igId) throw new Error('La Page de Facebook no tiene una cuenta de Instagram Business vinculada');
+
+                const igInfoRes = await fetch(`https://graph.facebook.com/v19.0/${igId}?fields=id,username,profile_picture_url&access_token=${page.access_token}`);
+                const igInfo = await igInfoRes.json();
+
+                accountData = {
+                    platform: 'instagram',
+                    platformId: igId,
+                    accountName: igInfo.username || page.name,
+                    accessToken: page.access_token,
+                    avatar: igInfo.profile_picture_url || null,
+                    expiresAt: new Date(Date.now() + expiresInSec * 1000),
+                };
+            }
+        } else {
+            // TikTok / YouTube todavía no implementados en este iteración
+            return res.redirect(`${REDIRECT_BASE}&error=${encodeURIComponent(platform + '_not_implemented')}`);
+        }
+
+        await prisma.socialAccount.upsert({
+            where: { id: `${accountData.platform}-${accountData.platformId}` },
+            update: {
+                accountName: accountData.accountName,
+                accessToken: accountData.accessToken,
+                avatar: accountData.avatar,
+                expiresAt: accountData.expiresAt,
+                status: 'active',
+            },
+            create: {
+                id: `${accountData.platform}-${accountData.platformId}`,
+                clubId,
+                ...accountData,
+            },
+        });
+
+        res.redirect(`${REDIRECT_BASE}&connected=${accountData.platform}`);
+    } catch (error) {
+        console.error('[OAuth callback]', platform, error.message);
+        res.redirect(`${REDIRECT_BASE}&error=${encodeURIComponent(error.message.slice(0, 120))}`);
+    }
 });
 
 // ── Frontend & SEO Injection ──────────────────────────────────────────────────

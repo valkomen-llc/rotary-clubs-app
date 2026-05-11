@@ -1,20 +1,31 @@
 import React, { useEffect, useState } from 'react';
-import { 
-    Clock, 
-    CheckCircle2, 
-    AlertCircle, 
-    Loader2, 
-    MoreVertical, 
+import {
+    Clock,
+    CheckCircle2,
+    AlertCircle,
+    Loader2,
+    MoreVertical,
     Send,
-    Video
+    Video,
+    RefreshCw,
+    Trash2,
+    Ban
 } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+    DropdownMenuSeparator
+} from '../../ui/dropdown-menu';
 
 interface ScheduledPost {
     id: string;
     caption: string | null;
-    status: 'pending' | 'scheduled' | 'published' | 'failed';
+    status: 'pending' | 'scheduled' | 'published' | 'failed' | 'cancelled';
     scheduledFor: string | null;
+    error?: string | null;
     video: {
         title: string;
     };
@@ -32,11 +43,13 @@ const ContentQueue: React.FC = () => {
         fetchPosts();
     }, []);
 
-    const fetchPosts = async () => {
-        setLoading(true);
+    const API = import.meta.env.VITE_API_URL || '/api';
+
+    const fetchPosts = async (showLoading = true) => {
+        if (showLoading) setLoading(true);
         try {
             const token = localStorage.getItem('rotary_token');
-            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/content-studio/posts`, {
+            const response = await fetch(`${API}/content-studio/posts`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (response.ok) {
@@ -50,6 +63,33 @@ const ContentQueue: React.FC = () => {
         }
     };
 
+    const callAction = async (postId: string, action: 'cancel' | 'retry' | 'delete') => {
+        const token = localStorage.getItem('rotary_token');
+        const labels: Record<typeof action, { loading: string; success: string }> = {
+            cancel: { loading: 'Cancelando...', success: 'Publicación cancelada' },
+            retry: { loading: 'Reintentando...', success: 'Reintento enviado' },
+            delete: { loading: 'Eliminando...', success: 'Publicación eliminada' }
+        };
+        const tId = toast.loading(labels[action].loading);
+        try {
+            const url =
+                action === 'delete'
+                    ? `${API}/content-studio/posts/${postId}`
+                    : `${API}/content-studio/posts/${postId}/${action}`;
+            const method = action === 'delete' ? 'DELETE' : 'POST';
+            const res = await fetch(url, { method, headers: { Authorization: `Bearer ${token}` } });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+                toast.success(labels[action].success, { id: tId });
+                fetchPosts(false);
+            } else {
+                toast.error(data.error || 'Operación fallida', { id: tId });
+            }
+        } catch {
+            toast.error('Error de conexión', { id: tId });
+        }
+    };
+
     const getStatusBadge = (status: string) => {
         switch (status) {
             case 'published':
@@ -58,6 +98,8 @@ const ContentQueue: React.FC = () => {
                 return <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5"><Clock className="w-3 h-3" /> Programado</span>;
             case 'failed':
                 return <span className="bg-red-50 text-red-600 px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5"><AlertCircle className="w-3 h-3" /> Fallido</span>;
+            case 'cancelled':
+                return <span className="bg-gray-100 text-gray-500 px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5"><Ban className="w-3 h-3" /> Cancelado</span>;
             default:
                 return <span className="bg-gray-50 text-gray-400 px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5"><Send className="w-3 h-3" /> Pendiente</span>;
         }
@@ -136,9 +178,36 @@ const ContentQueue: React.FC = () => {
                                     </div>
                                 </td>
                                 <td className="px-8 py-6 text-right">
-                                    <button className="p-2 text-gray-300 hover:text-gray-900 transition-all">
-                                        <MoreVertical className="w-5 h-5" />
-                                    </button>
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <button className="p-2 text-gray-300 hover:text-gray-900 transition-all">
+                                                <MoreVertical className="w-5 h-5" />
+                                            </button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end" className="w-48">
+                                            {(post.status === 'scheduled' || post.status === 'pending') && (
+                                                <DropdownMenuItem onClick={() => callAction(post.id, 'cancel')}>
+                                                    <Ban className="w-4 h-4 mr-2" /> Cancelar
+                                                </DropdownMenuItem>
+                                            )}
+                                            {(post.status === 'failed' || post.status === 'cancelled') && (
+                                                <DropdownMenuItem onClick={() => callAction(post.id, 'retry')}>
+                                                    <RefreshCw className="w-4 h-4 mr-2" /> Reintentar
+                                                </DropdownMenuItem>
+                                            )}
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem
+                                                onClick={() => {
+                                                    if (confirm('¿Eliminar esta publicación del historial?')) {
+                                                        callAction(post.id, 'delete');
+                                                    }
+                                                }}
+                                                className="text-red-600 focus:text-red-600"
+                                            >
+                                                <Trash2 className="w-4 h-4 mr-2" /> Eliminar
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
                                 </td>
                             </tr>
                         ))}

@@ -2,6 +2,8 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 import { triggerVideoGeneration } from '../services/kieService.js';
+import { publishPost } from '../services/socialPublishService.js';
+import { routeToModel } from '../lib/ai-router.js';
 
 export const createVideoProject = async (req, res) => {
     try {
@@ -143,20 +145,162 @@ export const getSocialAccounts = async (req, res) => {
 export const schedulePost = async (req, res) => {
     try {
         const { projectId, socialAccountId, caption, scheduledFor } = req.body;
-        
+        if (!projectId || !socialAccountId) {
+            return res.status(400).json({ error: 'projectId y socialAccountId son requeridos' });
+        }
+
+        const scheduledDate = scheduledFor ? new Date(scheduledFor) : null;
+        const publishNow = !scheduledDate || scheduledDate.getTime() <= Date.now();
+
         const post = await prisma.scheduledPost.create({
             data: {
                 projectId,
                 socialAccountId,
                 caption,
-                scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
-                status: scheduledFor ? 'scheduled' : 'pending'
+                scheduledFor: scheduledDate,
+                status: publishNow ? 'pending' : 'scheduled'
             }
         });
 
+        if (publishNow) {
+            // Disparar publicación inmediata en background (no bloqueamos la respuesta)
+            executePost(post.id).catch((err) => console.error('Immediate publish error:', err.message));
+        }
+
         res.status(201).json(post);
     } catch (error) {
+        console.error('schedulePost error:', error);
         res.status(500).json({ error: 'Error al programar la publicación' });
+    }
+};
+
+/**
+ * Ejecuta la publicación de un ScheduledPost: trae proyecto + cuenta,
+ * llama al servicio Meta, y actualiza el estado en BD.
+ * Exportado para que el cron lo use.
+ */
+export const executePost = async (postId) => {
+    const post = await prisma.scheduledPost.findUnique({
+        where: { id: postId },
+        include: { video: true, account: true }
+    });
+    if (!post) throw new Error('Post no encontrado');
+    if (!post.video?.videoUrl) {
+        await prisma.scheduledPost.update({
+            where: { id: postId },
+            data: { status: 'failed', error: 'El video todavía no tiene URL (KIE no terminó)' }
+        });
+        return;
+    }
+
+    const result = await publishPost(post.account, {
+        videoUrl: post.video.videoUrl,
+        caption: post.caption || ''
+    });
+
+    await prisma.scheduledPost.update({
+        where: { id: postId },
+        data: result.success
+            ? {
+                status: 'published',
+                publishedAt: new Date(),
+                platformPostId: result.platformPostId,
+                error: null
+            }
+            : {
+                status: 'failed',
+                error: result.error?.slice(0, 500) || 'Error desconocido'
+            }
+    });
+
+    return result;
+};
+
+export const cancelPost = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const post = await prisma.scheduledPost.findUnique({ where: { id } });
+        if (!post) return res.status(404).json({ error: 'Post no encontrado' });
+        if (post.status === 'published') {
+            return res.status(400).json({ error: 'No se puede cancelar un post ya publicado' });
+        }
+        const updated = await prisma.scheduledPost.update({
+            where: { id },
+            data: { status: 'cancelled' }
+        });
+        res.json(updated);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al cancelar el post' });
+    }
+};
+
+export const retryPost = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const post = await prisma.scheduledPost.findUnique({ where: { id } });
+        if (!post) return res.status(404).json({ error: 'Post no encontrado' });
+        if (post.status === 'published') {
+            return res.status(400).json({ error: 'El post ya fue publicado' });
+        }
+        await prisma.scheduledPost.update({
+            where: { id },
+            data: { status: 'pending', error: null }
+        });
+        executePost(id).catch((err) => console.error('Retry publish error:', err.message));
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al reintentar el post' });
+    }
+};
+
+export const deletePost = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await prisma.scheduledPost.delete({ where: { id } });
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al eliminar el post' });
+    }
+};
+
+export const disconnectAccount = async (req, res) => {
+    try {
+        const { id } = req.params;
+        // Verificar que no haya posts pendientes asociados
+        const pending = await prisma.scheduledPost.count({
+            where: { socialAccountId: id, status: { in: ['scheduled', 'pending'] } }
+        });
+        if (pending > 0) {
+            return res.status(400).json({ error: `Hay ${pending} publicación(es) pendiente(s) para esta cuenta. Cancelalas antes de desconectar.` });
+        }
+        await prisma.socialAccount.delete({ where: { id } });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('disconnectAccount error:', error);
+        res.status(500).json({ error: 'Error al desconectar la cuenta' });
+    }
+};
+
+export const suggestCaption = async (req, res) => {
+    try {
+        const { projectId, prompt: hint } = req.body;
+        let context = hint || '';
+
+        if (projectId) {
+            const project = await prisma.videoProject.findUnique({ where: { id: projectId } });
+            if (project) {
+                context = `Título del video: ${project.title}. ${context}`;
+            }
+        }
+
+        const systemPrompt = `Eres un copywriter experto en redes sociales para organizaciones rotarias. Generás captions cortos, emocionales y con llamada a la acción para Reels (Instagram/Facebook). Incluí 3-5 hashtags relevantes al final. Tono: cálido, institucional, inspirador. Máximo 180 caracteres antes de los hashtags. NO uses comillas.`;
+        const userPrompt = `Contexto: ${context || 'Video con fotos de una actividad de servicio del club Rotario'}. Generá un único caption listo para publicar.`;
+
+        const caption = await routeToModel('gemini-2.5-flash', systemPrompt, userPrompt);
+        res.json({ caption: caption.trim() });
+    } catch (error) {
+        console.error('suggestCaption error:', error);
+        res.status(500).json({ error: 'Error al generar caption: ' + error.message });
     }
 };
 

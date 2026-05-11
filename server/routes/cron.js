@@ -3,9 +3,44 @@ import { PrismaClient } from '@prisma/client';
 import { routeToModel } from '../lib/ai-router.js';
 import WhatsAppService from '../services/WhatsAppService.js';
 import EmailService from '../services/EmailService.js';
+import { executePost } from '../controllers/contentStudioController.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+// Vercel Cron: /api/cron/process-scheduled-posts
+// Publica los ScheduledPost cuyo scheduledFor ya llegó.
+router.get('/process-scheduled-posts', async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+            return res.status(401).json({ error: 'Unauthorized cron trigger' });
+        }
+
+        const due = await prisma.scheduledPost.findMany({
+            where: {
+                status: 'scheduled',
+                scheduledFor: { lte: new Date() }
+            },
+            take: 25
+        });
+
+        const results = [];
+        for (const post of due) {
+            try {
+                const result = await executePost(post.id);
+                results.push({ id: post.id, success: result?.success ?? true });
+            } catch (err) {
+                results.push({ id: post.id, success: false, error: err.message });
+            }
+        }
+
+        res.json({ processed: results.length, results });
+    } catch (error) {
+        console.error('[CRON scheduled-posts] error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 // Vercel Cron endpoint: /api/cron/process-expirations
 // Se ejecuta diariamente para alertar sobre renovaciones de SaaS
