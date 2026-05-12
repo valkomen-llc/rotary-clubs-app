@@ -43,6 +43,8 @@ const latirStats = [
   }
 ];
 
+const StatsSection = () => {
+
   const { club } = useClub();
   const currentHostname = window.location.hostname;
   
