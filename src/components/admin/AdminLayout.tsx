@@ -142,7 +142,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
     // Link "Ver mi Sitio" (Fallback approach using ?club= to bypass DNS Wildcard issues)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const paramKey = (club as any)?.type === 'association' ? 'asociacion' : ((club as any)?.type === 'district' ? 'distrito' : 'club');
+    const paramKey = ((club as any)?.type === 'association' || (club as any)?.type === 'Programa de Intercambio') ? 'asociacion' : ((club as any)?.type === 'district' ? 'distrito' : 'club');
     const verMiSitioUrl = cleanDomain 
         ? `https://${cleanDomain}` 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -352,7 +352,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: Share2, label: 'Hub Social', path: '/admin/social-hub', category: 'Management', keywords: ['facebook', 'linkedin', 'twitter', 'x', 'oauth', 'conexiones'], badge: 'premium' },
             );
         } else {
-            const isAssoc = club?.type === 'association';
+            const isAssoc = club?.type === 'association' || club?.type === 'Programa de Intercambio';
             const isDistrict = club?.type === 'district';
             const orgTypeLabel = isAssoc ? 'Asociación' : isDistrict ? 'Distrito' : 'Sitio';
             

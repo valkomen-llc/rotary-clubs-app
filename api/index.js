@@ -26,7 +26,7 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), asy
     return stripeWebhook(req, res, next);
 });
 
-app.use(express.json({ limit: '25mb' }));
+app.use(express.json());
 
 // ── Technical Requests Logic (Consolidated for Vercel Stability) ──────────────
 app.post('/api/technical-requests', async (req, res) => {
@@ -184,119 +184,10 @@ app.use('/api/cron', async (req, res, next) => { try { return (await getCron())(
 app.use('/api/scout-grants', async (req, res, next) => { try { return (await getScoutGrants())(req, res, next); } catch (e) { console.error('API Error [scout-grants]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/district-analytics', async (req, res, next) => { try { return (await getDistAnalytics())(req, res, next); } catch (e) { console.error('API Error [district-analytics]:', e); res.status(500).json({ error: e.message }); } });
 
-// RUTAS SOCIAL HUB — OAuth callback real: intercambia el code por access_token y guarda la cuenta
+// RUTAS SOCIAL HUB
 app.get('/api/social/callback/:platform', async (req, res) => {
     const { platform } = req.params;
-    const { code, state, error: oauthError, error_description } = req.query;
-    const REDIRECT_BASE = '/admin/content-studio?tab=accounts';
-
-    // Helper para responder con error detallado y log
-    const failWith = (step, error) => {
-        const msg = typeof error === 'string' ? error : error?.message || JSON.stringify(error);
-        console.error(`[OAuth ${platform}] FAIL @ ${step}:`, msg);
-        return res.redirect(`${REDIRECT_BASE}&error=${encodeURIComponent(`${step}: ${msg}`.slice(0, 200))}`);
-    };
-
-    if (oauthError) return failWith('meta_oauth', `${oauthError}${error_description ? ': ' + error_description : ''}`);
-    if (!code) return failWith('missing_code', 'Meta no devolvió el authorization code');
-
-    try {
-        const baseUrl = process.env.APP_URL
-            || (process.env.NODE_ENV === 'production'
-                ? 'https://app.clubplatform.org'
-                : `${req.protocol}://${req.get('host')}`);
-        const redirectUri = `${baseUrl}/api/social/callback/${platform}`;
-        const clubId = state && state !== 'platform' ? state : null;
-
-        console.log(`[OAuth ${platform}] start - redirectUri=${redirectUri}, clubId=${clubId || 'none'}`);
-
-        if (platform !== 'facebook' && platform !== 'instagram') {
-            return failWith('platform_unsupported', `${platform} no está implementado todavía`);
-        }
-
-        const FB_APP_ID = process.env.META_APP_ID || process.env.FB_APP_ID;
-        const FB_APP_SECRET = process.env.META_APP_SECRET || process.env.FB_APP_SECRET;
-        if (!FB_APP_ID) return failWith('config', 'META_APP_ID no configurado en Vercel');
-        if (!FB_APP_SECRET) return failWith('config', 'META_APP_SECRET no configurado en Vercel');
-
-        // Step 1: code → short-lived access_token
-        const tokenUrl = `https://graph.facebook.com/v19.0/oauth/access_token?client_id=${FB_APP_ID}&client_secret=${FB_APP_SECRET}&redirect_uri=${encodeURIComponent(redirectUri)}&code=${code}`;
-        const tokenRes = await fetch(tokenUrl);
-        const tokenData = await tokenRes.json();
-        if (!tokenRes.ok || tokenData.error) {
-            return failWith('token_exchange', tokenData.error?.message || `HTTP ${tokenRes.status}`);
-        }
-
-        // Step 2: short → long-lived (60 días)
-        const llUrl = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${FB_APP_ID}&client_secret=${FB_APP_SECRET}&fb_exchange_token=${tokenData.access_token}`;
-        const llRes = await fetch(llUrl);
-        const llData = await llRes.json();
-        const userAccessToken = llData.access_token || tokenData.access_token;
-        const expiresInSec = llData.expires_in || tokenData.expires_in || (60 * 24 * 3600);
-
-        // Step 3: listar páginas del usuario
-        const pagesRes = await fetch(`https://graph.facebook.com/v19.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,profile_picture_url},picture&access_token=${userAccessToken}`);
-        const pagesData = await pagesRes.json();
-        if (!pagesRes.ok || pagesData.error) {
-            return failWith('list_pages', pagesData.error?.message || `HTTP ${pagesRes.status}`);
-        }
-
-        const pages = pagesData.data || [];
-        if (pages.length === 0) {
-            return failWith('no_pages', 'Tu cuenta de Meta no administra ninguna Page de Facebook. Creá una Page primero en facebook.com/pages/create');
-        }
-
-        console.log(`[OAuth ${platform}] found ${pages.length} page(s)`);
-
-        // Para Instagram, necesitamos una Page con IG Business Account vinculado
-        let accountData = null;
-        if (platform === 'facebook') {
-            const page = pages[0]; // TODO: dejar elegir si hay varias
-            accountData = {
-                platform: 'facebook',
-                platformId: page.id,
-                accountName: page.name,
-                accessToken: page.access_token,
-                avatar: page.picture?.data?.url || null,
-                expiresAt: new Date(Date.now() + expiresInSec * 1000),
-            };
-        } else {
-            const pageWithIG = pages.find(p => p.instagram_business_account?.id);
-            if (!pageWithIG) {
-                return failWith('no_ig_business', 'Ninguna de tus Pages tiene una cuenta de Instagram Business vinculada. Vinculá una en Configuración de la Page → Instagram');
-            }
-            const ig = pageWithIG.instagram_business_account;
-            accountData = {
-                platform: 'instagram',
-                platformId: ig.id,
-                accountName: ig.username || pageWithIG.name,
-                accessToken: pageWithIG.access_token,
-                avatar: ig.profile_picture_url || pageWithIG.picture?.data?.url || null,
-                expiresAt: new Date(Date.now() + expiresInSec * 1000),
-            };
-        }
-
-        await prisma.socialAccount.upsert({
-            where: { id: `${accountData.platform}-${accountData.platformId}` },
-            update: {
-                accountName: accountData.accountName,
-                accessToken: accountData.accessToken,
-                avatar: accountData.avatar,
-                expiresAt: accountData.expiresAt,
-                status: 'active',
-            },
-            create: {
-                id: `${accountData.platform}-${accountData.platformId}`,
-                clubId,
-                ...accountData,
-            },
-        });
-
-        console.log(`[OAuth ${platform}] OK - account ${accountData.accountName} (${accountData.platformId})`);
-        res.redirect(`${REDIRECT_BASE}&connected=${accountData.platform}`);
-    } catch (error) {
-        return failWith('unexpected', error);
-    }
+    res.redirect(`/admin/content-studio?tab=accounts&connected=${platform}`);
 });
 
 // ── Frontend & SEO Injection ──────────────────────────────────────────────────

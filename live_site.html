@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rotary ClubPlatform</title>
+  <meta name="description" content="Plataforma digital para clubes Rotarios. Gestiona proyectos de impacto social, eventos, donaciones y comunicaciones institucionales." />
+  <meta name="keywords" content="Rotary, Rotary International, clubes rotarios, proyectos sociales, donaciones, voluntariado, servicio comunitario" />
+  <meta name="author" content="ClubPlatform by Valkomen LLC" />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="https://clubplatform.org/" />
+
+  <!-- Open Graph / Facebook / WhatsApp -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Rotary ClubPlatform — Servicio por encima del interés propio" />
+  <meta property="og:description" content="Plataforma digital para clubes Rotarios. Gestiona proyectos, eventos, donaciones y comunicaciones." />
+  <meta property="og:url" content="https://clubplatform.org/" />
+  <meta property="og:site_name" content="ClubPlatform" />
+  <meta property="og:locale" content="es_CO" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Rotary ClubPlatform" />
+  <meta name="twitter:description" content="Plataforma digital para clubes Rotarios. Proyectos, eventos, donaciones y más." />
+
+  <!-- GA4 is injected dynamically from App.tsx with the real Measurement ID stored in the DB -->
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,300;1,400&display=swap"
+    rel="stylesheet">
+  <link rel="preload" href="/geo-darkblue.png" as="image" />
+  <link rel="preload" href="/concrete_seamless.jpg" as="image" />
+  <script type="module" crossorigin src="/assets/index-Qu9zgeG2.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/vendor-react-BA085RMi.js">
+  <link rel="modulepreload" crossorigin href="/assets/vendor-editor-Bhw6sSHm.js">
+  <link rel="modulepreload" crossorigin href="/assets/vendor-icons-Dsj9v-po.js">
+  <link rel="modulepreload" crossorigin href="/assets/vendor-charts-pmT-el5k.js">
+  <link rel="stylesheet" crossorigin href="/assets/vendor-editor-BzY4kI8E.css">
+  <link rel="stylesheet" crossorigin href="/assets/index-Bx2WRCc9.css">
+<meta name="description" content="Servicio por encima del interés propio."><meta property="og:title" content="Rotary ClubPlatform"><meta property="og:image" content="https://rotarycluborigen.org/logo.png">
+</head>
+
+<body>
+  <!-- Redirect /conferencia → evento LATIR antes de que cargue React -->
+  <script>
+    if (window.location.pathname === '/conferencia') {
+      window.location.replace('https://rotarylatir.org/#/eventos/2038324a-0e04-497c-9328-fbaeb9ce2992');
+    }
+    // REGLA DE REDIRECCIÓN SAAS (Prioridad Absoluta)
+    if (window.location.hostname === 'clubplatform.org' || window.location.hostname === 'www.clubplatform.org') {
+      if (window.location.pathname === '/' || window.location.pathname === '') {
+        window.location.replace('https://app.clubplatform.org/');
+      }
+    }
+  </script>
+  <div id="root"></div>
+</body>
+
+</html>

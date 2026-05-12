@@ -25,49 +25,16 @@ const VideoCreator: React.FC = () => {
     const [selectedMedia, setSelectedMedia] = useState<MediaItem[]>([]);
     const [showPicker, setShowPicker] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
-    const [generatingCaption, setGeneratingCaption] = useState(false);
-
+    
     // Config states
     const [config, setConfig] = useState({
         format: '9:16',
-        duration: 10, // Seedance v1-pro-fast solo soporta 10s
+        duration: 15,
         transition: 'fade',
         animation: 'ken_burns',
         caption: '',
         music: 'default'
     });
-
-    const generateCaptionAI = async () => {
-        if (selectedMedia.length === 0) {
-            toast.error('Agregá imágenes primero para generar un caption acorde');
-            return;
-        }
-        setGeneratingCaption(true);
-        try {
-            const token = localStorage.getItem('rotary_token');
-            const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/content-studio/captions/suggest`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    prompt: `Video de ${selectedMedia.length} imágenes. Nombres: ${selectedMedia.map(m => m.filename).join(', ')}`
-                })
-            });
-            const data = await res.json();
-            if (res.ok && data.caption) {
-                setConfig((c) => ({ ...c, caption: data.caption }));
-                toast.success('Caption generado con IA');
-            } else {
-                toast.error(data.error || 'No se pudo generar el caption');
-            }
-        } catch {
-            toast.error('Error de conexión con IA');
-        } finally {
-            setGeneratingCaption(false);
-        }
-    };
 
     const handleGenerate = async () => {
         if (selectedMedia.length === 0) {
@@ -115,11 +82,7 @@ const VideoCreator: React.FC = () => {
                     <div className="flex justify-between items-center mb-6">
                         <div>
                             <h3 className="text-lg font-black text-gray-900">Imágenes del Video</h3>
-                            <p className="text-sm text-gray-500 font-medium">
-                                {selectedMedia.length > 1
-                                    ? `Animaremos la primera imagen (KIE.ai image-to-video). Las otras ${selectedMedia.length - 1} quedarán como referencia.`
-                                    : 'La primera imagen se animará con KIE.ai'}
-                            </p>
+                            <p className="text-sm text-gray-500 font-medium">Ordena tus clips arrastrando las tarjetas</p>
                         </div>
                         <button 
                             onClick={() => setShowPicker(true)}
@@ -199,7 +162,7 @@ const VideoCreator: React.FC = () => {
                             </div>
                             <div className="space-y-2">
                                 <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest block">Animación IA</label>
-                                <select
+                                <select 
                                     className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-600/10 focus:border-indigo-600 transition-all font-sans"
                                     value={config.animation}
                                     onChange={(e) => setConfig({...config, animation: e.target.value})}
@@ -208,17 +171,6 @@ const VideoCreator: React.FC = () => {
                                     <option value="motion_ia">Motion Pro AI</option>
                                     <option value="static">Estático (Sin Movimiento)</option>
                                 </select>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest block">Duración</label>
-                                <select
-                                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-600/10 focus:border-indigo-600 transition-all font-sans"
-                                    value={config.duration}
-                                    onChange={(e) => setConfig({...config, duration: Number(e.target.value)})}
-                                >
-                                    <option value={10}>10 segundos</option>
-                                </select>
-                                <p className="text-[9px] font-medium text-gray-400">Seedance Pro Fast solo soporta 10s por ahora.</p>
                             </div>
                         </div>
                     </div>
@@ -238,23 +190,8 @@ const VideoCreator: React.FC = () => {
                                 </div>
                             </div>
                             <div className="space-y-2">
-                                <div className="flex justify-between items-center">
-                                    <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Caption Sugerido</label>
-                                    <button
-                                        type="button"
-                                        onClick={generateCaptionAI}
-                                        disabled={generatingCaption}
-                                        className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-black uppercase hover:bg-indigo-100 transition-all disabled:opacity-50"
-                                    >
-                                        {generatingCaption ? (
-                                            <Loader2 className="w-3 h-3 animate-spin" />
-                                        ) : (
-                                            <Sparkles className="w-3 h-3" />
-                                        )}
-                                        {generatingCaption ? 'Generando' : 'Sugerir IA'}
-                                    </button>
-                                </div>
-                                <textarea
+                                <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest block">Caption Sugerido</label>
+                                <textarea 
                                     className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-indigo-600/10 focus:border-indigo-600 transition-all font-sans resize-none h-20"
                                     placeholder="Añade un caption para redes sociales..."
                                     value={config.caption}

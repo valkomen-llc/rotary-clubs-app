@@ -34,9 +34,8 @@ const AccountManager: React.FC = () => {
                 icon: <CheckCircle2 className="w-4 h-4" />
             });
             fetchAccounts();
+            // Limpiamos los parámetros de la URL
             window.history.replaceState({}, document.title, window.location.pathname);
-        } else {
-            fetchAccounts();
         }
 
         if (error) {
@@ -44,28 +43,6 @@ const AccountManager: React.FC = () => {
             window.history.replaceState({}, document.title, window.location.pathname);
         }
     }, []);
-
-    const disconnectAccount = async (id: string, name: string) => {
-        if (!confirm(`¿Desconectar la cuenta "${name}"? Esta acción se puede revertir reconectándola.`)) return;
-
-        const tId = toast.loading('Desconectando cuenta...');
-        try {
-            const token = localStorage.getItem('rotary_token');
-            const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/content-studio/accounts/${id}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const data = await res.json();
-            if (res.ok) {
-                toast.success('Cuenta desconectada', { id: tId });
-                fetchAccounts();
-            } else {
-                toast.error(data.error || 'No se pudo desconectar', { id: tId });
-            }
-        } catch {
-            toast.error('Error de conexión', { id: tId });
-        }
-    };
 
     const fetchAccounts = async () => {
         setLoading(true);
@@ -128,11 +105,7 @@ const AccountManager: React.FC = () => {
                                     {connected.map(acc => (
                                         <div key={acc.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100 group">
                                             <span className="text-xs font-bold text-gray-700">@{acc.accountName}</span>
-                                            <button
-                                                onClick={() => disconnectAccount(acc.id, acc.accountName)}
-                                                className="text-gray-300 hover:text-red-500 transition-all"
-                                                title="Desconectar cuenta"
-                                            >
+                                            <button className="text-gray-300 hover:text-red-500 transition-all">
                                                 <LogOut className="w-3.5 h-3.5" />
                                             </button>
                                         </div>

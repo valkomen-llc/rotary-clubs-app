@@ -19,10 +19,23 @@ interface CheckItem {
     weight: number; icon: React.ReactNode;
 }
 
-const CATEGORY_META = {
-    identity: { label: 'Identidad del Club', color: 'text-blue-700 bg-blue-50 border-blue-100', ring: '#3b82f6' },
-    content: { label: 'Contenido del Sitio', color: 'text-violet-700 bg-violet-50 border-violet-100', ring: '#8b5cf6' },
-    integrations: { label: 'Integraciones', color: 'text-emerald-700 bg-emerald-50 border-emerald-100', ring: '#10b981' },
+const getCategoryMeta = (type?: string, name?: string) => {
+    const isClub = type === 'club';
+    const isRYE = name?.toLowerCase().includes('rye');
+    
+    return {
+        identity: { 
+            label: isClub ? 'Identidad del Club' : isRYE ? 'Identidad del Programa' : 'Identidad Institucional', 
+            color: 'text-blue-700 bg-blue-50 border-blue-100', 
+            ring: '#3b82f6' 
+        },
+        content: { 
+            label: isRYE ? 'Contenido del Programa' : 'Contenido del Sitio', 
+            color: 'text-violet-700 bg-violet-50 border-violet-100', 
+            ring: '#8b5cf6' 
+        },
+        integrations: { label: 'Integraciones', color: 'text-emerald-700 bg-emerald-50 border-emerald-100', ring: '#10b981' },
+    };
 };
 
 const ClubAdminDashboard: React.FC = () => {
@@ -45,8 +58,8 @@ const ClubAdminDashboard: React.FC = () => {
 
     const items: CheckItem[] = [
         {
-            id: 'club-info', label: 'Información del club',
-            desc: 'Logo, descripción, contacto, colores y redes sociales',
+            id: 'club-info', label: club?.type === 'club' ? 'Información del club' : club?.name?.toLowerCase().includes('rye') ? 'Información del programa' : 'Información institucional',
+            desc: club?.type === 'club' ? 'Logo, descripción, contacto, colores y redes sociales' : 'Logo, branding, contacto y redes de la organización',
             done: !!(club?.logo && club?.description && club.description.length > 20),
             href: '/admin/mi-club', category: 'identity', weight: 15,
             icon: <Settings className="w-4 h-4" />,
@@ -66,15 +79,15 @@ const ClubAdminDashboard: React.FC = () => {
             icon: <FolderKanban className="w-4 h-4" />,
         }] : []),
         {
-            id: 'news', label: 'Primera noticia',
-            desc: 'Publica una noticia o artículo sobre el club',
+            id: 'news', label: club?.type === 'club' ? 'Primera noticia' : 'Primera publicación',
+            desc: club?.type === 'club' ? 'Publica una noticia o artículo sobre el club' : 'Carga una noticia o boletín institucional',
             done: (stats?.posts || 0) > 0,
             href: '/admin/noticias', category: 'content', weight: 15,
             icon: <Newspaper className="w-4 h-4" />,
         },
         ...(modules.members !== false ? [{
-            id: 'members', label: 'Directorio de socios',
-            desc: 'Agrega al menos un socio al directorio',
+            id: 'members', label: club?.type === 'club' ? 'Directorio de socios' : 'Directorio de líderes',
+            desc: club?.type === 'club' ? 'Agrega al menos un socio al directorio' : 'Gestiona los representantes y directores',
             done: (stats?.users || 0) > 1,
             href: '/admin/miembros', category: 'content', weight: 15,
             icon: <Users className="w-4 h-4" />,
@@ -141,7 +154,7 @@ const ClubAdminDashboard: React.FC = () => {
                     <div className="flex-1 min-w-0">
                         <h1 className="text-2xl font-black text-gray-900 tracking-tight">¡Bienvenido! 👋</h1>
                         <p className="text-sm text-gray-500 font-medium mt-1">
-                            Club: <span className="font-bold text-gray-700">{club?.name || 'Tu Club'}</span>
+                            {club?.type === 'club' ? 'Club: ' : club?.name?.toLowerCase().includes('rye') ? 'Programa: ' : 'Organización: '} <span className="font-bold text-gray-700">{club?.name || 'Tu Institución'}</span>
                         </p>
                         {isComplete ? (
                             <p className="text-sm text-emerald-600 font-bold mt-2 flex items-center gap-1.5 underline">Sitio listo para publicar</p>
@@ -162,7 +175,7 @@ const ClubAdminDashboard: React.FC = () => {
 
             <div className="bg-white border border-gray-100 rounded-2xl shadow-sm mb-6 overflow-hidden p-6 space-y-6">
                 {categories.map(catKey => {
-                    const meta = CATEGORY_META[catKey];
+                    const meta = getCategoryMeta(club?.type, club?.name)[catKey];
                     const catItems = items.filter(i => i.category === catKey);
                     return (
                         <div key={catKey}>

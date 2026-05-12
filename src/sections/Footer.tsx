@@ -6,7 +6,11 @@ import { useClub } from '../contexts/ClubContext';
 
 const Footer = () => {
     const { club } = useClub();
-    const type = (club as any)?.type || 'club';
+    const currentHostname = window.location.hostname;
+    const typeRaw = (club as any)?.type || 'club';
+    const type = (typeRaw === 'district' && currentHostname.toLowerCase().includes('rye')) || typeRaw === 'Programa de Intercambio' 
+        ? 'association' 
+        : typeRaw;
     
     const [config, setConfig] = useState<any>(null);
 

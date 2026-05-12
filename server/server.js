@@ -18,7 +18,7 @@ app.use(cors({
 import { stripeWebhook } from './controllers/paymentController.js';
 app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), stripeWebhook);
 
-app.use(express.json({ limit: '25mb' }));
+app.use(express.json());
 
 import { createInitialAdmin } from './controllers/authController.js';
 

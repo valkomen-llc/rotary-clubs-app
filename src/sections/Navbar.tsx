@@ -31,7 +31,7 @@ const Navbar = () => {
   // Determine if it's a district site
   const currentHostname = window.location.hostname;
   const currentParams = window.location.search;
-  const isDistrict = (club as any)?.type === 'district' || currentHostname.includes('4271') || currentParams.includes('4271');
+  const isDistrict = (club as any)?.type === 'district' || currentHostname.includes('4271') || currentParams.includes('4271') || currentHostname.toLowerCase().includes('rye');
 
   // Search state
   const [searchOpen, setSearchOpen] = useState(false);
@@ -164,7 +164,7 @@ const Navbar = () => {
           <div className="hidden md:flex items-center space-x-6">
             <Link to="/" className="text-rotary-blue font-medium text-sm hover:text-rotary-gold transition-colors"><T>Inicio</T></Link>
 
-            {(club as any)?.type === 'association' ? (
+            {((club as any)?.type === 'association' || (club as any)?.type === 'Programa de Intercambio' || currentHostname.toLowerCase().includes('rye')) ? (
               <>
                 <Link to="/quienes-somos" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Sobre Rotary</T></Link>
                 <Link to="/intercambio-jovenes" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Intercambios</T></Link>
@@ -346,7 +346,7 @@ const Navbar = () => {
             <div className="flex flex-col space-y-3 font-medium">
               <Link to="/" className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Inicio</Link>
 
-              {(club as any)?.type === 'association' ? (
+              {((club as any)?.type === 'association' || (club as any)?.type === 'Programa de Intercambio' || currentHostname.toLowerCase().includes('rye')) ? (
                 <>
                   <Link to="/quienes-somos" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Sobre Rotary</Link>
                   <Link to="/intercambio-jovenes" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Intercambios</Link>

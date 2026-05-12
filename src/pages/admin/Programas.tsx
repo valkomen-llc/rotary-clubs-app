@@ -89,18 +89,31 @@ const ProgramasManagement: React.FC = () => {
         try {
             const token = localStorage.getItem('rotary_token');
             // Fech associations and super users in parallel
-            const [assocRes, usersRes] = await Promise.all([
+            const [progRes, assocRes, usersRes] = await Promise.all([
                 fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs?type=Programa%20de%20Intercambio`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs?type=association`, { headers: { 'Authorization': `Bearer ${token}` } }),
                 fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/users`, { headers: { 'Authorization': `Bearer ${token}` } })
             ]);
 
+            let programs = [];
+            if (progRes.ok) programs = await progRes.json();
+            
             if (assocRes.ok) {
-                const data = await assocRes.json();
-                setAssociations(data);
+                const associations = await assocRes.json();
+                // Pick RYE from associations and add to programs if not already there
+                const ryeFromAssoc = associations.filter((c: any) => 
+                    c.name?.toLowerCase().includes('rye') || 
+                    c.subdomain?.toLowerCase().includes('rye')
+                );
+                const existingIds = new Set(programs.map((p: any) => p.id));
+                ryeFromAssoc.forEach((c: any) => {
+                    if (!existingIds.has(c.id)) programs.push(c);
+                });
             }
+            setAssociations(programs);
+
             if (usersRes.ok) {
                 const usersData = await usersRes.json();
-                // solo roles de admin
                 setSuperUsers(usersData.filter((u: any) => u.role === 'administrator' || u.role === 'club_admin' || u.role === 'district_admin'));
             }
         } catch (error) {
@@ -580,6 +593,7 @@ const ProgramasManagement: React.FC = () => {
                                         title="Define la estructura de links y labels del footer"
                                     >
                                         <option value="association">Skin de Asociación / Agrupación</option>
+                                        <option value="Programa de Intercambio">Skin de Programa de Intercambio</option>
                                         <option value="club">Skin de Rotary Club (Socio)</option>
                                         <option value="district">Skin de Distrito Rotary</option>
                                         <option value="colrotarios">Skin de Colrotarios (Fundación)</option>

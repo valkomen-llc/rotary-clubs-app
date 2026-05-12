@@ -1,8 +1,14 @@
 import { Plane, Calendar, Search, Users, Globe, ArrowRight, Sparkles, MapPin, Award } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useClub } from '../contexts/ClubContext';
 
 const LatirSpecialSection = () => {
   const navigate = useNavigate();
+  const { club } = useClub();
+  
+  const clubName = club?.name || 'LATIR';
+  const isRye = club?.subdomain?.toLowerCase().includes('rye');
+  
   return (
     <section className="py-24 bg-rotary-concrete relative overflow-hidden">
       {/* Background Decorative Elements */}
@@ -79,7 +85,7 @@ const LatirSpecialSection = () => {
 
         {/* Asociación y Conferencia Split */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
-          {/* Card Nuestra Asociación */}
+          {/* Card Nuestra Organización */}
           <div className="relative group overflow-hidden bg-[#0a1128] text-white p-12 rounded-[48px] shadow-2xl flex flex-col justify-between">
             {/* Animated Mesh Gradient Overlay */}
             <div className="absolute inset-0 opacity-30 group-hover:opacity-40 transition-opacity duration-700">
@@ -90,15 +96,19 @@ const LatirSpecialSection = () => {
             <div className="relative z-10">
               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 mb-8 backdrop-blur-md">
                 <Globe className="w-4 h-4 text-sky-400 animate-spin-slow" />
-                <span className="text-[10px] font-bold tracking-widest uppercase opacity-80">Nuestra Asociación</span>
+                <span className="text-[10px] font-bold tracking-widest uppercase opacity-80">
+                  {club?.type === 'district' ? 'Nuestro Distrito' : 'Nuestra Organización'}
+                </span>
               </div>
               
-              <h3 className="text-3xl font-bold mb-6">Asociación LATIR</h3>
+              <h3 className="text-3xl font-bold mb-6">{clubName}</h3>
               <p className="text-lg leading-relaxed text-gray-400 mb-12 max-w-md">
-                Comprende 18 distritos de todos los países de habla hispana en América del Sur, unidos por un propósito común.
+                {club?.type === 'district' 
+                  ? 'Comprometidos con el desarrollo de líderes y la paz a través del programa de intercambio de jóvenes.'
+                  : 'Unidos por un propósito común en toda la región, transformando vidas a través del intercambio cultural.'}
               </p>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-8 gap-x-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-8 gap-x-4 mb-12">
                 {[
                   { name: 'ARGENTINA', flag: '🇦🇷' },
                   { name: 'BOLIVIA', flag: '🇧🇴' },
@@ -116,20 +126,24 @@ const LatirSpecialSection = () => {
                   </div>
                 ))}
               </div>
-            </div>
 
-            <div className="absolute bottom-0 right-0 p-12 opacity-5 scale-150 group-hover:rotate-12 transition-transform duration-1000">
-              <Globe className="w-64 h-64" />
+              <button 
+                onClick={() => navigate('/quienes-somos')}
+                className="group/btn flex items-center gap-3 text-white font-medium hover:text-sky-400 transition-colors duration-300"
+              >
+                CONOCER NUESTRO EQUIPO
+                <ArrowRight className="w-5 h-5 group-hover/btn:translate-x-2 transition-transform duration-300" />
+              </button>
             </div>
           </div>
 
-          {/* Card Conferencia LATIR - The "Event" Card */}
+          {/* Card Conferencia */}
           <div className="relative group bg-white rounded-[48px] overflow-hidden border border-gray-100 shadow-xl flex flex-col">
             {/* Image Header */}
             <div className="h-64 relative overflow-hidden">
               <img 
                 src="https://rotary-platform-assets.s3.us-east-1.amazonaws.com/events/1776276597620-upload.jpg" 
-                alt="V Conferencia LATIR / IV Conferencia ROTEX" 
+                alt={isRye ? `Conferencia ${clubName}` : "Conferencia LATIR"} 
                 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
@@ -137,10 +151,12 @@ const LatirSpecialSection = () => {
                 <div className="flex items-center gap-3 text-white mb-2">
                   <div className="px-3 py-1 bg-orange-500 rounded-full text-[10px] font-bold tracking-wider uppercase">Evento Anual</div>
                   <div className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider uppercase opacity-80">
-                    <MapPin className="w-3 h-3" /> Conferencia LATIR
+                    <MapPin className="w-3 h-3" /> {isRye ? clubName : 'Conferencia LATIR'}
                   </div>
                 </div>
-                <h3 className="text-xl md:text-2xl font-bold text-white uppercase tracking-tight">V Conferencia LATIR / IV Conferencia ROTEX</h3>
+                <h3 className="text-xl md:text-2xl font-bold text-white uppercase tracking-tight">
+                  {isRye ? `V Conferencia ${clubName}` : 'V Conferencia LATIR / IV Conferencia ROTEX'}
+                </h3>
               </div>
             </div>
 
@@ -153,7 +169,7 @@ const LatirSpecialSection = () => {
                   <div>
                     <h4 className="font-bold text-gray-900 group-hover:text-rotary-blue transition-colors">Encuentro en Abril</h4>
                     <p className="text-sm text-gray-500 leading-relaxed mt-1">
-                      Una experiencia única reuniendo a Chairpersons, gobernadores y jóvenes ROTEX.
+                      Una experiencia única reuniendo a Chairpersons, gobernadores y jóvenes líderes.
                     </p>
                   </div>
                 </div>
@@ -173,7 +189,7 @@ const LatirSpecialSection = () => {
 
               <div className="mt-auto">
                 <button
-                  onClick={() => navigate('/conferencia')}
+                  onClick={() => navigate('/eventos')}
                   className="group/btn relative w-full inline-flex items-center justify-center gap-3 bg-rotary-blue hover:bg-rotary-blue-700 text-white font-bold px-8 py-5 rounded-2xl transition-all duration-300 shadow-xl shadow-blue-500/20 overflow-hidden"
                 >
                   <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-sky-400 to-rotary-blue opacity-0 group-hover/btn:opacity-100 transition-opacity duration-500"></div>
@@ -184,9 +200,49 @@ const LatirSpecialSection = () => {
             </div>
           </div>
         </div>
+
+        {/* Final CTA Section */}
+        <div className="mt-24 text-center">
+          <div className="bg-gradient-to-r from-rotary-blue to-[#002d5c] p-12 md:p-16 rounded-[48px] relative overflow-hidden">
+            {/* Background Decoration */}
+            <div className="absolute top-0 right-0 w-1/2 h-full opacity-10">
+              <Globe className="w-full h-full text-white translate-x-1/4" />
+            </div>
+            
+            <div className="relative z-10 max-w-2xl mx-auto">
+              <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">¿Quieres ser parte del cambio?</h2>
+              <p className="text-blue-100 text-lg mb-10 leading-relaxed">
+                Inscríbete hoy mismo para recibir más información sobre cómo puedes participar en nuestros programas de intercambio internacional.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <button className="px-10 py-5 bg-white text-rotary-blue rounded-2xl font-bold hover:shadow-2xl hover:scale-105 transition-all duration-300">
+                  Inscribirme Ahora
+                </button>
+                <button className="px-10 py-5 bg-white/10 text-white border border-white/20 rounded-2xl font-bold backdrop-blur-sm hover:bg-white/20 transition-all duration-300">
+                  Ver Preguntas Frecuentes
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          {/* Stats / Numbers */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mt-20 pt-20 border-t border-gray-100">
+            {[
+              { label: "Años de Historia", value: "25+" },
+              { label: "Países Conectados", value: "40+" },
+              { label: "Jóvenes Intercambiados", value: "1,200+" },
+              { label: "Familias Anfitrionas", value: "850+" }
+            ].map((stat, idx) => (
+              <div key={idx} className="group">
+                <div className="text-3xl font-black text-rotary-blue mb-2 group-hover:scale-110 transition-transform duration-300">{stat.value}</div>
+                <div className="text-xs font-bold tracking-widest uppercase text-gray-400 group-hover:text-rotary-blue transition-colors">{stat.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
-      <style>{`
+      <style dangerouslySetInnerHTML={{ __html: `
         @keyframes spin-slow {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
@@ -194,10 +250,9 @@ const LatirSpecialSection = () => {
         .animate-spin-slow {
           animation: spin-slow 12s linear infinite;
         }
-      `}</style>
+      `}} />
     </section>
   );
 };
 
 export default LatirSpecialSection;
-

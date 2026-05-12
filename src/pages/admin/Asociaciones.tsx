@@ -96,7 +96,13 @@ const AsociacionesManagement: React.FC = () => {
 
             if (assocRes.ok) {
                 const data = await assocRes.json();
-                setAssociations(data);
+                // Filter out RYE entities from Associations list (they belong in Programs)
+                const filtered = data.filter((c: any) => 
+                    !c.name?.toLowerCase().includes('rye') && 
+                    !c.subdomain?.toLowerCase().includes('rye') &&
+                    c.type !== 'Programa de Intercambio'
+                );
+                setAssociations(filtered);
             }
             if (usersRes.ok) {
                 const usersData = await usersRes.json();
@@ -580,6 +586,7 @@ const AsociacionesManagement: React.FC = () => {
                                         title="Define la estructura de links y labels del footer"
                                     >
                                         <option value="association">Skin de Asociación / Agrupación</option>
+                                        <option value="Programa de Intercambio">Skin de Programa de Intercambio</option>
                                         <option value="club">Skin de Rotary Club (Socio)</option>
                                         <option value="district">Skin de Distrito Rotary</option>
                                         <option value="colrotarios">Skin de Colrotarios (Fundación)</option>

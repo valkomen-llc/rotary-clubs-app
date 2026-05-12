@@ -13,7 +13,6 @@ import VideoCreator from '../../components/admin/content-studio/VideoCreator';
 import ProjectLibrary from '../../components/admin/content-studio/ProjectLibrary';
 import AccountManager from '../../components/admin/content-studio/AccountManager';
 import ContentQueue from '../../components/admin/content-studio/ContentQueue';
-import Diagnostic from '../../components/admin/content-studio/Diagnostic';
 
 const ContentStudio: React.FC = () => {
     const [activeTab, setActiveTab] = useState('create');
@@ -33,8 +32,7 @@ const ContentStudio: React.FC = () => {
                         <p className="text-gray-500 font-medium">Genera videos virales desde tus fotos y automatiza tus redes sociales.</p>
                     </div>
 
-                    <div className="flex gap-3 items-center">
-                        <Diagnostic />
+                    <div className="flex gap-3">
                         <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-xl">
                             <Trophy className="w-4 h-4 text-indigo-600" />
                             <span className="text-xs font-black text-indigo-700 uppercase tracking-wider">KIE.ai Enabled</span>

@@ -7,7 +7,8 @@ const DEFAULT_JOIN_IMG = 'https://images.unsplash.com/photo-1573497019940-1c28c8
 const JoinSection = () => {
   const { club } = useClub();
   const siteImages = useSiteImages();
-  const isLatir = club?.subdomain?.toLowerCase().includes('latir') || club?.name?.toLowerCase().includes('latir');
+  const currentHostname = window.location.hostname;
+  const isLatir = club?.subdomain?.toLowerCase().includes('latir') || club?.name?.toLowerCase().includes('latir') || currentHostname.toLowerCase().includes('rye');
 
   const imgUrl = siteImages.join?.url || DEFAULT_JOIN_IMG;
   const imgAlt = siteImages.join?.alt || 'Rotary Members';
@@ -21,14 +22,14 @@ const JoinSection = () => {
             {isLatir ? (
               <>
                 <h2 className="text-4xl md:text-5xl font-light mb-6 leading-[1.15] tracking-tight">
-                  ¡Únete a LATIR y transforma el mundo, un intercambio a la vez!
+                  ¡Únete a {club?.name || 'nuestra red'} y transforma el mundo, un intercambio a la vez!
                 </h2>
                 <div className="space-y-6">
                   <p className="text-lg text-white/80 leading-relaxed font-normal">
-                    Construyamos juntos un futuro de servicio, liderazgo y amistad, donde la juventud es protagonista del cambio y la diversidad nuestra mayor fortaleza. Resolver los desafíos más urgentes de nuestra región y del mundo requiere visión, acción y unión. En LATIR, creemos que cada joven tiene el poder de generar impacto a través del entendimiento cultural y el servicio voluntario.
+                    Construyamos juntos un futuro de servicio, liderazgo y amistad, donde la juventud es protagonista del cambio y la diversidad nuestra mayor fortaleza. Resolver los desafíos más urgentes de nuestra región y del mundo requiere visión, acción y unión. En {club?.name || 'nuestra red'}, creemos que cada joven tiene el poder de generar impacto a través del entendimiento cultural y el servicio voluntario.
                   </p>
                   <p className="text-xl text-white/90 leading-relaxed pt-4 font-normal">
-                    Conectamos a 44 distritos de 14 países, inspirando a más de 175 participantes a LATIR juntos por un futuro de paz y cooperación.
+                    Conectamos a 44 distritos de 14 países, inspirando a más de 175 participantes a trabajar juntos por un futuro de paz y cooperación.
                   </p>
                 </div>
               </>

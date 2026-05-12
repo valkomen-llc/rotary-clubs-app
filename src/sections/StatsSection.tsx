@@ -43,12 +43,35 @@ const latirStats = [
   }
 ];
 
-const StatsSection = () => {
   const { club } = useClub();
+  const currentHostname = window.location.hostname;
   
-  const isLatir = club?.name?.toLowerCase().includes('latir') || club?.subdomain === 'latir' || club?.subdomain?.includes('latir');
+  const isSpecial = club?.name?.toLowerCase().includes('latir') || 
+                  club?.subdomain?.toLowerCase().includes('latir') || 
+                  currentHostname.toLowerCase().includes('rye');
   
-  const stats = isLatir ? latirStats : defaultStats;
+  const clubName = club?.name || 'nuestra red';
+  
+  const stats = isSpecial ? [
+    {
+      icon: Globe,
+      value: '44',
+      title: `Cuarenta y cuatro distritos rotarios se dan cita en ${clubName === 'Rotary LATIR' ? 'Cali' : 'nuestra región'} para trabajar al unísono, compartiendo experiencias, estrategias y compromiso por el intercambio juvenil.`,
+      color: 'text-rotary-blue'
+    },
+    {
+      icon: Users,
+      value: '+175',
+      title: 'Delegaciones construyendo puentes culturales, derribando fronteras y celebrando la diversidad que nos fortalece.',
+      color: 'text-purple-600'
+    },
+    {
+      icon: Heart,
+      value: '14',
+      title: `Jóvenes, líderes y voluntarios de 14 paises reunidos por una causa común: transformar vidas a través del Programa de Intercambio de Jóvenes de Rotary.`,
+      color: 'text-rotary-gold'
+    }
+  ] : defaultStats;
 
   return (
     <section className="py-16 md:py-20 bg-rotary-concrete">

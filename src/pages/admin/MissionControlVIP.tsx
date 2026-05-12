@@ -50,8 +50,13 @@ const getApiBase = () => {
 
 const API_BASE = getApiBase();
 
+// In production (Vercel), we must use /vps for the QR gateway to trigger vercel.json rewrites bypassing Vercel's strict /api/ lock.
 const VITE_API_URL = import.meta.env.VITE_API_URL || "";
-const QR_API = VITE_API_URL ? VITE_API_URL : "/api";
+const QR_API = VITE_API_URL
+  ? VITE_API_URL
+  : import.meta.env.PROD
+    ? "/vps"
+    : "/api";
 
 // --- DATA TYPES ---
 interface Agent {

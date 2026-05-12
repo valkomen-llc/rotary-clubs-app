@@ -205,7 +205,7 @@ function SmartHome() {
   // District Site (e.g. 4271.org) — specialized multimedia gallery
   const currentHostname = window.location.hostname;
   const currentParams = window.location.search;
-  if ((club as any)?.type === 'district' || currentHostname.includes('4271') || currentParams.includes('4271')) {
+  if (((club as any)?.type === 'district' && !club?.subdomain?.includes('rye')) || currentHostname.includes('4271') || currentParams.includes('4271')) {
     return <DistrictMultimediaGallery />;
   }
 
@@ -229,8 +229,8 @@ function SmartHome() {
     );
   }
 
-  // Association / Network site (LATIR, EMAR, Colrotarios)
-  if ((club as any)?.type === 'association') {
+  // Association / Network site (LATIR, EMAR, Colrotarios, RYE)
+  if ((club as any)?.type === 'association' || (club as any)?.type === 'Programa de Intercambio' || club?.subdomain?.includes('rye')) {
     return (
       <div className="min-h-screen bg-white">
         <Navbar />
@@ -239,7 +239,9 @@ function SmartHome() {
           {/* As suggested in the plan: Custom stats, maps/programs, and family CTA instead of traditional Club join section */}
           <StatsSection />
           <JoinSection />
-          {(club?.subdomain?.toLowerCase().includes('latir') || club?.name?.toLowerCase().includes('latir')) ? (
+          {(club?.subdomain?.toLowerCase().includes('latir') || 
+            club?.name?.toLowerCase().includes('latir') || 
+            club?.subdomain?.toLowerCase().includes('rye4281')) ? (
             <LatirSpecialSection />
           ) : (
             <SubvencionesSection />

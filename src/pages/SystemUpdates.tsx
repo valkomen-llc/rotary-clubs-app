@@ -23,99 +23,32 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.118 | 2026-05-06 (DSO ADMIN 🧠)
-// Cache bust: 2026-05-11 22:45 (WA QR — UPLOADS DE 25MB 📎)
+// DISTRICT HEALTH IQ V4.172 | 2026-05-12 (RYE BRANDING PARITY 🛡️)
+// Cache bust: 2026-05-12 14:45 (ADMIN CLASSIFICATION FIX 🏛️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.172',
+        date: '12 de Mayo, 2026',
+        title: '🛡️ Paridad de Marca RYE 4281',
+        description: 'Consolidación de la identidad visual y administrativa para RYE 4281 como Programa de Intercambio en todo el ecosistema.',
+        type: 'improvement',
+        changes: [
+            { type: 'improved', text: 'Dashboard: Reemplazo global de etiquetas "Asociación" por "Programa de Intercambio" para entidades RYE.' },
+            { type: 'improved', text: 'Admin Layout: Sincronización de la versión del sistema a v4.172.' },
+            { type: 'fixed', text: 'Navegación: Clasificación correcta de RYE 4281 en la sección de Programas de Intercambio.' }
+        ]
+    },
+    {
         version: 'v4.171',
-        date: '11 de Mayo, 2026',
-        title: '📎 Adjuntos grandes en el Gateway (hasta 25 MB)',
-        description: 'Se corrigió el "Error de conectividad" al enviar archivos pesados desde el disparador manual o el chat: el parser JSON del backend estaba limitado al default de 100 KB y rechazaba imágenes/videos más grandes. Ahora acepta hasta 25 MB y el modal explica el motivo si el archivo excede el límite.',
-        type: 'fix'
-    },
-    {
-        version: 'v4.170',
-        date: '11 de Mayo, 2026',
-        title: '✉️ Disparador manual de mensajes en el Gateway',
-        description: 'Nuevo botón "Nuevo mensaje" en el inbox del WhatsApp QR Gateway que permite enviar a cualquier número, esté o no en los contactos del WhatsApp vinculado. Soporta texto, archivos adjuntos (imagen, video, documento) y el texto como caption del archivo.',
-        type: 'feature'
-    },
-    {
-        version: 'v4.169',
-        date: '11 de Mayo, 2026',
-        title: '🏷️ Nombres de grupos y perfiles de WhatsApp en el inbox',
-        description: 'El Gateway ahora obtiene el subject real de cada grupo via /group/fetchAllGroups y, como último recurso, pide el perfil individual de los chats que aún aparezcan como número crudo. Resultado: muchos menos contactos y grupos mostrándose como números largos sin etiqueta.',
-        type: 'fix'
-    },
-    {
-        version: 'v4.168',
-        date: '11 de Mayo, 2026',
-        title: '🪪 Nombres reales de los contactos en el Gateway',
-        description: 'El inbox del WhatsApp QR Gateway ahora cruza la lista de chats con la libreta de contactos de Evolution, de modo que las conversaciones individuales muestran el nombre del contacto en lugar del número crudo cuando el dato está disponible.',
-        type: 'fix'
-    },
-    {
-        version: 'v4.167',
-        date: '11 de Mayo, 2026',
-        title: '🧹 WhatsApp QR — Refinamiento UX (Sprint 1)',
-        description: 'Header colapsable cuando la sesión está activa para ganar altura visible del inbox; se muestra el nombre real del archivo adjunto en lugar del mime-type; al abrir un chat los mensajes se marcan como leídos también en WhatsApp (deja de aparecer como no leído en el teléfono vinculado).',
-        type: 'improvement'
-    },
-    {
-        version: 'v4.166',
-        date: '11 de Mayo, 2026',
-        title: '📲 WhatsApp QR Gateway sobre Evolution API',
-        description: 'Se migró el módulo nativo de WhatsApp QR (SuperAdmin) de whatsapp-web.js + Puppeteer a Evolution API por HTTP. Se eliminan dependencias pesadas, se quita el hack /vps del frontend y el gateway corre de manera estable sobre la línea oficial vinculada en producción.',
-        type: 'feature'
-    },
-    {
-        version: 'v4.165',
-        date: '11 de Mayo, 2026',
-        title: '⚡ Mensajes en Tiempo Real y Sincronización Global',
-        description: 'Se corrigió un problema de aislamiento que impedía ver mensajes entrantes en el CRM central. Además, se mejoró la sincronización de fotos buscando coincidencias por nombre en toda la base de datos de socios.',
-        type: 'fix'
-    },
-    {
-        version: 'v4.164',
-        date: '11 de Mayo, 2026',
-        title: '📸 Fotos de Perfil en WhatsApp CRM',
-        description: 'Ahora los contactos del CRM muestran su foto de perfil si están registrados como socios o participantes en la plataforma. Se implementó sincronización automática por número de teléfono.',
-        type: 'feature'
-    },
-    {
-        version: 'v4.163',
-        date: '11 de Mayo, 2026',
-        title: '🏗️ Reestructuración de CRM y Ajustes',
-        description: 'Se optimizó la usabilidad del CRM: el acceso directo ahora abre el Chat por defecto. Las configuraciones de WhatsApp API y Email/SMTP se movieron al panel de "Settings" de la plataforma.',
-        type: 'feature'
-    },
-    {
-        version: 'v4.162',
-        date: '11 de Mayo, 2026',
-        title: '📱 Acceso Directo a WhatsApp CRM',
-        description: 'Se añadió el acceso directo al módulo de WhatsApp CRM en la barra lateral izquierda.',
-        type: 'feature'
-    },
-    {
-        version: 'v4.161',
-        date: '11 de Mayo, 2026',
-        title: '🌍 CRM Global Estabilizado',
-        description: 'Se centralizó la configuración de WhatsApp CRM en el Club de la Plataforma para SuperAdministradores.',
-        type: 'feature'
-    },
-    {
-        version: 'v4.160',
-        date: '11 de Mayo, 2026',
-        title: '🏛️ Selector de Clubes (SuperAdmin)',
-        description: 'Se implementó un selector de clubes en el panel de CRM para administradores globales (Opcional).',
-        type: 'feature'
-    },
-    {
-        version: 'v4.146',
-        date: '08 de Mayo, 2026',
-        title: '🌐 Soporte Multi-Entidad & Paneles Admin',
-        description: 'Se introdujo el selector dinámico de entidades (Zonas, Eventos, Ferias y Programas) y se crearon paneles de control dedicados para gestionar cada tipo de organización desde el dashboard SuperAdmin.',
-        type: 'feature'
+        date: '12 de Mayo, 2026',
+        title: '🚀 CRM Premium & Sincronización Global',
+        description: 'Activación del CRM de WhatsApp con chat en tiempo real y sincronización masiva de entidades para nuevos clubes (RYE 4281).',
+        type: 'major',
+        changes: [
+            { type: 'added', text: 'CRM: Chat de WhatsApp Business en tiempo real habilitado.' },
+            { type: 'improved', text: 'Sincronización: Conexión exitosa del club RYE 4281 al ecosistema Latir.' },
+            { type: 'fixed', text: 'Infraestructura: Corrección de dominios y aprovisionamiento en Vercel.' }
+        ]
     },
     {
         version: 'v4.142',
