@@ -23,9 +23,16 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.172 | 2026-05-12 (RYE BRANDING PARITY 🛡️)
-// Cache bust: 2026-05-12 14:45 (ADMIN CLASSIFICATION FIX 🏛️)
+// DISTRICT HEALTH IQ V4.173 | 2026-05-12 (WA QR — EVOLUTION RESTAURADO ♻️)
+// Cache bust: 2026-05-12 16:50 (WA QR — EVOLUTION RESTAURADO ♻️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.173',
+        date: '12 de Mayo, 2026',
+        title: '♻️ WhatsApp QR — Stack Evolution restaurado',
+        description: 'Se restauró toda la integración con Evolution API que había quedado revertida tras v4.172: cliente REST en el backend (reemplazando whatsapp-web.js + Puppeteer que no corre en Vercel serverless), enriquecimiento de nombres de grupos y contactos, header colapsable cuando hay sesión, nombre real de archivos adjuntos, mark-as-read al abrir un chat, disparador manual (Nuevo Mensaje) a cualquier número, y limit de 25 MB en el body parser.',
+        type: 'fix'
+    },
     {
         version: 'v4.172',
         date: '12 de Mayo, 2026',
