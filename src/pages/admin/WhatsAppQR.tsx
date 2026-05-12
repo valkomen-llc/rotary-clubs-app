@@ -2,12 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { QrCode, Smartphone, WifiOff, Loader, RefreshCw, Send, Users, MessageSquare, Clock, Search } from 'lucide-react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
-import { CheckCheck, Sparkles, Paperclip, Smile, Mic, Image as ImageIcon, Copy, Check } from 'lucide-react';
+import { CheckCheck, Sparkles, Paperclip, Smile, Mic, Image as ImageIcon, Copy, Check, MessageSquarePlus, X } from 'lucide-react';
 
 const VITE_API_URL = import.meta.env.VITE_API_URL || '';
-// In production (Vercel), we must use /vps for the QR gateway to trigger vercel.json rewrites 
-// bypassing Vercel's strict /api/ serverless function filesystem lock.
-const API = VITE_API_URL ? VITE_API_URL : (import.meta.env.PROD ? '/vps' : '/api');
+const API = VITE_API_URL ? VITE_API_URL : '/api';
 
 interface Chat {
     id: string;
@@ -25,12 +23,22 @@ interface Message {
     timestamp: number;
     hasMedia: boolean;
     type: string;
+    filename?: string;
+    mimetype?: string;
     localUrl?: string; // Cache for immediate local preview
 }
 
-const MediaLoader: React.FC<{ chatId: string; messageId: string; token: string | null; localUrl?: string; localType?: string }> = ({ chatId, messageId, token, localUrl: initialLocalUrl, localType: initialLocalType }) => {
+const prettySize = (bytes: number) => {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const MediaLoader: React.FC<{ chatId: string; messageId: string; token: string | null; localUrl?: string; localType?: string; filename?: string; mimetype?: string }> = ({ chatId, messageId, token, localUrl: initialLocalUrl, localType: initialLocalType, filename, mimetype }) => {
     const [mediaUrl, setMediaUrl] = useState<string | null>(initialLocalUrl || null);
-    const [mediaType, setMediaType] = useState<string>(initialLocalType || '');
+    const [mediaType, setMediaType] = useState<string>(initialLocalType || mimetype || '');
+    const [mediaSize, setMediaSize] = useState<number>(0);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -48,11 +56,12 @@ const MediaLoader: React.FC<{ chatId: string; messageId: string; token: string |
                 setLoading(false);
                 return;
             }
-            
+
             const contentType = res.headers.get('Content-Type') || '';
             const blob = await res.blob();
             const objectUrl = URL.createObjectURL(blob);
             setMediaType(contentType);
+            setMediaSize(blob.size);
             setMediaUrl(objectUrl);
         } catch (e) {
             setError('Error de conectividad');
@@ -105,13 +114,19 @@ const MediaLoader: React.FC<{ chatId: string; messageId: string; token: string |
                 </div>
             );
         }
+        const displayName = filename || 'archivo_adjunto';
+        const sizeLabel = prettySize(mediaSize);
         return (
-            <a 
-                href={mediaUrl} 
-                download={`archivo_adjunto`} 
-                className="flex items-center gap-2 p-2 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 mb-2 mt-1 transition-colors cursor-pointer text-blue-700"
+            <a
+                href={mediaUrl}
+                download={displayName}
+                className="flex items-center gap-2 p-2 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 mb-2 mt-1 transition-colors cursor-pointer text-blue-700 max-w-xs"
             >
-                <div className="text-xs font-bold px-2 py-1 flex items-center gap-2"><ImageIcon className="w-4 h-4"/> ⬇️ Descargar archivo ({mediaType})</div>
+                <Paperclip className="w-4 h-4 flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold truncate" title={displayName}>{displayName}</div>
+                    <div className="text-[10px] opacity-70 truncate">⬇️ Descargar{sizeLabel ? ` · ${sizeLabel}` : ''}</div>
+                </div>
             </a>
         );
     }
@@ -145,7 +160,16 @@ const WhatsAppQR: React.FC = () => {
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const filteredChats = chats.filter(c => 
+    // Compose-new-message (send to any number, no contact needed)
+    const [showCompose, setShowCompose] = useState(false);
+    const [composeNumber, setComposeNumber] = useState('');
+    const [composeMessage, setComposeMessage] = useState('');
+    const [composeFile, setComposeFile] = useState<File | null>(null);
+    const [composeSending, setComposeSending] = useState(false);
+    const [composeError, setComposeError] = useState('');
+    const composeFileInputRef = useRef<HTMLInputElement>(null);
+
+    const filteredChats = chats.filter(c =>
         c.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
@@ -173,12 +197,12 @@ const WhatsAppQR: React.FC = () => {
             const res = await fetch(`${API}/whatsapp-qr/send-media`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    chatId: selectedChat.id, 
+                body: JSON.stringify({
+                    chatId: selectedChat.id,
                     mediaData: base64Data,
                     filename: file.name,
                     mimetype: file.type,
-                    caption: '' 
+                    caption: ''
                 })
             });
             const data = await res.json();
@@ -189,11 +213,11 @@ const WhatsAppQR: React.FC = () => {
                 alert(data.error);
                 URL.revokeObjectURL(localUrl);
             }
-        } catch (err) { 
+        } catch (err) {
             console.error(err);
             URL.revokeObjectURL(localUrl);
         }
-        
+
         setSending(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
@@ -257,7 +281,7 @@ const WhatsAppQR: React.FC = () => {
         setLoadingChats(true);
         try {
             const res = await fetch(`${API}/whatsapp-qr/chats?_t=${Date.now()}`, {
-                headers: { 
+                headers: {
                     'Authorization': `Bearer ${token}`,
                     'Cache-Control': 'no-cache, no-store, must-revalidate',
                     'Pragma': 'no-cache'
@@ -271,11 +295,32 @@ const WhatsAppQR: React.FC = () => {
         setLoadingChats(false);
     };
 
+    const markChatRead = async (chatId: string, fetchedMessages: Message[]) => {
+        const messageIds = fetchedMessages
+            .filter(m => !m.fromMe)
+            .slice(-20)
+            .map(m => m.id)
+            .filter(Boolean);
+        if (messageIds.length === 0) return;
+        try {
+            await fetch(`${API}/whatsapp-qr/chats/${encodeURIComponent(chatId)}/mark-read`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messageIds })
+            });
+            // Optimistic: reset unread badge for this chat in the sidebar.
+            setChats(prev => prev.map(c => c.id === chatId ? { ...c, unreadCount: 0 } : c));
+        } catch (e) {
+            // Best-effort; the next chats poll will sync the real state.
+            console.warn('markChatRead failed', e);
+        }
+    };
+
     const fetchMessages = async (chatId: string, silent = false) => {
         if (!silent) setLoadingMessages(true);
         try {
             const res = await fetch(`${API}/whatsapp-qr/chats/${chatId}/messages?_t=${Date.now()}`, {
-                headers: { 
+                headers: {
                     'Authorization': `Bearer ${token}`,
                     'Cache-Control': 'no-cache, no-store, must-revalidate',
                     'Pragma': 'no-cache'
@@ -284,14 +329,18 @@ const WhatsAppQR: React.FC = () => {
             const data = await res.json();
             if (data.success) {
                 // Reverse to show oldest first in UI flow
+                const fetchedMessages = data.messages.reverse();
                 setMessages(prev => {
-                    // Safe merge to ensure locally appended messages stay visible 
+                    // Safe merge to ensure locally appended messages stay visible
                     // even if the WhatsApp core hasn't synced them to the fetch db yet
-                    const fetchedMessages = data.messages.reverse();
                     const fetchedIds = new Set(fetchedMessages.map((m: any) => m.id));
                     const missingLocals = prev.filter(m => m.fromMe && !fetchedIds.has(m.id) && (Date.now() / 1000 - m.timestamp < 60));
                     return [...fetchedMessages, ...missingLocals].sort((a, b) => a.timestamp - b.timestamp);
                 });
+                if (!silent) {
+                    // First open of the chat — best-effort mark as read on WhatsApp's side.
+                    markChatRead(chatId, fetchedMessages);
+                }
             }
         } catch (e) { console.error(e); }
         if (!silent) setLoadingMessages(false);
@@ -300,7 +349,7 @@ const WhatsAppQR: React.FC = () => {
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!messageText.trim() || !selectedChat) return;
-        
+
         setSending(true);
         try {
             const res = await fetch(`${API}/whatsapp-qr/send-message`, {
@@ -317,6 +366,80 @@ const WhatsAppQR: React.FC = () => {
             }
         } catch (e) { console.error(e); }
         setSending(false);
+    };
+
+    const readFileAsBase64 = (f: File): Promise<string> => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(f);
+    });
+
+    const handleCompose = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setComposeError('');
+
+        const digits = composeNumber.replace(/[^0-9]/g, '');
+        if (digits.length < 7) {
+            setComposeError('Número inválido. Incluye el código de país (ej: 573114818199).');
+            return;
+        }
+        if (!composeMessage.trim() && !composeFile) {
+            setComposeError('Escribe un mensaje o adjunta un archivo.');
+            return;
+        }
+
+        setComposeSending(true);
+        try {
+            let res: Response;
+            if (composeFile) {
+                const base64Data = await readFileAsBase64(composeFile);
+                res = await fetch(`${API}/whatsapp-qr/send-media`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chatId: digits,
+                        mediaData: base64Data,
+                        filename: composeFile.name,
+                        mimetype: composeFile.type || 'application/octet-stream',
+                        caption: composeMessage
+                    })
+                });
+            } else {
+                res = await fetch(`${API}/whatsapp-qr/send-message`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chatId: digits, message: composeMessage })
+                });
+            }
+            let data: any = null;
+            try {
+                data = await res.json();
+            } catch {
+                if (res.status === 413) {
+                    setComposeError('El archivo adjunto es demasiado grande para el servidor. Probá uno más liviano (≤ 20 MB).');
+                } else {
+                    setComposeError(`Respuesta inesperada del servidor (HTTP ${res.status}).`);
+                }
+                setComposeSending(false);
+                return;
+            }
+            if (!res.ok || !data.success) {
+                setComposeError(data?.error || `No se pudo enviar el mensaje (HTTP ${res.status}).`);
+                setComposeSending(false);
+                return;
+            }
+            // Success — clear and close, then refresh chats so the new conversation appears.
+            setComposeNumber('');
+            setComposeMessage('');
+            setComposeFile(null);
+            setShowCompose(false);
+            fetchChats();
+        } catch (err) {
+            console.error(err);
+            setComposeError('Error de conectividad. Intenta nuevamente.');
+        }
+        setComposeSending(false);
     };
 
     // Fetch chats every 5 seconds (suppressed log in the UI)
@@ -369,54 +492,66 @@ const WhatsAppQR: React.FC = () => {
     return (
         <AdminLayout>
             <div className={`mx-auto space-y-6 ${status === 'CONNECTED' ? 'max-w-7xl' : 'max-w-4xl'}`}>
-                
-                {/* Header */}
-                <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm overflow-hidden relative">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
-                    
-                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 relative z-10">
-                        <div className="flex items-start gap-4">
-                            <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center flex-shrink-0 text-emerald-600">
-                                <QrCode className="w-7 h-7" />
+
+                {/* Header — collapsed when connected to give the inbox more vertical room */}
+                {status === 'CONNECTED' ? (
+                    <div className="bg-white rounded-xl border border-gray-200 px-4 py-2.5 shadow-sm flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 flex-shrink-0">
+                                <QrCode className="w-4 h-4" />
                             </div>
-                            <div>
-                                <h1 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
-                                    WhatsApp Web Gateway
-                                </h1>
-                                <p className="text-sm text-gray-500 mt-1 max-w-xl leading-relaxed">
-                                    Sistema nativo reservado para el Super Administrador. Empareja el número de WhatsApp oficial del Distrito para comunicarse masivamente con Grupos y Comunidades de Rotary por fuera de la API Meta.
-                                </p>
+                            <div className="min-w-0">
+                                <h1 className="text-sm font-black text-gray-900 tracking-tight truncate">WhatsApp Web Gateway</h1>
+                                <p className="text-xs text-gray-500 truncate">Línea oficial vinculada del Super Administrador</p>
                             </div>
                         </div>
-
-                        {/* Status Badge */}
-                        <div className="flex-shrink-0 flex items-center gap-3">
-                            {status === 'CONNECTED' && (
-                                <button onClick={disconnectSession} className="text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg border border-red-100 transition-colors">
-                                    Cerrar Sesión
-                                </button>
-                            )}
-                            {status === 'CONNECTED' && (
-                                <div className="bg-emerald-50 text-emerald-700 px-4 py-2 rounded-xl flex items-center gap-2 border border-emerald-200 font-bold text-sm shadow-sm">
-                                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                                    Vínculo Activo
-                                </div>
-                            )}
-                            {status === 'DISCONNECTED' && (
-                                <div className="bg-red-50 text-red-700 px-4 py-2 rounded-xl flex items-center gap-2 border border-red-200 font-bold text-sm shadow-sm">
-                                    <WifiOff className="w-4 h-4" />
-                                    Sin Conexión
-                                </div>
-                            )}
-                             {status === 'INITIALIZING' && (
-                                <div className="bg-amber-50 text-amber-700 px-4 py-2 rounded-xl flex items-center gap-2 border border-amber-200 font-bold text-sm shadow-sm">
-                                    <Loader className="w-4 h-4 animate-spin" />
-                                    Iniciando Servidor...
-                                </div>
-                            )}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                            <button onClick={disconnectSession} className="text-[11px] font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2.5 py-1.5 rounded-lg border border-red-100 transition-colors">
+                                Cerrar Sesión
+                            </button>
+                            <div className="bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-emerald-200 font-bold text-[11px]">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                Vínculo Activo
+                            </div>
                         </div>
                     </div>
-                </div>
+                ) : (
+                    <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm overflow-hidden relative">
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
+
+                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 relative z-10">
+                            <div className="flex items-start gap-4">
+                                <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center flex-shrink-0 text-emerald-600">
+                                    <QrCode className="w-7 h-7" />
+                                </div>
+                                <div>
+                                    <h1 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
+                                        WhatsApp Web Gateway
+                                    </h1>
+                                    <p className="text-sm text-gray-500 mt-1 max-w-xl leading-relaxed">
+                                        Sistema nativo reservado para el Super Administrador. Empareja el número de WhatsApp oficial del Distrito para comunicarse masivamente con Grupos y Comunidades de Rotary por fuera de la API Meta.
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Status Badge */}
+                            <div className="flex-shrink-0 flex items-center gap-3">
+                                {status === 'DISCONNECTED' && (
+                                    <div className="bg-red-50 text-red-700 px-4 py-2 rounded-xl flex items-center gap-2 border border-red-200 font-bold text-sm shadow-sm">
+                                        <WifiOff className="w-4 h-4" />
+                                        Sin Conexión
+                                    </div>
+                                )}
+                                {status === 'INITIALIZING' && (
+                                    <div className="bg-amber-50 text-amber-700 px-4 py-2 rounded-xl flex items-center gap-2 border border-amber-200 font-bold text-sm shadow-sm">
+                                        <Loader className="w-4 h-4 animate-spin" />
+                                        Iniciando Servidor...
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Conditional UI based on connection */}
                 {status !== 'CONNECTED' ? (
@@ -436,7 +571,7 @@ const WhatsAppQR: React.FC = () => {
                                             <Smartphone className="w-8 h-8 text-gray-300" />
                                         </div>
                                         <p className="text-sm font-medium text-gray-500 mb-6">El módulo nativo está inactivo. Enciende el servidor para generar un QR y conectar el número institucional asociado a los grupos distritales.</p>
-                                        <button 
+                                        <button
                                             onClick={startSession}
                                             disabled={loadingAction}
                                             className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all disabled:opacity-50 w-full justify-center">
@@ -452,7 +587,7 @@ const WhatsAppQR: React.FC = () => {
                                             <div className="absolute inset-0 bg-gradient-to-t from-emerald-500/10 to-transparent animate-pulse" />
                                             <RefreshCw className="w-10 h-10 text-emerald-500 animate-spin opacity-80" />
                                         </div>
-                                        <p className="text-sm font-bold text-gray-600">Simulando entorno de navegador Chrome...</p>
+                                        <p className="text-sm font-bold text-gray-600">Conectando con Evolution API...</p>
                                         <p className="text-xs text-gray-400">Este proceso puede tardar hasta 40 segundos.</p>
                                     </div>
                                 )}
@@ -482,7 +617,7 @@ const WhatsAppQR: React.FC = () => {
                                     Gestión de Comunidades
                                 </h3>
                                 <p className="text-sm text-gray-400 leading-relaxed mb-6">
-                                    La principal ventaja de conectar este Gateway alterno (QR), es que a diferencia de Cloud API, tienes acceso a <strong>funcionalidades nativas de usuario</strong>. 
+                                    La principal ventaja de conectar este Gateway alterno (QR), es que a diferencia de Cloud API, tienes acceso a <strong>funcionalidades nativas de usuario</strong>.
                                     Puedes delegarle a la Agente <em>Camila</em> que anuncie los comunicados dentro de Grupos Rotarios en los cuales el teléfono esté agregado.
                                 </p>
                                 <div className="bg-black/50 border border-gray-800 rounded-xl p-5 mb-6">
@@ -505,16 +640,25 @@ const WhatsAppQR: React.FC = () => {
                 ) : (
                     // CRM INBOX MODULE
                     <div className="flex h-[700px] border border-gray-200 rounded-2xl overflow-hidden shadow-sm bg-white animate-fade-in">
-                        
+
                         {/* Sidebar */}
                         <div className="w-full max-w-[340px] border-r border-gray-200 flex flex-col bg-gray-50/50">
                             <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-white">
                                 <h2 className="font-bold text-gray-900 flex items-center gap-2">
                                     <MessageSquare className="w-5 h-5 text-emerald-600" /> Inbox
                                 </h2>
-                                <button onClick={fetchChats} className="p-2 hover:bg-gray-100 rounded-xl text-gray-400 transition-colors">
-                                    <RefreshCw className={`w-4 h-4 ${loadingChats ? 'animate-spin' : ''}`} />
-                                </button>
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={() => { setComposeError(''); setShowCompose(true); }}
+                                        className="p-2 hover:bg-emerald-50 rounded-xl text-emerald-600 transition-colors"
+                                        title="Nuevo mensaje (a cualquier número)"
+                                    >
+                                        <MessageSquarePlus className="w-4 h-4" />
+                                    </button>
+                                    <button onClick={fetchChats} className="p-2 hover:bg-gray-100 rounded-xl text-gray-400 transition-colors" title="Refrescar inbox">
+                                        <RefreshCw className={`w-4 h-4 ${loadingChats ? 'animate-spin' : ''}`} />
+                                    </button>
+                                </div>
                             </div>
 
                             {/* CRM Metrics Grid */}
@@ -538,16 +682,16 @@ const WhatsAppQR: React.FC = () => {
                             <div className="p-3 border-b border-gray-100 bg-white">
                                 <div className="relative">
                                     <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                                    <input 
-                                        type="text" 
-                                        placeholder="Buscar chat o grupo..." 
+                                    <input
+                                        type="text"
+                                        placeholder="Buscar chat o grupo..."
                                         value={searchTerm}
                                         onChange={(e) => setSearchTerm(e.target.value)}
-                                        className="w-full bg-gray-100 border-none rounded-xl py-2 pl-9 pr-4 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" 
+                                        className="w-full bg-gray-100 border-none rounded-xl py-2 pl-9 pr-4 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
                                     />
                                 </div>
                             </div>
-                            
+
                             <div className="flex-1 overflow-y-auto">
                                 {loadingChats && chats.length === 0 ? (
                                     <div className="flex flex-col items-center justify-center h-40 text-gray-400">
@@ -557,16 +701,16 @@ const WhatsAppQR: React.FC = () => {
                                 ) : (
                                     <div className="divide-y divide-gray-100">
                                         {filteredChats.map(chat => (
-                                            <button 
-                                                key={chat.id} 
+                                            <button
+                                                key={chat.id}
                                                 onClick={() => { setMessages([]); setSelectedChat(chat); fetchMessages(chat.id); }}
                                                 className={`w-full text-left p-4 hover:bg-gray-50 flex items-center gap-3 transition-colors ${selectedChat?.id === chat.id ? 'bg-emerald-50 hover:bg-emerald-50' : ''}`}
                                             >
                                                 <div className={`w-12 h-12 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center font-bold text-white shadow-sm ${chat.isGroup ? 'bg-indigo-500' : 'bg-emerald-500'}`}>
-                                                    <img 
-                                                        src={`${API}/whatsapp-qr/chats/${encodeURIComponent(chat.id)}/image?token=${token}`} 
-                                                        alt={chat.name} 
-                                                        className="w-full h-full object-cover" 
+                                                    <img
+                                                        src={`${API}/whatsapp-qr/chats/${encodeURIComponent(chat.id)}/image?token=${token}`}
+                                                        alt={chat.name}
+                                                        className="w-full h-full object-cover"
                                                         onError={(e) => {
                                                             const target = e.target as HTMLImageElement;
                                                             target.style.display = 'none';
@@ -643,11 +787,11 @@ const WhatsAppQR: React.FC = () => {
                                                             msg.fromMe ? 'bg-[#D9FDD3] text-gray-900 rounded-tr-none' : 'bg-white text-gray-900 rounded-tl-none'
                                                         }`}>
                                                             {msg.hasMedia && selectedChat && (
-                                                                <MediaLoader chatId={selectedChat.id} messageId={msg.id} token={token} localUrl={msg.localUrl} localType={msg.type} />
+                                                                <MediaLoader chatId={selectedChat.id} messageId={msg.id} token={token} localUrl={msg.localUrl} localType={msg.type} filename={msg.filename} mimetype={msg.mimetype} />
                                                             )}
                                                             <div className="whitespace-pre-wrap break-words">{msg.body}</div>
                                                             <div className={`text-[10px] text-right mt-1 opacity-60 flex items-center justify-end gap-1 ${msg.fromMe ? 'text-gray-600' : 'text-gray-400'}`}>
-                                                                <button 
+                                                                <button
                                                                     onClick={() => copyToClipboard(msg.body, msg.id || i.toString())}
                                                                     className="mr-auto opacity-0 group-hover:opacity-100 transition-opacity hover:text-emerald-600"
                                                                     title="Copiar mensaje"
@@ -668,29 +812,29 @@ const WhatsAppQR: React.FC = () => {
                                     {/* Tools & AI Bar */}
                                     <div className="px-4 py-2 bg-[#F0F2F5] border-t border-gray-200 flex justify-between items-center text-gray-500 relative">
                                         <div className="flex items-center gap-2">
-                                            <input 
-                                                type="file" 
-                                                ref={fileInputRef} 
-                                                className="hidden" 
+                                            <input
+                                                type="file"
+                                                ref={fileInputRef}
+                                                className="hidden"
                                                 onChange={handleFileUpload}
                                                 accept="image/*,video/*,application/pdf"
                                             />
-                                            <button 
+                                            <button
                                                 onClick={() => fileInputRef.current?.click()}
                                                 className="p-2 hover:bg-gray-200 rounded-full transition-colors" title="Adjuntar Archivo"
                                             >
                                                 <Paperclip className="w-5 h-5" />
                                             </button>
-                                            <button 
+                                            <button
                                                 onClick={() => fileInputRef.current?.click()}
                                                 className="p-2 hover:bg-gray-200 rounded-full transition-colors" title="Adjuntar Imagen"
                                             >
                                                 <ImageIcon className="w-5 h-5" />
                                             </button>
                                             <div className="relative">
-                                                <button 
+                                                <button
                                                     onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                                                    className={`p-2 hover:bg-gray-200 rounded-full transition-colors ${showEmojiPicker ? 'bg-gray-200 text-emerald-600' : ''}`} 
+                                                    className={`p-2 hover:bg-gray-200 rounded-full transition-colors ${showEmojiPicker ? 'bg-gray-200 text-emerald-600' : ''}`}
                                                     title="Añadir Emoji"
                                                 >
                                                     <Smile className="w-5 h-5" />
@@ -699,7 +843,7 @@ const WhatsAppQR: React.FC = () => {
                                                     <div className="absolute bottom-full left-0 mb-2 bg-white shadow-xl border border-gray-200 rounded-2xl p-3 z-50 w-[280px] animate-in fade-in slide-in-from-bottom-2">
                                                         <div className="grid grid-cols-8 gap-1">
                                                             {['🤝', '😊', '💡', '✅', '🚀', '🌟', '📍', '🙌', '🙏', '❤️', '🤔', '🔥', '⚙️', '📈', '✨', '🌍'].map(emoji => (
-                                                                <button 
+                                                                <button
                                                                     key={emoji}
                                                                     onClick={() => {
                                                                         setMessageText(prev => prev + emoji);
@@ -715,7 +859,7 @@ const WhatsAppQR: React.FC = () => {
                                                 )}
                                             </div>
                                         </div>
-                                        <button 
+                                        <button
                                             className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white text-xs font-bold px-3 py-1.5 rounded-full flex flex-row items-center gap-2 shadow-sm transition-all"
                                             onClick={() => {
                                                 setMessageText('Generando respuesta sugerida por IA basándose en el historial de chat con el Agente Camila...');
@@ -728,7 +872,7 @@ const WhatsAppQR: React.FC = () => {
 
                                     {/* Message Input */}
                                     <div className="p-4 bg-[#F0F2F5] flex gap-2 items-end">
-                                        <textarea 
+                                        <textarea
                                             value={messageText}
                                             onChange={e => setMessageText(e.target.value)}
                                             onKeyDown={(e) => {
@@ -737,14 +881,14 @@ const WhatsAppQR: React.FC = () => {
                                                     handleSendMessage(e);
                                                 }
                                             }}
-                                            placeholder="Escribe un mensaje aquí..." 
+                                            placeholder="Escribe un mensaje aquí..."
                                             className="flex-1 max-h-32 min-h-[44px] bg-white border-transparent rounded-xl focus:ring-0 resize-none py-3 px-4 text-sm shadow-sm"
                                             rows={1}
                                         />
                                         <button className="p-3 bg-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-full transition-colors flex-shrink-0">
                                             <Mic className="w-5 h-5" />
                                         </button>
-                                        <button 
+                                        <button
                                             onClick={handleSendMessage}
                                             disabled={!messageText.trim() || sending}
                                             className="bg-emerald-600 text-white p-3 rounded-full hover:bg-emerald-700 transition-colors disabled:opacity-50 flex-shrink-0 shadow-sm disabled:cursor-not-allowed"
@@ -753,7 +897,7 @@ const WhatsAppQR: React.FC = () => {
                                         </button>
                                     </div>
                                 </div>
-                                
+
                                 {/* --- Archetype Profile Sidebar for AI Context --- */}
                                 <div className="w-[320px] bg-white border-l border-gray-200 hidden lg:flex flex-col flex-shrink-0 h-full animate-fade-in">
                                     <div className="h-[68px] border-b border-gray-100 flex items-center px-4 flex-shrink-0">
@@ -762,10 +906,10 @@ const WhatsAppQR: React.FC = () => {
                                     <div className="flex-1 overflow-y-auto p-5">
                                         <div className="flex flex-col items-center text-center">
                                             <div className={`w-20 h-20 rounded-full overflow-hidden flex items-center justify-center font-bold text-white shadow-sm mb-4 ${selectedChat.isGroup ? 'bg-indigo-500' : 'bg-emerald-500'}`}>
-                                                <img 
-                                                    src={`${API}/whatsapp-qr/chats/${encodeURIComponent(selectedChat.id)}/image?token=${token}`} 
-                                                    alt={selectedChat.name} 
-                                                    className="w-full h-full object-cover" 
+                                                <img
+                                                    src={`${API}/whatsapp-qr/chats/${encodeURIComponent(selectedChat.id)}/image?token=${token}`}
+                                                    alt={selectedChat.name}
+                                                    className="w-full h-full object-cover"
                                                     onError={(e) => {
                                                         const target = e.target as HTMLImageElement;
                                                         target.style.display = 'none';
@@ -789,7 +933,7 @@ const WhatsAppQR: React.FC = () => {
                                                     Identificador base. Usado por la IA para cruzar datos con el CRM y formular respuestas personalizadas con el protocolo institucional.
                                                 </p>
                                             </div>
-                                            
+
                                             <div className="mt-4 px-3 py-2 bg-blue-50/50 rounded-lg border border-blue-100/50">
                                                 <div className="flex justify-between items-center mb-2">
                                                     <span className="text-xs font-semibold text-gray-600">Distrito Asignado</span>
@@ -827,6 +971,117 @@ const WhatsAppQR: React.FC = () => {
                     </div>
                 )}
             </div>
+
+            {showCompose && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-fade-in">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md relative">
+                        <button
+                            type="button"
+                            onClick={() => { setShowCompose(false); setComposeError(''); }}
+                            className="absolute top-3 right-3 p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                        <div className="p-6 border-b border-gray-100">
+                            <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
+                                <MessageSquarePlus className="w-5 h-5 text-emerald-600" />
+                                Nuevo Mensaje
+                            </h3>
+                            <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                                Enviá a cualquier número de WhatsApp, esté o no agregado a tu libreta. Adjunta archivos opcionales (imagen, video, documento).
+                            </p>
+                        </div>
+
+                        <form onSubmit={handleCompose} className="p-6 space-y-4">
+                            <div>
+                                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block mb-1.5">Número de destino</label>
+                                <input
+                                    type="tel"
+                                    value={composeNumber}
+                                    onChange={e => setComposeNumber(e.target.value)}
+                                    placeholder="Ej: 573114818199"
+                                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                                    autoFocus
+                                />
+                                <p className="text-[10px] text-gray-400 mt-1">Incluye el código de país. Acepta espacios, guiones y signo "+".</p>
+                            </div>
+
+                            <div>
+                                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block mb-1.5">
+                                    Mensaje {composeFile ? <span className="text-gray-400 font-normal normal-case">(opcional, se usará como caption)</span> : ''}
+                                </label>
+                                <textarea
+                                    value={composeMessage}
+                                    onChange={e => setComposeMessage(e.target.value)}
+                                    rows={4}
+                                    placeholder="Escribe tu mensaje aquí..."
+                                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none resize-none transition-all"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block mb-1.5">Archivo adjunto (opcional)</label>
+                                <input
+                                    type="file"
+                                    ref={composeFileInputRef}
+                                    className="hidden"
+                                    onChange={e => setComposeFile(e.target.files?.[0] || null)}
+                                    accept="image/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+                                />
+                                {composeFile ? (
+                                    <div className="border border-emerald-200 bg-emerald-50 rounded-xl px-3 py-2.5 flex items-center gap-2">
+                                        <Paperclip className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-xs font-bold text-emerald-800 truncate" title={composeFile.name}>{composeFile.name}</div>
+                                            <div className="text-[10px] text-emerald-700 opacity-80">{(composeFile.size / 1024).toFixed(1)} KB</div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setComposeFile(null); if (composeFileInputRef.current) composeFileInputRef.current.value = ''; }}
+                                            className="text-[11px] text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded-md font-bold"
+                                        >
+                                            Quitar
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => composeFileInputRef.current?.click()}
+                                        className="w-full border-2 border-dashed border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-600 hover:bg-gray-50 hover:border-emerald-200 transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <Paperclip className="w-4 h-4" />
+                                        Adjuntar imagen, video o documento
+                                    </button>
+                                )}
+                            </div>
+
+                            {composeError && (
+                                <div className="text-xs font-bold text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                                    {composeError}
+                                </div>
+                            )}
+
+                            <div className="flex gap-2 pt-1">
+                                <button
+                                    type="button"
+                                    onClick={() => { setShowCompose(false); setComposeError(''); }}
+                                    className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={composeSending}
+                                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl px-3 py-2.5 text-sm font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {composeSending ? <Loader className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                    {composeSending ? 'Enviando...' : 'Enviar'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             <style dangerouslySetInnerHTML={{__html: `
                 @keyframes scan {
