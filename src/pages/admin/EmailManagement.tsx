@@ -56,16 +56,43 @@ const EmailManagement: React.FC = () => {
     const [showComposeModal, setShowComposeModal] = useState(false);
     
     // Accounts & Active Account
-    const [accounts, setAccounts] = useState<EmailAccount[]>([
-        { id: '1', email: `info@${clubDomain}`, label: 'General / Info', isPrimary: true, provider: 'platform' },
-        { id: '2', email: `presidencia@${clubDomain}`, label: 'Presidencia', isPrimary: false, provider: 'platform' },
-    ]);
-    const [activeAccount, setActiveAccount] = useState<EmailAccount>(accounts[0]);
+    const [accounts, setAccounts] = useState<EmailAccount[]>([]);
+    const [loadingAccounts, setLoadingAccounts] = useState(true);
+    const [activeAccount, setActiveAccount] = useState<EmailAccount | null>(null);
     
     // Form states
     const [newAccount, setNewAccount] = useState({ user: '', label: '', password: '' });
     const [composeData, setComposeData] = useState({ to: '', subject: '', body: '' });
     const [sending, setSending] = useState(false);
+
+    // Fetch accounts on mount
+    useEffect(() => {
+        const fetchAccounts = async () => {
+            try {
+                const response = await fetch('/api/email-accounts', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    setAccounts(data);
+                    if (data.length > 0) {
+                        setActiveAccount(data[0]);
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching email accounts:', error);
+                toast.error('Error al cargar las cuentas de correo');
+            } finally {
+                setLoadingAccounts(false);
+            }
+        };
+
+        if (club?.id) {
+            fetchAccounts();
+        }
+    }, [club?.id]);
 
     // Sync active account when accounts change or selection happens
     const handleSelectAccount = (acc: EmailAccount) => {
@@ -73,21 +100,68 @@ const EmailManagement: React.FC = () => {
         setSelectedEmail(null);
     };
 
-    const handleCreateAccount = () => {
+    const handleCreateAccount = async () => {
         if (!newAccount.user || !newAccount.password) return;
         const fullEmail = `${newAccount.user.toLowerCase()}@${clubDomain}`;
-        const id = Math.random().toString(36).substr(2, 9);
-        const created: EmailAccount = { 
-            id, 
-            email: fullEmail, 
-            label: newAccount.label || newAccount.user, 
-            isPrimary: false, 
-            provider: 'platform' 
-        };
-        setAccounts([...accounts, created]);
-        setNewAccount({ user: '', label: '', password: '' });
-        setShowAccountModal(false);
-        toast.success(`Cuenta ${fullEmail} creada y configurada`);
+        
+        try {
+            const response = await fetch('/api/email-accounts', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({
+                    email: fullEmail,
+                    label: newAccount.label || newAccount.user,
+                    password: newAccount.password,
+                    isPrimary: accounts.length === 0,
+                    clubId: club?.id
+                })
+            });
+
+            if (response.ok) {
+                const created = await response.json();
+                setAccounts([...accounts, created]);
+                if (!activeAccount) setActiveAccount(created);
+                setNewAccount({ user: '', label: '', password: '' });
+                setShowAccountModal(false);
+                toast.success(`Cuenta ${fullEmail} creada y configurada`);
+            } else {
+                const error = await response.json();
+                toast.error(`Error: ${error.error || 'No se pudo crear la cuenta'}`);
+            }
+        } catch (error) {
+            console.error('Error creating account:', error);
+            toast.error('Error de conexión al crear la cuenta');
+        }
+    };
+
+    const handleDeleteAccount = async (id: string) => {
+        if (!confirm('¿Estás seguro de que deseas eliminar esta cuenta?')) return;
+        
+        try {
+            const response = await fetch(`/api/email-accounts/${id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+
+            if (response.ok) {
+                const updatedAccounts = accounts.filter(a => a.id !== id);
+                setAccounts(updatedAccounts);
+                if (activeAccount?.id === id) {
+                    setActiveAccount(updatedAccounts.length > 0 ? updatedAccounts[0] : null);
+                }
+                toast.success('Cuenta eliminada con éxito');
+            } else {
+                toast.error('No se pudo eliminar la cuenta');
+            }
+        } catch (error) {
+            console.error('Error deleting account:', error);
+            toast.error('Error de conexión al eliminar la cuenta');
+        }
     };
 
     // Dynamic email state to persist sent messages
@@ -194,7 +268,7 @@ const EmailManagement: React.FC = () => {
                         <div>
                             <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Ecosistema de Correo</h1>
                             <p className="text-sm text-gray-500 mt-1">
-                                Gestionando cuenta: <span className="font-bold text-rotary-blue">{activeAccount.email}</span>
+                                Gestionando cuenta: <span className="font-bold text-rotary-blue">{activeAccount?.email || 'Ninguna seleccionada'}</span>
                             </p>
                         </div>
                     </div>
@@ -247,9 +321,9 @@ const EmailManagement: React.FC = () => {
                                             <button 
                                                 key={acc.id} 
                                                 onClick={() => handleSelectAccount(acc)}
-                                                className={`w-full text-left px-3 py-2 rounded-xl text-xs truncate flex items-center gap-2 transition-all ${activeAccount.id === acc.id ? 'bg-white shadow-sm border border-gray-100 font-bold text-gray-900' : 'text-gray-500 hover:bg-gray-100'}`}
+                                                className={`w-full text-left px-3 py-2 rounded-xl text-xs truncate flex items-center gap-2 transition-all ${activeAccount?.id === acc.id ? 'bg-white shadow-sm border border-gray-100 font-bold text-gray-900' : 'text-gray-500 hover:bg-gray-100'}`}
                                             >
-                                                <div className={`w-2 h-2 rounded-full ${activeAccount.id === acc.id ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+                                                <div className={`w-2 h-2 rounded-full ${activeAccount?.id === acc.id ? 'bg-emerald-500' : 'bg-gray-300'}`} />
                                                 {acc.email}
                                             </button>
                                         ))}
@@ -334,7 +408,7 @@ const EmailManagement: React.FC = () => {
                                                 <span className="text-sm font-bold text-gray-900">{acc.email}</span>
                                             </td>
                                             <td className="px-6 py-5 text-right">
-                                                {!acc.isPrimary && <button onClick={() => setAccounts(accounts.filter(a => a.id !== acc.id))} className="p-2 text-gray-400 hover:text-red-600 rounded-xl"><Trash2 className="w-4 h-4" /></button>}
+                                                {!acc.isPrimary && <button onClick={() => handleDeleteAccount(acc.id)} className="p-2 text-gray-400 hover:text-red-600 rounded-xl"><Trash2 className="w-4 h-4" /></button>}
                                             </td>
                                         </tr>
                                     ))}
@@ -351,7 +425,7 @@ const EmailManagement: React.FC = () => {
                             <div className="p-8 border-b border-gray-50 flex items-center justify-between">
                                 <div>
                                     <h3 className="text-2xl font-bold text-gray-900">Nuevo Mensaje</h3>
-                                    <p className="text-sm text-gray-500 mt-1">Desde: <span className="font-bold text-rotary-blue">{activeAccount.email}</span></p>
+                                    <p className="text-sm text-gray-500 mt-1">Desde: <span className="font-bold text-rotary-blue">{activeAccount?.email}</span></p>
                                 </div>
                                 <button onClick={() => setShowComposeModal(false)} className="p-3 text-gray-400 hover:text-gray-900 rounded-2xl transition-all"><X className="w-6 h-6" /></button>
                             </div>
@@ -362,7 +436,7 @@ const EmailManagement: React.FC = () => {
                             </div>
                             <div className="p-8 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
                                 <button onClick={() => setShowComposeModal(false)} className="text-sm font-black text-gray-400 uppercase tracking-widest">Descartar</button>
-                                <button onClick={handleSendEmail} disabled={sending || !composeData.to} className="px-10 py-4 bg-gray-900 text-white text-sm font-black rounded-3xl hover:bg-rotary-blue transition-all flex items-center gap-3">
+                                <button onClick={handleSendEmail} disabled={sending || !composeData.to || !activeAccount} className="px-10 py-4 bg-gray-900 text-white text-sm font-black rounded-3xl hover:bg-rotary-blue transition-all flex items-center gap-3">
                                     {sending ? <RefreshCw className="w-5 h-5 animate-spin" /> : <SendHorizontal className="w-5 h-5" />}
                                     {sending ? 'Enviando...' : 'Enviar'}
                                 </button>

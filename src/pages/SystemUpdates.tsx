@@ -23,9 +23,22 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.189 | 2026-05-13 (REAL API DISPATCH 🚀)
-// Cache bust: 2026-05-13 14:02 (SMTP/RESEND WIRED 🔌)
+// DISTRICT HEALTH IQ V4.190 | 2026-05-13 (EMAIL PERSISTENCE 📧)
+// Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.190',
+        date: '13 de Mayo, 2026',
+        title: '📧 Persistencia Total del Ecosistema de Correo',
+        description: 'Implementación de la capa de persistencia para cuentas de correo institucionales, permitiendo la gestión estable de múltiples remitentes por club.',
+        type: 'major',
+        changes: [
+            { type: 'added', text: 'Nueva tabla EmailAccount en la base de datos para almacenamiento permanente de credenciales y perfiles de correo.' },
+            { type: 'added', text: 'Endpoints de API (/api/email-accounts) para creación, listado y eliminación de cuentas de correo.' },
+            { type: 'fixed', text: 'Resolución del problema de pérdida de datos tras refrescar el navegador en el panel administrativo.' },
+            { type: 'improved', text: 'Sincronización dinámica de la cuenta activa y estados de carga en la interfaz de gestión de correo.' }
+        ]
+    },
     {
         version: 'v4.189',
         date: '13 de Mayo, 2026',

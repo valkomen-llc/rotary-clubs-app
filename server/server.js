@@ -66,6 +66,7 @@ import systemRoutes from './routes/system.js';
 import domainsRoutes from './routes/domains.js';
 import technicalRequestsRoutes from './routes/technical-requests.js';
 import districtAnalyticsRoutes from './routes/district-analytics.js';
+import emailAccountsRoutes from './routes/emailAccounts.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -104,6 +105,7 @@ app.use('/api/district-analytics', districtAnalyticsRoutes);
 app.use('/api/technical-requests', technicalRequestsRoutes);
 app.use('/api/system', systemRoutes);
 app.use('/api/domains', domainsRoutes);
+app.use('/api/email-accounts', emailAccountsRoutes);
 
 // DIAGNOSTIC PING - Direct route to bypass potential file-loading/middleware issues
 app.post('/api/ping-footer', (req, res) => {

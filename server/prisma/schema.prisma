@@ -135,6 +135,22 @@ model Club {
   whatsAppTemplates        WhatsAppTemplate[]
   technicalRequests         TechnicalRequest[]
   crowdfundPools            CrowdfundPool[]         @relation("ClubPools")
+  emailAccounts             EmailAccount[]
+}
+
+model EmailAccount {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  label     String?
+  password  String?
+  isPrimary Boolean  @default(false)
+  provider  String   @default("platform")
+  clubId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([clubId])
 }
 
 model CrowdfundPool {
