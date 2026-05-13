@@ -1,7 +1,5 @@
 // nodemailer is lazy-loaded only when SMTP is needed (not installed by default)
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma.js';
 
 export class EmailService {
     constructor() { }
@@ -159,18 +157,19 @@ export class EmailService {
     }
 
     /**
-     * Sends an email using the Club's own SMTP configuration
+     * Sends an email using the Club's own SMTP configuration, 
+     * with fallback to Platform relay if club SMTP is not configured.
      */
-    static async sendEmail({ clubId, to, subject, html, userId }) {
+    static async sendEmail({ clubId, to, subject, html, userId, fromEmail }) {
         try {
             const transporter = await this.getTransporter(clubId);
 
             if (!transporter) {
-                await this.logCommunication({
-                    clubId, type: 'email', recipient: to, subject, content: html, status: 'failed',
-                    errorMsg: 'SMTP service is missing or disabled', sentById: userId
-                });
-                return { success: false, error: 'SMTP Disabled' };
+                console.info(`[EmailService] Club ${clubId} has no SMTP. Falling back to platform relay.`);
+                
+                // If the user provided a specific institutional fromEmail, we try to use it as the "Reply-To" 
+                // or in the "From" if the provider allows it (e.g. verified domain)
+                return await this.sendPlatformEmail({ to, subject, html });
             }
 
             const config = await prisma.notificationConfig.findUnique({

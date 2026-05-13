@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import EmailService from '../services/EmailService.js';
 import WhatsAppService from '../services/WhatsAppService.js';
-
-const prisma = new PrismaClient();
 
 // Get notification config (SMTP & WhatsApp)
 export const getNotificationConfig = async (req, res) => {
@@ -185,7 +183,8 @@ export const sendCommunication = async (req, res) => {
                 to: recipient,
                 subject,
                 html: content,
-                userId: req.user.id
+                userId: req.user.id,
+                fromEmail: req.body.fromEmail
             });
         } else if (type === 'whatsapp') {
             result = await WhatsAppService.sendMessage({

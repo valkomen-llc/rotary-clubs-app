@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.197 | 2026-05-13 (DB SYNC CONFIRMED ✅)
+// DISTRICT HEALTH IQ V4.198 | 2026-05-13 (SMTP RELAY FALLBACK 🚀)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -115,7 +115,7 @@ app.get('/api/technical-requests', async (req, res) => {
 });
 
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.197', release: 'DB Sync Confirmed ✅' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.198', release: 'SMTP Relay Fallback 🚀' });
 });
 
 app.get('/api/health', async (req, res) => {

@@ -27,6 +27,18 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.198',
+        date: '2026-05-13',
+        title: 'Habilitación de Envío (SMTP Relay)',
+        description: 'Activación del sistema de retransmisión de correo para cuentas institucionales sin configuración manual.',
+        type: 'feature',
+        details: [
+            'Implementación de SMTP Fallback para cuentas de plataforma',
+            'Soporte para envío desde dominios institucionales vía relay central',
+            'Limpieza de instancias redundantes de Prisma'
+        ]
+    },
+    {
         version: 'v4.197',
         date: '2026-05-13',
         title: 'Sincronización de Producción Finalizada',
