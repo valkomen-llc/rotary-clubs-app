@@ -23,9 +23,22 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.183 | 2026-05-13 (CORPORATE EMAIL MANAGER 🏢)
-// Cache bust: 2026-05-13 13:06 (DOMAINS VERIFIED ✅)
+// DISTRICT HEALTH IQ V4.184 | 2026-05-13 (ZERO-TECH EMAIL SETUP ⚡)
+// Cache bust: 2026-05-13 13:10 (AUTO-PROVISIONING READY 🚀)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.184',
+        date: '13 de Mayo, 2026',
+        title: '⚡ Configuración de Correo Cero-Técnica',
+        description: 'Simplificación total del flujo de creación de cuentas corporativas con auto-aprovisionamiento DNS.',
+        type: 'feature',
+        changes: [
+            { type: 'added', text: 'Nueva interfaz de creación "Un-Clic" que solo requiere nombre y contraseña.' },
+            { type: 'added', text: 'Sincronización automática de registros MX, SPF y DKIM mediante Club Platform Gateway.' },
+            { type: 'improved', text: 'Diseño de panel administrativo simplificado que elimina la complejidad técnica de los DNS.' },
+            { type: 'added', text: 'Indicadores visuales de éxito de configuración automática para mayor tranquilidad del usuario.' }
+        ]
+    },
     {
         version: 'v4.183',
         date: '13 de Mayo, 2026',

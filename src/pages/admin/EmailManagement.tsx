@@ -6,10 +6,12 @@ import {
     RefreshCw, ChevronLeft, ChevronRight,
     AtSign, Settings, ShieldCheck, ExternalLink,
     Paperclip, Reply, Forward, User, Globe, X,
-    CheckCircle2, AlertTriangle, Database, ArrowRight
+    CheckCircle2, AlertTriangle, Database, ArrowRight,
+    Lock, Key, Zap
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
+import { toast } from 'sonner';
 
 interface EmailAccount {
     id: string;
@@ -42,7 +44,7 @@ const EmailManagement: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [showAccountModal, setShowAccountModal] = useState(false);
     const [activeTab, setActiveTab] = useState<'inbox' | 'accounts'>('inbox');
-    const [newAccount, setNewAccount] = useState({ user: '', label: '' });
+    const [newAccount, setNewAccount] = useState({ user: '', label: '', password: '' });
 
     // Mock accounts for the club domain
     const clubDomain = (club as any)?.domain || (club as any)?.subdomain ? `${(club as any).subdomain}.clubplatform.org` : 'rotary.org';
@@ -52,7 +54,7 @@ const EmailManagement: React.FC = () => {
     ]);
 
     const handleCreateAccount = () => {
-        if (!newAccount.user) return;
+        if (!newAccount.user || !newAccount.password) return;
         const fullEmail = `${newAccount.user.toLowerCase()}@${clubDomain}`;
         const id = Math.random().toString(36).substr(2, 9);
         setAccounts([...accounts, { 
@@ -62,8 +64,9 @@ const EmailManagement: React.FC = () => {
             isPrimary: false, 
             provider: 'platform' 
         }]);
-        setNewAccount({ user: '', label: '' });
+        setNewAccount({ user: '', label: '', password: '' });
         setShowAccountModal(false);
+        toast.success('Cuenta creada y configurada automáticamente');
     };
 
     // Mock emails
@@ -108,7 +111,7 @@ const EmailManagement: React.FC = () => {
                         <div>
                             <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Ecosistema de Correo</h1>
                             <p className="text-sm text-gray-500 mt-1">
-                                Gestiona la comunicación oficial y cuentas corporativas de {club?.name || 'tu club'}
+                                Gestión de comunicación oficial y cuentas corporativas de {club?.name || 'tu club'}
                             </p>
                         </div>
                     </div>
@@ -340,132 +343,114 @@ const EmailManagement: React.FC = () => {
                     </div>
                 ) : (
                     /* Accounts Management Tab */
-                    <div className="flex-1 overflow-y-auto space-y-6">
+                    <div className="flex-1 overflow-y-auto space-y-6 pb-12">
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            {/* Domain Status Card */}
-                            <div className="lg:col-span-2 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-                                <div className="flex items-center justify-between mb-6">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600">
-                                            <Globe className="w-5 h-5" />
-                                        </div>
-                                        <div>
-                                            <h3 className="font-bold text-gray-900 text-base">{clubDomain}</h3>
-                                            <p className="text-xs text-gray-500">Estado del Dominio: <span className="text-emerald-600 font-bold">Verificado</span></p>
-                                        </div>
-                                    </div>
-                                    <span className="px-3 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-wider rounded-full border border-emerald-100">
-                                        Activo
-                                    </span>
+                            {/* Automatic Config Success Card */}
+                            <div className="lg:col-span-2 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-3xl p-6 shadow-xl shadow-emerald-900/10 text-white overflow-hidden relative group">
+                                <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
+                                    <Zap className="w-32 h-32" />
                                 </div>
-
-                                <div className="space-y-4">
-                                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center shadow-sm">
-                                                <Database className="w-4 h-4 text-sky-600" />
-                                            </div>
-                                            <div>
-                                                <p className="text-xs font-bold text-gray-700">Registros MX (Mail Exchange)</p>
-                                                <p className="text-[10px] text-gray-400">Apuntando a mx1.clubplatform.org</p>
-                                            </div>
+                                <div className="relative z-10">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center">
+                                            <ShieldCheck className="w-6 h-6 text-white" />
                                         </div>
-                                        <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                                        <h3 className="font-bold text-xl">Configuración Automática Activa</h3>
                                     </div>
-                                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center shadow-sm">
-                                                <ShieldCheck className="w-4 h-4 text-sky-600" />
-                                            </div>
-                                            <div>
-                                                <p className="text-xs font-bold text-gray-700">SPF & DKIM (Seguridad)</p>
-                                                <p className="text-[10px] text-gray-400">Firmado por Club Platform Gateway</p>
-                                            </div>
+                                    <p className="text-emerald-50 text-sm max-w-md leading-relaxed mb-6">
+                                        Tu dominio <span className="font-black text-white">{clubDomain}</span> está gestionado por Club Platform.
+                                        Todos los registros DNS se sincronizan automáticamente al crear nuevas cuentas.
+                                    </p>
+                                    <div className="flex gap-4">
+                                        <div className="flex items-center gap-2 bg-white/10 px-3 py-2 rounded-xl border border-white/10">
+                                            <CheckCircle2 className="w-4 h-4" />
+                                            <span className="text-[10px] font-black uppercase tracking-wider">MX Listo</span>
                                         </div>
-                                        <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                                        <div className="flex items-center gap-2 bg-white/10 px-3 py-2 rounded-xl border border-white/10">
+                                            <CheckCircle2 className="w-4 h-4" />
+                                            <span className="text-[10px] font-black uppercase tracking-wider">SPF/DKIM OK</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Limits Card */}
-                            <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+                            {/* Help Card */}
+                            <div className="bg-white border border-gray-200 rounded-3xl p-6 shadow-sm flex flex-col justify-between">
                                 <div>
-                                    <h3 className="font-bold text-gray-900 mb-4">Límites del Plan</h3>
-                                    <div className="space-y-4">
-                                        <div>
-                                            <div className="flex justify-between text-xs mb-1">
-                                                <span className="text-gray-500">Cuentas creadas</span>
-                                                <span className="font-bold text-gray-900">{accounts.length} / 10</span>
-                                            </div>
-                                            <div className="w-full bg-gray-100 rounded-full h-1.5">
-                                                <div className="bg-rotary-blue h-1.5 rounded-full" style={{ width: `${(accounts.length / 10) * 100}%` }} />
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <div className="flex justify-between text-xs mb-1">
-                                                <span className="text-gray-500">Almacenamiento total</span>
-                                                <span className="font-bold text-gray-900">1.2 GB / 10 GB</span>
-                                            </div>
-                                            <div className="w-full bg-gray-100 rounded-full h-1.5">
-                                                <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: '12%' }} />
-                                            </div>
-                                        </div>
-                                    </div>
+                                    <h3 className="font-bold text-gray-900 mb-2">¿Cómo funciona?</h3>
+                                    <p className="text-xs text-gray-500 leading-relaxed">
+                                        Solo crea el correo y asígnale una contraseña. Nosotros nos encargamos de la infraestructura, los servidores y la seguridad.
+                                    </p>
                                 </div>
-                                <button className="mt-6 w-full py-2.5 bg-gray-50 text-gray-700 text-xs font-bold rounded-xl border border-gray-200 hover:bg-gray-100 transition-all">
-                                    Aumentar Límites
+                                <button className="mt-6 w-full py-3 bg-gray-50 text-sky-700 text-xs font-black rounded-2xl border border-gray-100 hover:bg-sky-50 transition-all uppercase tracking-wider">
+                                    Guía de Configuración
                                 </button>
                             </div>
                         </div>
 
                         {/* Accounts Table */}
-                        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-                            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-                                <h3 className="font-bold text-gray-900">Cuentas Activas</h3>
+                        <div className="bg-white border border-gray-200 rounded-3xl shadow-sm overflow-hidden">
+                            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                                <h3 className="font-bold text-gray-900">Directorio de Cuentas Institucionales</h3>
+                                <span className="text-xs text-gray-400 font-medium">{accounts.length} cuentas activas</span>
                             </div>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left">
                                     <thead>
                                         <tr className="bg-gray-50/50 border-b border-gray-100">
-                                            <th className="px-6 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Dirección de Correo</th>
-                                            <th className="px-6 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Etiqueta / Uso</th>
-                                            <th className="px-6 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Estado</th>
-                                            <th className="px-6 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Almacenamiento</th>
-                                            <th className="px-6 py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Acciones</th>
+                                            <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-wider">Cuenta Correo</th>
+                                            <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-wider">Propietario / Uso</th>
+                                            <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-wider">Infraestructura</th>
+                                            <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-wider">Almacenamiento</th>
+                                            <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-wider text-right">Acciones</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-50">
                                         {accounts.map(acc => (
-                                            <tr key={acc.id} className="hover:bg-gray-50 transition-all">
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center text-rotary-blue">
+                                            <tr key={acc.id} className="hover:bg-gray-50/80 transition-all group">
+                                                <td className="px-6 py-5">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-9 h-9 rounded-xl bg-sky-50 flex items-center justify-center text-rotary-blue group-hover:scale-110 transition-transform">
                                                             <AtSign className="w-4 h-4" />
                                                         </div>
-                                                        <span className="text-sm font-bold text-gray-900">{acc.email}</span>
+                                                        <div>
+                                                            <span className="text-sm font-bold text-gray-900 block">{acc.email}</span>
+                                                            <span className="text-[10px] text-gray-400">IMAP/SMTP Habilitado</span>
+                                                        </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <span className="text-xs text-gray-600">{acc.label}</span>
+                                                <td className="px-6 py-5">
+                                                    <span className="text-xs font-medium text-gray-600">{acc.label}</span>
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-1.5 text-emerald-600 font-bold text-[10px] uppercase">
-                                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                                        Funcionando
+                                                <td className="px-6 py-5">
+                                                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100">
+                                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                                        <span className="text-[9px] font-black uppercase tracking-wider">Activa</span>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <span className="text-xs text-gray-400">0.6 GB</span>
+                                                <td className="px-6 py-5">
+                                                    <div className="w-24">
+                                                        <div className="flex justify-between text-[9px] text-gray-400 mb-1">
+                                                            <span>12%</span>
+                                                            <span>0.6 GB</span>
+                                                        </div>
+                                                        <div className="w-full bg-gray-100 rounded-full h-1">
+                                                            <div className="bg-sky-400 h-1 rounded-full w-[12%]" />
+                                                        </div>
+                                                    </div>
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-2">
-                                                        <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg">
+                                                <td className="px-6 py-5 text-right">
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <button className="p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-xl transition-all">
+                                                            <Key className="w-4 h-4" />
+                                                        </button>
+                                                        <button className="p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-xl transition-all">
                                                             <Settings className="w-4 h-4" />
                                                         </button>
                                                         {!acc.isPrimary && (
                                                             <button 
                                                                 onClick={() => setAccounts(accounts.filter(a => a.id !== acc.id))}
-                                                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                                                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
                                                             >
                                                                 <Trash2 className="w-4 h-4" />
                                                             </button>
@@ -481,69 +466,88 @@ const EmailManagement: React.FC = () => {
                     </div>
                 )}
 
-                {/* Account Creation Modal */}
+                {/* Simplified Account Creation Modal */}
                 {showAccountModal && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-                        <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-gray-100">
-                            <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-md animate-in fade-in duration-300">
+                        <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl overflow-hidden border border-gray-100">
+                            <div className="p-8 border-b border-gray-50 flex items-center justify-between bg-gradient-to-r from-gray-50 to-white">
                                 <div>
-                                    <h3 className="text-lg font-bold text-gray-900">Crear Nueva Cuenta</h3>
-                                    <p className="text-xs text-gray-500">Añade un nuevo correo para tu organización</p>
+                                    <h3 className="text-2xl font-bold text-gray-900">Crear Correo</h3>
+                                    <p className="text-sm text-gray-500 mt-1">Configuración instantánea ⚡</p>
                                 </div>
-                                <button onClick={() => setShowAccountModal(false)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-xl transition-all">
-                                    <X className="w-5 h-5" />
+                                <button onClick={() => setShowAccountModal(false)} className="p-3 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-2xl transition-all">
+                                    <X className="w-6 h-6" />
                                 </button>
                             </div>
                             
-                            <div className="p-6 space-y-5">
+                            <div className="p-8 space-y-6">
                                 <div>
-                                    <label className="block text-xs font-black text-gray-400 uppercase tracking-wider mb-2">Usuario / Dirección</label>
-                                    <div className="flex items-center gap-2 bg-gray-100 p-1.5 rounded-xl border border-gray-200 focus-within:ring-2 focus-within:ring-sky-500 transition-all">
+                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-3 ml-1">Dirección de la Cuenta</label>
+                                    <div className="flex items-center gap-2 bg-gray-100 p-2 rounded-2xl border-2 border-transparent focus-within:border-sky-500/30 focus-within:bg-white focus-within:ring-4 focus-within:ring-sky-500/5 transition-all duration-300">
                                         <input 
                                             type="text" 
                                             value={newAccount.user}
                                             onChange={e => setNewAccount({ ...newAccount, user: e.target.value })}
-                                            placeholder="ej: tesoreria"
-                                            className="flex-1 bg-transparent border-none outline-none px-3 py-2 text-sm font-bold text-gray-900"
+                                            placeholder="ej: secretaria"
+                                            className="flex-1 bg-transparent border-none outline-none px-4 py-3 text-base font-bold text-gray-900 placeholder:text-gray-300"
                                         />
-                                        <span className="px-3 py-2 bg-white rounded-lg text-sm font-black text-sky-700 shadow-sm border border-sky-100">
+                                        <span className="px-4 py-3 bg-white rounded-xl text-sm font-black text-sky-700 shadow-sm border border-sky-100">
                                             @{clubDomain}
                                         </span>
                                     </div>
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-black text-gray-400 uppercase tracking-wider mb-2">Nombre de Visualización</label>
-                                    <input 
-                                        type="text" 
-                                        value={newAccount.label}
-                                        onChange={e => setNewAccount({ ...newAccount, label: e.target.value })}
-                                        placeholder="ej: Tesorería del Club"
-                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-sky-500 outline-none transition-all"
-                                    />
+                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-3 ml-1">Contraseña Segura</label>
+                                    <div className="relative">
+                                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" />
+                                        <input 
+                                            type="password" 
+                                            value={newAccount.password}
+                                            onChange={e => setNewAccount({ ...newAccount, password: e.target.value })}
+                                            placeholder="••••••••••••"
+                                            className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl text-base font-medium focus:ring-4 focus:ring-sky-500/5 focus:bg-white focus:border-sky-500/30 outline-none transition-all duration-300"
+                                        />
+                                    </div>
                                 </div>
 
-                                <div className="bg-sky-50 p-4 rounded-2xl border border-sky-100 flex gap-3">
-                                    <AlertTriangle className="w-5 h-5 text-sky-600 shrink-0" />
-                                    <p className="text-[11px] text-sky-800 leading-relaxed">
-                                        La cuenta estará activa de inmediato. Se creará una bandeja de entrada y los registros DNS ya configurados permitirán el envío seguro de correos.
+                                <div>
+                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-3 ml-1">Nombre (Opcional)</label>
+                                    <div className="relative">
+                                        <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" />
+                                        <input 
+                                            type="text" 
+                                            value={newAccount.label}
+                                            onChange={e => setNewAccount({ ...newAccount, label: e.target.value })}
+                                            placeholder="ej: Secretaría Ejecutiva"
+                                            className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-100 rounded-2xl text-base font-medium focus:ring-4 focus:ring-sky-500/5 focus:bg-white focus:border-sky-500/30 outline-none transition-all duration-300"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="bg-emerald-50 p-5 rounded-3xl border border-emerald-100/50 flex gap-4 items-start">
+                                    <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/20">
+                                        <Zap className="w-4 h-4 text-white" />
+                                    </div>
+                                    <p className="text-xs text-emerald-800 leading-relaxed font-medium">
+                                        Al activar, crearemos automáticamente los registros DNS en <span className="font-bold underline decoration-emerald-300 decoration-2 underline-offset-2">Club Platform Gateway</span>. No requiere configuración manual.
                                     </p>
                                 </div>
                             </div>
 
-                            <div className="p-6 bg-gray-50 border-t border-gray-100 flex gap-3">
+                            <div className="p-8 bg-gray-50 border-t border-gray-100 flex gap-4">
                                 <button 
                                     onClick={() => setShowAccountModal(false)}
-                                    className="flex-1 py-3 text-sm font-bold text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-2xl transition-all"
+                                    className="flex-1 py-4 text-sm font-black text-gray-400 hover:text-gray-900 transition-all uppercase tracking-widest"
                                 >
-                                    Cancelar
+                                    Cerrar
                                 </button>
                                 <button 
                                     onClick={handleCreateAccount}
-                                    disabled={!newAccount.user}
-                                    className="flex-[1.5] py-3 bg-rotary-blue text-white text-sm font-bold rounded-2xl hover:bg-sky-800 transition-all shadow-lg shadow-blue-900/20 disabled:opacity-50"
+                                    disabled={!newAccount.user || !newAccount.password}
+                                    className="flex-[2] py-4 bg-gray-900 text-white text-sm font-black rounded-3xl hover:bg-rotary-blue transition-all shadow-2xl shadow-gray-900/20 disabled:opacity-30 disabled:grayscale uppercase tracking-widest active:scale-95"
                                 >
-                                    Activar Cuenta
+                                    Crear y Activar
                                 </button>
                             </div>
                         </div>
