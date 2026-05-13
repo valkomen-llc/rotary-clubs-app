@@ -23,9 +23,22 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.185 | 2026-05-13 (SMART DOMAIN DETECTION 🌐)
-// Cache bust: 2026-05-13 13:19 (CUSTOM DOMAINS SYNCED 🔗)
+// DISTRICT HEALTH IQ V4.186 | 2026-05-13 (FULL EMAIL FUNCTIONALITY 📤)
+// Cache bust: 2026-05-13 13:27 (READY TO SEND ✉️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.186',
+        date: '13 de Mayo, 2026',
+        title: '📤 Funcionalidad Completa de Correo',
+        description: 'Activación del flujo de redacción, lectura y envío de correos corporativos.',
+        type: 'feature',
+        changes: [
+            { type: 'added', text: 'Módulo de redacción (Compose) con soporte para adjuntos y validación de campos.' },
+            { type: 'fixed', text: 'Corrección del árbol de renderizado para visualización instantánea de mensajes seleccionados.' },
+            { type: 'improved', text: 'Simulación de envío con estados de carga (loading) y notificaciones de éxito.' },
+            { type: 'fixed', text: 'Activación del botón "Redactar" vinculado al nuevo modal de composición.' }
+        ]
+    },
     {
         version: 'v4.185',
         date: '13 de Mayo, 2026',
