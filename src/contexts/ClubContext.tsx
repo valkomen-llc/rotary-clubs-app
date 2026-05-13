@@ -19,6 +19,7 @@ interface ClubContextType {
     developmentBannerVisible: boolean;
     setDevelopmentBannerVisible: (visible: boolean) => void;
     refreshClub: () => Promise<void>;
+    isProduction: boolean;
 }
 
 export const ClubContext = createContext<ClubContextType | undefined>(undefined);
@@ -152,7 +153,17 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
     }
 
+    const PLATFORM_HOSTS = ['clubplatform.org', 'www.clubplatform.org', 'app.clubplatform.org', 'localhost'];
     const isDraft = club?.status === 'draft';
+    const isProduction = !isDraft && (
+        club?.status === 'active' || 
+        club?.status === 'published' || 
+        !!(club as any)?.production || 
+        !!(club as any)?.isPublished || 
+        !!(club as any)?.domainConnected ||
+        (!!club?.domain && !club.domain.includes('clubplatform.org')) ||
+        (!PLATFORM_HOSTS.includes(window.location.hostname))
+    );
 
     return (
         <ClubContext.Provider value={{ 
@@ -160,7 +171,8 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
             isLoading, 
             isMainPlatform, 
             isAppPortal, 
-            isDraft, 
+            isDraft,
+            isProduction,
             bannerVisible, 
             setBannerVisible, 
             developmentBannerVisible, 

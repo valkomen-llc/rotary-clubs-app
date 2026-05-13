@@ -195,7 +195,18 @@ function SmartHome() {
       if (user?.role !== 'administrator' && !onboardingDone && !hasPublishedDomain) {
         return <Navigate to="/admin/onboarding" />;
       }
-      return <Navigate to={user?.role === 'editor' ? "/admin/analytics" : "/admin/dashboard"} />;
+      
+      const isProduction = !isDraft && (
+        club?.status === 'active' || 
+        club?.status === 'published' || 
+        !!(club as any)?.production || 
+        !!(club as any)?.isPublished || 
+        !!(club as any)?.domainConnected ||
+        (!!club?.domain && !club.domain.includes('clubplatform.org'))
+      );
+
+      if (user?.role === 'editor') return <Navigate to="/admin/analytics" />;
+      return <Navigate to={isProduction ? "/admin/analytics" : "/admin/dashboard"} />;
     }
     return <AppLogin />;
   }

@@ -23,9 +23,34 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.173 | 2026-05-12 (WA QR — EVOLUTION RESTAURADO ♻️)
-// Cache bust: 2026-05-12 16:50 (WA QR — EVOLUTION RESTAURADO ♻️)
+// DISTRICT HEALTH IQ V4.175 | 2026-05-13 (NAVIGATION RECOVERY ⚓)
+// Cache bust: 2026-05-13 10:20 (UI ADMIN RECOVERY 🛠️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.175',
+        date: '13 de Mayo, 2026',
+        title: '⚓ Recuperación de Navegación & Reglas de Producción',
+        description: 'Corrección de la lógica de detección de producción y limpieza del menú lateral para administradores de clubes.',
+        type: 'major',
+        changes: [
+            { type: 'fixed', text: 'Producción: Detección automática basada en dominios personalizados (independiente del estado "borrador").' },
+            { type: 'fixed', text: 'Sidebar: Se eliminó el "Overview" duplicado en la sección General para administradores de clubes.' },
+            { type: 'improved', text: 'Auth: Refuerzo de la distinción entre Super Admin (Plataforma) y Admin (Club).' }
+        ]
+    },
+    {
+        version: 'v4.174',
+        date: '13 de Mayo, 2026',
+        title: '🏠 Dashboard Dinámico & Smart Navigation',
+        description: 'Implementación de enrutamiento inteligente basado en el ciclo de vida del sitio. Analytics ahora es la página principal para sitios activos.',
+        type: 'major',
+        changes: [
+            { type: 'added', text: 'Navigation: Analytics habilitado como "Home" principal para sitios en producción.' },
+            { type: 'improved', text: 'Estructura: El asistente "Overview" se ha movido a Configuración para sitios publicados.' },
+            { type: 'improved', text: 'UI: Nueva categoría "Gestión de Sitio" para centralizar operaciones de miembros y leads.' },
+            { type: 'added', text: 'Context: Sistema de detección automática de estado de producción (site.status, domainConnected).' }
+        ]
+    },
     {
         version: 'v4.173',
         date: '12 de Mayo, 2026',

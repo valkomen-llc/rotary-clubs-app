@@ -79,6 +79,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
     // ── Setup Progress (for gating) ──
     const { pct: setupPctHook, isComplete: setupComplete } = useSetupProgress();
+    const { isProduction } = useClub();
 
     // ── Header KPIs ──
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -125,6 +126,9 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
     // isSuperAdmin = on the platform domain AND role is administrator
     const isSuperAdmin = !isOnClubDomain && user?.role === 'administrator';
+    
+    // For UI logic, if we are on a custom domain, we treat the user as a club admin even if they have the 'administrator' role
+    const isUIAdmin = isSuperAdmin && !isOnClubDomain;
 
     // Skip setup gating if the club already has a published custom domain
     const hasPublishedDomain = isOnClubDomain;
@@ -151,9 +155,9 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     // Redirect to dashboard if trying to access locked route
     useEffect(() => {
         if (!isSuperAdmin && !setupComplete && !hasPublishedDomain && !SETUP_ALLOWED_PATHS.includes(location.pathname)) {
-            navigate(user?.role === 'editor' ? '/admin/analytics' : '/admin/dashboard');
+            navigate(user?.role === 'editor' ? '/admin/analytics' : (isProduction ? '/admin/analytics' : '/admin/dashboard'));
         }
-    }, [location.pathname, setupComplete, isSuperAdmin, hasPublishedDomain, user?.role, navigate]);
+    }, [location.pathname, setupComplete, isSuperAdmin, hasPublishedDomain, user?.role, navigate, isProduction]);
 
     // Forcefully remove tracking/preview query parameters from the admin dashboard URL
     // so they do not permanently pollute the club context.
@@ -296,7 +300,6 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
     // Define menu items based on role
     const getMenuItems = () => {
-        const isSuperAdmin = user?.role === 'administrator';
         const items: MenuItem[] = [];
 
         // FIRST OPTION: Asistencia Chat (ONLY FOR SUPER ADMINS)
@@ -311,12 +314,25 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             });
         }
 
-        if (user?.role !== 'editor') {
+        if (isUIAdmin) {
             items.push({ icon: LayoutDashboard, label: 'Overview', path: '/admin/dashboard', category: 'General', keywords: ['inicio', 'panel', 'dashboard', 'resumen'] });
         }
+        
+        // Analytics is ALWAYS in general, but becomes the first item in Production
         items.push(
             { icon: PieChart, label: 'Analytics', path: '/admin/analytics', category: 'General', keywords: ['estadisticas', 'visitas', 'trafico', 'ga4'] }
         );
+        
+        // Overview for non-super-admins moves to Configuration
+        if (!isUIAdmin && user?.role !== 'editor') {
+            items.push({ 
+                icon: LayoutDashboard, 
+                label: 'Overview / Wizard', 
+                path: '/admin/dashboard?view=wizard', 
+                category: 'Configuración', 
+                keywords: ['inicio', 'panel', 'dashboard', 'resumen', 'onboarding', 'wizard'] 
+            });
+        }
 
         if (isSuperAdmin) {
             items.push(
@@ -356,46 +372,50 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             const isDistrict = club?.type === 'district';
             const orgTypeLabel = isAssoc ? 'Asociación' : isDistrict ? 'Distrito' : 'Sitio';
             
+            // Reordering based on isProduction
+            const categoryLabel = isProduction ? 'Gestión de Sitio' : orgTypeLabel;
+
             items.push(
-                { icon: ShieldCheck, label: 'Solicitudes Técnicas', path: '/admin/technical-requests', category: orgTypeLabel, keywords: ['dominio', 'transferencia', 'soporte', 'tecnico', 'ayuda'] },
-                { icon: Settings, label: 'Configuración', path: '/admin/configuracion', category: orgTypeLabel, keywords: ['logo', 'nombre', 'perfil', 'identidad', 'contacto', 'redes', 'facturacion', 'stripe', 'pago', 'configurar'], badge: 'config' }
+                { icon: ShieldCheck, label: 'Solicitudes Técnicas', path: '/admin/technical-requests', category: categoryLabel, keywords: ['dominio', 'transferencia', 'soporte', 'tecnico', 'ayuda'] },
+                { icon: Settings, label: 'Configuración / Identidad', path: '/admin/configuracion', category: 'Configuración', keywords: ['logo', 'nombre', 'perfil', 'identidad', 'contacto', 'redes', 'facturacion', 'stripe', 'pago', 'configurar'], badge: 'config' },
+                { icon: Globe, label: 'Dominio y Publicación', path: '/admin/configuracion?tab=avanzado', category: 'Configuración', keywords: ['dominio', 'publicar', 'dns', 'ssl'] }
             );
 
             if (user?.role !== 'editor') {
                 items.push(
-                    { icon: Users, label: `Miembros de${isAssoc ? ' la ' : 'l '}${orgTypeLabel}`, path: '/admin/miembros', category: orgTypeLabel, keywords: ['socio', 'miembro', 'directorio'] }
+                    { icon: Users, label: `Miembros de${isAssoc ? ' la ' : 'l '}${orgTypeLabel}`, path: '/admin/miembros', category: categoryLabel, keywords: ['socio', 'miembro', 'directorio'] }
                 );
             }
 
             items.push(
-                { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: orgTypeLabel, keywords: ['contacto', 'lead', 'formulario'] }
+                { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: categoryLabel, keywords: ['contacto', 'lead', 'formulario'] }
             );
         }
 
         // Content — conditionally show based on module settings
         if (isSuperAdmin || mod.projects) {
-            items.push({ icon: FolderKanban, label: 'Proyectos', path: '/admin/proyectos', category: 'Content', keywords: ['proyecto', 'obra', 'servicio'] });
+            items.push({ icon: FolderKanban, label: 'Proyectos', path: '/admin/proyectos', category: 'Contenido', keywords: ['proyecto', 'obra', 'servicio'] });
         }
         items.push(
-            { icon: Newspaper, label: 'Noticias', path: '/admin/noticias', category: 'Content', keywords: ['noticia', 'articulo', 'blog', 'publicacion'] },
+            { icon: Newspaper, label: 'Noticias', path: '/admin/noticias', category: 'Contenido', keywords: ['noticia', 'articulo', 'blog', 'publicacion'] },
         );
         if (isSuperAdmin || mod.events) {
-            items.push({ icon: Calendar, label: 'Eventos', path: '/admin/eventos', category: 'Content', keywords: ['evento', 'calendario', 'reunion', 'fecha'] });
+            items.push({ icon: Calendar, label: 'Eventos', path: '/admin/eventos', category: 'Contenido', keywords: ['evento', 'calendario', 'reunion', 'fecha'] });
         }
         items.push(
-            { icon: ImageIcon, label: 'Multimedia', path: '/admin/media', category: 'Content', keywords: ['foto', 'video', 'imagen', 'galeria', 'archivo'] },
-            { icon: Palette, label: 'Imágenes del Sitio', path: '/admin/imagenes-sitio', category: 'Content', keywords: ['hero', 'banner', 'portada', 'diseno'] },
-            { icon: Upload, label: 'Centro de Descargas', path: '/admin/descargas', category: 'Content', keywords: ['descargas', 'archivos', 'manuales', 'plantillas'] }
+            { icon: ImageIcon, label: 'Multimedia', path: '/admin/media', category: 'Contenido', keywords: ['foto', 'video', 'imagen', 'galeria', 'archivo'] },
+            { icon: Palette, label: 'Imágenes del Sitio', path: '/admin/imagenes-sitio', category: 'Contenido', keywords: ['hero', 'banner', 'portada', 'diseno'] },
+            { icon: Upload, label: 'Centro de Descargas', path: '/admin/descargas', category: 'Contenido', keywords: ['descargas', 'archivos', 'manuales', 'plantillas'] }
         );
 
         if (user?.role !== 'editor') {
             items.push(
-                { icon: HelpCircle, label: 'Preguntas Frecuentes', path: '/admin/faqs', category: 'Content', keywords: ['faq', 'pregunta', 'ayuda'] }
+                { icon: HelpCircle, label: 'Preguntas Frecuentes', path: '/admin/faqs', category: 'Contenido', keywords: ['faq', 'pregunta', 'ayuda'] }
             );
         }
 
         if (isSuperAdmin) {
-            items.push({ icon: BookOpen, label: 'Base IA', path: '/admin/conocimiento', category: 'Content' });
+            items.push({ icon: BookOpen, label: 'Base IA', path: '/admin/conocimiento', category: 'Contenido' });
         }
 
         // Module-dependent sections (Programas)
@@ -463,7 +483,9 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     };
 
     const menuItems = getMenuItems();
-    const categories = Array.from(new Set(menuItems.map(item => item.category)));
+    const categories = isProduction && !isUIAdmin
+        ? ['General', 'Gestión de Sitio', 'Contenido', 'Integrations', 'Finanzas', 'Programas', 'E-commerce', 'Compliance', 'Configuración']
+        : Array.from(new Set(menuItems.map(item => item.category)));
 
     // Dynamic page title from current route
     const currentPageTitle = React.useMemo(() => {

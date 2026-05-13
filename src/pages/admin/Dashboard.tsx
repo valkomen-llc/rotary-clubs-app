@@ -200,15 +200,21 @@ const ClubAdminDashboard: React.FC = () => {
 const Dashboard: React.FC = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
+    const { club, isProduction } = useClub();
     const isSuperAdmin = user?.role === 'administrator';
+    const urlParams = new URLSearchParams(window.location.search);
+    const isViewingWizard = urlParams.get('view') === 'wizard';
 
     useEffect(() => {
         if (user?.role === 'editor') {
             navigate('/admin/analytics', { replace: true });
+        } else if (isProduction && !isSuperAdmin && !isViewingWizard) {
+            navigate('/admin/analytics', { replace: true });
         }
-    }, [user, navigate]);
+    }, [user, navigate, isProduction, isSuperAdmin, isViewingWizard]);
 
     if (user?.role === 'editor') return null;
+    if (isProduction && !isSuperAdmin && !isViewingWizard) return null;
 
     return (
         <AdminLayout>
