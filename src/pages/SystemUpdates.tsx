@@ -27,6 +27,18 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.205',
+        date: '2026-05-13',
+        title: 'Fix de Entregabilidad y Cumplimiento',
+        description: 'Ajuste en el motor de correo para cumplir con las políticas de verificación de dominio de proveedores externos.',
+        type: 'fix',
+        details: [
+            'Implementación de patrón Reply-To para asegurar la recepción de respuestas',
+            'Uso de dominio verificado de plataforma como remitente técnico',
+            'Personalización del nombre del remitente con la cuenta institucional'
+        ]
+    },
+    {
         version: 'v4.200',
         date: '2026-05-13',
         title: 'Arquitectura Multi-Dominio de Correo',

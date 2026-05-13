@@ -74,8 +74,18 @@ export class EmailService {
         }).catch(() => null);
 
         // Use verified domain for production emails
-        const finalFrom = customFrom || from;
-        const replyTo = customFrom || null;
+        // Use verified domain for production emails
+        const platformDefault = fromConfig?.value || '"Club Platform for Rotary" <noreply@clubplatform.org>';
+        
+        // If we have a custom institutional fromEmail, we use it as the "Friendly Name" and "Reply-To"
+        // but the actual "From" must be a verified domain (clubplatform.org)
+        let finalFrom = platformDefault;
+        if (customFrom) {
+            const nameMatch = customFrom.split('@')[0];
+            const cleanName = nameMatch.charAt(0).toUpperCase() + nameMatch.slice(1);
+            // pattern: "Name (email@domain.com)" <noreply@clubplatform.org>
+            finalFrom = `"${cleanName} (${customFrom})" <noreply@clubplatform.org>`;
+        }
 
         const body = { 
             from: finalFrom, 
@@ -84,7 +94,7 @@ export class EmailService {
             html 
         };
         
-        if (replyTo) body.reply_to = replyTo;
+        if (customFrom) body.reply_to = customFrom;
 
         const resp = await fetch('https://api.resend.com/emails', {
             method: 'POST',
