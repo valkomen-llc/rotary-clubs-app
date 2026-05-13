@@ -27,6 +27,18 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.196',
+        date: '2026-05-13',
+        title: 'Optimización de Base de Datos y Errores',
+        description: 'Migración a instancia única de Prisma y mejora en el reporte de errores del backend.',
+        type: 'update',
+        details: [
+            'Uso de instancia global de PrismaClient para evitar fugas de conexión',
+            'Reporte detallado de errores en el proceso de creación de cuentas',
+            'Sincronización de contexto de club en el frontend'
+        ]
+    },
+    {
         version: 'v4.195',
         date: '2026-05-13',
         title: 'Fix Crítico: Sincronización de Token',

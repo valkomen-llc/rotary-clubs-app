@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.195 | 2026-05-13 (AUTH TOKEN KEY FIX 🔑)
+// DISTRICT HEALTH IQ V4.196 | 2026-05-13 (PRISMA CONTEXT & ERRORS 🛠️)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -115,7 +115,7 @@ app.get('/api/technical-requests', async (req, res) => {
 });
 
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.195', release: 'Auth Token Key Fix 🔑' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.196', release: 'Prisma Context & Errors 🛠️' });
 });
 
 app.get('/api/health', async (req, res) => {

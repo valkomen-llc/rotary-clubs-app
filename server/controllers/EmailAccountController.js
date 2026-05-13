@@ -1,6 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma.js';
 
 export const getEmailAccounts = async (req, res) => {
     try {
@@ -18,7 +16,7 @@ export const getEmailAccounts = async (req, res) => {
         res.json(accounts);
     } catch (error) {
         console.error('Error fetching email accounts:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: error.message || 'Internal server error' });
     }
 };
 
@@ -45,7 +43,7 @@ export const createEmailAccount = async (req, res) => {
         res.status(201).json(account);
     } catch (error) {
         console.error('Error creating email account:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: error.message || 'Internal server error' });
     }
 };
 

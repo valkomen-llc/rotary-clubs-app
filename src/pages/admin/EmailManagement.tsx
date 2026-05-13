@@ -131,9 +131,10 @@ const EmailManagement: React.FC = () => {
                 const error = await response.json();
                 toast.error(`Error: ${error.error || 'No se pudo crear la cuenta'}`);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error creating account:', error);
-            toast.error('Error de conexión al crear la cuenta');
+            const msg = error.response?.data?.error || error.message;
+            toast.error(`Error: ${msg || 'Error de conexión al crear la cuenta'}`);
         }
     };
 
