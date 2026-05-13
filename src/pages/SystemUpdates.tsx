@@ -27,6 +27,18 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.210',
+        date: '2026-05-13',
+        title: 'Habilitación de Auto-SMTP Institucional',
+        description: 'Implementación de envío directo vía SMTP utilizando las credenciales de la cuenta institucional recién creada.',
+        type: 'feature',
+        details: [
+            'Detección automática de servidor de correo (mail.dominio.com)',
+            'Autenticación directa para asegurar identidad 1:1',
+            'Fallback automático a relay de plataforma en caso de error'
+        ]
+    },
+    {
         version: 'v4.208',
         date: '2026-05-13',
         title: 'Simplificación de Identidad de Remitente',

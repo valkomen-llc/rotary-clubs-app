@@ -183,6 +183,41 @@ export class EmailService {
             });
             const senderName = club?.name || 'Club Platform';
 
+            // NEW: Try to use the institutional account's own SMTP if possible
+            if (fromEmail) {
+                const account = await prisma.emailAccount.findUnique({
+                    where: { email: fromEmail }
+                });
+
+                if (account && account.password) {
+                    try {
+                        console.info(`[EmailService] Attempting direct SMTP for ${fromEmail}`);
+                        const domain = fromEmail.split('@')[1];
+                        const { default: nodemailer } = await import('nodemailer');
+                        
+                        // cPanel standard: mail.domain.com
+                        const directTransporter = nodemailer.createTransport({
+                            host: `mail.${domain}`,
+                            port: 465,
+                            secure: true,
+                            auth: { user: fromEmail, pass: account.password },
+                        });
+
+                        const fromStr = `"${senderName}" <${fromEmail}>`;
+                        const info = await directTransporter.sendMail({ from: fromStr, to, subject, html });
+                        
+                        await this.logCommunication({
+                            clubId, type: 'email', recipient: to, subject, content: html, status: 'sent',
+                            errorMsg: null, sentById: userId
+                        });
+
+                        return { success: true, messageId: info.messageId };
+                    } catch (smtpErr) {
+                        console.warn(`[EmailService] Direct SMTP failed for ${fromEmail}: ${smtpErr.message}. Falling back to platform relay.`);
+                    }
+                }
+            }
+
             if (!transporter) {
                 console.info(`[EmailService] Club ${clubId} has no SMTP. Falling back to platform relay.`);
                 
