@@ -186,9 +186,10 @@ export class EmailService {
             if (!transporter) {
                 console.info(`[EmailService] Club ${clubId} has no SMTP. Falling back to platform relay.`);
                 
-                // Construct a professional From name: "Club Name (institutional@email.com)"
+                // Simplified format: "institutional@email.com <noreply@clubplatform.org>"
+                // This often forces the client to show the institutional email as the sender
                 const professionalFrom = fromEmail 
-                    ? `"${senderName} (${fromEmail})" <noreply@clubplatform.org>`
+                    ? `${fromEmail} <noreply@clubplatform.org>`
                     : `"${senderName}" <noreply@clubplatform.org>`;
 
                 return await this.sendPlatformEmail({ 

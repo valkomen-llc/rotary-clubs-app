@@ -27,6 +27,18 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.208',
+        date: '2026-05-13',
+        title: 'Simplificación de Identidad de Remitente',
+        description: 'Ajuste final en el formato de remitente para forzar la visualización del correo institucional en el cliente del destinatario.',
+        type: 'improvement',
+        details: [
+            'Cambio de formato a "correo@dominio.org <noreply@clubplatform.org>"',
+            'Eliminación de comillas y paréntesis para evitar filtrado de clientes',
+            'Optimización de compatibilidad con Gmail y Outlook'
+        ]
+    },
+    {
         version: 'v4.207',
         date: '2026-05-13',
         title: 'Corrección de Referencia de Correo',
