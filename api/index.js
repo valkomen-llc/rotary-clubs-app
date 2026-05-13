@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.191 | 2026-05-13 (STABILITY & AUTH SYNC 🔐)
+// DISTRICT HEALTH IQ V4.192 | 2026-05-13 (DIAGNOSTICS & CACHE BUST 🧨)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -122,12 +122,12 @@ app.get('/api/diag-auth', (req, res) => {
         isUsingFallback: !process.env.JWT_SECRET,
         matchesExpectedFallback: secret === 'rotary_secret_key_2026',
         secretLength: secret.length,
-        version: '4.191'
+        version: '4.192'
     });
 });
 
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.191', release: 'Stability & Auth Sync 🔐' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.192', release: 'Diagnostics & Cache Bust 🧨' });
 });
 
 app.get('/api/health', async (req, res) => {
