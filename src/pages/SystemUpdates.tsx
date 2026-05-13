@@ -27,6 +27,18 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.197',
+        date: '2026-05-13',
+        title: 'Sincronización de Producción Finalizada',
+        description: 'Confirmación de la estructura de base de datos en el entorno de producción para el módulo de correos.',
+        type: 'update',
+        details: [
+            'Sincronización manual de esquemas en PostgreSQL (Neon)',
+            'Validación de persistencia de cuentas de correo',
+            'Preparación para aprovisionamiento DNS'
+        ]
+    },
+    {
         version: 'v4.196',
         date: '2026-05-13',
         title: 'Optimización de Base de Datos y Errores',
