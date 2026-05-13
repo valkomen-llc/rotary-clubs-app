@@ -90,15 +90,21 @@ const AnalyticsPage: React.FC = () => {
     return (
         <AdminLayout>
             {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-                <div>
-                    <h1 className="text-3xl font-black text-gray-900 tracking-tight">Analytics</h1>
-                    <p className="text-sm text-gray-400 font-medium mt-1">
-                        {showGlobal
-                            ? 'Todos los sitios de la plataforma'
-                            : clubHostname || 'Tu sitio web'}
-                    </p>
+            <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-sky-100 flex items-center justify-center">
+                        <BarChart3 className="w-6 h-6 text-rotary-blue" />
+                    </div>
+                    <div>
+                        <h1 className="text-2xl font-black text-gray-900 tracking-tight">Analytics</h1>
+                        <p className="text-sm text-gray-500 mt-1">
+                            {showGlobal
+                                ? 'Métricas globales de la plataforma'
+                                : (clubHostname || 'Rendimiento de tu sitio web')}
+                        </p>
+                    </div>
                 </div>
+
                 <div className="flex items-center gap-2">
                     <div className="flex bg-gray-50 p-1 rounded-xl border border-gray-100">
                         {['7d', '30d', '90d', '12m'].map((p) => (

@@ -605,19 +605,25 @@ const ProjectsManagement: React.FC = () => {
     };
 
     return (
-        <>
         <AdminLayout>
-            <div className="flex justify-between items-center mb-8">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-800">Gestión de Proyectos</h1>
-                    <p className="text-gray-500 text-sm">Administra proyectos, recaudación e historial de impacto.</p>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-sky-100 flex items-center justify-center">
+                        <FolderKanban className="w-6 h-6 text-rotary-blue" />
+                    </div>
+                    <div>
+                        <h1 className="text-2xl font-black text-gray-900 tracking-tight">Gestión de Proyectos</h1>
+                        <p className="text-sm text-gray-500 mt-1">
+                            Administra proyectos, recaudación e historial de impacto · {projects.length} proyectos
+                        </p>
+                    </div>
                 </div>
                 <div className="flex items-center gap-2">
                     {/* Modo selección */}
                     <button
                         onClick={() => { setIsSelecting(v => !v); setSelectedIds(new Set()); }}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg border font-bold text-sm transition-all ${
-                            isSelecting ? 'bg-gray-100 border-gray-300 text-gray-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl border font-bold text-sm transition-all ${
+                            isSelecting ? 'bg-gray-100 border-gray-300 text-gray-700' : 'border-gray-100 text-gray-500 hover:bg-gray-50'
                         }`}>
                         {isSelecting ? <X className="w-4 h-4" /> : <CheckSquare className="w-4 h-4" />}
                         {isSelecting ? 'Cancelar' : 'Seleccionar'}
@@ -625,8 +631,8 @@ const ProjectsManagement: React.FC = () => {
                     {/* Papelera */}
                     <button
                         onClick={() => setShowTrash(v => !v)}
-                        className={`relative flex items-center gap-2 px-4 py-2 rounded-lg border font-bold text-sm transition-all ${
-                            showTrash ? 'bg-red-50 border-red-200 text-red-600' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                        className={`relative flex items-center gap-2 px-4 py-2 rounded-xl border font-bold text-sm transition-all ${
+                            showTrash ? 'bg-red-50 border-red-200 text-red-600' : 'border-gray-100 text-gray-500 hover:bg-gray-50'
                         }`}>
                         <Trash className="w-4 h-4" />
                         Papelera
@@ -639,16 +645,16 @@ const ProjectsManagement: React.FC = () => {
                     {/* Botón Testimonios */}
                     <button
                         onClick={() => setShowTestimonialsPanel(true)}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 font-bold text-sm transition-all"
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-100 text-gray-600 hover:bg-gray-50 font-bold text-sm transition-all"
                     >
                         <Quote className="w-4 h-4" /> Testimonios
                     </button>
                     {/* Nuevo proyecto */}
                     <button
                         onClick={() => setShowNewProjectStep1(true)}
-                        className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2 rounded-lg hover:bg-sky-800 transition-all font-bold shadow-lg shadow-rotary-blue/20"
+                        className="flex items-center gap-2 bg-rotary-blue text-white px-5 py-2.5 rounded-xl hover:bg-sky-800 transition-all font-bold shadow-xl shadow-blue-900/20 active:scale-95"
                     >
-                        <Sparkles className="w-4 h-4" /> Nuevo Proyecto
+                        <Sparkles className="w-5 h-5" /> Nuevo Proyecto
                     </button>
                 </div>
             </div>

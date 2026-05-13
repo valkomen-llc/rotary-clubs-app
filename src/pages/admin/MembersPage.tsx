@@ -200,25 +200,25 @@ const MembersPage: React.FC = () => {
                 {/* Header Section */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-200">
-                            <Users className="w-7 h-7 text-white" />
+                        <div className="w-12 h-12 rounded-2xl bg-sky-100 flex items-center justify-center">
+                            <Users className="w-6 h-6 text-rotary-blue" />
                         </div>
                         <div>
-                            <h1 className="text-3xl font-black text-gray-900 tracking-tight">Miembros del Club</h1>
-                            <p className="text-sm text-gray-400 font-medium mt-1">
-                                Gestiona el directorio público de socios y junta directiva.
+                            <h1 className="text-2xl font-black text-gray-900 tracking-tight">Socios y Junta Directiva</h1>
+                            <p className="text-sm text-gray-500 mt-1">
+                                Gestiona el directorio público de socios y directivos · {members.length} socios
                             </p>
                         </div>
                     </div>
                     
                     <div className="flex items-center gap-3">
                         <button onClick={addMember}
-                            className="group flex items-center gap-2 px-5 py-3 bg-white border border-gray-100 text-gray-700 rounded-2xl text-sm font-bold hover:bg-gray-50 hover:border-gray-200 transition-all shadow-sm">
+                            className="group flex items-center gap-2 px-5 py-3 bg-white border border-gray-100 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-50 hover:border-gray-200 transition-all shadow-sm">
                             <UserPlus className="w-4 h-4 text-sky-500 group-hover:scale-110 transition-transform" /> 
                             Agregar Socio
                         </button>
                         <button onClick={saveMembers} disabled={saving}
-                            className="flex items-center gap-2 px-6 py-3 bg-rotary-blue text-white rounded-2xl text-sm font-black hover:bg-sky-800 transition-all disabled:opacity-50 shadow-xl shadow-blue-900/20 active:scale-95">
+                            className="flex items-center gap-2 px-6 py-3 bg-rotary-blue text-white rounded-xl text-sm font-black hover:bg-sky-800 transition-all disabled:opacity-50 shadow-xl shadow-blue-900/20 active:scale-95">
                             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                             Guardar Directorio
                         </button>

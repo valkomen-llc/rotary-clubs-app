@@ -125,11 +125,14 @@ const LeadsManagement: React.FC = () => {
 
     return (
         <AdminLayout>
-            <div className="flex justify-between items-start mb-8">
+            <div className="flex items-center gap-4 mb-8">
+                <div className="w-12 h-12 rounded-2xl bg-sky-100 flex items-center justify-center">
+                    <Users className="w-6 h-6 text-rotary-blue" />
+                </div>
                 <div>
-                    <h1 className="text-3xl font-black text-gray-900 tracking-tight">Contactos & Leads</h1>
-                    <p className="text-gray-500 mt-1 text-sm">
-                        Personas que se han comunicado a través de tus formularios · {total} contactos
+                    <h1 className="text-2xl font-black text-gray-900 tracking-tight">Contactos & Leads</h1>
+                    <p className="text-sm text-gray-500 mt-1">
+                        Gestión de mensajes y prospectos del club · {total} contactos
                     </p>
                 </div>
             </div>

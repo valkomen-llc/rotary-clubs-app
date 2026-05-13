@@ -590,18 +590,20 @@ const ImageDistribution: React.FC = () => {
         <AdminLayout>
             <div className="space-y-6 max-w-5xl">
                 {/* Header */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
-                                <ImageIcon className="w-5 h-5 text-white" />
-                            </div>
-                            Imágenes del Sitio
-                        </h1>
-                        <p className="text-sm text-gray-500 mt-1">Personaliza las imágenes de cada sección de tu sitio web. Los cambios se aplican al guardar.</p>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-sky-100 flex items-center justify-center">
+                            <ImageIcon className="w-6 h-6 text-rotary-blue" />
+                        </div>
+                        <div>
+                            <h1 className="text-2xl font-black text-gray-900 tracking-tight">Imágenes del Sitio</h1>
+                            <p className="text-sm text-gray-500 mt-1">
+                                Personaliza la identidad visual de cada sección · {activeContainers.length} módulos configurables
+                            </p>
+                        </div>
                     </div>
                     <button onClick={handleSave} disabled={saving || !dirty}
-                        className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${dirty ? 'bg-rotary-blue text-white shadow-lg shadow-rotary-blue/20 hover:bg-sky-800' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                        className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all shadow-xl active:scale-95 ${dirty ? 'bg-rotary-blue text-white shadow-blue-900/20 hover:bg-sky-800' : 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none'}`}>
                         {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                         {saving ? 'Guardando...' : 'Guardar Cambios'}
                     </button>

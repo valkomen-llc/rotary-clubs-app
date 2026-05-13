@@ -103,21 +103,23 @@ const FAQManagement = () => {
 
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-                        <HelpCircle className="w-7 h-7 text-blue-600" />
-                        Preguntas Frecuentes
-                    </h1>
-                    <p className="text-gray-500 mt-1">Administra las preguntas frecuentes que se muestran en la página de contacto</p>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-sky-100 flex items-center justify-center">
+                        <HelpCircle className="w-6 h-6 text-rotary-blue" />
+                    </div>
+                    <div>
+                        <h1 className="text-2xl font-black text-gray-900 tracking-tight">Preguntas Frecuentes</h1>
+                        <p className="text-sm text-gray-500 mt-1">
+                            Resuelve dudas comunes de los visitantes · {faqs.length} FAQs
+                        </p>
+                    </div>
                 </div>
                 <button
                     onClick={() => setShowAdd(!showAdd)}
-                    className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                    className="flex items-center gap-2 bg-rotary-blue text-white px-5 py-2.5 rounded-xl hover:bg-sky-800 transition-all font-bold shadow-xl shadow-blue-900/20 active:scale-95"
                 >
-                    <Plus className="w-5 h-5" />
-                    Agregar FAQ
+                    <Plus className="w-5 h-5" /> Agregar FAQ
                 </button>
             </div>
 

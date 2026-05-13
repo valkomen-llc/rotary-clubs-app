@@ -266,30 +266,35 @@ const MediaLibrary: React.FC = () => {
 
     return (
         <AdminLayout>
-            <div className="flex justify-between items-center mb-8">
-                <div>
-                    <div className="flex items-center gap-2 mb-1">
-                        {isSuperAdmin && selectedClubId && (
-                            <button
-                                onClick={handleBackToFolders}
-                                className="p-1 hover:bg-gray-100 rounded-lg text-gray-500 transition-all mr-2"
-                            >
-                                <ArrowLeft className="w-5 h-5" />
-                            </button>
-                        )}
-                        <h1 className="text-2xl font-bold text-gray-800">
-                            {isSuperAdmin && !selectedClubId ? 'Gestión Global de Medios' : 'Librería de Medios'}
-                        </h1>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-sky-100 flex items-center justify-center">
+                        <ImageIcon className="w-6 h-6 text-rotary-blue" />
                     </div>
-                    <p className="text-gray-500 text-sm">
-                        {isSuperAdmin && !selectedClubId
-                            ? 'Explora los archivos organizados por club.'
-                            : `Gestionando archivos ${selectedClubName ? `de ${selectedClubName}` : 'de tu club'}.`}
-                    </p>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            {isSuperAdmin && selectedClubId && (
+                                <button
+                                    onClick={handleBackToFolders}
+                                    className="p-1 hover:bg-gray-100 rounded-lg text-gray-500 transition-all mr-1"
+                                >
+                                    <ArrowLeft className="w-4 h-4" />
+                                </button>
+                            )}
+                            <h1 className="text-2xl font-black text-gray-900 tracking-tight">
+                                {isSuperAdmin && !selectedClubId ? 'Gestión Global de Medios' : 'Librería de Medios'}
+                            </h1>
+                        </div>
+                        <p className="text-sm text-gray-500 mt-1">
+                            {isSuperAdmin && !selectedClubId
+                                ? 'Explora los archivos organizados por club.'
+                                : `Gestionando archivos ${selectedClubName ? `de ${selectedClubName}` : 'de tu club'} · ${media.length} archivos`}
+                        </p>
+                    </div>
                 </div>
 
                 {(!isSuperAdmin || selectedClubId) && (
-                    <label className="flex items-center gap-2 bg-rotary-blue text-white px-5 py-2.5 rounded-xl hover:bg-sky-800 transition-all font-bold shadow-lg shadow-rotary-blue/20 cursor-pointer disabled:opacity-50">
+                    <label className="flex items-center gap-2 bg-rotary-blue text-white px-5 py-2.5 rounded-xl hover:bg-sky-800 transition-all font-bold shadow-xl shadow-blue-900/20 cursor-pointer disabled:opacity-50 active:scale-95">
                         {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
                         <span>{isUploading ? 'Subiendo...' : 'Subir Nuevo'}</span>
                         <input type="file" multiple className="hidden" onChange={handleFileUpload} disabled={isUploading} />

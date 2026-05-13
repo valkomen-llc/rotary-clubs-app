@@ -162,13 +162,20 @@ export default function StoreManagement() {
 
     return (
         <AdminLayout>
-            <div className="flex justify-between items-center mb-6">
-                <div>
-                    <h1 className="text-2xl font-black text-gray-900 tracking-tight">Tienda y Productos</h1>
-                    <p className="text-sm text-gray-500 mt-1">Gestiona el catálogo de artículos, mercancía y aportes con precio fijo.</p>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-sky-100 flex items-center justify-center">
+                        <Package className="w-6 h-6 text-rotary-blue" />
+                    </div>
+                    <div>
+                        <h1 className="text-2xl font-black text-gray-900 tracking-tight">Tienda y Productos</h1>
+                        <p className="text-sm text-gray-500 mt-1">
+                            Gestiona el catálogo de artículos y aportes · {products.length} productos
+                        </p>
+                    </div>
                 </div>
-                <button onClick={() => handleOpenModal()} className="bg-rotary-blue text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-sky-800 transition-colors shadow-sm">
-                    <Plus className="w-4 h-4" />
+                <button onClick={() => handleOpenModal()} className="flex items-center gap-2 bg-rotary-blue text-white px-5 py-2.5 rounded-xl hover:bg-sky-800 transition-all font-bold shadow-xl shadow-blue-900/20 active:scale-95">
+                    <Plus className="w-5 h-5" />
                     Nuevo Producto
                 </button>
             </div>
