@@ -888,7 +888,7 @@ const ProjectsManagement: React.FC = () => {
                                 </button>
                             )}
                             {project.image ? (
-                                <img src={project.image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" crossOrigin="anonymous" />
+                                <img src={project.image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                             ) : (
                                 <div className="w-full h-full bg-gray-50 flex items-center justify-center text-gray-300">
                                     <FolderKanban className="w-12 h-12" />
@@ -1064,7 +1064,7 @@ const ProjectsManagement: React.FC = () => {
                                                 <div className="aspect-square rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center bg-gray-50 overflow-hidden relative group">
                                                     {formData.image ? (
                                                         <>
-                                                            <img src={formData.image} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                                            <img src={formData.image} alt="" className="w-full h-full object-cover" />
                                                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                                                 <button type="button" onClick={() => setFormData({ ...formData, image: '' })} className="bg-red-500 text-white p-2 rounded-full"><X className="w-4 h-4" /></button>
                                                             </div>
@@ -1242,7 +1242,7 @@ const ProjectsManagement: React.FC = () => {
                                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                                                 {formData.images.map((url, idx) => (
                                                     <div key={idx} className="aspect-square rounded-xl overflow-hidden border border-gray-100 relative group shadow-sm bg-gray-50">
-                                                        <img src={url} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                                        <img src={url} alt="" className="w-full h-full object-cover" />
                                                         <button
                                                             type="button"
                                                             onClick={() => setFormData(prev => ({ ...prev, images: prev.images.filter((_, i) => i !== idx) }))}

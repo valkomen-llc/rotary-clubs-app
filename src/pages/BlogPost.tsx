@@ -1099,7 +1099,6 @@ const BlogPost = () => {
                       src={allMedia[selectedMediaIndex].url} 
                       className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl select-none"
                       alt="Full view"
-                      crossOrigin="anonymous"
                     />
                   )}
                 </motion.div>

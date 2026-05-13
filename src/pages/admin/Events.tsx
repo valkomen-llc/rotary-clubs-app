@@ -1184,7 +1184,7 @@ const EventsManagement = () => {
                                                                     <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Vista Previa</h4>
                                                                     <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
                                                                         <div className="aspect-video bg-gray-200 rounded-lg overflow-hidden mb-2">
-                                                                            <img src={event.image || ''} className="w-full h-full object-cover" alt="Event Preview" crossOrigin="anonymous" />
+                                                                            <img src={event.image || ''} className="w-full h-full object-cover" alt="Event Preview" />
                                                                         </div>
                                                                         <p className="text-[10px] font-black text-blue-600 uppercase tracking-tighter mb-1">PRÓXIMO EVENTO</p>
                                                                         <p className="text-xs font-bold text-gray-900 line-clamp-1 mb-1">{event.title || 'Título del Evento'}</p>

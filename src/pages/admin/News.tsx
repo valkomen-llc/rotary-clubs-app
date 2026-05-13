@@ -858,7 +858,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                     <div className="flex items-center gap-4">
                                         <div className="w-14 h-14 rounded-xl bg-gray-100 overflow-hidden flex-shrink-0 border border-gray-200">
                                             {post.image ? (
-                                                <img src={post.image} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                                <img src={post.image} alt="" className="w-full h-full object-cover" />
                                             ) : (
                                                 <div className="w-full h-full flex items-center justify-center text-gray-300">
                                                     <Newspaper className="w-6 h-6" />
@@ -1038,7 +1038,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                 <div className="aspect-square rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center bg-gray-50 overflow-hidden relative group">
                                                     {formData.image ? (
                                                         <>
-                                                            <img src={formData.image} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                                            <img src={formData.image} alt="" className="w-full h-full object-cover" />
                                                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                                                                 <button type="button" 
                                                                     onClick={async () => {
@@ -1187,7 +1187,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                 {/* Then Images */}
                                                 {formData.images.map((url, idx) => (
                                                     <div key={`img-${idx}`} className="aspect-square rounded-xl overflow-hidden border border-gray-100 relative group shadow-sm bg-gray-50">
-                                                        <img src={url} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                                        <img src={url} alt="" className="w-full h-full object-cover" />
                                                         <button
                                                             type="button"
                                                             onClick={() => setFormData(prev => ({ ...prev, images: prev.images.filter((_, i) => i !== idx) }))}
@@ -1506,7 +1506,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                 <div className="flex flex-col md:flex-row gap-6 items-center">
                                                     <div className="w-full md:w-64 aspect-[1.91/1] rounded-2xl border-2 border-dashed border-gray-200 bg-white overflow-hidden relative group transition-all hover:border-rotary-blue/50">
                                                         {(formData.seoImage || formData.image) ? (
-                                                            <img src={formData.seoImage || formData.image} alt="Social Preview" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                                            <img src={formData.seoImage || formData.image} alt="Social Preview" className="w-full h-full object-cover" />
                                                         ) : (
                                                             <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 gap-2">
                                                                 <ImageIcon className="w-8 h-8 text-gray-200" />
@@ -1548,7 +1548,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                                                         <div className="p-3 flex items-center gap-2 border-b border-gray-50">
                                                             <div className="w-9 h-9 rounded-full bg-gray-50 p-1.5 border border-gray-100">
-                                                                <img src={club?.logo || ''} className="w-full h-full object-contain" alt="Club Logo" crossOrigin="anonymous" />
+                                                                <img src={club?.logo || ''} className="w-full h-full object-contain" alt="Club Logo" />
                                                             </div>
                                                             <div>
                                                                 <p className="text-xs font-bold text-gray-900 leading-none mb-1">{club?.name}</p>
@@ -1562,7 +1562,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                         </div>
                                                         <div className="border-t border-gray-100">
                                                             <div className="aspect-[1.91/1] bg-gray-50">
-                                                                <img src={formData.seoImage || formData.image || ''} className="w-full h-full object-cover" alt="Preview" crossOrigin="anonymous" />
+                                                                <img src={formData.seoImage || formData.image || ''} className="w-full h-full object-cover" alt="Preview" />
                                                             </div>
                                                             <div className="p-3 bg-[#F0F2F5] border-t border-gray-200">
                                                                 <p className="text-[10px] text-gray-500 uppercase font-bold tracking-tight mb-1">{window.location.hostname}</p>

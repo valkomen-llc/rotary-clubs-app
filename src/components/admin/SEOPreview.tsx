@@ -86,7 +86,7 @@ const SEOPreview: React.FC<SEOPreviewProps> = ({
                     </div>
                     <div className="mx-5 mb-5 border border-gray-200 rounded-xl overflow-hidden">
                         <div className="h-40 bg-gray-100 overflow-hidden">
-                            <img src={image} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                            <img src={image} alt="" className="w-full h-full object-cover" />
                         </div>
                         <div className="p-3 bg-gray-50 border-t border-gray-200">
                             <p className="text-[10px] text-gray-400 uppercase font-bold">{displayUrl.replace(/^https?:\/\//, '').split('/')[0]}</p>

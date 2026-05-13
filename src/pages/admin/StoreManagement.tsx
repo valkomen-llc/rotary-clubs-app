@@ -207,7 +207,7 @@ export default function StoreManagement() {
                                         <div className="flex items-center gap-3">
                                             <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
                                                 {prod.images && prod.images.length > 0 ? (
-                                                    <img src={prod.images[0]} alt={prod.name} className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                                    <img src={prod.images[0]} alt={prod.name} className="w-full h-full object-cover" />
                                                 ) : (
                                                     <div className="w-full h-full flex items-center justify-center"><Package className="w-5 h-5 text-gray-300" /></div>
                                                 )}
@@ -311,7 +311,7 @@ export default function StoreManagement() {
                                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                                             {formData.images.map((url, idx) => (
                                                 <div key={idx} className="aspect-square rounded-xl overflow-hidden border border-gray-200 relative group">
-                                                    <img src={url} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                                    <img src={url} alt="" className="w-full h-full object-cover" />
                                                     <button type="button" onClick={() => setFormData(p => ({ ...p, images: p.images.filter((_, i) => i !== idx) }))} className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-3 h-3" /></button>
                                                 </div>
                                             ))}

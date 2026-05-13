@@ -117,8 +117,7 @@ export default function ProductDetail() {
                                         <img
                                             src={product.images[activeImageIndex]}
                                             alt={product.name}
-                                            className="w-full h-full object-cover"
-                                            crossOrigin="anonymous"
+                                            className="w-full h-full object-contain"
                                         />
                                     ) : (
                                         <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
@@ -136,7 +135,7 @@ export default function ProductDetail() {
                                                 onClick={() => setActiveImageIndex(idx)}
                                                 className={`flex-none w-24 h-24 rounded-2xl overflow-hidden border-2 snap-start transition-all ${activeImageIndex === idx ? 'border-rotary-blue opacity-100' : 'border-transparent opacity-60 hover:opacity-100'}`}
                                             >
-                                                <img src={img} alt={`Thumb ${idx}`} className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                                <img src={img} alt={`Thumb ${idx}`} className="w-full h-full object-cover" />
                                             </button>
                                         ))}
                                     </div>

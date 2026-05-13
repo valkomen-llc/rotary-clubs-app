@@ -23,9 +23,21 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.176 | 2026-05-13 (MENU REORGANIZATION 📋)
-// Cache bust: 2026-05-13 11:20 (UI STRUCTURE OPTIMIZATION 🏗️)
+// DISTRICT HEALTH IQ V4.177 | 2026-05-13 (IMAGE RENDERING FIX 🖼️)
+// Cache bust: 2026-05-13 11:30 (CORS OPTIMIZATION 🛠️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.177',
+        date: '13 de Mayo, 2026',
+        title: '🖼️ Corrección de Renderizado de Imágenes',
+        description: 'Optimización de la carga de medios en el panel administrativo y páginas públicas para asegurar la visibilidad de portadas de noticias.',
+        type: 'fix',
+        changes: [
+            { type: 'fixed', text: 'Resolución de error de carga en Gestión de Noticias (CORS/crossOrigin restrictions).' },
+            { type: 'fixed', text: 'Corrección de visibilidad de imágenes en Eventos, Proyectos y Tienda.' },
+            { type: 'fixed', text: 'Optimización de previsualización SEO y tarjetas de redes sociales.' }
+        ]
+    },
     {
         version: 'v4.176',
         date: '13 de Mayo, 2026',

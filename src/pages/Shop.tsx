@@ -131,7 +131,6 @@ export default function Shop() {
                                                 src={product.images[0]}
                                                 alt={product.name}
                                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                                crossOrigin="anonymous"
                                             />
                                         ) : (
                                             <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
