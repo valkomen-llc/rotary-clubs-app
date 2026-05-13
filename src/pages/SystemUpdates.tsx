@@ -27,6 +27,18 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.207',
+        date: '2026-05-13',
+        title: 'Corrección de Referencia de Correo',
+        description: 'Saneamiento de variables internas en el motor de despacho para asegurar la entrega de correos institucionales.',
+        type: 'fix',
+        details: [
+            'Corrección de error "customFrom is not defined"',
+            'Estandarización de parámetros de remitente en EmailService',
+            'Validación de flujo de envío vía platform relay'
+        ]
+    },
+    {
         version: 'v4.206',
         date: '2026-05-13',
         title: 'Mejora de Identidad de Remitente',

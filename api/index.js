@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.206 | 2026-05-13 (ENHANCED SENDER IDENTITY 🆔)
+// DISTRICT HEALTH IQ V4.207 | 2026-05-13 (EMAIL REFERENCE FIX 🛠️)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -115,7 +115,7 @@ app.get('/api/technical-requests', async (req, res) => {
 });
 
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.206', release: 'Enhanced Sender Identity 🆔' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.207', release: 'Email Reference Fix 🛠️' });
 });
 
 app.get('/api/health', async (req, res) => {

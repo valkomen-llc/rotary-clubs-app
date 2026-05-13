@@ -187,8 +187,8 @@ export class EmailService {
                 console.info(`[EmailService] Club ${clubId} has no SMTP. Falling back to platform relay.`);
                 
                 // Construct a professional From name: "Club Name (institutional@email.com)"
-                const professionalFrom = customFrom 
-                    ? `"${senderName} (${customFrom})" <noreply@clubplatform.org>`
+                const professionalFrom = fromEmail 
+                    ? `"${senderName} (${fromEmail})" <noreply@clubplatform.org>`
                     : `"${senderName}" <noreply@clubplatform.org>`;
 
                 return await this.sendPlatformEmail({ 
@@ -196,7 +196,7 @@ export class EmailService {
                     subject, 
                     html, 
                     from: professionalFrom,
-                    replyTo: customFrom
+                    replyTo: fromEmail
                 });
             }
 
