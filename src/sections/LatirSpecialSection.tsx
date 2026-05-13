@@ -7,7 +7,7 @@ const LatirSpecialSection = () => {
   const { club } = useClub();
   
   const clubName = club?.name || 'LATIR';
-  const isRye = club?.subdomain?.toLowerCase().includes('rye');
+  const isRye = club?.subdomain?.toLowerCase().startsWith('rye');
   
   return (
     <section className="py-24 bg-rotary-concrete relative overflow-hidden">

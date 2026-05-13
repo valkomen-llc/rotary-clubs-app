@@ -21,7 +21,7 @@ interface CheckItem {
 
 const getCategoryMeta = (type?: string, name?: string) => {
     const isClub = type === 'club';
-    const isRYE = name?.toLowerCase().includes('rye');
+    const isRYE = name?.toLowerCase().startsWith('rye');
     
     return {
         identity: { 
@@ -58,7 +58,7 @@ const ClubAdminDashboard: React.FC = () => {
 
     const items: CheckItem[] = [
         {
-            id: 'club-info', label: club?.type === 'club' ? 'Información del club' : club?.name?.toLowerCase().includes('rye') ? 'Información del programa' : 'Información institucional',
+            id: 'club-info', label: club?.type === 'club' ? 'Información del club' : club?.name?.toLowerCase().startsWith('rye') ? 'Información del programa' : 'Información institucional',
             desc: club?.type === 'club' ? 'Logo, descripción, contacto, colores y redes sociales' : 'Logo, branding, contacto y redes de la organización',
             done: !!(club?.logo && club?.description && club.description.length > 20),
             href: '/admin/mi-club', category: 'identity', weight: 15,
@@ -154,7 +154,7 @@ const ClubAdminDashboard: React.FC = () => {
                     <div className="flex-1 min-w-0">
                         <h1 className="text-2xl font-black text-gray-900 tracking-tight">¡Bienvenido! 👋</h1>
                         <p className="text-sm text-gray-500 font-medium mt-1">
-                            {club?.type === 'club' ? 'Club: ' : club?.name?.toLowerCase().includes('rye') ? 'Programa: ' : 'Organización: '} <span className="font-bold text-gray-700">{club?.name || 'Tu Institución'}</span>
+                            {club?.type === 'club' ? 'Club: ' : club?.name?.toLowerCase().startsWith('rye') ? 'Programa: ' : 'Organización: '} <span className="font-bold text-gray-700">{club?.name || 'Tu Institución'}</span>
                         </p>
                         {isComplete ? (
                             <p className="text-sm text-emerald-600 font-bold mt-2 flex items-center gap-1.5 underline">Sitio listo para publicar</p>

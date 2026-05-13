@@ -140,7 +140,7 @@ const Sidebar = () => {
                         <div className="flex flex-col min-w-0">
                             <span className="text-xs font-bold text-gray-900 truncate">{club?.name || 'Club Name'}</span>
                             <span className="text-[10px] text-gray-400 truncate uppercase tracking-tighter">
-                                {club?.type === 'club' ? 'Club Rotario' : club?.type === 'district' ? 'Distrito' : (club?.type === 'Programa de Intercambio' || club?.name?.toLowerCase().includes('rye')) ? 'Programa de Intercambio' : 'Asociación'}
+                                {club?.type === 'club' ? 'Club Rotario' : club?.type === 'district' ? 'Distrito' : (club?.type === 'Programa de Intercambio' || club?.name?.toLowerCase().startsWith('rye')) ? 'Programa de Intercambio' : 'Asociación'}
                             </span>
                         </div>
                     </div>

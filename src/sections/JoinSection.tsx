@@ -8,7 +8,7 @@ const JoinSection = () => {
   const { club } = useClub();
   const siteImages = useSiteImages();
   const currentHostname = window.location.hostname;
-  const isLatir = club?.subdomain?.toLowerCase().includes('latir') || club?.name?.toLowerCase().includes('latir') || currentHostname.toLowerCase().includes('rye');
+  const isLatir = club?.subdomain?.toLowerCase().includes('latir') || club?.name?.toLowerCase().includes('latir') || currentHostname.toLowerCase().startsWith('rye');
 
   const imgUrl = siteImages.join?.url || DEFAULT_JOIN_IMG;
   const imgAlt = siteImages.join?.alt || 'Rotary Members';

@@ -93,7 +93,7 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     const data = await response.json();
                     
                     // Force "Programa de Intercambio" type for RYE subdomains (Branding Parity)
-                    if (data.subdomain?.toLowerCase().includes('rye') || hostname.toLowerCase().includes('rye')) {
+                    if (data.subdomain?.toLowerCase().startsWith('rye') || hostname.toLowerCase().startsWith('rye')) {
                         data.type = 'Programa de Intercambio';
                     }
                     

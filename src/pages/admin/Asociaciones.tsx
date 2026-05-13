@@ -98,8 +98,8 @@ const AsociacionesManagement: React.FC = () => {
                 const data = await assocRes.json();
                 // Filter out RYE entities from Associations list (they belong in Programs)
                 const filtered = data.filter((c: any) => 
-                    !c.name?.toLowerCase().includes('rye') && 
-                    !c.subdomain?.toLowerCase().includes('rye') &&
+                    !c.name?.toLowerCase().startsWith('rye') && 
+                    !c.subdomain?.toLowerCase().startsWith('rye') &&
                     c.type !== 'Programa de Intercambio'
                 );
                 setAssociations(filtered);

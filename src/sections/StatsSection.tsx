@@ -50,7 +50,7 @@ const StatsSection = () => {
   
   const isSpecial = club?.name?.toLowerCase().includes('latir') || 
                   club?.subdomain?.toLowerCase().includes('latir') || 
-                  currentHostname.toLowerCase().includes('rye');
+                  currentHostname.toLowerCase().startsWith('rye');
   
   const clubName = club?.name || 'nuestra red';
   

@@ -102,8 +102,8 @@ const ProgramasManagement: React.FC = () => {
                 const associations = await assocRes.json();
                 // Pick RYE from associations and add to programs if not already there
                 const ryeFromAssoc = associations.filter((c: any) => 
-                    c.name?.toLowerCase().includes('rye') || 
-                    c.subdomain?.toLowerCase().includes('rye')
+                    c.name?.toLowerCase().startsWith('rye') || 
+                    c.subdomain?.toLowerCase().startsWith('rye')
                 );
                 const existingIds = new Set(programs.map((p: any) => p.id));
                 ryeFromAssoc.forEach((c: any) => {
