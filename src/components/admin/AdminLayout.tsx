@@ -329,7 +329,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 icon: LayoutDashboard, 
                 label: 'Overview / Wizard', 
                 path: '/admin/dashboard?view=wizard', 
-                category: 'Configuración', 
+                category: 'Configuración e Identidad', 
                 keywords: ['inicio', 'panel', 'dashboard', 'resumen', 'onboarding', 'wizard'] 
             });
         }
@@ -376,31 +376,31 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             const categoryLabel = isProduction ? 'Gestión de Sitio' : orgTypeLabel;
 
             items.push(
-                { icon: ShieldCheck, label: 'Solicitudes Técnicas', path: '/admin/technical-requests', category: categoryLabel, keywords: ['dominio', 'transferencia', 'soporte', 'tecnico', 'ayuda'] },
-                { icon: Settings, label: 'Configuración / Identidad', path: '/admin/configuracion', category: 'Configuración', keywords: ['logo', 'nombre', 'perfil', 'identidad', 'contacto', 'redes', 'facturacion', 'stripe', 'pago', 'configurar'], badge: 'config' },
-                { icon: Globe, label: 'Dominio y Publicación', path: '/admin/configuracion?tab=avanzado', category: 'Configuración', keywords: ['dominio', 'publicar', 'dns', 'ssl'] }
+                { icon: ShieldCheck, label: 'Solicitudes Técnicas', path: '/admin/technical-requests', category: 'Configuración e Identidad', keywords: ['dominio', 'transferencia', 'soporte', 'tecnico', 'ayuda'] },
+                { icon: Settings, label: 'Configuración / Identidad', path: '/admin/configuracion', category: 'Configuración e Identidad', keywords: ['logo', 'nombre', 'perfil', 'identidad', 'contacto', 'redes', 'facturacion', 'stripe', 'pago', 'configurar'], badge: 'config' },
+                { icon: Globe, label: 'Dominio y Publicación', path: '/admin/configuracion?tab=avanzado', category: 'Configuración e Identidad', keywords: ['dominio', 'publicar', 'dns', 'ssl'] }
             );
 
             if (user?.role !== 'editor') {
                 items.push(
-                    { icon: Users, label: `Miembros de${isAssoc ? ' la ' : 'l '}${orgTypeLabel}`, path: '/admin/miembros', category: categoryLabel, keywords: ['socio', 'miembro', 'directorio'] }
+                    { icon: Users, label: `Socios y Junta Directiva`, path: '/admin/miembros', category: 'Contenido', keywords: ['socio', 'miembro', 'directorio'] }
                 );
             }
 
             items.push(
-                { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: categoryLabel, keywords: ['contacto', 'lead', 'formulario'] }
+                { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: 'General', keywords: ['contacto', 'lead', 'formulario'] }
             );
         }
 
         // Content — conditionally show based on module settings
         if (isSuperAdmin || mod.projects) {
-            items.push({ icon: FolderKanban, label: 'Proyectos', path: '/admin/proyectos', category: 'Contenido', keywords: ['proyecto', 'obra', 'servicio'] });
+            items.push({ icon: FolderKanban, label: 'Proyectos', path: '/admin/proyectos', category: 'General', keywords: ['proyecto', 'obra', 'servicio'] });
         }
         items.push(
-            { icon: Newspaper, label: 'Noticias', path: '/admin/noticias', category: 'Contenido', keywords: ['noticia', 'articulo', 'blog', 'publicacion'] },
+            { icon: Newspaper, label: 'Noticias', path: '/admin/noticias', category: 'General', keywords: ['noticia', 'articulo', 'blog', 'publicacion'] },
         );
         if (isSuperAdmin || mod.events) {
-            items.push({ icon: Calendar, label: 'Eventos', path: '/admin/eventos', category: 'Contenido', keywords: ['evento', 'calendario', 'reunion', 'fecha'] });
+            items.push({ icon: Calendar, label: 'Eventos', path: '/admin/eventos', category: 'General', keywords: ['evento', 'calendario', 'reunion', 'fecha'] });
         }
         items.push(
             { icon: ImageIcon, label: 'Multimedia', path: '/admin/media', category: 'Contenido', keywords: ['foto', 'video', 'imagen', 'galeria', 'archivo'] },
@@ -484,7 +484,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
     const menuItems = getMenuItems();
     const categories = isProduction && !isUIAdmin
-        ? ['General', 'Gestión de Sitio', 'Contenido', 'Integrations', 'Finanzas', 'Programas', 'E-commerce', 'Compliance', 'Configuración']
+        ? ['General', 'Contenido', 'Finanzas', 'Programas', 'E-commerce', 'Compliance', 'Configuración e Identidad']
         : Array.from(new Set(menuItems.map(item => item.category)));
 
     // Dynamic page title from current route

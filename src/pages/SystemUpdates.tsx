@@ -23,9 +23,21 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.175 | 2026-05-13 (NAVIGATION RECOVERY ⚓)
-// Cache bust: 2026-05-13 10:20 (UI ADMIN RECOVERY 🛠️)
+// DISTRICT HEALTH IQ V4.176 | 2026-05-13 (MENU REORGANIZATION 📋)
+// Cache bust: 2026-05-13 11:20 (UI STRUCTURE OPTIMIZATION 🏗️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.176',
+        date: '13 de Mayo, 2026',
+        title: '📋 Reorganización del Menú Administrativo',
+        description: 'Optimización de la jerarquía del panel de control para una mejor usabilidad y enfoque en gestión de contenido.',
+        type: 'major',
+        changes: [
+            { type: 'improved', text: 'General: Analytics, Leads, Noticias, Eventos y Proyectos centralizados como pilares operativos.' },
+            { type: 'improved', text: 'Contenido: Nuevo enfoque en activos visuales y directorio de Socios y Junta Directiva.' },
+            { type: 'improved', text: 'Configuración: Consolidación de Overview e Identidad en una única categoría técnica.' }
+        ]
+    },
     {
         version: 'v4.175',
         date: '13 de Mayo, 2026',
