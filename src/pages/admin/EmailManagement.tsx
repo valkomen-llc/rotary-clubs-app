@@ -120,33 +120,61 @@ const EmailManagement: React.FC = () => {
         }
     ]);
 
-    const handleSendEmail = () => {
+    const handleSendEmail = async () => {
         if (!composeData.to) {
             toast.error('Por favor ingresa un destinatario');
             return;
         }
+
         setSending(true);
-        setTimeout(() => {
-            const newEmail: EmailMessage = {
-                id: Math.random().toString(36).substr(2, 9),
-                from: { name: user?.name || 'Admin', email: activeAccount.email },
-                to: composeData.to,
-                subject: composeData.subject || '(Sin Asunto)',
-                preview: composeData.body.substring(0, 60) + '...',
-                body: composeData.body,
-                timestamp: 'Ahora',
-                read: true,
-                starred: false,
-                hasAttachments: false,
-                folder: 'sent'
-            };
-            
-            setAllEmails([newEmail, ...allEmails]);
+        try {
+            // Real API call to our backend communications service
+            const response = await fetch('/api/communications/send', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}` // Ensure we pass auth
+                },
+                body: JSON.stringify({
+                    type: 'email',
+                    recipient: composeData.to,
+                    subject: composeData.subject || '(Sin Asunto)',
+                    content: composeData.body,
+                    clubId: club?.id,
+                    fromEmail: activeAccount.email // The backend will use this if SMTP is shared or for logging
+                })
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                const newEmail: EmailMessage = {
+                    id: result.messageId || Math.random().toString(36).substr(2, 9),
+                    from: { name: user?.name || 'Admin', email: activeAccount.email },
+                    to: composeData.to,
+                    subject: composeData.subject || '(Sin Asunto)',
+                    preview: composeData.body.substring(0, 60) + '...',
+                    body: composeData.body,
+                    timestamp: 'Ahora',
+                    read: true,
+                    starred: false,
+                    hasAttachments: false,
+                    folder: 'sent'
+                };
+                
+                setAllEmails([newEmail, ...allEmails]);
+                setShowComposeModal(false);
+                setComposeData({ to: '', subject: '', body: '' });
+                toast.success(`Mensaje enviado con éxito desde ${activeAccount.email}`);
+            } else {
+                toast.error(`Error al enviar: ${result.error || 'Servicio no disponible'}`);
+            }
+        } catch (error) {
+            console.error('Error in handleSendEmail:', error);
+            toast.error('Error de conexión con el servidor de correo');
+        } finally {
             setSending(false);
-            setShowComposeModal(false);
-            setComposeData({ to: '', subject: '', body: '' });
-            toast.success(`Mensaje enviado desde ${activeAccount.email}`);
-        }, 1500);
+        }
     };
 
     const filteredEmails = allEmails.filter(e => {

@@ -23,9 +23,22 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.188 | 2026-05-13 (PERSISTED SENT EMAILS 📦)
-// Cache bust: 2026-05-13 13:41 (SENT BOX ACTIVE 📤)
+// DISTRICT HEALTH IQ V4.189 | 2026-05-13 (REAL API DISPATCH 🚀)
+// Cache bust: 2026-05-13 14:02 (SMTP/RESEND WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.189',
+        date: '13 de Mayo, 2026',
+        title: '🚀 Despacho de Correo Real vía API',
+        description: 'Conexión del front-end con el servicio de comunicaciones del backend para envío efectivo de emails.',
+        type: 'feature',
+        changes: [
+            { type: 'added', text: 'Integración del botón "Enviar" con el endpoint /api/communications/send para despacho real.' },
+            { type: 'improved', text: 'Soporte para múltiples proveedores de salida (Resend/SMTP) según la configuración del club.' },
+            { type: 'added', text: 'Registro automático de comunicaciones enviadas en la base de datos (CommunicationLog).' },
+            { type: 'improved', text: 'Validación de tokens de autenticación en cada despacho para máxima seguridad.' }
+        ]
+    },
     {
         version: 'v4.188',
         date: '13 de Mayo, 2026',
