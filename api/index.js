@@ -115,6 +115,15 @@ app.get('/api/technical-requests', async (req, res) => {
 });
 
 // ── Static & Diagnostics ─────────────────────────────────────────────────────
+app.get('/api/diag-auth', (req, res) => {
+    const secret = process.env.JWT_SECRET || 'rotary_secret_key_2026';
+    res.json({ 
+        hasSecret: !!process.env.JWT_SECRET,
+        secretPrefix: secret.substring(0, 3) + '...',
+        version: '4.191'
+    });
+});
+
 app.get('/api', (req, res) => {
     res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.191', release: 'Stability & Auth Sync 🔐' });
 });
