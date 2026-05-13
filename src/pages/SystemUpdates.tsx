@@ -23,9 +23,22 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.186 | 2026-05-13 (FULL EMAIL FUNCTIONALITY 📤)
-// Cache bust: 2026-05-13 13:27 (READY TO SEND ✉️)
+// DISTRICT HEALTH IQ V4.187 | 2026-05-13 (INTEGRATED EMAIL LOGIC 🔗)
+// Cache bust: 2026-05-13 13:33 (SYNCED ACCOUNTS 🔄)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.187',
+        date: '13 de Mayo, 2026',
+        title: '🔗 Lógica de Cuentas y Carpetas Integrada',
+        description: 'Sincronización total entre la selección de cuentas, carpetas y el remitente de correos.',
+        type: 'improvement',
+        changes: [
+            { type: 'fixed', text: 'Sincronización dinámica del remitente en el modal de redacción según la cuenta activa seleccionada.' },
+            { type: 'fixed', text: 'Activación de la navegación por carpetas (Recibidos, Destacados, Enviados, etc.) con filtrado reactivo.' },
+            { type: 'improved', text: 'Persistencia de nuevas cuentas (ej. admin) en el selector de remitentes y directorio institucional.' },
+            { type: 'fixed', text: 'Corrección de la lógica de cambio de cuenta para evitar visualizaciones en blanco.' }
+        ]
+    },
     {
         version: 'v4.186',
         date: '13 de Mayo, 2026',
