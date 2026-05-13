@@ -90,22 +90,8 @@ const EmailManagement: React.FC = () => {
         toast.success(`Cuenta ${fullEmail} creada y configurada`);
     };
 
-    const handleSendEmail = () => {
-        if (!composeData.to) {
-            toast.error('Por favor ingresa un destinatario');
-            return;
-        }
-        setSending(true);
-        setTimeout(() => {
-            setSending(false);
-            setShowComposeModal(false);
-            setComposeData({ to: '', subject: '', body: '' });
-            toast.success(`Mensaje enviado desde ${activeAccount.email}`);
-        }, 1500);
-    };
-
-    // Mock emails (filtered by folder in real app)
-    const [allEmails] = useState<EmailMessage[]>([
+    // Dynamic email state to persist sent messages
+    const [allEmails, setAllEmails] = useState<EmailMessage[]>([
         {
             id: 'e1',
             from: { name: 'Juan Pérez', email: 'juan.perez@gmail.com' },
@@ -133,6 +119,35 @@ const EmailManagement: React.FC = () => {
             folder: 'inbox'
         }
     ]);
+
+    const handleSendEmail = () => {
+        if (!composeData.to) {
+            toast.error('Por favor ingresa un destinatario');
+            return;
+        }
+        setSending(true);
+        setTimeout(() => {
+            const newEmail: EmailMessage = {
+                id: Math.random().toString(36).substr(2, 9),
+                from: { name: user?.name || 'Admin', email: activeAccount.email },
+                to: composeData.to,
+                subject: composeData.subject || '(Sin Asunto)',
+                preview: composeData.body.substring(0, 60) + '...',
+                body: composeData.body,
+                timestamp: 'Ahora',
+                read: true,
+                starred: false,
+                hasAttachments: false,
+                folder: 'sent'
+            };
+            
+            setAllEmails([newEmail, ...allEmails]);
+            setSending(false);
+            setShowComposeModal(false);
+            setComposeData({ to: '', subject: '', body: '' });
+            toast.success(`Mensaje enviado desde ${activeAccount.email}`);
+        }, 1500);
+    };
 
     const filteredEmails = allEmails.filter(e => {
         if (selectedFolder === 'starred') return e.starred;

@@ -23,9 +23,21 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.187 | 2026-05-13 (INTEGRATED EMAIL LOGIC 🔗)
-// Cache bust: 2026-05-13 13:33 (SYNCED ACCOUNTS 🔄)
+// DISTRICT HEALTH IQ V4.188 | 2026-05-13 (PERSISTED SENT EMAILS 📦)
+// Cache bust: 2026-05-13 13:41 (SENT BOX ACTIVE 📤)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.188',
+        date: '13 de Mayo, 2026',
+        title: '📦 Persistencia en Bandeja de Enviados',
+        description: 'Implementación de persistencia para que los correos enviados se guarden y visualicen correctamente.',
+        type: 'improvement',
+        changes: [
+            { type: 'added', text: 'Los correos redactados ahora se guardan en la carpeta de "Enviados" con su historial completo.' },
+            { type: 'improved', text: 'Lógica de estado dinámico para la gestión de hilos de correo en tiempo real.' },
+            { type: 'improved', text: 'Preparación de infraestructura de salida para vinculación con API externa (AWS SES/Resend).' }
+        ]
+    },
     {
         version: 'v4.187',
         date: '13 de Mayo, 2026',
