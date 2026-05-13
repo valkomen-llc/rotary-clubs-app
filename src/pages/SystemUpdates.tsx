@@ -23,9 +23,19 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.178 | 2026-05-13 (ADMIN UX STANDARDIZATION ✨)
-// Cache bust: 2026-05-13 11:40 (PREMIUM HEADERS 🎨)
+// DISTRICT HEALTH IQ V4.179 | 2026-05-13 (JSX SYNTAX FIX 🛠️)
+// Cache bust: 2026-05-13 11:41 (RESTORE FRAGMENT 🧱)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.179',
+        date: '13 de Mayo, 2026',
+        title: '🛠️ Corrección de Sintaxis JSX',
+        description: 'Reparación de error estructural en el módulo de Proyectos que impedía el despliegue en Vercel.',
+        type: 'fix',
+        changes: [
+            { type: 'fixed', text: 'Restauración del fragmento de React en Projects.tsx para permitir múltiples elementos de nivel superior.' }
+        ]
+    },
     {
         version: 'v4.178',
         date: '13 de Mayo, 2026',

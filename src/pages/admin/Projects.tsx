@@ -605,6 +605,7 @@ const ProjectsManagement: React.FC = () => {
     };
 
     return (
+        <>
         <AdminLayout>
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
                 <div className="flex items-center gap-4">
