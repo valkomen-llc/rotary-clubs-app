@@ -23,9 +23,22 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.181 | 2026-05-13 (TYPOGRAPHY REFINEMENT 🖋️)
-// Cache bust: 2026-05-13 12:05 (REDUCED BOLDNESS 🧼)
+// DISTRICT HEALTH IQ V4.182 | 2026-05-13 (EMAIL INTEGRATION 📧)
+// Cache bust: 2026-05-13 13:02 (INBOX READY 📨)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.182',
+        date: '13 de Mayo, 2026',
+        title: '📧 Nueva Bandeja de Entrada Integrada',
+        description: 'Lanzamiento del módulo de gestión de correos corporativos y transaccionales para clubes.',
+        type: 'feature',
+        changes: [
+            { type: 'added', text: 'Bandeja de entrada premium con diseño de 3 columnas para lectura eficiente.' },
+            { type: 'added', text: 'Soporte para múltiples cuentas corporativas bajo el dominio del club.' },
+            { type: 'added', text: 'Visualización de adjuntos e historial de conversación vinculado al CRM.' },
+            { type: 'improved', text: 'Navegación administrativa actualizada con acceso directo desde el menú General.' }
+        ]
+    },
     {
         version: 'v4.181',
         date: '13 de Mayo, 2026',

@@ -93,6 +93,7 @@ const KnowledgeBase = React.lazy(() => import('./pages/admin/KnowledgeBase'));
 const Integrations = React.lazy(() => import('./pages/admin/Integrations'));
 const AnalyticsPage = React.lazy(() => import('./pages/admin/Analytics'));
 const LeadsManagement = React.lazy(() => import('./pages/admin/Leads'));
+const EmailManagement = React.lazy(() => import('./pages/admin/EmailManagement'));
 const FAQManagement = React.lazy(() => import('./pages/admin/FAQs'));
 const AgentsManagement = React.lazy(() => import('./pages/admin/Agents'));
 const MissionControlVIP = React.lazy(() => import('./pages/admin/MissionControlVIP'));
@@ -708,6 +709,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <LeadsManagement />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/email"
+                  element={
+                    <PrivateRoute>
+                      <EmailManagement />
                     </PrivateRoute>
                   }
                 />
