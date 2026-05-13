@@ -4,7 +4,8 @@ import {
     Plus, Trash2, Save, Calendar, ChevronDown, ChevronUp,
     MapPin, Clock, Image, X, Upload, Code, Eye, EyeOff,
     ImagePlus, Link as LinkIcon, ExternalLink, Crop, ZoomIn, ZoomOut, RotateCw,
-    Facebook, Linkedin, Twitter, Share2, AlertCircle, ExternalLink as ExternalLink2, Sparkles
+    Facebook, Linkedin, Twitter, Share2, AlertCircle, ExternalLink as ExternalLink2, Sparkles,
+    CalendarDays, LayoutGrid
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';

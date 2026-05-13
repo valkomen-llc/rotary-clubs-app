@@ -23,9 +23,21 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.179 | 2026-05-13 (JSX SYNTAX FIX 🛠️)
-// Cache bust: 2026-05-13 11:41 (RESTORE FRAGMENT 🧱)
+// DISTRICT HEALTH IQ V4.180 | 2026-05-13 (CRITICAL UI & SYNTAX FIXES 🛠️)
+// Cache bust: 2026-05-13 11:45 (LAYOUT RESTORATION 🏗️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.180',
+        date: '13 de Mayo, 2026',
+        title: '🛠️ Correcciones Críticas de UI y Sintaxis',
+        description: 'Resolución de errores de renderizado y lógica estructural en el panel administrativo.',
+        type: 'fix',
+        changes: [
+            { type: 'fixed', text: 'FAQs: Corrección de error de sintaxis JSX y restauración de AdminLayout.' },
+            { type: 'fixed', text: 'Eventos: Resolución de iconos faltantes (CalendarDays, LayoutGrid) que causaban blank screen.' },
+            { type: 'fixed', text: 'Estabilización general del flujo de renderizado en el dashboard.' }
+        ]
+    },
     {
         version: 'v4.179',
         date: '13 de Mayo, 2026',
