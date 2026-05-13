@@ -27,7 +27,7 @@ export const getClubById = async (req, res) => {
     try {
         // Access Control: Super Admin or Member of the entity
         const isDistrictAdmin = req.user.role === 'district_admin' && req.user.districtId === id;
-        const isClubAdmin = (req.user.role === 'club_admin' || req.user.role === 'editor') && req.user.clubId === id;
+        const isClubAdmin = (req.user.role === 'club_admin' || req.user.role === 'editor' || req.user.role === 'crowdfunder') && req.user.clubId === id;
         
         if (req.user.role !== 'administrator' && !isClubAdmin && !isDistrictAdmin) {
             return res.status(403).json({ error: 'Access denied' });
@@ -165,7 +165,7 @@ export const updateClub = async (req, res) => {
         try {
             // Access Control
             const isDistrictAdmin = req.user.role === 'district_admin' && req.user.districtId === id;
-            const isClubAdmin = (req.user.role === 'club_admin' || req.user.role === 'editor') && req.user.clubId === id;
+            const isClubAdmin = (req.user.role === 'club_admin' || req.user.role === 'editor' || req.user.role === 'crowdfunder') && req.user.clubId === id;
             
             if (req.user.role !== 'administrator' && !isClubAdmin && !isDistrictAdmin) {
                 return res.status(403).json({ error: 'Access denied' });

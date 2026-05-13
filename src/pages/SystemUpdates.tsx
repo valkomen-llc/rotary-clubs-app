@@ -27,6 +27,18 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.253',
+        date: '2026-05-13',
+        title: 'Integridad de Marca Rotary Origen 🛡️',
+        description: 'Blindaje de la identidad institucional para clubes con nombres similares a programas de intercambio.',
+        type: 'fix',
+        details: [
+            'Implementación de lógica estricta startsWith(\'rye\') para evitar falsos positivos de branding.',
+            'Sincronización de base de datos para asegurar el tipo "club" en Rotary E-Club Origen.',
+            'Actualización global de componentes (Navbar, Footer, Sidebar, JoinSection) con validación estricta de subdominio.'
+        ]
+    },
+    {
         version: 'v4.250',
         date: '2026-05-13',
         title: 'UX de Administración Simplificada',

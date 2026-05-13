@@ -126,8 +126,8 @@ router.post('/global-map-style', superAdminOnly, async (req, res) => {
 });
 
 // --- CLUB ADMIN & SUPER ADMIN ROUTES ---
-const adminRoles = ['administrator', 'club_admin', 'district_admin'];
-const contentRoles = ['administrator', 'club_admin', 'district_admin', 'editor'];
+const adminRoles = ['administrator', 'club_admin', 'district_admin', 'crowdfunder'];
+const contentRoles = ['administrator', 'club_admin', 'district_admin', 'editor', 'crowdfunder'];
 
 router.get('/clubs/:id', roleMiddleware(contentRoles), getClubById);
 router.put('/clubs/:id', roleMiddleware(adminRoles), updateClub);
