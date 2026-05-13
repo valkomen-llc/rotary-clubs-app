@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.142 | 2026-05-08 (FINAL REDIRECT FIX 🌐🚀)
+// DISTRICT HEALTH IQ V4.190 | 2026-05-13 (EMAIL PERSISTENCE 📧)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -10,6 +10,8 @@ import adminRoutes from '../server/routes/admin.js';
 import clubRoutes from '../server/routes/clubs.js';
 import publicRoutes from '../server/routes/public.js';
 import mediaRoutes from '../server/routes/media.js';
+import emailAccountsRoutes from '../server/routes/emailAccounts.js';
+
 
 const app = express();
 app.set('trust proxy', true);
@@ -112,7 +114,7 @@ app.get('/api/technical-requests', async (req, res) => {
 
 // ── Static & Diagnostics ─────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.142', release: 'Final Redirect Fix 🌐🚀' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.190', release: 'Email Persistence Implementation 📧' });
 });
 
 app.get('/api/health', async (req, res) => {
@@ -159,6 +161,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/clubs', clubRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/media', mediaRoutes);
+app.use('/api/email-accounts', emailAccountsRoutes);
+
 
 app.use('/api/calendar', async (req, res, next) => { try { return (await getCalendar())(req, res, next); } catch (e) { console.error('API Error [calendar]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/ai', async (req, res, next) => { try { return (await getAI())(req, res, next); } catch (e) { console.error('API Error [ai]:', e); res.status(500).json({ error: e.message }); } });
