@@ -780,7 +780,7 @@ const EventsManagement = () => {
                             <CalendarDays className="w-6 h-6 text-rotary-blue" />
                         </div>
                         <div>
-                            <h1 className="text-2xl font-black text-gray-900 tracking-tight">Gestión de Eventos</h1>
+                            <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Gestión de Eventos</h1>
                             <p className="text-sm text-gray-500 mt-1">
                                 Planifica y organiza tus actividades · {events.length} eventos registrados
                             </p>

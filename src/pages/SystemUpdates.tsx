@@ -23,9 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.180 | 2026-05-13 (CRITICAL UI & SYNTAX FIXES 🛠️)
-// Cache bust: 2026-05-13 11:45 (LAYOUT RESTORATION 🏗️)
+// DISTRICT HEALTH IQ V4.181 | 2026-05-13 (TYPOGRAPHY REFINEMENT 🖋️)
+// Cache bust: 2026-05-13 12:05 (REDUCED BOLDNESS 🧼)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.181',
+        date: '13 de Mayo, 2026',
+        title: '🖋️ Refinamiento Tipográfico de Encabezados',
+        description: 'Ajuste de peso visual en los títulos de sección para una apariencia más limpia y menos pesada.',
+        type: 'improvement',
+        changes: [
+            { type: 'improved', text: 'Sustitución de font-black (900) por font-semibold (600) en todos los encabezados de módulos administrativos.' },
+            { type: 'improved', text: 'Mejora en el equilibrio visual entre el título y la descripción de sección.' }
+        ]
+    },
     {
         version: 'v4.180',
         date: '13 de Mayo, 2026',

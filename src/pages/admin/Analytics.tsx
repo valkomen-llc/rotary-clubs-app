@@ -96,7 +96,7 @@ const AnalyticsPage: React.FC = () => {
                         <BarChart3 className="w-6 h-6 text-rotary-blue" />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-black text-gray-900 tracking-tight">Analytics</h1>
+                        <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Analytics</h1>
                         <p className="text-sm text-gray-500 mt-1">
                             {showGlobal
                                 ? 'Métricas globales de la plataforma'

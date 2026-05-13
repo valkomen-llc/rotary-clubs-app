@@ -281,7 +281,7 @@ const MediaLibrary: React.FC = () => {
                                     <ArrowLeft className="w-4 h-4" />
                                 </button>
                             )}
-                            <h1 className="text-2xl font-black text-gray-900 tracking-tight">
+                            <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">
                                 {isSuperAdmin && !selectedClubId ? 'Gestión Global de Medios' : 'Librería de Medios'}
                             </h1>
                         </div>

@@ -596,7 +596,7 @@ const ImageDistribution: React.FC = () => {
                             <ImageIcon className="w-6 h-6 text-rotary-blue" />
                         </div>
                         <div>
-                            <h1 className="text-2xl font-black text-gray-900 tracking-tight">Imágenes del Sitio</h1>
+                            <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Imágenes del Sitio</h1>
                             <p className="text-sm text-gray-500 mt-1">
                                 Personaliza la identidad visual de cada sección · {activeContainers.length} módulos configurables
                             </p>
