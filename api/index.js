@@ -119,7 +119,9 @@ app.get('/api/diag-auth', (req, res) => {
     const secret = process.env.JWT_SECRET || 'rotary_secret_key_2026';
     res.json({ 
         hasSecret: !!process.env.JWT_SECRET,
-        secretPrefix: secret.substring(0, 3) + '...',
+        isUsingFallback: !process.env.JWT_SECRET,
+        matchesExpectedFallback: secret === 'rotary_secret_key_2026',
+        secretLength: secret.length,
         version: '4.191'
     });
 });
