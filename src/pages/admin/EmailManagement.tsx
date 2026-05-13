@@ -46,8 +46,15 @@ const EmailManagement: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'inbox' | 'accounts'>('inbox');
     const [newAccount, setNewAccount] = useState({ user: '', label: '', password: '' });
 
-    // Mock accounts for the club domain
-    const clubDomain = (club as any)?.domain || (club as any)?.subdomain ? `${(club as any).subdomain}.clubplatform.org` : 'rotary.org';
+    // Robust domain detection (prioritizing custom domains like rotarynuevocali.org)
+    const PLATFORM_HOSTS = ['clubplatform.org', 'www.clubplatform.org', 'app.clubplatform.org', 'localhost'];
+    const currentHost = window.location.hostname;
+    const isOnClubDomain = !PLATFORM_HOSTS.includes(currentHost);
+
+    const clubDomain = isOnClubDomain 
+        ? currentHost 
+        : ((club as any)?.domain || ((club as any)?.subdomain ? `${(club as any).subdomain}.clubplatform.org` : 'rotary.org'));
+
     const [accounts, setAccounts] = useState<EmailAccount[]>([
         { id: '1', email: `info@${clubDomain}`, label: 'General / Info', isPrimary: true, provider: 'platform' },
         { id: '2', email: `presidencia@${clubDomain}`, label: 'Presidencia', isPrimary: false, provider: 'platform' },

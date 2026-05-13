@@ -23,9 +23,20 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.184 | 2026-05-13 (ZERO-TECH EMAIL SETUP ⚡)
-// Cache bust: 2026-05-13 13:10 (AUTO-PROVISIONING READY 🚀)
+// DISTRICT HEALTH IQ V4.185 | 2026-05-13 (SMART DOMAIN DETECTION 🌐)
+// Cache bust: 2026-05-13 13:19 (CUSTOM DOMAINS SYNCED 🔗)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.185',
+        date: '13 de Mayo, 2026',
+        title: '🌐 Detección Inteligente de Dominio',
+        description: 'Sincronización automática del dominio de correo con el dominio personalizado activo del sitio.',
+        type: 'improvement',
+        changes: [
+            { type: 'improved', text: 'Priorización de dominios personalizados (ej. rotarynuevocali.org) sobre subdominios técnicos en el creador de correos.' },
+            { type: 'fixed', text: 'Corrección del sufijo de correo en el modal de creación para coincidir con la URL de navegación.' }
+        ]
+    },
     {
         version: 'v4.184',
         date: '13 de Mayo, 2026',
