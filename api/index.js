@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.190 | 2026-05-13 (EMAIL PERSISTENCE 📧)
+// DISTRICT HEALTH IQ V4.191 | 2026-05-13 (STABILITY & AUTH SYNC 🔐)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -116,7 +116,7 @@ app.get('/api/technical-requests', async (req, res) => {
 
 // ── Static & Diagnostics ─────────────────────────────────────────────────────
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.190', release: 'Email Persistence Implementation 📧' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.191', release: 'Stability & Auth Sync 🔐' });
 });
 
 app.get('/api/health', async (req, res) => {

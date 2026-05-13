@@ -27,6 +27,18 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.191',
+        date: '2026-05-13',
+        title: 'Estabilidad de Sesión y Fix de API',
+        description: 'Sincronización de claves JWT y corrección del punto de entrada en Vercel para asegurar persistencia.',
+        type: 'fix',
+        details: [
+            'Sincronización de JWT_SECRET fallback en middleware y controladores',
+            'Corrección de api/index.js para incluir rutas de email-accounts',
+            'Inyección de dotenv en el entry point de Vercel'
+        ]
+    },
+    {
         version: 'v4.190',
         date: '13 de Mayo, 2026',
         title: '📧 Persistencia Total del Ecosistema de Correo',
