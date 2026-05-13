@@ -23,9 +23,22 @@ interface UpdateItem {
     }>;
 }
 
-// DISTRICT HEALTH IQ V4.182 | 2026-05-13 (EMAIL INTEGRATION 📧)
-// Cache bust: 2026-05-13 13:02 (INBOX READY 📨)
+// DISTRICT HEALTH IQ V4.183 | 2026-05-13 (CORPORATE EMAIL MANAGER 🏢)
+// Cache bust: 2026-05-13 13:06 (DOMAINS VERIFIED ✅)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.183',
+        date: '13 de Mayo, 2026',
+        title: '🏢 Gestor de Cuentas Corporativas',
+        description: 'Capacidad para crear y administrar correos corporativos directamente desde el panel del club.',
+        type: 'feature',
+        changes: [
+            { type: 'added', text: 'Wizard de creación de cuentas con auto-configuración de alias (ej. tesoreria@club.com).' },
+            { type: 'added', text: 'Panel de verificación DNS en tiempo real para registros MX, SPF y DKIM.' },
+            { type: 'added', text: 'Gestión de límites de almacenamiento y cuotas de cuentas por club.' },
+            { type: 'improved', text: 'Interfaz dual: Alterna entre lectura de bandeja y administración de infraestructura.' }
+        ]
+    },
     {
         version: 'v4.182',
         date: '13 de Mayo, 2026',
