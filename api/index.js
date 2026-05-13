@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.192 | 2026-05-13 (DIAGNOSTICS & CACHE BUST 🧨)
+// DISTRICT HEALTH IQ V4.195 | 2026-05-13 (AUTH TOKEN KEY FIX 🔑)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -114,20 +114,8 @@ app.get('/api/technical-requests', async (req, res) => {
     }
 });
 
-// ── Static & Diagnostics ─────────────────────────────────────────────────────
-app.get('/api/diag-auth', (req, res) => {
-    const secret = process.env.JWT_SECRET || 'rotary_secret_key_2026';
-    res.json({ 
-        hasSecret: !!process.env.JWT_SECRET,
-        isUsingFallback: !process.env.JWT_SECRET,
-        matchesExpectedFallback: secret === 'rotary_secret_key_2026',
-        secretLength: secret.length,
-        version: '4.192'
-    });
-});
-
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.192', release: 'Diagnostics & Cache Bust 🧨' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.195', release: 'Auth Token Key Fix 🔑' });
 });
 
 app.get('/api/health', async (req, res) => {

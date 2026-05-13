@@ -37,7 +37,7 @@ interface EmailMessage {
 }
 
 const EmailManagement: React.FC = () => {
-    const { user } = useAuth();
+    const { user, token } = useAuth();
     const { club } = useClub();
     
     // Robust domain detection
@@ -71,7 +71,7 @@ const EmailManagement: React.FC = () => {
             try {
                 const response = await fetch('/api/email-accounts', {
                     headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                        'Authorization': `Bearer ${token}`
                     }
                 });
                 if (response.ok) {
@@ -109,7 +109,7 @@ const EmailManagement: React.FC = () => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({
                     email: fullEmail,
@@ -144,7 +144,7 @@ const EmailManagement: React.FC = () => {
             const response = await fetch(`/api/email-accounts/${id}`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    'Authorization': `Bearer ${token}`
                 }
             });
 
@@ -207,7 +207,7 @@ const EmailManagement: React.FC = () => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}` // Ensure we pass auth
+                    'Authorization': `Bearer ${token}` // Ensure we pass auth
                 },
                 body: JSON.stringify({
                     type: 'email',

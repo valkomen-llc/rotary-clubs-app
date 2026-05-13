@@ -27,6 +27,18 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.195',
+        date: '2026-05-13',
+        title: 'Fix Crítico: Sincronización de Token',
+        description: 'Corrección en la recuperación del token de autenticación (Key mismatch) en el módulo de correos.',
+        type: 'fix',
+        details: [
+            'Corrección de localStorage key (token -> rotary_token)',
+            'Uso del hook useAuth para gestión centralizada de tokens',
+            'Limpieza de diagnósticos de seguridad'
+        ]
+    },
+    {
         version: 'v4.191',
         date: '2026-05-13',
         title: 'Estabilidad de Sesión y Fix de API',
