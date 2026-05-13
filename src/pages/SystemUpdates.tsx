@@ -27,6 +27,18 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.206',
+        date: '2026-05-13',
+        title: 'Mejora de Identidad de Remitente',
+        description: 'Optimización de los encabezados de correo para mostrar el nombre del club y el correo institucional como identidad principal.',
+        type: 'improvement',
+        details: [
+            'Detección dinámica del nombre del club para el campo "From"',
+            'Formateo profesional: "Nombre Club (correo@dominio.org)"',
+            'Sincronización de metadatos de remitente en el relay de plataforma'
+        ]
+    },
+    {
         version: 'v4.205',
         date: '2026-05-13',
         title: 'Fix de Entregabilidad y Cumplimiento',

@@ -15,7 +15,7 @@ export class EmailService {
      *   - "smtp" → uses SMTP credentials from PlatformConfig
      *   - default → uses Resend API (env: RESEND_API_KEY)
      */
-    static async sendPlatformEmail({ to, subject, html, from }) {
+    static async sendPlatformEmail({ to, subject, html, from, replyTo }) {
         try {
             // Check if platform prefers SMTP
             const providerConfig = await prisma.platformConfig.findUnique({
@@ -25,10 +25,10 @@ export class EmailService {
             const provider = providerConfig?.value || 'resend';
 
             if (provider === 'smtp') {
-                return await this._sendViaPlatformSMTP({ to, subject, html, from });
+                return await this._sendViaPlatformSMTP({ to, subject, html, from, replyTo });
             }
 
-            return await this._sendViaResend({ to, subject, html, from });
+            return await this._sendViaResend({ to, subject, html, from, replyTo });
         } catch (error) {
             console.error(`[EmailService] Platform email failed to ${to}:`, error);
             return { success: false, error: error.message };
@@ -38,7 +38,7 @@ export class EmailService {
     /**
      * Send via Resend HTTP API (no npm package needed)
      */
-    static async _sendViaResend({ to, subject, html, from: customFrom }) {
+    static async _sendViaResend({ to, subject, html, from: customFrom, replyTo }) {
         const apiKey = process.env.RESEND_API_KEY;
         if (!apiKey) {
             console.warn('[EmailService] RESEND_API_KEY not set. Intentando usar configuración SMTP de fallback del Super Admin...');
@@ -77,15 +77,7 @@ export class EmailService {
         // Use verified domain for production emails
         const platformDefault = fromConfig?.value || '"Club Platform for Rotary" <noreply@clubplatform.org>';
         
-        // If we have a custom institutional fromEmail, we use it as the "Friendly Name" and "Reply-To"
-        // but the actual "From" must be a verified domain (clubplatform.org)
-        let finalFrom = platformDefault;
-        if (customFrom) {
-            const nameMatch = customFrom.split('@')[0];
-            const cleanName = nameMatch.charAt(0).toUpperCase() + nameMatch.slice(1);
-            // pattern: "Name (email@domain.com)" <noreply@clubplatform.org>
-            finalFrom = `"${cleanName} (${customFrom})" <noreply@clubplatform.org>`;
-        }
+        const finalFrom = customFrom || platformDefault;
 
         const body = { 
             from: finalFrom, 
@@ -94,7 +86,7 @@ export class EmailService {
             html 
         };
         
-        if (customFrom) body.reply_to = customFrom;
+        if (replyTo) body.reply_to = replyTo;
 
         const resp = await fetch('https://api.resend.com/emails', {
             method: 'POST',
@@ -118,7 +110,7 @@ export class EmailService {
     /**
      * Send via SMTP using PlatformConfig credentials
      */
-    static async _sendViaPlatformSMTP({ to, subject, html, from: customFrom }) {
+    static async _sendViaPlatformSMTP({ to, subject, html, from: customFrom, replyTo }) {
         const keys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from_name', 'smtp_from_email'];
         const configs = await prisma.platformConfig.findMany({
             where: { key: { in: keys } }
@@ -184,12 +176,28 @@ export class EmailService {
         try {
             const transporter = await this.getTransporter(clubId);
 
+            // Fetch club name for better sender identity
+            const club = await prisma.club.findUnique({
+                where: { id: clubId },
+                select: { name: true }
+            });
+            const senderName = club?.name || 'Club Platform';
+
             if (!transporter) {
                 console.info(`[EmailService] Club ${clubId} has no SMTP. Falling back to platform relay.`);
                 
-                // If the user provided a specific institutional fromEmail, we try to use it as the "Reply-To" 
-                // or in the "From" if the provider allows it (e.g. verified domain)
-                return await this.sendPlatformEmail({ to, subject, html, from: fromEmail });
+                // Construct a professional From name: "Club Name (institutional@email.com)"
+                const professionalFrom = customFrom 
+                    ? `"${senderName} (${customFrom})" <noreply@clubplatform.org>`
+                    : `"${senderName}" <noreply@clubplatform.org>`;
+
+                return await this.sendPlatformEmail({ 
+                    to, 
+                    subject, 
+                    html, 
+                    from: professionalFrom,
+                    replyTo: customFrom
+                });
             }
 
             const config = await prisma.notificationConfig.findUnique({
