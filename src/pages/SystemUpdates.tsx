@@ -27,6 +27,18 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.212',
+        date: '2026-05-13',
+        title: 'Fix de Identidad Comillada',
+        description: 'Optimización del campo "Nombre" en el remitente para asegurar que clientes institucionales muestren el correo correcto.',
+        type: 'fix',
+        details: [
+            'Implementación de formato comillado: ""correo@dominio.org""',
+            'Mejora en la visualización para clientes Roundcube y Outlook',
+            'Soporte robusto para dominios no verificados vía platform relay'
+        ]
+    },
+    {
         version: 'v4.210',
         date: '2026-05-13',
         title: 'Habilitación de Auto-SMTP Institucional',

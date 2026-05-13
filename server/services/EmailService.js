@@ -221,10 +221,11 @@ export class EmailService {
             if (!transporter) {
                 console.info(`[EmailService] Club ${clubId} has no SMTP. Falling back to platform relay.`);
                 
-                // Simplified format: "institutional@email.com <noreply@clubplatform.org>"
-                // This often forces the client to show the institutional email as the sender
+                // Quoted email as Name: '"email@domain.com" <noreply@clubplatform.org>'
+                // This is the most reliable way to show the institutional email as the sender 
+                // in clients like Roundcube/Outlook when the domain isn't verified.
                 const professionalFrom = fromEmail 
-                    ? `${fromEmail} <noreply@clubplatform.org>`
+                    ? `"${fromEmail}" <noreply@clubplatform.org>`
                     : `"${senderName}" <noreply@clubplatform.org>`;
 
                 return await this.sendPlatformEmail({ 
