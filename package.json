@@ -1,9 +1,9 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.198",
+  "version": "4.200",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.198 | 2026-05-13 (SMTP RELAY FALLBACK 🚀)",
+  "//": "DISTRICT HEALTH IQ V4.200 | 2026-05-13 (MULTI-DOMAIN INSTITUTIONAL EMAILS 🌐)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

@@ -27,6 +27,18 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.200',
+        date: '2026-05-13',
+        title: 'Arquitectura Multi-Dominio de Correo',
+        description: 'Soporte dinámico para correos institucionales en múltiples dominios (Clubes, Distritos y Proyectos).',
+        type: 'feature',
+        details: [
+            'Detección automática de dominio de remitente según el contexto del sitio',
+            'Configuración de Reply-To dinámico para asegurar la entrega',
+            'Escalabilidad garantizada para cientos de dominios personalizados'
+        ]
+    },
+    {
         version: 'v4.198',
         date: '2026-05-13',
         title: 'Habilitación de Envío (SMTP Relay)',

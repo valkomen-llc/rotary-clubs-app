@@ -15,7 +15,7 @@ export class EmailService {
      *   - "smtp" → uses SMTP credentials from PlatformConfig
      *   - default → uses Resend API (env: RESEND_API_KEY)
      */
-    static async sendPlatformEmail({ to, subject, html }) {
+    static async sendPlatformEmail({ to, subject, html, from }) {
         try {
             // Check if platform prefers SMTP
             const providerConfig = await prisma.platformConfig.findUnique({
@@ -25,10 +25,10 @@ export class EmailService {
             const provider = providerConfig?.value || 'resend';
 
             if (provider === 'smtp') {
-                return await this._sendViaPlatformSMTP({ to, subject, html });
+                return await this._sendViaPlatformSMTP({ to, subject, html, from });
             }
 
-            return await this._sendViaResend({ to, subject, html });
+            return await this._sendViaResend({ to, subject, html, from });
         } catch (error) {
             console.error(`[EmailService] Platform email failed to ${to}:`, error);
             return { success: false, error: error.message };
@@ -38,7 +38,7 @@ export class EmailService {
     /**
      * Send via Resend HTTP API (no npm package needed)
      */
-    static async _sendViaResend({ to, subject, html }) {
+    static async _sendViaResend({ to, subject, html, from: customFrom }) {
         const apiKey = process.env.RESEND_API_KEY;
         if (!apiKey) {
             console.warn('[EmailService] RESEND_API_KEY not set. Intentando usar configuración SMTP de fallback del Super Admin...');
@@ -74,7 +74,17 @@ export class EmailService {
         }).catch(() => null);
 
         // Use verified domain for production emails
-        const from = fromConfig?.value || '"Club Platform for Rotary" <noreply@clubplatform.org>';
+        const finalFrom = customFrom || from;
+        const replyTo = customFrom || null;
+
+        const body = { 
+            from: finalFrom, 
+            to: [to], 
+            subject, 
+            html 
+        };
+        
+        if (replyTo) body.reply_to = replyTo;
 
         const resp = await fetch('https://api.resend.com/emails', {
             method: 'POST',
@@ -82,7 +92,7 @@ export class EmailService {
                 'Authorization': `Bearer ${apiKey}`,
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ from, to: [to], subject, html }),
+            body: JSON.stringify(body),
         });
 
         const data = await resp.json();
@@ -98,7 +108,7 @@ export class EmailService {
     /**
      * Send via SMTP using PlatformConfig credentials
      */
-    static async _sendViaPlatformSMTP({ to, subject, html }) {
+    static async _sendViaPlatformSMTP({ to, subject, html, from: customFrom }) {
         const keys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from_name', 'smtp_from_email'];
         const configs = await prisma.platformConfig.findMany({
             where: { key: { in: keys } }
@@ -169,7 +179,7 @@ export class EmailService {
                 
                 // If the user provided a specific institutional fromEmail, we try to use it as the "Reply-To" 
                 // or in the "From" if the provider allows it (e.g. verified domain)
-                return await this.sendPlatformEmail({ to, subject, html });
+                return await this.sendPlatformEmail({ to, subject, html, from: fromEmail });
             }
 
             const config = await prisma.notificationConfig.findUnique({
