@@ -33,7 +33,7 @@ export const login = async (req, res) => {
         const jwtLib = await getJwt();
         const token = jwtLib.sign(
             { id: user.id, email: user.email, role: user.role, clubId: user.clubId, districtId: user.districtId },
-            process.env.JWT_SECRET || 'rotary_secret_key',
+            process.env.JWT_SECRET || 'rotary_secret_key_2026',
             { expiresIn: '1d' }
         );
 
@@ -113,7 +113,7 @@ export const impersonate = async (req, res) => {
             const jwtLib = await getJwt();
             const token = jwtLib.sign(
                 { id: req.user.id, email: req.user.email, role: 'district_admin', districtId: district.id, clubId: mirrorClubId },
-                process.env.JWT_SECRET || 'rotary_secret_key',
+                process.env.JWT_SECRET || 'rotary_secret_key_2026',
                 { expiresIn: '3h' }
             );
 
@@ -143,7 +143,7 @@ export const impersonate = async (req, res) => {
         const jwtLib = await getJwt();
         const token = jwtLib.sign(
             { id: req.user.id, email: req.user.email, role: 'club_admin', clubId: club.id },
-            process.env.JWT_SECRET || 'rotary_secret_key',
+            process.env.JWT_SECRET || 'rotary_secret_key_2026',
             { expiresIn: '3h' }
         );
 
