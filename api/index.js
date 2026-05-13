@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.212 | 2026-05-13 (QUOTED IDENTITY FIX 🛡️)
+// DISTRICT HEALTH IQ V4.250 | 2026-05-13 (SIMPLIFIED ADMIN UX 💎)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -115,7 +115,7 @@ app.get('/api/technical-requests', async (req, res) => {
 });
 
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.212', release: 'Quoted Identity Fix 🛡️' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.250', release: 'Simplified Admin UX 💎' });
 });
 
 app.get('/api/health', async (req, res) => {

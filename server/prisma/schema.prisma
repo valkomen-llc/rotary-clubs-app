@@ -144,11 +144,14 @@ model EmailAccount {
   label     String?
   password  String?
   isPrimary Boolean  @default(false)
-  provider  String   @default("platform")
-  clubId    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  provider           String   @default("platform")
+  verified           Boolean  @default(false)
+  verificationStatus String   @default("pending")
+  dnsRecords         Json?
+  clubId             String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  club               Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
 
   @@index([clubId])
 }

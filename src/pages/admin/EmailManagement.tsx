@@ -54,6 +54,7 @@ const EmailManagement: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'inbox' | 'accounts'>('inbox');
     const [showAccountModal, setShowAccountModal] = useState(false);
     const [showComposeModal, setShowComposeModal] = useState(false);
+    const isSuperAdmin = user?.role === 'superadmin';
     
     // Accounts & Active Account
     const [accounts, setAccounts] = useState<EmailAccount[]>([]);
@@ -379,14 +380,26 @@ const EmailManagement: React.FC = () => {
                     /* Accounts Tab */
                     <div className="flex-1 overflow-y-auto space-y-6">
                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            <div className="lg:col-span-2 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-3xl p-6 text-white relative overflow-hidden">
-                                <Zap className="absolute top-0 right-0 p-8 opacity-10 w-32 h-32" />
-                                <h3 className="font-bold text-xl mb-4">Configuración Automática</h3>
-                                <p className="text-emerald-50 text-sm mb-6">Dominio <span className="font-black text-white">{clubDomain}</span> gestionado por Club Platform.</p>
-                                <div className="flex gap-4">
-                                    <div className="flex items-center gap-2 bg-white/10 px-3 py-2 rounded-xl"><CheckCircle2 className="w-4 h-4" /><span className="text-[10px] font-black uppercase">DNS OK</span></div>
+                            {isSuperAdmin && (
+                                <div className="lg:col-span-2 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-3xl p-6 text-white relative overflow-hidden">
+                                    <Zap className="absolute top-0 right-0 p-8 opacity-10 w-32 h-32" />
+                                    <h3 className="font-bold text-xl mb-4">Configuración Automática</h3>
+                                    <p className="text-emerald-50 text-sm mb-6">Dominio <span className="font-black text-white">{clubDomain}</span> gestionado por Club Platform.</p>
+                                    <div className="flex gap-4">
+                                        <div className="flex items-center gap-2 bg-white/10 px-3 py-2 rounded-xl"><CheckCircle2 className="w-4 h-4" /><span className="text-[10px] font-black uppercase">DNS OK</span></div>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
+                            {!isSuperAdmin && (
+                                <div className="lg:col-span-2 bg-gradient-to-br from-rotary-blue to-sky-700 rounded-3xl p-6 text-white relative overflow-hidden">
+                                    <ShieldCheck className="absolute top-0 right-0 p-8 opacity-10 w-32 h-32" />
+                                    <h3 className="font-bold text-xl mb-4">Tu Correo Institucional</h3>
+                                    <p className="text-sky-50 text-sm mb-6">Tu dominio <span className="font-black text-white">{clubDomain}</span> está configurado y protegido por nuestros sistemas.</p>
+                                    <div className="flex gap-4">
+                                        <div className="flex items-center gap-2 bg-white/10 px-3 py-2 rounded-xl"><CheckCircle2 className="w-4 h-4" /><span className="text-[10px] font-black uppercase">Activo y Seguro</span></div>
+                                    </div>
+                                </div>
+                            )}
                             <div className="bg-white border border-gray-200 rounded-3xl p-6 flex flex-col justify-center text-center">
                                 <h3 className="font-bold text-gray-900 mb-2">Cuentas</h3>
                                 <p className="text-3xl font-black text-rotary-blue">{accounts.length} / 10</p>

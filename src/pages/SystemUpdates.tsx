@@ -27,6 +27,18 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.250',
+        date: '2026-05-13',
+        title: 'UX de Administración Simplificada',
+        description: 'Abstracción total de la complejidad técnica para administradores de clubes.',
+        type: 'feature',
+        details: [
+            'Interfaz de correo enfocada 100% en el uso institucional',
+            'Ocultamiento de configuraciones DNS/Resend para no super-admins',
+            'Nuevo indicador de "Seguridad y Actividad" para la cuenta del club'
+        ]
+    },
+    {
         version: 'v4.212',
         date: '2026-05-13',
         title: 'Fix de Identidad Comillada',
