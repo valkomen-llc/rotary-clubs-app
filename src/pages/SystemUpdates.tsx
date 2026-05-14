@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.291',
+        date: '2026-05-14',
+        title: 'Servicios: Restauración de Sitios Públicos 🚀',
+        description: 'Corrección de la conexión a la base de datos Neon y reactivación de dominios externos.',
+        type: 'major',
+        details: [
+            'Estabilización de la conexión con Neon DB para eliminar el estado "Cargando Club".',
+            'Sincronización de variables de entorno para soporte total en Vercel Serverless.',
+            'Optimización del tiempo de espera de conexión para inicios en frío (Cold Starts).',
+            'Restauración de la carga de imágenes, textos y videos en todos los sitios .org.',
+            'Garantía de persistencia para el enrutamiento de dominios personalizados.'
+        ]
+    },
+    {
         version: 'v4.290',
         date: '2026-05-14',
         title: 'IA: Purgado de Identidad y Estabilidad de Red 🛠️',
