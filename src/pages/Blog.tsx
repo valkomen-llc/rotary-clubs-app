@@ -66,7 +66,6 @@ const Blog = () => {
 
         if (response.ok) {
           const data = await response.json();
-          // The API returns 'content' containing HTML, frontend uses 'summary' for preview
           const dbMapped = data.map((p: any) => {
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = p.content || '';
@@ -114,110 +113,6 @@ const Blog = () => {
   );
 
   const destacados = posts.filter(p => p.isFeatured).slice(0, 2);
-
-  return (
-    <div className="min-h-screen bg-white">
-      <Navbar />
-
-      {/* Hero Section */}
-      <section
-        className="relative overflow-hidden"
-        style={{
-          backgroundColor: '#0c3c7c',
-          backgroundImage: "url('/geo-darkblue.png')",
-          backgroundPosition: '50% 0',
-          backgroundRepeat: 'repeat',
-          backgroundSize: '71px 85px'
-        }}
-      >
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
-          <div className="text-center max-w-3xl mx-auto">
-            <h1 className="text-3xl md:text-5xl text-white mb-6">
-              {getC('header', 'title', "Noticias y Blog")}
-            </h1>
-            <p className="text-white/80 text-lg md:text-xl">
-              {getC('header', 'description', "Actualizaciones del Rotary Club. Mantente informado sobre nuestros proyectos.")}
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Artículos Destacados */}
-      {destacados.length > 0 && (
-        <section className="py-12 md:py-16 bg-rotary-concrete">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-8">Artículos Destacados</h2>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
-              {destacados.map((articulo) => (
-                <Link
-                  key={articulo.id}
-                  to={`/blog/${articulo.slug || articulo.id}`}
-                  className="group relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow"
-                >
-                  <div className="relative aspect-[16/10] overflow-hidden">
-                    <img
-                      src={articulo.image}
-                      alt={articulo.title}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      loading="lazy"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                    <span className="absolute top-4 left-4 bg-rotary-gold text-white text-xs font-semibold px-3 py-1 rounded-full">
-                      {articulo.category}
-                    </span>
-                  </div>
-                  <div className="p-6">
-                    <div className="flex items-center gap-4 text-sm text-gray-500 mb-3">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-4 h-4" />
-                        {new Date(articulo.createdAt).toLocaleDateString()}
-                      </span>
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-rotary-blue transition-colors line-clamp-2">
-                      {articulo.title}
-                    </h3>
-                    <p className="text-gray-600 text-sm leading-relaxed mb-4 line-clamp-2">
-                      {articulo.summary}
-                    </p>
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-2 text-sm text-gray-500">
-                        <User className="w-4 h-4" />
-                        {articulo.author?.name || 'Rotary Club'}
-                      </span>
-                      <span className="flex items-center gap-1 text-rotary-blue font-bold text-sm group-hover:underline">
-                        Leer más
-                        <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-                      </span>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* Filtros y Grid de Artículos */}
-      <section className="py-12 md:py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Filtros de Categoría */}
-          <div className="flex flex-wrap gap-2 mb-10 justify-center">
-            {categorias.map((categoria) => (
-              <button
-                key={categoria}
-                onClick={() => {
-                  setCategoriaActiva(categoria);
-                  setPaginaActual(1);
-                }}
-                className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${categoriaActiva === categoria
-                  ? 'bg-rotary-blue text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-              >
-                {categoria}
-              </button>
-            ))}
-          </div>
 
   const SkeletonCard = () => (
     <div className="bg-white rounded-xl overflow-hidden border border-gray-100 h-full flex flex-col animate-pulse">
