@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.263',
+        date: '2026-05-14',
+        title: 'UX: Reorganización del Content Studio 🎨',
+        description: 'Mejoras en el flujo de trabajo del Generador de Publicaciones según feedback de usuario.',
+        type: 'improvement',
+        details: [
+            'Botón de Generación movido a la columna de configuración para un flujo más intuitivo.',
+            'Previsualización condicional: el área de vista previa solo se activa tras una generación exitosa.',
+            'Sistema de logs avanzado en frontend y backend para diagnóstico de errores en tiempo real.',
+            'Manejo de errores robusto con feedback detallado vía Toasts.',
+            'Reset automático de vista previa al cambiar la imagen base.'
+        ]
+    },
+    {
         version: 'v4.262',
         date: '2026-05-14',
         title: 'IA Performance: Optimización de Latencia ⚡',

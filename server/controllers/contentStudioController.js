@@ -3,12 +3,15 @@ import { triggerVideoGeneration } from '../services/kieService.js';
 
 export const generatePost = async (req, res) => {
     try {
+        console.log('--- START GENERATE POST ---');
         const { imageId, imageUrl, config } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
 
         if (!imageUrl) {
             return res.status(400).json({ error: 'La URL de la imagen es requerida' });
         }
+
+        console.log('Params:', { imageId, imageUrl, clubId, config });
 
         // 1. Get Club Context
         const club = await prisma.club.findUnique({
@@ -25,96 +28,114 @@ export const generatePost = async (req, res) => {
         let generatedImageUrl = null;
         let aiContent = null;
 
-        if (process.env.OPENAI_API_KEY) {
-            try {
-                // A. COMBINED VISION + TEXT GENERATION (Using gpt-4o for speed and efficiency)
-                const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        if (!process.env.OPENAI_API_KEY) {
+            console.error('MISSING OPENAI_API_KEY');
+            return res.status(500).json({ error: 'Error interno: Falta configuración de IA' });
+        }
+
+        try {
+            console.log('Calling GPT-4o for combined analysis...');
+            // A. COMBINED VISION + TEXT GENERATION
+            const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+                },
+                body: JSON.stringify({
+                    model: "gpt-4o",
+                    messages: [
+                        {
+                            role: "user",
+                            content: [
+                                { 
+                                    type: "text", 
+                                    text: `Eres un experto en Imagen Pública de Rotary. 
+                                    Analiza esta imagen y genera 3 variantes de copy (Facebook, Instagram, X) para el club "${clubName}".
+                                    Área de interés: ${config.interestArea}.
+                                    Contexto del club: ${projectContext}.
+                                    
+                                    También proporciona una descripción técnica detallada de la imagen original para recrearla.
+                                    Responde EXCLUSIVAMENTE en JSON con esta estructura:
+                                    {
+                                      "facebook": { "copy": "...", "hashtags": "...", "cta": "..." },
+                                      "instagram": { "copy": "...", "hashtags": "...", "cta": "..." },
+                                      "x": { "copy": "...", "hashtags": "...", "cta": "..." },
+                                      "imageDescription": "descripción técnica para DALL-E"
+                                    }`
+                                },
+                                { type: "image_url", image_url: { "url": imageUrl } }
+                            ]
+                        }
+                    ],
+                    response_format: { type: "json_object" },
+                    max_tokens: 1000
+                })
+            });
+
+            const gptData = await gptResponse.json();
+            
+            if (gptData.error) {
+                console.error('OpenAI GPT Error:', gptData.error);
+                return res.status(500).json({ error: 'Error de OpenAI: ' + gptData.error.message });
+            }
+
+            if (gptData.choices?.[0]?.message?.content) {
+                const parsed = JSON.parse(gptData.choices[0].message.content);
+                aiContent = {
+                    facebook: parsed.facebook,
+                    instagram: parsed.instagram,
+                    x: parsed.x
+                };
+                const imageDescription = parsed.imageDescription;
+
+                console.log('Calling DALL-E 3 for image generation...');
+                // B. IMAGE GENERATION (DALL-E 3)
+                const dallePrompt = `Fotografía profesional 4K de Rotary. Escena: ${imageDescription}. Recrea en formato VERTICAL (Portrait 4:5), centrando la acción. Realista, luz natural, alta resolución.`;
+
+                const dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
                     },
                     body: JSON.stringify({
-                        model: "gpt-4o",
-                        messages: [
-                            {
-                                role: "user",
-                                content: [
-                                    { 
-                                        type: "text", 
-                                        text: `Eres un experto en Imagen Pública de Rotary. 
-                                        Analiza esta imagen y genera 3 variantes de copy (Facebook, Instagram, X) para el club "${clubName}".
-                                        Área de interés: ${config.interestArea}.
-                                        Contexto del club: ${projectContext}.
-                                        
-                                        También proporciona una descripción técnica detallada de la imagen original para recrearla.
-                                        Responde EXCLUSIVAMENTE en JSON con esta estructura:
-                                        {
-                                          "facebook": { "copy": "...", "hashtags": "...", "cta": "..." },
-                                          "instagram": { "copy": "...", "hashtags": "...", "cta": "..." },
-                                          "x": { "copy": "...", "hashtags": "...", "cta": "..." },
-                                          "imageDescription": "descripción técnica detallada para DALL-E"
-                                        }`
-                                    },
-                                    { type: "image_url", image_url: { "url": imageUrl } }
-                                ]
-                            }
-                        ],
-                        response_format: { type: "json_object" },
-                        max_tokens: 1000
+                        model: "dall-e-3",
+                        prompt: dallePrompt,
+                        n: 1,
+                        size: "1024x1792",
+                        quality: "hd"
                     })
                 });
 
-                const gptData = await gptResponse.json();
-                if (gptData.choices?.[0]?.message?.content) {
-                    const parsed = JSON.parse(gptData.choices[0].message.content);
-                    aiContent = {
-                        facebook: parsed.facebook,
-                        instagram: parsed.instagram,
-                        x: parsed.x
-                    };
-                    const imageDescription = parsed.imageDescription;
-
-                    // B. IMAGE GENERATION (DALL-E 3) - Conversion to Portrait
-                    const dallePrompt = `Fotografía profesional 4K de Rotary. Escena: ${imageDescription}. IMPORTANTE: Recrea la escena en formato VERTICAL (Portrait 4:5), centrando la acción. Realista, luz natural, alta resolución, colores vivos.`;
-
-                    const dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-                        },
-                        body: JSON.stringify({
-                            model: "dall-e-3",
-                            prompt: dallePrompt,
-                            n: 1,
-                            size: "1024x1792",
-                            quality: "hd"
-                        })
-                    });
-
-                    const dalleData = await dalleResponse.json();
+                const dalleData = await dalleResponse.json();
+                
+                if (dalleData.error) {
+                    console.error('OpenAI DALL-E Error:', dalleData.error);
+                    // No cortamos el flujo, usamos la original pero informamos el error de texto si existe
+                    generatedImageUrl = imageUrl;
+                } else {
                     generatedImageUrl = dalleData.data?.[0]?.url;
                 }
-            } catch (aiError) {
-                console.error('AI Error in generatePost:', aiError);
+            } else {
+                throw new Error('No se recibió contenido de GPT-4o');
             }
+        } catch (aiError) {
+            console.error('AI Processing Error in generatePost:', aiError);
+            return res.status(500).json({ error: 'Error en el procesamiento de IA: ' + aiError.message });
         }
 
+        console.log('--- SUCCESS GENERATE POST ---');
         res.json({
             success: true,
-            content: aiContent || {
-                facebook: { copy: "Servicio rotario en acción.", hashtags: "#Rotary", cta: "Ver más" },
-                instagram: { copy: "Impacto real.", hashtags: "#ServiceAboveSelf", cta: "Link en bio" },
-                x: { copy: "Juntos por el cambio.", hashtags: "#Rotary", cta: "Info" }
-            },
+            content: aiContent,
             generatedImageUrl: generatedImageUrl || imageUrl,
             metadata: { clubId, imageId, format: config.format }
         });
 
     } catch (error) {
-        console.error('Error in generatePost:', error);
-        res.status(500).json({ error: 'Error al generar la publicación: ' + error.message });
+        console.error('Global Error in generatePost:', error);
+        res.status(500).json({ error: 'Error inesperado: ' + error.message });
     }
 };
 
