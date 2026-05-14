@@ -2,7 +2,7 @@
   "name": "rotary-clubs-app",
   "private": true,
   "version": "4.258.0",
-  "cache_bust": "v4.285-emergency-deploy-fix",
+  "cache_bust": "2026-05-14 15:45 (RECOVERY PUSH 🆘)",
   "type": "module",
   "//": "DISTRICT HEALTH IQ V4.258 | 2026-05-14 (EMAIL DB SYNC FIX 🛡️)",
   "scripts": {

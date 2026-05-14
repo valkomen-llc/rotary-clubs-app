@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.292',
+        date: '2026-05-14',
+        title: 'Emergencia: Reactivación de Ecosistema 🆘',
+        description: 'Intervención crítica para restaurar la carga de todos los sitios web de la red.',
+        type: 'major',
+        details: [
+            'Reestructuración total de vercel.json para forzar el enrutamiento público.',
+            'Eliminación de bloqueos en el puente de API para carga instantánea de clubes.',
+            'Forzado de recompilación limpia mediante Cache Bust en producción.',
+            'Sincronización de dominios externos (colrotarios.org, cluborigen.org).',
+            'Restauración de la visibilidad de contenidos multimedia y textos institucionales.'
+        ]
+    },
+    {
         version: 'v4.291',
         date: '2026-05-14',
         title: 'Servicios: Restauración de Sitios Públicos 🚀',
