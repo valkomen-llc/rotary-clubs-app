@@ -2,38 +2,20 @@ import prisma from '../lib/prisma.js';
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (V4.300 - ZERO ERROR ARCH) ---');
+        console.log('--- START GENERATE POST (V4.302 - STABLE DEPLOY) ---');
         const { imageUrl, config } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
 
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
 
-        // 1. Lightning Optimization (Crucial for OpenAI Stability)
-        let processedImage = imageUrl;
-        try {
-            const imgResponse = await fetch(imageUrl);
-            if (imgResponse.ok) {
-                const buffer = Buffer.from(await imgResponse.arrayBuffer());
-                const sharp = (await import('sharp')).default;
-                const resizedBuffer = await sharp(buffer)
-                    .resize(800, null, { border: 0, fit: 'inside', withoutEnlargement: true })
-                    .jpeg({ quality: 70 })
-                    .toBuffer();
-                processedImage = `data:image/jpeg;base64,${resizedBuffer.toString('base64')}`;
-                console.log('[STUDIO] Image optimized for AI analysis.');
-            }
-        } catch (err) { 
-            console.warn('[STUDIO] Optimization skipped, using original URL:', err.message); 
-        }
-
-        // 2. Club Context
+        // 1. Club Context
         let clubName = 'Club Rotario';
         if (clubId) {
             const club = await prisma.club.findUnique({ where: { id: clubId } });
             if (club) clubName = club.name;
         }
 
-        // 3. Analysis with GPT-4o
+        // 2. Analysis with GPT-4o (Direct URL Analysis)
         let parsed = { fb: "Post profesional", ig: "Post dinámico", tw: "Post corto", li: "Post institucional", visual_prompt: "Professional institutional scene" };
         try {
             const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -47,16 +29,16 @@ export const generatePost = async (req, res) => {
                     messages: [
                         {
                             role: "system",
-                            content: "Eres un director de arte de Rotary International. Especialista en OUTPAINTING."
+                            content: "Eres un director de arte de Rotary International experto en OUTPAINTING cinematográfico."
                         },
                         {
                             role: "user",
                             content: [
                                 { 
                                     type: "text", 
-                                    text: `Analiza esta imagen para "${clubName}". Describe cómo REGENERAR la escena expandiendo el fondo arriba y abajo. JSON: { "fb":"", "ig":"", "tw":"", "li":"", "visual_prompt":"" }`
+                                    text: `Analiza esta imagen para "${clubName}". Describe cómo REGENERAR la escena expandiendo el fondo arriba y abajo para un formato cinematográfico. Devuelve JSON: { "fb":"", "ig":"", "tw":"", "li":"", "visual_prompt":"" }`
                                 },
-                                { type: "image_url", image_url: { "url": processedImage } }
+                                { type: "image_url", image_url: { "url": imageUrl } }
                             ]
                         }
                     ],
@@ -69,17 +51,17 @@ export const generatePost = async (req, res) => {
             const jsonMatch = gptData.choices?.[0]?.message?.content?.match(/\{[\s\S]*\}/);
             if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
         } catch (e) {
-            console.error('[STUDIO] GPT Analysis failed, using fallback text');
+            console.error('[STUDIO] GPT Analysis failed:', e.message);
         }
 
-        // 4. DALL-E 3 Generation (Resilient Dual-Pass)
+        // 3. DALL-E 3 Generation (Resilient Dual-Pass)
         const isLandscape = config.format === '16:9';
         const dalleSize = isLandscape ? "1792x1024" : "1024x1792";
-        const safePrompt = `Professional cinematic photography for Rotary International. CINEMATIC OUTPAINTING. ${parsed.visual_prompt}. Recreate full environment above and below. High definition, professional lighting. DO NOT CROP.`;
+        const safePrompt = `Professional cinematic institutional photography for Rotary International. CINEMATIC OUTPAINTING. ${parsed.visual_prompt}. Recreate full environment above and below. High definition, vivid colors, professional lighting. DO NOT CROP. REGENERATE BACKGROUND.`;
 
         let finalUrl = null;
 
-        // Pass 1: Try HD
+        // Try HD first
         try {
             const hdResponse = await fetch('https://api.openai.com/v1/images/generations', {
                 method: 'POST',
@@ -100,7 +82,7 @@ export const generatePost = async (req, res) => {
             finalUrl = hdData.data?.[0]?.url;
         } catch (e) { console.warn('HD Pass failed'); }
 
-        // Pass 2: Try Standard (Emergency Fallback)
+        // Fallback to Standard
         if (!finalUrl) {
             try {
                 const stdResponse = await fetch('https://api.openai.com/v1/images/generations', {
@@ -119,11 +101,11 @@ export const generatePost = async (req, res) => {
                 });
                 const stdData = await stdResponse.json();
                 finalUrl = stdData.data?.[0]?.url;
-            } catch (e) { console.error('Standard Pass failed'); }
+            } catch (e) { console.error('Standard Fallback failed'); }
         }
 
         if (!finalUrl) {
-            return res.status(500).json({ error: 'El motor de IA está saturado temporalmente. Por favor intenta de nuevo en 30 segundos.' });
+            return res.status(500).json({ error: 'Saturación temporal de IA. Por favor reintenta en 30 segundos.' });
         }
 
         res.json({
@@ -139,7 +121,8 @@ export const generatePost = async (req, res) => {
         });
 
     } catch (error) {
-        res.status(500).json({ error: 'Error crítico de IA: ' + error.message });
+        console.error('[CRITICAL STUDIO ERROR]:', error);
+        res.status(500).json({ error: 'Error de motor de IA: ' + error.message });
     }
 };
 
@@ -154,7 +137,6 @@ export const downloadProxy = async (req, res) => {
     } catch (e) { res.status(500).send('Error'); }
 };
 
-// ... Rest of the controller ...
 export const createVideoProject = async (req, res) => {
     try {
         const { images, config } = req.body;
