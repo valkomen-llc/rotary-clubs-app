@@ -319,11 +319,8 @@ router.get('/', authMiddleware, async (req, res) => {
         let params = [];
 
         if (role === 'administrator') {
-            if (requestedClubId) {
-                query += ' WHERE "clubId" = $1';
-                params.push(requestedClubId);
-            }
-            // If no club requested, System Admin sees ALL media (no WHERE clause needed)
+            // System Admin sees EVERYTHING across all clubs
+            // No WHERE clause, just the base SELECT
         } else if (role === 'district_admin') {
             // District admin sees media from their club OR any club in their district
             // Also include media where clubId is NULL if they are at the district level

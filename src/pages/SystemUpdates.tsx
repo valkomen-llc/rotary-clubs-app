@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.289',
+        date: '2026-05-14',
+        title: 'Biblioteca: Acceso Total Multi-Sitio 🌍',
+        description: 'Apertura completa de la biblioteca multimedia para administradores globales.',
+        type: 'feature',
+        details: [
+            'Eliminación de filtros por Club ID: Ahora el Administrador ve TODO el contenido de la plataforma.',
+            'Carga masiva de medios de todos los sitios registrados en Club Platform.',
+            'Sincronización de rutas /api en Vercel para evitar pérdida de subdirectorios.',
+            'Mejora en la velocidad de indexación de la biblioteca global.',
+            'Garantía de visibilidad para imágenes institucionales y de proyectos compartidos.'
+        ]
+    },
+    {
         version: 'v4.288',
         date: '2026-05-14',
         title: 'Infraestructura: Restauración de Enrutamiento 🌐',
