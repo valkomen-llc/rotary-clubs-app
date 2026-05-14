@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.277',
+        date: '2026-05-14',
+        title: 'Sistema: Estabilidad Crítica de IA 🛡️',
+        description: 'Refuerzo del pipeline de datos para garantizar la generación en condiciones extremas.',
+        type: 'improvement',
+        details: [
+            'Optimización de carga binaria (800px / 60% Q) para cumplir con límites de Vercel.',
+            'Implementación de motor de parseo JSON permisivo para mayor resiliencia.',
+            'Eliminación de restricciones de formato rígido para evitar bloqueos de OpenAI.',
+            'Refuerzo del motor de Outpainting para recreaciones verticales de alta fidelidad.',
+            'Mejora en la gestión de memoria durante el procesamiento de fotos panorámicas.'
+        ]
+    },
+    {
         version: 'v4.276',
         date: '2026-05-14',
         title: 'Sistema: Transparencia de Errores IA 📡',

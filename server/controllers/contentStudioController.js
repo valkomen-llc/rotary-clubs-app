@@ -2,53 +2,45 @@ import prisma from '../lib/prisma.js';
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (DIAGNOSTIC MODE) ---');
+        console.log('--- START GENERATE POST (ULTRA-ROBUST MODE) ---');
         const { imageId, imageUrl, config } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
 
-        if (!imageUrl) {
-            return res.status(400).json({ error: 'Falta la URL de la imagen.' });
-        }
+        if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
 
-        // 1. Image Processing (Base64 + Resize)
+        // 1. Optimized Image Processing (Smaller payload for Vercel/OpenAI)
         let processedImage = imageUrl;
         try {
-            console.log('Fetching and resizing image...');
             const imgResponse = await fetch(imageUrl);
             if (imgResponse.ok) {
                 const buffer = Buffer.from(await imgResponse.arrayBuffer());
                 const sharp = (await import('sharp')).default;
                 const resizedBuffer = await sharp(buffer)
-                    .resize(1000, null, { withoutEnlargement: true })
-                    .jpeg({ quality: 85 })
+                    .resize(800, null, { withoutEnlargement: true })
+                    .jpeg({ quality: 60 }) // Lower quality for Vision is fine and saves payload
                     .toBuffer();
                 processedImage = `data:image/jpeg;base64,${resizedBuffer.toString('base64')}`;
-                console.log('Image processed successfully.');
+                console.log('Image optimized. Size:', Math.round(processedImage.length / 1024), 'KB');
             }
         } catch (err) {
-            console.warn('Sharp processing failed, using raw URL:', err.message);
+            console.warn('Optimization failed, using raw URL.');
         }
 
-        // 2. Club Context
+        // 2. Context
         let club = null;
         if (clubId) {
             club = await prisma.club.findUnique({
                 where: { id: clubId },
-                include: {
-                    projects: { take: 2, orderBy: { createdAt: 'desc' } },
-                    posts: { take: 2, orderBy: { createdAt: 'desc' }, where: { published: true } }
-                }
+                include: { projects: { take: 2, orderBy: { createdAt: 'desc' } } }
             });
         }
         const clubName = club?.name || 'Club Rotario';
         const projectContext = club?.projects?.map(p => `- ${p.title}`).join(', ') || 'Proyectos de servicio';
 
-        if (!process.env.OPENAI_API_KEY) {
-            return res.status(500).json({ error: 'Configuración incompleta: Falta OPENAI_API_KEY.' });
-        }
+        if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'Configuración: Falta API Key.' });
 
-        // 3. Analysis with GPT-4o
-        console.log('Connecting to OpenAI GPT-4o...');
+        // 3. Analysis (Removed response_format for better stability)
+        console.log('Requesting GPT-4o analysis...');
         const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -63,49 +55,50 @@ export const generatePost = async (req, res) => {
                         content: [
                             { 
                                 type: "text", 
-                                text: `Eres un experto en Imagen Pública de Rotary. Analiza esta imagen para el club "${clubName}". 
-                                Contexto: ${projectContext}.
-                                
-                                Genera copies para Facebook, Instagram y X. 
-                                También genera una "imageDescription" técnica para DALL-E 3 que describa cómo recrear esta escena en formato vertical (Portrait 9:16), expandiendo el fondo y manteniendo los rostros y logos.
-                                
-                                Responde exclusivamente en JSON:
+                                text: `Analiza esta imagen para el club "${clubName}".
+                                Genera copys para Facebook, Instagram y X.
+                                Genera una "imageDescription" técnica para recrear esta escena en formato vertical (9:16) con DALL-E 3.
+                                Responde ÚNICAMENTE con este JSON crudo, sin bloques de código ni texto adicional:
                                 {
-                                  "facebook": { "copy": "...", "hashtags": "...", "cta": "..." },
-                                  "instagram": { "copy": "...", "hashtags": "...", "cta": "..." },
-                                  "x": { "copy": "...", "hashtags": "...", "cta": "..." },
-                                  "imageDescription": "..."
+                                  "fb": "copy facebook",
+                                  "ig": "copy instagram",
+                                  "tw": "copy x",
+                                  "desc": "descripcion para dall-e"
                                 }`
                             },
-                            { 
-                                type: "image_url", 
-                                image_url: { "url": processedImage } 
-                            }
+                            { type: "image_url", image_url: { "url": processedImage } }
                         ]
                     }
                 ],
-                response_format: { type: "json_object" },
-                max_tokens: 1200
+                max_tokens: 1000,
+                temperature: 0.5
             })
         });
 
         const gptData = await gptResponse.json();
         
         if (!gptResponse.ok) {
-            console.error('OpenAI GPT Error:', gptData);
-            return res.status(500).json({ error: `OpenAI GPT dice: ${gptData.error?.message || 'Error desconocido'}` });
+            return res.status(500).json({ error: `Error OpenAI: ${gptData.error?.message || 'Fallo de conexión'}` });
         }
 
-        const content = gptData.choices?.[0]?.message?.content;
-        if (!content) {
-            return res.status(500).json({ error: 'La IA no devolvió análisis. Revisa la imagen.' });
+        const rawContent = gptData.choices?.[0]?.message?.content;
+        if (!rawContent) return res.status(500).json({ error: 'La IA no devolvió contenido en esta prueba.' });
+
+        // Robust JSON Parsing
+        let parsed = null;
+        try {
+            // Clean content from code blocks if present
+            const cleanJson = rawContent.replace(/```json/g, '').replace(/```/g, '').trim();
+            parsed = JSON.parse(cleanJson);
+        } catch (e) {
+            console.error('JSON Parse Error:', rawContent);
+            return res.status(500).json({ error: 'Error al interpretar la respuesta de la IA. Reintenta.' });
         }
 
-        const parsed = JSON.parse(content);
-        const dallePrompt = `Professional Rotary International photo. RECREATE THIS SCENE IN VERTICAL PORTRAIT (9:16). Scene description: ${parsed.imageDescription}. High fidelity, realistic, cinematic lighting, hd quality.`;
-
-        // 4. Generation with DALL-E 3
-        console.log('Connecting to DALL-E 3...');
+        // 4. Generation
+        console.log('Requesting DALL-E 3 Portrait...');
+        const dallePrompt = `Professional Rotary International photo. VERTICAL PORTRAIT (9:16). ${parsed.desc}. High fidelity, realistic, natural lighting.`;
+        
         const dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
             method: 'POST',
             headers: {
@@ -122,25 +115,23 @@ export const generatePost = async (req, res) => {
         });
 
         const dalleData = await dalleResponse.json();
-
         if (!dalleResponse.ok) {
-            console.error('DALL-E Error:', dalleData);
-            return res.status(500).json({ error: `DALL-E dice: ${dalleData.error?.message || 'Fallo en generación'}` });
+            return res.status(500).json({ error: `Error DALL-E: ${dalleData.error?.message || 'Fallo de imagen'}` });
         }
 
         res.json({
             success: true,
             content: {
-                facebook: parsed.facebook,
-                instagram: parsed.instagram,
-                x: parsed.x
+                facebook: { copy: parsed.fb, hashtags: '', cta: '' },
+                instagram: { copy: parsed.ig, hashtags: '', cta: '' },
+                x: { copy: parsed.tw, hashtags: '', cta: '' }
             },
             generatedImageUrl: dalleData.data[0].url,
             metadata: { clubId, imageId }
         });
 
     } catch (error) {
-        console.error('Fatal Controller Error:', error);
+        console.error('Fatal:', error);
         res.status(500).json({ error: 'Error del sistema: ' + error.message });
     }
 };
@@ -148,8 +139,7 @@ export const generatePost = async (req, res) => {
 export const createVideoProject = async (req, res) => {
     try {
         const { images, config } = req.body;
-        const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
-        const project = await prisma.videoProject.create({ data: { title: config.title || `Video ${new Date().toLocaleDateString()}`, sourceImages: images, config, status: 'processing', clubId } });
+        const project = await prisma.videoProject.create({ data: { title: config.title || `Video ${new Date().toLocaleDateString()}`, sourceImages: images, config, status: 'processing', clubId: req.user.clubId } });
         const { triggerVideoGeneration } = await import('../services/kieService.js');
         const kieTask = await triggerVideoGeneration(project.id, images.map(i => i.url), config);
         await prisma.videoProject.update({ where: { id: project.id }, data: { kieJobId: kieTask.taskId } });
@@ -159,16 +149,14 @@ export const createVideoProject = async (req, res) => {
 
 export const getVideoProjects = async (req, res) => {
     try {
-        const clubId = req.user.role === 'administrator' ? req.query.clubId : req.user.clubId;
-        const projects = await prisma.videoProject.findMany({ where: clubId ? { clubId } : {}, orderBy: { createdAt: 'desc' } });
+        const projects = await prisma.videoProject.findMany({ where: { clubId: req.user.clubId }, orderBy: { createdAt: 'desc' } });
         res.json(projects);
     } catch (e) { res.status(500).json({ error: 'Error' }); }
 };
 
 export const connectSocialAccount = async (req, res) => {
     try {
-        const { platform, accountName, accessToken, refreshToken, expiresAt } = req.body;
-        const account = await prisma.socialAccount.create({ data: { platform, accountName, accessToken, refreshToken, expiresAt: expiresAt ? new Date(expiresAt) : null, clubId: req.user.clubId } });
+        const account = await prisma.socialAccount.create({ data: { ...req.body, clubId: req.user.clubId } });
         res.status(201).json(account);
     } catch (e) { res.status(500).json({ error: 'Error' }); }
 };
