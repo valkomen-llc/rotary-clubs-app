@@ -2,15 +2,13 @@ import prisma from '../lib/prisma.js';
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (V4.282 - NULL SAFETY) ---');
+        console.log('--- START GENERATE POST (V4.283 - CINEMATIC HD) ---');
         const { imageId, imageUrl, config } = req.body;
-        
-        // Safety: ensure we have an ID or use a fallback
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
 
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
 
-        // 1. Image Optimization
+        // 1. Image Processing
         let processedImage = imageUrl;
         try {
             const imgResponse = await fetch(imageUrl);
@@ -19,38 +17,30 @@ export const generatePost = async (req, res) => {
                 const sharp = (await import('sharp')).default;
                 const resizedBuffer = await sharp(buffer)
                     .resize(800, null, { withoutEnlargement: true })
-                    .jpeg({ quality: 60 })
+                    .jpeg({ quality: 70 })
                     .toBuffer();
                 processedImage = `data:image/jpeg;base64,${resizedBuffer.toString('base64')}`;
             }
         } catch (err) { console.warn('Optimization skipped.'); }
 
-        // 2. Club Context (Safely handled)
+        // 2. Club Context
         let clubName = 'Club Rotario';
         if (clubId) {
-            try {
-                const club = await prisma.club.findUnique({
-                    where: { id: clubId },
-                    include: { projects: { take: 1, orderBy: { createdAt: 'desc' } } }
-                });
-                if (club) clubName = club.name;
-            } catch (dbErr) {
-                console.warn('DB Fetch failed, using default name.');
-            }
+            const club = await prisma.club.findUnique({ where: { id: clubId } });
+            if (club) clubName = club.name;
         }
 
-        // 3. AI Rules
+        // 3. AI Rules (Professional Feed Focus)
         const postType = config.type || 'standard';
         const rules = `
-        Reglas de Longitud y Tono (Tipo: ${postType}):
-        - Facebook/Instagram/LinkedIn: Formato Portrait 4:5. Longitud: 150-300 caracteres.
-        - X (Twitter): 100-140 caracteres.
-        - LinkedIn: Profesional e impacto social.
+        Tono: Profesional, inspirador y de alto impacto.
+        Facebook/Instagram/LinkedIn: Formato Portrait Profesional.
+        X (Twitter): Formato Paisaje Profesional.
         `;
 
         if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'Falta API Key.' });
 
-        // 4. Analysis with GPT-4o
+        // 4. Analysis with GPT-4o (Outpainting Specialist)
         const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -62,7 +52,7 @@ export const generatePost = async (req, res) => {
                 messages: [
                     {
                         role: "system",
-                        content: `Eres un experto en Imagen Pública de Rotary. Reglas: ${rules}`
+                        content: `Eres un director de arte de Rotary. Reglas: ${rules}`
                     },
                     {
                         role: "user",
@@ -70,26 +60,28 @@ export const generatePost = async (req, res) => {
                             { 
                                 type: "text", 
                                 text: `Analiza esta imagen para "${clubName}".
-                                Instrucción: Describe cómo RECREAR esta foto verticalmente (Outpainting). Expande el fondo arriba y abajo. No cortes personas.
+                                Instrucción Maestra de Recreación: Describe cómo REGENERAR esta escena en formato VERTICAL PORTRAIT (9:16). NO RECORTES. Imagina lo que hay arriba (cielo, árboles, edificios) y abajo (suelo, camino, césped) y descríbelo para completar el cuadro. Mantén a las personas exactamente como están.
                                 Devuelve JSON:
                                 {
-                                  "fb": "copy fb", "ig": "copy ig", "tw": "copy x", "li": "copy li", "desc": "descripcion dall-e"
+                                  "fb": "copy fb", "ig": "copy ig", "tw": "copy x", "li": "copy li", "desc": "descripcion detallada para regeneracion cinematografica"
                                 }`
                             },
                             { type: "image_url", image_url: { "url": processedImage } }
                         ]
                     }
                 ],
-                temperature: 0.2
+                temperature: 0.3
             })
         });
 
         const gptData = await gptResponse.json();
-        const rawContent = gptData.choices?.[0]?.message?.content;
-        const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
+        const jsonMatch = gptData.choices?.[0]?.message?.content?.match(/\{[\s\S]*\}/);
         const parsed = JSON.parse(jsonMatch[0]);
 
-        // 5. DALL-E 3 (Portrait focus)
+        // 5. DALL-E 3 Generation (Cinematic HD Vertical)
+        const isLandscape = config.format === '16:9';
+        const dalleSize = isLandscape ? "1792x1024" : "1024x1792"; // Back to Vertical 9:16 for full outpainting
+        
         const dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
             method: 'POST',
             headers: {
@@ -98,10 +90,10 @@ export const generatePost = async (req, res) => {
             },
             body: JSON.stringify({
                 model: "dall-e-3",
-                prompt: `Professional Rotary photography. VERTICAL PORTRAIT RECREATION. ${parsed.desc}. Recreate floors and sky to expand. High resolution.`,
+                prompt: `Professional cinematic photography for Rotary International. OUTPAINTING AND RECREATION. ${parsed.desc}. High resolution, ultra-detailed, realistic faces, natural lighting. RECREATE THE BACKGROUND ABOVE AND BELOW. DO NOT CROP SUBJECTS.`,
                 n: 1,
-                size: "1024x1024", // Using square to guarantee focus and avoid history look
-                quality: "hd"
+                size: dalleSize,
+                quality: "hd" // Guaranteed HD
             })
         });
 
@@ -116,7 +108,7 @@ export const generatePost = async (req, res) => {
                 linkedin: { copy: parsed.li }
             },
             generatedImageUrl: dalleData.data?.[0]?.url || imageUrl,
-            metadata: { clubId, imageId }
+            metadata: { clubId, imageId, engine: 'dalle-3-hd-outpainting' }
         });
 
     } catch (error) {
@@ -127,15 +119,15 @@ export const generatePost = async (req, res) => {
 export const downloadProxy = async (req, res) => {
     try {
         const { url } = req.query;
-        if (!url) return res.status(400).send('Falta URL');
         const response = await fetch(url);
         const buffer = Buffer.from(await response.arrayBuffer());
-        res.setHeader('Content-Type', response.headers.get('Content-Type') || 'image/png');
-        res.setHeader('Content-Disposition', `attachment; filename=rotary-post-${Date.now()}.png`);
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Content-Disposition', `attachment; filename=rotary-ai-post-${Date.now()}.png`);
         res.send(buffer);
     } catch (e) { res.status(500).send('Error'); }
 };
 
+// ... Rest of the controller ...
 export const createVideoProject = async (req, res) => {
     try {
         const { images, config } = req.body;

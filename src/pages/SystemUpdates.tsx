@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.283',
+        date: '2026-05-14',
+        title: 'IA: Outpainting Cinematográfico 4K 🎬',
+        description: 'Restauración del motor de recreación profunda para conversiones Portrait sin recortes.',
+        type: 'feature',
+        details: [
+            'Habilitación de lienzo Vertical Nativo (1024x1792) para expansión de fondo real.',
+            'Refuerzo del prompt cinematográfico para evitar pixelación y mejorar nitidez.',
+            'Activación forzada de DALL-E 3 HD para resultados listos para impresión y redes.',
+            'Mejora en la detección de bordes para una recreación coherente de cielo y suelo.',
+            'Optimización de la composición institucional para mantener integridad de rostros.'
+        ]
+    },
+    {
         version: 'v4.282',
         date: '2026-05-14',
         title: 'Sistema: Blindaje de Base de Datos 🛡️',
