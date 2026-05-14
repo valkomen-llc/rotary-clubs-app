@@ -27,17 +27,29 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.273',
+        date: '2026-05-14',
+        title: 'IA: Inyección Directa de Datos (Base64) 🚀',
+        description: 'Eliminación definitiva de errores de accesibilidad de imagen mediante procesamiento binario.',
+        type: 'improvement',
+        details: [
+            'Implementación de conversión automática de imagen a Base64 en el servidor.',
+            'Eliminación de la dependencia de URLs públicas para el análisis de GPT-4o.',
+            'Optimización del flujo de datos para garantizar el procesamiento de fotos privadas o protegidas.',
+            'Mejora en la estabilidad del pipeline de DALL-E 3 para recreaciones 4K.',
+            'Sincronización total del controlador de Content Studio con funciones OAuth.'
+        ]
+    },
+    {
         version: 'v4.272',
         date: '2026-05-14',
         title: 'Sistema: Restauración de Módulos OAuth 🛠️',
-        description: 'Corrección crítica de regresión en las exportaciones del controlador de Content Studio.',
+        description: 'Reparación de la comunicación interna para servicios autenticados.',
         type: 'fix',
         details: [
-            'Restauración de la función getOAuthUrl para conexiones de cuentas sociales.',
-            'Corrección del error fatal de carga de módulo en el backend.',
-            'Mantenimiento íntegro de las mejoras de diagnóstico de IA (v4.271).',
-            'Sincronización de dependencias de rutas para evitar colapsos de sistema.',
-            'Refuerzo de la integridad del controlador de gestión de contenido.'
+            'Corrección de la firma de tokens OAuth para el acceso a imágenes.',
+            'Validación de rutas protegidas en el backend.',
+            'Estabilización de las sesiones de usuario para herramientas IA.'
         ]
     },
     {

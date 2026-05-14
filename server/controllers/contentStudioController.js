@@ -3,7 +3,7 @@ import { triggerVideoGeneration } from '../services/kieService.js';
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST ---');
+        console.log('--- START GENERATE POST (BASE64 MODE) ---');
         const { imageId, imageUrl, config } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
 
@@ -13,7 +13,22 @@ export const generatePost = async (req, res) => {
 
         console.log('Params:', { imageId, imageUrl, clubId, config });
 
-        // 1. Get Club Context (Optional for System Admins)
+        // 1. Convert Image to Base64 to ensure OpenAI can read it regardless of S3 permissions
+        let base64Image = null;
+        try {
+            console.log('Fetching image for base64 conversion...');
+            const imgResponse = await fetch(imageUrl);
+            if (!imgResponse.ok) throw new Error(`HTTP error! status: ${imgResponse.status}`);
+            const buffer = Buffer.from(await imgResponse.arrayBuffer());
+            const contentType = imgResponse.headers.get('content-type') || 'image/jpeg';
+            base64Image = `data:${contentType};base64,${buffer.toString('base64')}`;
+            console.log('Base64 conversion successful.');
+        } catch (fetchError) {
+            console.error('Error fetching image for base64:', fetchError);
+            return res.status(500).json({ error: 'No se pudo procesar la imagen para la IA. Verifica que el archivo sea accesible.' });
+        }
+
+        // 2. Get Club Context
         let club = null;
         if (clubId) {
             club = await prisma.club.findUnique({
@@ -32,12 +47,11 @@ export const generatePost = async (req, res) => {
         let aiContent = null;
 
         if (!process.env.OPENAI_API_KEY) {
-            console.error('MISSING OPENAI_API_KEY');
             return res.status(500).json({ error: 'Error interno: Falta configuración de IA' });
         }
 
         try {
-            console.log('Calling GPT-4o for combined analysis...');
+            console.log('Calling GPT-4o with Base64 Image...');
             const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: {
@@ -69,8 +83,7 @@ export const generatePost = async (req, res) => {
                                 { 
                                     type: "image_url", 
                                     image_url: { 
-                                        "url": imageUrl,
-                                        "detail": "high"
+                                        "url": base64Image
                                     } 
                                 }
                             ]
@@ -82,16 +95,14 @@ export const generatePost = async (req, res) => {
             });
 
             const gptData = await gptResponse.json();
-            console.log('GPT Response RAW:', JSON.stringify(gptData).substring(0, 500));
             
             if (gptData.error) {
-                console.error('OpenAI GPT Error Detail:', gptData.error);
-                return res.status(500).json({ error: `OpenAI dice: ${gptData.error.message}` });
+                console.error('OpenAI Error:', gptData.error);
+                return res.status(500).json({ error: `OpenAI Error: ${gptData.error.message}` });
             }
 
             if (!gptData.choices?.[0]?.message?.content) {
-                console.error('Empty GPT content. Full response:', JSON.stringify(gptData));
-                return res.status(500).json({ error: 'La IA no devolvió contenido. Verifica si la imagen es accesible.' });
+                return res.status(500).json({ error: 'La IA no pudo procesar esta imagen específica.' });
             }
 
             const parsed = JSON.parse(gptData.choices[0].message.content);
@@ -102,8 +113,8 @@ export const generatePost = async (req, res) => {
             };
             const imageDescription = parsed.imageDescription;
 
-            console.log('Calling DALL-E 3 for image generation...');
-            const dallePrompt = `Professional photography for Rotary. Scene: ${imageDescription}. Recreate in PORTRAIT format (4:5), realistic style, natural light, high resolution. Institutional and inspiring mood.`;
+            console.log('Generating high-res recreation with DALL-E 3...');
+            const dallePrompt = `Professional Rotary photography. Scene: ${imageDescription}. Portrait format (4:5), realistic, natural light, high fidelity, inspiring institutional mood.`;
 
             const dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
                 method: 'POST',
@@ -122,16 +133,16 @@ export const generatePost = async (req, res) => {
 
             const dalleData = await dalleResponse.json();
             
-            if (dalleData.error) {
-                console.error('DALL-E Error:', dalleData.error);
-                generatedImageUrl = imageUrl; // Fallback to original
+            if (dalleData.data?.[0]?.url) {
+                generatedImageUrl = dalleData.data[0].url;
             } else {
-                generatedImageUrl = dalleData.data?.[0]?.url;
+                console.error('DALL-E failed, using original.', dalleData.error);
+                generatedImageUrl = imageUrl;
             }
 
         } catch (aiError) {
             console.error('AI Logic Error:', aiError);
-            return res.status(500).json({ error: 'Fallo en el procesamiento de IA: ' + aiError.message });
+            return res.status(500).json({ error: 'Error en el motor de IA: ' + aiError.message });
         }
 
         res.json({
@@ -142,8 +153,8 @@ export const generatePost = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Global Error in generatePost:', error);
-        res.status(500).json({ error: 'Error inesperado: ' + error.message });
+        console.error('Global Error:', error);
+        res.status(500).json({ error: 'Error inesperado del sistema' });
     }
 };
 
