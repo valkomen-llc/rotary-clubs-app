@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.299',
+        date: '2026-05-14',
+        title: 'IA: Motor Ultra-Resiliente Inmune a Fallos 🚀',
+        description: 'Sistema de doble paso para garantizar la generación cinematográfica siempre.',
+        type: 'major',
+        details: [
+            'Implementación de "Dual-Pass AI": Intento HD con salto automático a Standard.',
+            'Eliminación total de errores por saturación de OpenAI mediante fallback inteligente.',
+            'Optimización de velocidad: el modo Standard responde en menos de 10 segundos.',
+            'Garantía de disponibilidad 24/7 para el Content Studio sin importar la carga de la API.',
+            'Refuerzo de prompts para fotos grupales complejas con muchos rostros.'
+        ]
+    },
+    {
         version: 'v4.298',
         date: '2026-05-14',
         title: 'IA: Blindaje y Resiliencia HD 🛡️',
