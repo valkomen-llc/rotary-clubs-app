@@ -458,8 +458,8 @@ const ImageDistribution: React.FC = () => {
         if (!cropImageSrc || !croppedAreaPixels || !cropFile) return;
         setUploading(true);
         try {
-            const croppedBlob = await getCroppedImg(cropImageSrc, croppedAreaPixels);
-            const file = new File([croppedBlob], cropFile.name, { type: 'image/jpeg' });
+            const croppedBlob = await getCroppedImg(cropImageSrc, croppedAreaPixels, 0, cropFile.type);
+            const file = new File([croppedBlob], cropFile.name, { type: cropFile.type });
             
             const data = await performUpload(file);
             setCropImageSrc(null);

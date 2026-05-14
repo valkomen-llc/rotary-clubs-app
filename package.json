@@ -2,7 +2,7 @@
   "name": "rotary-clubs-app",
   "private": true,
   "version": "4.255.0",
-  "cache_bust": "v4.255-high-res-media",
+  "cache_bust": "v4.255-high-res-canvas-fix",
   "type": "module",
   "//": "DISTRICT HEALTH IQ V4.255 | 2026-05-14 (HIGH RES MEDIA 📸)",
   "scripts": {
