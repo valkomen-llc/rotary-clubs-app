@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.294',
+        date: '2026-05-14',
+        title: 'Estabilización: Reversión de Seguridad 🛡️',
+        description: 'Restauración del núcleo estable del sistema para garantizar la carga de todos los sitios.',
+        type: 'major',
+        details: [
+            'Reversión quirúrgica a la arquitectura de conexión estable (Safe Mode).',
+            'Eliminación de la complejidad en db.js para restaurar carga inmediata.',
+            'Sincronización total de Prisma y PG Pool bajo el modelo singleton original.',
+            'Corrección definitiva del estado "Cargando Club" en dominios .org.',
+            'Mantenimiento de los 60s para IA en un entorno de ejecución blindado.'
+        ]
+    },
+    {
         version: 'v4.293',
         date: '2026-05-14',
         title: 'Arquitectura: Optimización de Conexiones Prisma 💎',
