@@ -54,7 +54,6 @@ const PostGenerator: React.FC = () => {
         const toastId = toast.loading('Generando publicación con IA...');
 
         try {
-            console.log('Starting AI generation for image:', selectedImage.url);
             const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/content-studio/generate-post`, {
                 method: 'POST',
                 headers: {
@@ -69,18 +68,16 @@ const PostGenerator: React.FC = () => {
             });
 
             const data = await response.json();
-            console.log('AI Response received:', data);
 
             if (response.ok && data.success) {
                 setGeneratedContent(data.content);
                 setGeneratedImageUrl(data.generatedImageUrl);
                 toast.success('¡Publicación generada con éxito!', { id: toastId });
             } else {
-                console.error('AI Generation Error data:', data);
                 toast.error(data.error || 'Error al generar el contenido', { id: toastId });
             }
         } catch (error) {
-            console.error('Fetch Error in handleGenerate:', error);
+            console.error('Fetch Error:', error);
             toast.error('Error de conexión al servidor', { id: toastId });
         } finally {
             setIsGenerating(false);
@@ -118,15 +115,14 @@ const PostGenerator: React.FC = () => {
                 throw new Error(data.error || 'Error al subir');
             }
         } catch (error: any) {
-            console.error('Upload Error:', error);
-            toast.error('Error al subir la imagen: ' + error.message, { id: toastId });
+            toast.error('Error al subir: ' + error.message, { id: toastId });
         }
     };
 
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* 1. Selección y Configuración (IZQUIERDA) */}
+                {/* 1. Selección y Configuración */}
                 <div className="space-y-6">
                     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                         <div className="p-4 border-b border-gray-50 flex items-center justify-between bg-gray-50/50">
@@ -136,19 +132,11 @@ const PostGenerator: React.FC = () => {
                             </h3>
                             {selectedImage && (
                                 <div className="flex gap-3">
-                                    <button
-                                        onClick={() => setIsMediaPickerOpen(true)}
-                                        className="text-xs text-rotary-blue hover:underline font-medium flex items-center gap-1"
-                                    >
-                                        <Library className="w-3 h-3" />
-                                        Biblioteca
+                                    <button onClick={() => setIsMediaPickerOpen(true)} className="text-xs text-rotary-blue hover:underline font-medium flex items-center gap-1">
+                                        <Library className="w-3 h-3" /> Biblioteca
                                     </button>
-                                    <button
-                                        onClick={() => fileInputRef.current?.click()}
-                                        className="text-xs text-rotary-blue hover:underline font-medium flex items-center gap-1"
-                                    >
-                                        <Upload className="w-3 h-3" />
-                                        Subir
+                                    <button onClick={() => fileInputRef.current?.click()} className="text-xs text-rotary-blue hover:underline font-medium flex items-center gap-1">
+                                        <Upload className="w-3 h-3" /> Subir
                                     </button>
                                 </div>
                             )}
@@ -158,31 +146,17 @@ const PostGenerator: React.FC = () => {
                             {selectedImage ? (
                                 <div className="space-y-4">
                                     <div className="relative group rounded-lg overflow-hidden border border-gray-200">
-                                        <img
-                                            src={selectedImage.url}
-                                            alt="Selected"
-                                            className="w-full h-auto max-h-[300px] object-cover"
-                                        />
+                                        <img src={selectedImage.url} alt="Selected" className="w-full h-auto max-h-[300px] object-cover" />
                                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
-                                            <button
-                                                onClick={() => setIsMediaPickerOpen(true)}
-                                                className="bg-white text-gray-900 px-3 py-2 rounded-lg font-medium text-xs flex items-center gap-2 hover:bg-gray-100"
-                                            >
-                                                <Library className="w-4 h-4" />
-                                                Biblioteca
+                                            <button onClick={() => setIsMediaPickerOpen(true)} className="bg-white text-gray-900 px-3 py-2 rounded-lg font-medium text-xs flex items-center gap-2">
+                                                <Library className="w-4 h-4" /> Biblioteca
                                             </button>
-                                            <button
-                                                onClick={() => fileInputRef.current?.click()}
-                                                className="bg-white text-gray-900 px-3 py-2 rounded-lg font-medium text-xs flex items-center gap-2 hover:bg-gray-100"
-                                            >
-                                                <Upload className="w-4 h-4" />
-                                                Subir Nuevo
+                                            <button onClick={() => fileInputRef.current?.click()} className="bg-white text-gray-900 px-3 py-2 rounded-lg font-medium text-xs flex items-center gap-2">
+                                                <Upload className="w-4 h-4" /> Subir Nuevo
                                             </button>
                                         </div>
                                     </div>
-                                    <p className="text-xs text-center text-gray-500 italic">
-                                        {selectedImage.name}
-                                    </p>
+                                    <p className="text-xs text-center text-gray-500 italic">{selectedImage.name || 'Imagen seleccionada'}</p>
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-2 gap-4">
@@ -193,10 +167,7 @@ const PostGenerator: React.FC = () => {
                                         <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center group-hover:bg-blue-100">
                                             <Library className="w-5 h-5 text-gray-400 group-hover:text-rotary-blue" />
                                         </div>
-                                        <div className="text-center">
-                                            <p className="text-sm font-medium text-gray-700">Biblioteca</p>
-                                            <p className="text-[10px] text-gray-400">Archivos existentes</p>
-                                        </div>
+                                        <p className="text-sm font-medium text-gray-700">Biblioteca</p>
                                     </button>
 
                                     <button
@@ -206,71 +177,52 @@ const PostGenerator: React.FC = () => {
                                         <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center group-hover:bg-blue-100">
                                             <Upload className="w-5 h-5 text-gray-400 group-hover:text-rotary-blue" />
                                         </div>
-                                        <div className="text-center">
-                                            <p className="text-sm font-medium text-gray-700">Subir Imagen</p>
-                                            <p className="text-[10px] text-gray-400">Desde tu equipo</p>
-                                        </div>
+                                        <p className="text-sm font-medium text-gray-700">Subir Imagen</p>
                                     </button>
                                 </div>
                             )}
                         </div>
                     </div>
 
-                    <input 
-                        type="file" 
-                        ref={fileInputRef} 
-                        onChange={handleFileUpload} 
-                        className="hidden" 
-                        accept="image/*" 
-                    />
+                    <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*" />
 
                     {/* Configuración */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                             <div className="flex items-center gap-2 mb-4">
-                                <div className="p-2 bg-blue-50 rounded-lg">
-                                    <Layout className="w-5 h-5 text-rotary-blue" />
-                                </div>
+                                <div className="p-2 bg-blue-50 rounded-lg"><Layout className="w-5 h-5 text-rotary-blue" /></div>
                                 <h3 className="font-semibold text-gray-800">Conversión Pro (IA)</h3>
                             </div>
-                            <div className="space-y-3">
-                                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Formato de Salida</label>
-                                <select
-                                    value={aiConfig.format}
-                                    onChange={(e) => setAiConfig({ ...aiConfig, format: e.target.value })}
-                                    className="w-full p-2.5 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-rotary-blue/20 outline-none"
-                                >
-                                    <option value="fb_portrait">Facebook Portrait (4:5)</option>
-                                    <option value="ig_reel">Instagram / TikTok (9:16)</option>
-                                    <option value="x_landscape">X Landscape (16:9)</option>
-                                </select>
-                            </div>
+                            <select
+                                value={aiConfig.format}
+                                onChange={(e) => setAiConfig({ ...aiConfig, format: e.target.value })}
+                                className="w-full p-2.5 rounded-lg border border-gray-200 text-sm outline-none"
+                            >
+                                <option value="fb_portrait">Facebook Portrait (4:5)</option>
+                                <option value="ig_reel">Instagram / TikTok (9:16)</option>
+                                <option value="x_landscape">X Landscape (16:9)</option>
+                            </select>
                         </div>
 
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                             <div className="flex items-center gap-2 mb-4">
-                                <div className="p-2 bg-purple-50 rounded-lg">
-                                    <Zap className="w-5 h-5 text-purple-600" />
-                                </div>
+                                <div className="p-2 bg-purple-50 rounded-lg"><Zap className="w-5 h-5 text-purple-600" /></div>
                                 <h3 className="font-semibold text-gray-800">Enfoque Rotary</h3>
                             </div>
-                            <div className="space-y-3">
-                                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Área de Interés</label>
-                                <select
-                                    value={aiConfig.interestArea}
-                                    onChange={(e) => setAiConfig({ ...aiConfig, interestArea: e.target.value })}
-                                    className="w-full p-2.5 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-purple-600/20 outline-none"
-                                >
-                                    <option value="general">Impacto General</option>
-                                    <option value="peace">Paz y resolución de conflictos</option>
-                                    <option value="disease">Prevención de enfermedades</option>
-                                    <option value="water">Agua y saneamiento</option>
-                                    <option value="maternal">Salud materno-infantil</option>
-                                    <option value="education">Educación básica y alfabetización</option>
-                                    <option value="economy">Desarrollo económico integral</option>
-                                    <option value="environment">Apoyo al medio ambiente</option>
-                                </select>
-                            </div>
+                            <select
+                                value={aiConfig.interestArea}
+                                onChange={(e) => setAiConfig({ ...aiConfig, interestArea: e.target.value })}
+                                className="w-full p-2.5 rounded-lg border border-gray-200 text-sm outline-none"
+                            >
+                                <option value="general">Impacto General</option>
+                                <option value="peace">Paz y resolución de conflictos</option>
+                                <option value="disease">Prevención de enfermedades</option>
+                                <option value="water">Agua y saneamiento</option>
+                                <option value="maternal">Salud materno-infantil</option>
+                                <option value="education">Educación básica y alfabetización</option>
+                                <option value="economy">Desarrollo económico integral</option>
+                                <option value="environment">Apoyo al medio ambiente</option>
+                            </select>
                         </div>
                     </div>
 
@@ -278,42 +230,23 @@ const PostGenerator: React.FC = () => {
                         onClick={handleGenerate}
                         disabled={!selectedImage || isGenerating}
                         className={`w-full py-4 rounded-xl font-bold text-white shadow-lg transition-all flex items-center justify-center gap-3 ${
-                            !selectedImage || isGenerating 
-                            ? 'bg-gray-400 cursor-not-allowed' 
-                            : 'bg-gradient-to-r from-rotary-blue to-blue-700 hover:scale-[1.02] active:scale-[0.98]'
+                            !selectedImage || isGenerating ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-rotary-blue to-blue-700 hover:scale-[1.02]'
                         }`}
                     >
-                        {isGenerating ? (
-                            <>
-                                <RefreshCw className="w-5 h-5 animate-spin" />
-                                PROCESANDO CON IA...
-                            </>
-                        ) : (
-                            <>
-                                <Sparkles className="w-5 h-5" />
-                                GENERAR CON IA (4K PORTRAIT)
-                            </>
-                        )}
+                        {isGenerating ? <><RefreshCw className="w-5 h-5 animate-spin" /> PROCESANDO...</> : <><Sparkles className="w-5 h-5" /> GENERAR CON IA (4K)</>}
                     </button>
                 </div>
 
-                {/* 2. Vista Previa de Publicación */}
+                {/* 2. Vista Previa */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col min-h-[600px]">
                     <div className="p-4 border-b border-gray-50 flex items-center justify-between bg-gray-50/50">
-                        <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-                            <Send className="w-5 h-5 text-rotary-gold" />
-                            Vista Previa de Publicación
-                        </h3>
+                        <h3 className="font-semibold text-gray-800 flex items-center gap-2"><Send className="w-5 h-5 text-rotary-gold" /> Vista Previa</h3>
                         <div className="flex bg-gray-100 p-1 rounded-lg">
                             {(['facebook', 'instagram', 'x'] as const).map((platform) => (
                                 <button
                                     key={platform}
                                     onClick={() => setActivePlatform(platform)}
-                                    className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                                        activePlatform === platform 
-                                        ? 'bg-white text-gray-900 shadow-sm' 
-                                        : 'text-gray-500 hover:text-gray-700'
-                                    }`}
+                                    className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${activePlatform === platform ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
                                 >
                                     {platform === 'x' ? 'X' : platform.charAt(0).toUpperCase() + platform.slice(1)}
                                 </button>
@@ -324,62 +257,30 @@ const PostGenerator: React.FC = () => {
                     <div className="flex-1 p-6 flex flex-col gap-6">
                         {!generatedContent ? (
                             <div className="flex-1 flex flex-col items-center justify-center text-center p-12 border-2 border-dashed border-gray-100 rounded-2xl bg-gray-50/30">
-                                <div className="w-20 h-20 bg-white rounded-full shadow-sm flex items-center justify-center mb-4">
-                                    <Sparkles className="w-10 h-10 text-gray-200" />
-                                </div>
-                                <h4 className="text-lg font-semibold text-gray-400">Sin contenido generado</h4>
-                                <p className="text-sm text-gray-400 max-w-xs mt-2">
-                                    Selecciona una imagen y haz clic en "Generar con IA" para ver la previsualización adaptada.
-                                </p>
+                                <Sparkles className="w-10 h-10 text-gray-200 mb-4" />
+                                <h4 className="text-lg font-semibold text-gray-400">Sin contenido</h4>
                             </div>
                         ) : (
                             <>
                                 <div className="relative group flex justify-center bg-gray-900 rounded-2xl overflow-hidden shadow-2xl border-4 border-white mx-auto w-full max-w-[320px]">
                                     <div className="aspect-[4/5] w-full relative">
-                                        <img
-                                            src={generatedImageUrl || ''}
-                                            alt="AI Optimized"
-                                            className="w-full h-full object-cover"
-                                        />
+                                        <img src={generatedImageUrl || ''} alt="AI Optimized" className="w-full h-full object-cover" />
                                         <div className="absolute top-4 left-4">
                                             <span className="bg-rotary-blue text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg flex items-center gap-1">
-                                                <Sparkles className="w-3 h-3" />
-                                                IA OPTIMIZADA
+                                                <Sparkles className="w-3 h-3" /> IA OPTIMIZADA
                                             </span>
                                         </div>
                                     </div>
                                 </div>
 
                                 <div className="space-y-4">
-                                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 relative">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Contenido Sugerido</span>
-                                        </div>
-                                        <p className="text-sm text-gray-700 leading-relaxed">
-                                            {generatedContent[activePlatform].copy}
-                                        </p>
-                                        <p className="mt-3 text-sm font-medium text-rotary-blue">
-                                            {generatedContent[activePlatform].hashtags}
-                                        </p>
-                                        <div className="mt-4 pt-4 border-t border-gray-200">
-                                            <span className="text-xs font-bold text-gray-400 block mb-1">Call to Action (CTA)</span>
-                                            <span className="text-sm font-semibold text-gray-800">{generatedContent[activePlatform].cta}</span>
-                                        </div>
+                                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                                        <p className="text-sm text-gray-700 leading-relaxed">{generatedContent[activePlatform].copy}</p>
+                                        <p className="mt-3 text-sm font-medium text-rotary-blue">{generatedContent[activePlatform].hashtags}</p>
                                     </div>
-
-                                    <div className="flex gap-3">
-                                        <button className="flex-1 bg-gray-900 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-black transition-all">
-                                            <Send className="w-4 h-4" />
-                                            Programar Publicación
-                                        </button>
-                                        <button 
-                                            onClick={handleGenerate}
-                                            className="p-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-all"
-                                        >
-                                            <RefreshCw className="w-5 h-5" />
-                                        </button>
-                                    </div>
+                                    <button className="w-full bg-gray-900 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+                                        <Send className="w-4 h-4" /> Programar
+                                    </button>
                                 </div>
                             </>
                         )}
@@ -387,16 +288,21 @@ const PostGenerator: React.FC = () => {
                 </div>
             </div>
 
-            {isMediaPickerOpen && (
-                <MediaPicker
-                    onSelect={(image) => {
-                        setSelectedImage(image);
-                        setIsMediaPickerOpen(false);
+            <MediaPicker
+                isOpen={isMediaPickerOpen}
+                onSelect={(images) => {
+                    if (images && images.length > 0) {
+                        setSelectedImage({
+                            id: images[0].id,
+                            url: images[0].url,
+                            name: images[0].filename
+                        });
                         setGeneratedContent(null);
-                    }}
-                    onClose={() => setIsMediaPickerOpen(false)}
-                />
-            )}
+                    }
+                    setIsMediaPickerOpen(false);
+                }}
+                onClose={() => setIsMediaPickerOpen(false)}
+            />
         </div>
     );
 };

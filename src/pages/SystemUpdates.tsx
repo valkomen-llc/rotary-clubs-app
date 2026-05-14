@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.265',
+        date: '2026-05-14',
+        title: 'Content Studio: Corrección de Integración 🛠️',
+        description: 'Reparación de la conexión con la Biblioteca Multimedia y selector de imágenes.',
+        type: 'fix',
+        details: [
+            'Corrección de prop "isOpen" en el componente MediaPicker para apertura correcta.',
+            'Ajuste en el manejador "onSelect" para soportar selección de imágenes individuales.',
+            'Optimización de la lógica de renderizado condicional del modal.',
+            'Sincronización de metadatos de archivos (filename) al seleccionar desde biblioteca.',
+            'Mejora en la estabilidad del selector dual (Subir/Biblioteca).'
+        ]
+    },
+    {
         version: 'v4.264',
         date: '2026-05-14',
         title: 'Content Studio: Selector Dual de Medios 📤',
