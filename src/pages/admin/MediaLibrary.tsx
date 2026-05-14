@@ -35,7 +35,7 @@ const compressImage = async (file: File): Promise<File> => {
             const canvas = document.createElement('canvas');
             let width = img.width;
             let height = img.height;
-            const max = 1600; // max width/height
+            const max = 4096; // max width/height for high resolution
             if (width > height && width > max) {
                 height = Math.round(height * (max / width));
                 width = max;
@@ -48,16 +48,19 @@ const compressImage = async (file: File): Promise<File> => {
             const ctx = canvas.getContext('2d');
             if (!ctx) return resolve(file);
             ctx.drawImage(img, 0, 0, width, height);
+            
+            const isPng = file.type === 'image/png';
+            const outputType = isPng ? 'image/png' : 'image/jpeg';
+            const quality = isPng ? 1.0 : 1.0; // Max quality
+
             canvas.toBlob((blob) => {
                 if (!blob) return resolve(file);
-                // Si la original era png y requiere transparencia se pierde un poco, pero esto fuerza JPEG ligero.
-                // Para logos se sube desde ImageDistribution, acá es Media Library general.
-                const ext = file.name.split('.').pop() || 'jpg';
-                const newName = file.name.replace(new RegExp(`\\.${ext}$`, 'i'), '.jpg');
-                const compressed = new File([blob], newName, { type: 'image/jpeg' });
-                // Solo usar si realmente redujo tamaño
-                resolve(compressed.size < file.size ? compressed : file);
-            }, 'image/jpeg', 0.85);
+                const newName = isPng ? file.name : file.name.replace(/\.(jpe?g|png|webp)$/i, '.jpg');
+                const compressed = new File([blob], newName, { type: outputType });
+                // Solo usar si realmente redujo tamaño considerablemente o si superaba el max
+                const isResizeNeeded = img.width > max || img.height > max;
+                resolve((compressed.size < file.size || isResizeNeeded) ? compressed : file);
+            }, outputType, quality);
         };
         img.onerror = () => resolve(file);
         img.src = URL.createObjectURL(file);

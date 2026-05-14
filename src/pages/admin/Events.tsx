@@ -142,7 +142,7 @@ const getCroppedBlob = async (imageSrc: string, pixelCrop: Area): Promise<Blob> 
         canvas.toBlob(
             b => b ? resolve(b) : reject(new Error('Error al generar la imagen final')),
             'image/jpeg',
-            0.92
+            1.0
         );
     });
 };

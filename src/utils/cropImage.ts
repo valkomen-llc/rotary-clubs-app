@@ -68,7 +68,7 @@ export async function getCroppedImg(
         return
       }
       resolve(blob)
-    }, 'image/jpeg', 0.95)
+    }, 'image/jpeg', 1.0)
   })
 }
 
