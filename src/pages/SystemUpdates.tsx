@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.271',
+        date: '2026-05-14',
+        title: 'IA: Diagnóstico y Alta Fidelidad 🧠',
+        description: 'Mejora en la precisión del análisis de imágenes y sistema de registro de errores.',
+        type: 'improvement',
+        details: [
+            'Configuración de GPT-4o en modo "High Detail" para un análisis visual más profundo.',
+            'Implementación de sistema de captura de errores detallados de OpenAI.',
+            'Optimización del formato de respuesta JSON para evitar cortes de contenido.',
+            'Mejora en los mensajes de error para facilitar el diagnóstico del usuario.',
+            'Refuerzo en la persistencia de datos durante la transformación 4K.'
+        ]
+    },
+    {
         version: 'v4.270',
         date: '2026-05-14',
         title: 'IA: Activación del Pipeline 4K 🚀',
