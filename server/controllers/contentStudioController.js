@@ -10,7 +10,7 @@ export const generatePost = async (req, res) => {
             return res.status(400).json({ error: 'La URL de la imagen es requerida' });
         }
 
-        // 1. Get Club Context for better AI generation
+        // 1. Get Club Context
         const club = await prisma.club.findUnique({
             where: { id: clubId },
             include: {
@@ -22,37 +22,42 @@ export const generatePost = async (req, res) => {
         const clubName = club?.name || 'Club Rotario';
         const projectContext = club?.projects.map(p => `- ${p.title}: ${p.description.slice(0, 100)}`).join('\n') || 'No hay proyectos recientes.';
         
-        // 2. Prepare Prompt for OpenAI
-        const prompt = `Eres un experto en comunicación digital para Rotary International. 
-Tu tarea es generar el copy para una publicación de redes sociales para el club "${clubName}".
-El tema o área de interés es: ${config.interestArea}.
-
-DATOS DEL CLUB:
-${projectContext}
-
-INSTRUCCIONES:
-- Genera 3 variantes de copy: una para Facebook, una para Instagram y una para X (Twitter).
-- El tono debe ser institucional, profesional, emocional y orientado al impacto social y servicio rotario.
-- Incluye hashtags relevantes (ej: #Rotary, #PeopleOfAction, #ServicioRotario).
-- Incluye un llamado a la acción (CTA) claro para cada red.
-- Respeta el límite de caracteres de X (280 caracteres).
-- Responde EXCLUSIVAMENTE en formato JSON con la siguiente estructura:
-{
-  "facebook": { "copy": "...", "hashtags": "...", "cta": "..." },
-  "instagram": { "copy": "...", "hashtags": "...", "cta": "..." },
-  "x": { "copy": "...", "hashtags": "...", "cta": "..." }
-}`;
-
-        // 3. Call OpenAI
-        let aiContent = {
-            facebook: { copy: "Transformando comunidades...", hashtags: "#Rotary #Service", cta: "¡Únete!" },
-            instagram: { copy: "Servicio por encima de uno mismo...", hashtags: "#RotaryLife", cta: "Link en bio" },
-            x: { copy: "Juntos marcamos la diferencia.", hashtags: "#Rotary", cta: "Visítanos" }
-        };
+        let generatedImageUrl = null;
+        let aiContent = null;
 
         if (process.env.OPENAI_API_KEY) {
             try {
-                const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                // A. IMAGE ANALYSIS (Vision)
+                const visionResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: "gpt-4-vision-preview",
+                        messages: [
+                            {
+                                role: "user",
+                                content: [
+                                    { type: "text", text: "Describe esta imagen detalladamente para recrearla. Enfócate en sujetos, acción y elementos de Rotary." },
+                                    { type: "image_url", image_url: { "url": imageUrl } }
+                                ]
+                            }
+                        ],
+                        max_tokens: 300
+                    })
+                });
+
+                const visionData = await visionResponse.json();
+                const imageDescription = visionData.choices?.[0]?.message?.content || "Una actividad de servicio rotario.";
+
+                // B. TEXT GENERATION
+                const textPrompt = `Eres un experto en comunicación digital para Rotary. 
+                Club: "${clubName}". Imagen: ${imageDescription}. Área: ${config.interestArea}.
+                Genera 3 variantes (FB, IG, X) en JSON.`;
+
+                const textResponse = await fetch('https://api.openai.com/v1/chat/completions', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -60,30 +65,50 @@ INSTRUCCIONES:
                     },
                     body: JSON.stringify({
                         model: "gpt-4-turbo-preview",
-                        messages: [
-                            { role: "system", content: "Eres un experto en Imagen Pública de Rotary." },
-                            { role: "user", content: prompt }
-                        ],
+                        messages: [{ role: "user", content: textPrompt }],
                         response_format: { type: "json_object" }
                     })
                 });
 
-                const data = await response.json();
-                if (data.choices?.[0]?.message?.content) {
-                    aiContent = JSON.parse(data.choices[0].message.content);
+                const textData = await textResponse.json();
+                if (textData.choices?.[0]?.message?.content) {
+                    aiContent = JSON.parse(textData.choices[0].message.content);
                 }
+
+                // C. IMAGE GENERATION (DALL-E 3) - Conversion to Portrait
+                const dallePrompt = `Fotografía profesional 4K de Rotary. Basada en: ${imageDescription}. Recrea en formato VERTICAL (Portrait 4:5), centrando la acción. Realista, luz natural.`;
+
+                const dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: "dall-e-3",
+                        prompt: dallePrompt,
+                        n: 1,
+                        size: "1024x1792",
+                        quality: "hd"
+                    })
+                });
+
+                const dalleData = await dalleResponse.json();
+                generatedImageUrl = dalleData.data?.[0]?.url;
+
             } catch (aiError) {
-                console.error('OpenAI Error in generatePost:', aiError);
-                // Fallback to default content
+                console.error('AI Processing Error:', aiError);
             }
         }
 
-        // 4. (Optional) In a real scenario, we would trigger image enhancement here
-        // For now, we return the generated content and the original image as base
-
         res.json({
             success: true,
-            content: aiContent,
+            content: aiContent || {
+                facebook: { copy: "Servicio rotario en acción.", hashtags: "#Rotary", cta: "Ver más" },
+                instagram: { copy: "Impacto real.", hashtags: "#ServiceAboveSelf", cta: "Link en bio" },
+                x: { copy: "Juntos por el cambio.", hashtags: "#Rotary", cta: "Info" }
+            },
+            generatedImageUrl: generatedImageUrl || imageUrl,
             metadata: {
                 clubId,
                 imageId,

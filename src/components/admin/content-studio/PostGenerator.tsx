@@ -34,6 +34,7 @@ interface MediaItem {
 
 const PostGenerator: React.FC = () => {
     const [selectedImage, setSelectedImage] = useState<MediaItem | null>(null);
+    const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
     const [showPicker, setShowPicker] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     
@@ -42,7 +43,7 @@ const PostGenerator: React.FC = () => {
         format: 'facebook_portrait',
         qualityHD: true,
         enhanceLighting: true,
-        expandBackground: false,
+        expandBackground: true,
         keepFaces: true,
         interestArea: 'Paz y resolución de conflictos'
     });
@@ -82,12 +83,9 @@ const PostGenerator: React.FC = () => {
         }
 
         setIsGenerating(true);
-        const toastId = toast.loading('Generando publicación con IA...');
+        const toastId = toast.loading('La IA está analizando y convirtiendo tu imagen a formato portrait...');
 
         try {
-            // Simulated delay for AI processing
-            await new Promise(resolve => setTimeout(resolve, 3000));
-
             const token = localStorage.getItem('rotary_token');
             const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/content-studio/generate-post`, {
                 method: 'POST',
@@ -104,47 +102,16 @@ const PostGenerator: React.FC = () => {
 
             if (response.ok) {
                 const data = await response.json();
-                setGeneratedContent(data.content || {
-                    facebook: {
-                        copy: "Transformando comunidades a través del servicio rotario 🌎💙\nNuestro club continúa desarrollando acciones que generan impacto positivo en la comunidad.",
-                        hashtags: "#Rotary #PeopleOfAction #ServicioRotario",
-                        cta: "¡Únete a nosotros!"
-                    },
-                    instagram: {
-                        copy: "Servicio por encima de uno mismo. ✨\n\nHoy compartimos los resultados de nuestro último proyecto en " + config.interestArea + ".",
-                        hashtags: "#RotaryInternational #ServiceAboveSelf #RotaryLife",
-                        cta: "Link en la bio para saber más"
-                    },
-                    x: {
-                        copy: "Juntos marcamos la diferencia. Acciones reales para un cambio duradero. 🤝 #Rotary #Service",
-                        hashtags: "#Rotary #Impact",
-                        cta: "Visítanos en clubplatform.org"
-                    }
-                });
-                toast.success('Publicación generada con éxito', { id: toastId });
+                setGeneratedContent(data.content);
+                if (data.generatedImageUrl) {
+                    setGeneratedImageUrl(data.generatedImageUrl);
+                }
+                toast.success('Publicación e imagen optimizadas con éxito', { id: toastId });
             } else {
-                // Fallback for demo purposes if endpoint doesn't exist yet
-                setGeneratedContent({
-                    facebook: {
-                        copy: "Transformando comunidades a través del servicio rotario 🌎💙\nNuestro club continúa desarrollando acciones que generan impacto positivo en la comunidad.",
-                        hashtags: "#Rotary #PeopleOfAction #ServicioRotario",
-                        cta: "¡Únete a nosotros!"
-                    },
-                    instagram: {
-                        copy: "Servicio por encima de uno mismo. ✨\n\nHoy compartimos los resultados de nuestro último proyecto en " + config.interestArea + ".",
-                        hashtags: "#RotaryInternational #ServiceAboveSelf #RotaryLife",
-                        cta: "Link en la bio para saber más"
-                    },
-                    x: {
-                        copy: "Juntos marcamos la diferencia. Acciones reales para un cambio duradero. 🤝 #Rotary #Service",
-                        hashtags: "#Rotary #Impact",
-                        cta: "Visítanos en clubplatform.org"
-                    }
-                });
-                toast.success('Publicación generada con éxito (Modo Demo)', { id: toastId });
+                toast.error('Error al generar el contenido', { id: toastId });
             }
         } catch (error) {
-            toast.error('Error al generar el contenido', { id: toastId });
+            toast.error('Error al conectar con el servicio de IA', { id: toastId });
         } finally {
             setIsGenerating(false);
         }
@@ -164,7 +131,7 @@ const PostGenerator: React.FC = () => {
                     <div className="flex justify-between items-center mb-6">
                         <div>
                             <h3 className="text-lg font-black text-gray-900">Selección de Imagen</h3>
-                            <p className="text-sm text-gray-500 font-medium font-sans">Elige la fotografía base para tu publicación</p>
+                            <p className="text-sm text-gray-500 font-medium font-sans">Elige la fotografía base (panorámica o cualquier formato)</p>
                         </div>
                         {!selectedImage && (
                             <button 
@@ -202,7 +169,10 @@ const PostGenerator: React.FC = () => {
                                     <Layers className="w-6 h-6" />
                                 </button>
                                 <button 
-                                    onClick={() => setSelectedImage(null)}
+                                    onClick={() => {
+                                        setSelectedImage(null);
+                                        setGeneratedImageUrl(null);
+                                    }}
                                     className="p-3 bg-red-500/20 backdrop-blur-md rounded-full text-red-200 hover:bg-red-500/40 transition-all"
                                     title="Quitar imagen"
                                 >
@@ -212,11 +182,6 @@ const PostGenerator: React.FC = () => {
                             <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end">
                                 <div className="bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-lg">
                                     <p className="text-[10px] font-black text-white uppercase tracking-widest">{selectedImage.filename}</p>
-                                </div>
-                                <div className="flex gap-1.5">
-                                    <div className="w-2 h-2 rounded-full bg-green-500 shadow-lg shadow-green-500/50" />
-                                    <div className="w-2 h-2 rounded-full bg-green-500/50" />
-                                    <div className="w-2 h-2 rounded-full bg-green-500/20" />
                                 </div>
                             </div>
                         </div>
@@ -230,7 +195,7 @@ const PostGenerator: React.FC = () => {
                             <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
                                 <Settings2 className="w-4 h-4 text-indigo-600" />
                             </div>
-                            <h3 className="font-black text-gray-900">Optimización IA</h3>
+                            <h3 className="font-black text-gray-900">Conversión Pro (IA)</h3>
                         </div>
                         <div className="space-y-4">
                             <div className="space-y-2">
@@ -253,19 +218,9 @@ const PostGenerator: React.FC = () => {
                                 >
                                     <div className="flex items-center gap-2">
                                         <Highlighter className="w-4 h-4" />
-                                        <span className="text-xs font-bold">Calidad HD Ultra</span>
+                                        <span className="text-xs font-bold">Mejorar Resolución</span>
                                     </div>
                                     {config.qualityHD && <CheckCircle2 className="w-4 h-4" />}
-                                </button>
-                                <button 
-                                    onClick={() => setConfig({...config, enhanceLighting: !config.enhanceLighting})}
-                                    className={`flex items-center justify-between p-3 rounded-xl border transition-all ${config.enhanceLighting ? 'bg-indigo-50 border-indigo-100 text-indigo-700' : 'bg-gray-50 border-gray-100 text-gray-500'}`}
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <Sparkles className="w-4 h-4" />
-                                        <span className="text-xs font-bold">Mejorar Iluminación</span>
-                                    </div>
-                                    {config.enhanceLighting && <CheckCircle2 className="w-4 h-4" />}
                                 </button>
                                 <button 
                                     onClick={() => setConfig({...config, expandBackground: !config.expandBackground})}
@@ -273,7 +228,7 @@ const PostGenerator: React.FC = () => {
                                 >
                                     <div className="flex items-center gap-2">
                                         <Maximize className="w-4 h-4" />
-                                        <span className="text-xs font-bold">Expandir Fondo IA</span>
+                                        <span className="text-xs font-bold">Conversión Inteligente a Portrait</span>
                                     </div>
                                     {config.expandBackground && <CheckCircle2 className="w-4 h-4" />}
                                 </button>
@@ -283,7 +238,7 @@ const PostGenerator: React.FC = () => {
                                 >
                                     <div className="flex items-center gap-2">
                                         <UserCheck className="w-4 h-4" />
-                                        <span className="text-xs font-bold">Mantener Rostros Originales</span>
+                                        <span className="text-xs font-bold">Preservar Identidad</span>
                                     </div>
                                     {config.keepFaces && <CheckCircle2 className="w-4 h-4" />}
                                 </button>
@@ -329,7 +284,7 @@ const PostGenerator: React.FC = () => {
                         {isGenerating && (
                             <div className="flex items-center gap-2 px-3 py-1 bg-indigo-50 rounded-full">
                                 <Loader2 className="w-3 h-3 text-indigo-600 animate-spin" />
-                                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-wider">IA Procesando</span>
+                                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-wider">IA Convirtiendo...</span>
                             </div>
                         )}
                     </div>
@@ -353,10 +308,10 @@ const PostGenerator: React.FC = () => {
                         </div>
 
                         <div className="p-6">
-                            <div className="aspect-[4/5] bg-gray-50 rounded-2xl overflow-hidden mb-6 relative border border-gray-100">
-                                {selectedImage ? (
+                            <div className="aspect-[4/5] bg-gray-100 rounded-2xl overflow-hidden mb-6 relative border border-gray-100 shadow-inner">
+                                {generatedImageUrl || selectedImage ? (
                                     <img 
-                                        src={selectedImage.url} 
+                                        src={generatedImageUrl || selectedImage?.url} 
                                         className={`w-full h-full object-cover transition-all duration-700 ${isGenerating ? 'blur-xl scale-110 opacity-50' : 'blur-0 scale-100 opacity-100'}`} 
                                         alt="Preview"
                                     />
@@ -366,10 +321,20 @@ const PostGenerator: React.FC = () => {
                                         <p className="text-[10px] font-black uppercase tracking-widest">Esperando imagen...</p>
                                     </div>
                                 )}
+                                
+                                {generatedImageUrl && !isGenerating && (
+                                    <div className="absolute top-4 right-4 px-3 py-1 bg-green-500 text-white text-[10px] font-black rounded-full shadow-lg flex items-center gap-1.5 animate-bounce">
+                                        <Sparkles className="w-3 h-3" />
+                                        IA OPTIMIZADA
+                                    </div>
+                                )}
+
                                 {isGenerating && (
                                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-indigo-900/10 backdrop-blur-sm">
-                                        <div className="w-16 h-1 w-24 bg-gray-200 rounded-full overflow-hidden">
-                                            <div className="h-full w-2/3 bg-indigo-600 rounded-full animate-progress" />
+                                        <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
+                                        <div className="text-center px-6">
+                                            <p className="text-sm font-black text-indigo-900 uppercase tracking-tighter">Procesando imagen 4K</p>
+                                            <p className="text-[10px] font-bold text-indigo-600">Adaptando panorámica a portrait...</p>
                                         </div>
                                     </div>
                                 )}
@@ -441,12 +406,12 @@ const PostGenerator: React.FC = () => {
                                     {isGenerating ? (
                                         <>
                                             <Loader2 className="w-5 h-5 animate-spin" />
-                                            Generando...
+                                            Convirtiendo Imagen...
                                         </>
                                     ) : (
                                         <>
                                             <Sparkles className="w-5 h-5" />
-                                            Generar Publicación
+                                            Generar con IA (4K)
                                         </>
                                     )}
                                 </button>
@@ -470,6 +435,7 @@ const PostGenerator: React.FC = () => {
                 onSelect={(items) => {
                     if (items.length > 0) {
                         setSelectedImage(items[0]);
+                        setGeneratedImageUrl(null);
                     }
                 }}
             />
