@@ -36,7 +36,8 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
             'Soporte para imágenes 4K (4096px) en la Librería de Medios.',
             'Calidad de procesamiento al 100% (Lossless) para recortes de noticias y eventos.',
             'Preservación de formato PNG original para mantener transparencias y nitidez profesional.',
-            'Aumento de límites de compresión para evitar pixelación en pantallas grandes.'
+            'Aumento de límites de compresión para evitar pixelación en pantallas grandes.',
+            'TIP: Si ves imágenes pixeladas, realiza una nueva subida de archivo para aplicar la calidad 4K.'
         ]
     },
     {

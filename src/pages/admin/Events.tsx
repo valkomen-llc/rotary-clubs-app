@@ -124,9 +124,19 @@ const getCroppedBlob = async (imageSrc: string, pixelCrop: Area): Promise<Blob> 
     const blob = await resp.blob();
     const bitmap = await createImageBitmap(blob);
 
+    const maxDim = 4096;
+    let targetWidth = pixelCrop.width;
+    let targetHeight = pixelCrop.height;
+
+    if (targetWidth > maxDim) {
+        const scale = maxDim / targetWidth;
+        targetWidth = maxDim;
+        targetHeight = targetHeight * scale;
+    }
+
     const canvas = document.createElement('canvas');
-    canvas.width = HERO_W;
-    canvas.height = HERO_H;
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Canvas 2D context no disponible');
 
@@ -134,7 +144,7 @@ const getCroppedBlob = async (imageSrc: string, pixelCrop: Area): Promise<Blob> 
         bitmap,
         pixelCrop.x, pixelCrop.y,
         pixelCrop.width, pixelCrop.height,
-        0, 0, HERO_W, HERO_H,
+        0, 0, targetWidth, targetHeight,
     );
     bitmap.close();
 
