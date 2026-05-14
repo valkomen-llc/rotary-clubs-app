@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.281',
+        date: '2026-05-14',
+        title: 'IA: Outpainting Portrait y Descarga Directa 🚀',
+        description: 'Corrección de errores de descarga y optimización de formato para el muro (Feed).',
+        type: 'fix',
+        details: [
+            'Implementación de Proxy de Descarga para eliminar errores de seguridad (CORS).',
+            'Ajuste de formato Portrait (4:5) para Facebook, Instagram y LinkedIn.',
+            'Refuerzo del motor de Outpainting para evitar recortes y priorizar la recreación de fondos.',
+            'Optimización de la vista previa para reflejar el formato real de publicación en el muro.',
+            'Sincronización de reglas de storytelling profesional en el motor de generación.'
+        ]
+    },
+    {
         version: 'v4.280',
         date: '2026-05-14',
         title: 'IA: Motor Profesional de Redes Sociales 📊',

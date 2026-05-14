@@ -122,19 +122,8 @@ const PostGenerator: React.FC = () => {
 
     const downloadImage = async () => {
         if (!generatedImageUrl) return;
-        try {
-            const response = await fetch(generatedImageUrl);
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `rotary-post-${Date.now()}.png`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        } catch (err) {
-            toast.error('Error al descargar');
-        }
+        const proxyUrl = `${import.meta.env.VITE_API_URL || '/api'}/content-studio/download?url=${encodeURIComponent(generatedImageUrl)}`;
+        window.location.href = proxyUrl;
     };
 
     return (
@@ -291,7 +280,7 @@ const PostGenerator: React.FC = () => {
                         ) : (
                             <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 flex flex-col gap-6 h-full">
                                 {/* Preview Container */}
-                                <div className={`relative group mx-auto bg-black rounded-3xl overflow-hidden shadow-2xl border-[8px] border-white transition-all duration-500 ${activePlatform === 'x' ? 'max-w-full aspect-video' : 'max-w-[340px] aspect-[9/16]'}`}>
+                                <div className={`relative group mx-auto bg-black rounded-3xl overflow-hidden shadow-2xl border-[8px] border-white transition-all duration-500 ${activePlatform === 'x' ? 'max-w-full aspect-video' : 'max-w-[340px] aspect-[4/5]'}`}>
                                     <img src={generatedImageUrl || ''} alt="AI Created" className="w-full h-full object-cover" />
                                     
                                     <div className="absolute top-4 right-4 flex gap-2">

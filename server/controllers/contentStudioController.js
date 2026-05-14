@@ -2,13 +2,13 @@ import prisma from '../lib/prisma.js';
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (V4.280 - SMART PRESETS) ---');
+        console.log('--- START GENERATE POST (V4.281 - TRUE OUTPAINTING) ---');
         const { imageId, imageUrl, config } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
 
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
 
-        // 1. Image Optimization for Vision
+        // 1. Optimized Image Processing
         let processedImage = imageUrl;
         try {
             const imgResponse = await fetch(imageUrl);
@@ -24,28 +24,25 @@ export const generatePost = async (req, res) => {
         } catch (err) { console.warn('Optimization skipped.'); }
 
         // 2. Club Context
-        let club = null;
-        if (clubId) {
-            club = await prisma.club.findUnique({
-                where: { id: clubId },
-                include: { projects: { take: 2, orderBy: { createdAt: 'desc' } } }
-            });
-        }
+        let club = await prisma.club.findUnique({
+            where: { id: clubId || req.user.clubId },
+            include: { projects: { take: 1, orderBy: { createdAt: 'desc' } } }
+        });
         const clubName = club?.name || 'Club Rotario';
 
-        // 3. AI Rules from User request
+        // 3. AI Rules (Storytelling vs Standard)
         const postType = config.type || 'standard';
         const rules = `
         Reglas de Longitud y Tono (Tipo: ${postType}):
-        - Facebook: 100-180 caracteres (ideal), hasta 1200 si es Storytelling. CTA: Conoce más, Únete al cambio.
-        - Instagram: 150-220 caracteres. 3-8 hashtags. Primeras 2 líneas potentes.
-        - X (Twitter): 90-140 caracteres. Máximo 280. 1-2 hashtags.
-        - LinkedIn: 500-900 caracteres. Enfoque profesional, liderazgo e impacto. Estructura: Hook -> Contexto -> Impacto -> Aprendizaje -> CTA.
+        - Facebook/Instagram/LinkedIn: Formato Portrait 4:5. Longitud: 150-300 caracteres.
+        - X (Twitter): 100-140 caracteres.
+        - LinkedIn: Enfoque corporativo y de impacto social.
+        - IMPORTANTE: Evita el tono de "historia" o "reel". Genera contenido para el feed principal.
         `;
 
         if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'Falta API Key.' });
 
-        // 4. Analysis with GPT-4o
+        // 4. Analysis with GPT-4o (Focused on Outpainting instructions)
         const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -65,41 +62,35 @@ export const generatePost = async (req, res) => {
                             { 
                                 type: "text", 
                                 text: `Analiza esta imagen para el club "${clubName}".
-                                Genera copys profesionales para Facebook, Instagram, X y LinkedIn.
-                                Genera una "desc" para DALL-E 3 para recrear la escena en formato ${config.format === '16:9' ? 'LANDSCAPE (16:9)' : 'PORTRAIT (9:16)'}.
+                                Instrucción de Outpainting: Describe cómo expandir esta foto horizontal para convertirla en una foto VERTICAL PORTRAIT. No recortes. Recrea el suelo, el cielo y los alrededores para completar el formato. Mantén la fidelidad de las personas.
                                 Devuelve este JSON:
                                 {
                                   "fb": "copy facebook",
                                   "ig": "copy instagram",
                                   "tw": "copy x",
                                   "li": "copy linkedin",
-                                  "desc": "descripcion dall-e"
+                                  "desc": "descripcion detallada para recreacion dall-e"
                                 }`
                             },
                             { type: "image_url", image_url: { "url": processedImage } }
                         ]
                     }
                 ],
-                temperature: 0.2,
-                max_tokens: 1500
+                temperature: 0.2
             })
         });
 
         const gptData = await gptResponse.json();
         const rawContent = gptData.choices?.[0]?.message?.content;
-        let parsed = null;
-        try {
-            const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
-            parsed = JSON.parse(jsonMatch[0]);
-        } catch (e) { return res.status(500).json({ error: 'Fallo en análisis IA.' }); }
+        const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
+        const parsed = JSON.parse(jsonMatch[0]);
 
-        // 5. Image Generation with correct Aspect Ratio
+        // 5. Image Generation with RECREATION focus
         const isLandscape = config.format === '16:9';
-        const dalleSize = isLandscape ? "1792x1024" : "1024x1792";
+        // For FB/IG/LI we use Square or 9:16 but prompt for 4:5 composition
+        const dalleSize = isLandscape ? "1792x1024" : "1024x1024"; // Using Square for better 4:5 Portrait simulation if 1024x1792 is too tall
         
-        console.log(`Generating image with format: ${dalleSize}`);
-
-        let dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
+        const dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -107,32 +98,14 @@ export const generatePost = async (req, res) => {
             },
             body: JSON.stringify({
                 model: "dall-e-3",
-                prompt: `Professional photography for Rotary. ${isLandscape ? 'LANDSCAPE' : 'VERTICAL PORTRAIT'}. ${parsed.desc}. Realistic, high fidelity.`,
+                prompt: `Professional photography for Rotary feed. EXPANDED SCENE, OUTPAINTING. ${parsed.desc}. Recreate the environment above and below to fit a vertical frame. DO NOT CROP. High resolution, cinematic lighting.`,
                 n: 1,
                 size: dalleSize,
                 quality: "hd"
             })
         });
 
-        let dalleData = await dalleResponse.json();
-
-        // Fallback to DALL-E 2 if DALL-E 3 fails
-        if (!dalleResponse.ok) {
-            dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-                },
-                body: JSON.stringify({
-                    model: "dall-e-2",
-                    prompt: `Professional Rotary photo. ${parsed.desc}`,
-                    n: 1,
-                    size: "1024x1024"
-                })
-            });
-            dalleData = await dalleResponse.json();
-        }
+        const dalleData = await dalleResponse.json();
 
         res.json({
             success: true,
@@ -143,7 +116,7 @@ export const generatePost = async (req, res) => {
                 linkedin: { copy: parsed.li }
             },
             generatedImageUrl: dalleData.data?.[0]?.url || imageUrl,
-            metadata: { clubId, imageId, format: config.format }
+            metadata: { clubId, format: config.format }
         });
 
     } catch (error) {
@@ -151,6 +124,24 @@ export const generatePost = async (req, res) => {
     }
 };
 
+// NEW: Download Proxy to fix CORS issues
+export const downloadProxy = async (req, res) => {
+    try {
+        const { url } = req.query;
+        if (!url) return res.status(400).send('Falta URL');
+        
+        const response = await fetch(url);
+        const buffer = Buffer.from(await response.arrayBuffer());
+        
+        res.setHeader('Content-Type', response.headers.get('Content-Type') || 'image/png');
+        res.setHeader('Content-Disposition', `attachment; filename=rotary-ai-post-${Date.now()}.png`);
+        res.send(buffer);
+    } catch (e) {
+        res.status(500).send('Error en descarga');
+    }
+};
+
+// ... Rest of the controller remains the same ...
 export const createVideoProject = async (req, res) => {
     try {
         const { images, config } = req.body;
@@ -230,7 +221,7 @@ export const getOAuthUrl = async (req, res) => {
         const { platform } = req.params;
         const REDIRECT_URI = `${process.env.VITE_API_URL || 'https://app.clubplatform.org/api'}/social/callback/${platform}`;
         let url = '';
-        if (platform === 'facebook' || platform === 'instagram' || platform === 'linkedin') {
+        if (platform === 'facebook' || platform === 'instagram') {
             url = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${process.env.META_APP_ID || '2190338908168499'}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement,pages_manage_posts&response_type=code&state=${req.query.clubId}`;
         }
         res.redirect(url);

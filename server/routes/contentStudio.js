@@ -11,10 +11,14 @@ import {
     syncProjectStatus,
     deleteVideoProject,
     getOAuthUrl,
-    generatePost
+    generatePost,
+    downloadProxy
 } from '../controllers/contentStudioController.js';
 
 const router = express.Router();
+
+// Download Proxy
+router.get('/download', downloadProxy);
 
 // OAuth Redirection (Public for redirect, identity handled via state)
 router.get('/oauth/:platform/authorize', getOAuthUrl);
