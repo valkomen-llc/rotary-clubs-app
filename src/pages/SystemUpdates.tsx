@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.304',
+        date: '2026-05-14',
+        title: 'IA: Regeneración Cinematográfica Real (Outpainting) 🎨',
+        description: 'Implementación del motor de expansión de escenas basado en DALL-E 3.',
+        type: 'major',
+        details: [
+            'Activación de "True Outpainting": Expansión vertical de escenas (techo/suelo) en formato Portrait.',
+            'Optimización de prompts visuales en inglés para máxima fidelidad con DALL-E 3.',
+            'Eliminación de recortes automáticos: la IA ahora "inventa" coherentemente lo que falta.',
+            'Renombramiento del motor a "GENERAR CON IA" para mayor claridad del usuario.',
+            'Forzado de modo Vivid HD para resultados con nitidez y color profesional 8K.'
+        ]
+    },
+    {
         version: 'v4.303',
         date: '2026-05-14',
         title: 'IA: Garantía Absoluta de Contenido 🛡️',

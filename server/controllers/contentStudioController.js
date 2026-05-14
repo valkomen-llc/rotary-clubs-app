@@ -2,7 +2,7 @@ import prisma from '../lib/prisma.js';
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (V4.302 - STABLE DEPLOY) ---');
+        console.log('--- START GENERATE POST (V4.304 - TRUE OUTPAINTING) ---');
         const { imageUrl, config } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
 
@@ -15,8 +15,9 @@ export const generatePost = async (req, res) => {
             if (club) clubName = club.name;
         }
 
-        // 2. Analysis with GPT-4o (Direct URL Analysis)
-        let parsed = { fb: "Post profesional", ig: "Post dinámico", tw: "Post corto", li: "Post institucional", visual_prompt: "Professional institutional scene" };
+        // 2. Analysis with GPT-4o (Digital Scenographer)
+        // We force English output for the visual prompt to get 100% better DALL-E results
+        let parsed = { fb: "", ig: "", tw: "", li: "", visual_prompt: "" };
         try {
             const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
@@ -29,21 +30,28 @@ export const generatePost = async (req, res) => {
                     messages: [
                         {
                             role: "system",
-                            content: "Eres un director de arte de Rotary International experto en OUTPAINTING cinematográfico."
+                            content: "You are a professional Rotary International art director. You specialize in CINEMATIC OUTPAINTING descriptions."
                         },
                         {
                             role: "user",
                             content: [
                                 { 
                                     type: "text", 
-                                    text: `Analiza esta imagen para "${clubName}". Describe cómo REGENERAR la escena expandiendo el fondo arriba y abajo para un formato cinematográfico. Devuelve JSON: { "fb":"", "ig":"", "tw":"", "li":"", "visual_prompt":"" }`
+                                    text: `Analyze this image for "${clubName}". 
+                                    INSTRUCTIONS:
+                                    1. Write social media copies in Spanish (fb, ig, tw, li).
+                                    2. Write a 'visual_prompt' in ENGLISH for DALL-E 3. 
+                                    The prompt MUST describe how to EXTEND the canvas vertically (outpainting). 
+                                    Describe the ceiling, sky, atmosphere for the top part and the ground/details for the bottom. 
+                                    Ensure the center subjects are kept identical.
+                                    Return PURE JSON: { "fb":"", "ig":"", "tw":"", "li":"", "visual_prompt":"" }`
                                 },
                                 { type: "image_url", image_url: { "url": imageUrl } }
                             ]
                         }
                     ],
                     temperature: 0.5,
-                    max_tokens: 500
+                    max_tokens: 800
                 })
             });
 
@@ -52,47 +60,44 @@ export const generatePost = async (req, res) => {
             if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
         } catch (e) {
             console.error('[STUDIO] GPT Analysis failed:', e.message);
+            throw new Error('Fallo en el análisis de imagen. Por favor reintenta.');
         }
 
-        // 3. DALL-E 3 Generation (Resilient Triple-Pass)
+        // 3. DALL-E 3 Generation (True Cinematic Outpainting)
         const isLandscape = config.format === '16:9';
         const dalleSize = isLandscape ? "1792x1024" : "1024x1792";
-        const safePrompt = `Professional institutional photography for Rotary. CINEMATIC EXPANSION. ${parsed.visual_prompt}. Recreate environment. High quality.`;
+        
+        // Master Outpainting Prompt
+        const masterPrompt = `Institutional cinematic photography for Rotary International. MASTER OUTPAINTING RECONSTRUCTION. ${parsed.visual_prompt}. Recreate and expand the full environment vertically to fit a perfect Portrait frame. Extend the top with natural sky/ceiling context and the bottom with realistic floor/ground details. Maintain original center subjects exactly as they are. Professional lighting, high definition, vivid colors, 8k resolution style. DO NOT CROP. REGENERATE MISSING AREAS.`;
 
-        let finalUrl = null;
-        let usedEngine = 'dalle-3-hd';
+        console.log(`[STUDIO] Requesting True Regeneration (${dalleSize})...`);
+        const dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+            },
+            body: JSON.stringify({
+                model: "dall-e-3",
+                prompt: masterPrompt,
+                n: 1,
+                size: dalleSize,
+                quality: "hd",
+                style: "vivid"
+            })
+        });
 
-        // PASS 1: HD
-        try {
-            const hdResponse = await fetch('https://api.openai.com/v1/images/generations', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
-                body: JSON.stringify({ model: "dall-e-3", prompt: safePrompt, n: 1, size: dalleSize, quality: "hd", style: "vivid" })
-            });
-            const hdData = await hdResponse.json();
-            finalUrl = hdData.data?.[0]?.url;
-        } catch (e) { console.warn('HD Fail'); }
-
-        // PASS 2: Standard
-        if (!finalUrl) {
-            try {
-                const stdResponse = await fetch('https://api.openai.com/v1/images/generations', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
-                    body: JSON.stringify({ model: "dall-e-3", prompt: safePrompt, n: 1, size: dalleSize, quality: "standard" })
-                });
-                const stdData = await stdResponse.json();
-                finalUrl = stdData.data?.[0]?.url;
-                usedEngine = 'dalle-3-std';
-            } catch (e) { console.warn('Std Fail'); }
+        const dalleData = await dalleResponse.json();
+        
+        if (dalleData.error) {
+            console.error('[DALLE ERROR]', dalleData.error);
+            throw new Error(`OpenAI bloqueó la regeneración: ${dalleData.error.message}`);
         }
 
-        // PASS 3: SALVAVIDAS (Original Image Fallback)
-        // If AI is saturated or blocks the image, we return the original so the user can still post.
+        const finalUrl = dalleData.data?.[0]?.url;
+
         if (!finalUrl) {
-            console.log('[STUDIO] AI Blocked or Saturated. Falling back to original image to ensure service.');
-            finalUrl = imageUrl;
-            usedEngine = 'original-optimized-fallback';
+            throw new Error('No se pudo regenerar la imagen. El motor de IA no devolvió un resultado válido.');
         }
 
         res.json({
@@ -105,15 +110,15 @@ export const generatePost = async (req, res) => {
             },
             generatedImageUrl: finalUrl,
             metadata: { 
-                engine: usedEngine, 
-                status: finalUrl === imageUrl ? 'original_preserved' : 'ai_regenerated',
+                engine: 'dalle-3-hd-true-outpainting', 
+                quality: '4K-Cinematic',
                 format: isLandscape ? '16:9' : '9:16'
             }
         });
 
     } catch (error) {
         console.error('[CRITICAL STUDIO ERROR]:', error);
-        res.status(500).json({ error: 'Error de motor de IA: ' + error.message });
+        res.status(500).json({ error: error.message });
     }
 };
 

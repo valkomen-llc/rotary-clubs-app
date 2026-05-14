@@ -233,12 +233,12 @@ const PostGenerator: React.FC = () => {
                         {isGenerating ? (
                             <>
                                 <RefreshCw className="w-7 h-7 animate-spin" />
-                                OPTIMIZANDO...
+                                REGENERANDO ESCENA...
                             </>
                         ) : (
                             <>
                                 <Sparkles className="w-7 h-7" />
-                                GENERAR CONTENIDO (4K)
+                                GENERAR CON IA
                             </>
                         )}
                     </button>
