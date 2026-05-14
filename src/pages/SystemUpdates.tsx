@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.266',
+        date: '2026-05-14',
+        title: 'UX/IA: Estabilidad y Visibilidad 💎',
+        description: 'Mejoras críticas en la visibilidad del generador y control de tiempos de espera.',
+        type: 'improvement',
+        details: [
+            'Nuevo diseño de botón "Generar con IA" con alto contraste (Blue Power) para evitar confusión visual.',
+            'Implementación de Timeout de seguridad (2 min) en el cliente para procesos pesados de IA.',
+            'Refuerzo visual del estado "Deshabilitado" con guía dinámica para el usuario.',
+            'Optimización de la carga de previsualización con bordes suavizados y sombras de profundidad.',
+            'Mejora en la legibilidad de copies y hashtags generados.'
+        ]
+    },
+    {
         version: 'v4.265',
         date: '2026-05-14',
         title: 'Content Studio: Corrección de Integración 🛠️',
