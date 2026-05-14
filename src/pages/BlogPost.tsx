@@ -822,533 +822,568 @@ const BlogPost = () => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (selectedMediaIndex === null) return;
-      if (e.key === 'ArrowRight') handleNextMedia();
-      if (e.key === 'ArrowLeft') handlePrevMedia();
-      if (e.key === 'Escape') setSelectedMediaIndex(null);
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedMediaIndex]);
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-white">
-        <Navbar />
-        <div className="py-40 text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-rotary-blue mx-auto mb-4"></div>
-          <p className="text-gray-500">Cargando artículo...</p>
+    const SkeletonLoader = () => (
+    <div className="animate-in fade-in duration-500">
+      {/* Skeleton Hero */}
+      <section className="relative">
+        <div className="relative h-[400px] md:h-[500px] bg-gray-100 animate-pulse overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-t from-gray-200 via-transparent to-transparent" />
         </div>
-        <Footer />
-      </div>
-    );
-  }
-
-  if (error || !articulo) {
-    return (
-      <div className="min-h-screen bg-white">
-        <Navbar />
-        <div className="py-20 text-center px-4">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Artículo no encontrado</h1>
-          <p className="text-gray-600 mb-6">El artículo que buscas no existe o ha sido eliminado.</p>
-          <Link to="/blog" className="text-rotary-blue hover:underline">
-            Volver al blog
-          </Link>
+        <div className="absolute bottom-0 left-0 right-0 pb-8 md:pb-12">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="h-6 w-24 bg-gray-200 rounded-full mb-4 animate-pulse" />
+            <div className="h-10 md:h-14 w-3/4 bg-gray-200 rounded-xl mb-4 animate-pulse" />
+            <div className="flex gap-4 md:gap-6">
+              <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+              <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+              <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+            </div>
+          </div>
         </div>
-        <Footer />
-      </div>
-    );
-  }
+      </section>
+
+      {/* Skeleton Content */}
+      <article className="py-12 md:py-16">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="h-4 w-32 bg-gray-100 rounded mb-10 animate-pulse" />
+          <div className="space-y-4 mb-12">
+            <div className="h-4 w-full bg-gray-50 rounded animate-pulse" />
+            <div className="h-4 w-full bg-gray-50 rounded animate-pulse" />
+            <div className="h-4 w-5/6 bg-gray-50 rounded animate-pulse" />
+            <div className="h-4 w-full bg-gray-50 rounded animate-pulse" />
+            <div className="h-4 w-4/5 bg-gray-50 rounded animate-pulse" />
+          </div>
+          <div className="h-[400px] w-full bg-gray-50 rounded-3xl mb-12 animate-pulse" />
+          <div className="space-y-4">
+            <div className="h-4 w-full bg-gray-50 rounded animate-pulse" />
+            <div className="h-4 w-full bg-gray-50 rounded animate-pulse" />
+            <div className="h-4 w-3/4 bg-gray-50 rounded animate-pulse" />
+          </div>
+        </div>
+      </article>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
 
-      {/* Hero del Artículo */}
-      <section className="relative">
-        <div className="relative h-[400px] md:h-[500px] overflow-hidden">
-          <img
-            src={articulo.imagen}
-            alt={articulo.titulo}
-            className="w-full h-full object-cover"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
-        </div>
-
-        <div className="absolute bottom-0 left-0 right-0 pb-8 md:pb-12">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-            {/* Categoría */}
-            <span className="inline-block bg-rotary-gold text-white text-sm font-semibold px-4 py-1 rounded-full mb-4">
-              {articulo.categoria}
-            </span>
-
-            {/* Título */}
-            <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold text-white mb-4 leading-tight">
-              {articulo.titulo}
-            </h1>
-
-            {/* Meta información */}
-            <div className="flex flex-wrap items-center gap-4 md:gap-6 text-white/80 text-sm">
-              <span className="flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
-                {articulo.fecha}
-              </span>
-              <span className="flex items-center gap-2">
-                <User className="w-4 h-4" />
-                {articulo.autor}
-              </span>
-              <span className="flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                {articulo.tiempoLectura} de lectura
-              </span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Contenido del Artículo */}
-      <article className="py-12 md:py-16">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Botón volver */}
-          <button
-            onClick={() => navigate('/blog')}
-            className="flex items-center gap-2 text-gray-600 hover:text-rotary-blue transition-colors mb-10"
+      <AnimatePresence mode="wait">
+        {isLoading ? (
+          <motion.div
+            key="loading"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
           >
-            <ArrowLeft className="w-4 h-4" />
-            Volver al blog
-          </button>
-
-          {/* Contenido */}
-          <div
-            className="prose max-w-none mb-12 w-full"
-            dangerouslySetInnerHTML={{ __html: (articulo.contenido || '')
-              .replace(/text-align\s*:\s*justify/gi, 'text-align: left')
-              .replace(/word-break\s*:\s*[^;"]+;?/gi, '')
-              .replace(/word-wrap\s*:\s*[^;"]+;?/gi, '')
-              .replace(/overflow-wrap\s*:\s*[^;"]+;?/gi, '')
-              .replace(/white-space\s*:\s*[^;"]+;?/gi, '')
-              .replace(/&nbsp;/gi, ' ')
-              .replace(/\u00A0/g, ' ')
-            }}
-          />
-
-          {articulo.videoUrl && (
-            <div className="mt-12 mb-16">
-              <div className="relative aspect-video rounded-3xl overflow-hidden shadow-2xl border-8 border-gray-100/50 group">
-                {(articulo.videoUrl.includes('youtube.com') || articulo.videoUrl.includes('youtu.be')) ? (
-                  <iframe
-                    className="absolute inset-0 w-full h-full"
-                    src={`https://www.youtube.com/embed/${articulo.videoUrl.split('v=')[1]?.split('&')[0] || articulo.videoUrl.split('/').pop()}`}
-                    title="Video principal"
-                    frameBorder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  ></iframe>
-                ) : (
-                  <video
-                    className="absolute inset-0 w-full h-full object-contain bg-black"
-                    src={articulo.videoUrl}
-                    controls
-                    playsInline
-                  />
-                )}
+            <SkeletonLoader />
+          </motion.div>
+        ) : error || !articulo ? (
+          <motion.div
+            key="error"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="py-20 text-center px-4"
+          >
+            <h1 className="text-2xl font-bold text-gray-900 mb-4 font-rotary">Artículo no encontrado</h1>
+            <p className="text-gray-600 mb-6">El artículo que buscas no existe o ha sido eliminado.</p>
+            <Link to="/blog" className="inline-flex items-center gap-2 text-rotary-blue font-bold hover:underline">
+              <ArrowLeft className="w-4 h-4" />
+              Volver al blog
+            </Link>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="content"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.6 }}
+          >
+            {/* Hero del Artículo */}
+            <section className="relative">
+              <div className="relative h-[400px] md:h-[500px] overflow-hidden">
+                <img
+                  src={articulo.imagen}
+                  alt={articulo.titulo}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
               </div>
-            </div>
-          )}
 
-          {/* Galería Adaptativa (Imágenes y Videos) */}
-          {((articulo.images && articulo.images.length > 0) || (articulo.videoGallery && articulo.videoGallery.length > 0)) && (
-            <div className="mt-12 mb-16">
-              <div className="flex items-center justify-between mb-8">
-                <h3 className="text-[20px] font-black text-gray-900 border-b-4 border-rotary-gold pb-1 inline-block uppercase tracking-tight">Galería Multimedia</h3>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{articulo.images.length + (articulo.videoGallery?.length || 0)} ARCHIVOS</p>
-              </div>
-              
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 auto-rows-[220px]">
-                {/* Mezclar videos e imágenes */}
-                {allMedia.map((item: any, index: number) => {
-                   // Patrón para que la primera sea grande y ocupe 2x2 en un grid de 3 columnas
-                   const isFirstLarge = index === 0;
-                   const isYouTube = item.type === 'video' && (item.url.includes('youtube.com') || item.url.includes('youtu.be'));
-                   
-                   return (
-                     <motion.div 
-                       key={index} 
-                       initial={{ opacity: 0, y: 20 }}
-                       whileInView={{ opacity: 1, y: 0 }}
-                       viewport={{ once: true }}
-                       transition={{ delay: index * 0.05 }}
-                       className={`relative rounded-2xl overflow-hidden shadow-md group cursor-pointer border border-gray-100 ${isFirstLarge ? 'md:col-span-2 md:row-span-2' : 'col-span-1'}`}
-                       onClick={() => setSelectedMediaIndex(index)}
-                     >
-                       {item.type === 'video' ? (
-                         <div className="w-full h-full bg-gray-900 flex items-center justify-center relative">
-                            {isYouTube ? (
-                              <div className="absolute inset-0 opacity-40">
-                                <img 
-                                  src={`https://img.youtube.com/vi/${item.url.split('v=')[1]?.split('&')[0] || item.url.split('/').pop()}/0.jpg`} 
-                                  className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all"
-                                  alt=""
-                                />
-                              </div>
-                            ) : (
-                              <video 
-                                className="absolute inset-0 w-full h-full object-cover opacity-40 grayscale group-hover:grayscale-0 transition-all"
-                                src={item.url}
-                                muted
-                                preload="metadata"
-                              />
-                            )}
-                            <div className="bg-rotary-blue text-white p-4 rounded-full relative z-10 group-hover:scale-110 transition-transform shadow-xl">
-                              <Play className="w-6 h-6 fill-white" />
-                            </div>
-                            <div className="absolute bottom-4 left-4 z-20 flex items-center gap-2">
-                              <VideoIcon className="w-4 h-4 text-white" />
-                              <span className="text-[10px] font-black text-white uppercase tracking-widest">Video</span>
-                            </div>
-                         </div>
-                       ) : (
-                         <>
-                            <img
-                             src={item.url}
-                             alt={`Galería ${index + 1}`}
-                             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                           />
-                           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
-                              <Maximize2 className="w-5 h-5 text-white" />
-                           </div>
-                         </>
-                       )}
-                     </motion.div>
-                   );
-                })}
-              </div>
-            </div>
-          )}
+              <div className="absolute bottom-0 left-0 right-0 pb-8 md:pb-12">
+                <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+                  {/* Categoría */}
+                  <motion.span 
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.3 }}
+                    className="inline-block bg-rotary-gold text-white text-sm font-semibold px-4 py-1 rounded-full mb-4 shadow-lg shadow-rotary-gold/20"
+                  >
+                    {articulo.categoria}
+                  </motion.span>
 
-          {/* Lightbox Immersivo */}
-          <AnimatePresence>
-            {selectedMediaIndex !== null && allMedia[selectedMediaIndex] && (
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/95 p-4 md:p-10 backdrop-blur-sm"
-                onClick={() => setSelectedMediaIndex(null)}
-              >
-                {/* Controles del Lightbox */}
-                <div className="absolute top-6 right-6 flex items-center gap-6 z-[10000]">
-                   <span className="text-white/50 text-xs font-black tracking-[0.2em]">
-                     {selectedMediaIndex + 1} / {allMedia.length}
-                   </span>
-                   <button 
-                     className="text-white hover:text-rotary-gold transition-colors"
-                     onClick={(e) => { e.stopPropagation(); setSelectedMediaIndex(null); }}
-                   >
-                     <CloseIcon className="w-10 h-10" />
-                   </button>
+                  {/* Título */}
+                  <motion.h1 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.4 }}
+                    className="text-2xl md:text-4xl lg:text-5xl font-bold text-white mb-4 leading-tight font-rotary"
+                  >
+                    {articulo.titulo}
+                  </motion.h1>
+
+                  {/* Meta información */}
+                  <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.5 }}
+                    className="flex flex-wrap items-center gap-4 md:gap-6 text-white/80 text-sm font-medium"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-rotary-gold" />
+                      {articulo.fecha}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <User className="w-4 h-4 text-rotary-gold" />
+                      {articulo.autor}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-rotary-gold" />
+                      {articulo.tiempoLectura} de lectura
+                    </span>
+                  </motion.div>
                 </div>
+              </div>
+            </section>
 
-                {/* Botones de Navegación Lateral */}
-                {allMedia.length > 1 && (
-                  <>
-                   <button 
-                     className="absolute left-4 md:left-10 top-1/2 -translate-y-1/2 p-3 bg-white/5 hover:bg-white/10 text-white rounded-full transition-all z-[10000] border border-white/10 group backdrop-blur-md"
-                     onClick={handlePrevMedia}
-                   >
-                     <ChevronLeft className="w-8 h-8 group-hover:-translate-x-1 transition-transform" />
-                   </button>
-                   <button 
-                     className="absolute right-4 md:right-10 top-1/2 -translate-y-1/2 p-3 bg-white/5 hover:bg-white/10 text-white rounded-full transition-all z-[10000] border border-white/10 group backdrop-blur-md"
-                     onClick={handleNextMedia}
-                   >
-                     <ChevronRight className="w-8 h-8 group-hover:translate-x-1 transition-transform" />
-                   </button>
-                  </>
-                )}
-
-                <motion.div 
-                  key={selectedMediaIndex} // Force re-animation on index change
-                  initial={{ scale: 0.9, opacity: 0, x: 20 }}
-                  animate={{ scale: 1, opacity: 1, x: 0 }}
-                  exit={{ scale: 0.9, opacity: 0, x: -20 }}
-                  className="max-w-7xl w-full max-h-full flex items-center justify-center relative"
-                  onClick={(e) => e.stopPropagation()}
+            {/* Contenido del Artículo */}
+            <article className="py-12 md:py-16">
+              <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+                {/* Botón volver */}
+                <button
+                  onClick={() => navigate('/blog')}
+                  className="flex items-center gap-2 text-gray-500 hover:text-rotary-blue font-bold transition-all mb-10 group"
                 >
-                  {allMedia[selectedMediaIndex].type === 'video' ? (
-                    <div className="w-full aspect-video rounded-2xl overflow-hidden shadow-2xl bg-black">
-                      {(allMedia[selectedMediaIndex].url.includes('youtube.com') || allMedia[selectedMediaIndex].url.includes('youtu.be')) ? (
+                  <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+                  Volver al blog
+                </button>
+
+                {/* Contenido */}
+                <div
+                  className="prose prose-lg prose-rotary max-w-none mb-12 w-full text-gray-700 leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: (articulo.contenido || '')
+                    .replace(/text-align\s*:\s*justify/gi, 'text-align: left')
+                    .replace(/word-break\s*:\s*[^;"]+;?/gi, '')
+                    .replace(/word-wrap\s*:\s*[^;"]+;?/gi, '')
+                    .replace(/overflow-wrap\s*:\s*[^;"]+;?/gi, '')
+                    .replace(/white-space\s*:\s*[^;"]+;?/gi, '')
+                    .replace(/&nbsp;/gi, ' ')
+                    .replace(/\u00A0/g, ' ')
+                  }}
+                />
+
+                {articulo.videoUrl && (
+                  <div className="mt-12 mb-16">
+                    <div className="relative aspect-video rounded-3xl overflow-hidden shadow-2xl border-8 border-gray-100/50 group bg-black">
+                      {(articulo.videoUrl.includes('youtube.com') || articulo.videoUrl.includes('youtu.be')) ? (
                         <iframe
-                          className="w-full h-full border-none"
-                          src={`https://www.youtube.com/embed/${allMedia[selectedMediaIndex].url.split('v=')[1]?.split('&')[0] || allMedia[selectedMediaIndex].url.split('/').pop()}?autoplay=1`}
+                          className="absolute inset-0 w-full h-full"
+                          src={`https://www.youtube.com/embed/${articulo.videoUrl.split('v=')[1]?.split('&')[0] || articulo.videoUrl.split('/').pop()}`}
+                          title="Video principal"
+                          frameBorder="0"
                           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                           allowFullScreen
                         ></iframe>
                       ) : (
                         <video
-                          className="w-full h-full object-contain"
-                          src={allMedia[selectedMediaIndex].url}
+                          className="absolute inset-0 w-full h-full object-contain"
+                          src={articulo.videoUrl}
                           controls
-                          autoPlay
                           playsInline
                         />
                       )}
                     </div>
-                  ) : (
-                    <img 
-                      src={allMedia[selectedMediaIndex].url} 
-                      className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl select-none"
-                      alt="Full view"
-                    />
-                  )}
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                  </div>
+                )}
 
-          {/* Compartir */}
-          <div className="mt-12 pt-8 border-t border-gray-200">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
-              <div>
-                <span className="flex items-center gap-2 text-gray-600 font-medium mb-3">
-                  <Share2 className="w-4 h-4" />
-                  Compartir artículo
-                </span>
-                <div className="flex gap-3">
-                  <button className="w-10 h-10 flex items-center justify-center bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors">
-                    <Facebook className="w-5 h-5" />
-                  </button>
-                  <button className="w-10 h-10 flex items-center justify-center bg-sky-500 text-white rounded-full hover:bg-sky-600 transition-colors">
-                    <Twitter className="w-5 h-5" />
-                  </button>
-                  <button className="w-10 h-10 flex items-center justify-center bg-blue-700 text-white rounded-full hover:bg-blue-800 transition-colors">
-                    <Linkedin className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <Tag className="w-4 h-4" />
-                <span>{articulo.categoria}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </article>
-
-      {/* Comentarios y Calificaciones */}
-      <section className="py-12 md:py-16 bg-white border-t border-gray-100">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3 mb-10">
-            <MessageSquare className="w-6 h-6 text-rotary-blue" />
-            <h2 className="text-2xl font-bold text-gray-900">Comentarios y Calificaciones</h2>
-            <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-sm font-medium">
-              {comments.length}
-            </span>
-          </div>
-
-          {/* Lista de Comentarios */}
-          <div className="space-y-8 mb-16">
-            {loadingComments ? (
-               <div className="text-center py-10">
-                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-rotary-blue mx-auto"></div>
-               </div>
-            ) : comments.length > 0 ? (
-              comments.map((comment) => (
-                <div key={comment.id} className="bg-gray-50 rounded-2xl p-6 border border-gray-100 transition-all hover:shadow-md">
-                   <div className="flex justify-between items-start mb-4">
-                     <div className="flex items-center gap-3">
-                       <div className="w-10 h-10 bg-rotary-blue/10 rounded-full flex items-center justify-center text-rotary-blue font-bold text-sm">
-                         {comment.firstName?.[0] || 'U'}{comment.lastName?.[0] || ''}
-                       </div>
-                       <div>
-                         <h4 className="font-semibold text-gray-900">{comment.firstName} {comment.lastName}</h4>
-                         <p className="text-xs text-gray-500">
-                           {new Date(comment.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
-                         </p>
-                       </div>
-                     </div>
-                     <div className="flex gap-0.5">
-                       {[...Array(5)].map((_, i) => (
-                         <Star 
-                           key={i} 
-                           className={`w-4 h-4 ${i < comment.rating ? 'fill-rotary-gold text-rotary-gold' : 'text-gray-300'}`} 
-                         />
-                       ))}
-                     </div>
-                   </div>
-                   <p className="text-gray-700 leading-relaxed text-sm whitespace-pre-line">
-                     {comment.text}
-                   </p>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-10 bg-gray-50 rounded-2xl border border-dashed border-gray-200 text-gray-500">
-                Aún no hay comentarios. ¡Sé el primero en compartir tu opinión!
-              </div>
-            )}
-          </div>
-
-          {/* Formulario */}
-          <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-xl">
-             <h3 className="text-xl font-bold text-gray-900 mb-6 font-rotary leading-tight">Deja un comentario</h3>
-             
-             {commentSuccess ? (
-               <div className="bg-green-50 text-green-700 p-6 rounded-2xl flex items-center gap-4 mb-6 animate-in fade-in slide-in-from-top-4">
-                 <CheckCircle className="w-8 h-8 flex-shrink-0" />
-                 <div>
-                   <p className="font-bold">¡Comentario enviado con éxito!</p>
-                   <p className="text-sm">Gracias por tu opinión y calificación.</p>
-                 </div>
-               </div>
-             ) : null}
-
-             <form onSubmit={handleCommentSubmit} className="space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                   <div className="space-y-2">
-                     <label className="text-sm font-medium text-gray-700">Nombre</label>
-                     <input 
-                       required 
-                       type="text" 
-                       value={commentForm.firstName}
-                       onChange={(e) => setCommentForm({...commentForm, firstName: e.target.value})}
-                       className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
-                       placeholder="Escribre tu nombre"
-                     />
-                   </div>
-                   <div className="space-y-2">
-                     <label className="text-sm font-medium text-gray-700">Apellidos</label>
-                     <input 
-                       required 
-                       type="text" 
-                       value={commentForm.lastName}
-                       onChange={(e) => setCommentForm({...commentForm, lastName: e.target.value})}
-                       className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
-                       placeholder="Escribe tus apellidos"
-                     />
-                   </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                   <div className="space-y-2">
-                     <label className="text-sm font-medium text-gray-700">Correo electrónico</label>
-                     <input 
-                       required 
-                       type="email" 
-                       value={commentForm.email}
-                       onChange={(e) => setCommentForm({...commentForm, email: e.target.value})}
-                       className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
-                       placeholder="ejemplo@correo.com"
-                     />
-                   </div>
-                   <div className="space-y-2">
-                     <label className="text-sm font-medium text-gray-700">Número de celular</label>
-                     <input 
-                       type="tel" 
-                       value={commentForm.phone}
-                       onChange={(e) => setCommentForm({...commentForm, phone: e.target.value})}
-                       className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
-                       placeholder="+57 300 000 0000"
-                     />
-                   </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                   <div className="space-y-2">
-                     <label className="text-sm font-medium text-gray-700">País</label>
-                     <select 
-                       value={commentForm.country}
-                       onChange={(e) => setCommentForm({...commentForm, country: e.target.value})}
-                       className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all"
-                     >
-                       <option value="Colombia">Colombia</option>
-                       <option value="Argentina">Argentina</option>
-                       <option value="México">México</option>
-                       <option value="España">España</option>
-                       <option value="Estados Unidos">Estados Unidos</option>
-                       <option value="Chile">Chile</option>
-                       <option value="Perú">Perú</option>
-                       <option value="Ecuador">Ecuador</option>
-                       <option value="Otro">Otro</option>
-                     </select>
-                   </div>
-                   <div className="space-y-2">
-                     <label className="text-sm font-medium text-gray-700">Calificación</label>
-                     <div className="flex gap-2 py-3">
-                        {[1,2,3,4,5].map((star) => (
-                           <button
-                             type="button"
-                             key={star}
-                             onClick={() => setCommentForm({...commentForm, rating: star})}
-                             className="transition-transform hover:scale-110"
-                           >
-                             <Star className={`w-6 h-6 ${commentForm.rating >= star ? 'fill-rotary-gold text-rotary-gold' : 'text-gray-300'}`} />
-                           </button>
-                        ))}
-                     </div>
-                   </div>
-                </div>
-
-                <div className="space-y-2">
-                   <label className="text-sm font-medium text-gray-700">Tu comentario</label>
-                   <textarea 
-                     required 
-                     rows={4}
-                     value={commentForm.text}
-                     onChange={(e) => setCommentForm({...commentForm, text: e.target.value})}
-                     className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-rotary-blue focus:border-transparent outline-none transition-all resize-none"
-                     placeholder="Comparte tu experiencia..."
-                   />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={submittingComment}
-                  className="w-full bg-rotary-blue text-white font-bold py-4 rounded-xl hover:bg-rotary-blue/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-rotary-blue/20"
-                >
-                  {submittingComment ? (
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                  ) : (
-                    <>
-                      <Send className="w-5 h-5" />
-                      Enviar Comentario
-                    </>
-                  )}
-                </button>
-             </form>
-          </div>
-        </div>
-      </section>
-
-      {/* Artículos Relacionados - Solo mostrar si hay al menos 4 otros artículos (total 5) */}
-      {otrosArticulos.length >= 4 && (
-        <section className="py-12 md:py-16 bg-rotary-concrete">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-8">Artículos relacionados</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {otrosArticulos
-                .slice(0, 3)
-                .map((relacionado) => (
-                  <Link
-                    key={relacionado.id}
-                    to={`/blog/${relacionado.slug || relacionado.id}`}
-                    className="group bg-white rounded-xl overflow-hidden shadow-md hover:shadow-lg transition-all"
-                  >
-                    <div className="relative aspect-[16/10] overflow-hidden">
-                      <img
-                        src={relacionado.image || relacionado.imagen}
-                        alt={relacionado.title || relacionado.titulo}
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      />
-                      <span className="absolute top-3 left-3 bg-rotary-gold text-white text-xs font-semibold px-2 py-1 rounded">
-                        {relacionado.category || relacionado.categoria}
-                      </span>
+                {/* Galería Adaptativa */}
+                {((articulo.images && articulo.images.length > 0) || (articulo.videoGallery && articulo.videoGallery.length > 0)) && (
+                  <div className="mt-12 mb-16">
+                    <div className="flex items-center justify-between mb-8 border-b border-gray-100 pb-4">
+                      <h3 className="text-xl font-bold text-gray-900 font-rotary uppercase tracking-tight">Galería Multimedia</h3>
+                      <p className="text-xs font-black text-gray-400 uppercase tracking-widest">{allMedia.length} ARCHIVOS</p>
                     </div>
-                    <div className="p-4">
-                      <h3 className="font-semibold text-gray-900 line-clamp-2 group-hover:text-rotary-blue transition-colors">
-                        {relacionado.title || relacionado.titulo}
-                      </h3>
-                      <span className="flex items-center gap-1 text-rotary-blue text-sm mt-2 group-hover:underline">
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 auto-rows-[220px]">
+                      {allMedia.map((item: any, index: number) => {
+                         const isFirstLarge = index === 0;
+                         const isYouTube = item.type === 'video' && (item.url.includes('youtube.com') || item.url.includes('youtu.be'));
+                         
+                         return (
+                           <motion.div 
+                             key={index} 
+                             initial={{ opacity: 0, y: 20 }}
+                             whileInView={{ opacity: 1, y: 0 }}
+                             viewport={{ once: true, margin: "-50px" }}
+                             transition={{ delay: index * 0.05 }}
+                             className={`relative rounded-2xl overflow-hidden shadow-sm group cursor-pointer border border-gray-100 ${isFirstLarge ? 'md:col-span-2 md:row-span-2' : 'col-span-1'}`}
+                             onClick={() => setSelectedMediaIndex(index)}
+                           >
+                             {item.type === 'video' ? (
+                               <div className="w-full h-full bg-gray-900 flex items-center justify-center relative">
+                                  {isYouTube ? (
+                                    <div className="absolute inset-0 opacity-60">
+                                      <img 
+                                        src={`https://img.youtube.com/vi/${item.url.split('v=')[1]?.split('&')[0] || item.url.split('/').pop()}/0.jpg`} 
+                                        className="w-full h-full object-cover transition-all group-hover:scale-105"
+                                        alt=""
+                                      />
+                                    </div>
+                                  ) : (
+                                    <video 
+                                      className="absolute inset-0 w-full h-full object-cover opacity-60 transition-all group-hover:scale-105"
+                                      src={item.url}
+                                      muted
+                                      preload="metadata"
+                                    />
+                                  )}
+                                  <div className="bg-rotary-blue text-white p-4 rounded-full relative z-10 group-hover:scale-110 transition-transform shadow-xl">
+                                    <Play className="w-6 h-6 fill-white" />
+                                  </div>
+                                  <div className="absolute bottom-4 left-4 z-20 flex items-center gap-2">
+                                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                                    <span className="text-[10px] font-black text-white uppercase tracking-widest">Video</span>
+                                  </div>
+                               </div>
+                             ) : (
+                               <>
+                                  <img
+                                   src={item.url}
+                                   alt={`Galería ${index + 1}`}
+                                   className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                                 />
+                                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
+                                    <Maximize2 className="w-5 h-5 text-white" />
+                                 </div>
+                               </>
+                             )}
+                           </motion.div>
+                         );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Lightbox */}
+                <AnimatePresence>
+                  {selectedMediaIndex !== null && allMedia[selectedMediaIndex] && (
+                    <motion.div 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/95 p-4 md:p-10 backdrop-blur-md"
+                      onClick={() => setSelectedMediaIndex(null)}
+                    >
+                      <div className="absolute top-6 right-6 flex items-center gap-6 z-[10000]">
+                         <span className="text-white/50 text-xs font-black tracking-[0.2em]">
+                           {selectedMediaIndex + 1} / {allMedia.length}
+                         </span>
+                         <button 
+                           className="text-white hover:text-rotary-gold transition-colors"
+                           onClick={(e) => { e.stopPropagation(); setSelectedMediaIndex(null); }}
+                         >
+                           <CloseIcon className="w-10 h-10" />
+                         </button>
+                      </div>
+
+                      {allMedia.length > 1 && (
+                        <>
+                         <button 
+                           className="absolute left-4 md:left-10 top-1/2 -translate-y-1/2 p-4 bg-white/5 hover:bg-white/10 text-white rounded-full transition-all z-[10000] border border-white/10 group backdrop-blur-md shadow-2xl"
+                           onClick={handlePrevMedia}
+                         >
+                           <ChevronLeft className="w-8 h-8 group-hover:-translate-x-1 transition-transform" />
+                         </button>
+                         <button 
+                           className="absolute right-4 md:right-10 top-1/2 -translate-y-1/2 p-4 bg-white/5 hover:bg-white/10 text-white rounded-full transition-all z-[10000] border border-white/10 group backdrop-blur-md shadow-2xl"
+                           onClick={handleNextMedia}
+                         >
+                           <ChevronRight className="w-8 h-8 group-hover:translate-x-1 transition-transform" />
+                         </button>
+                        </>
+                      )}
+
+                      <motion.div 
+                        key={selectedMediaIndex}
+                        initial={{ scale: 0.9, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.9, opacity: 0 }}
+                        className="max-w-7xl w-full max-h-full flex items-center justify-center relative"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {allMedia[selectedMediaIndex].type === 'video' ? (
+                          <div className="w-full aspect-video rounded-2xl overflow-hidden shadow-2xl bg-black border border-white/10">
+                            {isYouTube ? (
+                              <iframe
+                                className="w-full h-full border-none"
+                                src={`https://www.youtube.com/embed/${allMedia[selectedMediaIndex].url.split('v=')[1]?.split('&')[0] || allMedia[selectedMediaIndex].url.split('/').pop()}?autoplay=1`}
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                              ></iframe>
+                            ) : (
+                              <video
+                                className="w-full h-full object-contain"
+                                src={allMedia[selectedMediaIndex].url}
+                                controls
+                                autoPlay
+                                playsInline
+                              />
+                            )}
+                          </div>
+                        ) : (
+                          <img 
+                            src={allMedia[selectedMediaIndex].url} 
+                            className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl select-none"
+                            alt="Full view"
+                          />
+                        )}
+                      </motion.div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Compartir */}
+                <div className="mt-12 pt-8 border-t border-gray-100">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
+                    <div className="flex items-center gap-4">
+                      <span className="text-gray-500 font-bold text-sm uppercase tracking-widest">Compartir:</span>
+                      <div className="flex gap-2">
+                        <button className="w-10 h-10 flex items-center justify-center bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all hover:-translate-y-1 shadow-lg shadow-blue-600/20">
+                          <Facebook className="w-5 h-5" />
+                        </button>
+                        <button className="w-10 h-10 flex items-center justify-center bg-sky-500 text-white rounded-xl hover:bg-sky-600 transition-all hover:-translate-y-1 shadow-lg shadow-sky-500/20">
+                          <Twitter className="w-5 h-5" />
+                        </button>
+                        <button className="w-10 h-10 flex items-center justify-center bg-blue-700 text-white rounded-xl hover:bg-blue-800 transition-all hover:-translate-y-1 shadow-lg shadow-blue-700/20">
+                          <Linkedin className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-xs font-black text-gray-400 uppercase tracking-[0.2em]">
+                      <Tag className="w-3 h-3 text-rotary-gold" />
+                      <span>{articulo.categoria}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            {/* Comentarios */}
+            <section className="py-12 md:py-20 bg-gray-50/50 border-t border-gray-100">
+              <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="flex items-center gap-3 mb-10">
+                  <MessageSquare className="w-6 h-6 text-rotary-blue" />
+                  <h2 className="text-2xl font-bold text-gray-900 font-rotary leading-tight">Comentarios</h2>
+                  <span className="bg-rotary-blue text-white px-3 py-1 rounded-full text-xs font-black">
+                    {comments.length}
+                  </span>
+                </div>
+
+                <div className="space-y-6 mb-16">
+                  {loadingComments ? (
+                     <div className="py-10 flex justify-center">
+                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-rotary-blue"></div>
+                     </div>
+                  ) : comments.length > 0 ? (
+                    comments.map((comment) => (
+                      <motion.div 
+                        key={comment.id} 
+                        initial={{ opacity: 0, y: 10 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm transition-all hover:shadow-md"
+                      >
+                         <div className="flex justify-between items-start mb-4">
+                           <div className="flex items-center gap-3">
+                             <div className="w-10 h-10 bg-rotary-blue/10 rounded-full flex items-center justify-center text-rotary-blue font-bold text-sm">
+                               {comment.firstName?.[0] || 'U'}
+                             </div>
+                             <div>
+                               <h4 className="font-bold text-gray-900 text-sm">{comment.firstName} {comment.lastName}</h4>
+                               <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">
+                                 {new Date(comment.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
+                               </p>
+                             </div>
+                           </div>
+                           <div className="flex gap-0.5">
+                             {[...Array(5)].map((_, i) => (
+                               <Star 
+                                 key={i} 
+                                 className={`w-3.5 h-3.5 ${i < comment.rating ? 'fill-rotary-gold text-rotary-gold' : 'text-gray-200'}`} 
+                               />
+                             ))}
+                           </div>
+                         </div>
+                         <p className="text-gray-600 text-sm leading-relaxed italic">
+                           "{comment.text}"
+                         </p>
+                      </motion.div>
+                    ))
+                  ) : (
+                    <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-200 text-gray-400 font-medium">
+                      Aún no hay comentarios.
+                    </div>
+                  )}
+                </div>
+
+                {/* Formulario */}
+                <div className="bg-white rounded-3xl p-8 md:p-10 border border-gray-100 shadow-2xl relative overflow-hidden group">
+                   <div className="absolute top-0 right-0 w-32 h-32 bg-rotary-blue/5 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-700" />
+                   
+                   <h3 className="text-xl font-bold text-gray-900 mb-8 font-rotary flex items-center gap-3">
+                     <Star className="w-6 h-6 text-rotary-gold fill-rotary-gold" />
+                     Cuéntanos qué te pareció
+                   </h3>
+                   
+                   {commentSuccess && (
+                     <motion.div 
+                       initial={{ opacity: 0, scale: 0.9 }}
+                       animate={{ opacity: 1, scale: 1 }}
+                       className="bg-green-50 text-green-700 p-6 rounded-2xl flex items-center gap-4 mb-8 border border-green-100 shadow-sm"
+                     >
+                       <CheckCircle className="w-8 h-8 flex-shrink-0" />
+                       <div>
+                         <p className="font-bold">¡Recibido!</p>
+                         <p className="text-sm">Tu opinión ha sido publicada con éxito.</p>
+                       </div>
+                     </motion.div>
+                   )}
+
+                   <form onSubmit={handleCommentSubmit} className="space-y-6 relative z-10">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                         <input 
+                           required 
+                           type="text" 
+                           value={commentForm.firstName}
+                           onChange={(e) => setCommentForm({...commentForm, firstName: e.target.value})}
+                           className="w-full px-5 py-4 rounded-xl bg-gray-50 border-none focus:ring-2 focus:ring-rotary-blue outline-none transition-all font-medium text-sm"
+                           placeholder="Nombre"
+                         />
+                         <input 
+                           required 
+                           type="text" 
+                           value={commentForm.lastName}
+                           onChange={(e) => setCommentForm({...commentForm, lastName: e.target.value})}
+                           className="w-full px-5 py-4 rounded-xl bg-gray-50 border-none focus:ring-2 focus:ring-rotary-blue outline-none transition-all font-medium text-sm"
+                           placeholder="Apellidos"
+                         />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                         <input 
+                           required 
+                           type="email" 
+                           value={commentForm.email}
+                           onChange={(e) => setCommentForm({...commentForm, email: e.target.value})}
+                           className="w-full px-5 py-4 rounded-xl bg-gray-50 border-none focus:ring-2 focus:ring-rotary-blue outline-none transition-all font-medium text-sm"
+                           placeholder="Correo electrónico"
+                         />
+                         <div className="flex items-center gap-2 px-5 py-4 rounded-xl bg-gray-50">
+                            <span className="text-xs font-black text-gray-400 uppercase tracking-widest">Califica:</span>
+                            <div className="flex gap-1">
+                               {[1,2,3,4,5].map((star) => (
+                                 <button
+                                   type="button"
+                                   key={star}
+                                   onClick={() => setCommentForm({...commentForm, rating: star})}
+                                   className="transition-all hover:scale-125"
+                                 >
+                                   <Star className={`w-5 h-5 ${commentForm.rating >= star ? 'fill-rotary-gold text-rotary-gold' : 'text-gray-300'}`} />
+                                 </button>
+                               ))}
+                            </div>
+                         </div>
+                      </div>
+
+                      <textarea 
+                        required 
+                        rows={4}
+                        value={commentForm.text}
+                        onChange={(e) => setCommentForm({...commentForm, text: e.target.value})}
+                        className="w-full px-5 py-4 rounded-xl bg-gray-50 border-none focus:ring-2 focus:ring-rotary-blue outline-none transition-all font-medium text-sm resize-none"
+                        placeholder="Escribe aquí tu comentario..."
+                      />
+
+                      <button
+                        type="submit"
+                        disabled={submittingComment}
+                        className="w-full bg-rotary-blue text-white font-black uppercase tracking-widest py-5 rounded-xl hover:bg-rotary-blue/90 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed shadow-xl shadow-rotary-blue/30 group"
+                      >
+                        {submittingComment ? (
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                        ) : (
+                          <>
+                            <span>Enviar Comentario</span>
+                            <Send className="w-4 h-4 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                          </>
+                        )}
+                      </button>
+                   </form>
+                </div>
+              </div>
+            </section>
+
+            {/* Artículos Relacionados */}
+            {otrosArticulos.length >= 4 && (
+              <section className="py-12 md:py-20 bg-white">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                  <h2 className="text-2xl font-bold text-gray-900 mb-12 font-rotary">Sigue leyendo</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    {otrosArticulos
+                      .slice(0, 3)
+                      .map((relacionado) => (
+                        <Link
+                          key={relacionado.id}
+                          to={`/blog/${relacionado.slug || relacionado.id}`}
+                          className="group flex flex-col h-full bg-white rounded-3xl overflow-hidden border border-gray-100 hover:border-rotary-blue/30 transition-all hover:shadow-2xl hover:shadow-rotary-blue/10"
+                        >
+                          <div className="relative aspect-[16/10] overflow-hidden">
+                            <img
+                              src={relacionado.image || relacionado.imagen}
+                              alt={relacionado.title || relacionado.titulo}
+                              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </div>
+                          <div className="p-6 flex flex-col flex-1">
+                            <span className="text-[10px] font-black text-rotary-gold uppercase tracking-[0.2em] mb-3">
+                              {relacionado.category || relacionado.categoria}
+                            </span>
+                            <h3 className="font-bold text-gray-900 group-hover:text-rotary-blue transition-colors mb-4 line-clamp-2 leading-tight">
+                              {relacionado.title || relacionado.titulo}
+                            </h3>
+                            <div className="mt-auto flex items-center gap-2 text-rotary-blue font-black text-[10px] uppercase tracking-widest group-hover:gap-4 transition-all">
+                              <span>Leer más</span>
+                              <ChevronRight className="w-4 h-4" />
+                            </div>
+                          </div>
+                        </Link>
+                      ))}
+                  </div>
+                </div>
+              </section>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <Footer />
+    </div>
+  );
+};
+
+export default BlogPost;                  <span className="flex items-center gap-1 text-rotary-blue text-sm mt-2 group-hover:underline">
                         Leer más
                         <ChevronRight className="w-4 h-4" />
                       </span>

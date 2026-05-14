@@ -68,30 +68,84 @@ const ProyectoDetalle = () => {
     load();
   }, [club?.id, id]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-white">
-        <Navbar />
-        <div className="flex items-center justify-center py-32">
-          <Loader2 className="w-10 h-10 text-rotary-blue animate-spin" />
+  const SkeletonLoader = () => (
+    <div className="animate-in fade-in duration-500">
+      <section className="relative">
+        <div className="relative h-[380px] md:h-[480px] bg-gray-100 animate-pulse overflow-hidden" />
+        <div className="absolute bottom-0 left-0 right-0 pb-8 md:pb-12">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="h-4 w-32 bg-gray-200 rounded mb-4 animate-pulse" />
+            <div className="h-6 w-24 bg-gray-200 rounded-full mb-4 animate-pulse" />
+            <div className="h-10 md:h-14 w-3/4 bg-gray-200 rounded-xl mb-4 animate-pulse" />
+            <div className="flex gap-4">
+              <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+              <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+            </div>
+          </div>
         </div>
-        <Footer />
-      </div>
-    );
-  }
+      </section>
 
-  if (error || !proyecto) {
-    return (
-      <div className="min-h-screen bg-white">
-        <Navbar />
-        <div className="py-20 text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">{error || 'Proyecto no encontrado'}</h1>
-          <Link to="/proyectos" className="text-rotary-blue hover:underline">Volver a proyectos</Link>
+      <section className="py-12 md:py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 space-y-10">
+              <div className="space-y-4">
+                <div className="h-8 w-48 bg-gray-100 rounded animate-pulse" />
+                <div className="space-y-2">
+                  <div className="h-4 w-full bg-gray-50 rounded animate-pulse" />
+                  <div className="h-4 w-full bg-gray-50 rounded animate-pulse" />
+                  <div className="h-4 w-5/6 bg-gray-50 rounded animate-pulse" />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="aspect-[4/3] bg-gray-50 rounded-xl animate-pulse" />
+                <div className="aspect-[4/3] bg-gray-50 rounded-xl animate-pulse" />
+                <div className="aspect-[4/3] bg-gray-50 rounded-xl animate-pulse" />
+              </div>
+            </div>
+            <div className="lg:col-span-1">
+              <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 h-[400px] animate-pulse" />
+            </div>
+          </div>
         </div>
-        <Footer />
-      </div>
-    );
-  }
+      </section>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-white">
+      <Navbar />
+
+      <AnimatePresence mode="wait">
+        {loading ? (
+          <motion.div
+            key="loading"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <SkeletonLoader />
+          </motion.div>
+        ) : error || !proyecto ? (
+          <motion.div
+            key="error"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="py-20 text-center px-4"
+          >
+            <h1 className="text-2xl font-bold text-gray-900 mb-4 font-rotary">{error || 'Proyecto no encontrado'}</h1>
+            <Link to="/proyectos" className="inline-flex items-center gap-2 text-rotary-blue font-bold hover:underline">
+              <ArrowLeft className="w-4 h-4" />
+              Volver a proyectos
+            </Link>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="content"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.6 }}
+          >
 
   // Normalizar campos (la BD usa title/description/image, el proyecto usa title/description/image)
   const titulo      = proyecto.title       || proyecto.titulo       || 'Sin título';
@@ -368,6 +422,10 @@ const ProyectoDetalle = () => {
           </div>
         </div>
       )}
+
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <Footer />
     </div>

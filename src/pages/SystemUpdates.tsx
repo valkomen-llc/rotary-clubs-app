@@ -27,6 +27,18 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.254',
+        date: '2026-05-13',
+        title: 'Categorías Inteligentes 🧠',
+        description: 'Implementación de filtrado dinámico basado en el contenido real del club.',
+        type: 'feature',
+        details: [
+            'Detección automática de categorías más utilizadas por cada club.',
+            'Ranking de las 5 categorías principales para optimizar la navegación.',
+            'Eliminación de filtros vacíos o genéricos que no aplican al contenido actual.'
+        ]
+    },
+    {
         version: 'v4.253',
         date: '2026-05-13',
         title: 'Integridad de Marca Rotary Origen 🛡️',
