@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.296',
+        date: '2026-05-14',
+        title: 'Recuperación: Restauración de Estado Maestro 🛡️',
+        description: 'Reversión absoluta a la arquitectura probada y estable para reactivar la plataforma.',
+        type: 'major',
+        details: [
+            'Restauración total de api/index.js original con motor de SEO e inyección.',
+            'Reversión de vercel.json a las reglas de enrutamiento estables de v4.282.',
+            'Restauración del motor de base de datos y controladores de clubes originales.',
+            'Eliminación de cualquier bloqueo de red en dominios externos .org.',
+            'Garantía de disponibilidad inmediata para todos los clubes de la red.'
+        ]
+    },
+    {
         version: 'v4.295',
         date: '2026-05-14',
         title: 'Sistema: Estabilización Maestra de Rutas 🛰️',
