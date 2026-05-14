@@ -1,4 +1,4 @@
-// DISTRICT HEALTH IQ V4.256 | 2026-05-14 (HIGH-RES MEDIA PRO 📸)
+// DISTRICT HEALTH IQ V4.258 | 2026-05-14 (EMAIL DB SYNC FIX 🛡️)
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -115,7 +115,7 @@ app.get('/api/technical-requests', async (req, res) => {
 });
 
 app.get('/api', (req, res) => {
-    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.256', release: 'Alta Resolución y Medios Pro 📸' });
+    res.json({ status: 'CONSOLIDATED_ACTIVE', version: '4.258', release: 'Email DB Sync Fix 🛡️' });
 });
 
 app.get('/api/health', async (req, res) => {

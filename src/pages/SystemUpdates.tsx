@@ -27,6 +27,18 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.258',
+        date: '2026-05-14',
+        title: 'Sincronización de Base de Datos 🛡️',
+        description: 'Parche crítico para la infraestructura de correos institucionales.',
+        type: 'fix',
+        details: [
+            'Sincronización manual de columnas de verificación en producción.',
+            'Corrección del error "column verified does not exist" al crear cuentas.',
+            'Estabilización del servicio de aprovisionamiento de dominios.'
+        ]
+    },
+    {
         version: 'v4.256',
         date: '2026-05-14',
         title: 'Alta Resolución y Medios Pro 📸',
