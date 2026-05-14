@@ -27,6 +27,19 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.255',
+        date: '2026-05-14',
+        title: 'Alta Resolución y Medios Pro 📸',
+        description: 'Optimización masiva del procesamiento de imágenes en toda la plataforma administrativa.',
+        type: 'improvement',
+        details: [
+            'Soporte para imágenes 4K (4096px) en la Librería de Medios.',
+            'Calidad de procesamiento al 100% (Lossless) para recortes de noticias y eventos.',
+            'Preservación de formato PNG original para mantener transparencias y nitidez profesional.',
+            'Aumento de límites de compresión para evitar pixelación en pantallas grandes.'
+        ]
+    },
+    {
         version: 'v4.254',
         date: '2026-05-13',
         title: 'Categorías Inteligentes 🧠',
