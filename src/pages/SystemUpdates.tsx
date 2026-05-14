@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.269',
+        date: '2026-05-14',
+        title: 'Backend: Robustez y Manejo de Nulos 🛡️',
+        description: 'Mejora en la lógica del servidor para soportar administradores globales sin club asignado.',
+        type: 'fix',
+        details: [
+            'Implementación de validación condicional para clubId en Prisma.',
+            'Corrección del error fatal "Argument id must not be null" en el controlador de IA.',
+            'Valores por defecto (fallback) para contexto institucional cuando el club no es detectado.',
+            'Refuerzo en el mapeo opcional de proyectos de servicio.',
+            'Optimización de la resiliencia del pipeline de generación de publicaciones.'
+        ]
+    },
+    {
         version: 'v4.268',
         date: '2026-05-14',
         title: 'Seguridad: Corrección de Autenticación 🔑',

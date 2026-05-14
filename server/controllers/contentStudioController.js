@@ -13,17 +13,20 @@ export const generatePost = async (req, res) => {
 
         console.log('Params:', { imageId, imageUrl, clubId, config });
 
-        // 1. Get Club Context
-        const club = await prisma.club.findUnique({
-            where: { id: clubId },
-            include: {
-                projects: { take: 2, orderBy: { createdAt: 'desc' } },
-                posts: { take: 2, orderBy: { createdAt: 'desc' }, where: { published: true } }
-            }
-        });
+        // 1. Get Club Context (Optional for System Admins)
+        let club = null;
+        if (clubId) {
+            club = await prisma.club.findUnique({
+                where: { id: clubId },
+                include: {
+                    projects: { take: 2, orderBy: { createdAt: 'desc' } },
+                    posts: { take: 2, orderBy: { createdAt: 'desc' }, where: { published: true } }
+                }
+            });
+        }
 
         const clubName = club?.name || 'Club Rotario';
-        const projectContext = club?.projects.map(p => `- ${p.title}`).join(', ') || 'Proyectos de servicio';
+        const projectContext = club?.projects?.map(p => `- ${p.title}`).join(', ') || 'Proyectos de servicio a la comunidad';
         
         let generatedImageUrl = null;
         let aiContent = null;
