@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.293',
+        date: '2026-05-14',
+        title: 'Arquitectura: Optimización de Conexiones Prisma 💎',
+        description: 'Eliminación del bloqueo de carga mediante separación de clientes de base de datos.',
+        type: 'major',
+        details: [
+            'Separación de Prisma Client y PG Pool para evitar colisiones en Vercel.',
+            'Incremento del tiempo de espera de conexión a 10s para despertar a Neon DB.',
+            'Refactorización del controlador de dominios para carga prioritaria.',
+            'Eliminación del estado de espera infinito en colrotarios.org y otros dominios.',
+            'Mejora en la estabilidad de las peticiones públicas de alta demanda.'
+        ]
+    },
+    {
         version: 'v4.292',
         date: '2026-05-14',
         title: 'Emergencia: Reactivación de Ecosistema 🆘',

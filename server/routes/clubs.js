@@ -1,5 +1,6 @@
 import express from 'express';
 import db from '../lib/db.js';
+import prisma from '../lib/prisma.js';
 import { 
     getPublicPosts, 
     getPublicPostById, 
@@ -24,7 +25,7 @@ router.get('/by-domain', async (req, res) => {
         const cleanDomain = domain.toLowerCase().replace(/^www\./, '');
         
         // Use Prisma for all lookups to ensure column mapping stability
-        const masterClub = await db.prisma.club.findFirst({
+        const masterClub = await prisma.club.findFirst({
             where: { subdomain: 'origen' },
             include: { settings: true }
         });
@@ -42,7 +43,7 @@ router.get('/by-domain', async (req, res) => {
         });
 
         // 2. Fetch Current Entity with Prisma (Club or District)
-        let activeEntity = await db.prisma.club.findFirst({
+        let activeEntity = await prisma.club.findFirst({
             where: {
                 OR: [
                     { domain: { equals: cleanDomain, mode: 'insensitive' } },
@@ -62,7 +63,7 @@ router.get('/by-domain', async (req, res) => {
 
         if (!activeEntity) {
             // Check District table
-            const district = await db.prisma.district.findFirst({
+            const district = await prisma.district.findFirst({
                 where: {
                     OR: [
                         { domain: { equals: cleanDomain, mode: 'insensitive' } },
