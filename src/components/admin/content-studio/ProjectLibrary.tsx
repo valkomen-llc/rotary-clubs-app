@@ -164,7 +164,7 @@ const ProjectLibrary: React.FC = () => {
                              <div className="mb-4 p-2 bg-indigo-50/50 rounded-lg border border-indigo-100/50">
                                 <div className="flex items-center gap-1 mb-1">
                                     <div className="w-1 h-1 rounded-full bg-indigo-400 animate-pulse" />
-                                    <span className="text-[8px] font-black text-indigo-400 uppercase tracking-tighter">KIE.AI STATUS</span>
+                                    <span className="text-[8px] font-black text-blue-400 uppercase tracking-tighter">AI STATUS</span>
                                 </div>
                                 <p className="text-[9px] font-mono text-indigo-600 truncate">
                                     {typeof project.lastKieResponse === 'string' ? project.lastKieResponse : (project.lastKieResponse.status || project.lastKieResponse.data?.status || 'Active')}
@@ -176,7 +176,7 @@ const ProjectLibrary: React.FC = () => {
                             {project.status === 'processing' && (
                                 <button 
                                     onClick={async () => {
-                                        const tId = toast.loading('Sincronizando con KIE.ai...');
+                                        const tId = toast.loading('Sincronizando con el motor de IA...');
                                         try {
                                             const token = localStorage.getItem('rotary_token');
                                             const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/content-studio/projects/${project.id}/sync`, {

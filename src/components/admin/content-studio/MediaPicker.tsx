@@ -170,7 +170,7 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
                 {/* Footer Controls */}
                 <div className="p-6 border-t border-gray-100 flex justify-between items-center bg-gray-50/50">
                     <p className="text-sm text-gray-500 font-medium font-sans">
-                        Se enviarán las imágenes a <span className="font-bold text-indigo-600">KIE.ai</span> para procesamiento.
+                        Se enviarán las imágenes a <span className="font-bold text-blue-600">OpenAI DALL-E 3 HD</span> para procesamiento cinematográfico.
                     </p>
                     <div className="flex gap-3">
                         <button 

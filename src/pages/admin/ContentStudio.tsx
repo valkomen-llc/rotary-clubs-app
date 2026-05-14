@@ -37,7 +37,7 @@ const ContentStudio: React.FC = () => {
                     <div className="flex gap-3">
                         <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-xl">
                             <Trophy className="w-4 h-4 text-indigo-600" />
-                            <span className="text-xs font-black text-indigo-700 uppercase tracking-wider">KIE.ai Enabled</span>
+                            <span className="text-xs font-black text-blue-700 uppercase tracking-wider">OpenAI DALL-E 3 HD Enabled</span>
                         </div>
                     </div>
                 </div>

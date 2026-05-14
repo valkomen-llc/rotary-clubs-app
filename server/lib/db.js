@@ -3,7 +3,7 @@ const { Pool } = pkg;
 import dotenv from 'dotenv';
 import prisma from './prisma.js';
 
-dotenv.config({ path: './server/.env' });
+dotenv.config(); // Use native environment variables in production
 
 // Singleton pattern for PG Pool to prevent connection leaks in serverless
 let pool;

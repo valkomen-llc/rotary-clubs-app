@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.290',
+        date: '2026-05-14',
+        title: 'IA: Purgado de Identidad y Estabilidad de Red 🛠️',
+        description: 'Eliminación total de KIE.ai y optimización de la conexión a la biblioteca multimedia.',
+        type: 'fix',
+        details: [
+            'Eliminación de todas las menciones a "KIE.ai" y sustitución por OpenAI DALL-E 3 HD.',
+            'Optimización de la conexión a la base de datos para entornos serverless (Vercel).',
+            'Corrección del estado "Cargando biblioteca..." mediante simplificación de variables de entorno.',
+            'Refuerzo de la identidad visual del Content Studio para reflejar tecnología de punta.',
+            'Mejora en la resiliencia de la biblioteca global para administradores del sistema.'
+        ]
+    },
+    {
         version: 'v4.289',
         date: '2026-05-14',
         title: 'Biblioteca: Acceso Total Multi-Sitio 🌍',

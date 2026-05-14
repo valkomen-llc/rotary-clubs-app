@@ -43,7 +43,7 @@ const VideoCreator: React.FC = () => {
         }
 
         setIsGenerating(true);
-        const toastId = toast.loading('Enviando proyecto a KIE.ai...');
+        const toastId = toast.loading('Enviando proyecto al motor de IA...');
 
         try {
             const token = localStorage.getItem('rotary_token');
@@ -215,7 +215,7 @@ const VideoCreator: React.FC = () => {
                                 <Sparkles className="w-12 h-12 text-indigo-400 animate-pulse" />
                                 <div className="space-y-1 text-center">
                                     <p className="text-white font-black text-sm uppercase tracking-wider">Generando con IA</p>
-                                    <p className="text-indigo-400/60 text-[10px] font-bold">KIE.ai Processing Engine</p>
+                                    <p className="text-blue-400/60 text-[10px] font-bold">OpenAI Processing Engine</p>
                                 </div>
                             </div>
                         ) : selectedMedia.length > 0 ? (
@@ -265,7 +265,7 @@ const VideoCreator: React.FC = () => {
                             )}
                         </button>
                         <p className="text-[9px] text-white/30 text-center font-bold tracking-tight px-4 leading-relaxed">
-                            Al hacer clic, tus imágenes serán procesadas por la infraestructura de KIE.ai para generar el video vertical de 15 segundos.
+                            Al hacer clic, tus imágenes serán procesadas por la infraestructura de OpenAI para generar el video vertical de 15 segundos.
                         </p>
                     </div>
                 </div>
