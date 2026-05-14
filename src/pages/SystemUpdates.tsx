@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.270',
+        date: '2026-05-14',
+        title: 'IA: Activación del Pipeline 4K 🚀',
+        description: 'Integración final de la infraestructura de OpenAI para generación de medios en alta fidelidad.',
+        type: 'feature',
+        details: [
+            'Activación de la API Key oficial para procesamiento GPT-4o y DALL-E 3.',
+            'Implementación del modelo de imágenes de nueva generación (HD) en formato vertical.',
+            'Optimización de la comunicación servidor-IA para reducir latencias de red.',
+            'Sincronización de variables de entorno críticas en el despliegue de producción.',
+            'Refuerzo de la identidad visual de Rotary mediante ingeniería de prompts avanzada.'
+        ]
+    },
+    {
         version: 'v4.269',
         date: '2026-05-14',
         title: 'Backend: Robustez y Manejo de Nulos 🛡️',
