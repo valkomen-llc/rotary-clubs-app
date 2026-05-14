@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.282',
+        date: '2026-05-14',
+        title: 'Sistema: Blindaje de Base de Datos 🛡️',
+        description: 'Eliminación de errores críticos por falta de identificación de club.',
+        type: 'fix',
+        details: [
+            'Implementación de validación Null-Safety para consultas de Prisma.',
+            'Fallback institucional automático cuando no se detecta un Club ID.',
+            'Refuerzo del motor de generación para administradores globales.',
+            'Eliminación de paradas críticas en el flujo de análisis visual.',
+            'Mejora en la resiliencia de la conexión entre el Content Studio y el CRM.'
+        ]
+    },
+    {
         version: 'v4.281',
         date: '2026-05-14',
         title: 'IA: Outpainting Portrait y Descarga Directa 🚀',
