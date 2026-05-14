@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.287',
+        date: '2026-05-14',
+        title: 'Biblioteca: Restauración de Visibilidad Global 🖼️',
+        description: 'Corrección del motor de búsqueda de medios para administradores del sistema.',
+        type: 'fix',
+        details: [
+            'Habilitación de vista global de imágenes para Super Administradores.',
+            'Eliminación del filtro restrictivo de Club ID en la biblioteca de medios.',
+            'Optimización de la consulta SQL para carga instantánea de miniaturas.',
+            'Mejora en la resiliencia de la conexión entre el Content Studio y el repositorio.',
+            'Corrección de visualización de carpetas compartidas en el ecosistema rotario.'
+        ]
+    },
+    {
         version: 'v4.286',
         date: '2026-05-14',
         title: 'Sistema: Estabilización de Despliegue v2 🛰️',
