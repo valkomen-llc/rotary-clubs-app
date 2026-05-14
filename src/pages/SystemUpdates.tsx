@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.267',
+        date: '2026-05-14',
+        title: 'Sistema: Unificación de Notificaciones 🔔',
+        description: 'Migración completa a Sonner para mayor estabilidad en las alertas del sistema.',
+        type: 'improvement',
+        details: [
+            'Sustitución de react-hot-toast por Sonner en el Generador de Publicaciones.',
+            'Implementación de Event Logging en el botón principal para diagnóstico de ejecución.',
+            'Mejora en la respuesta táctica del botón (active state) al hacer clic.',
+            'Optimización de la biblioteca de medios para una selección más fluida.',
+            'Corrección de posibles conflictos de renderizado en el modal de previsualización.'
+        ]
+    },
+    {
         version: 'v4.266',
         date: '2026-05-14',
         title: 'UX/IA: Estabilidad y Visibilidad 💎',
