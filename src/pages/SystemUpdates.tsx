@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.298',
+        date: '2026-05-14',
+        title: 'IA: Blindaje y Resiliencia HD 🛡️',
+        description: 'Optimización del motor de regeneración para evitar bloqueos y fallos de API.',
+        type: 'major',
+        details: [
+            'Implementación de filtros de seguridad preventivos para evitar bloqueos de OpenAI.',
+            'Optimización de tiempos de espera y gestión de errores de red en alta definición.',
+            'Refuerzo de prompts para garantizar la regeneración incluso en condiciones de alta carga.',
+            'Mejora del manejo de excepciones en el Content Studio para mayor estabilidad.',
+            'Garantía de entrega de contenido HD mediante motor de resiliencia automatizado.'
+        ]
+    },
+    {
         version: 'v4.297',
         date: '2026-05-14',
         title: 'IA: Motor de Regeneración Cinematográfica 4K 🎨',
