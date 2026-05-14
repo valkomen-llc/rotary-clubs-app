@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.264',
+        date: '2026-05-14',
+        title: 'Content Studio: Selector Dual de Medios 📤',
+        description: 'Implementación de carga directa de archivos y mejoras en la selección de imágenes.',
+        type: 'improvement',
+        details: [
+            'Nueva opción de "Subir Imagen" directamente desde el equipo local.',
+            'Integración simplificada con la Biblioteca Multimedia global del club.',
+            'Corrección de error en el botón de selección (+) del Generador de Publicaciones.',
+            'Optimización del flujo de carga con feedback visual en tiempo real.',
+            'Persistencia de metadatos para imágenes subidas mediante IA.'
+        ]
+    },
+    {
         version: 'v4.263',
         date: '2026-05-14',
         title: 'UX: Reorganización del Content Studio 🎨',

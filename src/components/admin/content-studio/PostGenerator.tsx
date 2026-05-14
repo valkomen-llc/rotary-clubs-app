@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
     Image as ImageIcon, 
     Sparkles, 
@@ -8,9 +8,8 @@ import {
     RefreshCw, 
     PlusCircle,
     CheckCircle2,
-    Facebook,
-    Instagram,
-    Twitter
+    Upload,
+    Library
 } from 'lucide-react';
 import MediaPicker from './MediaPicker';
 import { toast } from 'react-hot-toast';
@@ -43,6 +42,7 @@ const PostGenerator: React.FC = () => {
     const [activePlatform, setActivePlatform] = useState<'facebook' | 'instagram' | 'x'>('facebook');
     const [generatedContent, setGeneratedContent] = useState<GeneratedData | null>(null);
     const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleGenerate = async () => {
         if (!selectedImage) {
@@ -62,7 +62,7 @@ const PostGenerator: React.FC = () => {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`
                 },
                 body: JSON.stringify({
-                    imageId: selectedImage.id,
+                    imageId: selectedImage.id || 'uploaded',
                     imageUrl: selectedImage.url,
                     config: aiConfig
                 })
@@ -87,6 +87,42 @@ const PostGenerator: React.FC = () => {
         }
     };
 
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const toastId = toast.loading('Subiendo imagen...');
+        
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/media/upload`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: formData
+            });
+
+            const data = await response.json();
+            if (response.ok) {
+                setSelectedImage({
+                    id: data.id,
+                    url: data.url,
+                    name: file.name
+                });
+                setGeneratedContent(null);
+                toast.success('Imagen subida con éxito', { id: toastId });
+            } else {
+                throw new Error(data.error || 'Error al subir');
+            }
+        } catch (error: any) {
+            console.error('Upload Error:', error);
+            toast.error('Error al subir la imagen: ' + error.message, { id: toastId });
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -98,12 +134,24 @@ const PostGenerator: React.FC = () => {
                                 <ImageIcon className="w-5 h-5 text-rotary-blue" />
                                 Selección de Imagen
                             </h3>
-                            <button
-                                onClick={() => setIsMediaPickerOpen(true)}
-                                className="text-sm text-rotary-blue hover:underline font-medium"
-                            >
-                                Cambiar Imagen
-                            </button>
+                            {selectedImage && (
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => setIsMediaPickerOpen(true)}
+                                        className="text-xs text-rotary-blue hover:underline font-medium flex items-center gap-1"
+                                    >
+                                        <Library className="w-3 h-3" />
+                                        Biblioteca
+                                    </button>
+                                    <button
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="text-xs text-rotary-blue hover:underline font-medium flex items-center gap-1"
+                                    >
+                                        <Upload className="w-3 h-3" />
+                                        Subir
+                                    </button>
+                                </div>
+                            )}
                         </div>
 
                         <div className="p-6">
@@ -115,13 +163,20 @@ const PostGenerator: React.FC = () => {
                                             alt="Selected"
                                             className="w-full h-auto max-h-[300px] object-cover"
                                         />
-                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
                                             <button
                                                 onClick={() => setIsMediaPickerOpen(true)}
-                                                className="bg-white text-gray-900 px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2"
+                                                className="bg-white text-gray-900 px-3 py-2 rounded-lg font-medium text-xs flex items-center gap-2 hover:bg-gray-100"
                                             >
-                                                <RefreshCw className="w-4 h-4" />
-                                                Reemplazar
+                                                <Library className="w-4 h-4" />
+                                                Biblioteca
+                                            </button>
+                                            <button
+                                                onClick={() => fileInputRef.current?.click()}
+                                                className="bg-white text-gray-900 px-3 py-2 rounded-lg font-medium text-xs flex items-center gap-2 hover:bg-gray-100"
+                                            >
+                                                <Upload className="w-4 h-4" />
+                                                Subir Nuevo
                                             </button>
                                         </div>
                                     </div>
@@ -130,25 +185,47 @@ const PostGenerator: React.FC = () => {
                                     </p>
                                 </div>
                             ) : (
-                                <button
-                                    onClick={() => setIsMediaPickerOpen(true)}
-                                    className="w-full aspect-video border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-3 hover:border-rotary-blue hover:bg-blue-50 transition-all group"
-                                >
-                                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center group-hover:bg-blue-100">
-                                        <PlusCircle className="w-6 h-6 text-gray-400 group-hover:text-rotary-blue" />
-                                    </div>
-                                    <div className="text-center">
-                                        <p className="font-medium text-gray-700">Seleccionar fotografía base</p>
-                                        <p className="text-xs text-gray-500">JPG, PNG hasta 10MB</p>
-                                    </div>
-                                </button>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <button
+                                        onClick={() => setIsMediaPickerOpen(true)}
+                                        className="aspect-video border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-2 hover:border-rotary-blue hover:bg-blue-50 transition-all group"
+                                    >
+                                        <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center group-hover:bg-blue-100">
+                                            <Library className="w-5 h-5 text-gray-400 group-hover:text-rotary-blue" />
+                                        </div>
+                                        <div className="text-center">
+                                            <p className="text-sm font-medium text-gray-700">Biblioteca</p>
+                                            <p className="text-[10px] text-gray-400">Archivos existentes</p>
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="aspect-video border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-2 hover:border-rotary-blue hover:bg-blue-50 transition-all group"
+                                    >
+                                        <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center group-hover:bg-blue-100">
+                                            <Upload className="w-5 h-5 text-gray-400 group-hover:text-rotary-blue" />
+                                        </div>
+                                        <div className="text-center">
+                                            <p className="text-sm font-medium text-gray-700">Subir Imagen</p>
+                                            <p className="text-[10px] text-gray-400">Desde tu equipo</p>
+                                        </div>
+                                    </button>
+                                </div>
                             )}
                         </div>
                     </div>
 
+                    <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        onChange={handleFileUpload} 
+                        className="hidden" 
+                        accept="image/*" 
+                    />
+
                     {/* Configuración */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Formato */}
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                             <div className="flex items-center gap-2 mb-4">
                                 <div className="p-2 bg-blue-50 rounded-lg">
@@ -170,7 +247,6 @@ const PostGenerator: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Enfoque */}
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                             <div className="flex items-center gap-2 mb-4">
                                 <div className="p-2 bg-purple-50 rounded-lg">
@@ -198,7 +274,6 @@ const PostGenerator: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Botón de Generar */}
                     <button
                         onClick={handleGenerate}
                         disabled={!selectedImage || isGenerating}
@@ -222,7 +297,7 @@ const PostGenerator: React.FC = () => {
                     </button>
                 </div>
 
-                {/* 2. Vista Previa de Publicación (DERECHA) */}
+                {/* 2. Vista Previa de Publicación */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col min-h-[600px]">
                     <div className="p-4 border-b border-gray-50 flex items-center justify-between bg-gray-50/50">
                         <h3 className="font-semibold text-gray-800 flex items-center gap-2">
@@ -259,7 +334,6 @@ const PostGenerator: React.FC = () => {
                             </div>
                         ) : (
                             <>
-                                {/* Imagen Generada (Vertical) */}
                                 <div className="relative group flex justify-center bg-gray-900 rounded-2xl overflow-hidden shadow-2xl border-4 border-white mx-auto w-full max-w-[320px]">
                                     <div className="aspect-[4/5] w-full relative">
                                         <img
@@ -276,7 +350,6 @@ const PostGenerator: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {/* Copy Box */}
                                 <div className="space-y-4">
                                     <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 relative">
                                         <div className="flex items-center gap-2 mb-2">
@@ -293,10 +366,6 @@ const PostGenerator: React.FC = () => {
                                             <span className="text-xs font-bold text-gray-400 block mb-1">Call to Action (CTA)</span>
                                             <span className="text-sm font-semibold text-gray-800">{generatedContent[activePlatform].cta}</span>
                                         </div>
-                                        
-                                        <button className="absolute top-4 right-4 p-2 text-gray-400 hover:text-rotary-blue transition-colors">
-                                            <CheckCircle2 className="w-5 h-5" />
-                                        </button>
                                     </div>
 
                                     <div className="flex gap-3">
@@ -304,7 +373,10 @@ const PostGenerator: React.FC = () => {
                                             <Send className="w-4 h-4" />
                                             Programar Publicación
                                         </button>
-                                        <button className="p-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-all">
+                                        <button 
+                                            onClick={handleGenerate}
+                                            className="p-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-all"
+                                        >
                                             <RefreshCw className="w-5 h-5" />
                                         </button>
                                     </div>
@@ -315,13 +387,12 @@ const PostGenerator: React.FC = () => {
                 </div>
             </div>
 
-            {/* Media Picker Modal */}
             {isMediaPickerOpen && (
                 <MediaPicker
                     onSelect={(image) => {
                         setSelectedImage(image);
                         setIsMediaPickerOpen(false);
-                        setGeneratedContent(null); // Reset preview on new selection
+                        setGeneratedContent(null);
                     }}
                     onClose={() => setIsMediaPickerOpen(false)}
                 />
