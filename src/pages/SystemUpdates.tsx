@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.295',
+        date: '2026-05-14',
+        title: 'Sistema: Estabilización Maestra de Rutas 🛰️',
+        description: 'Corrección definitiva del enrutamiento Vercel para reactivar todos los sitios.',
+        type: 'major',
+        details: [
+            'Implementación de Regex de enrutamiento avanzado para separar API de Frontend.',
+            'Priorización absoluta de peticiones de datos de clubes sobre archivos estáticos.',
+            'Eliminación del conflicto que causaba el estado "Cargando Club" permanente.',
+            'Restauración de la comunicación bidireccional entre dominios .org y la base de datos.',
+            'Optimización del puente api/index.js para respuestas en milisegundos.'
+        ]
+    },
+    {
         version: 'v4.294',
         date: '2026-05-14',
         title: 'Estabilización: Reversión de Seguridad 🛡️',
