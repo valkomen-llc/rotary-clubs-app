@@ -68,6 +68,7 @@ import domainsRoutes from './routes/domains.js';
 import technicalRequestsRoutes from './routes/technical-requests.js';
 import districtAnalyticsRoutes from './routes/district-analytics.js';
 import emailAccountsRoutes from './routes/emailAccounts.js';
+import contentStudioRoutes from './routes/contentStudio.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -88,6 +89,7 @@ app.use('/api/ngse', ngseRoutes);
 app.use('/api/rotex', rotexRoutes);
 app.use('/api/financial', financialRoutes);
 app.use('/api/seo', seoRoutes);
+app.use('/api/content-studio', contentStudioRoutes);
 
 // REORDER WHATSAPP-QR FIRST TO AVOID PREFIX CONFLICT WITH '/api/whatsapp'
 app.use('/api/whatsapp-qr', whatsappQrRoutes);

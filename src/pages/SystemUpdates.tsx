@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.286',
+        date: '2026-05-14',
+        title: 'Sistema: Estabilización de Despliegue v2 🛰️',
+        description: 'Corrección estructural de rutas de Vercel y registro de servicios de IA.',
+        type: 'maintenance',
+        details: [
+            'Creación de puente api/index.js para cumplimiento de arquitectura Vercel.',
+            'Sincronización de rutas del Content Studio en el servidor principal.',
+            'Corrección de patrón de funciones en vercel.json para detectar server.js.',
+            'Eliminación de errores 404 en el endpoint de generación de publicaciones.',
+            'Optimización de la cadena de despliegue para procesos de IA pesados.'
+        ]
+    },
+    {
         version: 'v4.285',
         date: '2026-05-14',
         title: 'Infraestructura: Restauración de Producción 📡',
