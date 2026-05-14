@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.285',
+        date: '2026-05-14',
+        title: 'Infraestructura: Restauración de Producción 📡',
+        description: 'Corrección de errores críticos en la configuración de despliegue de Vercel.',
+        type: 'maintenance',
+        details: [
+            'Restauración del modo "Zero Config" de Vercel para garantizar la carga del frontend.',
+            'Corrección del archivo vercel.json para evitar conflictos de compilación.',
+            'Actualización de la interfaz de actualizaciones para soporte total de TypeScript.',
+            'Bypass de caché de construcción para una instalación limpia en el servidor.',
+            'Optimización de tiempos de espera para IA mantenida bajo nueva estructura.'
+        ]
+    },
+    {
         version: 'v4.284',
         date: '2026-05-14',
         title: 'Sistema: Optimización Rayo de IA ⚡',
