@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.284',
+        date: '2026-05-14',
+        title: 'Sistema: Optimización Rayo de IA ⚡',
+        description: 'Mejora radical de los tiempos de carga y prevención de congelamientos.',
+        type: 'improvement',
+        details: [
+            'Ampliación del tiempo de ejecución del servidor a 60 segundos (Vercel maxDuration).',
+            'Reducción del payload de imagen a 500px para análisis instantáneo de GPT-4o.',
+            'Aumento de la memoria asignada a procesos de IA (1024MB) para mayor fluidez.',
+            'Optimización de la cadena de peticiones para reducir la latencia inicial.',
+            'Mejora en la gestión de timeouts en conexiones pesadas de DALL-E 3 HD.'
+        ]
+    },
+    {
         version: 'v4.283',
         date: '2026-05-14',
         title: 'IA: Outpainting Cinematográfico 4K 🎬',

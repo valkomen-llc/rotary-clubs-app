@@ -16,10 +16,11 @@ export const generatePost = async (req, res) => {
                 const buffer = Buffer.from(await imgResponse.arrayBuffer());
                 const sharp = (await import('sharp')).default;
                 const resizedBuffer = await sharp(buffer)
-                    .resize(800, null, { withoutEnlargement: true })
-                    .jpeg({ quality: 70 })
+                    .resize(500, null, { withoutEnlargement: true })
+                    .jpeg({ quality: 50 })
                     .toBuffer();
                 processedImage = `data:image/jpeg;base64,${resizedBuffer.toString('base64')}`;
+                console.log('Lightning optimization complete.');
             }
         } catch (err) { console.warn('Optimization skipped.'); }
 
