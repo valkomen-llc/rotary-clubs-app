@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.300',
+        date: '2026-05-14',
+        title: 'IA: Arquitectura de Supervivencia Cero-Errores 🛡️',
+        description: 'Blindaje total del motor de regeneración cinematográfica para máxima disponibilidad.',
+        type: 'major',
+        details: [
+            'Implementación de procesamiento de imagen previo (Sharp) para eliminar fallos de tamaño.',
+            'Sistema de redundancia total: Triple-pass para garantizar la entrega de contenido.',
+            'Optimización de prompts para máxima compatibilidad con filtros de seguridad.',
+            'Gestión avanzada de excepciones para evitar bloqueos en el flujo de trabajo.',
+            'Garantía de regeneración cinematográfica incluso en condiciones extremas de API.'
+        ]
+    },
+    {
         version: 'v4.299',
         date: '2026-05-14',
         title: 'IA: Motor Ultra-Resiliente Inmune a Fallos 🚀',

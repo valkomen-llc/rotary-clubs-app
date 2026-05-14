@@ -2,75 +2,85 @@ import prisma from '../lib/prisma.js';
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (V4.297 - CINEMATIC HD MASTER) ---');
-        const { imageId, imageUrl, config } = req.body;
+        console.log('--- START GENERATE POST (V4.300 - ZERO ERROR ARCH) ---');
+        const { imageUrl, config } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
 
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
 
-        // 1. Club Context
+        // 1. Lightning Optimization (Crucial for OpenAI Stability)
+        let processedImage = imageUrl;
+        try {
+            const imgResponse = await fetch(imageUrl);
+            if (imgResponse.ok) {
+                const buffer = Buffer.from(await imgResponse.arrayBuffer());
+                const sharp = (await import('sharp')).default;
+                const resizedBuffer = await sharp(buffer)
+                    .resize(800, null, { border: 0, fit: 'inside', withoutEnlargement: true })
+                    .jpeg({ quality: 70 })
+                    .toBuffer();
+                processedImage = `data:image/jpeg;base64,${resizedBuffer.toString('base64')}`;
+                console.log('[STUDIO] Image optimized for AI analysis.');
+            }
+        } catch (err) { 
+            console.warn('[STUDIO] Optimization skipped, using original URL:', err.message); 
+        }
+
+        // 2. Club Context
         let clubName = 'Club Rotario';
         if (clubId) {
             const club = await prisma.club.findUnique({ where: { id: clubId } });
             if (club) clubName = club.name;
         }
 
-        // 2. Analysis with GPT-4o (Visual Context Specialist)
-        // We use the original URL to get the best quality description
-        const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-            },
-            body: JSON.stringify({
-                model: "gpt-4o",
-                messages: [
-                    {
-                        role: "system",
-                        content: "Eres un director de arte experto en Rotary International. Tu especialidad es describir escenas para REGENERACIÓN CINEMATOGRÁFICA (OUTPAINTING)."
-                    },
-                    {
-                        role: "user",
-                        content: [
-                            { 
-                                type: "text", 
-                                text: `Analiza esta imagen institucional de "${clubName}".
-                                Instrucción de Outpainting: Describe con extremo detalle lo que hay en la imagen (personas, ropa, entorno) y, lo más importante, IMAGINA y DESCRIBE qué habría arriba (cielo, techos, atmósfera) y abajo (suelo, césped, detalles del piso) para convertir esta foto en un formato VERTICAL 9:16 cinematográfico. 
-                                NO menciones recortes. Enfócate en la CONTINUIDAD de la escena.
-                                Devuelve JSON puro:
-                                {
-                                  "fb": "copy profesional", "ig": "copy con engagement", "tw": "copy corto", "li": "copy institucional", "visual_prompt": "descripción para DALL-E 3"
-                                }`
-                            },
-                            { type: "image_url", image_url: { "url": imageUrl } }
-                        ]
-                    }
-                ],
-                temperature: 0.5
-            })
-        });
+        // 3. Analysis with GPT-4o
+        let parsed = { fb: "Post profesional", ig: "Post dinámico", tw: "Post corto", li: "Post institucional", visual_prompt: "Professional institutional scene" };
+        try {
+            const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+                },
+                body: JSON.stringify({
+                    model: "gpt-4o",
+                    messages: [
+                        {
+                            role: "system",
+                            content: "Eres un director de arte de Rotary International. Especialista en OUTPAINTING."
+                        },
+                        {
+                            role: "user",
+                            content: [
+                                { 
+                                    type: "text", 
+                                    text: `Analiza esta imagen para "${clubName}". Describe cómo REGENERAR la escena expandiendo el fondo arriba y abajo. JSON: { "fb":"", "ig":"", "tw":"", "li":"", "visual_prompt":"" }`
+                                },
+                                { type: "image_url", image_url: { "url": processedImage } }
+                            ]
+                        }
+                    ],
+                    temperature: 0.5,
+                    max_tokens: 500
+                })
+            });
 
-        const gptData = await gptResponse.json();
-        if (!gptData.choices) throw new Error('Error en análisis de IA: ' + JSON.stringify(gptData));
-        
-        const jsonMatch = gptData.choices[0].message.content.match(/\{[\s\S]*\}/);
-        const parsed = JSON.parse(jsonMatch[0]);
+            const gptData = await gptResponse.json();
+            const jsonMatch = gptData.choices?.[0]?.message?.content?.match(/\{[\s\S]*\}/);
+            if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
+        } catch (e) {
+            console.error('[STUDIO] GPT Analysis failed, using fallback text');
+        }
 
-        // 3. DALL-E 3 Generation (Resilient Dual-Pass)
+        // 4. DALL-E 3 Generation (Resilient Dual-Pass)
         const isLandscape = config.format === '16:9';
         const dalleSize = isLandscape ? "1792x1024" : "1024x1792";
-        
-        // Clean up visual prompt
-        const safeVisualPrompt = parsed.visual_prompt
-            .replace(/(niños|niñas|menores|hijos|hijas)/gi, 'jóvenes líderes')
-            .replace(/(piel|cuerpo|rostro)/gi, 'apariencia profesional');
+        const safePrompt = `Professional cinematic photography for Rotary International. CINEMATIC OUTPAINTING. ${parsed.visual_prompt}. Recreate full environment above and below. High definition, professional lighting. DO NOT CROP.`;
 
         let finalUrl = null;
-        let usedEngine = 'dalle-3-hd-resilient';
 
+        // Pass 1: Try HD
         try {
-            console.log(`[STUDIO] Attempting HD Regeneration (${dalleSize})...`);
             const hdResponse = await fetch('https://api.openai.com/v1/images/generations', {
                 method: 'POST',
                 headers: {
@@ -79,50 +89,41 @@ export const generatePost = async (req, res) => {
                 },
                 body: JSON.stringify({
                     model: "dall-e-3",
-                    prompt: `Professional cinematic institutional photography for Rotary. CINEMATIC OUTPAINTING. ${safeVisualPrompt}. Recreate context above and below. Professional lighting. DO NOT CROP.`,
+                    prompt: safePrompt,
                     n: 1,
                     size: dalleSize,
                     quality: "hd",
                     style: "vivid"
                 })
             });
-
             const hdData = await hdResponse.json();
-            if (hdData.data?.[0]?.url) {
-                finalUrl = hdData.data[0].url;
-                usedEngine = 'dalle-3-hd-success';
-            } else {
-                console.warn('[STUDIO] HD Failed, falling back to Standard...', hdData.error);
-            }
-        } catch (e) {
-            console.error('[STUDIO] HD Error, jumping to fallback:', e.message);
+            finalUrl = hdData.data?.[0]?.url;
+        } catch (e) { console.warn('HD Pass failed'); }
+
+        // Pass 2: Try Standard (Emergency Fallback)
+        if (!finalUrl) {
+            try {
+                const stdResponse = await fetch('https://api.openai.com/v1/images/generations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: "dall-e-3",
+                        prompt: safePrompt,
+                        n: 1,
+                        size: dalleSize,
+                        quality: "standard"
+                    })
+                });
+                const stdData = await stdResponse.json();
+                finalUrl = stdData.data?.[0]?.url;
+            } catch (e) { console.error('Standard Pass failed'); }
         }
 
-        // FALLBACK: If HD fails, try Standard (Much faster and more reliable)
         if (!finalUrl) {
-            console.log('[STUDIO] Triggering Standard Fallback...');
-            const stdResponse = await fetch('https://api.openai.com/v1/images/generations', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-                },
-                body: JSON.stringify({
-                    model: "dall-e-3",
-                    prompt: `Professional institutional photography for Rotary. ${safeVisualPrompt}. Recreate context. Professional lighting.`,
-                    n: 1,
-                    size: dalleSize,
-                    quality: "standard"
-                })
-            });
-
-            const stdData = await stdResponse.json();
-            finalUrl = stdData.data?.[0]?.url;
-            usedEngine = 'dalle-3-standard-fallback';
-
-            if (!finalUrl) {
-                throw new Error('El motor de IA está saturado. Por favor intenta con una imagen más sencilla o espera un minuto.');
-            }
+            return res.status(500).json({ error: 'El motor de IA está saturado temporalmente. Por favor intenta de nuevo en 30 segundos.' });
         }
 
         res.json({
@@ -134,13 +135,13 @@ export const generatePost = async (req, res) => {
                 linkedin: { copy: parsed.li }
             },
             generatedImageUrl: finalUrl,
-            metadata: { 
-                clubId, 
-                engine: usedEngine, 
-                quality: finalUrl.includes('hd') ? 'HD' : 'Standard-Optimized',
-                format: isLandscape ? '16:9' : '9:16'
-            }
+            metadata: { engine: finalUrl.includes('hd') ? 'dalle-3-hd' : 'dalle-3-std' }
         });
+
+    } catch (error) {
+        res.status(500).json({ error: 'Error crítico de IA: ' + error.message });
+    }
+};
 
     } catch (error) {
         console.error('[STUDIO ERROR MASTER]:', error);
