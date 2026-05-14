@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.288',
+        date: '2026-05-14',
+        title: 'Infraestructura: Restauración de Enrutamiento 🌐',
+        description: 'Corrección de errores 404 y reconexión total de la biblioteca de medios.',
+        type: 'maintenance',
+        details: [
+            'Implementación de reglas de Rewrites para soporte total de navegación SPA.',
+            'Conexión garantizada del endpoint /api con el puente api/index.js.',
+            'Eliminación de errores 404 NOT_FOUND en refrescos de página.',
+            'Restauración de la carga de imágenes en la biblioteca del Content Studio.',
+            'Mantenimiento de los límites extendidos de ejecución para IA (60s).'
+        ]
+    },
+    {
         version: 'v4.287',
         date: '2026-05-14',
         title: 'Biblioteca: Restauración de Visibilidad Global 🖼️',
