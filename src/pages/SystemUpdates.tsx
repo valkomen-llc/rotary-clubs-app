@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.260',
+        date: '2026-05-14',
+        title: 'Content Studio: Generador de Publicaciones ✨',
+        description: 'Lanzamiento del nuevo módulo de generación de contenido IA para redes sociales.',
+        type: 'feature',
+        details: [
+            'Nuevo selector de imágenes integrado con la Biblioteca de Medios.',
+            'Generación automática de copies para Facebook, Instagram y X (Twitter).',
+            'Adaptación inteligente a formatos 4:5 (FB) y 9:16 (IG/TikTok).',
+            'Configuración de IA para áreas de interés rotario y optimización visual.',
+            'Vista previa multi-plataforma en tiempo real con sugerencia de hashtags.'
+        ]
+    },
+    {
         version: 'v4.258',
         date: '2026-05-14',
         title: 'Sincronización de Base de Datos 🛡️',

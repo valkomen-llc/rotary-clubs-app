@@ -6,13 +6,15 @@ import {
     Share2, 
     Clock, 
     Sparkles, 
-    Trophy
+    Trophy,
+    Image as ImageIcon
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import VideoCreator from '../../components/admin/content-studio/VideoCreator';
 import ProjectLibrary from '../../components/admin/content-studio/ProjectLibrary';
 import AccountManager from '../../components/admin/content-studio/AccountManager';
 import ContentQueue from '../../components/admin/content-studio/ContentQueue';
+import PostGenerator from '../../components/admin/content-studio/PostGenerator';
 
 const ContentStudio: React.FC = () => {
     const [activeTab, setActiveTab] = useState('create');
@@ -42,20 +44,24 @@ const ContentStudio: React.FC = () => {
 
                 {/* Main Content Areas */}
                 <Tabs defaultValue="create" className="w-full" onValueChange={setActiveTab}>
-                    <TabsList className="bg-gray-100/50 p-1 rounded-2xl mb-8 border border-gray-100">
-                        <TabsTrigger value="create" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2">
+                    <TabsList className="bg-gray-100/50 p-1 rounded-2xl mb-8 border border-gray-100 overflow-x-auto flex-nowrap scrollbar-hide">
+                        <TabsTrigger value="create" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
                             <Sparkles className="w-4 h-4" />
                             Creador de Video
                         </TabsTrigger>
-                        <TabsTrigger value="library" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2">
+                        <TabsTrigger value="post" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
+                            <ImageIcon className="w-4 h-4" />
+                            Generador de Publicaciones
+                        </TabsTrigger>
+                        <TabsTrigger value="library" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
                             <Layers className="w-4 h-4" />
                             Biblioteca
                         </TabsTrigger>
-                        <TabsTrigger value="accounts" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2">
+                        <TabsTrigger value="accounts" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
                             <Share2 className="w-4 h-4" />
                             Cuentas Sociales
                         </TabsTrigger>
-                        <TabsTrigger value="queue" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2">
+                        <TabsTrigger value="queue" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
                             <Clock className="w-4 h-4" />
                             Cola de Envío
                         </TabsTrigger>
@@ -63,6 +69,10 @@ const ContentStudio: React.FC = () => {
 
                     <TabsContent value="create" className="mt-0 focus-visible:outline-none">
                         <VideoCreator />
+                    </TabsContent>
+
+                    <TabsContent value="post" className="mt-0 focus-visible:outline-none">
+                        <PostGenerator />
                     </TabsContent>
 
                     <TabsContent value="library" className="mt-0 focus-visible:outline-none">

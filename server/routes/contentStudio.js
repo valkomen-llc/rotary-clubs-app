@@ -10,7 +10,8 @@ import {
     handleKieWebhook,
     syncProjectStatus,
     deleteVideoProject,
-    getOAuthUrl
+    getOAuthUrl,
+    generatePost
 } from '../controllers/contentStudioController.js';
 
 const router = express.Router();
@@ -21,6 +22,9 @@ router.get('/oauth/:platform/authorize', getOAuthUrl);
 
 // Webhook (Public for KIE.ai)
 router.post('/webhook', handleKieWebhook);
+
+// Content Generation
+router.post('/generate-post', authMiddleware, generatePost);
 
 // Projects
 router.post('/projects', authMiddleware, createVideoProject);

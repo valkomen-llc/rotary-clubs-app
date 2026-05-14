@@ -1,7 +1,101 @@
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
-
+import prisma from '../lib/prisma.js';
 import { triggerVideoGeneration } from '../services/kieService.js';
+
+export const generatePost = async (req, res) => {
+    try {
+        const { imageId, imageUrl, config } = req.body;
+        const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
+
+        if (!imageUrl) {
+            return res.status(400).json({ error: 'La URL de la imagen es requerida' });
+        }
+
+        // 1. Get Club Context for better AI generation
+        const club = await prisma.club.findUnique({
+            where: { id: clubId },
+            include: {
+                projects: { take: 3, orderBy: { createdAt: 'desc' } },
+                posts: { take: 3, orderBy: { createdAt: 'desc' }, where: { published: true } }
+            }
+        });
+
+        const clubName = club?.name || 'Club Rotario';
+        const projectContext = club?.projects.map(p => `- ${p.title}: ${p.description.slice(0, 100)}`).join('\n') || 'No hay proyectos recientes.';
+        
+        // 2. Prepare Prompt for OpenAI
+        const prompt = `Eres un experto en comunicación digital para Rotary International. 
+Tu tarea es generar el copy para una publicación de redes sociales para el club "${clubName}".
+El tema o área de interés es: ${config.interestArea}.
+
+DATOS DEL CLUB:
+${projectContext}
+
+INSTRUCCIONES:
+- Genera 3 variantes de copy: una para Facebook, una para Instagram y una para X (Twitter).
+- El tono debe ser institucional, profesional, emocional y orientado al impacto social y servicio rotario.
+- Incluye hashtags relevantes (ej: #Rotary, #PeopleOfAction, #ServicioRotario).
+- Incluye un llamado a la acción (CTA) claro para cada red.
+- Respeta el límite de caracteres de X (280 caracteres).
+- Responde EXCLUSIVAMENTE en formato JSON con la siguiente estructura:
+{
+  "facebook": { "copy": "...", "hashtags": "...", "cta": "..." },
+  "instagram": { "copy": "...", "hashtags": "...", "cta": "..." },
+  "x": { "copy": "...", "hashtags": "...", "cta": "..." }
+}`;
+
+        // 3. Call OpenAI
+        let aiContent = {
+            facebook: { copy: "Transformando comunidades...", hashtags: "#Rotary #Service", cta: "¡Únete!" },
+            instagram: { copy: "Servicio por encima de uno mismo...", hashtags: "#RotaryLife", cta: "Link en bio" },
+            x: { copy: "Juntos marcamos la diferencia.", hashtags: "#Rotary", cta: "Visítanos" }
+        };
+
+        if (process.env.OPENAI_API_KEY) {
+            try {
+                const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: "gpt-4-turbo-preview",
+                        messages: [
+                            { role: "system", content: "Eres un experto en Imagen Pública de Rotary." },
+                            { role: "user", content: prompt }
+                        ],
+                        response_format: { type: "json_object" }
+                    })
+                });
+
+                const data = await response.json();
+                if (data.choices?.[0]?.message?.content) {
+                    aiContent = JSON.parse(data.choices[0].message.content);
+                }
+            } catch (aiError) {
+                console.error('OpenAI Error in generatePost:', aiError);
+                // Fallback to default content
+            }
+        }
+
+        // 4. (Optional) In a real scenario, we would trigger image enhancement here
+        // For now, we return the generated content and the original image as base
+
+        res.json({
+            success: true,
+            content: aiContent,
+            metadata: {
+                clubId,
+                imageId,
+                format: config.format
+            }
+        });
+
+    } catch (error) {
+        console.error('Error in generatePost:', error);
+        res.status(500).json({ error: 'Error al generar la publicación: ' + error.message });
+    }
+};
 
 export const createVideoProject = async (req, res) => {
     try {
