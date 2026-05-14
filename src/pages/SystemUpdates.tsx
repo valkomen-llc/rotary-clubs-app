@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.268',
+        date: '2026-05-14',
+        title: 'Seguridad: Corrección de Autenticación 🔑',
+        description: 'Reparación de la llave de acceso para la generación de contenido por IA.',
+        type: 'fix',
+        details: [
+            'Sincronización de la clave "rotary_token" para llamadas seguras al backend.',
+            'Corrección del error "Invalid token" que bloqueaba la generación con IA.',
+            'Refuerzo de los encabezados de autorización en cargas de archivos.',
+            'Mejora en la persistencia de sesión durante el proceso de generación.',
+            'Optimización de los tiempos de respuesta en el generador de publicaciones.'
+        ]
+    },
+    {
         version: 'v4.267',
         date: '2026-05-14',
         title: 'Sistema: Unificación de Notificaciones 🔔',

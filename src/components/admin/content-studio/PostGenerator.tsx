@@ -60,7 +60,7 @@ const PostGenerator: React.FC = () => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    'Authorization': `Bearer ${localStorage.getItem('rotary_token')}`
                 },
                 body: JSON.stringify({
                     imageId: selectedImage.id || 'uploaded',
@@ -101,7 +101,7 @@ const PostGenerator: React.FC = () => {
             const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/media/upload`, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    'Authorization': `Bearer ${localStorage.getItem('rotary_token')}`
                 },
                 body: formData
             });
