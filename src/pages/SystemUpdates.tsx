@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.261',
+        date: '2026-05-14',
+        title: 'IA Engine: Conversión Portrait 4K 📸',
+        description: 'Implementación del motor de recreación visual para adaptar fotos panorámicas a formatos verticales.',
+        type: 'feature',
+        details: [
+            'Integración de GPT-4 Vision para análisis profundo de composición original.',
+            'Recreación de escenas mediante DALL-E 3 en formato Portrait (1024x1792).',
+            'Eliminación de distorsión y pixelación en conversiones de aspecto (Aspect Ratio).',
+            'Sincronización de contexto institucional para preservación de marca Rotary en imágenes IA.',
+            'Badge de "IA Optimizada" en previsualización de Content Studio.'
+        ]
+    },
+    {
         version: 'v4.260',
         date: '2026-05-14',
         title: 'Content Studio: Generador de Publicaciones ✨',
