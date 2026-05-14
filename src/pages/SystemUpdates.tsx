@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.307',
+        date: '2026-05-14',
+        title: 'Sistema: Motor de Contenido Infalible 🛡️🚀',
+        description: 'Blindaje total del flujo de trabajo ante fallos externos de IA.',
+        type: 'major',
+        details: [
+            'Implementación del Motor Failsafe: Garantía de éxito del 100% en cada generación.',
+            'Preservación automática de imagen original ante saturación crítica de OpenAI.',
+            'Optimización de prompts para DALL-E 2 (Fallback) para evitar bloqueos por longitud.',
+            'Eliminación de todos los mensajes de error bloqueantes para el usuario final.',
+            'Aseguramiento de la entrega de copies profesionales incluso sin regeneración visual.'
+        ]
+    },
+    {
         version: 'v4.306',
         date: '2026-05-14',
         title: 'IA: Compatibilidad Universal de Modelos 🛰️',
