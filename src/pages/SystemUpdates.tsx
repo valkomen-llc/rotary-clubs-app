@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.262',
+        date: '2026-05-14',
+        title: 'IA Performance: Optimización de Latencia ⚡',
+        description: 'Mejoras en el motor de generación para reducir tiempos de respuesta y evitar timeouts.',
+        type: 'update',
+        details: [
+            'Migración a GPT-4o (Omni) para análisis visual y textual ultra-rápido.',
+            'Consolidación de procesos IA en una sola fase para reducir latencia de red.',
+            'Incremento de maxDuration en Vercel a 60s para procesamiento de imágenes HD.',
+            'Corrección de error de comunicación en el módulo de Generador de Publicaciones.',
+            'Optimización de prompts para recreación visual más fiel en formato Portrait.'
+        ]
+    },
+    {
         version: 'v4.261',
         date: '2026-05-14',
         title: 'IA Engine: Conversión Portrait 4K 📸',
