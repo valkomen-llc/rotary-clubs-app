@@ -2,13 +2,13 @@ import prisma from '../lib/prisma.js';
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (SURGICAL EXTRACTION MODE) ---');
+        console.log('--- START GENERATE POST (MULTI-ENGINE FALLBACK) ---');
         const { imageId, imageUrl, config } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
 
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
 
-        // 1. Image Processing (Very small for stability)
+        // 1. Optimized Image Processing
         let processedImage = imageUrl;
         try {
             const imgResponse = await fetch(imageUrl);
@@ -16,16 +16,14 @@ export const generatePost = async (req, res) => {
                 const buffer = Buffer.from(await imgResponse.arrayBuffer());
                 const sharp = (await import('sharp')).default;
                 const resizedBuffer = await sharp(buffer)
-                    .resize(600, null, { withoutEnlargement: true }) // Even smaller for max stability
-                    .jpeg({ quality: 50 })
+                    .resize(800, null, { withoutEnlargement: true })
+                    .jpeg({ quality: 60 })
                     .toBuffer();
                 processedImage = `data:image/jpeg;base64,${resizedBuffer.toString('base64')}`;
             }
-        } catch (err) {
-            console.warn('Sharp skip:', err.message);
-        }
+        } catch (err) { console.warn('Optimization skipped.'); }
 
-        // 2. Context
+        // 2. Club Context
         let club = null;
         if (clubId) {
             club = await prisma.club.findUnique({
@@ -35,9 +33,9 @@ export const generatePost = async (req, res) => {
         }
         const clubName = club?.name || 'Club Rotario';
 
-        if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'Falta OPENAI_API_KEY en el servidor.' });
+        if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'Configuración: Falta API Key.' });
 
-        // 3. GPT-4o Analysis
+        // 3. Analysis with GPT-4o
         const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -49,7 +47,7 @@ export const generatePost = async (req, res) => {
                 messages: [
                     {
                         role: "system",
-                        content: "Eres un sistema de datos. Tu única función es devolver JSON puro. No hables, no expliques."
+                        content: "Eres un sistema de datos. Tu única función es devolver JSON puro con copies y descripción de imagen."
                     },
                     {
                         role: "user",
@@ -57,45 +55,38 @@ export const generatePost = async (req, res) => {
                             { 
                                 type: "text", 
                                 text: `Analiza esta imagen para el club "${clubName}".
-                                Genera copys para redes sociales y una "desc" técnica para DALL-E 3 para recrear la escena en PORTRAIT (9:16) expandiendo el fondo.
                                 Devuelve este formato JSON:
                                 {
-                                  "fb": "copy fb",
-                                  "ig": "copy ig",
+                                  "fb": "copy facebook",
+                                  "ig": "copy instagram",
                                   "tw": "copy x",
-                                  "desc": "descripcion dall-e"
+                                  "desc": "descripcion para dall-e"
                                 }`
                             },
                             { type: "image_url", image_url: { "url": processedImage } }
                         ]
                     }
                 ],
-                temperature: 0.1, // Higher precision
+                temperature: 0.1,
                 max_tokens: 800
             })
         });
 
         const gptData = await gptResponse.json();
-        if (!gptResponse.ok) return res.status(500).json({ error: gptData.error?.message || 'Error de API' });
+        if (!gptResponse.ok) return res.status(500).json({ error: `Análisis IA falló: ${gptData.error?.message}` });
 
         const rawContent = gptData.choices?.[0]?.message?.content;
-        if (!rawContent) return res.status(500).json({ error: 'Respuesta vacía de la IA.' });
-
-        // SURGICAL EXTRACTION: Find JSON object even if surrounded by text
         let parsed = null;
         try {
             const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
-            if (!jsonMatch) throw new Error('No JSON found');
             parsed = JSON.parse(jsonMatch[0]);
-        } catch (e) {
-            console.error('Extraction failed:', rawContent);
-            return res.status(500).json({ error: 'La IA no respondió en el formato esperado. Intenta de nuevo.' });
-        }
+        } catch (e) { return res.status(500).json({ error: 'Fallo en el formato del análisis IA.' }); }
 
-        // 4. DALL-E 3 Generation
-        const dallePrompt = `Professional Rotary photography. VERTICAL PORTRAIT (9:16). ${parsed.desc}. Natural lighting, realistic faces, high resolution.`;
+        // 4. Generation with DALL-E 3 (Primary) or DALL-E 2 (Fallback)
+        let finalImageUrl = imageUrl;
+        console.log('Attempting DALL-E 3...');
         
-        const dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
+        let dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -103,15 +94,40 @@ export const generatePost = async (req, res) => {
             },
             body: JSON.stringify({
                 model: "dall-e-3",
-                prompt: dallePrompt,
+                prompt: `Professional photography for Rotary. VERTICAL PORTRAIT. ${parsed.desc}. Realistic, high fidelity.`,
                 n: 1,
                 size: "1024x1792",
                 quality: "hd"
             })
         });
 
-        const dalleData = await dalleResponse.json();
-        if (!dalleResponse.ok) return res.status(500).json({ error: `DALL-E: ${dalleData.error?.message}` });
+        let dalleData = await dalleResponse.json();
+
+        // Check if DALL-E 3 failed due to "model does not exist" or permissions
+        if (!dalleResponse.ok && (dalleData.error?.code === 'model_not_found' || dalleData.error?.message?.includes('dall-e-3'))) {
+            console.warn('DALL-E 3 not available. Falling back to DALL-E 2...');
+            dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+                },
+                body: JSON.stringify({
+                    model: "dall-e-2",
+                    prompt: `Professional photography for Rotary. High quality. ${parsed.desc}`,
+                    n: 1,
+                    size: "1024x1024"
+                })
+            });
+            dalleData = await dalleResponse.json();
+        }
+
+        if (dalleResponse.ok && dalleData.data?.[0]?.url) {
+            finalImageUrl = dalleData.data[0].url;
+        } else {
+            console.error('All DALL-E models failed:', dalleData.error);
+            // Non-fatal error for image, still return content
+        }
 
         res.json({
             success: true,
@@ -120,13 +136,12 @@ export const generatePost = async (req, res) => {
                 instagram: { copy: parsed.ig, hashtags: '', cta: '' },
                 x: { copy: parsed.tw, hashtags: '', cta: '' }
             },
-            generatedImageUrl: dalleData.data[0].url,
-            metadata: { clubId, imageId }
+            generatedImageUrl: finalImageUrl,
+            metadata: { clubId, engine: dalleResponse.ok ? (dalleData.model || 'dall-e-2') : 'fallback-original' }
         });
 
     } catch (error) {
-        console.error('Fatal:', error);
-        res.status(500).json({ error: 'Fallo de sistema: ' + error.message });
+        res.status(500).json({ error: 'Error del sistema: ' + error.message });
     }
 };
 

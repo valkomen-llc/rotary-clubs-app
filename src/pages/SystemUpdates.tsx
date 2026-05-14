@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.279',
+        date: '2026-05-14',
+        title: 'IA: Motor Dual con Fallback Inteligente 🚀',
+        description: 'Garantía de continuidad mediante el uso de motores alternativos de imagen.',
+        type: 'improvement',
+        details: [
+            'Implementación de reintento automático con DALL-E 2 si DALL-E 3 no está disponible.',
+            'Eliminación del error "The model does not exist" mediante detección de permisos.',
+            'Ajuste dinámico de resolución y calidad según el motor de IA seleccionado.',
+            'Mantenimiento de la alta fidelidad en los copies generados por GPT-4o.',
+            'Optimización de la comunicación servidor-servidor para evitar bloqueos por cuotas.'
+        ]
+    },
+    {
         version: 'v4.278',
         date: '2026-05-14',
         title: 'Sistema: Extracción Quirúrgica de Datos 🦾',
