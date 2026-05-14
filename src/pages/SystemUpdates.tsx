@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.297',
+        date: '2026-05-14',
+        title: 'IA: Motor de Regeneración Cinematográfica 4K 🎨',
+        description: 'Implementación del sistema de "Outpainting" maestro para publicaciones sociales.',
+        type: 'major',
+        details: [
+            'Activación de regeneración inteligente mediante DALL-E 3 HD (Sin recortes).',
+            'Integración de GPT-4o como director de arte para expansión de escenas.',
+            'Optimización de formato Portrait (9:16) y Landscape (16:9) con continuidad visual.',
+            'Mejora de resolución y nitidez en fotos institucionales regeneradas.',
+            'Eliminación de fallbacks de recorte simple para garantizar calidad cinematográfica.'
+        ]
+    },
+    {
         version: 'v4.296',
         date: '2026-05-14',
         title: 'Recuperación: Restauración de Estado Maestro 🛡️',

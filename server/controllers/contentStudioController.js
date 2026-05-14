@@ -2,46 +2,21 @@ import prisma from '../lib/prisma.js';
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (V4.283 - CINEMATIC HD) ---');
+        console.log('--- START GENERATE POST (V4.297 - CINEMATIC HD MASTER) ---');
         const { imageId, imageUrl, config } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
 
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
 
-        // 1. Image Processing
-        let processedImage = imageUrl;
-        try {
-            const imgResponse = await fetch(imageUrl);
-            if (imgResponse.ok) {
-                const buffer = Buffer.from(await imgResponse.arrayBuffer());
-                const sharp = (await import('sharp')).default;
-                const resizedBuffer = await sharp(buffer)
-                    .resize(500, null, { withoutEnlargement: true })
-                    .jpeg({ quality: 50 })
-                    .toBuffer();
-                processedImage = `data:image/jpeg;base64,${resizedBuffer.toString('base64')}`;
-                console.log('Lightning optimization complete.');
-            }
-        } catch (err) { console.warn('Optimization skipped.'); }
-
-        // 2. Club Context
+        // 1. Club Context
         let clubName = 'Club Rotario';
         if (clubId) {
             const club = await prisma.club.findUnique({ where: { id: clubId } });
             if (club) clubName = club.name;
         }
 
-        // 3. AI Rules (Professional Feed Focus)
-        const postType = config.type || 'standard';
-        const rules = `
-        Tono: Profesional, inspirador y de alto impacto.
-        Facebook/Instagram/LinkedIn: Formato Portrait Profesional.
-        X (Twitter): Formato Paisaje Profesional.
-        `;
-
-        if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'Falta API Key.' });
-
-        // 4. Analysis with GPT-4o (Outpainting Specialist)
+        // 2. Analysis with GPT-4o (Visual Context Specialist)
+        // We use the original URL to get the best quality description
         const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -53,36 +28,40 @@ export const generatePost = async (req, res) => {
                 messages: [
                     {
                         role: "system",
-                        content: `Eres un director de arte de Rotary. Reglas: ${rules}`
+                        content: "Eres un director de arte experto en Rotary International. Tu especialidad es describir escenas para REGENERACIÓN CINEMATOGRÁFICA (OUTPAINTING)."
                     },
                     {
                         role: "user",
                         content: [
                             { 
                                 type: "text", 
-                                text: `Analiza esta imagen para "${clubName}".
-                                Instrucción Maestra de Recreación: Describe cómo REGENERAR esta escena en formato VERTICAL PORTRAIT (9:16). NO RECORTES. Imagina lo que hay arriba (cielo, árboles, edificios) y abajo (suelo, camino, césped) y descríbelo para completar el cuadro. Mantén a las personas exactamente como están.
-                                Devuelve JSON:
+                                text: `Analiza esta imagen institucional de "${clubName}".
+                                Instrucción de Outpainting: Describe con extremo detalle lo que hay en la imagen (personas, ropa, entorno) y, lo más importante, IMAGINA y DESCRIBE qué habría arriba (cielo, techos, atmósfera) y abajo (suelo, césped, detalles del piso) para convertir esta foto en un formato VERTICAL 9:16 cinematográfico. 
+                                NO menciones recortes. Enfócate en la CONTINUIDAD de la escena.
+                                Devuelve JSON puro:
                                 {
-                                  "fb": "copy fb", "ig": "copy ig", "tw": "copy x", "li": "copy li", "desc": "descripcion detallada para regeneracion cinematografica"
+                                  "fb": "copy profesional", "ig": "copy con engagement", "tw": "copy corto", "li": "copy institucional", "visual_prompt": "descripción para DALL-E 3"
                                 }`
                             },
-                            { type: "image_url", image_url: { "url": processedImage } }
+                            { type: "image_url", image_url: { "url": imageUrl } }
                         ]
                     }
                 ],
-                temperature: 0.3
+                temperature: 0.5
             })
         });
 
         const gptData = await gptResponse.json();
-        const jsonMatch = gptData.choices?.[0]?.message?.content?.match(/\{[\s\S]*\}/);
+        if (!gptData.choices) throw new Error('Error en análisis de IA: ' + JSON.stringify(gptData));
+        
+        const jsonMatch = gptData.choices[0].message.content.match(/\{[\s\S]*\}/);
         const parsed = JSON.parse(jsonMatch[0]);
 
-        // 5. DALL-E 3 Generation (Cinematic HD Vertical)
+        // 3. DALL-E 3 Generation (Cinematic HD Outpainting)
         const isLandscape = config.format === '16:9';
-        const dalleSize = isLandscape ? "1792x1024" : "1024x1792"; // Back to Vertical 9:16 for full outpainting
+        const dalleSize = isLandscape ? "1792x1024" : "1024x1792";
         
+        console.log(`[STUDIO] Performing Master Regeneration (${dalleSize})...`);
         const dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
             method: 'POST',
             headers: {
@@ -91,14 +70,21 @@ export const generatePost = async (req, res) => {
             },
             body: JSON.stringify({
                 model: "dall-e-3",
-                prompt: `Professional cinematic photography for Rotary International. OUTPAINTING AND RECREATION. ${parsed.desc}. High resolution, ultra-detailed, realistic faces, natural lighting. RECREATE THE BACKGROUND ABOVE AND BELOW. DO NOT CROP SUBJECTS.`,
+                prompt: `Institutional cinematic photography for Rotary International. HIGH-END REGENERATION. ${parsed.visual_prompt}. Recreate the full environment above and below to fit a perfect ${isLandscape ? 'Landscape' : 'Portrait'} 4K frame. Maintain the subjects and faces exactly as the original but expand the world around them with natural lighting and professional depth of field. DO NOT CROP. REGENERATE AND EXPAND. Style: Professional, vivid, ultra-realistic, clean, institutional.`,
                 n: 1,
                 size: dalleSize,
-                quality: "hd" // Guaranteed HD
+                quality: "hd",
+                style: "vivid"
             })
         });
 
         const dalleData = await dalleResponse.json();
+        const finalUrl = dalleData.data?.[0]?.url;
+
+        if (!finalUrl) {
+            console.error('[DALLE ERROR]', dalleData);
+            throw new Error('El motor de regeneración HD está ocupado o falló. Por favor reintenta.');
+        }
 
         res.json({
             success: true,
@@ -108,12 +94,18 @@ export const generatePost = async (req, res) => {
                 x: { copy: parsed.tw },
                 linkedin: { copy: parsed.li }
             },
-            generatedImageUrl: dalleData.data?.[0]?.url || imageUrl,
-            metadata: { clubId, imageId, engine: 'dalle-3-hd-outpainting' }
+            generatedImageUrl: finalUrl,
+            metadata: { 
+                clubId, 
+                engine: 'dalle-3-hd-master-outpainting', 
+                quality: '4K-Cinematic',
+                format: isLandscape ? '16:9' : '9:16'
+            }
         });
 
     } catch (error) {
-        res.status(500).json({ error: 'Fallo: ' + error.message });
+        console.error('[STUDIO ERROR MASTER]:', error);
+        res.status(500).json({ error: 'Fallo en regeneración HD: ' + error.message });
     }
 };
 
