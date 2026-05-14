@@ -27,7 +27,7 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
-        version: 'v4.255',
+        version: 'v4.256',
         date: '2026-05-14',
         title: 'Alta Resolución y Medios Pro 📸',
         description: 'Optimización masiva del procesamiento de imágenes en toda la plataforma administrativa.',
