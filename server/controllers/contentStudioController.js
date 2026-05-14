@@ -3,7 +3,7 @@ import { triggerVideoGeneration } from '../services/kieService.js';
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (BASE64 MODE) ---');
+        console.log('--- START GENERATE POST (RESIZED BASE64 MODE) ---');
         const { imageId, imageUrl, config } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
 
@@ -11,21 +11,28 @@ export const generatePost = async (req, res) => {
             return res.status(400).json({ error: 'La URL de la imagen es requerida' });
         }
 
-        console.log('Params:', { imageId, imageUrl, clubId, config });
-
-        // 1. Convert Image to Base64 to ensure OpenAI can read it regardless of S3 permissions
+        // 1. Process Image: Fetch and Resize to reduce payload size
         let base64Image = null;
         try {
-            console.log('Fetching image for base64 conversion...');
+            console.log('Fetching image for processing:', imageUrl);
             const imgResponse = await fetch(imageUrl);
             if (!imgResponse.ok) throw new Error(`HTTP error! status: ${imgResponse.status}`);
             const buffer = Buffer.from(await imgResponse.arrayBuffer());
-            const contentType = imgResponse.headers.get('content-type') || 'image/jpeg';
-            base64Image = `data:${contentType};base64,${buffer.toString('base64')}`;
-            console.log('Base64 conversion successful.');
-        } catch (fetchError) {
-            console.error('Error fetching image for base64:', fetchError);
-            return res.status(500).json({ error: 'No se pudo procesar la imagen para la IA. Verifica que el archivo sea accesible.' });
+            
+            // Resize image to max 800px width to save bandwidth and avoid OpenAI payload limits
+            const sharp = (await import('sharp')).default;
+            const resizedBuffer = await sharp(buffer)
+                .resize(800, null, { withoutEnlargement: true })
+                .jpeg({ quality: 80 })
+                .toBuffer();
+            
+            base64Image = `data:image/jpeg;base64,${resizedBuffer.toString('base64')}`;
+            console.log('Image resized and converted to Base64 successfully.');
+        } catch (imgError) {
+            console.error('Image Processing Error:', imgError);
+            // Fallback: Try using the direct URL if resizing fails
+            base64Image = imageUrl;
+            console.log('Falling back to direct URL.');
         }
 
         // 2. Get Club Context
@@ -41,17 +48,15 @@ export const generatePost = async (req, res) => {
         }
 
         const clubName = club?.name || 'Club Rotario';
-        const projectContext = club?.projects?.map(p => `- ${p.title}`).join(', ') || 'Proyectos de servicio a la comunidad';
-        
-        let generatedImageUrl = null;
-        let aiContent = null;
+        const projectContext = club?.projects?.map(p => `- ${p.title}`).join(', ') || 'Proyectos de servicio comunitario';
 
         if (!process.env.OPENAI_API_KEY) {
-            return res.status(500).json({ error: 'Error interno: Falta configuración de IA' });
+            return res.status(500).json({ error: 'Error: OPENAI_API_KEY no configurada' });
         }
 
+        // 3. OpenAI GPT-4o Analysis
         try {
-            console.log('Calling GPT-4o with Base64 Image...');
+            console.log('Calling OpenAI GPT-4o...');
             const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: {
@@ -62,60 +67,64 @@ export const generatePost = async (req, res) => {
                     model: "gpt-4o",
                     messages: [
                         {
+                            role: "system",
+                            content: "Eres un experto en comunicación institucional de Rotary. Siempre respondes en formato JSON."
+                        },
+                        {
                             role: "user",
                             content: [
                                 { 
                                     type: "text", 
-                                    text: `Eres un experto en Imagen Pública de Rotary. 
-                                    Analiza esta imagen y genera 3 variantes de copy (Facebook, Instagram, X) para el club "${clubName}".
-                                    Área de interés: ${config.interestArea}.
-                                    Contexto del club: ${projectContext}.
+                                    text: `Analiza esta foto para el club "${clubName}".
+                                    Enfoque: ${config.interestArea}. 
+                                    Contexto: ${projectContext}.
                                     
-                                    También proporciona una descripción técnica detallada de la imagen original para recrearla en formato retrato.
-                                    Responde EXCLUSIVAMENTE en JSON con esta estructura:
+                                    Genera copies para Facebook, Instagram y X.
+                                    También genera una "imageDescription" para DALL-E 3 que recree la escena en alta fidelidad y formato portrait.
+                                    
+                                    JSON format:
                                     {
                                       "facebook": { "copy": "...", "hashtags": "...", "cta": "..." },
                                       "instagram": { "copy": "...", "hashtags": "...", "cta": "..." },
                                       "x": { "copy": "...", "hashtags": "...", "cta": "..." },
-                                      "imageDescription": "descripción técnica para DALL-E"
+                                      "imageDescription": "..."
                                     }`
                                 },
                                 { 
                                     type: "image_url", 
-                                    image_url: { 
-                                        "url": base64Image
-                                    } 
+                                    image_url: { "url": base64Image } 
                                 }
                             ]
                         }
                     ],
                     response_format: { type: "json_object" },
-                    max_tokens: 1500
+                    max_tokens: 1000
                 })
             });
 
             const gptData = await gptResponse.json();
             
-            if (gptData.error) {
-                console.error('OpenAI Error:', gptData.error);
-                return res.status(500).json({ error: `OpenAI Error: ${gptData.error.message}` });
+            if (!gptResponse.ok || gptData.error) {
+                const errMsg = gptData.error?.message || 'Error desconocido de OpenAI';
+                console.error('OpenAI API Error:', gptData.error);
+                return res.status(500).json({ error: `IA bloqueada: ${errMsg}` });
             }
 
-            if (!gptData.choices?.[0]?.message?.content) {
-                return res.status(500).json({ error: 'La IA no pudo procesar esta imagen específica.' });
+            const content = gptData.choices?.[0]?.message?.content;
+            if (!content) {
+                return res.status(500).json({ error: 'La IA no devolvió contenido útil. Intenta con otra imagen.' });
             }
 
-            const parsed = JSON.parse(gptData.choices[0].message.content);
-            aiContent = {
+            const parsed = JSON.parse(content);
+            const aiContent = {
                 facebook: parsed.facebook,
                 instagram: parsed.instagram,
                 x: parsed.x
             };
             const imageDescription = parsed.imageDescription;
 
-            console.log('Generating high-res recreation with DALL-E 3...');
-            const dallePrompt = `Professional Rotary photography. Scene: ${imageDescription}. Portrait format (4:5), realistic, natural light, high fidelity, inspiring institutional mood.`;
-
+            // 4. DALL-E 3 Generation
+            console.log('Calling DALL-E 3...');
             const dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
                 method: 'POST',
                 headers: {
@@ -124,7 +133,7 @@ export const generatePost = async (req, res) => {
                 },
                 body: JSON.stringify({
                     model: "dall-e-3",
-                    prompt: dallePrompt,
+                    prompt: `Professional cinematic photography for Rotary International. Scene: ${imageDescription}. Portrait mode (9:16), realistic, vibrant colors, institutional branding style.`,
                     n: 1,
                     size: "1024x1792",
                     quality: "hd"
@@ -132,29 +141,29 @@ export const generatePost = async (req, res) => {
             });
 
             const dalleData = await dalleResponse.json();
+            let finalImageUrl = imageUrl;
             
             if (dalleData.data?.[0]?.url) {
-                generatedImageUrl = dalleData.data[0].url;
+                finalImageUrl = dalleData.data[0].url;
             } else {
-                console.error('DALL-E failed, using original.', dalleData.error);
-                generatedImageUrl = imageUrl;
+                console.warn('DALL-E failed, using original.', dalleData.error);
             }
 
-        } catch (aiError) {
-            console.error('AI Logic Error:', aiError);
-            return res.status(500).json({ error: 'Error en el motor de IA: ' + aiError.message });
+            res.json({
+                success: true,
+                content: aiContent,
+                generatedImageUrl: finalImageUrl,
+                metadata: { clubId, imageId }
+            });
+
+        } catch (innerError) {
+            console.error('Inner AI Error:', innerError);
+            return res.status(500).json({ error: 'Fallo en el pipeline de IA: ' + innerError.message });
         }
 
-        res.json({
-            success: true,
-            content: aiContent,
-            generatedImageUrl: generatedImageUrl || imageUrl,
-            metadata: { clubId, imageId, format: config.format }
-        });
-
-    } catch (error) {
-        console.error('Global Error:', error);
-        res.status(500).json({ error: 'Error inesperado del sistema' });
+    } catch (globalError) {
+        console.error('Global Controller Error:', globalError);
+        res.status(500).json({ error: 'Error del sistema: ' + globalError.message });
     }
 };
 
@@ -175,6 +184,7 @@ export const createVideoProject = async (req, res) => {
 
         try {
             const imageUrls = images.map(img => img.url);
+            const { triggerVideoGeneration } = await import('../services/kieService.js');
             const kieTask = await triggerVideoGeneration(project.id, imageUrls, config);
             
             await prisma.videoProject.update({

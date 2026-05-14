@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.274',
+        date: '2026-05-14',
+        title: 'IA: Optimización de Carga y Resolución ⚡',
+        description: 'Mejora en la velocidad de respuesta mediante pre-procesamiento de imagen.',
+        type: 'improvement',
+        details: [
+            'Implementación de re-dimensionado automático (800px) para el motor Vision.',
+            'Reducción drástica del tamaño del payload enviado a OpenAI.',
+            'Mejora en la precisión de DALL-E 3 para recreaciones institucionales.',
+            'Refuerzo de los roles de sistema para respuestas JSON más consistentes.',
+            'Estabilización del pipeline de generación bajo condiciones de red variables.'
+        ]
+    },
+    {
         version: 'v4.273',
         date: '2026-05-14',
         title: 'IA: Inyección Directa de Datos (Base64) 🚀',
