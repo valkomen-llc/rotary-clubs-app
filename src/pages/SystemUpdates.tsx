@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.305',
+        date: '2026-05-14',
+        title: 'IA: Optimización de Protocolo y Calidad HD 🚀',
+        description: 'Corrección de compatibilidad con la API de OpenAI y mejora de fidelidad.',
+        type: 'major',
+        details: [
+            'Corrección del error de parámetro "style" mediante inyección directa en el prompt maestro.',
+            'Optimización de la cadena de mando entre GPT-4o y DALL-E 3 para outpainting real.',
+            'Mantenimiento forzado de calidad HD para todas las regeneraciones institucionales.',
+            'Refuerzo de la estabilidad del motor de regeneración en el Content Studio.',
+            'Mejora de la nitidez y detalle en la expansión de escenas grupales.'
+        ]
+    },
+    {
         version: 'v4.304',
         date: '2026-05-14',
         title: 'IA: Regeneración Cinematográfica Real (Outpainting) 🎨',

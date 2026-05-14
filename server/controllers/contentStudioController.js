@@ -79,11 +79,10 @@ export const generatePost = async (req, res) => {
             },
             body: JSON.stringify({
                 model: "dall-e-3",
-                prompt: masterPrompt,
+                prompt: `VIVID CINEMATIC STYLE. Institutional photography for Rotary International. MASTER OUTPAINTING. ${parsed.visual_prompt}. Recreate and expand the scene vertically for a perfect Portrait frame. Extend top and bottom with realistic context. DO NOT CROP. High resolution, 8k professional detail.`,
                 n: 1,
                 size: dalleSize,
-                quality: "hd",
-                style: "vivid"
+                quality: "hd"
             })
         });
 
