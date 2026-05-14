@@ -300,3 +300,41 @@ export const deleteVideoProject = async (req, res) => {
         res.status(500).json({ error: 'Error' });
     }
 };
+
+export const getOAuthUrl = async (req, res) => {
+    try {
+        const { platform } = req.params;
+        const { clubId } = req.query;
+        
+        const REDIRECT_URI = `${process.env.VITE_API_URL || 'https://app.clubplatform.org/api'}/social/callback/${platform}`;
+        const state = clubId || 'platform';
+        
+        let url = '';
+        
+        switch (platform) {
+            case 'instagram':
+            case 'facebook':
+                const FB_APP_ID = process.env.META_APP_ID || '2190338908168499';
+                url = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${FB_APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement,pages_manage_posts&response_type=code&state=${state}`;
+                break;
+                
+            case 'tiktok':
+                const TIKTOK_CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY || 'TU_TIKTOK_CLIENT_KEY';
+                url = `https://www.tiktok.com/v2/auth/authorize/?client_key=${TIKTOK_CLIENT_KEY}&scope=video.upload,user.info.basic&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${state}`;
+                break;
+                
+            case 'youtube':
+                const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || 'TU_GOOGLE_CLIENT_ID';
+                url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=https://www.googleapis.com/auth/youtube.upload&access_type=offline&prompt=consent&state=${state}`;
+                break;
+                
+            default:
+                return res.status(400).json({ error: 'Plataforma no soportada' });
+        }
+        
+        res.redirect(url);
+    } catch (error) {
+        console.error('Error generating OAuth URL:', error);
+        res.status(500).json({ error: 'Error al generar URL de conexión' });
+    }
+};

@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.272',
+        date: '2026-05-14',
+        title: 'Sistema: Restauración de Módulos OAuth 🛠️',
+        description: 'Corrección crítica de regresión en las exportaciones del controlador de Content Studio.',
+        type: 'fix',
+        details: [
+            'Restauración de la función getOAuthUrl para conexiones de cuentas sociales.',
+            'Corrección del error fatal de carga de módulo en el backend.',
+            'Mantenimiento íntegro de las mejoras de diagnóstico de IA (v4.271).',
+            'Sincronización de dependencias de rutas para evitar colapsos de sistema.',
+            'Refuerzo de la integridad del controlador de gestión de contenido.'
+        ]
+    },
+    {
         version: 'v4.271',
         date: '2026-05-14',
         title: 'IA: Diagnóstico y Alta Fidelidad 🧠',
