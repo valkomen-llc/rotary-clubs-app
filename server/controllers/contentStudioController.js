@@ -143,12 +143,6 @@ export const generatePost = async (req, res) => {
     }
 };
 
-    } catch (error) {
-        console.error('[STUDIO ERROR MASTER]:', error);
-        res.status(500).json({ error: 'Fallo en regeneración HD: ' + error.message });
-    }
-};
-
 export const downloadProxy = async (req, res) => {
     try {
         const { url } = req.query;
