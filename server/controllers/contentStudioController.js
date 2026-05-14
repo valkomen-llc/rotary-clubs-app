@@ -14,90 +14,90 @@ export const generatePost = async (req, res) => {
         const club = await prisma.club.findUnique({
             where: { id: clubId },
             include: {
-                projects: { take: 3, orderBy: { createdAt: 'desc' } },
-                posts: { take: 3, orderBy: { createdAt: 'desc' }, where: { published: true } }
+                projects: { take: 2, orderBy: { createdAt: 'desc' } },
+                posts: { take: 2, orderBy: { createdAt: 'desc' }, where: { published: true } }
             }
         });
 
         const clubName = club?.name || 'Club Rotario';
-        const projectContext = club?.projects.map(p => `- ${p.title}: ${p.description.slice(0, 100)}`).join('\n') || 'No hay proyectos recientes.';
+        const projectContext = club?.projects.map(p => `- ${p.title}`).join(', ') || 'Proyectos de servicio';
         
         let generatedImageUrl = null;
         let aiContent = null;
 
         if (process.env.OPENAI_API_KEY) {
             try {
-                // A. IMAGE ANALYSIS (Vision)
-                const visionResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+                // A. COMBINED VISION + TEXT GENERATION (Using gpt-4o for speed and efficiency)
+                const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
                     },
                     body: JSON.stringify({
-                        model: "gpt-4-vision-preview",
+                        model: "gpt-4o",
                         messages: [
                             {
                                 role: "user",
                                 content: [
-                                    { type: "text", text: "Describe esta imagen detalladamente para recrearla. Enfócate en sujetos, acción y elementos de Rotary." },
+                                    { 
+                                        type: "text", 
+                                        text: `Eres un experto en Imagen Pública de Rotary. 
+                                        Analiza esta imagen y genera 3 variantes de copy (Facebook, Instagram, X) para el club "${clubName}".
+                                        Área de interés: ${config.interestArea}.
+                                        Contexto del club: ${projectContext}.
+                                        
+                                        También proporciona una descripción técnica detallada de la imagen original para recrearla.
+                                        Responde EXCLUSIVAMENTE en JSON con esta estructura:
+                                        {
+                                          "facebook": { "copy": "...", "hashtags": "...", "cta": "..." },
+                                          "instagram": { "copy": "...", "hashtags": "...", "cta": "..." },
+                                          "x": { "copy": "...", "hashtags": "...", "cta": "..." },
+                                          "imageDescription": "descripción técnica detallada para DALL-E"
+                                        }`
+                                    },
                                     { type: "image_url", image_url: { "url": imageUrl } }
                                 ]
                             }
                         ],
-                        max_tokens: 300
+                        response_format: { type: "json_object" },
+                        max_tokens: 1000
                     })
                 });
 
-                const visionData = await visionResponse.json();
-                const imageDescription = visionData.choices?.[0]?.message?.content || "Una actividad de servicio rotario.";
+                const gptData = await gptResponse.json();
+                if (gptData.choices?.[0]?.message?.content) {
+                    const parsed = JSON.parse(gptData.choices[0].message.content);
+                    aiContent = {
+                        facebook: parsed.facebook,
+                        instagram: parsed.instagram,
+                        x: parsed.x
+                    };
+                    const imageDescription = parsed.imageDescription;
 
-                // B. TEXT GENERATION
-                const textPrompt = `Eres un experto en comunicación digital para Rotary. 
-                Club: "${clubName}". Imagen: ${imageDescription}. Área: ${config.interestArea}.
-                Genera 3 variantes (FB, IG, X) en JSON.`;
+                    // B. IMAGE GENERATION (DALL-E 3) - Conversion to Portrait
+                    const dallePrompt = `Fotografía profesional 4K de Rotary. Escena: ${imageDescription}. IMPORTANTE: Recrea la escena en formato VERTICAL (Portrait 4:5), centrando la acción. Realista, luz natural, alta resolución, colores vivos.`;
 
-                const textResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-                    },
-                    body: JSON.stringify({
-                        model: "gpt-4-turbo-preview",
-                        messages: [{ role: "user", content: textPrompt }],
-                        response_format: { type: "json_object" }
-                    })
-                });
+                    const dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+                        },
+                        body: JSON.stringify({
+                            model: "dall-e-3",
+                            prompt: dallePrompt,
+                            n: 1,
+                            size: "1024x1792",
+                            quality: "hd"
+                        })
+                    });
 
-                const textData = await textResponse.json();
-                if (textData.choices?.[0]?.message?.content) {
-                    aiContent = JSON.parse(textData.choices[0].message.content);
+                    const dalleData = await dalleResponse.json();
+                    generatedImageUrl = dalleData.data?.[0]?.url;
                 }
-
-                // C. IMAGE GENERATION (DALL-E 3) - Conversion to Portrait
-                const dallePrompt = `Fotografía profesional 4K de Rotary. Basada en: ${imageDescription}. Recrea en formato VERTICAL (Portrait 4:5), centrando la acción. Realista, luz natural.`;
-
-                const dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-                    },
-                    body: JSON.stringify({
-                        model: "dall-e-3",
-                        prompt: dallePrompt,
-                        n: 1,
-                        size: "1024x1792",
-                        quality: "hd"
-                    })
-                });
-
-                const dalleData = await dalleResponse.json();
-                generatedImageUrl = dalleData.data?.[0]?.url;
-
             } catch (aiError) {
-                console.error('AI Processing Error:', aiError);
+                console.error('AI Error in generatePost:', aiError);
             }
         }
 
@@ -109,11 +109,7 @@ export const generatePost = async (req, res) => {
                 x: { copy: "Juntos por el cambio.", hashtags: "#Rotary", cta: "Info" }
             },
             generatedImageUrl: generatedImageUrl || imageUrl,
-            metadata: {
-                clubId,
-                imageId,
-                format: config.format
-            }
+            metadata: { clubId, imageId, format: config.format }
         });
 
     } catch (error) {
