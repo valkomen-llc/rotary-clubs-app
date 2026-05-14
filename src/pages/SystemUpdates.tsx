@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.276',
+        date: '2026-05-14',
+        title: 'Sistema: Transparencia de Errores IA 📡',
+        description: 'Implementación de reportes detallados para fallos de OpenAI en tiempo real.',
+        type: 'improvement',
+        details: [
+            'Propagación de mensajes de error directos desde GPT-4o y DALL-E 3.',
+            'Simplificación de la estructura de mensajes Vision para mayor estabilidad.',
+            'Optimización del buffer de imagen para evitar bloqueos por tamaño de archivo.',
+            'Mejora en la captura de logs para diagnóstico de recreación Portrait.',
+            'Refuerzo de la integridad de respuestas JSON en condiciones de alta latencia.'
+        ]
+    },
+    {
         version: 'v4.275',
         date: '2026-05-14',
         title: 'IA: Outpainting y Recreación Vertical 🖼️',
