@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.275',
+        date: '2026-05-14',
+        title: 'IA: Outpainting y Recreación Vertical 🖼️',
+        description: 'Eliminación del recorte estático en favor de una expansión generativa completa.',
+        type: 'feature',
+        details: [
+            'Implementación de flujo de Outpainting mediante ingeniería de prompts en GPT-4o.',
+            'Generación de fondos expandidos para convertir fotos horizontales a Portrait (9:16).',
+            'Sincronización de rostros e identidad visual mediante descripción técnica detallada.',
+            'Eliminación de la dependencia de "object-cover" en la vista previa del sistema.',
+            'Refuerzo de la calidad HD en DALL-E 3 para resultados listos para redes sociales.'
+        ]
+    },
+    {
         version: 'v4.274',
         date: '2026-05-14',
         title: 'IA: Optimización de Carga y Resolución ⚡',
