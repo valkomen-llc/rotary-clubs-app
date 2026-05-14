@@ -20,7 +20,6 @@ interface Comment {
 }
 
 const articulosData: Record<number, {
-// ... existing articulosData (truncated for brevity in this replace call, but I will keep it)
   id: number;
   titulo: string;
   contenido: string;
@@ -106,7 +105,7 @@ const articulosData: Record<number, {
       </p>
       
       <p class="text-gray-700 leading-relaxed mb-6">
-        "Lo que el Rotary ha demostrado es que un grupo de personas comprometidas puede cambiar el mundo", reflexionó Gates. "Esa es una lección que aplicamos en todo nuestro trabajo filantrópico".
+        "Lo que el Rotary ha demostrado es que un grupo de personas comprometidas puede cambiar el mundo", reflexó Gates. "Esa es una lección que aplicamos en todo nuestro trabajo filantrópico".
       </p>
       
       <h2 class="text-2xl font-bold text-gray-900 mt-8 mb-4">Mirando hacia el futuro</h2>
@@ -665,12 +664,6 @@ const articulosData: Record<number, {
   }
 };
 
-const articulosRelacionados = [
-  { id: 1, titulo: 'Olayinka H. Babalola insta a los socios de Rotary a generar un impacto duradero', imagen: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=400&h=250&fit=crop', categoria: 'Eventos' },
-  { id: 2, titulo: 'Entrevista con Bill Gates: El optimista', imagen: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=400&h=250&fit=crop', categoria: 'Fundación' },
-  { id: 3, titulo: 'Gente de Acción en todo el mundo', imagen: 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=400&h=250&fit=crop', categoria: 'Socios' }
-];
-
 const BlogPost = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -753,7 +746,6 @@ const BlogPost = () => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        // 1. Fetch current post
         let currentPost: any = null;
         if (!isNaN(articuloIdNumeric) && articulosData[articuloIdNumeric]) {
           currentPost = articulosData[articuloIdNumeric];
@@ -777,11 +769,9 @@ const BlogPost = () => {
           setArticulo(currentPost);
           fetchComments(currentPost.id);
           
-          // 2. Fetch other posts for 'Related' section
           const relatedResponse = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/clubs/${club.id}/posts?limit=6`);
           if (relatedResponse.ok) {
             const posts = await relatedResponse.json();
-            // Filtrar el actual
             const filtered = posts.filter((p: any) => p.id !== id && p.id !== articuloIdNumeric);
             setOtrosArticulos(filtered);
           }
@@ -820,11 +810,8 @@ const BlogPost = () => {
     }
   };
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-    const SkeletonLoader = () => (
+  const SkeletonLoader = () => (
     <div className="animate-in fade-in duration-500">
-      {/* Skeleton Hero */}
       <section className="relative">
         <div className="relative h-[400px] md:h-[500px] bg-gray-100 animate-pulse overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-t from-gray-200 via-transparent to-transparent" />
@@ -842,7 +829,6 @@ const BlogPost = () => {
         </div>
       </section>
 
-      {/* Skeleton Content */}
       <article className="py-12 md:py-16">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="h-4 w-32 bg-gray-100 rounded mb-10 animate-pulse" />
@@ -850,14 +836,6 @@ const BlogPost = () => {
             <div className="h-4 w-full bg-gray-50 rounded animate-pulse" />
             <div className="h-4 w-full bg-gray-50 rounded animate-pulse" />
             <div className="h-4 w-5/6 bg-gray-50 rounded animate-pulse" />
-            <div className="h-4 w-full bg-gray-50 rounded animate-pulse" />
-            <div className="h-4 w-4/5 bg-gray-50 rounded animate-pulse" />
-          </div>
-          <div className="h-[400px] w-full bg-gray-50 rounded-3xl mb-12 animate-pulse" />
-          <div className="space-y-4">
-            <div className="h-4 w-full bg-gray-50 rounded animate-pulse" />
-            <div className="h-4 w-full bg-gray-50 rounded animate-pulse" />
-            <div className="h-4 w-3/4 bg-gray-50 rounded animate-pulse" />
           </div>
         </div>
       </article>
@@ -912,7 +890,6 @@ const BlogPost = () => {
 
               <div className="absolute bottom-0 left-0 right-0 pb-8 md:pb-12">
                 <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-                  {/* Categoría */}
                   <motion.span 
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -922,7 +899,6 @@ const BlogPost = () => {
                     {articulo.categoria}
                   </motion.span>
 
-                  {/* Título */}
                   <motion.h1 
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -932,7 +908,6 @@ const BlogPost = () => {
                     {articulo.titulo}
                   </motion.h1>
 
-                  {/* Meta información */}
                   <motion.div 
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -959,7 +934,6 @@ const BlogPost = () => {
             {/* Contenido del Artículo */}
             <article className="py-12 md:py-16">
               <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-                {/* Botón volver */}
                 <button
                   onClick={() => navigate('/blog')}
                   className="flex items-center gap-2 text-gray-500 hover:text-rotary-blue font-bold transition-all mb-10 group"
@@ -968,46 +942,13 @@ const BlogPost = () => {
                   Volver al blog
                 </button>
 
-                {/* Contenido */}
                 <div
                   className="prose prose-lg prose-rotary max-w-none mb-12 w-full text-gray-700 leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: (articulo.contenido || '')
-                    .replace(/text-align\s*:\s*justify/gi, 'text-align: left')
-                    .replace(/word-break\s*:\s*[^;"]+;?/gi, '')
-                    .replace(/word-wrap\s*:\s*[^;"]+;?/gi, '')
-                    .replace(/overflow-wrap\s*:\s*[^;"]+;?/gi, '')
-                    .replace(/white-space\s*:\s*[^;"]+;?/gi, '')
-                    .replace(/&nbsp;/gi, ' ')
-                    .replace(/\u00A0/g, ' ')
-                  }}
+                  dangerouslySetInnerHTML={{ __html: (articulo.contenido || '') }}
                 />
 
-                {articulo.videoUrl && (
-                  <div className="mt-12 mb-16">
-                    <div className="relative aspect-video rounded-3xl overflow-hidden shadow-2xl border-8 border-gray-100/50 group bg-black">
-                      {(articulo.videoUrl.includes('youtube.com') || articulo.videoUrl.includes('youtu.be')) ? (
-                        <iframe
-                          className="absolute inset-0 w-full h-full"
-                          src={`https://www.youtube.com/embed/${articulo.videoUrl.split('v=')[1]?.split('&')[0] || articulo.videoUrl.split('/').pop()}`}
-                          title="Video principal"
-                          frameBorder="0"
-                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                          allowFullScreen
-                        ></iframe>
-                      ) : (
-                        <video
-                          className="absolute inset-0 w-full h-full object-contain"
-                          src={articulo.videoUrl}
-                          controls
-                          playsInline
-                        />
-                      )}
-                    </div>
-                  </div>
-                )}
-
                 {/* Galería Adaptativa */}
-                {((articulo.images && articulo.images.length > 0) || (articulo.videoGallery && articulo.videoGallery.length > 0)) && (
+                {allMedia.length > 0 && (
                   <div className="mt-12 mb-16">
                     <div className="flex items-center justify-between mb-8 border-b border-gray-100 pb-4">
                       <h3 className="text-xl font-bold text-gray-900 font-rotary uppercase tracking-tight">Galería Multimedia</h3>
@@ -1050,10 +991,6 @@ const BlogPost = () => {
                                   <div className="bg-rotary-blue text-white p-4 rounded-full relative z-10 group-hover:scale-110 transition-transform shadow-xl">
                                     <Play className="w-6 h-6 fill-white" />
                                   </div>
-                                  <div className="absolute bottom-4 left-4 z-20 flex items-center gap-2">
-                                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                                    <span className="text-[10px] font-black text-white uppercase tracking-widest">Video</span>
-                                  </div>
                                </div>
                              ) : (
                                <>
@@ -1085,9 +1022,6 @@ const BlogPost = () => {
                       onClick={() => setSelectedMediaIndex(null)}
                     >
                       <div className="absolute top-6 right-6 flex items-center gap-6 z-[10000]">
-                         <span className="text-white/50 text-xs font-black tracking-[0.2em]">
-                           {selectedMediaIndex + 1} / {allMedia.length}
-                         </span>
                          <button 
                            className="text-white hover:text-rotary-gold transition-colors"
                            onClick={(e) => { e.stopPropagation(); setSelectedMediaIndex(null); }}
@@ -1123,7 +1057,7 @@ const BlogPost = () => {
                       >
                         {allMedia[selectedMediaIndex].type === 'video' ? (
                           <div className="w-full aspect-video rounded-2xl overflow-hidden shadow-2xl bg-black border border-white/10">
-                            {isYouTube ? (
+                            {allMedia[selectedMediaIndex].url.includes('youtube.com') || allMedia[selectedMediaIndex].url.includes('youtu.be') ? (
                               <iframe
                                 className="w-full h-full border-none"
                                 src={`https://www.youtube.com/embed/${allMedia[selectedMediaIndex].url.split('v=')[1]?.split('&')[0] || allMedia[selectedMediaIndex].url.split('/').pop()}?autoplay=1`}
@@ -1335,7 +1269,7 @@ const BlogPost = () => {
             </section>
 
             {/* Artículos Relacionados */}
-            {otrosArticulos.length >= 4 && (
+            {otrosArticulos.length >= 3 && (
               <section className="py-12 md:py-20 bg-white">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                   <h2 className="text-2xl font-bold text-gray-900 mb-12 font-rotary">Sigue leyendo</h2>
@@ -1354,7 +1288,6 @@ const BlogPost = () => {
                               alt={relacionado.title || relacionado.titulo}
                               className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                             />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                           </div>
                           <div className="p-6 flex flex-col flex-1">
                             <span className="text-[10px] font-black text-rotary-gold uppercase tracking-[0.2em] mb-3">
@@ -1377,23 +1310,6 @@ const BlogPost = () => {
           </motion.div>
         )}
       </AnimatePresence>
-
-      <Footer />
-    </div>
-  );
-};
-
-export default BlogPost;                  <span className="flex items-center gap-1 text-rotary-blue text-sm mt-2 group-hover:underline">
-                        Leer más
-                        <ChevronRight className="w-4 h-4" />
-                      </span>
-                    </div>
-                  </Link>
-                ))}
-            </div>
-          </div>
-        </section>
-      )}
 
       <Footer />
     </div>
