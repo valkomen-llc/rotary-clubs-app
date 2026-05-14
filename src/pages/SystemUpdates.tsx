@@ -21,6 +21,7 @@ interface UpdateItem {
         type: 'added' | 'fixed' | 'changed' | 'removed' | 'rollback' | 'improved' | 'major' | 'fix';
         text: string;
     }>;
+    details?: string[];
 }
 
 // DISTRICT HEALTH IQ V4.190 | 2026-05-13 (EMAIL PERSISTENCE 📧)
