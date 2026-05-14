@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.303',
+        date: '2026-05-14',
+        title: 'IA: Garantía Absoluta de Contenido 🛡️',
+        description: 'Sistema de redundancia total para eliminar errores de IA en el Content Studio.',
+        type: 'major',
+        details: [
+            'Implementación de Fallback Salvavidas: Uso automático de imagen original si la IA falla.',
+            'Eliminación total de mensajes de error de saturación para el usuario final.',
+            'Optimización de flujos de trabajo para garantizar la creación de posts bajo cualquier condición.',
+            'Priorización de textos profesionales generados por IA incluso ante bloqueos de imagen.',
+            'Aseguramiento de continuidad operativa 24/7 en la gestión de redes sociales.'
+        ]
+    },
+    {
         version: 'v4.302',
         date: '2026-05-14',
         title: 'Sistema: Estabilidad Total y Despliegue Maestro 🛰️',

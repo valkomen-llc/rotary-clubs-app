@@ -54,58 +54,45 @@ export const generatePost = async (req, res) => {
             console.error('[STUDIO] GPT Analysis failed:', e.message);
         }
 
-        // 3. DALL-E 3 Generation (Resilient Dual-Pass)
+        // 3. DALL-E 3 Generation (Resilient Triple-Pass)
         const isLandscape = config.format === '16:9';
         const dalleSize = isLandscape ? "1792x1024" : "1024x1792";
-        const safePrompt = `Professional cinematic institutional photography for Rotary International. CINEMATIC OUTPAINTING. ${parsed.visual_prompt}. Recreate full environment above and below. High definition, vivid colors, professional lighting. DO NOT CROP. REGENERATE BACKGROUND.`;
+        const safePrompt = `Professional institutional photography for Rotary. CINEMATIC EXPANSION. ${parsed.visual_prompt}. Recreate environment. High quality.`;
 
         let finalUrl = null;
+        let usedEngine = 'dalle-3-hd';
 
-        // Try HD first
+        // PASS 1: HD
         try {
             const hdResponse = await fetch('https://api.openai.com/v1/images/generations', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-                },
-                body: JSON.stringify({
-                    model: "dall-e-3",
-                    prompt: safePrompt,
-                    n: 1,
-                    size: dalleSize,
-                    quality: "hd",
-                    style: "vivid"
-                })
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
+                body: JSON.stringify({ model: "dall-e-3", prompt: safePrompt, n: 1, size: dalleSize, quality: "hd", style: "vivid" })
             });
             const hdData = await hdResponse.json();
             finalUrl = hdData.data?.[0]?.url;
-        } catch (e) { console.warn('HD Pass failed'); }
+        } catch (e) { console.warn('HD Fail'); }
 
-        // Fallback to Standard
+        // PASS 2: Standard
         if (!finalUrl) {
             try {
                 const stdResponse = await fetch('https://api.openai.com/v1/images/generations', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-                    },
-                    body: JSON.stringify({
-                        model: "dall-e-3",
-                        prompt: safePrompt,
-                        n: 1,
-                        size: dalleSize,
-                        quality: "standard"
-                    })
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
+                    body: JSON.stringify({ model: "dall-e-3", prompt: safePrompt, n: 1, size: dalleSize, quality: "standard" })
                 });
                 const stdData = await stdResponse.json();
                 finalUrl = stdData.data?.[0]?.url;
-            } catch (e) { console.error('Standard Fallback failed'); }
+                usedEngine = 'dalle-3-std';
+            } catch (e) { console.warn('Std Fail'); }
         }
 
+        // PASS 3: SALVAVIDAS (Original Image Fallback)
+        // If AI is saturated or blocks the image, we return the original so the user can still post.
         if (!finalUrl) {
-            return res.status(500).json({ error: 'Saturación temporal de IA. Por favor reintenta en 30 segundos.' });
+            console.log('[STUDIO] AI Blocked or Saturated. Falling back to original image to ensure service.');
+            finalUrl = imageUrl;
+            usedEngine = 'original-optimized-fallback';
         }
 
         res.json({
@@ -117,7 +104,11 @@ export const generatePost = async (req, res) => {
                 linkedin: { copy: parsed.li }
             },
             generatedImageUrl: finalUrl,
-            metadata: { engine: finalUrl.includes('hd') ? 'dalle-3-hd' : 'dalle-3-std' }
+            metadata: { 
+                engine: usedEngine, 
+                status: finalUrl === imageUrl ? 'original_preserved' : 'ai_regenerated',
+                format: isLandscape ? '16:9' : '9:16'
+            }
         });
 
     } catch (error) {
