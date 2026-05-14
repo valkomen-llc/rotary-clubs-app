@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.280',
+        date: '2026-05-14',
+        title: 'IA: Motor Profesional de Redes Sociales 📊',
+        description: 'Evolución a plataforma de gestión total con reglas de engagement por red social.',
+        type: 'feature',
+        details: [
+            'Soporte completo para LinkedIn con reglas de liderazgo e impacto social.',
+            'Selector de Tipo de Publicación (Storytelling, Eventos, Fundraising, etc.).',
+            'Adaptación dinámica de formato: Landscape (16:9) para X y Portrait (9:16) para IG/FB.',
+            'Botón de descarga directa de imágenes generadas en alta resolución.',
+            'Implementación de reglas de caracteres optimizadas para máximo alcance orgánico.'
+        ]
+    },
+    {
         version: 'v4.279',
         date: '2026-05-14',
         title: 'IA: Motor Dual con Fallback Inteligente 🚀',

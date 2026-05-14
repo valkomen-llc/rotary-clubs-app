@@ -2,13 +2,13 @@ import prisma from '../lib/prisma.js';
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (MULTI-ENGINE FALLBACK) ---');
+        console.log('--- START GENERATE POST (V4.280 - SMART PRESETS) ---');
         const { imageId, imageUrl, config } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
 
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
 
-        // 1. Optimized Image Processing
+        // 1. Image Optimization for Vision
         let processedImage = imageUrl;
         try {
             const imgResponse = await fetch(imageUrl);
@@ -33,9 +33,19 @@ export const generatePost = async (req, res) => {
         }
         const clubName = club?.name || 'Club Rotario';
 
-        if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'Configuración: Falta API Key.' });
+        // 3. AI Rules from User request
+        const postType = config.type || 'standard';
+        const rules = `
+        Reglas de Longitud y Tono (Tipo: ${postType}):
+        - Facebook: 100-180 caracteres (ideal), hasta 1200 si es Storytelling. CTA: Conoce más, Únete al cambio.
+        - Instagram: 150-220 caracteres. 3-8 hashtags. Primeras 2 líneas potentes.
+        - X (Twitter): 90-140 caracteres. Máximo 280. 1-2 hashtags.
+        - LinkedIn: 500-900 caracteres. Enfoque profesional, liderazgo e impacto. Estructura: Hook -> Contexto -> Impacto -> Aprendizaje -> CTA.
+        `;
 
-        // 3. Analysis with GPT-4o
+        if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'Falta API Key.' });
+
+        // 4. Analysis with GPT-4o
         const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -47,7 +57,7 @@ export const generatePost = async (req, res) => {
                 messages: [
                     {
                         role: "system",
-                        content: "Eres un sistema de datos. Tu única función es devolver JSON puro con copies y descripción de imagen."
+                        content: `Eres un experto en Imagen Pública de Rotary. Sigues estrictamente estas reglas: ${rules}`
                     },
                     {
                         role: "user",
@@ -55,37 +65,40 @@ export const generatePost = async (req, res) => {
                             { 
                                 type: "text", 
                                 text: `Analiza esta imagen para el club "${clubName}".
-                                Devuelve este formato JSON:
+                                Genera copys profesionales para Facebook, Instagram, X y LinkedIn.
+                                Genera una "desc" para DALL-E 3 para recrear la escena en formato ${config.format === '16:9' ? 'LANDSCAPE (16:9)' : 'PORTRAIT (9:16)'}.
+                                Devuelve este JSON:
                                 {
                                   "fb": "copy facebook",
                                   "ig": "copy instagram",
                                   "tw": "copy x",
-                                  "desc": "descripcion para dall-e"
+                                  "li": "copy linkedin",
+                                  "desc": "descripcion dall-e"
                                 }`
                             },
                             { type: "image_url", image_url: { "url": processedImage } }
                         ]
                     }
                 ],
-                temperature: 0.1,
-                max_tokens: 800
+                temperature: 0.2,
+                max_tokens: 1500
             })
         });
 
         const gptData = await gptResponse.json();
-        if (!gptResponse.ok) return res.status(500).json({ error: `Análisis IA falló: ${gptData.error?.message}` });
-
         const rawContent = gptData.choices?.[0]?.message?.content;
         let parsed = null;
         try {
             const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
             parsed = JSON.parse(jsonMatch[0]);
-        } catch (e) { return res.status(500).json({ error: 'Fallo en el formato del análisis IA.' }); }
+        } catch (e) { return res.status(500).json({ error: 'Fallo en análisis IA.' }); }
 
-        // 4. Generation with DALL-E 3 (Primary) or DALL-E 2 (Fallback)
-        let finalImageUrl = imageUrl;
-        console.log('Attempting DALL-E 3...');
+        // 5. Image Generation with correct Aspect Ratio
+        const isLandscape = config.format === '16:9';
+        const dalleSize = isLandscape ? "1792x1024" : "1024x1792";
         
+        console.log(`Generating image with format: ${dalleSize}`);
+
         let dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
             method: 'POST',
             headers: {
@@ -94,18 +107,17 @@ export const generatePost = async (req, res) => {
             },
             body: JSON.stringify({
                 model: "dall-e-3",
-                prompt: `Professional photography for Rotary. VERTICAL PORTRAIT. ${parsed.desc}. Realistic, high fidelity.`,
+                prompt: `Professional photography for Rotary. ${isLandscape ? 'LANDSCAPE' : 'VERTICAL PORTRAIT'}. ${parsed.desc}. Realistic, high fidelity.`,
                 n: 1,
-                size: "1024x1792",
+                size: dalleSize,
                 quality: "hd"
             })
         });
 
         let dalleData = await dalleResponse.json();
 
-        // Check if DALL-E 3 failed due to "model does not exist" or permissions
-        if (!dalleResponse.ok && (dalleData.error?.code === 'model_not_found' || dalleData.error?.message?.includes('dall-e-3'))) {
-            console.warn('DALL-E 3 not available. Falling back to DALL-E 2...');
+        // Fallback to DALL-E 2 if DALL-E 3 fails
+        if (!dalleResponse.ok) {
             dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
                 method: 'POST',
                 headers: {
@@ -114,7 +126,7 @@ export const generatePost = async (req, res) => {
                 },
                 body: JSON.stringify({
                     model: "dall-e-2",
-                    prompt: `Professional photography for Rotary. High quality. ${parsed.desc}`,
+                    prompt: `Professional Rotary photo. ${parsed.desc}`,
                     n: 1,
                     size: "1024x1024"
                 })
@@ -122,26 +134,20 @@ export const generatePost = async (req, res) => {
             dalleData = await dalleResponse.json();
         }
 
-        if (dalleResponse.ok && dalleData.data?.[0]?.url) {
-            finalImageUrl = dalleData.data[0].url;
-        } else {
-            console.error('All DALL-E models failed:', dalleData.error);
-            // Non-fatal error for image, still return content
-        }
-
         res.json({
             success: true,
             content: {
-                facebook: { copy: parsed.fb, hashtags: '', cta: '' },
-                instagram: { copy: parsed.ig, hashtags: '', cta: '' },
-                x: { copy: parsed.tw, hashtags: '', cta: '' }
+                facebook: { copy: parsed.fb },
+                instagram: { copy: parsed.ig },
+                x: { copy: parsed.tw },
+                linkedin: { copy: parsed.li }
             },
-            generatedImageUrl: finalImageUrl,
-            metadata: { clubId, engine: dalleResponse.ok ? (dalleData.model || 'dall-e-2') : 'fallback-original' }
+            generatedImageUrl: dalleData.data?.[0]?.url || imageUrl,
+            metadata: { clubId, imageId, format: config.format }
         });
 
     } catch (error) {
-        res.status(500).json({ error: 'Error del sistema: ' + error.message });
+        res.status(500).json({ error: 'Error: ' + error.message });
     }
 };
 
@@ -224,7 +230,7 @@ export const getOAuthUrl = async (req, res) => {
         const { platform } = req.params;
         const REDIRECT_URI = `${process.env.VITE_API_URL || 'https://app.clubplatform.org/api'}/social/callback/${platform}`;
         let url = '';
-        if (platform === 'facebook' || platform === 'instagram') {
+        if (platform === 'facebook' || platform === 'instagram' || platform === 'linkedin') {
             url = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${process.env.META_APP_ID || '2190338908168499'}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement,pages_manage_posts&response_type=code&state=${req.query.clubId}`;
         }
         res.redirect(url);
