@@ -27,6 +27,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.278',
+        date: '2026-05-14',
+        title: 'Sistema: Extracción Quirúrgica de Datos 🦾',
+        description: 'Implementación de parseo avanzado mediante patrones Regex para eliminar fallos de formato.',
+        type: 'fix',
+        details: [
+            'Nuevo motor de extracción que ignora texto conversacional de la IA.',
+            'Optimización ultra-ligera de imagen (600px) para máxima velocidad.',
+            'Reducción de temperatura del modelo (0.1) para mayor precisión técnica.',
+            'Refuerzo del aislamiento de tokens JSON en el flujo de datos.',
+            'Estabilización de la comunicación servidor-servidor para recreaciones 4K.'
+        ]
+    },
+    {
         version: 'v4.277',
         date: '2026-05-14',
         title: 'Sistema: Estabilidad Crítica de IA 🛡️',

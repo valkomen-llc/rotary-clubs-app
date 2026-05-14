@@ -2,13 +2,13 @@ import prisma from '../lib/prisma.js';
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (ULTRA-ROBUST MODE) ---');
+        console.log('--- START GENERATE POST (SURGICAL EXTRACTION MODE) ---');
         const { imageId, imageUrl, config } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
 
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
 
-        // 1. Optimized Image Processing (Smaller payload for Vercel/OpenAI)
+        // 1. Image Processing (Very small for stability)
         let processedImage = imageUrl;
         try {
             const imgResponse = await fetch(imageUrl);
@@ -16,14 +16,13 @@ export const generatePost = async (req, res) => {
                 const buffer = Buffer.from(await imgResponse.arrayBuffer());
                 const sharp = (await import('sharp')).default;
                 const resizedBuffer = await sharp(buffer)
-                    .resize(800, null, { withoutEnlargement: true })
-                    .jpeg({ quality: 60 }) // Lower quality for Vision is fine and saves payload
+                    .resize(600, null, { withoutEnlargement: true }) // Even smaller for max stability
+                    .jpeg({ quality: 50 })
                     .toBuffer();
                 processedImage = `data:image/jpeg;base64,${resizedBuffer.toString('base64')}`;
-                console.log('Image optimized. Size:', Math.round(processedImage.length / 1024), 'KB');
             }
         } catch (err) {
-            console.warn('Optimization failed, using raw URL.');
+            console.warn('Sharp skip:', err.message);
         }
 
         // 2. Context
@@ -35,12 +34,10 @@ export const generatePost = async (req, res) => {
             });
         }
         const clubName = club?.name || 'Club Rotario';
-        const projectContext = club?.projects?.map(p => `- ${p.title}`).join(', ') || 'Proyectos de servicio';
 
-        if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'Configuración: Falta API Key.' });
+        if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'Falta OPENAI_API_KEY en el servidor.' });
 
-        // 3. Analysis (Removed response_format for better stability)
-        console.log('Requesting GPT-4o analysis...');
+        // 3. GPT-4o Analysis
         const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -51,53 +48,52 @@ export const generatePost = async (req, res) => {
                 model: "gpt-4o",
                 messages: [
                     {
+                        role: "system",
+                        content: "Eres un sistema de datos. Tu única función es devolver JSON puro. No hables, no expliques."
+                    },
+                    {
                         role: "user",
                         content: [
                             { 
                                 type: "text", 
                                 text: `Analiza esta imagen para el club "${clubName}".
-                                Genera copys para Facebook, Instagram y X.
-                                Genera una "imageDescription" técnica para recrear esta escena en formato vertical (9:16) con DALL-E 3.
-                                Responde ÚNICAMENTE con este JSON crudo, sin bloques de código ni texto adicional:
+                                Genera copys para redes sociales y una "desc" técnica para DALL-E 3 para recrear la escena en PORTRAIT (9:16) expandiendo el fondo.
+                                Devuelve este formato JSON:
                                 {
-                                  "fb": "copy facebook",
-                                  "ig": "copy instagram",
+                                  "fb": "copy fb",
+                                  "ig": "copy ig",
                                   "tw": "copy x",
-                                  "desc": "descripcion para dall-e"
+                                  "desc": "descripcion dall-e"
                                 }`
                             },
                             { type: "image_url", image_url: { "url": processedImage } }
                         ]
                     }
                 ],
-                max_tokens: 1000,
-                temperature: 0.5
+                temperature: 0.1, // Higher precision
+                max_tokens: 800
             })
         });
 
         const gptData = await gptResponse.json();
-        
-        if (!gptResponse.ok) {
-            return res.status(500).json({ error: `Error OpenAI: ${gptData.error?.message || 'Fallo de conexión'}` });
-        }
+        if (!gptResponse.ok) return res.status(500).json({ error: gptData.error?.message || 'Error de API' });
 
         const rawContent = gptData.choices?.[0]?.message?.content;
-        if (!rawContent) return res.status(500).json({ error: 'La IA no devolvió contenido en esta prueba.' });
+        if (!rawContent) return res.status(500).json({ error: 'Respuesta vacía de la IA.' });
 
-        // Robust JSON Parsing
+        // SURGICAL EXTRACTION: Find JSON object even if surrounded by text
         let parsed = null;
         try {
-            // Clean content from code blocks if present
-            const cleanJson = rawContent.replace(/```json/g, '').replace(/```/g, '').trim();
-            parsed = JSON.parse(cleanJson);
+            const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) throw new Error('No JSON found');
+            parsed = JSON.parse(jsonMatch[0]);
         } catch (e) {
-            console.error('JSON Parse Error:', rawContent);
-            return res.status(500).json({ error: 'Error al interpretar la respuesta de la IA. Reintenta.' });
+            console.error('Extraction failed:', rawContent);
+            return res.status(500).json({ error: 'La IA no respondió en el formato esperado. Intenta de nuevo.' });
         }
 
-        // 4. Generation
-        console.log('Requesting DALL-E 3 Portrait...');
-        const dallePrompt = `Professional Rotary International photo. VERTICAL PORTRAIT (9:16). ${parsed.desc}. High fidelity, realistic, natural lighting.`;
+        // 4. DALL-E 3 Generation
+        const dallePrompt = `Professional Rotary photography. VERTICAL PORTRAIT (9:16). ${parsed.desc}. Natural lighting, realistic faces, high resolution.`;
         
         const dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
             method: 'POST',
@@ -115,9 +111,7 @@ export const generatePost = async (req, res) => {
         });
 
         const dalleData = await dalleResponse.json();
-        if (!dalleResponse.ok) {
-            return res.status(500).json({ error: `Error DALL-E: ${dalleData.error?.message || 'Fallo de imagen'}` });
-        }
+        if (!dalleResponse.ok) return res.status(500).json({ error: `DALL-E: ${dalleData.error?.message}` });
 
         res.json({
             success: true,
@@ -132,7 +126,7 @@ export const generatePost = async (req, res) => {
 
     } catch (error) {
         console.error('Fatal:', error);
-        res.status(500).json({ error: 'Error del sistema: ' + error.message });
+        res.status(500).json({ error: 'Fallo de sistema: ' + error.message });
     }
 };
 
