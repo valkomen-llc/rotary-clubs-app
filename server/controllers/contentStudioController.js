@@ -70,33 +70,62 @@ export const generatePost = async (req, res) => {
         // Master Outpainting Prompt
         const masterPrompt = `Institutional cinematic photography for Rotary International. MASTER OUTPAINTING RECONSTRUCTION. ${parsed.visual_prompt}. Recreate and expand the full environment vertically to fit a perfect Portrait frame. Extend the top with natural sky/ceiling context and the bottom with realistic floor/ground details. Maintain original center subjects exactly as they are. Professional lighting, high definition, vivid colors, 8k resolution style. DO NOT CROP. REGENERATE MISSING AREAS.`;
 
-        console.log(`[STUDIO] Requesting True Regeneration (${dalleSize})...`);
-        const dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-            },
-            body: JSON.stringify({
-                model: "dall-e-3",
-                prompt: `VIVID CINEMATIC STYLE. Institutional photography for Rotary International. MASTER OUTPAINTING. ${parsed.visual_prompt}. Recreate and expand the scene vertically for a perfect Portrait frame. Extend top and bottom with realistic context. DO NOT CROP. High resolution, 8k professional detail.`,
-                n: 1,
-                size: dalleSize,
-                quality: "hd"
-            })
-        });
-
-        const dalleData = await dalleResponse.json();
+        console.log(`[STUDIO] Requesting Universal Regeneration (${dalleSize})...`);
         
-        if (dalleData.error) {
-            console.error('[DALLE ERROR]', dalleData.error);
-            throw new Error(`OpenAI bloqueó la regeneración: ${dalleData.error.message}`);
+        let finalUrl = null;
+        let usedModel = "dall-e-3";
+
+        // PASS 1: Attempt DALL-E 3
+        try {
+            const dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+                },
+                body: JSON.stringify({
+                    model: usedModel,
+                    prompt: `Professional photography for Rotary. MASTER OUTPAINTING. ${parsed.visual_prompt}. Recreate top and bottom context. Cinematic style.`,
+                    n: 1,
+                    size: dalleSize,
+                    quality: "hd"
+                })
+            });
+
+            const dalleData = await dalleResponse.json();
+            if (dalleData.data?.[0]?.url) {
+                finalUrl = dalleData.data[0].url;
+            } else if (dalleData.error) {
+                console.warn('[STUDIO] DALL-E 3 failed:', dalleData.error.message);
+                // If it doesn't exist, we try DALL-E 2 as emergency
+                if (dalleData.error.message.includes('does not exist') || dalleData.error.code === 'model_not_found') {
+                    usedModel = "dall-e-2";
+                }
+            }
+        } catch (e) { console.error('[STUDIO] Error in Pass 1'); }
+
+        // PASS 2: Emergency Fallback to DALL-E 2 if DALL-E 3 is "non-existent"
+        if (!finalUrl && usedModel === "dall-e-2") {
+            console.log('[STUDIO] Triggering Emergency DALL-E 2 Fallback...');
+            const d2Response = await fetch('https://api.openai.com/v1/images/generations', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+                },
+                body: JSON.stringify({
+                    model: "dall-e-2",
+                    prompt: `Professional photography for Rotary. ${parsed.visual_prompt}. Cinematic expansion.`,
+                    n: 1,
+                    size: "1024x1024" // DALL-E 2 only supports square
+                })
+            });
+            const d2Data = await d2Response.json();
+            finalUrl = d2Data.data?.[0]?.url;
         }
 
-        const finalUrl = dalleData.data?.[0]?.url;
-
         if (!finalUrl) {
-            throw new Error('No se pudo regenerar la imagen. El motor de IA no devolvió un resultado válido.');
+            throw new Error('El motor de IA está en mantenimiento o tu cuenta de OpenAI no tiene acceso a DALL-E 3. Por favor verifica tu saldo en OpenAI.');
         }
 
         res.json({
@@ -109,9 +138,9 @@ export const generatePost = async (req, res) => {
             },
             generatedImageUrl: finalUrl,
             metadata: { 
-                engine: 'dalle-3-hd-true-outpainting', 
-                quality: '4K-Cinematic',
-                format: isLandscape ? '16:9' : '9:16'
+                engine: usedModel, 
+                quality: usedModel === 'dall-e-3' ? 'HD-Cinematic' : 'Standard-SD',
+                format: usedModel === 'dall-e-3' ? (isLandscape ? '16:9' : '9:16') : '1:1'
             }
         });
 

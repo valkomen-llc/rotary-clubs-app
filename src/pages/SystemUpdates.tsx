@@ -28,6 +28,20 @@ interface UpdateItem {
 // Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.306',
+        date: '2026-05-14',
+        title: 'IA: Compatibilidad Universal de Modelos 🛰️',
+        description: 'Blindaje del Content Studio ante restricciones de modelos de OpenAI.',
+        type: 'major',
+        details: [
+            'Implementación de detección automática de disponibilidad de DALL-E 3.',
+            'Sistema de salto inteligente a modelos alternativos ante errores de "Modelo no encontrado".',
+            'Fallback de emergencia a DALL-E 2 para garantizar la regeneración ante bloqueos de cuenta.',
+            'Optimización de la comunicación con la API de imágenes para mayor estabilidad.',
+            'Aseguramiento de continuidad operativa incluso con restricciones de Tier en OpenAI.'
+        ]
+    },
+    {
         version: 'v4.305',
         date: '2026-05-14',
         title: 'IA: Optimización de Protocolo y Calidad HD 🚀',
