@@ -46,95 +46,91 @@ const enhanceOriginal = async (buffer) => {
         .toBuffer();
 };
 
-// Place the enhanced original centered on a target canvas, and build a heavily blurred
-// version of the same original to use as the background of the extension bands. This is
-// pure pixel-space — zero AI in the extension step — so duplication / mosaic / tiling
-// artifacts are structurally impossible. The blurred background uses the original itself
-// as source, so colors, lighting and atmosphere match perfectly.
-const buildLayout = async (originalBuffer, targetW, targetH) => {
+// Build the prompt for gpt-image-1's maskless image-to-image regeneration. The model sees
+// the original photograph as a reference and produces a new image at the target portrait
+// or landscape aspect, naturally extending the scene to fill the new frame — the same
+// behaviour ChatGPT exhibits when asked "regenera esta foto en formato portrait".
+const buildRegenerationPrompt = ({ targetFormat, visualPrompt }) => {
+    const aspectLabel = targetFormat === 'landscape'
+        ? 'landscape 3:2 (1536×1024)'
+        : 'portrait 2:3 (1024×1536)';
+    const extendAxis = targetFormat === 'landscape'
+        ? 'Naturally extend the scene HORIZONTALLY: continue the left-side scenery (walls, vegetation, distance) leftward and the right-side scenery rightward.'
+        : 'Naturally extend the scene VERTICALLY: continue whatever is at the top of the original (sky, ceiling, tree canopy, building tops) upward, and whatever is at the bottom (ground, grass, sand, tiles, floor) downward.';
+
+    return [
+        `Regenerate this photograph in higher quality and convert it to ${aspectLabel} aspect ratio.`,
+        '',
+        'Keep all people present in the original, their faces, expressions, body positions, hands and gestures. Keep all clothing colors and details. Keep all flags, banners, signs, logos, text, brand marks and props they hold or display. Keep the camera angle, perspective, lighting direction, depth of field and atmosphere.',
+        '',
+        extendAxis,
+        '',
+        'The extensions must read as a natural continuation of the SAME location captured by the SAME camera at the SAME moment — simply with a different frame. Same colors, same lighting, same depth, same grain.',
+        '',
+        visualPrompt ? `Environment hint for the extended areas: ${visualPrompt}` : '',
+        '',
+        'STRICT — do NOT produce: any duplication, mirror, tile or repetition of the original scene; any blurred background, overlay or artificial letterbox effect; any additional people / faces / hands beyond those in the original; any text, signs or logos that are not in the original.',
+        '',
+        'Output: a single coherent photograph in the requested aspect, looking like a real camera capture of the same scene from a different frame.'
+    ].filter(Boolean).join('\n');
+};
+
+// Call gpt-image-1 via /v1/images/edits WITHOUT a mask. In this mode the endpoint becomes
+// image-to-image regeneration: the model treats the input as a visual reference and
+// produces a new image at the requested size. With input_fidelity:"high" it preserves
+// the people, faces and identifying features of the original. This matches the ChatGPT
+// behaviour of "regenerate this photo and convert it to portrait format".
+const regenerateAtTargetAspect = async ({ originalBuffer, width, height, prompt }) => {
+    const formData = new FormData();
+    formData.append('model', 'gpt-image-1');
+    formData.append('image', new Blob([originalBuffer], { type: 'image/png' }), 'image.png');
+    formData.append('prompt', prompt);
+    formData.append('size', `${width}x${height}`);
+    formData.append('quality', 'high');
+    formData.append('input_fidelity', 'high');
+    formData.append('n', '1');
+
+    const resp = await fetch('https://api.openai.com/v1/images/edits', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
+        body: formData
+    });
+
+    const data = await resp.json();
+    if (!resp.ok || !data?.data?.[0]?.b64_json) {
+        const reason = data?.error?.message || `HTTP ${resp.status}`;
+        throw new Error(`gpt-image-1 regeneration failed: ${reason}`);
+    }
+    return Buffer.from(data.data[0].b64_json, 'base64');
+};
+
+// Pure-pixel fallback when the AI call fails: scale the original to fit the target canvas
+// and center it on a neutral grey backdrop. Used only on hard errors / timeouts.
+const buildFramedFallback = async (originalBuffer, targetW, targetH) => {
     const meta = await sharp(originalBuffer).metadata();
-    const origW = meta.width;
-    const origH = meta.height;
-    const origAspect = origW / origH;
+    const origAspect = meta.width / meta.height;
     const targetAspect = targetW / targetH;
 
     let placedW, placedH;
-    if (Math.abs(origAspect - targetAspect) < 0.04) {
-        const scale = 0.94;
-        if (origAspect > targetAspect) {
-            placedW = Math.round(targetW * scale);
-            placedH = Math.round(placedW / origAspect);
-        } else {
-            placedH = Math.round(targetH * scale);
-            placedW = Math.round(placedH * origAspect);
-        }
-    } else if (origAspect > targetAspect) {
+    if (origAspect > targetAspect) {
         placedW = targetW;
         placedH = Math.round(targetW / origAspect);
     } else {
         placedH = targetH;
         placedW = Math.round(targetH * origAspect);
     }
-
-    // The original photograph is always centered on the canvas — it is the protagonist.
     const top = Math.floor((targetH - placedH) / 2);
     const left = Math.floor((targetW - placedW) / 2);
 
-    const resizedOriginal = await sharp(originalBuffer)
+    const resized = await sharp(originalBuffer)
         .resize(placedW, placedH, { fit: 'fill' })
         .png()
         .toBuffer();
 
-    // Blurred background: scale original to COVER the full canvas, blur it heavily and
-    // desaturate slightly so it recedes visually behind the sharp original. The result
-    // is an atmospheric backdrop that matches the photo's colors and mood but contains
-    // no recognizable subjects (faces / banners / objects dissolve at this blur radius).
-    const blurredBackground = await sharp(originalBuffer)
-        .resize(targetW, targetH, { fit: 'cover', position: 'center' })
-        .blur(100)
-        .modulate({ saturation: 0.7, brightness: 0.95 })
-        .png()
-        .toBuffer();
-
-    return {
-        resizedOriginal,
-        blurredBackground,
-        layout: { origW, origH, placedW, placedH, top, left, targetW, targetH }
-    };
-};
-
-// Apply a feathered alpha mask to the resized original so its outer ~40px fade out into
-// the blurred background. Center stays at alpha=255 (pixel-exact identity) — only the
-// outermost band (sky/floor/walls, never faces) gets alpha-blended for a seamless seam.
-const featherOriginal = async (resizedOriginal) => {
-    const FEATHER_PX = 40;
-    const { data, info } = await sharp(resizedOriginal)
-        .ensureAlpha()
-        .raw()
-        .toBuffer({ resolveWithObject: true });
-    const { width, height, channels } = info;
-    const feather = Math.min(FEATHER_PX, Math.floor(Math.min(width, height) / 2) - 1);
-    for (let y = 0; y < height; y++) {
-        const yDist = Math.min(y, height - 1 - y);
-        for (let x = 0; x < width; x++) {
-            const xDist = Math.min(x, width - 1 - x);
-            const d = Math.min(xDist, yDist);
-            if (d >= feather) continue;
-            const alpha = Math.round((d / feather) * 255);
-            const idx = (y * width + x) * channels;
-            data[idx + 3] = alpha;
-        }
-    }
-    return sharp(data, { raw: { width, height, channels } }).png().toBuffer();
-};
-
-// Final composite: blurred background as base + feathered original on top, centered.
-// Original is identity-preserved at the center (alpha=255) and only its outermost ring
-// fades into the blurred backdrop, giving a clean professional letterbox style.
-const composePortrait = async (blurredBackground, resizedOriginal, layout) => {
-    const feathered = await featherOriginal(resizedOriginal);
-    return sharp(blurredBackground)
-        .composite([{ input: feathered, top: layout.top, left: layout.left, blend: 'over' }])
+    return sharp({
+        create: { width: targetW, height: targetH, channels: 3, background: { r: 245, g: 245, b: 245 } }
+    })
+        .composite([{ input: resized, top, left }])
         .png()
         .toBuffer();
 };
@@ -154,7 +150,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.321 — pixel-space blurred-background composite, no AI in extension step) ---');
+        console.log('--- START GENERATE POST (v4.322 — gpt-image-1 maskless image-to-image regeneration, ChatGPT-style) ---');
         const { imageUrl, config = {} } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
@@ -249,37 +245,36 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
             // Continue with empty copy rather than failing the whole pipeline.
         }
 
-        // 3) Compute placement, resize the original and build the blurred background.
+        // 3) Call gpt-image-1 in maskless image-to-image mode. The model sees the original
+        //    photograph as a reference and regenerates it at the target aspect ratio,
+        //    naturally extending the environment to fill the new frame — the same flow
+        //    ChatGPT uses when asked to "convert this photo to portrait". With
+        //    input_fidelity:"high" the people, faces and identifying features are
+        //    preserved as closely as the model can manage.
         const { width: targetW, height: targetH } = FORMAT_SIZES[targetFormat];
-        const { resizedOriginal, blurredBackground, layout } = await buildLayout(enhancedBuffer, targetW, targetH);
 
         let finalUrl = null;
-        let usedEngine = 'sharp-blurred-bg-composite';
+        let usedEngine = 'gpt-image-1+i2i-maskless';
         let imageError = null;
 
-        // Pixel-space composition: blurred original as backdrop + sharp original centered
-        // on top with feathered outer edge. No AI in the extension step, so it is
-        // structurally impossible to produce tiling, mosaic, or duplicated subjects.
-        // The blurred background uses the original itself as source — atmosphere
-        // (color, brightness, mood) matches perfectly. Faces, banners and objects
-        // dissolve at this blur radius, so no recognizable element is duplicated.
         try {
-            const composed = await composePortrait(blurredBackground, resizedOriginal, layout);
-            finalUrl = await uploadGeneratedImage({ buffer: composed, clubId, variant: targetFormat });
+            const prompt = buildRegenerationPrompt({ targetFormat, visualPrompt: parsed.visual_prompt });
+            const regenerated = await regenerateAtTargetAspect({
+                originalBuffer: enhancedBuffer,
+                width: targetW,
+                height: targetH,
+                prompt
+            });
+            finalUrl = await uploadGeneratedImage({ buffer: regenerated, clubId, variant: targetFormat });
         } catch (e) {
             imageError = e.message;
-            console.warn('[STUDIO] Compose failed, falling back to framed original:', e.message);
+            console.warn('[STUDIO] gpt-image-1 regeneration failed, falling back to framed original:', e.message);
         }
 
         // Fallback: deliver the enhanced original framed against a neutral backdrop so
-        // the user is never blocked.
+        // the user is never blocked when the AI call errors out.
         if (!finalUrl) {
-            const framedFallback = await sharp({
-                create: { width: targetW, height: targetH, channels: 3, background: { r: 245, g: 245, b: 245 } }
-            })
-                .composite([{ input: resizedOriginal, top: layout.top, left: layout.left }])
-                .png()
-                .toBuffer();
+            const framedFallback = await buildFramedFallback(enhancedBuffer, targetW, targetH);
             finalUrl = await uploadGeneratedImage({ buffer: framedFallback, clubId, variant: `${targetFormat}-fallback` });
             usedEngine = 'sharp-framed-only';
         }
