@@ -24,9 +24,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.320 | 2026-05-15 (POSTGEN — regression fix: anti-tiling prompt + revert to quality:medium 🚫)
-// Cache bust: 2026-05-15 23:30 (POSTGEN ANTI-TILING v4.320 🚫)
+// DISTRICT HEALTH IQ V4.321 | 2026-05-16 (POSTGEN — pixel-space blurred-background composite, AI removed from extension step 🖼️)
+// Cache bust: 2026-05-16 00:30 (POSTGEN BLURRED-BG COMPOSITE v4.321 🖼️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.321',
+        date: '2026-05-16',
+        title: 'Content Studio AI: Fondo Difuminado — Fin de la Duplicación 🖼️',
+        description: 'Elimino gpt-image-1 del paso de extensión. La duplicación intermitente queda estructuralmente imposible: el fondo ahora es el propio original difuminado, con la foto nítida centrada encima.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Diagnóstico raíz: gpt-image-1 /edits con máscara grande (~480px de banda) duplica el contenido visible de forma intermitente. Esto pasó en v4.317, v4.318, v4.319 y v4.320 — el prompt engineering (clausulas anti-tiling, listas negras de objetos, "no duplicates") no lo elimina porque el modelo necesita VER la foto para extenderla con fidelidad, y al verla tiende a copiarla en los espacios vacíos.',
+            'Decisión: sacar la IA del paso de extensión. La copy seguirá generándose con GPT-4o (intacta).',
+            'Pipeline nuevo (pixel-space, sin IA en la extensión):',
+            '  1. Sharp escala el original para cubrir todo el canvas portrait/landscape.',
+            '  2. Aplica blur radius 100px + ligera desaturación → atmósfera abstracta del propio original.',
+            '  3. Compone el original nítido y centrado encima del fondo difuminado.',
+            '  4. Los 40px más externos del original van con alpha feathered para un seam suave.',
+            'Resultado: 100% imposible duplicar (no hay IA inventando contenido), la atmósfera matchea perfecto porque ES el propio original difuminado, sin caras/banners/objetos reconocibles a ese nivel de blur. Estilo similar a Instagram Stories letterbox o "Now Playing" de Spotify.',
+            'Beneficios adicionales: respuesta más rápida (eliminada una llamada de 30-60s a gpt-image-1), cero costo de tokens por imagen en el paso de extensión, comportamiento determinístico (mismo input = mismo output).',
+            'Engine reportado en metadata: "sharp-blurred-bg-composite".'
+        ]
+    },
     {
         version: 'v4.320',
         date: '2026-05-15',
