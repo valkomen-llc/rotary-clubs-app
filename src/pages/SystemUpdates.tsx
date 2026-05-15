@@ -24,9 +24,30 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.324 | 2026-05-16 (POSTGEN — seeded outpainting + masked edit + identity composite, anti-hallucinated-flags 🚫🏴)
-// Cache bust: 2026-05-16 02:30 (POSTGEN SEEDED + MASKED v4.324 🚫🏴)
+// DISTRICT HEALTH IQ V4.325 | 2026-05-16 (POSTGEN — direct gpt-image-1 i2i, no composite, no postprocesado — flujo ChatGPT puro ⚡)
+// Cache bust: 2026-05-16 03:00 (POSTGEN DIRECT I2I v4.325 ⚡)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.325',
+        date: '2026-05-16',
+        title: 'Content Studio AI: Flujo ChatGPT Puro — sin Composite ⚡',
+        description: 'Eliminado todo el postprocesamiento (composite-back, máscara, seeding). Pipeline = exactamente lo que hace ChatGPT internamente: foto + prompt simple → output del modelo as-is.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Feedback de v4.324: el composite-back creaba un efecto visible de "doble grupo" / overlay / montaje pegado. La IA generaba personas en las bandas y el original encima creaba la costura.',
+            'Diagnóstico final: TODO el postprocesado (composite-back en v4.323/v4.324, máscara en v4.317-v4.320, blur en v4.321) es contraproducente. ChatGPT NO postprocesa — confía en el output del modelo. La complejidad que agregamos venía de intentar "garantizar" cosas que el modelo ya hace bastante bien por sí solo.',
+            'Pipeline nuevo (radicalmente simple):',
+            '  1. Fetch + enhance original.',
+            '  2. GPT-4o copy (sin cambios).',
+            '  3. /v1/images/edits SIN máscara con gpt-image-1, prompt simple, input_fidelity:high, quality:high.',
+            '  4. Devolver el output del modelo TAL CUAL. Sin composite. Sin máscara. Sin nada.',
+            'Prompt corto y directo (3 líneas) — los prompts largos con listas negras eran contraproducentes (el modelo se obsesionaba con lo prohibido).',
+            'Trade-off honesto y aceptado: la IA regenera el scene completo, así que rostros / ropa pueden tener leve drift respecto al original (visible incluso en la salida de ChatGPT que el equipo usó como referencia, donde colores de remera cambiaban). Aceptamos eso a cambio de no tener overlays / composites visibles.',
+            'Eliminados del controller: buildSeededInputs, buildSeededOutpaintingPrompt, generateSeededOutpainting, featherOriginal, compositeOriginalOnAi. Pipeline pasó de ~250 líneas a ~70.',
+            'Engine reportado en metadata: "gpt-image-1+i2i-direct".'
+        ]
+    },
     {
         version: 'v4.324',
         date: '2026-05-16',
