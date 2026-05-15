@@ -116,7 +116,7 @@ const buildSceneGenPrompt = ({ visualPrompt, targetFormat }) => {
         '  • NO chairs, microphones, podiums, banners or props implying an event',
         '  • NO decorative frames, vignettes, color filters, gradients, lens flares, cinematic graphic overlays',
         '',
-        'Style: natural unedited photography. Photorealistic. Calm. Empty. Subtle. The final result should look like an unstaged photograph of a peaceful, empty space, ready to receive a portrait composite.'
+        'Style: naturalistic unedited amateur photography — NOT a polished stock photo. Soft atmospheric haze, real lighting, subtle imperfections, depth-of-field, ambient mood. The final result should feel like a casual photograph taken with a phone in the same moment and place where the portrait was originally captured. Calm. Quiet. Believable.'
     ].join('\n');
 };
 
@@ -147,11 +147,39 @@ const generateCleanScene = async ({ prompt, width, height }) => {
     return Buffer.from(data.data[0].b64_json, 'base64');
 };
 
-// Composite the real photograph on top of the generated scene. Hard-edge for pixel-perfect
-// preservation of every face, banner and logo in the original.
+// Apply a feathered alpha mask to the resized original so the seam between original and
+// generated scene fades over ~40px instead of being a hard horizontal line. Only the
+// outermost band of the original is alpha-blended; the central 90%+ (where faces, banners
+// and logos live) remains pixel-exact at alpha=255.
+const featherOriginal = async (resizedOriginal) => {
+    const FEATHER_PX = 40;
+    const { data, info } = await sharp(resizedOriginal)
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+    const { width, height, channels } = info;
+    // Loop over edge bands only (skip the interior for speed).
+    const feather = Math.min(FEATHER_PX, Math.floor(Math.min(width, height) / 2) - 1);
+    for (let y = 0; y < height; y++) {
+        const yDist = Math.min(y, height - 1 - y);
+        for (let x = 0; x < width; x++) {
+            const xDist = Math.min(x, width - 1 - x);
+            const d = Math.min(xDist, yDist);
+            if (d >= feather) continue; // interior — leave alpha at 255
+            const alpha = Math.round((d / feather) * 255);
+            const idx = (y * width + x) * channels;
+            data[idx + 3] = alpha;
+        }
+    }
+    return sharp(data, { raw: { width, height, channels } }).png().toBuffer();
+};
+
+// Composite the real photograph on top of the generated scene with feathered edges so
+// the boundary blends smoothly instead of appearing as horizontal/vertical seams.
 const compositeOriginalOnScene = async (sceneBuffer, resizedOriginal, layout) => {
+    const feathered = await featherOriginal(resizedOriginal);
     return sharp(sceneBuffer)
-        .composite([{ input: resizedOriginal, top: layout.top, left: layout.left }])
+        .composite([{ input: feathered, top: layout.top, left: layout.left, blend: 'over' }])
         .png()
         .toBuffer();
 };
@@ -171,7 +199,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.315 — clean scene generation + composite (no /edits, no mask)) ---');
+        console.log('--- START GENERATE POST (v4.316 — feathered composite + atmosphere-matched scene prompt) ---');
         const { imageUrl, config = {} } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
@@ -241,7 +269,13 @@ Reglas de copy:
 - No describas la imagen literalmente; conecta con el propósito y la comunidad.
 - Sin emojis si es linkedin; máx 2 emojis sutiles en las otras.
 
-visual_prompt (en INGLÉS, 1-3 frases): describe SOLAMENTE el entorno físico VACÍO de la foto, como si las personas no estuvieran (paredes, piso, cielo, vegetación, mobiliario fijo, iluminación, hora del día, paleta de colores). NO menciones personas, rostros, ropa, banderas, logos, banners ni texto. Esta descripción se va a usar para generar un escenario limpio que servirá de fondo. Ejemplo bueno: "An indoor reception with white walls, warm yellow overhead lighting, beige tile floor, soft afternoon natural light coming from a window on the right". Ejemplo malo: "Six people in blue Rotary shirts smiling at the camera".`
+visual_prompt (en INGLÉS, 2-4 frases muy específicas): describe SOLAMENTE el entorno físico VACÍO de la foto, como si las personas no estuvieran. Incluí TODOS estos elementos con colores y matices precisos:
+  - Cielo o techo (color exacto: ej "pale grey-blue with warm haze near the horizon, scattered cirrus clouds", NO "blue sky with clouds")
+  - Piso/superficie (textura y color: ej "wet darker tan sand with visible footprints and scattered seaweed", NO "sandy beach")
+  - Iluminación (dirección, calidez, intensidad: ej "soft morning sunlight from the upper right, slightly hazy, low-contrast")
+  - Atmósfera general (humedad, polvo, niebla si aplica)
+  - Distant background elements (vegetación, agua, paredes, ventanas)
+NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elementos institucionales. Esta descripción genera un escenario que debe MATCHEAR la atmósfera real de la foto para que el composite no se note. Ejemplo bueno: "Tropical beach in the early morning, wet darker tan sand with footprints and small debris, calm ocean horizon with low warm haze, pale grey-blue sky with thin streaky clouds, soft directional sunlight from the upper-left low in the sky, light coastal humidity in the air". Ejemplo malo: "Six people in blue Rotary shirts smiling at the camera".`
                                 },
                                 { type: 'image_url', image_url: { url: imageUrl } }
                             ]
