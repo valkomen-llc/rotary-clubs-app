@@ -48,38 +48,37 @@ const enhanceOriginal = async (buffer) => {
 
 // Build the prompt for gpt-image-1's maskless image-to-image regeneration. The model sees
 // the original photograph as a reference and produces a new image at the target portrait
-// or landscape aspect, naturally extending the scene to fill the new frame — the same
-// behaviour ChatGPT exhibits when asked "regenera esta foto en formato portrait".
+// or landscape aspect. We don't depend on it preserving identity pixel-perfectly — that
+// is enforced afterwards by compositing the real original on top. The prompt focuses on
+// getting a good environmental extension above / below the original, since those bands
+// are the only part of the AI output that will actually remain visible in the result.
 const buildRegenerationPrompt = ({ targetFormat, visualPrompt }) => {
     const aspectLabel = targetFormat === 'landscape'
         ? 'landscape 3:2 (1536×1024)'
         : 'portrait 2:3 (1024×1536)';
     const extendAxis = targetFormat === 'landscape'
-        ? 'Naturally extend the scene HORIZONTALLY: continue the left-side scenery (walls, vegetation, distance) leftward and the right-side scenery rightward.'
-        : 'Naturally extend the scene VERTICALLY: continue whatever is at the top of the original (sky, ceiling, tree canopy, building tops) upward, and whatever is at the bottom (ground, grass, sand, tiles, floor) downward.';
+        ? 'Extend the environment HORIZONTALLY: continue the left-side scenery (walls, vegetation, distance) leftward and the right-side scenery rightward.'
+        : 'Extend the environment VERTICALLY: continue whatever is at the top of the original (sky, ceiling, tree canopy, building tops, distant background) upward, and whatever is at the bottom (ground, grass, sand, tiles, floor) downward.';
 
     return [
-        `Regenerate this photograph in higher quality and convert it to ${aspectLabel} aspect ratio.`,
+        `Photographic outpainting task at ${aspectLabel} aspect ratio.`,
         '',
-        'Keep all people present in the original, their faces, expressions, body positions, hands and gestures. Keep all clothing colors and details. Keep all flags, banners, signs, logos, text, brand marks and props they hold or display. Keep the camera angle, perspective, lighting direction, depth of field and atmosphere.',
+        'Keep the main subjects (people, flags, banners, objects from the input photograph) in the vertical center of the output frame, occupying approximately the same area they occupy in the input — do not shrink them, do not zoom out, do not push them up or down.',
         '',
         extendAxis,
         '',
-        'The extensions must read as a natural continuation of the SAME location captured by the SAME camera at the SAME moment — simply with a different frame. Same colors, same lighting, same depth, same grain.',
+        'The extension must read as a natural continuation of the SAME place captured by the SAME camera at the SAME moment — same colors, same lighting direction, same depth of field, same grain. As if the camera had simply captured a taller (or wider) frame.',
         '',
         visualPrompt ? `Environment hint for the extended areas: ${visualPrompt}` : '',
         '',
-        'STRICT — do NOT produce: any duplication, mirror, tile or repetition of the original scene; any blurred background, overlay or artificial letterbox effect; any additional people / faces / hands beyond those in the original; any text, signs or logos that are not in the original.',
-        '',
-        'Output: a single coherent photograph in the requested aspect, looking like a real camera capture of the same scene from a different frame.'
+        'STRICT: do NOT duplicate the original scene; do NOT tile or mirror the image; do NOT add extra people, faces or hands beyond those in the input; do NOT add text, signs or logos that are not in the input; do NOT use a blurred background or letterbox effect. Output a single coherent photograph.'
     ].filter(Boolean).join('\n');
 };
 
 // Call gpt-image-1 via /v1/images/edits WITHOUT a mask. In this mode the endpoint becomes
 // image-to-image regeneration: the model treats the input as a visual reference and
-// produces a new image at the requested size. With input_fidelity:"high" it preserves
-// the people, faces and identifying features of the original. This matches the ChatGPT
-// behaviour of "regenerate this photo and convert it to portrait format".
+// produces a new image at the requested size. We use this to get a coherent portrait /
+// landscape scene with naturally-extended environment around the original composition.
 const regenerateAtTargetAspect = async ({ originalBuffer, width, height, prompt }) => {
     const formData = new FormData();
     formData.append('model', 'gpt-image-1');
@@ -104,23 +103,89 @@ const regenerateAtTargetAspect = async ({ originalBuffer, width, height, prompt 
     return Buffer.from(data.data[0].b64_json, 'base64');
 };
 
-// Pure-pixel fallback when the AI call fails: scale the original to fit the target canvas
-// and center it on a neutral grey backdrop. Used only on hard errors / timeouts.
-const buildFramedFallback = async (originalBuffer, targetW, targetH) => {
-    const meta = await sharp(originalBuffer).metadata();
-    const origAspect = meta.width / meta.height;
+// Compute the centered placement for the original inside the target canvas. The original
+// keeps its aspect ratio and is scaled to fit horizontally or vertically (whichever leaves
+// extension bands on the OTHER axis).
+const computePlacement = (origW, origH, targetW, targetH) => {
+    const origAspect = origW / origH;
     const targetAspect = targetW / targetH;
 
     let placedW, placedH;
-    if (origAspect > targetAspect) {
+    if (Math.abs(origAspect - targetAspect) < 0.04) {
+        const scale = 0.94;
+        if (origAspect > targetAspect) {
+            placedW = Math.round(targetW * scale);
+            placedH = Math.round(placedW / origAspect);
+        } else {
+            placedH = Math.round(targetH * scale);
+            placedW = Math.round(placedH * origAspect);
+        }
+    } else if (origAspect > targetAspect) {
         placedW = targetW;
         placedH = Math.round(targetW / origAspect);
     } else {
         placedH = targetH;
         placedW = Math.round(targetH * origAspect);
     }
+
     const top = Math.floor((targetH - placedH) / 2);
     const left = Math.floor((targetW - placedW) / 2);
+
+    return { placedW, placedH, top, left };
+};
+
+// Apply a feathered alpha mask to the resized original so the seam between it and the
+// AI-extended portrait fades over the configured radius. Center stays at alpha=255 (pixel-
+// perfect identity for faces / banners / objects) — only the outermost ring gets alpha-
+// blended for a clean seam with the AI's environmental extension.
+const featherOriginal = async (resizedOriginal, featherPx = 80) => {
+    const { data, info } = await sharp(resizedOriginal)
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+    const { width, height, channels } = info;
+    const feather = Math.min(featherPx, Math.floor(Math.min(width, height) / 2) - 1);
+    for (let y = 0; y < height; y++) {
+        const yDist = Math.min(y, height - 1 - y);
+        for (let x = 0; x < width; x++) {
+            const xDist = Math.min(x, width - 1 - x);
+            const d = Math.min(xDist, yDist);
+            if (d >= feather) continue;
+            const alpha = Math.round((d / feather) * 255);
+            const idx = (y * width + x) * channels;
+            data[idx + 3] = alpha;
+        }
+    }
+    return sharp(data, { raw: { width, height, channels } }).png().toBuffer();
+};
+
+// Composite the original on top of the AI-regenerated portrait. This is the identity-lock
+// step: the AI's regeneration of faces / banners / flags is completely hidden under the
+// pixel-perfect original — only the AI's environmental extension (sky / ground / trees
+// in the bands above and below) remains visible, blended at the seam by the feather.
+const compositeOriginalOnAi = async (aiPortraitBuffer, originalBuffer, targetW, targetH) => {
+    const meta = await sharp(originalBuffer).metadata();
+    const { placedW, placedH, top, left } = computePlacement(meta.width, meta.height, targetW, targetH);
+
+    const resizedOriginal = await sharp(originalBuffer)
+        .resize(placedW, placedH, { fit: 'fill' })
+        .ensureAlpha()
+        .png()
+        .toBuffer();
+
+    const feathered = await featherOriginal(resizedOriginal, 80);
+
+    return sharp(aiPortraitBuffer)
+        .composite([{ input: feathered, top, left, blend: 'over' }])
+        .png()
+        .toBuffer();
+};
+
+// Pure-pixel fallback when the AI call fails: scale the original to fit the target canvas
+// and center it on a neutral grey backdrop. Used only on hard errors / timeouts.
+const buildFramedFallback = async (originalBuffer, targetW, targetH) => {
+    const meta = await sharp(originalBuffer).metadata();
+    const { placedW, placedH, top, left } = computePlacement(meta.width, meta.height, targetW, targetH);
 
     const resized = await sharp(originalBuffer)
         .resize(placedW, placedH, { fit: 'fill' })
@@ -150,7 +215,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.322 — gpt-image-1 maskless image-to-image regeneration, ChatGPT-style) ---');
+        console.log('--- START GENERATE POST (v4.323 — i2i regeneration + identity-lock composite for pixel-perfect faces) ---');
         const { imageUrl, config = {} } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
@@ -245,27 +310,35 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
             // Continue with empty copy rather than failing the whole pipeline.
         }
 
-        // 3) Call gpt-image-1 in maskless image-to-image mode. The model sees the original
-        //    photograph as a reference and regenerates it at the target aspect ratio,
-        //    naturally extending the environment to fill the new frame — the same flow
-        //    ChatGPT uses when asked to "convert this photo to portrait". With
-        //    input_fidelity:"high" the people, faces and identifying features are
-        //    preserved as closely as the model can manage.
+        // 3) Two-step image pipeline:
+        //    (a) gpt-image-1 maskless image-to-image regenerates the photo at the target
+        //        aspect, producing a coherent scene with naturally-extended environment
+        //        (the same flow ChatGPT uses to "convert this photo to portrait"). The AI
+        //        regenerates faces too, but that does not matter because:
+        //    (b) we composite the pixel-perfect ORIGINAL on top of the AI output, with
+        //        feathered edges. The AI's faces are hidden under the original — only the
+        //        AI's environmental extension (sky / ground above and below the original)
+        //        remains visible, blended at the seam.
+        //
+        //    This combines the strengths of both prior approaches:
+        //      - From maskless i2i: no duplication / tiling in the bands.
+        //      - From identity composite: faces, banners, flags are exactly the original.
         const { width: targetW, height: targetH } = FORMAT_SIZES[targetFormat];
 
         let finalUrl = null;
-        let usedEngine = 'gpt-image-1+i2i-maskless';
+        let usedEngine = 'gpt-image-1+i2i-maskless+identity-composite';
         let imageError = null;
 
         try {
             const prompt = buildRegenerationPrompt({ targetFormat, visualPrompt: parsed.visual_prompt });
-            const regenerated = await regenerateAtTargetAspect({
+            const aiPortrait = await regenerateAtTargetAspect({
                 originalBuffer: enhancedBuffer,
                 width: targetW,
                 height: targetH,
                 prompt
             });
-            finalUrl = await uploadGeneratedImage({ buffer: regenerated, clubId, variant: targetFormat });
+            const composed = await compositeOriginalOnAi(aiPortrait, enhancedBuffer, targetW, targetH);
+            finalUrl = await uploadGeneratedImage({ buffer: composed, clubId, variant: targetFormat });
         } catch (e) {
             imageError = e.message;
             console.warn('[STUDIO] gpt-image-1 regeneration failed, falling back to framed original:', e.message);
