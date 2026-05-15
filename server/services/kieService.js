@@ -155,48 +155,89 @@ export const createKieImageTask = async ({ model, prompt, imageUrl, aspectRatio 
     return taskId;
 };
 
-// Poll a KIE image task until completion or timeout. Returns the URL of the produced image.
+// Poll a KIE image task until completion or timeout. Returns the URL of the produced
+// image.
+//
+// KIE.AI's current polling endpoint is `/jobs/recordInfo?taskId={id}` (camelCase param).
+// The old `/jobs/getTaskDetail?task_id={id}` returns HTTP 404 "Not Found" on the current
+// API version — diagnosed in v4.327 via the error surfaced to the UI.
+//
+// Response shape (new format):
+//   { code, msg, data: { taskId, state: "queuing"|"running"|"success"|"fail",
+//                        resultJson: "<json string>", failMsg, ... } }
+// The actual image url is inside `resultJson` (a JSON-encoded string that must be
+// parsed). Older models may still return the legacy shape with `status` and `output`,
+// so we handle both for safety.
 export const pollKieImageTask = async (taskId, { maxWaitMs = 100_000, intervalMs = 3000 } = {}) => {
     const apiKey = process.env.KIE_API_KEY;
     const deadline = Date.now() + maxWaitMs;
-    let lastStatus = 'UNKNOWN';
+    let lastState = 'UNKNOWN';
 
     while (Date.now() < deadline) {
-        const response = await fetch(`${KIE_API_BASE}/jobs/getTaskDetail?task_id=${taskId}`, {
-            headers: { 'Authorization': `Bearer ${apiKey}` }
-        });
+        const response = await fetch(
+            `${KIE_API_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`,
+            { headers: { 'Authorization': `Bearer ${apiKey}` } }
+        );
         const data = await response.json();
         if (!response.ok) {
             const rawBody = JSON.stringify(data).slice(0, 400);
-            throw new Error(`KIE getTaskDetail falló: HTTP ${response.status} ${rawBody}`);
+            throw new Error(`KIE recordInfo falló: HTTP ${response.status} ${rawBody}`);
+        }
+        if (data.code && data.code !== 200) {
+            const rawBody = JSON.stringify(data).slice(0, 400);
+            throw new Error(`KIE recordInfo: ${data.msg || data.message || rawBody}`);
         }
 
-        const status = data.data?.status || data.status;
-        lastStatus = status || lastStatus;
+        // Accept either `state` (new API) or `status` (legacy). Normalise to lowercase.
+        const rawState = data.data?.state || data.state || data.data?.status || data.status || '';
+        const state = String(rawState).toLowerCase();
+        lastState = state || lastState;
 
-        if (status === 'COMPLETED' || status === 'SUCCESS') {
+        const isSuccess = state === 'success' || state === 'completed';
+        const isFail = state === 'fail' || state === 'failed' || state === 'error';
+
+        if (isSuccess) {
+            // New API: result is inside `resultJson` as a JSON string.
+            let resultObj = {};
+            const rj = data.data?.resultJson ?? data.data?.result;
+            if (typeof rj === 'string' && rj.length > 0) {
+                try { resultObj = JSON.parse(rj); } catch { resultObj = {}; }
+            } else if (rj && typeof rj === 'object') {
+                resultObj = rj;
+            }
+            // Also check the legacy `output` location.
             const output = data.data?.output || data.output || {};
-            const urls = output.image_urls || output.images || output.result_urls
-                || (output.image_url ? [output.image_url] : null)
-                || (output.result_url ? [output.result_url] : null);
+            const candidate = Object.keys(resultObj).length ? resultObj : output;
+
+            const urls = candidate.resultUrls
+                || candidate.image_urls
+                || candidate.imageUrls
+                || candidate.images
+                || candidate.result_urls
+                || (candidate.image_url ? [candidate.image_url] : null)
+                || (candidate.imageUrl ? [candidate.imageUrl] : null)
+                || (candidate.result_url ? [candidate.result_url] : null)
+                || (candidate.resultUrl ? [candidate.resultUrl] : null);
             const url = Array.isArray(urls) ? urls[0] : urls;
             if (!url) {
                 const rawBody = JSON.stringify(data).slice(0, 400);
-                console.error('[KIE image] completed but no image url in output:', rawBody);
-                throw new Error(`KIE task completado pero output sin image_url: ${rawBody}`);
+                console.error('[KIE image] success but no image url in response:', rawBody);
+                throw new Error(`KIE task success pero sin image_url: ${rawBody}`);
             }
             return url;
         }
-        if (status === 'FAILED' || status === 'ERROR') {
+        if (isFail) {
             const rawBody = JSON.stringify(data).slice(0, 400);
-            const reason = data.data?.error?.message || data.data?.message || data.message || rawBody;
+            const reason = data.data?.failMsg || data.data?.fail_msg
+                || data.data?.error?.message || data.data?.message
+                || data.message || rawBody;
             throw new Error(`KIE task falló: ${reason}`);
         }
-        // QUEUED / RUNNING / PENDING — keep polling
+        // queuing / running / pending — keep polling
         await new Promise(r => setTimeout(r, intervalMs));
     }
 
-    throw new Error(`KIE task timeout después de ${maxWaitMs}ms (último status: ${lastStatus})`);
+    throw new Error(`KIE task timeout después de ${maxWaitMs}ms (último state: ${lastState})`);
 };
 
 // Download the final image produced by KIE into a Buffer so we can re-upload it to our

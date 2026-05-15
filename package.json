@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.327.0",
-  "cache_bust": "2026-05-16 04:00 (POSTGEN KIE DEBUG v4.327 🔍)",
+  "version": "4.328.0",
+  "cache_bust": "2026-05-16 04:30 (POSTGEN KIE ENDPOINT FIX v4.328 🎯)",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.327 | 2026-05-16 (POSTGEN — fix KIE.AI flag: error surfacing + dual aspect_ratio/image_size params 🔍)",
+  "//": "DISTRICT HEALTH IQ V4.328 | 2026-05-16 (POSTGEN — fix endpoint KIE: getTaskDetail→recordInfo, soporta nuevo formato resultJson 🎯)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

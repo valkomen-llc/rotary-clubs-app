@@ -24,9 +24,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.327 | 2026-05-16 (POSTGEN — fix KIE.AI flag: error surfacing + dual aspect_ratio/image_size params 🔍)
-// Cache bust: 2026-05-16 04:00 (POSTGEN KIE DEBUG v4.327 🔍)
+// DISTRICT HEALTH IQ V4.328 | 2026-05-16 (POSTGEN — fix endpoint KIE: getTaskDetail→recordInfo, soporta nuevo formato resultJson 🎯)
+// Cache bust: 2026-05-16 04:30 (POSTGEN KIE ENDPOINT FIX v4.328 🎯)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.328',
+        date: '2026-05-16',
+        title: 'Content Studio AI: Fix KIE.AI Endpoint — Polling Funcional 🎯',
+        description: 'Causa raíz identificada gracias al error surfacing de v4.327: el endpoint /jobs/getTaskDetail ya no existe en KIE.AI (404). Migrado a /jobs/recordInfo con nuevo formato de respuesta.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Error real surface en v4.327: "KIE getTaskDetail falló: HTTP 404 Not Found path:/api/v1/jobs/getTaskDetail". KIE.AI deprecó este endpoint en favor del nuevo /jobs/recordInfo.',
+            'Cambios en el polling de KIE imagen:',
+            '  • URL: /jobs/getTaskDetail?task_id={id} → /jobs/recordInfo?taskId={id} (camelCase, nuevo nombre del endpoint)',
+            '  • Campo de estado: data.status → data.state, con valores normalizados ("success", "fail", "queuing", "running")',
+            '  • Result location: data.output.image_url → data.resultJson (un JSON-string que requiere parsearse)',
+            '  • Campo de error en fallo: data.error.message → data.failMsg',
+            '  • Soporta TAMBIÉN el formato viejo por compatibilidad si KIE eventualmente devuelve algo en él (defensivo)',
+            '  • Más field variants en el output: resultUrls, imageUrls, image_urls, images, etc. — KIE varía por modelo',
+            'El endpoint /jobs/createTask sigue funcionando — el bug era solo en el polling. El módulo de video (kieService.checkTaskStatus) sigue usando getTaskDetail porque el video flow depende de webhook (no de polling activo), así que ese path no rompe nada.',
+            'Engine reportado en metadata: "kie+nano-banana-edit". Ahora debería retornar la imagen real generada por Nano Banana en vez del framed-only fallback.'
+        ]
+    },
     {
         version: 'v4.327',
         date: '2026-05-16',
