@@ -195,7 +195,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.326 — multi-engine: KIE.AI Nano Banana (default) + OpenAI gpt-image-1) ---');
+        console.log('--- START GENERATE POST (v4.327 — fix KIE.AI: surface error + dual params + better diagnostics) ---');
         const { imageUrl, config = {} } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });

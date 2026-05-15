@@ -107,9 +107,26 @@ export const checkTaskStatus = async (taskId) => {
 //   'google/nano-banana-edit'        — Gemini 2.5 Flash Image (identity-preserving)
 //   'black-forest-labs/flux-kontext-max' — Flux Kontext for contextual outpainting
 //   'bytedance/seedream-3-edit'      — alternative high-quality editor
+//
+// KIE.ai's API expects different param names across models. We send both `aspect_ratio`
+// (used by Kling video and many newer image models) AND `image_size` (used by older
+// image models) so whichever the chosen model understands is honoured; KIE silently
+// ignores unknown fields. Same for image_url vs image_urls (we send the array form).
 export const createKieImageTask = async ({ model, prompt, imageUrl, aspectRatio = '2:3', outputFormat = 'png' }) => {
     const apiKey = process.env.KIE_API_KEY;
     if (!apiKey) throw new Error('KIE_API_KEY no configurada');
+
+    const requestBody = {
+        model,
+        input: {
+            prompt,
+            image_urls: [imageUrl],
+            image_url: imageUrl,
+            image_size: aspectRatio,
+            aspect_ratio: aspectRatio,
+            output_format: outputFormat
+        }
+    };
 
     const response = await fetch(`${KIE_API_BASE}/jobs/createTask`, {
         method: 'POST',
@@ -117,26 +134,24 @@ export const createKieImageTask = async ({ model, prompt, imageUrl, aspectRatio 
             'Authorization': `Bearer ${apiKey}`,
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-            model,
-            input: {
-                prompt,
-                image_urls: [imageUrl],
-                image_size: aspectRatio,
-                output_format: outputFormat,
-                n: 1
-            }
-        })
+        body: JSON.stringify(requestBody)
     });
 
     const data = await response.json();
-    if (!response.ok) {
-        console.error('[KIE image] createTask error:', data);
-        throw new Error(data.msg || data.message || `KIE createTask falló: HTTP ${response.status}`);
+    if (!response.ok || data.code && data.code !== 200) {
+        // Include the full response body in the error so the controller can surface it.
+        const rawBody = JSON.stringify(data).slice(0, 400);
+        console.error('[KIE image] createTask error response:', rawBody);
+        const reason = data.msg || data.message || `HTTP ${response.status} ${rawBody}`;
+        throw new Error(`KIE createTask: ${reason}`);
     }
 
-    const taskId = data.task_id || data.data?.task_id;
-    if (!taskId) throw new Error('KIE createTask devolvió sin task_id');
+    const taskId = data.task_id || data.data?.task_id || data.data?.taskId;
+    if (!taskId) {
+        const rawBody = JSON.stringify(data).slice(0, 400);
+        console.error('[KIE image] createTask returned no task_id:', rawBody);
+        throw new Error(`KIE createTask devolvió sin task_id: ${rawBody}`);
+    }
     return taskId;
 };
 
@@ -144,6 +159,7 @@ export const createKieImageTask = async ({ model, prompt, imageUrl, aspectRatio 
 export const pollKieImageTask = async (taskId, { maxWaitMs = 100_000, intervalMs = 3000 } = {}) => {
     const apiKey = process.env.KIE_API_KEY;
     const deadline = Date.now() + maxWaitMs;
+    let lastStatus = 'UNKNOWN';
 
     while (Date.now() < deadline) {
         const response = await fetch(`${KIE_API_BASE}/jobs/getTaskDetail?task_id=${taskId}`, {
@@ -151,29 +167,36 @@ export const pollKieImageTask = async (taskId, { maxWaitMs = 100_000, intervalMs
         });
         const data = await response.json();
         if (!response.ok) {
-            throw new Error(data.msg || data.message || `KIE getTaskDetail falló: HTTP ${response.status}`);
+            const rawBody = JSON.stringify(data).slice(0, 400);
+            throw new Error(`KIE getTaskDetail falló: HTTP ${response.status} ${rawBody}`);
         }
 
         const status = data.data?.status || data.status;
+        lastStatus = status || lastStatus;
+
         if (status === 'COMPLETED' || status === 'SUCCESS') {
             const output = data.data?.output || data.output || {};
-            const urls = output.image_urls || output.images || (output.image_url ? [output.image_url] : null);
+            const urls = output.image_urls || output.images || output.result_urls
+                || (output.image_url ? [output.image_url] : null)
+                || (output.result_url ? [output.result_url] : null);
             const url = Array.isArray(urls) ? urls[0] : urls;
             if (!url) {
-                console.error('[KIE image] completed but no image url in output:', output);
-                throw new Error('KIE task completado pero el output no contiene image_url');
+                const rawBody = JSON.stringify(data).slice(0, 400);
+                console.error('[KIE image] completed but no image url in output:', rawBody);
+                throw new Error(`KIE task completado pero output sin image_url: ${rawBody}`);
             }
             return url;
         }
         if (status === 'FAILED' || status === 'ERROR') {
-            const reason = data.data?.error?.message || data.data?.message || data.message || 'unknown';
+            const rawBody = JSON.stringify(data).slice(0, 400);
+            const reason = data.data?.error?.message || data.data?.message || data.message || rawBody;
             throw new Error(`KIE task falló: ${reason}`);
         }
         // QUEUED / RUNNING / PENDING — keep polling
         await new Promise(r => setTimeout(r, intervalMs));
     }
 
-    throw new Error(`KIE task timeout después de ${maxWaitMs}ms`);
+    throw new Error(`KIE task timeout después de ${maxWaitMs}ms (último status: ${lastStatus})`);
 };
 
 // Download the final image produced by KIE into a Buffer so we can re-upload it to our
