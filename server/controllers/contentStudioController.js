@@ -2,6 +2,27 @@ import prisma from '../lib/prisma.js';
 import sharp from 'sharp';
 import { s3 } from '../lib/storage.js';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { createKieImageTask, pollKieImageTask, fetchKieImageBuffer } from '../services/kieService.js';
+
+// Multi-engine registry. Each entry maps the public engine id (used by the UI) to its
+// implementation metadata. Phase 1 (v4.326): KIE.AI via Nano Banana + OpenAI gpt-image-1.
+// Future phases will fill in flux_kontext, nano_banana (standalone), higgsfield.
+const ENGINES = {
+    kie: {
+        label: 'KIE.AI · Nano Banana (Gemini 2.5 Flash Image)',
+        engineKey: 'kie+nano-banana-edit',
+        available: true
+    },
+    openai: {
+        label: 'OpenAI · gpt-image-1 (experimental)',
+        engineKey: 'gpt-image-1+i2i-direct',
+        available: true
+    },
+    flux_kontext: { label: 'Flux Kontext', engineKey: 'flux-kontext', available: false },
+    nano_banana: { label: 'Nano Banana (standalone)', engineKey: 'nano-banana-standalone', available: false },
+    higgsfield: { label: 'Higgsfield', engineKey: 'higgsfield', available: false }
+};
+const DEFAULT_ENGINE = 'kie';
 
 const TYPE_PROMPTS = {
     standard: { tone: 'profesional, claro y directo', focus: 'el impacto de la actividad rotaria' },
@@ -62,12 +83,11 @@ const buildSimplePrompt = ({ targetFormat }) => {
     return `Regenerate this photograph in higher quality and convert it to ${aspectLabel} aspect ratio, ${extendDirection}. Preserve all the people in the original, their faces, expressions, clothing, flags, banners, signs and objects. The extension must read as the same scene captured by the same camera with a different frame. Output a single coherent natural photograph.`;
 };
 
-// Call gpt-image-1 /v1/images/edits WITHOUT a mask. In this mode the endpoint becomes
-// pure image-to-image regeneration: the model sees the input as a reference and produces
-// a new image at the requested size. With input_fidelity:"high" people, faces and
-// identifying features are preserved as closely as the model can manage. The output is
-// returned as-is, with NO post-processing — exactly the flow ChatGPT uses internally.
-const regenerateAtTargetAspect = async ({ originalBuffer, width, height, prompt }) => {
+// ENGINE: OpenAI gpt-image-1 (image-to-image, no mask).
+// The model receives the original photo as a reference and regenerates it at the target
+// aspect ratio. input_fidelity:"high" keeps people / faces close to the input. Output
+// is returned as-is with NO post-processing — the same flow ChatGPT uses internally.
+const generateWithOpenAI = async ({ originalBuffer, width, height, prompt }) => {
     const formData = new FormData();
     formData.append('model', 'gpt-image-1');
     formData.append('image', new Blob([originalBuffer], { type: 'image/png' }), 'image.png');
@@ -89,6 +109,26 @@ const regenerateAtTargetAspect = async ({ originalBuffer, width, height, prompt 
         throw new Error(`gpt-image-1 regeneration failed: ${reason}`);
     }
     return Buffer.from(data.data[0].b64_json, 'base64');
+};
+
+// ENGINE: KIE.AI via the Nano Banana (Gemini 2.5 Flash Image) model.
+// KIE.AI is a gateway over many image models; we pick `google/nano-banana-edit` because
+// it specialises in identity-preserving edits / outpainting. The call is async: we submit
+// the task, poll until completion (~30-60s typical), then download the produced image
+// and return its buffer so the standard upload flow can place it in our S3 bucket.
+const generateWithKie = async ({ imageUrl, prompt, targetFormat }) => {
+    const aspectRatio = targetFormat === 'landscape' ? '3:2' : '2:3';
+    const taskId = await createKieImageTask({
+        model: 'google/nano-banana-edit',
+        prompt,
+        imageUrl,
+        aspectRatio,
+        outputFormat: 'png'
+    });
+    console.log(`[STUDIO] KIE image task created: ${taskId} (nano-banana-edit, ${aspectRatio})`);
+    const resultUrl = await pollKieImageTask(taskId, { maxWaitMs: 100_000, intervalMs: 3000 });
+    console.log(`[STUDIO] KIE image ready: ${resultUrl}`);
+    return fetchKieImageBuffer(resultUrl);
 };
 
 // Compute the centered placement for the original inside the target canvas. Used only by
@@ -155,7 +195,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.325 — direct gpt-image-1 i2i, no composite, no post-processing — ChatGPT-style) ---');
+        console.log('--- START GENERATE POST (v4.326 — multi-engine: KIE.AI Nano Banana (default) + OpenAI gpt-image-1) ---');
         const { imageUrl, config = {} } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
@@ -163,6 +203,14 @@ export const generatePost = async (req, res) => {
         const targetFormat = config.targetFormat === 'landscape' ? 'landscape' : 'portrait';
         const typeMeta = TYPE_PROMPTS[config.type] || TYPE_PROMPTS.standard;
         const areaMeta = INTEREST_AREAS[config.interestArea] || INTEREST_AREAS.general;
+
+        // Resolve the engine: validate the requested id against the registry, fall back
+        // to the default if missing or not yet available. Phase 1 only ships `kie` and
+        // `openai`; other entries in ENGINES are placeholders for future phases.
+        const requestedEngine = ENGINES[config.engine] && ENGINES[config.engine].available
+            ? config.engine
+            : DEFAULT_ENGINE;
+        console.log(`[STUDIO] Engine resolved: ${requestedEngine} (${ENGINES[requestedEngine].label})`);
 
         let clubName = 'Club Rotario';
         if (clubId) {
@@ -250,34 +298,35 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
             // Continue with empty copy rather than failing the whole pipeline.
         }
 
-        // 3) Direct gpt-image-1 image-to-image. Send the photo + a simple prompt, request
-        //    the target aspect, return the model output AS-IS. No mask. No composite-back.
-        //    No post-processing of any kind. This is the same flow ChatGPT uses internally
-        //    when given a photo and asked "convert to portrait format".
-        //
-        //    Trade-off: the model regenerates the entire scene, so faces may have minor
-        //    drift from the original (visible in ChatGPT's own output). input_fidelity:
-        //    "high" minimises the drift but does not eliminate it. Prior versions tried
-        //    composite-back to preserve faces pixel-perfect, but that produced visible
-        //    overlay / montage seams which the team rejected.
+        // 3) Image regeneration. Dispatch to the selected engine. All engines obey the
+        //    same contract: same internal prompt, same target aspect, output returned
+        //    AS-IS without composite-back / mask / blur (that postprocessing was
+        //    rejected by the team — see CLAUDE.md for the history).
         const { width: targetW, height: targetH } = FORMAT_SIZES[targetFormat];
+        const prompt = buildSimplePrompt({ targetFormat });
 
         let finalUrl = null;
-        let usedEngine = 'gpt-image-1+i2i-direct';
+        let usedEngine = ENGINES[requestedEngine].engineKey;
         let imageError = null;
 
         try {
-            const prompt = buildSimplePrompt({ targetFormat });
-            const aiBuffer = await regenerateAtTargetAspect({
-                originalBuffer: enhancedBuffer,
-                width: targetW,
-                height: targetH,
-                prompt
-            });
-            finalUrl = await uploadGeneratedImage({ buffer: aiBuffer, clubId, variant: targetFormat });
+            let aiBuffer;
+            if (requestedEngine === 'kie') {
+                aiBuffer = await generateWithKie({ imageUrl, prompt, targetFormat });
+            } else if (requestedEngine === 'openai') {
+                aiBuffer = await generateWithOpenAI({
+                    originalBuffer: enhancedBuffer,
+                    width: targetW,
+                    height: targetH,
+                    prompt
+                });
+            } else {
+                throw new Error(`Engine '${requestedEngine}' marcado como available pero sin implementación`);
+            }
+            finalUrl = await uploadGeneratedImage({ buffer: aiBuffer, clubId, variant: `${targetFormat}-${requestedEngine}` });
         } catch (e) {
             imageError = e.message;
-            console.warn('[STUDIO] gpt-image-1 i2i failed, falling back to framed original:', e.message);
+            console.warn(`[STUDIO] Engine '${requestedEngine}' falló, fallback a framed original:`, e.message);
         }
 
         // Fallback: deliver the enhanced original framed against a neutral backdrop so
