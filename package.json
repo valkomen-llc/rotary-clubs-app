@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.312.0",
-  "cache_bust": "2026-05-15 15:00 (POSTGEN AI v4.312 🎨)",
+  "version": "4.313.0",
+  "cache_bust": "2026-05-15 16:30 (POSTGEN IDENTITY-LOCK v4.313 🔒)",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.312 | 2026-05-15 (POSTGEN TRUE OUTPAINTING — gpt-image-1 🎨)",
+  "//": "DISTRICT HEALTH IQ V4.313 | 2026-05-15 (POSTGEN IDENTITY-LOCK — pixel-perfect composite 🔒)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
