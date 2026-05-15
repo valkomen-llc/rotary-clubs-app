@@ -24,9 +24,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.308 | 2026-05-14 (UI OPTIMIZATION 🚀)
-// Cache bust: 2026-05-14 20:45 (RYE 4281 UI FIX 🛡️)
+// DISTRICT HEALTH IQ V4.309 | 2026-05-14 (IMAGE FIX 🛡️)
+// Cache bust: 2026-05-14 21:05 (UI FIX v4.309 🚀)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.309',
+        date: '2026-05-14',
+        title: 'Fix: Reemplazo de Imágenes y CORS 🛡️',
+        description: 'Corrección del error que impedía guardar nuevas imágenes en las secciones del sitio.',
+        type: 'fix',
+        details: [
+            'Implementación de Proxy de Medios autenticado para evitar bloqueos de CORS en el recorte.',
+            'Ampliación del soporte de recorte para Carruseles y Tarjetas de Causas.',
+            'Sincronización de tipos de archivo para asegurar la integridad de los metadatos en S3.',
+            'Optimización del flujo de subida automática tras el recorte en la Media Library.'
+        ]
+    },
     {
         version: 'v4.308',
         date: '2026-05-14',

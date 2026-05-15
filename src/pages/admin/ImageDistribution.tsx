@@ -11,6 +11,12 @@ import { toast } from 'sonner';
 import Cropper from 'react-easy-crop';
 import { getCroppedImg } from '../../utils/cropImage';
 
+const PROXY_URL = (url: string) => {
+    if (!url || url.startsWith('data:')) return url;
+    const API_URL = import.meta.env.VITE_API_URL || '/api';
+    return `${API_URL}/media/proxy?url=${encodeURIComponent(url)}`;
+};
+
 const API = import.meta.env.VITE_API_URL || '/api';
 
 // ── Default Unsplash images (fallbacks) ────────────────────────────────────
@@ -386,7 +392,11 @@ const ImageDistribution: React.FC = () => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        if (pickerTarget?.key.startsWith('chatbot') || ['hero', 'aboutHero', 'causesHero', 'yep', 'yepExperience', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotexHero', 'rotexCarousel', 'foundation', 'polio', 'history', 'historyHero', 'historyImpact', 'historyTimeline', 'historyFounders', 'paulHarrisAvatar'].includes(pickerTarget?.key || '')) {
+        // Logic for sections that require cropping
+        const needsCrop = pickerTarget?.key.startsWith('chatbot') || 
+            ['hero', 'aboutHero', 'aboutCarousel', 'causesHero', 'causes', 'yep', 'yepExperience', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotexHero', 'rotexCarousel', 'foundation', 'polio', 'history', 'historyHero', 'historyImpact', 'historyTimeline', 'historyFounders', 'paulHarrisAvatar'].includes(pickerTarget?.key || '');
+
+        if (needsCrop) {
             const reader = new FileReader();
             reader.onload = () => {
                 setCropImageSrc(reader.result as string);
@@ -449,7 +459,7 @@ const ImageDistribution: React.FC = () => {
         const data = await performUpload(file);
         if (data && data.url) {
             selectMedia(data.url, file.name);
-            toast.success('Imagen recortada y actualizada con éxito');
+            toast.success('Imagen subida y actualizada con éxito');
         }
         e.target.value = '';
     };
@@ -476,10 +486,14 @@ const ImageDistribution: React.FC = () => {
     };
 
     const handleMediaClick = (url: string, filename: string) => {
-        if (pickerTarget?.key.startsWith('chatbot') || ['hero', 'aboutHero', 'causesHero', 'yep', 'yepExperience', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotexHero', 'rotexCarousel', 'foundation', 'polio', 'history', 'historyHero', 'historyImpact', 'historyTimeline', 'historyFounders', 'paulHarrisAvatar'].includes(pickerTarget?.key || '')) {
-            setCropImageSrc(url);
+        const needsCrop = pickerTarget?.key.startsWith('chatbot') || 
+            ['hero', 'aboutHero', 'aboutCarousel', 'causesHero', 'causes', 'yep', 'yepExperience', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotexHero', 'rotexCarousel', 'foundation', 'polio', 'history', 'historyHero', 'historyImpact', 'historyTimeline', 'historyFounders', 'paulHarrisAvatar'].includes(pickerTarget?.key || '');
+        
+        if (needsCrop) {
+            // Use proxy to avoid CORS when cropping images from S3 or external URLs
+            setCropImageSrc(PROXY_URL(url));
             // Create a pseudo-file to carry over the original filename safely
-            setCropFile(new File([], filename || 'image.jpg'));
+            setCropFile(new File([], filename || 'image.jpg', { type: 'image/jpeg' }));
             return;
         }
         selectMedia(url, filename);
