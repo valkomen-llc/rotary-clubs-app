@@ -24,9 +24,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.312 | 2026-05-15 (POSTGEN TRUE OUTPAINTING — gpt-image-1 🎨)
-// Cache bust: 2026-05-15 15:00 (POSTGEN AI v4.312 🎨)
+// DISTRICT HEALTH IQ V4.313 | 2026-05-15 (POSTGEN IDENTITY-LOCK — pixel-perfect composite 🔒)
+// Cache bust: 2026-05-15 16:30 (POSTGEN IDENTITY-LOCK v4.313 🔒)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.313',
+        date: '2026-05-15',
+        title: 'Content Studio AI: Identity Lock — Rostros Pixel-Perfect 🔒',
+        description: 'Fix crítico: la IA ya no altera caras, banderas ni logos. La foto original se compone exacta sobre el outpainting generado.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Problema detectado en v4.312: gpt-image-1 trata la máscara como un hint suave y regeneraba sutilmente caras y textos de banderas (texto alucinado tipo "Pandoñu Siv Buorles Crieads").',
+            'Solución: tras el outpainting de la IA, la foto original (mejorada con sharp) se compone píxel-exacta encima del resultado.',
+            'La IA solo aporta los píxeles del entorno expandido (cielo, piso, paredes); el sujeto central queda 100% idéntico al original.',
+            'Rostros, expresiones, manos, banderas, pins Rotary, logos institucionales y texto: cero alteración garantizada.',
+            'Engine reportado en metadata: "gpt-image-1+composite" para distinguir del flujo anterior.'
+        ]
+    },
     {
         version: 'v4.312',
         date: '2026-05-15',

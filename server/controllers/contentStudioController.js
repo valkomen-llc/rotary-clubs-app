@@ -124,8 +124,20 @@ const buildCanvasAndMask = async (originalBuffer, targetW, targetH) => {
     return {
         paddedImage,
         maskImage,
+        resizedOriginal: resized,
         layout: { origW, origH, placedW, placedH, top, left, targetW, targetH, hasBorders: placedW < targetW || placedH < targetH }
     };
+};
+
+// Critical identity-preservation step: gpt-image-1 treats the mask as a soft hint and
+// will subtly regenerate faces, flags and text in the unmasked region. We override that
+// by compositing the enhanced original BACK on top of the AI-generated canvas, so the
+// outpainted regions (sky, ground, walls) come from AI but the subjects are pixel-exact.
+const compositeOriginalBack = async (aiBuffer, resizedOriginal, layout) => {
+    return sharp(aiBuffer)
+        .composite([{ input: resizedOriginal, top: layout.top, left: layout.left }])
+        .png()
+        .toBuffer();
 };
 
 // Build a detailed prompt that tells gpt-image-1 to OUTPAINT only — never alter subjects.
@@ -188,7 +200,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.312 — hybrid pipeline: sharp enhance + gpt-image-1 outpainting) ---');
+        console.log('--- START GENERATE POST (v4.313 — gpt-image-1 outpainting + original composite for pixel-perfect identity) ---');
         const { imageUrl, config = {} } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
@@ -279,16 +291,20 @@ visual_prompt (en INGLÉS, 1-3 frases): describe el ENTORNO alrededor de los suj
 
         // 3) Build canvas + mask once, then run gpt-image-1 outpainting.
         const { width: targetW, height: targetH } = FORMAT_SIZES[targetFormat];
-        const { paddedImage, maskImage, layout } = await buildCanvasAndMask(enhancedBuffer, targetW, targetH);
+        const { paddedImage, maskImage, resizedOriginal, layout } = await buildCanvasAndMask(enhancedBuffer, targetW, targetH);
         const prompt = buildOutpaintingPrompt({ clubName, typeMeta, areaMeta, visualPrompt: parsed.visual_prompt, layout });
 
         let finalUrl = null;
-        let usedEngine = 'gpt-image-1';
+        let usedEngine = 'gpt-image-1+composite';
         let imageError = null;
 
         try {
-            const buffer = await generateImageVariant({ paddedImage, maskImage, width: targetW, height: targetH, prompt });
-            finalUrl = await uploadGeneratedImage({ buffer, clubId, variant: targetFormat });
+            const aiBuffer = await generateImageVariant({ paddedImage, maskImage, width: targetW, height: targetH, prompt });
+            // Hard-overlay the original onto the AI output so faces, banners and logos
+            // are guaranteed pixel-identical to the source. AI only contributes the
+            // newly-painted outpainted regions around the original.
+            const composed = await compositeOriginalBack(aiBuffer, resizedOriginal, layout);
+            finalUrl = await uploadGeneratedImage({ buffer: composed, clubId, variant: targetFormat });
         } catch (e) {
             imageError = e.message;
             console.warn('[STUDIO] gpt-image-1 failed, falling back to enhanced original:', e.message);
