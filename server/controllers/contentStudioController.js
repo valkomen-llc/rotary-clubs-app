@@ -46,145 +46,31 @@ const enhanceOriginal = async (buffer) => {
         .toBuffer();
 };
 
-// Build a SEEDED outpainting input: the original placed centered on a portrait canvas
-// whose extension bands are pre-filled with a soft mirror reflection of the original's
-// edges. This gives the AI a contextual draft to refine rather than empty transparent
-// space — preventing the hallucination of institutional elements (flags, banners, logos)
-// that gpt-image-1 tends to produce when asked to fill large blank areas in a "Rotary"
-// photo. The accompanying mask still marks the bands as editable (transparent) so the AI
-// refines the seeded content into a believable natural extension.
-const buildSeededInputs = async (originalBuffer, targetW, targetH) => {
-    const meta = await sharp(originalBuffer).metadata();
-    const { placedW, placedH, top, left } = computePlacement(meta.width, meta.height, targetW, targetH);
-    const bottomExt = targetH - top - placedH;
-    const rightExt = targetW - left - placedW;
-
-    const resizedOriginal = await sharp(originalBuffer)
-        .resize(placedW, placedH, { fit: 'fill' })
-        .png()
-        .toBuffer();
-
-    // Seed the bands with a mirror reflection of the original (sharp 'mirror' mode) and
-    // apply a medium blur + slight desaturation. The mirror reflects whatever is at each
-    // edge of the original outward: sky stays sky, walls stay walls, grass stays grass.
-    // The blur removes the "exact reflection" feel so it reads as a natural soft extension.
-    let seededFull;
-    try {
-        seededFull = await sharp(resizedOriginal)
-            .extend({
-                top,
-                bottom: bottomExt,
-                left,
-                right: rightExt,
-                extendWith: 'mirror'
-            })
-            .blur(25)
-            .modulate({ saturation: 0.9, brightness: 0.98 })
-            .png()
-            .toBuffer();
-    } catch (e) {
-        // Fallback for older sharp versions without 'mirror' support: use edge copy.
-        seededFull = await sharp(resizedOriginal)
-            .extend({
-                top,
-                bottom: bottomExt,
-                left,
-                right: rightExt,
-                extendWith: 'copy'
-            })
-            .blur(25)
-            .png()
-            .toBuffer();
-    }
-
-    // Place the SHARP (un-blurred) original on top so the center is identical to the input.
-    const paddedImage = await sharp(seededFull)
-        .composite([{ input: resizedOriginal, top, left }])
-        .png()
-        .toBuffer();
-
-    // Mask: opaque (alpha=255) over the original area (preserve), transparent elsewhere
-    // (AI may refine). OpenAI: "fully transparent areas indicate where the image should
-    // be edited". The seeded content visible in the transparent areas guides the AI.
-    const opaqueRect = await sharp({
-        create: {
-            width: placedW,
-            height: placedH,
-            channels: 4,
-            background: { r: 255, g: 255, b: 255, alpha: 1 }
-        }
-    }).png().toBuffer();
-
-    const maskImage = await sharp({
-        create: {
-            width: targetW,
-            height: targetH,
-            channels: 4,
-            background: { r: 0, g: 0, b: 0, alpha: 0 }
-        }
-    })
-        .composite([{ input: opaqueRect, top, left }])
-        .png()
-        .toBuffer();
-
-    return {
-        paddedImage,
-        maskImage,
-        resizedOriginal,
-        layout: { placedW, placedH, top, left, targetW, targetH }
-    };
-};
-
-// Build a strict outpainting prompt that tells the model to refine the SEEDED bands into
-// a natural environmental extension, with an explicit blacklist of institutional elements
-// (flags, banners, Rotary symbols, logos, signs, additional people) that gpt-image-1 tends
-// to hallucinate when given a Rotary-themed photo.
-const buildSeededOutpaintingPrompt = ({ targetFormat, visualPrompt }) => {
+// Build a simple, direct portrait/landscape conversion prompt — the same kind of prompt
+// ChatGPT uses internally when asked "regenera esta foto en formato portrait". We keep
+// it short and direct because gpt-image-1 in maskless image-to-image mode handles the
+// composition / extension reasoning itself; complex prompts with long blacklists were
+// counterproductive in prior versions (the model fixated on the listed elements).
+const buildSimplePrompt = ({ targetFormat }) => {
     const aspectLabel = targetFormat === 'landscape'
         ? 'landscape 3:2 (1536×1024)'
         : 'portrait 2:3 (1024×1536)';
+    const extendDirection = targetFormat === 'landscape'
+        ? 'extending the side scenery (left and right) naturally outward'
+        : 'extending the upper background (sky, treetops, ceiling) upward and the lower surface (ground, grass, floor) downward';
 
-    return [
-        `Photographic extension task at ${aspectLabel} aspect ratio.`,
-        '',
-        'The unmasked center contains a real photograph. The transparent (masked) regions currently contain a SOFT MIRRORED DRAFT of the photograph\'s edges. Your job is to refine that draft into a believable natural extension of the original scene.',
-        '',
-        'CRITICAL — the extension must show ONLY the natural environment that lies just beyond the edges of the unmasked center:',
-        '  • If the edge shows sky → continue with more sky of the same color and same cloud pattern',
-        '  • If the edge shows trees or vegetation → continue with more of the same trees / canopy',
-        '  • If the edge shows a wall, building or stone surface → continue the same architecture / texture',
-        '  • If the edge shows ground (grass, sand, dirt, stone, tile, floor) → continue the same ground',
-        '  • If the edge shows mountains or distant landscape → continue the same horizon',
-        '',
-        '⛔️ ABSOLUTELY FORBIDDEN in the extension areas — these caused failures in prior versions:',
-        '  • NO flags, banners, pennants, standards, ensigns of any country, organisation or club',
-        '  • NO Rotary logos, Rotary wheel symbols, Rotary banners, Rotary brand marks',
-        '  • NO emblems, badges, crests, coats of arms of any kind',
-        '  • NO text, signs, labels, posters, billboards, banners, watermarks, captions',
-        '  • NO additional people, faces, hands, bodies, silhouettes — they already exist in the unmasked center',
-        '  • NO new objects, props, items, equipment, decorations, instruments',
-        '  • NO institutional or organisational elements of any kind',
-        '  • NO duplication, mirror, tile or repetition of anything visible in the center',
-        '  • NO blurred letterbox effect, NO out-of-focus background, NO gradient fade',
-        '',
-        'The extension must read as the SAME photograph captured by the SAME camera at the SAME moment, simply with a taller (or wider) frame. Match the original\'s color palette, lighting direction, depth of field, and grain exactly.',
-        '',
-        visualPrompt ? `Environment context (use ONLY for color / atmosphere matching, do NOT introduce any subjects from this description): ${visualPrompt}` : '',
-        '',
-        'Output: a single seamless natural photograph.'
-    ].filter(Boolean).join('\n');
+    return `Regenerate this photograph in higher quality and convert it to ${aspectLabel} aspect ratio, ${extendDirection}. Preserve all the people in the original, their faces, expressions, clothing, flags, banners, signs and objects. The extension must read as the same scene captured by the same camera with a different frame. Output a single coherent natural photograph.`;
 };
 
-// Call gpt-image-1 /v1/images/edits with the seeded padded image + mask. The mask marks
-// the extension bands as editable; the seeded content in those bands gives the model a
-// contextual draft. input_fidelity:"high" keeps the model close to the seeded content,
-// preventing hallucination of institutional elements while still letting it refine the
-// soft mirror into a believable natural extension.
-const generateSeededOutpainting = async ({ paddedImage, maskImage, prompt, width, height }) => {
+// Call gpt-image-1 /v1/images/edits WITHOUT a mask. In this mode the endpoint becomes
+// pure image-to-image regeneration: the model sees the input as a reference and produces
+// a new image at the requested size. With input_fidelity:"high" people, faces and
+// identifying features are preserved as closely as the model can manage. The output is
+// returned as-is, with NO post-processing — exactly the flow ChatGPT uses internally.
+const regenerateAtTargetAspect = async ({ originalBuffer, width, height, prompt }) => {
     const formData = new FormData();
     formData.append('model', 'gpt-image-1');
-    formData.append('image', new Blob([paddedImage], { type: 'image/png' }), 'image.png');
-    formData.append('mask', new Blob([maskImage], { type: 'image/png' }), 'mask.png');
+    formData.append('image', new Blob([originalBuffer], { type: 'image/png' }), 'image.png');
     formData.append('prompt', prompt);
     formData.append('size', `${width}x${height}`);
     formData.append('quality', 'high');
@@ -200,14 +86,13 @@ const generateSeededOutpainting = async ({ paddedImage, maskImage, prompt, width
     const data = await resp.json();
     if (!resp.ok || !data?.data?.[0]?.b64_json) {
         const reason = data?.error?.message || `HTTP ${resp.status}`;
-        throw new Error(`gpt-image-1 seeded outpainting failed: ${reason}`);
+        throw new Error(`gpt-image-1 regeneration failed: ${reason}`);
     }
     return Buffer.from(data.data[0].b64_json, 'base64');
 };
 
-// Compute the centered placement for the original inside the target canvas. The original
-// keeps its aspect ratio and is scaled to fit horizontally or vertically (whichever leaves
-// extension bands on the OTHER axis).
+// Compute the centered placement for the original inside the target canvas. Used only by
+// the framed fallback path now that the AI output is returned as-is.
 const computePlacement = (origW, origH, targetW, targetH) => {
     const origAspect = origW / origH;
     const targetAspect = targetW / targetH;
@@ -234,53 +119,6 @@ const computePlacement = (origW, origH, targetW, targetH) => {
     const left = Math.floor((targetW - placedW) / 2);
 
     return { placedW, placedH, top, left };
-};
-
-// Apply a feathered alpha mask to the resized original so the seam between it and the
-// AI-extended portrait fades over the configured radius. Center stays at alpha=255 (pixel-
-// perfect identity for faces / banners / objects) — only the outermost ring gets alpha-
-// blended for a clean seam with the AI's environmental extension.
-const featherOriginal = async (resizedOriginal, featherPx = 80) => {
-    const { data, info } = await sharp(resizedOriginal)
-        .ensureAlpha()
-        .raw()
-        .toBuffer({ resolveWithObject: true });
-    const { width, height, channels } = info;
-    const feather = Math.min(featherPx, Math.floor(Math.min(width, height) / 2) - 1);
-    for (let y = 0; y < height; y++) {
-        const yDist = Math.min(y, height - 1 - y);
-        for (let x = 0; x < width; x++) {
-            const xDist = Math.min(x, width - 1 - x);
-            const d = Math.min(xDist, yDist);
-            if (d >= feather) continue;
-            const alpha = Math.round((d / feather) * 255);
-            const idx = (y * width + x) * channels;
-            data[idx + 3] = alpha;
-        }
-    }
-    return sharp(data, { raw: { width, height, channels } }).png().toBuffer();
-};
-
-// Composite the original on top of the AI-regenerated portrait. This is the identity-lock
-// step: the AI's regeneration of faces / banners / flags is completely hidden under the
-// pixel-perfect original — only the AI's environmental extension (sky / ground / trees
-// in the bands above and below) remains visible, blended at the seam by the feather.
-const compositeOriginalOnAi = async (aiPortraitBuffer, originalBuffer, targetW, targetH) => {
-    const meta = await sharp(originalBuffer).metadata();
-    const { placedW, placedH, top, left } = computePlacement(meta.width, meta.height, targetW, targetH);
-
-    const resizedOriginal = await sharp(originalBuffer)
-        .resize(placedW, placedH, { fit: 'fill' })
-        .ensureAlpha()
-        .png()
-        .toBuffer();
-
-    const feathered = await featherOriginal(resizedOriginal, 80);
-
-    return sharp(aiPortraitBuffer)
-        .composite([{ input: feathered, top, left, blend: 'over' }])
-        .png()
-        .toBuffer();
 };
 
 // Pure-pixel fallback when the AI call fails: scale the original to fit the target canvas
@@ -317,7 +155,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.324 — seeded outpainting (mirror+blur draft) + masked edit + identity composite) ---');
+        console.log('--- START GENERATE POST (v4.325 — direct gpt-image-1 i2i, no composite, no post-processing — ChatGPT-style) ---');
         const { imageUrl, config = {} } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
@@ -412,49 +250,34 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
             // Continue with empty copy rather than failing the whole pipeline.
         }
 
-        // 3) Three-step image pipeline:
-        //    (a) Build seeded inputs: place original centered on a portrait canvas whose
-        //        bands are pre-filled with a soft mirror reflection of the original's
-        //        edges. The mirror reflects edge content outward (sky → more sky, wall →
-        //        more wall, ground → more ground) — giving the AI a contextual DRAFT
-        //        instead of empty space. The mask still marks the bands as editable.
-        //    (b) Call gpt-image-1 /v1/images/edits with the seeded canvas + mask +
-        //        input_fidelity:"high". The model REFINES the mirrored draft into a
-        //        believable natural extension. Because there is already content there,
-        //        it does not hallucinate flags / banners / Rotary symbols (the failure
-        //        mode of v4.322 / v4.323 maskless regeneration) and because the prompt
-        //        explicitly forbids those elements.
-        //    (c) Composite the pixel-perfect ORIGINAL on top with feather — guarantees
-        //        identity preservation in the center regardless of what the AI did.
+        // 3) Direct gpt-image-1 image-to-image. Send the photo + a simple prompt, request
+        //    the target aspect, return the model output AS-IS. No mask. No composite-back.
+        //    No post-processing of any kind. This is the same flow ChatGPT uses internally
+        //    when given a photo and asked "convert to portrait format".
+        //
+        //    Trade-off: the model regenerates the entire scene, so faces may have minor
+        //    drift from the original (visible in ChatGPT's own output). input_fidelity:
+        //    "high" minimises the drift but does not eliminate it. Prior versions tried
+        //    composite-back to preserve faces pixel-perfect, but that produced visible
+        //    overlay / montage seams which the team rejected.
         const { width: targetW, height: targetH } = FORMAT_SIZES[targetFormat];
 
         let finalUrl = null;
-        let usedEngine = 'gpt-image-1+seeded-mirror+masked-edit+identity-composite';
+        let usedEngine = 'gpt-image-1+i2i-direct';
         let imageError = null;
 
         try {
-            const { paddedImage, maskImage, resizedOriginal, layout } = await buildSeededInputs(
-                enhancedBuffer,
-                targetW,
-                targetH
-            );
-            const prompt = buildSeededOutpaintingPrompt({ targetFormat, visualPrompt: parsed.visual_prompt });
-            const aiBuffer = await generateSeededOutpainting({
-                paddedImage,
-                maskImage,
-                prompt,
+            const prompt = buildSimplePrompt({ targetFormat });
+            const aiBuffer = await regenerateAtTargetAspect({
+                originalBuffer: enhancedBuffer,
                 width: targetW,
-                height: targetH
+                height: targetH,
+                prompt
             });
-            const feathered = await featherOriginal(resizedOriginal, 80);
-            const composed = await sharp(aiBuffer)
-                .composite([{ input: feathered, top: layout.top, left: layout.left, blend: 'over' }])
-                .png()
-                .toBuffer();
-            finalUrl = await uploadGeneratedImage({ buffer: composed, clubId, variant: targetFormat });
+            finalUrl = await uploadGeneratedImage({ buffer: aiBuffer, clubId, variant: targetFormat });
         } catch (e) {
             imageError = e.message;
-            console.warn('[STUDIO] gpt-image-1 seeded outpainting failed, falling back to framed original:', e.message);
+            console.warn('[STUDIO] gpt-image-1 i2i failed, falling back to framed original:', e.message);
         }
 
         // Fallback: deliver the enhanced original framed against a neutral backdrop so

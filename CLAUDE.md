@@ -27,18 +27,25 @@ Usar incrementos de patch (`v4.323` → `v4.324`) para fixes. Major-feel changes
 
 Archivo principal: `server/controllers/contentStudioController.js`. Función `generatePost`.
 
-Pipeline actual (v4.323 — i2i + identity-lock):
+**Regla #1: NO POSTPROCESAR el output de gpt-image-1.** Equipo cliente rechazó múltiples versiones donde aplicamos composite-back / máscara / blur sobre el output del modelo — siempre se ve "overlay / pegado / montaje". ChatGPT (referencia explícita del equipo) no postprocesa. Replicar ese flujo: foto + prompt → output as-is.
 
-1. Fetch + `enhanceOriginal` (sharp, pixel-space).
-2. GPT-4o multimodal para copy + `visual_prompt` hint.
-3. `gpt-image-1` `/v1/images/edits` **sin máscara** con `input_fidelity:"high"` y `quality:"high"` al `size` target — regenera el scene al aspecto pedido extendiendo el entorno.
-4. Composite del original encima con feather de 80px (`compositeOriginalOnAi`) → caras / banderas / banners quedan pixel-perfect.
+Pipeline actual (v4.325 — direct i2i):
 
-Restricciones aprendidas:
+1. Fetch + `enhanceOriginal` (sharp, pixel-space, identidad intacta).
+2. GPT-4o multimodal para copy social (FB/IG/X/LinkedIn). El `visual_prompt` ya no se usa.
+3. `gpt-image-1` `/v1/images/edits` **sin máscara** con `input_fidelity:"high"` y `quality:"high"` al `size` target. Prompt corto (3 líneas) pidiendo conversión a portrait/landscape preservando sujetos.
+4. **Devolver el buffer del modelo TAL CUAL.** Sin composite, sin máscara, sin feather, sin blur, sin nada.
 
-- `gpt-image-1` con máscara grande **duplica intermitentemente** (efecto mosaico / tiling). No usar masked-outpainting con bandas > ~150px transparentes. Si hace falta IA en una banda grande, usar el approach maskless + composite-back.
-- Pipeline puramente pixel-space (blur background letterbox) **no es aceptable** para el equipo — la salida tiene que parecer una foto extendida real, no un letterbox.
-- Regeneración pura sin composite-back deriva rostros. Siempre componer el original encima para identidad.
+Trade-off aceptado por el equipo: la IA regenera el scene completo, hay leve drift de rostros / ropa (visible incluso en la salida ChatGPT que tomaron como referencia). A cambio: cero overlays visibles.
+
+Approaches DESCARTADOS (no volver a probarlos sin razón muy fuerte):
+
+- **Masked outpainting con bandas grandes** (v4.317-v4.320): `gpt-image-1` con máscara grande duplica intermitentemente (efecto mosaico / tiling). Sin solución por prompt.
+- **Letterbox / blur background** (v4.321): equipo rechazó — "no quiero fondos difuminados".
+- **Composite-back del original** (v4.323-v4.324): equipo rechazó — "se ve overlay / montaje". Aunque preserve identidad, el seam visible entre original e IA arruina el resultado.
+- **Seeded mirror + masked edit** (v4.324): inteligente en teoría pero termina siendo otra forma de composite, mismo rechazo.
+
+Prompts largos con listas negras (NO banderas, NO logos, NO X, NO Y) son contraproducentes — el modelo se obsesiona con lo prohibido. Mantener prompts cortos y positivos.
 
 `vercel.json` tiene `maxDuration: 120s` para `/api` — necesario por la latencia de `gpt-image-1` con `quality:"high"`.
 
