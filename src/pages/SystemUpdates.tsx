@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.321 | 2026-05-16 (POSTGEN — pixel-space blurred-background composite, AI removed from extension step 🖼️)
-// Cache bust: 2026-05-16 00:30 (POSTGEN BLURRED-BG COMPOSITE v4.321 🖼️)
+// DISTRICT HEALTH IQ V4.322 | 2026-05-16 (POSTGEN — gpt-image-1 maskless image-to-image regeneration, ChatGPT-style ✨)
+// Cache bust: 2026-05-16 01:15 (POSTGEN I2I REGENERATION v4.322 ✨)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.322',
+        date: '2026-05-16',
+        title: 'Content Studio AI: Regeneración estilo ChatGPT ✨',
+        description: 'Cambio de enfoque: la IA ahora regenera la foto completa al formato target (estilo ChatGPT), extendiendo el entorno con verdadero outpainting contextual. Adiós al fondo difuminado.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Feedback de v4.321: el fondo difuminado NO es lo que el equipo quiere. La referencia es la salida de ChatGPT cuando se le pide "regenera esta foto y conviértela a formato portrait" — extensión real del entorno, no letterbox.',
+            'Diagnóstico técnico: el flujo anterior (/v1/images/edits + máscara con bandas transparentes grandes) tenía duplicación intermitente porque gpt-image-1 con máscara grande tiende a tilear. El flujo nuevo (maskless image-to-image) deja al modelo trabajar como lo hace ChatGPT internamente: ve la foto, la entiende semánticamente, y regenera todo al nuevo aspecto extendiendo el entorno.',
+            'Pipeline nuevo: enhance original → GPT-4o copy + visual hint → /v1/images/edits SIN máscara con input_fidelity:high y quality:high en el size target (1024x1536 portrait / 1536x1024 landscape). El modelo trata la imagen como referencia visual y produce una nueva al aspecto pedido. Sin composite-back: confiamos en input_fidelity:high para preservar caras y composición.',
+            'Trade-off honesto: este modo es REGENERACIÓN, no preservación pixel-perfect. El modelo redibuja la escena completa al nuevo aspecto, igual que hace ChatGPT. Caras, ropa y banderas se preservan en composición y carácter pero NO son idénticas al pixel. Es el mismo trade-off visible en la captura de ChatGPT compartida por el equipo.',
+            'Eliminados del pipeline: buildLayout con blur, featherOriginal, composePortrait. La extensión ya no es pixel-space.',
+            'Engine reportado en metadata: "gpt-image-1+i2i-maskless".'
+        ]
+    },
     {
         version: 'v4.321',
         date: '2026-05-16',
