@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.320.0",
-  "cache_bust": "2026-05-15 23:30 (POSTGEN ANTI-TILING v4.320 🚫)",
+  "version": "4.321.0",
+  "cache_bust": "2026-05-16 00:30 (POSTGEN BLURRED-BG COMPOSITE v4.321 🖼️)",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.320 | 2026-05-15 (POSTGEN — regression fix: anti-tiling prompt + revert to quality:medium 🚫)",
+  "//": "DISTRICT HEALTH IQ V4.321 | 2026-05-16 (POSTGEN — pixel-space blurred-background composite, AI removed from extension step 🖼️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

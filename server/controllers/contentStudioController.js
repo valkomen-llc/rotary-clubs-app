@@ -46,10 +46,11 @@ const enhanceOriginal = async (buffer) => {
         .toBuffer();
 };
 
-// Place the enhanced original centered on a target canvas, preserving its full content.
-// Also builds a mask for the /edits endpoint: opaque (preserve) where the original lives,
-// transparent (edit) in the extension bands. The model with input_fidelity:"high" will
-// extend the visible content into the transparent areas naturally.
+// Place the enhanced original centered on a target canvas, and build a heavily blurred
+// version of the same original to use as the background of the extension bands. This is
+// pure pixel-space — zero AI in the extension step — so duplication / mosaic / tiling
+// artifacts are structurally impossible. The blurred background uses the original itself
+// as source, so colors, lighting and atmosphere match perfectly.
 const buildLayout = async (originalBuffer, targetW, targetH) => {
     const meta = await sharp(originalBuffer).metadata();
     const origW = meta.width;
@@ -76,7 +77,6 @@ const buildLayout = async (originalBuffer, targetW, targetH) => {
     }
 
     // The original photograph is always centered on the canvas — it is the protagonist.
-    // The AI's job is to extend the margins, not to re-frame or relocate the subjects.
     const top = Math.floor((targetH - placedH) / 2);
     const left = Math.floor((targetW - placedW) / 2);
 
@@ -85,119 +85,27 @@ const buildLayout = async (originalBuffer, targetW, targetH) => {
         .png()
         .toBuffer();
 
-    // Build the input image for /edits: original placed on transparent canvas at full target size.
-    const paddedImage = await sharp({
-        create: {
-            width: targetW,
-            height: targetH,
-            channels: 4,
-            background: { r: 0, g: 0, b: 0, alpha: 0 }
-        }
-    })
-        .composite([{ input: resizedOriginal, top, left }])
-        .png()
-        .toBuffer();
-
-    // Build the mask: opaque white over the original (preserve), transparent elsewhere (extend).
-    // OpenAI docs: "fully transparent areas (alpha=0) indicate where the image should be edited".
-    const opaqueRect = await sharp({
-        create: {
-            width: placedW,
-            height: placedH,
-            channels: 4,
-            background: { r: 255, g: 255, b: 255, alpha: 1 }
-        }
-    }).png().toBuffer();
-
-    const maskImage = await sharp({
-        create: {
-            width: targetW,
-            height: targetH,
-            channels: 4,
-            background: { r: 0, g: 0, b: 0, alpha: 0 }
-        }
-    })
-        .composite([{ input: opaqueRect, top, left }])
+    // Blurred background: scale original to COVER the full canvas, blur it heavily and
+    // desaturate slightly so it recedes visually behind the sharp original. The result
+    // is an atmospheric backdrop that matches the photo's colors and mood but contains
+    // no recognizable subjects (faces / banners / objects dissolve at this blur radius).
+    const blurredBackground = await sharp(originalBuffer)
+        .resize(targetW, targetH, { fit: 'cover', position: 'center' })
+        .blur(100)
+        .modulate({ saturation: 0.7, brightness: 0.95 })
         .png()
         .toBuffer();
 
     return {
         resizedOriginal,
-        paddedImage,
-        maskImage,
-        layout: { origW, origH, placedW, placedH, top, left, targetW, targetH, hasBorders: placedW < targetW || placedH < targetH }
+        blurredBackground,
+        layout: { origW, origH, placedW, placedH, top, left, targetW, targetH }
     };
 };
 
-// Build an outpainting prompt that tells the model to extend the EXISTING scene visible
-// at the edges, NOT generate a separate scene. Critical: with input_fidelity:"high" the
-// model actually sees and preserves the unmasked center, so we frame this as a natural
-// continuation of what is already there.
-const buildOutpaintingPrompt = ({ visualPrompt, layout }) => {
-    const bottomPad = layout.targetH - layout.top - layout.placedH;
-    const rightPad = layout.targetW - layout.left - layout.placedW;
-
-    const directions = [];
-    if (layout.top > 0) directions.push('UPWARD: continue whatever is visible at the top edge of the existing photograph (sky, ceiling, upper wall, tree canopy) naturally upward');
-    if (bottomPad > 0) directions.push('DOWNWARD: continue whatever is visible at the bottom edge (ground, grass, floor, sand, tile) naturally downward');
-    if (layout.left > 0 || rightPad > 0) directions.push('SIDEWAYS: continue whatever is visible at the side edges (walls, scenery, vegetation, distance) naturally outward');
-
-    return [
-        'Photograph extension task. The transparent areas of this image must be filled with a natural continuation of the unmasked photograph.',
-        '',
-        'CRITICAL: This is one continuous photograph, not a composite. The unmasked area contains a real photograph — extend the scene that is visible at its edges into the transparent regions:',
-        ...directions.map(d => `  • ${d}`),
-        '',
-        'The extension must read as the SAME photograph captured by the SAME camera in the SAME moment, simply with a wider frame. Match perspective, lighting direction, color temperature, depth-of-field and grain exactly.',
-        '',
-        '⚠️ ABSOLUTELY CRITICAL — the transparent extension areas MUST NOT contain a copy, duplicate, mirror, tile, echo, or repetition of the unmasked photograph. Do NOT replicate the scene above or below itself. Do NOT show the same people again. Do NOT show the same banner, sign, building, table, or any element again. The extension areas must contain ENTIRELY DIFFERENT pixels — only the surrounding environment that lies just beyond the original frame.',
-        '',
-        'STRICT — the extension regions must NOT contain:',
-        '  • Any people, faces, bodies, silhouettes, figures, hands or crowds (they all already exist in the unmasked center; do not add more)',
-        '  • Any text, letters, words, numbers, signs, labels, captions, titles, watermarks',
-        '  • Any logos, banners, flags, Rotary symbols, emblems, brand marks',
-        '  • Any decorative graphic overlays, frames, vignettes, cinematic effects, gradients or color filters',
-        '  • Any duplicates or echoes of the people in the unmasked center',
-        '  • Any OBJECTS, PROPS or ITEMS whatsoever — specifically: NO buckets, NO bottles, NO bags, NO shoes, NO backpacks, NO containers, NO tools, NO equipment, NO microphones, NO tables, NO chairs, NO podiums, NO devices, NO accessories, NO scattered debris, NO duplicates of anything visible in the unmasked center',
-        '  • The extension bands must show ONLY pure environmental matter: empty sky, empty water, empty grass, empty sand, empty walls, empty floor. NOTHING else.',
-        '',
-        visualPrompt ? `Environmental context (use for color/atmosphere matching only — do NOT introduce subjects from this description): ${visualPrompt}` : '',
-        '',
-        'Output: a single seamless photograph, natural and realistic. No artistic interpretation. No creative additions.'
-    ].filter(Boolean).join('\n');
-};
-
-// Call /v1/images/edits with gpt-image-1 + input_fidelity:"high" so the model strictly
-// preserves the unmasked content of the original photograph and only paints the
-// transparent (masked) regions with a coherent extension of what is visible at the edges.
-const generateOutpainting = async ({ paddedImage, maskImage, prompt, width, height }) => {
-    const formData = new FormData();
-    formData.append('model', 'gpt-image-1');
-    formData.append('image', new Blob([paddedImage], { type: 'image/png' }), 'image.png');
-    formData.append('mask', new Blob([maskImage], { type: 'image/png' }), 'mask.png');
-    formData.append('prompt', prompt);
-    formData.append('size', `${width}x${height}`);
-    formData.append('quality', 'medium');
-    formData.append('input_fidelity', 'high');
-    formData.append('n', '1');
-
-    const resp = await fetch('https://api.openai.com/v1/images/edits', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
-        body: formData
-    });
-
-    const data = await resp.json();
-    if (!resp.ok || !data?.data?.[0]?.b64_json) {
-        const reason = data?.error?.message || `HTTP ${resp.status}`;
-        throw new Error(`gpt-image-1 outpainting falló: ${reason}`);
-    }
-    return Buffer.from(data.data[0].b64_json, 'base64');
-};
-
-// Apply a feathered alpha mask to the resized original so the seam between original and
-// AI-extended areas fades over ~40px. Center stays at alpha=255 (pixel-exact) — only the
-// outermost band (sky/floor/walls, never faces) gets alpha-blended.
+// Apply a feathered alpha mask to the resized original so its outer ~40px fade out into
+// the blurred background. Center stays at alpha=255 (pixel-exact identity) — only the
+// outermost band (sky/floor/walls, never faces) gets alpha-blended for a seamless seam.
 const featherOriginal = async (resizedOriginal) => {
     const FEATHER_PX = 40;
     const { data, info } = await sharp(resizedOriginal)
@@ -220,13 +128,12 @@ const featherOriginal = async (resizedOriginal) => {
     return sharp(data, { raw: { width, height, channels } }).png().toBuffer();
 };
 
-// Composite the (feathered) original on top of the AI outpainted result. This is
-// belt-and-suspenders: input_fidelity:"high" should already preserve the unmasked region,
-// and this composite guarantees pixel-perfect identity at the center plus a smooth blend
-// at the boundary.
-const compositeOriginalOnAi = async (aiBuffer, resizedOriginal, layout) => {
+// Final composite: blurred background as base + feathered original on top, centered.
+// Original is identity-preserved at the center (alpha=255) and only its outermost ring
+// fades into the blurred backdrop, giving a clean professional letterbox style.
+const composePortrait = async (blurredBackground, resizedOriginal, layout) => {
     const feathered = await featherOriginal(resizedOriginal);
-    return sharp(aiBuffer)
+    return sharp(blurredBackground)
         .composite([{ input: feathered, top: layout.top, left: layout.left, blend: 'over' }])
         .png()
         .toBuffer();
@@ -247,7 +154,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.320 — REGRESSION FIX: revert to medium quality + explicit anti-tiling prompt) ---');
+        console.log('--- START GENERATE POST (v4.321 — pixel-space blurred-background composite, no AI in extension step) ---');
         const { imageUrl, config = {} } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
@@ -342,27 +249,26 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
             // Continue with empty copy rather than failing the whole pipeline.
         }
 
-        // 3) Compute placement and resize the original to fit.
+        // 3) Compute placement, resize the original and build the blurred background.
         const { width: targetW, height: targetH } = FORMAT_SIZES[targetFormat];
-        const { resizedOriginal, paddedImage, maskImage, layout } = await buildLayout(enhancedBuffer, targetW, targetH);
+        const { resizedOriginal, blurredBackground, layout } = await buildLayout(enhancedBuffer, targetW, targetH);
 
         let finalUrl = null;
-        let usedEngine = 'gpt-image-1+hi-fidelity+composite';
+        let usedEngine = 'sharp-blurred-bg-composite';
         let imageError = null;
 
-        // True outpainting via /v1/images/edits + mask + input_fidelity:"high". The model
-        // sees the original photo, preserves the unmasked center pixel-faithfully, and
-        // naturally extends the visible scene into the masked (transparent) bands.
-        // We still composite the original back on top with feathered edges as a
-        // belt-and-suspenders guarantee of pixel-perfect identity.
+        // Pixel-space composition: blurred original as backdrop + sharp original centered
+        // on top with feathered outer edge. No AI in the extension step, so it is
+        // structurally impossible to produce tiling, mosaic, or duplicated subjects.
+        // The blurred background uses the original itself as source — atmosphere
+        // (color, brightness, mood) matches perfectly. Faces, banners and objects
+        // dissolve at this blur radius, so no recognizable element is duplicated.
         try {
-            const prompt = buildOutpaintingPrompt({ visualPrompt: parsed.visual_prompt, layout });
-            const aiBuffer = await generateOutpainting({ paddedImage, maskImage, prompt, width: targetW, height: targetH });
-            const composed = await compositeOriginalOnAi(aiBuffer, resizedOriginal, layout);
+            const composed = await composePortrait(blurredBackground, resizedOriginal, layout);
             finalUrl = await uploadGeneratedImage({ buffer: composed, clubId, variant: targetFormat });
         } catch (e) {
             imageError = e.message;
-            console.warn('[STUDIO] Outpainting failed, falling back to framed original:', e.message);
+            console.warn('[STUDIO] Compose failed, falling back to framed original:', e.message);
         }
 
         // Fallback: deliver the enhanced original framed against a neutral backdrop so
