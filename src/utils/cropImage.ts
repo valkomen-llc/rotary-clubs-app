@@ -3,12 +3,14 @@ export const createImage = (url: string): Promise<HTMLImageElement> =>
     const image = new Image()
     image.addEventListener('load', () => resolve(image))
     image.addEventListener('error', (error) => reject(error))
-    if (url.startsWith('data:')) {
+    
+    const isProxy = url.includes('/media/proxy');
+    
+    if (url.startsWith('data:') || isProxy) {
+      // Same-origin or data URL, no need for crossOrigin
       image.src = url
     } else {
-      image.setAttribute('crossOrigin', 'anonymous') // avoided CORS issues
-      // Bypass browser cache to avoid CORS errors when the image was previously 
-      // loaded without crossOrigin in the Cropper UI
+      image.setAttribute('crossOrigin', 'anonymous')
       image.src = url + (url.includes('?') ? '&' : '?') + 'cors-bypass=' + Date.now()
     }
   })
@@ -76,7 +78,7 @@ export async function getCroppedImg(
         return
       }
       resolve(blob)
-    }, type, 1.0)
+    }, type, 0.9) // Reduced to 0.9 to stay within Vercel 4.5MB payload limits
   })
 }
 

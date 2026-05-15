@@ -24,9 +24,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.310 | 2026-05-14 (PROXY AUTH FIX 🛡️)
-// Cache bust: 2026-05-14 21:15 (UI FIX v4.310 🚀)
+// DISTRICT HEALTH IQ V4.311 | 2026-05-14 (DIRECT S3 UPLOAD FIX 🛡️)
+// Cache bust: 2026-05-14 21:25 (UI FIX v4.311 🚀)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.311',
+        date: '2026-05-14',
+        title: 'Fix: Estabilidad de Subida y Payload 🛡️',
+        description: 'Se eliminó el error de carga infinita al subir imágenes pesadas mediante la implementación de subidas directas a S3.',
+        type: 'fix',
+        details: [
+            'Implementación de Presigned URLs para saltar el límite de 4.5MB de Vercel.',
+            'Reducción de calidad de recorte a 0.9 para optimizar el almacenamiento sin pérdida visual.',
+            'Optimización del motor de procesamiento de imágenes para evitar bloqueos de cache.',
+            'Mejora en la resiliencia de la conexión durante el guardado de medios.'
+        ]
+    },
     {
         version: 'v4.310',
         date: '2026-05-14',

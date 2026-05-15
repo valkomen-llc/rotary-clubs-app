@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.310.0",
-  "cache_bust": "2026-05-14 21:15 (UI FIX v4.310 🚀)",
+  "version": "4.311.0",
+  "cache_bust": "2026-05-14 21:25 (UI FIX v4.311 🚀)",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.310 | 2026-05-14 (PROXY AUTH FIX 🛡️)",
+  "//": "DISTRICT HEALTH IQ V4.311 | 2026-05-14 (DIRECT S3 UPLOAD FIX 🛡️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

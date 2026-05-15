@@ -357,35 +357,63 @@ const ImageDistribution: React.FC = () => {
         finally { setMediaLoading(false); }
     };
 
-    // ── Upload logic execution ─────────────────────────────────────────────
+    // ── Upload logic execution (v4.311 - Direct S3 Strategy) ───────────────────
     const performUpload = async (fileToUpload: File) => {
         setUploading(true);
-        const formData = new FormData();
-        formData.append('file', fileToUpload);
-        formData.append('clubId', viewClubId || '');
         let newUrl = null;
         try {
-            const res = await fetch(`${API}/media/upload`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token()}` },
-                body: formData,
+            // 1. Get Presigned URL
+            const params = new URLSearchParams({
+                fileName: fileToUpload.name,
+                fileType: fileToUpload.type,
+                clubId: viewClubId || ''
             });
-            if (res.ok) {
-                const data = await res.json();
-                toast.success('✅ Imagen subida y seleccionada automáticamente.');
+            const preRes = await fetch(`${API}/media/presigned-url?${params}`, {
+                headers: { Authorization: `Bearer ${token()}` }
+            });
+            if (!preRes.ok) throw new Error('Error al generar link de subida');
+            const { uploadUrl, fileUrl, key } = await preRes.json();
+
+            // 2. Upload directly to S3 (Bypass Vercel 4.5MB limit)
+            const s3Res = await fetch(uploadUrl, {
+                method: 'PUT',
+                body: fileToUpload,
+                headers: { 'Content-Type': fileToUpload.type }
+            });
+            if (!s3Res.ok) throw new Error('Error al subir archivo a S3');
+
+            // 3. Save Record in DB
+            const saveRes = await fetch(`${API}/media/save`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token()}` 
+                },
+                body: JSON.stringify({
+                    clubId: viewClubId || null,
+                    fileName: fileToUpload.name,
+                    fileUrl: fileUrl,
+                    s3Key: key,
+                    fileType: fileToUpload.type,
+                    fileSize: fileToUpload.size
+                })
+            });
+            if (saveRes.ok) {
+                const data = await saveRes.json();
+                toast.success('✅ Imagen subida con éxito.');
                 await fetchMedia();
-                
-                // Extra: Automatically select the image avoiding the click in the gallery
                 if (data.url) {
                     newUrl = data;
                 }
             } else {
-                const err = await res.json().catch(() => ({}));
-                toast.error(err.error || 'Error al subir imagen');
+                throw new Error('Error al registrar medio en la base de datos');
             }
-        } catch { toast.error('Error de conexión'); }
-        finally { setUploading(false); }
-        
+        } catch (err: any) {
+            console.error('[Upload] Error:', err);
+            toast.error(err.message || 'Error al subir imagen');
+        } finally {
+            setUploading(false);
+        }
         return newUrl;
     };
 
