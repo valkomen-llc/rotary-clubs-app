@@ -1,27 +1,30 @@
-import React, { useState, useRef } from 'react';
-import { 
-    Image as ImageIcon, 
-    Sparkles, 
-    Layout, 
-    Zap, 
-    Send, 
-    RefreshCw, 
-    PlusCircle,
-    CheckCircle2,
+import React, { useState, useRef, useMemo } from 'react';
+import {
+    Image as ImageIcon,
+    Sparkles,
+    Zap,
+    Send,
+    RefreshCw,
     Upload,
     Library,
     Download,
     Eye,
     MessageSquare,
-    BarChart3
+    BarChart3,
+    Copy as CopyIcon,
+    Pencil,
+    Check,
+    AlertTriangle
 } from 'lucide-react';
 import MediaPicker from './MediaPicker';
 import { toast } from 'sonner';
 
+type Platform = 'facebook' | 'instagram' | 'x' | 'linkedin';
+type TargetFormat = 'portrait' | 'landscape';
+
 interface AIConfig {
-    format: string;
     interestArea: string;
-    type: string; // New: storytelling, standard, etc.
+    type: string;
 }
 
 interface PostContent {
@@ -37,36 +40,58 @@ interface GeneratedData {
     linkedin: PostContent;
 }
 
+interface GenerationMetadata {
+    engine?: string;
+    format?: TargetFormat;
+    dimensions?: string;
+    limits?: Record<Platform, number>;
+    imageError?: string;
+}
+
+const PLATFORM_TO_FORMAT: Record<Platform, TargetFormat> = {
+    facebook: 'portrait',
+    instagram: 'portrait',
+    linkedin: 'portrait',
+    x: 'landscape'
+};
+
+const PLATFORM_LIMITS: Record<Platform, number> = {
+    facebook: 600,
+    instagram: 2200,
+    x: 280,
+    linkedin: 1300
+};
+
 const PostGenerator: React.FC = () => {
     const [selectedImage, setSelectedImage] = useState<any>(null);
     const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [aiConfig, setAiConfig] = useState<AIConfig>({
-        format: 'fb_portrait',
         interestArea: 'general',
         type: 'standard'
     });
-    const [activePlatform, setActivePlatform] = useState<'facebook' | 'instagram' | 'x' | 'linkedin'>('facebook');
+    const [activePlatform, setActivePlatform] = useState<Platform>('facebook');
     const [generatedContent, setGeneratedContent] = useState<GeneratedData | null>(null);
     const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+    const [generatedFormat, setGeneratedFormat] = useState<TargetFormat | null>(null);
+    const [metadata, setMetadata] = useState<GenerationMetadata | null>(null);
+    const [editingCopy, setEditingCopy] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const handleGenerate = async () => {
+    const runGeneration = async (format: TargetFormat) => {
         if (!selectedImage) {
             toast.error('Por favor selecciona una imagen primero');
             return;
         }
 
         setIsGenerating(true);
-        const toastId = toast.loading('IA Generando Publicación Profesional...');
+        const toastId = toast.loading(
+            format === 'landscape'
+                ? 'Generando versión landscape para X...'
+                : 'Generando publicación profesional con IA…'
+        );
 
         try {
-            // Force 16:9 if platform is X for better results
-            const finalConfig = {
-                ...aiConfig,
-                format: activePlatform === 'x' ? '16:9' : '9:16'
-            };
-
             const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/content-studio/generate-post`, {
                 method: 'POST',
                 headers: {
@@ -76,7 +101,10 @@ const PostGenerator: React.FC = () => {
                 body: JSON.stringify({
                     imageId: selectedImage.id || 'uploaded',
                     imageUrl: selectedImage.url,
-                    config: finalConfig
+                    config: {
+                        ...aiConfig,
+                        targetFormat: format
+                    }
                 })
             });
 
@@ -85,7 +113,13 @@ const PostGenerator: React.FC = () => {
             if (response.ok && data.success) {
                 setGeneratedContent(data.content);
                 setGeneratedImageUrl(data.generatedImageUrl);
-                toast.success('¡Contenido generado con éxito!', { id: toastId });
+                setGeneratedFormat(data.metadata?.format || format);
+                setMetadata(data.metadata || null);
+                if (data.metadata?.imageError) {
+                    toast.warning('Imagen mejorada sin outpainting IA (fallback). Reintenta para el resultado completo.', { id: toastId });
+                } else {
+                    toast.success('¡Contenido generado con éxito!', { id: toastId });
+                }
             } else {
                 toast.error(data.error || 'Error al generar el contenido', { id: toastId });
             }
@@ -95,6 +129,34 @@ const PostGenerator: React.FC = () => {
             setIsGenerating(false);
         }
     };
+
+    const handleGenerate = () => runGeneration(PLATFORM_TO_FORMAT[activePlatform]);
+
+    const formatMismatch = generatedFormat !== null && generatedFormat !== PLATFORM_TO_FORMAT[activePlatform];
+
+    const handleCopyAll = async () => {
+        if (!generatedContent) return;
+        const block = generatedContent[activePlatform];
+        const text = [block.copy, block.hashtags, block.cta].filter(Boolean).join('\n\n');
+        try {
+            await navigator.clipboard.writeText(text);
+            toast.success('Copy copiado al portapapeles');
+        } catch {
+            toast.error('No se pudo copiar');
+        }
+    };
+
+    const handleEditCopy = (newCopy: string) => {
+        if (!generatedContent) return;
+        setGeneratedContent({
+            ...generatedContent,
+            [activePlatform]: { ...generatedContent[activePlatform], copy: newCopy }
+        });
+    };
+
+    const charCount = useMemo(() => generatedContent?.[activePlatform]?.copy?.length || 0, [generatedContent, activePlatform]);
+    const charLimit = PLATFORM_LIMITS[activePlatform];
+    const overLimit = charCount > charLimit;
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -113,6 +175,8 @@ const PostGenerator: React.FC = () => {
             if (response.ok) {
                 setSelectedImage({ id: data.id, url: data.url, name: file.name });
                 setGeneratedContent(null);
+                setGeneratedImageUrl(null);
+                setGeneratedFormat(null);
                 toast.success('Imagen lista', { id: toastId });
             }
         } catch (error: any) {
@@ -279,12 +343,14 @@ const PostGenerator: React.FC = () => {
                             </div>
                         ) : (
                             <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 flex flex-col gap-6 h-full">
-                                {/* Preview Container */}
-                                <div className={`relative group mx-auto bg-black rounded-3xl overflow-hidden shadow-2xl border-[8px] border-white transition-all duration-500 ${activePlatform === 'x' ? 'max-w-full aspect-video' : 'max-w-[340px] aspect-[4/5]'}`}>
-                                    <img src={generatedImageUrl || ''} alt="AI Created" className="w-full h-full object-cover" />
-                                    
+                                {/* Preview Container — aspect matches the format that was actually generated */}
+                                <div className={`relative group mx-auto bg-black rounded-3xl overflow-hidden shadow-2xl border-[8px] border-white transition-all duration-500 ${generatedFormat === 'landscape' ? 'max-w-full aspect-[3/2]' : 'max-w-[340px] aspect-[2/3]'}`}>
+                                    {generatedImageUrl ? (
+                                        <img src={generatedImageUrl} alt="AI Created" className="w-full h-full object-contain" />
+                                    ) : null}
+
                                     <div className="absolute top-4 right-4 flex gap-2">
-                                        <button 
+                                        <button
                                             onClick={downloadImage}
                                             className="bg-white/90 backdrop-blur-md text-gray-900 p-3 rounded-2xl shadow-2xl hover:scale-110 active:scale-95 transition-all"
                                             title="Descargar imagen"
@@ -292,37 +358,101 @@ const PostGenerator: React.FC = () => {
                                             <Download className="w-5 h-5" />
                                         </button>
                                     </div>
-                                    
-                                    <div className="absolute bottom-4 left-4">
+
+                                    <div className="absolute bottom-4 left-4 flex flex-col gap-2">
                                         <span className="bg-blue-600/90 backdrop-blur-md text-white text-[10px] font-black px-4 py-2 rounded-xl shadow-2xl flex items-center gap-2">
                                             <BarChart3 className="w-4 h-4" />
-                                            {activePlatform.toUpperCase()} OPTIMIZED
+                                            {generatedFormat === 'landscape' ? 'X / TWITTER · 3:2' : 'FB · IG · LINKEDIN · 2:3'}
                                         </span>
+                                        {metadata?.engine && (
+                                            <span className="bg-black/60 backdrop-blur-md text-white/90 text-[9px] font-black px-3 py-1.5 rounded-lg tracking-wider">
+                                                {metadata.engine.toUpperCase()}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
+
+                                {formatMismatch && (
+                                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+                                        <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                                        <div className="flex-1">
+                                            <p className="text-xs font-black text-amber-900 mb-1">
+                                                Esta plataforma usa otro formato
+                                            </p>
+                                            <p className="text-[11px] text-amber-800 mb-3 font-bold">
+                                                {activePlatform === 'x'
+                                                    ? 'X usa landscape 3:2. La imagen actual es portrait.'
+                                                    : 'Esta red usa portrait 2:3. La imagen actual es landscape.'}
+                                            </p>
+                                            <button
+                                                onClick={() => runGeneration(PLATFORM_TO_FORMAT[activePlatform])}
+                                                disabled={isGenerating}
+                                                className="bg-amber-600 text-white text-[10px] font-black px-3 py-2 rounded-xl hover:bg-amber-700 disabled:bg-gray-300 flex items-center gap-2"
+                                            >
+                                                <RefreshCw className={`w-3 h-3 ${isGenerating ? 'animate-spin' : ''}`} />
+                                                GENERAR VERSIÓN {activePlatform === 'x' ? 'LANDSCAPE' : 'PORTRAIT'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Text Area */}
                                 <div className="space-y-4 flex-1">
                                     <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-xl relative min-h-[150px] flex flex-col justify-between">
-                                        <div className="flex items-center gap-2 mb-4">
-                                            <MessageSquare className="w-4 h-4 text-blue-600" />
-                                            <span className="text-[10px] font-black text-gray-400 tracking-widest uppercase">Propuesta de Copy</span>
+                                        <div className="flex items-center justify-between mb-4">
+                                            <div className="flex items-center gap-2">
+                                                <MessageSquare className="w-4 h-4 text-blue-600" />
+                                                <span className="text-[10px] font-black text-gray-400 tracking-widest uppercase">Propuesta de Copy</span>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => setEditingCopy((v) => !v)}
+                                                    className={`text-[10px] font-black px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${editingCopy ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}
+                                                    title={editingCopy ? 'Terminar edición' : 'Editar copy'}
+                                                >
+                                                    {editingCopy ? <Check className="w-3 h-3" /> : <Pencil className="w-3 h-3" />}
+                                                    {editingCopy ? 'LISTO' : 'EDITAR'}
+                                                </button>
+                                                <button
+                                                    onClick={handleCopyAll}
+                                                    className="text-[10px] font-black px-3 py-1.5 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-100 flex items-center gap-1.5"
+                                                    title="Copiar todo"
+                                                >
+                                                    <CopyIcon className="w-3 h-3" />
+                                                    COPIAR
+                                                </button>
+                                            </div>
                                         </div>
-                                        
-                                        <p className="text-sm text-gray-700 leading-relaxed font-bold italic mb-6">
-                                            {generatedContent[activePlatform].copy}
-                                        </p>
-                                        
-                                        <div className="flex items-center justify-between border-t border-gray-50 pt-4">
-                                            <div className="flex flex-wrap gap-2">
-                                                {generatedContent[activePlatform].hashtags?.split(' ').map((tag, i) => (
+
+                                        {editingCopy ? (
+                                            <textarea
+                                                value={generatedContent[activePlatform].copy}
+                                                onChange={(e) => handleEditCopy(e.target.value)}
+                                                rows={6}
+                                                className="w-full text-sm text-gray-700 leading-relaxed font-bold p-4 rounded-2xl border-2 border-blue-100 focus:border-blue-600 outline-none resize-y mb-4"
+                                            />
+                                        ) : (
+                                            <p className="text-sm text-gray-700 leading-relaxed font-bold italic mb-4 whitespace-pre-wrap">
+                                                {generatedContent[activePlatform].copy}
+                                            </p>
+                                        )}
+
+                                        {generatedContent[activePlatform].cta && (
+                                            <p className="text-xs font-black text-blue-700 mb-4 uppercase tracking-wider">
+                                                → {generatedContent[activePlatform].cta}
+                                            </p>
+                                        )}
+
+                                        <div className="flex items-center justify-between border-t border-gray-50 pt-4 gap-4">
+                                            <div className="flex flex-wrap gap-2 flex-1">
+                                                {generatedContent[activePlatform].hashtags?.split(/\s+/).filter(Boolean).map((tag, i) => (
                                                     <span key={i} className="text-[10px] font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-full">
-                                                        {tag}
+                                                        {tag.startsWith('#') ? tag : `#${tag}`}
                                                     </span>
                                                 ))}
                                             </div>
-                                            <span className="text-[10px] font-black text-gray-300">
-                                                {generatedContent[activePlatform].copy.length} CH.
+                                            <span className={`text-[10px] font-black flex-shrink-0 ${overLimit ? 'text-red-500' : 'text-gray-300'}`}>
+                                                {charCount} / {charLimit} CH.
                                             </span>
                                         </div>
                                     </div>
