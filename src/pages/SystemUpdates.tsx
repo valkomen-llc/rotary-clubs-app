@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.315 | 2026-05-15 (POSTGEN — clean scene generation + composite (no /edits) 🎬)
-// Cache bust: 2026-05-15 18:30 (POSTGEN SCENE-GEN v4.315 🎬)
+// DISTRICT HEALTH IQ V4.316 | 2026-05-15 (POSTGEN — feathered composite + atmosphere-matched prompt 🌫️)
+// Cache bust: 2026-05-15 19:30 (POSTGEN SEAMLESS v4.316 🌫️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.316',
+        date: '2026-05-15',
+        title: 'Content Studio AI: Composite Seamless 🌫️',
+        description: 'Fix visual del seam entre la foto original y las bandas generadas. Bordes del original con feathering suave + descripción atmosférica precisa.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Problema observado en v4.315: el composite funcionaba correctamente (sin duplicados, sin texto inventado) pero los bordes entre la foto original y las bandas AI se veían como cortes horizontales muy marcados — la imagen parecía un collage de tres tiras.',
+            'Causa visual: (1) borde duro de 1 pixel entre foto y AI, (2) la IA generaba escenas "perfectas" de stock photo que no matcheaban con la atmósfera real de la foto (haze, humedad, imperfecciones).',
+            'Fix #1 — Feathering: alpha-gradient de ~40 píxeles en el borde exterior del original. Los píxeles del borde (que son cielo/arena/paredes, NO caras) se alpha-blendean suavemente con la escena AI. El centro 90%+ con las personas queda pixel-perfect.',
+            'Fix #2 — Atmósfera: el visual_prompt de GPT-4o ahora pide descripción específica de color, humedad, dirección de luz, polvo, niebla. El scene-gen pide "naturalistic amateur photography, NOT stock photo" para evitar el look estéril.',
+            'Las personas, banderas, logos y textos del centro de la foto siguen siendo pixel-exactos al input.',
+            'Engine reportado en metadata sigue siendo "scene-gen+composite".'
+        ]
+    },
     {
         version: 'v4.315',
         date: '2026-05-15',
