@@ -155,6 +155,8 @@ const getWhatsappQr = async () => _whatsappQr || (({ default: _whatsappQr } = aw
 const getContentStudio = async () => _contentStudio || (({ default: _contentStudio } = await import('../server/routes/contentStudio.js')), _contentStudio);
 const getDomains = async () => _domains || (({ default: _domains } = await import('../server/routes/domains.js')), _domains);
 const getCron = async () => _cron || (({ default: _cron } = await import('../server/routes/cron.js')), _cron);
+let _social;
+const getSocial = async () => _social || (({ default: _social } = await import('../server/routes/social.js')), _social);
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
@@ -189,11 +191,8 @@ app.use('/api/cron', async (req, res, next) => { try { return (await getCron())(
 app.use('/api/scout-grants', async (req, res, next) => { try { return (await getScoutGrants())(req, res, next); } catch (e) { console.error('API Error [scout-grants]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/district-analytics', async (req, res, next) => { try { return (await getDistAnalytics())(req, res, next); } catch (e) { console.error('API Error [district-analytics]:', e); res.status(500).json({ error: e.message }); } });
 
-// RUTAS SOCIAL HUB
-app.get('/api/social/callback/:platform', async (req, res) => {
-    const { platform } = req.params;
-    res.redirect(`/admin/content-studio?tab=accounts&connected=${platform}`);
-});
+// Social Publishing Engine — Phase 1 (Meta OAuth + accounts management)
+app.use('/api/social', async (req, res, next) => { try { return (await getSocial())(req, res, next); } catch (e) { console.error('API Error [social]:', e); res.status(500).json({ error: e.message }); } });
 
 // ── Frontend & SEO Injection ──────────────────────────────────────────────────
 app.get('*', async (req, res) => {

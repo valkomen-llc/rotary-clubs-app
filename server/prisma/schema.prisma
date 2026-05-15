@@ -27,6 +27,7 @@ model User {
   uploadedDocuments  ClubDocument[]
   communicationLogs  CommunicationLog[]
   orders             Order[]
+  socialPublications SocialPublication[]
   club               Club?              @relation(fields: [clubId], references: [id])
   district           District?          @relation(fields: [districtId], references: [id])
 }
@@ -124,6 +125,7 @@ model Club {
   rotexMembers             RotexMember[]
   settings                 Setting[]
   socialAccounts           SocialAccount[]
+  socialPublications       SocialPublication[]
   sponsoredClubs           SponsoredClub[]
   testimonials             Testimonial[]
   users                    User[]
@@ -957,20 +959,70 @@ model FundingOpportunity {
 }
 
 model SocialAccount {
-  id             String          @id @default(uuid())
-  clubId         String?
-  platform       String
-  platformId     String
-  accountName    String?
-  accessToken    String
-  refreshToken   String?
-  expiresAt      DateTime?
-  avatar         String?
-  status         String          @default("active")
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  scheduledPosts ScheduledPost[]
-  club           Club?           @relation(fields: [clubId], references: [id])
+  id              String              @id @default(uuid())
+  clubId          String?
+  platform        String              // "facebook" | "instagram" | (future) "linkedin" | "x"
+  platformId      String              // FB page id, IG business user id, etc.
+  pageId          String?             // FB page id parent (for IG accounts) — null for FB itself
+  accountName     String?
+  accessToken     String              // encrypted via tokenCrypto (v1+); legacy rows may be plaintext
+  refreshToken    String?
+  expiresAt       DateTime?
+  avatar          String?
+  status          String              @default("active") // active | expired | revoked | error
+  permissions     String[]            @default([])
+  metadata        Json?               // platform-specific extras: category, username, followersCount, tasks[]
+  lastVerifiedAt  DateTime?
+  tokenVersion    Int                 @default(0)        // 0=legacy plaintext, 1+=encrypted
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  scheduledPosts  ScheduledPost[]
+  publications    SocialPublication[]
+  club            Club?               @relation(fields: [clubId], references: [id])
+
+  @@unique([clubId, platform, platformId])
+  @@index([clubId, status])
+}
+
+// Phase 1 placeholder for the Social Publishing Engine. Created here so the
+// schema is in place and we can reference it from accounts; the actual
+// publish flow lands in Phase 2 (immediate publish) and Phase 3 (scheduling).
+model SocialPublication {
+  id                String          @id @default(uuid())
+  clubId            String
+  userId            String?
+
+  // Content (AI-generated or manual)
+  caption           String?
+  platformCopies    Json?           // { facebook: {copy, hashtags, cta}, instagram: {...}, ... }
+
+  // Media
+  imageUrl          String?         // portrait variant (FB/IG/LinkedIn feed)
+  imageUrlLandscape String?         // landscape variant (X)
+  mediaType         String          @default("image") // image|video|carousel
+  videoProjectId    String?
+
+  // Distribution: which accounts and per-account outcome
+  targetAccounts    Json            // [{ socialAccountId, platform, status, externalId, publishedAt, error }]
+
+  // Lifecycle
+  status            String          @default("draft") // draft|scheduled|queued|publishing|published|partial|error
+  scheduledFor      DateTime?
+  publishedAt       DateTime?
+
+  // Lineage
+  sourceImageId     String?
+  generatedBy       String?         // "ai-kie" | "ai-openai" | "manual"
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  club              Club            @relation(fields: [clubId], references: [id])
+  user              User?           @relation(fields: [userId], references: [id])
+  accounts          SocialAccount[]
+
+  @@index([clubId, status])
+  @@index([scheduledFor])
 }
 
 model Comment {
