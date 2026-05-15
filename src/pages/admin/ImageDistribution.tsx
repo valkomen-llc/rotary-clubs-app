@@ -14,7 +14,8 @@ import { getCroppedImg } from '../../utils/cropImage';
 const PROXY_URL = (url: string) => {
     if (!url || url.startsWith('data:')) return url;
     const API_URL = import.meta.env.VITE_API_URL || '/api';
-    return `${API_URL}/media/proxy?url=${encodeURIComponent(url)}`;
+    const token = localStorage.getItem('rotary_token');
+    return `${API_URL}/media/proxy?url=${encodeURIComponent(url)}${token ? `&token=${token}` : ''}`;
 };
 
 const API = import.meta.env.VITE_API_URL || '/api';

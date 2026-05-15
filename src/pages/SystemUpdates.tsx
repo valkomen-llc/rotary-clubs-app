@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.309 | 2026-05-14 (IMAGE FIX 🛡️)
-// Cache bust: 2026-05-14 21:05 (UI FIX v4.309 🚀)
+// DISTRICT HEALTH IQ V4.310 | 2026-05-14 (PROXY AUTH FIX 🛡️)
+// Cache bust: 2026-05-14 21:15 (UI FIX v4.310 🚀)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.310',
+        date: '2026-05-14',
+        title: 'Fix: Autenticación de Proxy de Imágenes',
+        description: 'Se corrigió el error de carga de imágenes en el recortador al incluir el token de seguridad en las peticiones del proxy.',
+        type: 'fix',
+        author: 'Antigravity'
+    },
     {
         version: 'v4.309',
         date: '2026-05-14',
