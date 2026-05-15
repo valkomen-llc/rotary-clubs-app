@@ -24,9 +24,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.323 | 2026-05-16 (POSTGEN — i2i regeneration + identity-lock composite, pixel-perfect faces 🎯)
-// Cache bust: 2026-05-16 02:00 (POSTGEN I2I + IDENTITY-LOCK v4.323 🎯)
+// DISTRICT HEALTH IQ V4.324 | 2026-05-16 (POSTGEN — seeded outpainting + masked edit + identity composite, anti-hallucinated-flags 🚫🏴)
+// Cache bust: 2026-05-16 02:30 (POSTGEN SEEDED + MASKED v4.324 🚫🏴)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.324',
+        date: '2026-05-16',
+        title: 'Content Studio AI: Seeded Outpainting — Fin de Banderas Inventadas 🚫🏴',
+        description: 'v4.323 preservaba caras pero la IA alucinaba banderas / banners Rotary en las bandas. v4.324 pre-rellena las bandas con espejo+blur del original y enmascara, así la IA refina en vez de inventar.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Feedback de v4.323: las caras quedaron perfectas gracias al composite-back, PERO gpt-image-1 en modo maskless seguía agregando elementos institucionales (banderas Rotary, banderas de países, banners) en las bandas superior/inferior — porque al ver una foto Rotary el modelo "completa" la escena con elementos típicos del contexto.',
+            'Raíz del problema: en modo maskless el modelo tiene libertad total sobre las bandas. La prompt engineering no alcanza para frenarlo cuando le pasamos una foto Rotary y le decimos "haz portrait".',
+            'Solución v4.324 — tres pasos:',
+            '  1. PRE-RELLENO (sharp.extend con extendWith:mirror + blur 25): las bandas se llenan con un reflejo difuminado del propio original. Cielo refleja cielo, paredes reflejan paredes, piso refleja piso. La IA recibe un "borrador contextual" en vez de espacio vacío.',
+            '  2. EDIT ENMASCARADO (/v1/images/edits CON máscara): la IA refina el borrador en las bandas pero input_fidelity:high la mantiene cerca del seed. No tiene libertad para inventar banderas porque ya hay contenido natural que refinar.',
+            '  3. COMPOSITE-BACK del original con feather de 80px: garantiza identidad pixel-perfect en el centro (caras / banderas reales / objetos).',
+            'Prompt reforzado: lista negra explícita y agresiva contra elementos institucionales — NO banderas, NO Rotary wheel, NO emblemas, NO banners, NO logos, NO carteles, NO emblemas, NO accesorios institucionales. Repetido y enfatizado.',
+            'Engine reportado en metadata: "gpt-image-1+seeded-mirror+masked-edit+identity-composite".',
+            'Cubrimos los tres problemas conocidos simultáneamente: sin duplicación (seed evita que el modelo copie el centro), sin alucinación (seed da contexto natural), sin deriva de rostros (composite-back).'
+        ]
+    },
     {
         version: 'v4.323',
         date: '2026-05-16',
