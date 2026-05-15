@@ -47,10 +47,9 @@ const enhanceOriginal = async (buffer) => {
 };
 
 // Place the enhanced original centered on a target canvas, preserving its full content.
-// Returns: { paddedImage, maskImage, layout } — image has the original centered with
-// transparent borders; mask is opaque where original lives (preserve) and transparent
-// everywhere else (AI will paint there).
-const buildCanvasAndMask = async (originalBuffer, targetW, targetH) => {
+// Returns the resized original buffer plus the layout — no mask, since we no longer use
+// the /edits endpoint (gpt-image-1 was ignoring the mask and duplicating subjects).
+const buildLayout = async (originalBuffer, targetW, targetH) => {
     const meta = await sharp(originalBuffer).metadata();
     const origW = meta.width;
     const origH = meta.height;
@@ -70,11 +69,9 @@ const buildCanvasAndMask = async (originalBuffer, targetW, targetH) => {
             placedW = Math.round(placedH * origAspect);
         }
     } else if (origAspect > targetAspect) {
-        // Original is wider than target → fit by width, AI paints top + bottom.
         placedW = targetW;
         placedH = Math.round(targetW / origAspect);
     } else {
-        // Original is taller than target → fit by height, AI paints left + right.
         placedH = targetH;
         placedW = Math.round(targetH * origAspect);
     }
@@ -82,128 +79,81 @@ const buildCanvasAndMask = async (originalBuffer, targetW, targetH) => {
     const top = Math.floor((targetH - placedH) / 2);
     const left = Math.floor((targetW - placedW) / 2);
 
-    const resized = await sharp(originalBuffer)
+    const resizedOriginal = await sharp(originalBuffer)
         .resize(placedW, placedH, { fit: 'fill' })
         .png()
         .toBuffer();
 
-    const paddedImage = await sharp({
-        create: {
-            width: targetW,
-            height: targetH,
-            channels: 4,
-            background: { r: 0, g: 0, b: 0, alpha: 0 }
-        }
-    })
-        .composite([{ input: resized, top, left }])
-        .png()
-        .toBuffer();
-
-    // Mask: transparent everywhere (AI will edit), opaque white over the original (preserved).
-    const opaqueRect = await sharp({
-        create: {
-            width: placedW,
-            height: placedH,
-            channels: 4,
-            background: { r: 255, g: 255, b: 255, alpha: 1 }
-        }
-    }).png().toBuffer();
-
-    const maskImage = await sharp({
-        create: {
-            width: targetW,
-            height: targetH,
-            channels: 4,
-            background: { r: 0, g: 0, b: 0, alpha: 0 }
-        }
-    })
-        .composite([{ input: opaqueRect, top, left }])
-        .png()
-        .toBuffer();
-
     return {
-        paddedImage,
-        maskImage,
-        resizedOriginal: resized,
+        resizedOriginal,
         layout: { origW, origH, placedW, placedH, top, left, targetW, targetH, hasBorders: placedW < targetW || placedH < targetH }
     };
 };
 
-// Critical identity-preservation step: gpt-image-1 treats the mask as a soft hint and
-// will subtly regenerate faces, flags and text in the unmasked region. We override that
-// by compositing the enhanced original BACK on top of the AI-generated canvas, so the
-// outpainted regions (sky, ground, walls) come from AI but the subjects are pixel-exact.
-const compositeOriginalBack = async (aiBuffer, resizedOriginal, layout) => {
-    return sharp(aiBuffer)
-        .composite([{ input: resizedOriginal, top: layout.top, left: layout.left }])
-        .png()
-        .toBuffer();
-};
-
-// Build a STRICT outpainting prompt. The previous version mentioned "cinematic" and the
-// club name, which gpt-image-1 interpreted as license to add invented titles like
-// "Servir para Cambiar Vidas" and to duplicate the photographed people inside the
-// extension regions. The new prompt focuses exclusively on EMPTY environmental
-// continuation and explicitly forbids text, subjects and institutional elements anywhere
-// the mask is transparent.
-const buildOutpaintingPrompt = ({ visualPrompt, layout }) => {
-    const bottomPad = layout.targetH - layout.top - layout.placedH;
-    const rightPad = layout.targetW - layout.left - layout.placedW;
-
-    const extensions = [];
-    if (layout.top > 0) extensions.push('TOP band: continue ONLY sky, clouds, ceiling, upper wall, or distant treeline depending on what is visible at the top edge of the unmasked center');
-    if (bottomPad > 0) extensions.push('BOTTOM band: continue ONLY ground, grass, stone, tile, carpet, or floor depending on what is visible at the bottom edge of the unmasked center');
-    if (layout.left > 0 || rightPad > 0) extensions.push('LATERAL bands: continue ONLY walls, distant scenery, vegetation or atmospheric depth visible at the side edges of the unmasked center');
-
+// Build a CLEAN SCENE prompt for /v1/images/generations.
+// We no longer use the edits endpoint with a mask because gpt-image-1 was ignoring the
+// mask and "completing" the canvas with duplicated subjects and invented title text.
+// Instead we ask the model to generate an EMPTY environmental backdrop sized to the
+// target — and we then composite the real photograph on top of it ourselves with sharp.
+const buildSceneGenPrompt = ({ visualPrompt, targetFormat }) => {
+    const orientation = targetFormat === 'landscape' ? 'landscape (wider than tall)' : 'portrait (taller than wide)';
     return [
-        'TASK: This is a strict photo-extension job. The unmasked CENTER of the canvas contains an existing photograph of real people. DO NOT touch it.',
+        `An empty environmental backdrop photograph in ${orientation} orientation, intended as a clean background onto which a real portrait will be composited.`,
         '',
-        'WHERE THE MASK IS TRANSPARENT (the extension bands), paint ONLY empty environmental background that smoothly continues from the visible edges of the center photograph:',
-        ...extensions.map(e => `  • ${e}`),
+        visualPrompt
+            ? `Scene description: ${visualPrompt}`
+            : 'Scene description: a calm, neutral indoor or outdoor environment with natural daylight and soft depth-of-field.',
         '',
-        'ABSOLUTELY FORBIDDEN IN THE EXTENSION BANDS:',
-        '  • NO people, no faces, no bodies, no hands, no silhouettes, no crowd, no figures, no person of any kind',
-        '  • NO text of any language, NO letters, NO words, NO numbers, NO captions, NO titles, NO subtitles, NO signs, NO labels, NO inscriptions, NO watermarks',
+        'STRICT CONTENT RULES — this image MUST contain ONLY:',
+        '  • Sky, clouds, walls, ceilings, floors, ground, grass, stone, tile, carpet',
+        '  • Plants, trees, distant scenery, gentle architectural elements',
+        '  • Soft natural lighting, subtle depth-of-field, atmospheric quietness',
+        '',
+        'STRICT CONTENT RULES — this image MUST NOT contain:',
+        '  • NO people, NO faces, NO bodies, NO hands, NO silhouettes, NO figures, NO crowds',
+        '  • NO text, NO letters, NO words, NO numbers, NO captions, NO titles, NO subtitles, NO signs, NO labels, NO inscriptions, NO watermarks',
         '  • NO logos, NO Rotary wheel, NO emblems, NO banners, NO flags, NO institutional symbols, NO brand marks',
-        '  • NO duplicates or echoes of the people in the center photograph',
-        '  • NO decorative overlays, frames, vignettes, gradients, color filters, or cinematic graphic effects',
-        '  • NO objects implying human presence (no chairs arranged with people, no microphones, no stage props)',
+        '  • NO chairs, microphones, podiums, banners or props implying an event',
+        '  • NO decorative frames, vignettes, color filters, gradients, lens flares, cinematic graphic overlays',
         '',
-        'MATCHING REQUIREMENTS — the extension must look like the same camera kept shooting:',
-        '  • Match lighting direction, intensity and color temperature of the center photograph exactly',
-        '  • Match grain, noise, depth-of-field and any lens characteristics',
-        '  • Continue horizon lines, vanishing points and perspective naturally',
-        '  • Subtle, atmospheric, unaltered — like an unedited photograph',
-        '',
-        visualPrompt ? `Environmental context for matching (use to match colors and atmosphere only — DO NOT introduce subjects from this description): ${visualPrompt}` : '',
-        '',
-        'Output style: natural unretouched photojournalism. Empty of subjects. Quiet, calm, photographic. No artistic interpretation, no creative additions.'
-    ].filter(Boolean).join('\n');
+        'Style: natural unedited photography. Photorealistic. Calm. Empty. Subtle. The final result should look like an unstaged photograph of a peaceful, empty space, ready to receive a portrait composite.'
+    ].join('\n');
 };
 
-// Generate one image via gpt-image-1 edit endpoint (true masked outpainting).
-const generateImageVariant = async ({ paddedImage, maskImage, width, height, prompt }) => {
-    const formData = new FormData();
-    formData.append('model', 'gpt-image-1');
-    formData.append('image', new Blob([paddedImage], { type: 'image/png' }), 'image.png');
-    formData.append('mask', new Blob([maskImage], { type: 'image/png' }), 'mask.png');
-    formData.append('prompt', prompt);
-    formData.append('size', `${width}x${height}`);
-    formData.append('quality', 'medium');
-    formData.append('n', '1');
-
-    const resp = await fetch('https://api.openai.com/v1/images/edits', {
+// Call /v1/images/generations with gpt-image-1 to produce a clean environmental scene
+// at the requested size. No input image, no mask — pure text-to-image so the model has
+// nothing to "complete" or duplicate from.
+const generateCleanScene = async ({ prompt, width, height }) => {
+    const resp = await fetch('https://api.openai.com/v1/images/generations', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
-        body: formData
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+            model: 'gpt-image-1',
+            prompt,
+            n: 1,
+            size: `${width}x${height}`,
+            quality: 'medium'
+        })
     });
 
     const data = await resp.json();
     if (!resp.ok || !data?.data?.[0]?.b64_json) {
         const reason = data?.error?.message || `HTTP ${resp.status}`;
-        throw new Error(`gpt-image-1 falló: ${reason}`);
+        throw new Error(`gpt-image-1 scene generation falló: ${reason}`);
     }
     return Buffer.from(data.data[0].b64_json, 'base64');
+};
+
+// Composite the real photograph on top of the generated scene. Hard-edge for pixel-perfect
+// preservation of every face, banner and logo in the original.
+const compositeOriginalOnScene = async (sceneBuffer, resizedOriginal, layout) => {
+    return sharp(sceneBuffer)
+        .composite([{ input: resizedOriginal, top: layout.top, left: layout.left }])
+        .png()
+        .toBuffer();
 };
 
 const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
@@ -221,7 +171,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.314 — strict outpainting prompt to prevent hallucinated text + duplicate subjects) ---');
+        console.log('--- START GENERATE POST (v4.315 — clean scene generation + composite (no /edits, no mask)) ---');
         const { imageUrl, config = {} } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
@@ -291,7 +241,7 @@ Reglas de copy:
 - No describas la imagen literalmente; conecta con el propósito y la comunidad.
 - Sin emojis si es linkedin; máx 2 emojis sutiles en las otras.
 
-visual_prompt (en INGLÉS, 1-3 frases): describe el ENTORNO alrededor de los sujetos (cielo, piso, paredes, ambiente, hora del día, paleta) — es contexto para extender el lienzo, NO redescribas a las personas.`
+visual_prompt (en INGLÉS, 1-3 frases): describe SOLAMENTE el entorno físico VACÍO de la foto, como si las personas no estuvieran (paredes, piso, cielo, vegetación, mobiliario fijo, iluminación, hora del día, paleta de colores). NO menciones personas, rostros, ropa, banderas, logos, banners ni texto. Esta descripción se va a usar para generar un escenario limpio que servirá de fondo. Ejemplo bueno: "An indoor reception with white walls, warm yellow overhead lighting, beige tile floor, soft afternoon natural light coming from a window on the right". Ejemplo malo: "Six people in blue Rotary shirts smiling at the camera".`
                                 },
                                 { type: 'image_url', image_url: { url: imageUrl } }
                             ]
@@ -310,32 +260,38 @@ visual_prompt (en INGLÉS, 1-3 frases): describe el ENTORNO alrededor de los suj
             // Continue with empty copy rather than failing the whole pipeline.
         }
 
-        // 3) Build canvas + mask once, then run gpt-image-1 outpainting.
+        // 3) Compute placement and resize the original to fit.
         const { width: targetW, height: targetH } = FORMAT_SIZES[targetFormat];
-        const { paddedImage, maskImage, resizedOriginal, layout } = await buildCanvasAndMask(enhancedBuffer, targetW, targetH);
-        const prompt = buildOutpaintingPrompt({ visualPrompt: parsed.visual_prompt, layout });
+        const { resizedOriginal, layout } = await buildLayout(enhancedBuffer, targetW, targetH);
 
         let finalUrl = null;
-        let usedEngine = 'gpt-image-1+composite';
+        let usedEngine = 'scene-gen+composite';
         let imageError = null;
 
+        // Path B: generate a CLEAN empty environmental scene at the target size, then
+        // composite the real photograph on top. The AI never sees the original, so it
+        // cannot duplicate the subjects or render invented title text.
         try {
-            const aiBuffer = await generateImageVariant({ paddedImage, maskImage, width: targetW, height: targetH, prompt });
-            // Hard-overlay the original onto the AI output so faces, banners and logos
-            // are guaranteed pixel-identical to the source. AI only contributes the
-            // newly-painted outpainted regions around the original.
-            const composed = await compositeOriginalBack(aiBuffer, resizedOriginal, layout);
+            const scenePrompt = buildSceneGenPrompt({ visualPrompt: parsed.visual_prompt, targetFormat });
+            const sceneBuffer = await generateCleanScene({ prompt: scenePrompt, width: targetW, height: targetH });
+            const composed = await compositeOriginalOnScene(sceneBuffer, resizedOriginal, layout);
             finalUrl = await uploadGeneratedImage({ buffer: composed, clubId, variant: targetFormat });
         } catch (e) {
             imageError = e.message;
-            console.warn('[STUDIO] gpt-image-1 failed, falling back to enhanced original:', e.message);
+            console.warn('[STUDIO] Scene generation failed, falling back to framed original:', e.message);
         }
 
-        // 4) Fallback: deliver the enhanced original framed to target. No AI but still
-        //    better quality than the input. The user is never blocked.
+        // 4) Fallback: deliver the enhanced original framed against a neutral backdrop so
+        //    the user is never blocked.
         if (!finalUrl) {
-            finalUrl = await uploadGeneratedImage({ buffer: paddedImage, clubId, variant: `${targetFormat}-fallback` });
-            usedEngine = 'sharp-enhanced-only';
+            const framedFallback = await sharp({
+                create: { width: targetW, height: targetH, channels: 3, background: { r: 245, g: 245, b: 245 } }
+            })
+                .composite([{ input: resizedOriginal, top: layout.top, left: layout.left }])
+                .png()
+                .toBuffer();
+            finalUrl = await uploadGeneratedImage({ buffer: framedFallback, clubId, variant: `${targetFormat}-fallback` });
+            usedEngine = 'sharp-framed-only';
         }
 
         res.json({
