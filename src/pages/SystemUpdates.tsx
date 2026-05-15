@@ -24,9 +24,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.330 | 2026-05-16 (SOCIAL ENGINE — fix admin: list sin clubId, club picker, mostrar club por cuenta 🔧)
-// Cache bust: 2026-05-16 05:30 (SOCIAL ENGINE ADMIN FIX v4.330 🔧)
+// DISTRICT HEALTH IQ V4.331 | 2026-05-16 (SOCIAL ENGINE — restaurar fallback hardcodeado de FB_APP_ID + error claro si falta FB_APP_SECRET 🔑)
+// Cache bust: 2026-05-16 06:00 (SOCIAL FB_APP_ID FALLBACK v4.331 🔑)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.331',
+        date: '2026-05-16',
+        title: 'Motor Social Fase 1 — Fix FB_APP_ID Fallback 🔑',
+        description: 'v4.330 exigía FB_APP_ID Y FB_APP_SECRET como env vars. El código viejo tenía FB_APP_ID hardcodeado como fallback (es un client id público, no es secret). Restaurado.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Diagnóstico: el endpoint connect/meta devolvía "FB_APP_ID / FB_APP_SECRET no configuradas" porque mi refactor de v4.329 había quitado el fallback de FB_APP_ID. La implementación previa tenía "2190338908168499" hardcodeado como default — el App ID es información pública (aparece en cada URL de OAuth de Meta) así que es seguro tenerlo en el código.',
+            'Fix: metaService.js ahora usa getAppId() que retorna process.env.FB_APP_ID o el default "2190338908168499". FB_APP_SECRET sigue requiriendo configuración en Vercel (eso sí es secreto).',
+            'El error message del controller ahora apunta específicamente a FB_APP_SECRET (no menciona FB_APP_ID porque siempre va a estar disponible) con instrucciones precisas: "Settings → Environment Variables → agregar FB_APP_SECRET (el App Secret de la Facebook Developer App)".'
+        ]
+    },
     {
         version: 'v4.330',
         date: '2026-05-16',

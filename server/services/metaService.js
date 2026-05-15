@@ -27,6 +27,13 @@
 const GRAPH_VERSION = 'v18.0';
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
+// FB_APP_ID is the public client id of the Meta Developer App. It's not a secret,
+// so a default keeps the historical setup working when only FB_APP_SECRET is set
+// in Vercel. FB_APP_SECRET must always come from env — never hardcode it.
+const DEFAULT_FB_APP_ID = '2190338908168499';
+const getAppId = () => process.env.FB_APP_ID || DEFAULT_FB_APP_ID;
+const getAppSecret = () => process.env.FB_APP_SECRET || '';
+
 const REQUIRED_SCOPES = [
     'pages_show_list',
     'pages_read_engagement',
@@ -38,10 +45,8 @@ const REQUIRED_SCOPES = [
 ];
 
 export const buildAuthUrl = ({ state, redirectUri }) => {
-    const appId = process.env.FB_APP_ID;
-    if (!appId) throw new Error('FB_APP_ID no configurada');
     const params = new URLSearchParams({
-        client_id: appId,
+        client_id: getAppId(),
         redirect_uri: redirectUri,
         scope: REQUIRED_SCOPES.join(','),
         response_type: 'code',
@@ -56,8 +61,8 @@ export const META_SCOPES = REQUIRED_SCOPES;
 // Step 1: exchange the OAuth code for a short-lived user access token.
 export const exchangeCodeForUserToken = async ({ code, redirectUri }) => {
     const params = new URLSearchParams({
-        client_id: process.env.FB_APP_ID || '',
-        client_secret: process.env.FB_APP_SECRET || '',
+        client_id: getAppId(),
+        client_secret: getAppSecret(),
         redirect_uri: redirectUri,
         code
     });
@@ -74,8 +79,8 @@ export const exchangeCodeForUserToken = async ({ code, redirectUri }) => {
 export const exchangeForLongLivedUserToken = async (shortToken) => {
     const params = new URLSearchParams({
         grant_type: 'fb_exchange_token',
-        client_id: process.env.FB_APP_ID || '',
-        client_secret: process.env.FB_APP_SECRET || '',
+        client_id: getAppId(),
+        client_secret: getAppSecret(),
         fb_exchange_token: shortToken
     });
     const url = `${GRAPH_BASE}/oauth/access_token?${params.toString()}`;

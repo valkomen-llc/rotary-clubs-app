@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.330.0",
-  "cache_bust": "2026-05-16 05:30 (SOCIAL ENGINE ADMIN FIX v4.330 🔧)",
+  "version": "4.331.0",
+  "cache_bust": "2026-05-16 06:00 (SOCIAL FB_APP_ID FALLBACK v4.331 🔑)",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.330 | 2026-05-16 (SOCIAL ENGINE — fix admin: list sin clubId, club picker, mostrar club por cuenta 🔧)",
+  "//": "DISTRICT HEALTH IQ V4.331 | 2026-05-16 (SOCIAL ENGINE — restaurar fallback hardcodeado de FB_APP_ID + error claro si falta FB_APP_SECRET 🔑)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
