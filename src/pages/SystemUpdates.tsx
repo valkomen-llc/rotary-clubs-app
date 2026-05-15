@@ -24,9 +24,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.311 | 2026-05-14 (DIRECT S3 UPLOAD FIX 🛡️)
-// Cache bust: 2026-05-14 21:25 (UI FIX v4.311 🚀)
+// DISTRICT HEALTH IQ V4.312 | 2026-05-15 (POSTGEN TRUE OUTPAINTING — gpt-image-1 🎨)
+// Cache bust: 2026-05-15 15:00 (POSTGEN AI v4.312 🎨)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.312',
+        date: '2026-05-15',
+        title: 'Content Studio AI: Outpainting Real con gpt-image-1 🎨',
+        description: 'Rediseño total del Generador de Publicaciones: la IA ahora extiende el lienzo sin recortar y preserva rostros, banderas y logos al 100%.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Migración de DALL-E 3 (text-to-image, regeneraba caras desde cero) a gpt-image-1 con outpainting enmascarado.',
+            'Pipeline híbrido: la foto original se mejora con filtros pixel-space (sharp), la IA solo pinta los bordes nuevos.',
+            'Soporte adaptativo según orientación: horizontal → expande arriba/abajo, vertical → expande laterales, cuadrada → según destino.',
+            'Tamaños nativos por red: portrait 1024x1536 (FB/IG/LinkedIn), landscape 1536x1024 (X/Twitter).',
+            'Las imágenes que ya están en el formato objetivo reciben un borde de respiro del 6% para igualmente pasar por IA.',
+            'Los selectores "Tipo de publicación" (storytelling, fundraising, etc.) y "Enfoque Rotary" ahora afectan realmente al copy generado.',
+            'Generación real de hashtags y CTA por plataforma — antes el frontend mostraba campos vacíos.',
+            'Editor in-place del copy, contador de caracteres por red con límite, botón de copiar al portapapeles.',
+            'Aviso de mismatch de formato + regenerar al cambiar de plataforma con aspect distinto.',
+            'Fallback resiliente: si gpt-image-1 falla, se entrega la versión enhanced con sharp para no bloquear al usuario.'
+        ]
+    },
     {
         version: 'v4.311',
         date: '2026-05-14',

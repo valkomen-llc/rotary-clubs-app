@@ -188,7 +188,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.311 — hybrid pipeline: sharp enhance + gpt-image-1 outpainting) ---');
+        console.log('--- START GENERATE POST (v4.312 — hybrid pipeline: sharp enhance + gpt-image-1 outpainting) ---');
         const { imageUrl, config = {} } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
