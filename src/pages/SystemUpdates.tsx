@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.317 | 2026-05-15 (POSTGEN — true outpainting via gpt-image-1 input_fidelity:high 🎯)
-// Cache bust: 2026-05-15 20:30 (POSTGEN HI-FIDELITY v4.317 🎯)
+// DISTRICT HEALTH IQ V4.318 | 2026-05-15 (POSTGEN — bottom-anchored layout + anti-duplicate prompt 📐)
+// Cache bust: 2026-05-15 21:30 (POSTGEN BOTTOM-ANCHOR v4.318 📐)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.318',
+        date: '2026-05-15',
+        title: 'Content Studio AI: Layout Anclado + Anti-Duplicación 📐',
+        description: 'Pule el último detalle: los objetos secundarios (baldes, botellas) ya no se duplican en las bandas extendidas por la IA.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'En v4.317 el outpainting con input_fidelity:high preserva el centro correctamente, pero gpt-image-1 a veces "continúa" la escena replicando objetos del original en las bandas extendidas (un balde extra, una bolsa fantasma).',
+            'Fix #1 — Layout anclado al fondo: para conversiones horizontal→portrait, el original se posiciona en el tercio inferior (margen del 8% abajo), no centrado verticalmente. La extensión queda mayormente hacia arriba (cielo, seguro de duplicaciones) y mínima abajo. Mismo framing que la referencia ChatGPT.',
+            'Cálculo concreto: foto 1920×1080 → portrait 1024×1536 antes era 480px AI arriba + 480px AI abajo. Ahora es ~840px arriba + ~120px abajo. La banda peligrosa abajo se reduce ~75%.',
+            'Fix #2 — Prompt anti-duplicación con lista negra específica: NO baldes, NO botellas, NO bolsas, NO zapatos, NO recipientes, NO accesorios, NO duplicados de cualquier objeto visible en el centro. Las bandas extendidas solo pueden contener cielo/agua/césped/arena/paredes/piso vacíos.',
+            'Para X (landscape) y formatos cuadrados/portrait nativos, el centrado vertical se mantiene (no aplica el anclaje al fondo).',
+            'Engine reportado en metadata sigue siendo "gpt-image-1+hi-fidelity+composite".'
+        ]
+    },
     {
         version: 'v4.317',
         date: '2026-05-15',

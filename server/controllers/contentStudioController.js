@@ -75,7 +75,18 @@ const buildLayout = async (originalBuffer, targetW, targetH) => {
         placedW = Math.round(targetH * origAspect);
     }
 
-    const top = Math.floor((targetH - placedH) / 2);
+    const top = (() => {
+        // For PORTRAIT targets with a relatively short original (i.e. horizontal source),
+        // position the original in the lower portion of the canvas — same framing as the
+        // ChatGPT reference where subjects sit in the bottom third and AI extends mostly
+        // upward into sky/scenery. This dramatically reduces the bottom band area where
+        // gpt-image-1 tends to hallucinate duplicated props/objects.
+        if (targetH > targetW && placedH < targetH * 0.75) {
+            const bottomMargin = Math.floor(targetH * 0.08);
+            return Math.max(0, targetH - placedH - bottomMargin);
+        }
+        return Math.floor((targetH - placedH) / 2);
+    })();
     const left = Math.floor((targetW - placedW) / 2);
 
     const resizedOriginal = await sharp(originalBuffer)
@@ -154,6 +165,8 @@ const buildOutpaintingPrompt = ({ visualPrompt, layout }) => {
         '  • Any logos, banners, flags, Rotary symbols, emblems, brand marks',
         '  • Any decorative graphic overlays, frames, vignettes, cinematic effects, gradients or color filters',
         '  • Any duplicates or echoes of the people in the unmasked center',
+        '  • Any OBJECTS, PROPS or ITEMS whatsoever — specifically: NO buckets, NO bottles, NO bags, NO shoes, NO backpacks, NO containers, NO tools, NO equipment, NO microphones, NO tables, NO chairs, NO podiums, NO devices, NO accessories, NO scattered debris, NO duplicates of anything visible in the unmasked center',
+        '  • The extension bands must show ONLY pure environmental matter: empty sky, empty water, empty grass, empty sand, empty walls, empty floor. NOTHING else.',
         '',
         visualPrompt ? `Environmental context (use for color/atmosphere matching only — do NOT introduce subjects from this description): ${visualPrompt}` : '',
         '',
@@ -241,7 +254,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.317 — /edits with input_fidelity:high for true outpainting) ---');
+        console.log('--- START GENERATE POST (v4.318 — bottom-anchored layout + anti-duplicate-objects prompt) ---');
         const { imageUrl, config = {} } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
