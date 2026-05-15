@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.314 | 2026-05-15 (POSTGEN — strict prompt, no hallucinated text/subjects 🧹)
-// Cache bust: 2026-05-15 17:30 (POSTGEN CLEAN EXTENSIONS v4.314 🧹)
+// DISTRICT HEALTH IQ V4.315 | 2026-05-15 (POSTGEN — clean scene generation + composite (no /edits) 🎬)
+// Cache bust: 2026-05-15 18:30 (POSTGEN SCENE-GEN v4.315 🎬)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.315',
+        date: '2026-05-15',
+        title: 'Content Studio AI: Nueva Arquitectura — Escena Limpia + Composite 🎬',
+        description: 'Reescritura del pipeline de imagen. La IA ya no ve la foto original — genera un fondo limpio y la foto se compone encima.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Problema persistente en v4.314: gpt-image-1 en el endpoint /edits seguía duplicando personas en las áreas extendidas, sin importar lo estricto del prompt o la máscara. La superposición original-sobre-IA-duplicada se veía como dos imágenes apiladas.',
+            'Causa raíz: el endpoint /edits trata la máscara como hint suave y siempre regenera la imagen completa. No respeta boundaries de preservación.',
+            'Solución: cambio de arquitectura. Ahora usamos /v1/images/generations (text-to-image puro, SIN imagen de entrada) para crear un escenario AMBIENTAL VACÍO al tamaño objetivo, y luego compone la foto original encima con sharp.',
+            'La IA nunca ve la foto original → imposible que duplique sujetos o invente texto institucional.',
+            'GPT-4o ahora produce un visual_prompt enfocado SOLO en el entorno físico (paredes, piso, iluminación, paleta) — sin personas, sin Rotary, sin texto.',
+            'Engine reportado en metadata: "scene-gen+composite".',
+            'El centro de la imagen final = foto original 100% pixel-perfect. El resto = ambiente generado coherente.'
+        ]
+    },
     {
         version: 'v4.314',
         date: '2026-05-15',
