@@ -140,24 +140,45 @@ const compositeOriginalBack = async (aiBuffer, resizedOriginal, layout) => {
         .toBuffer();
 };
 
-// Build a detailed prompt that tells gpt-image-1 to OUTPAINT only — never alter subjects.
-const buildOutpaintingPrompt = ({ clubName, typeMeta, areaMeta, visualPrompt, layout }) => {
-    const directions = [];
-    if (layout.top > 0) directions.push(`above the subjects (top ${layout.top}px band)`);
-    if ((layout.targetH - layout.top - layout.placedH) > 0) directions.push(`below the subjects (bottom band)`);
-    if (layout.left > 0) directions.push(`to the left and right of the subjects (lateral bands)`);
-    const directionStr = directions.length ? directions.join(', ') : 'around the subjects (frame border)';
+// Build a STRICT outpainting prompt. The previous version mentioned "cinematic" and the
+// club name, which gpt-image-1 interpreted as license to add invented titles like
+// "Servir para Cambiar Vidas" and to duplicate the photographed people inside the
+// extension regions. The new prompt focuses exclusively on EMPTY environmental
+// continuation and explicitly forbids text, subjects and institutional elements anywhere
+// the mask is transparent.
+const buildOutpaintingPrompt = ({ visualPrompt, layout }) => {
+    const bottomPad = layout.targetH - layout.top - layout.placedH;
+    const rightPad = layout.targetW - layout.left - layout.placedW;
+
+    const extensions = [];
+    if (layout.top > 0) extensions.push('TOP band: continue ONLY sky, clouds, ceiling, upper wall, or distant treeline depending on what is visible at the top edge of the unmasked center');
+    if (bottomPad > 0) extensions.push('BOTTOM band: continue ONLY ground, grass, stone, tile, carpet, or floor depending on what is visible at the bottom edge of the unmasked center');
+    if (layout.left > 0 || rightPad > 0) extensions.push('LATERAL bands: continue ONLY walls, distant scenery, vegetation or atmospheric depth visible at the side edges of the unmasked center');
 
     return [
-        `Cinematic institutional photograph for Rotary International — ${clubName}.`,
-        `Theme: ${areaMeta}. Visual tone: ${typeMeta.tone}.`,
-        `STRICT OUTPAINTING TASK: extend the existing scene into the masked (transparent) areas: ${directionStr}.`,
-        `ABSOLUTE PRESERVATION: the unmasked region contains real people, faces, hands, flags, banners, Rotary pins, official logos and text — do NOT regenerate, redraw, deform, restyle, replace or alter ANY of those elements in any way. Keep them pixel-identical.`,
-        `Only invent and paint the masked transparent areas. Continue the floor/grass/ground naturally downward, extend the sky/ceiling/walls naturally upward, blend buildings, trees, atmosphere on the sides — whatever is contextually coherent with the existing scene.`,
-        `Lighting, color palette, depth-of-field, grain and perspective must match the original photograph seamlessly.`,
-        `Style: professional photojournalism, natural daylight or available light as in the original, vibrant but realistic colors, 8K detail, no text artifacts, no watermarks, no extra people, no extra logos.`,
-        visualPrompt ? `Scene context: ${visualPrompt}.` : ''
-    ].filter(Boolean).join(' ');
+        'TASK: This is a strict photo-extension job. The unmasked CENTER of the canvas contains an existing photograph of real people. DO NOT touch it.',
+        '',
+        'WHERE THE MASK IS TRANSPARENT (the extension bands), paint ONLY empty environmental background that smoothly continues from the visible edges of the center photograph:',
+        ...extensions.map(e => `  • ${e}`),
+        '',
+        'ABSOLUTELY FORBIDDEN IN THE EXTENSION BANDS:',
+        '  • NO people, no faces, no bodies, no hands, no silhouettes, no crowd, no figures, no person of any kind',
+        '  • NO text of any language, NO letters, NO words, NO numbers, NO captions, NO titles, NO subtitles, NO signs, NO labels, NO inscriptions, NO watermarks',
+        '  • NO logos, NO Rotary wheel, NO emblems, NO banners, NO flags, NO institutional symbols, NO brand marks',
+        '  • NO duplicates or echoes of the people in the center photograph',
+        '  • NO decorative overlays, frames, vignettes, gradients, color filters, or cinematic graphic effects',
+        '  • NO objects implying human presence (no chairs arranged with people, no microphones, no stage props)',
+        '',
+        'MATCHING REQUIREMENTS — the extension must look like the same camera kept shooting:',
+        '  • Match lighting direction, intensity and color temperature of the center photograph exactly',
+        '  • Match grain, noise, depth-of-field and any lens characteristics',
+        '  • Continue horizon lines, vanishing points and perspective naturally',
+        '  • Subtle, atmospheric, unaltered — like an unedited photograph',
+        '',
+        visualPrompt ? `Environmental context for matching (use to match colors and atmosphere only — DO NOT introduce subjects from this description): ${visualPrompt}` : '',
+        '',
+        'Output style: natural unretouched photojournalism. Empty of subjects. Quiet, calm, photographic. No artistic interpretation, no creative additions.'
+    ].filter(Boolean).join('\n');
 };
 
 // Generate one image via gpt-image-1 edit endpoint (true masked outpainting).
@@ -200,7 +221,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.313 — gpt-image-1 outpainting + original composite for pixel-perfect identity) ---');
+        console.log('--- START GENERATE POST (v4.314 — strict outpainting prompt to prevent hallucinated text + duplicate subjects) ---');
         const { imageUrl, config = {} } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
@@ -292,7 +313,7 @@ visual_prompt (en INGLÉS, 1-3 frases): describe el ENTORNO alrededor de los suj
         // 3) Build canvas + mask once, then run gpt-image-1 outpainting.
         const { width: targetW, height: targetH } = FORMAT_SIZES[targetFormat];
         const { paddedImage, maskImage, resizedOriginal, layout } = await buildCanvasAndMask(enhancedBuffer, targetW, targetH);
-        const prompt = buildOutpaintingPrompt({ clubName, typeMeta, areaMeta, visualPrompt: parsed.visual_prompt, layout });
+        const prompt = buildOutpaintingPrompt({ visualPrompt: parsed.visual_prompt, layout });
 
         let finalUrl = null;
         let usedEngine = 'gpt-image-1+composite';
