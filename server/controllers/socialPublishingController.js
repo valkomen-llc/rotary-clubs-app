@@ -89,6 +89,7 @@ const getCallerClubId = (req) => {
 const serialiseAccount = (acc) => ({
     id: acc.id,
     clubId: acc.clubId,
+    club: acc.club ? { id: acc.club.id, name: acc.club.name } : null,
     platform: acc.platform,
     platformId: acc.platformId,
     pageId: acc.pageId,
@@ -110,7 +111,13 @@ const serialiseAccount = (acc) => ({
 export const getMetaAuthUrl = async (req, res) => {
     try {
         const clubId = getCallerClubId(req);
-        if (!clubId) return res.status(400).json({ error: 'Falta clubId' });
+        if (!clubId) {
+            return res.status(400).json({
+                error: req.user?.role === 'administrator'
+                    ? 'Seleccioná a qué club asignar las cuentas conectadas (clubId requerido)'
+                    : 'No tenés un club asociado a tu cuenta'
+            });
+        }
         if (!process.env.FB_APP_ID || !process.env.FB_APP_SECRET) {
             return res.status(500).json({ error: 'FB_APP_ID / FB_APP_SECRET no configuradas en el servidor' });
         }
@@ -283,14 +290,24 @@ export const handleMetaCallback = async (req, res) => {
 
 // ============================================================================
 // GET /api/social/accounts
+// System admin without ?clubId sees every club's accounts (with club info).
+// Otherwise filtered by clubId.
 // ============================================================================
 export const listAccounts = async (req, res) => {
     try {
-        const clubId = getCallerClubId(req);
-        if (!clubId) return res.status(400).json({ error: 'Falta clubId' });
+        const isAdmin = req.user.role === 'administrator';
+        const where = {};
+        if (isAdmin) {
+            // Admin may optionally filter by club; without it, return all.
+            if (req.query.clubId) where.clubId = req.query.clubId;
+        } else {
+            if (!req.user.clubId) return res.json([]);
+            where.clubId = req.user.clubId;
+        }
         const accounts = await prisma.socialAccount.findMany({
-            where: { clubId },
-            orderBy: [{ platform: 'asc' }, { createdAt: 'desc' }]
+            where,
+            orderBy: [{ platform: 'asc' }, { createdAt: 'desc' }],
+            include: { club: { select: { id: true, name: true } } }
         });
         res.json(accounts.map(serialiseAccount));
     } catch (e) {
@@ -299,13 +316,23 @@ export const listAccounts = async (req, res) => {
     }
 };
 
+// Find an account by id with role-aware authorisation: admins can touch any
+// account; club users only their own club's accounts.
+const findAccountForCaller = async (req) => {
+    const where = { id: req.params.id };
+    if (req.user.role !== 'administrator') {
+        if (!req.user.clubId) return null;
+        where.clubId = req.user.clubId;
+    }
+    return prisma.socialAccount.findFirst({ where });
+};
+
 // ============================================================================
 // POST /api/social/accounts/:id/verify
 // ============================================================================
 export const verifyAccount = async (req, res) => {
     try {
-        const clubId = getCallerClubId(req);
-        const acc = await prisma.socialAccount.findFirst({ where: { id: req.params.id, clubId } });
+        const acc = await findAccountForCaller(req);
         if (!acc) return res.status(404).json({ error: 'Cuenta no encontrada' });
         if (acc.tokenVersion === 0) {
             return res.json({ ok: false, status: 'needs_reconnect', reason: 'legacy_token' });
@@ -329,8 +356,7 @@ export const verifyAccount = async (req, res) => {
 // ============================================================================
 export const disconnectAccount = async (req, res) => {
     try {
-        const clubId = getCallerClubId(req);
-        const acc = await prisma.socialAccount.findFirst({ where: { id: req.params.id, clubId } });
+        const acc = await findAccountForCaller(req);
         if (!acc) return res.status(404).json({ error: 'Cuenta no encontrada' });
         await prisma.socialAccount.delete({ where: { id: acc.id } });
         res.json({ ok: true });

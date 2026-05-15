@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.329 | 2026-05-16 (SOCIAL ENGINE — Fase 1: OAuth Meta robusto con Page tokens + IG Business + cifrado AES-256-GCM 🔌)
-// Cache bust: 2026-05-16 05:00 (SOCIAL ENGINE PHASE 1 v4.329 🔌)
+// DISTRICT HEALTH IQ V4.330 | 2026-05-16 (SOCIAL ENGINE — fix admin: list sin clubId, club picker, mostrar club por cuenta 🔧)
+// Cache bust: 2026-05-16 05:30 (SOCIAL ENGINE ADMIN FIX v4.330 🔧)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.330',
+        date: '2026-05-16',
+        title: 'Motor Social Fase 1 — Fix UX para System Admins 🔧',
+        description: 'v4.329 rompía con "Falta clubId" cuando un System Administrator abría la tab Cuentas Sociales. Esta versión separa los flujos según el rol del usuario.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Problema: el endpoint GET /api/social/accounts exigía clubId para todos los roles. Como los System Administrators no tienen clubId asociado (admin del SaaS, no de un club), el listing fallaba con 400.',
+            'Backend — listAccounts: ahora si el usuario es administrator y no manda clubId, devuelve TODAS las cuentas conectadas across all clubs, con el campo .club embebido. Si es club admin, sigue filtrado por su club.',
+            'Backend — verify / disconnect: las acciones sobre cuentas individuales ahora autorizan por rol: admins pueden tocar cualquier cuenta; club admins solo las de su club.',
+            'Backend — connect/meta: ahora pide clubId explícito (vía ?clubId=...) cuando el caller es admin, con mensaje de error claro si falta.',
+            'Frontend — club picker para admins: nuevo dropdown en el hero card "Conectar Facebook & Instagram" que carga la lista de clubs desde /api/admin/clubs y permite seleccionar a cuál asignar las cuentas que se van a conectar. El botón CONECTAR queda disabled hasta que se selecciona uno.',
+            'Frontend — listado: para admins, cada cuenta muestra el nombre del club al que pertenece debajo del @nombre. Para club admins el club name se omite (es obvio).',
+            'Frontend — selectedClubId se inicializa con el clubId del usuario si lo tiene (club admins lo arrancan pre-seleccionado).'
+        ]
+    },
     {
         version: 'v4.329',
         date: '2026-05-16',
