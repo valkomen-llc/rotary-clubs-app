@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.313 | 2026-05-15 (POSTGEN IDENTITY-LOCK — pixel-perfect composite 🔒)
-// Cache bust: 2026-05-15 16:30 (POSTGEN IDENTITY-LOCK v4.313 🔒)
+// DISTRICT HEALTH IQ V4.314 | 2026-05-15 (POSTGEN — strict prompt, no hallucinated text/subjects 🧹)
+// Cache bust: 2026-05-15 17:30 (POSTGEN CLEAN EXTENSIONS v4.314 🧹)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.314',
+        date: '2026-05-15',
+        title: 'Content Studio AI: Extensiones Limpias — Sin Texto ni Duplicados 🧹',
+        description: 'Fix: la IA dejó de inventar títulos sobre la imagen ("Servir para Cambiar Vidas") y de duplicar personas en las áreas extendidas.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Problema detectado en v4.313: gpt-image-1 alucinaba contenido en las áreas extendidas (texto institucional sobre el cielo, personas duplicadas en el césped) porque el prompt anterior mencionaba "cinematic", el nombre del club y términos institucionales que el modelo interpretó como invitación a agregar elementos.',
+            'Prompt reescrito desde cero con prohibiciones ultra-explícitas: NO texto, NO letras, NO palabras, NO personas, NO siluetas, NO logos, NO banderas, NO Rotary wheel, NO duplicados, NO overlays decorativos en las áreas extendidas.',
+            'Se eliminó del prompt de imagen toda referencia institucional (nombre del club, tipo de post, área de enfoque) — ahora solo describen el copy, no la imagen.',
+            'Las áreas extendidas se limitan a contenido ambiental puro: cielo arriba, piso/césped abajo, paredes/vegetación a los lados, según lo que se vea en los bordes del centro de la foto.',
+            'El composite-back píxel-perfecto del original sigue activo: rostros, banderas y logos quedan idénticos al input.',
+            'Engine reportado en metadata sigue siendo "gpt-image-1+composite".'
+        ]
+    },
     {
         version: 'v4.313',
         date: '2026-05-15',
