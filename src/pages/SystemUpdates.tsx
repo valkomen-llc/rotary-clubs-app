@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.318 | 2026-05-15 (POSTGEN — bottom-anchored layout + anti-duplicate prompt 📐)
-// Cache bust: 2026-05-15 21:30 (POSTGEN BOTTOM-ANCHOR v4.318 📐)
+// DISTRICT HEALTH IQ V4.319 | 2026-05-15 (POSTGEN — centered layout + quality:high + reinforced fidelity 🎞️)
+// Cache bust: 2026-05-15 22:30 (POSTGEN CENTERED HQ v4.319 🎞️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.319',
+        date: '2026-05-15',
+        title: 'Content Studio AI: Centrado + Calidad Profesional 🎞️',
+        description: 'La foto original vuelve a estar siempre centrada en el canvas (protagonista). Calidad subida a "high" y prompt reforzado para fidelidad total al original.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Revertido el bottom-anchoring de v4.318: la foto original debe estar SIEMPRE centrada en el canvas portrait, no desplazada hacia abajo. La IA extiende ambos lados (arriba/abajo o izq/der) de forma equilibrada.',
+            'Bump de gpt-image-1 quality de "medium" a "high" para mejor adherencia al prompt anti-duplicación. Mayor probabilidad de que el modelo respete la lista negra de objetos y no invente baldes/botellas/etc.',
+            'Prompt reforzado: ya no se llama "outpainting" ni "scene extension" sino "PURE PHOTOGRAPH EXTENSION". Se explicita que el unmasked center es una verdad fija — no reinterpretar, no redibujar, no restilizar. Solo agregar píxeles en los bordes como si la cámara hubiera capturado un encuadre más amplio.',
+            'Se agregó instrucción de calidad profesional/cinematográfica al prompt para mejorar la resolución y realismo de las áreas extendidas.',
+            'El timeout de Vercel ya estaba en 120s desde v4.317, suficiente para quality:high.',
+            'Engine reportado en metadata sigue siendo "gpt-image-1+hi-fidelity+composite".'
+        ]
+    },
     {
         version: 'v4.318',
         date: '2026-05-15',

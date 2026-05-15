@@ -75,18 +75,9 @@ const buildLayout = async (originalBuffer, targetW, targetH) => {
         placedW = Math.round(targetH * origAspect);
     }
 
-    const top = (() => {
-        // For PORTRAIT targets with a relatively short original (i.e. horizontal source),
-        // position the original in the lower portion of the canvas — same framing as the
-        // ChatGPT reference where subjects sit in the bottom third and AI extends mostly
-        // upward into sky/scenery. This dramatically reduces the bottom band area where
-        // gpt-image-1 tends to hallucinate duplicated props/objects.
-        if (targetH > targetW && placedH < targetH * 0.75) {
-            const bottomMargin = Math.floor(targetH * 0.08);
-            return Math.max(0, targetH - placedH - bottomMargin);
-        }
-        return Math.floor((targetH - placedH) / 2);
-    })();
+    // The original photograph is always centered on the canvas — it is the protagonist.
+    // The AI's job is to extend the margins, not to re-frame or relocate the subjects.
+    const top = Math.floor((targetH - placedH) / 2);
     const left = Math.floor((targetW - placedW) / 2);
 
     const resizedOriginal = await sharp(originalBuffer)
@@ -152,12 +143,12 @@ const buildOutpaintingPrompt = ({ visualPrompt, layout }) => {
     if (layout.left > 0 || rightPad > 0) directions.push('SIDEWAYS: continue whatever is visible at the side edges (walls, scenery, vegetation, distance) naturally outward');
 
     return [
-        'Photograph extension task. The transparent areas of this image must be filled with a natural continuation of the unmasked photograph.',
+        'PURE PHOTOGRAPH EXTENSION TASK. The unmasked center of this canvas is a real photograph that must remain EXACTLY as it is — do not reinterpret, redraw, restyle or modify it in any way. The transparent (masked) areas must be filled with a literal continuation of what the camera would have captured if it had a wider frame.',
         '',
-        'CRITICAL: This is one continuous photograph, not a composite. The unmasked area contains a real photograph — extend the scene that is visible at its edges into the transparent regions:',
+        'This is NOT a creative reinterpretation. This is NOT a new image inspired by the original. This is the SAME PHOTOGRAPH with extra pixels added at the edges. Treat the unmasked photograph as a fixed truth and extend only what is logically present at its borders:',
         ...directions.map(d => `  • ${d}`),
         '',
-        'The extension must read as the SAME photograph captured by the SAME camera in the SAME moment, simply with a wider frame. Match perspective, lighting direction, color temperature, depth-of-field and grain exactly.',
+        'The extension must read as the SAME photograph captured by the SAME camera in the SAME moment, simply with a wider frame. Match perspective, lighting direction, color temperature, depth-of-field and grain exactly. Quality should be that of professional photography or cinematic camera capture — high resolution, natural realism.',
         '',
         'STRICT — the extension regions must NOT contain:',
         '  • Any people, faces, bodies, silhouettes, figures, hands or crowds (they all already exist in the unmasked center; do not add more)',
@@ -184,7 +175,7 @@ const generateOutpainting = async ({ paddedImage, maskImage, prompt, width, heig
     formData.append('mask', new Blob([maskImage], { type: 'image/png' }), 'mask.png');
     formData.append('prompt', prompt);
     formData.append('size', `${width}x${height}`);
-    formData.append('quality', 'medium');
+    formData.append('quality', 'high');
     formData.append('input_fidelity', 'high');
     formData.append('n', '1');
 
@@ -254,7 +245,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.318 — bottom-anchored layout + anti-duplicate-objects prompt) ---');
+        console.log('--- START GENERATE POST (v4.319 — centered layout + quality:high + reinforced fidelity prompt) ---');
         const { imageUrl, config = {} } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
