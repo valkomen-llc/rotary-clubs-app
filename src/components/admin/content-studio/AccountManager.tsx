@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 interface SocialAccount {
     id: string;
     clubId: string;
+    club: { id: string; name: string } | null;
     platform: 'facebook' | 'instagram' | 'linkedin' | 'x';
     platformId: string;
     pageId: string | null;
@@ -32,6 +33,25 @@ interface SocialAccount {
     createdAt: string;
     updatedAt: string;
 }
+
+interface ClubOption {
+    id: string;
+    name: string;
+}
+
+const getUserRole = (): string => {
+    try {
+        const user = JSON.parse(localStorage.getItem('rotary_user') || '{}');
+        return user.role || '';
+    } catch { return ''; }
+};
+
+const getUserClubId = (): string => {
+    try {
+        const user = JSON.parse(localStorage.getItem('rotary_user') || '{}');
+        return user.clubId || '';
+    } catch { return ''; }
+};
 
 interface PlatformMeta {
     id: 'facebook' | 'instagram' | 'linkedin' | 'x';
@@ -55,6 +75,15 @@ const AccountManager: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [actioningId, setActioningId] = useState<string | null>(null);
     const [connecting, setConnecting] = useState(false);
+
+    const userRole = getUserRole();
+    const isAdmin = userRole === 'administrator';
+    const userClubId = getUserClubId();
+
+    // For system admins: the club to attribute new connections to. For non-admins
+    // it's fixed to their own club.
+    const [selectedClubId, setSelectedClubId] = useState<string>(userClubId);
+    const [clubs, setClubs] = useState<ClubOption[]>([]);
 
     const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -81,6 +110,27 @@ const AccountManager: React.FC = () => {
 
     useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
 
+    // Fetch the clubs list for the admin-only club picker.
+    useEffect(() => {
+        if (!isAdmin) return;
+        (async () => {
+            try {
+                const token = localStorage.getItem('rotary_token');
+                const response = await fetch(`${API}/admin/clubs`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    const list: ClubOption[] = Array.isArray(data)
+                        ? data.map((c: any) => ({ id: c.id, name: c.name })).filter(c => c.id && c.name)
+                        : [];
+                    list.sort((a, b) => a.name.localeCompare(b.name));
+                    setClubs(list);
+                }
+            } catch { /* silent */ }
+        })();
+    }, [isAdmin, API]);
+
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const social = params.get('social');
@@ -102,12 +152,16 @@ const AccountManager: React.FC = () => {
     }, [fetchAccounts]);
 
     const connectMeta = async () => {
+        if (!selectedClubId) {
+            toast.error(isAdmin
+                ? 'Seleccioná primero el club al que querés asignar las cuentas'
+                : 'No tenés un club asociado a tu cuenta');
+            return;
+        }
         setConnecting(true);
         try {
             const token = localStorage.getItem('rotary_token');
-            const clubData = JSON.parse(localStorage.getItem('rotary_club') || '{}');
-            const clubId = clubData.id || '';
-            const response = await fetch(`${API}/social/connect/meta?clubId=${encodeURIComponent(clubId)}`, {
+            const response = await fetch(`${API}/social/connect/meta?clubId=${encodeURIComponent(selectedClubId)}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await response.json();
@@ -183,7 +237,7 @@ const AccountManager: React.FC = () => {
         <div className="space-y-8 animate-in fade-in duration-500">
             {/* Meta hero connect card */}
             <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-pink-600 p-8 rounded-[32px] text-white shadow-2xl">
-                <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center gap-6">
                     <div className="flex items-center gap-3">
                         <div className="w-14 h-14 bg-white/15 rounded-2xl flex items-center justify-center backdrop-blur-sm">
                             <Facebook className="w-7 h-7" />
@@ -198,14 +252,31 @@ const AccountManager: React.FC = () => {
                             Un solo flujo de OAuth te conecta TODAS las Páginas de Facebook que administras + sus cuentas de Instagram Business vinculadas. Necesario para publicar en Fase 2.
                         </p>
                     </div>
-                    <button
-                        onClick={connectMeta}
-                        disabled={connecting}
-                        className="bg-white text-blue-700 font-black px-6 py-4 rounded-2xl shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50 disabled:hover:scale-100"
-                    >
-                        {connecting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ExternalLink className="w-5 h-5" />}
-                        {connecting ? 'INICIANDO...' : 'CONECTAR META'}
-                    </button>
+                    <div className="flex flex-col gap-2 w-full lg:w-auto">
+                        {isAdmin && (
+                            <div className="w-full lg:w-72">
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-white/70 mb-1">Asignar al club</label>
+                                <select
+                                    value={selectedClubId}
+                                    onChange={(e) => setSelectedClubId(e.target.value)}
+                                    className="w-full px-3 py-2.5 rounded-xl bg-white/15 text-white text-sm font-bold backdrop-blur-sm border border-white/20 focus:outline-none focus:border-white/60 transition-all"
+                                >
+                                    <option value="" className="text-gray-800">— Seleccioná club —</option>
+                                    {clubs.map(c => (
+                                        <option key={c.id} value={c.id} className="text-gray-800">{c.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+                        <button
+                            onClick={connectMeta}
+                            disabled={connecting || !selectedClubId}
+                            className="bg-white text-blue-700 font-black px-6 py-4 rounded-2xl shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:hover:scale-100"
+                        >
+                            {connecting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ExternalLink className="w-5 h-5" />}
+                            {connecting ? 'INICIANDO...' : 'CONECTAR META'}
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -251,6 +322,9 @@ const AccountManager: React.FC = () => {
                                                     : <div className="w-8 h-8 rounded-lg bg-gray-200 flex-shrink-0" />}
                                                 <div className="flex-1 min-w-0">
                                                     <p className="text-xs font-black text-gray-800 truncate">{acc.accountName || acc.platformId}</p>
+                                                    {isAdmin && acc.club && (
+                                                        <p className="text-[9px] font-bold text-gray-400 truncate mt-0.5">{acc.club.name}</p>
+                                                    )}
                                                     <div className="mt-1">{statusBadge(acc)}</div>
                                                 </div>
                                             </div>

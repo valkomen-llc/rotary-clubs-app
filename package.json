@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.329.0",
-  "cache_bust": "2026-05-16 05:00 (SOCIAL ENGINE PHASE 1 v4.329 🔌)",
+  "version": "4.330.0",
+  "cache_bust": "2026-05-16 05:30 (SOCIAL ENGINE ADMIN FIX v4.330 🔧)",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.329 | 2026-05-16 (SOCIAL ENGINE — Fase 1: OAuth Meta robusto con Page tokens + IG Business + cifrado AES-256-GCM 🔌)",
+  "//": "DISTRICT HEALTH IQ V4.330 | 2026-05-16 (SOCIAL ENGINE — fix admin: list sin clubId, club picker, mostrar club por cuenta 🔧)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
