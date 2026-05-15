@@ -47,8 +47,9 @@ const enhanceOriginal = async (buffer) => {
 };
 
 // Place the enhanced original centered on a target canvas, preserving its full content.
-// Returns the resized original buffer plus the layout — no mask, since we no longer use
-// the /edits endpoint (gpt-image-1 was ignoring the mask and duplicating subjects).
+// Also builds a mask for the /edits endpoint: opaque (preserve) where the original lives,
+// transparent (edit) in the extension bands. The model with input_fidelity:"high" will
+// extend the visible content into the transparent areas naturally.
 const buildLayout = async (originalBuffer, targetW, targetH) => {
     const meta = await sharp(originalBuffer).metadata();
     const origW = meta.width;
@@ -58,8 +59,6 @@ const buildLayout = async (originalBuffer, targetW, targetH) => {
 
     let placedW, placedH;
     if (Math.abs(origAspect - targetAspect) < 0.04) {
-        // Aspects are nearly identical — leave a small breathing border (~6%) so AI still
-        // adds a fresh cinematic frame around the photo without touching the subjects.
         const scale = 0.94;
         if (origAspect > targetAspect) {
             placedW = Math.round(targetW * scale);
@@ -84,73 +83,115 @@ const buildLayout = async (originalBuffer, targetW, targetH) => {
         .png()
         .toBuffer();
 
+    // Build the input image for /edits: original placed on transparent canvas at full target size.
+    const paddedImage = await sharp({
+        create: {
+            width: targetW,
+            height: targetH,
+            channels: 4,
+            background: { r: 0, g: 0, b: 0, alpha: 0 }
+        }
+    })
+        .composite([{ input: resizedOriginal, top, left }])
+        .png()
+        .toBuffer();
+
+    // Build the mask: opaque white over the original (preserve), transparent elsewhere (extend).
+    // OpenAI docs: "fully transparent areas (alpha=0) indicate where the image should be edited".
+    const opaqueRect = await sharp({
+        create: {
+            width: placedW,
+            height: placedH,
+            channels: 4,
+            background: { r: 255, g: 255, b: 255, alpha: 1 }
+        }
+    }).png().toBuffer();
+
+    const maskImage = await sharp({
+        create: {
+            width: targetW,
+            height: targetH,
+            channels: 4,
+            background: { r: 0, g: 0, b: 0, alpha: 0 }
+        }
+    })
+        .composite([{ input: opaqueRect, top, left }])
+        .png()
+        .toBuffer();
+
     return {
         resizedOriginal,
+        paddedImage,
+        maskImage,
         layout: { origW, origH, placedW, placedH, top, left, targetW, targetH, hasBorders: placedW < targetW || placedH < targetH }
     };
 };
 
-// Build a CLEAN SCENE prompt for /v1/images/generations.
-// We no longer use the edits endpoint with a mask because gpt-image-1 was ignoring the
-// mask and "completing" the canvas with duplicated subjects and invented title text.
-// Instead we ask the model to generate an EMPTY environmental backdrop sized to the
-// target — and we then composite the real photograph on top of it ourselves with sharp.
-const buildSceneGenPrompt = ({ visualPrompt, targetFormat }) => {
-    const orientation = targetFormat === 'landscape' ? 'landscape (wider than tall)' : 'portrait (taller than wide)';
+// Build an outpainting prompt that tells the model to extend the EXISTING scene visible
+// at the edges, NOT generate a separate scene. Critical: with input_fidelity:"high" the
+// model actually sees and preserves the unmasked center, so we frame this as a natural
+// continuation of what is already there.
+const buildOutpaintingPrompt = ({ visualPrompt, layout }) => {
+    const bottomPad = layout.targetH - layout.top - layout.placedH;
+    const rightPad = layout.targetW - layout.left - layout.placedW;
+
+    const directions = [];
+    if (layout.top > 0) directions.push('UPWARD: continue whatever is visible at the top edge of the existing photograph (sky, ceiling, upper wall, tree canopy) naturally upward');
+    if (bottomPad > 0) directions.push('DOWNWARD: continue whatever is visible at the bottom edge (ground, grass, floor, sand, tile) naturally downward');
+    if (layout.left > 0 || rightPad > 0) directions.push('SIDEWAYS: continue whatever is visible at the side edges (walls, scenery, vegetation, distance) naturally outward');
+
     return [
-        `An empty environmental backdrop photograph in ${orientation} orientation, intended as a clean background onto which a real portrait will be composited.`,
+        'Photograph extension task. The transparent areas of this image must be filled with a natural continuation of the unmasked photograph.',
         '',
-        visualPrompt
-            ? `Scene description: ${visualPrompt}`
-            : 'Scene description: a calm, neutral indoor or outdoor environment with natural daylight and soft depth-of-field.',
+        'CRITICAL: This is one continuous photograph, not a composite. The unmasked area contains a real photograph — extend the scene that is visible at its edges into the transparent regions:',
+        ...directions.map(d => `  • ${d}`),
         '',
-        'STRICT CONTENT RULES — this image MUST contain ONLY:',
-        '  • Sky, clouds, walls, ceilings, floors, ground, grass, stone, tile, carpet',
-        '  • Plants, trees, distant scenery, gentle architectural elements',
-        '  • Soft natural lighting, subtle depth-of-field, atmospheric quietness',
+        'The extension must read as the SAME photograph captured by the SAME camera in the SAME moment, simply with a wider frame. Match perspective, lighting direction, color temperature, depth-of-field and grain exactly.',
         '',
-        'STRICT CONTENT RULES — this image MUST NOT contain:',
-        '  • NO people, NO faces, NO bodies, NO hands, NO silhouettes, NO figures, NO crowds',
-        '  • NO text, NO letters, NO words, NO numbers, NO captions, NO titles, NO subtitles, NO signs, NO labels, NO inscriptions, NO watermarks',
-        '  • NO logos, NO Rotary wheel, NO emblems, NO banners, NO flags, NO institutional symbols, NO brand marks',
-        '  • NO chairs, microphones, podiums, banners or props implying an event',
-        '  • NO decorative frames, vignettes, color filters, gradients, lens flares, cinematic graphic overlays',
+        'STRICT — the extension regions must NOT contain:',
+        '  • Any people, faces, bodies, silhouettes, figures, hands or crowds (they all already exist in the unmasked center; do not add more)',
+        '  • Any text, letters, words, numbers, signs, labels, captions, titles, watermarks',
+        '  • Any logos, banners, flags, Rotary symbols, emblems, brand marks',
+        '  • Any decorative graphic overlays, frames, vignettes, cinematic effects, gradients or color filters',
+        '  • Any duplicates or echoes of the people in the unmasked center',
         '',
-        'Style: naturalistic unedited amateur photography — NOT a polished stock photo. Soft atmospheric haze, real lighting, subtle imperfections, depth-of-field, ambient mood. The final result should feel like a casual photograph taken with a phone in the same moment and place where the portrait was originally captured. Calm. Quiet. Believable.'
-    ].join('\n');
+        visualPrompt ? `Environmental context (use for color/atmosphere matching only — do NOT introduce subjects from this description): ${visualPrompt}` : '',
+        '',
+        'Output: a single seamless photograph, natural and realistic. No artistic interpretation. No creative additions.'
+    ].filter(Boolean).join('\n');
 };
 
-// Call /v1/images/generations with gpt-image-1 to produce a clean environmental scene
-// at the requested size. No input image, no mask — pure text-to-image so the model has
-// nothing to "complete" or duplicate from.
-const generateCleanScene = async ({ prompt, width, height }) => {
-    const resp = await fetch('https://api.openai.com/v1/images/generations', {
+// Call /v1/images/edits with gpt-image-1 + input_fidelity:"high" so the model strictly
+// preserves the unmasked content of the original photograph and only paints the
+// transparent (masked) regions with a coherent extension of what is visible at the edges.
+const generateOutpainting = async ({ paddedImage, maskImage, prompt, width, height }) => {
+    const formData = new FormData();
+    formData.append('model', 'gpt-image-1');
+    formData.append('image', new Blob([paddedImage], { type: 'image/png' }), 'image.png');
+    formData.append('mask', new Blob([maskImage], { type: 'image/png' }), 'mask.png');
+    formData.append('prompt', prompt);
+    formData.append('size', `${width}x${height}`);
+    formData.append('quality', 'medium');
+    formData.append('input_fidelity', 'high');
+    formData.append('n', '1');
+
+    const resp = await fetch('https://api.openai.com/v1/images/edits', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-            model: 'gpt-image-1',
-            prompt,
-            n: 1,
-            size: `${width}x${height}`,
-            quality: 'medium'
-        })
+        headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
+        body: formData
     });
 
     const data = await resp.json();
     if (!resp.ok || !data?.data?.[0]?.b64_json) {
         const reason = data?.error?.message || `HTTP ${resp.status}`;
-        throw new Error(`gpt-image-1 scene generation falló: ${reason}`);
+        throw new Error(`gpt-image-1 outpainting falló: ${reason}`);
     }
     return Buffer.from(data.data[0].b64_json, 'base64');
 };
 
 // Apply a feathered alpha mask to the resized original so the seam between original and
-// generated scene fades over ~40px instead of being a hard horizontal line. Only the
-// outermost band of the original is alpha-blended; the central 90%+ (where faces, banners
-// and logos live) remains pixel-exact at alpha=255.
+// AI-extended areas fades over ~40px. Center stays at alpha=255 (pixel-exact) — only the
+// outermost band (sky/floor/walls, never faces) gets alpha-blended.
 const featherOriginal = async (resizedOriginal) => {
     const FEATHER_PX = 40;
     const { data, info } = await sharp(resizedOriginal)
@@ -158,14 +199,13 @@ const featherOriginal = async (resizedOriginal) => {
         .raw()
         .toBuffer({ resolveWithObject: true });
     const { width, height, channels } = info;
-    // Loop over edge bands only (skip the interior for speed).
     const feather = Math.min(FEATHER_PX, Math.floor(Math.min(width, height) / 2) - 1);
     for (let y = 0; y < height; y++) {
         const yDist = Math.min(y, height - 1 - y);
         for (let x = 0; x < width; x++) {
             const xDist = Math.min(x, width - 1 - x);
             const d = Math.min(xDist, yDist);
-            if (d >= feather) continue; // interior — leave alpha at 255
+            if (d >= feather) continue;
             const alpha = Math.round((d / feather) * 255);
             const idx = (y * width + x) * channels;
             data[idx + 3] = alpha;
@@ -174,11 +214,13 @@ const featherOriginal = async (resizedOriginal) => {
     return sharp(data, { raw: { width, height, channels } }).png().toBuffer();
 };
 
-// Composite the real photograph on top of the generated scene with feathered edges so
-// the boundary blends smoothly instead of appearing as horizontal/vertical seams.
-const compositeOriginalOnScene = async (sceneBuffer, resizedOriginal, layout) => {
+// Composite the (feathered) original on top of the AI outpainted result. This is
+// belt-and-suspenders: input_fidelity:"high" should already preserve the unmasked region,
+// and this composite guarantees pixel-perfect identity at the center plus a smooth blend
+// at the boundary.
+const compositeOriginalOnAi = async (aiBuffer, resizedOriginal, layout) => {
     const feathered = await featherOriginal(resizedOriginal);
-    return sharp(sceneBuffer)
+    return sharp(aiBuffer)
         .composite([{ input: feathered, top: layout.top, left: layout.left, blend: 'over' }])
         .png()
         .toBuffer();
@@ -199,7 +241,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.316 — feathered composite + atmosphere-matched scene prompt) ---');
+        console.log('--- START GENERATE POST (v4.317 — /edits with input_fidelity:high for true outpainting) ---');
         const { imageUrl, config = {} } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
@@ -296,27 +338,29 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
 
         // 3) Compute placement and resize the original to fit.
         const { width: targetW, height: targetH } = FORMAT_SIZES[targetFormat];
-        const { resizedOriginal, layout } = await buildLayout(enhancedBuffer, targetW, targetH);
+        const { resizedOriginal, paddedImage, maskImage, layout } = await buildLayout(enhancedBuffer, targetW, targetH);
 
         let finalUrl = null;
-        let usedEngine = 'scene-gen+composite';
+        let usedEngine = 'gpt-image-1+hi-fidelity+composite';
         let imageError = null;
 
-        // Path B: generate a CLEAN empty environmental scene at the target size, then
-        // composite the real photograph on top. The AI never sees the original, so it
-        // cannot duplicate the subjects or render invented title text.
+        // True outpainting via /v1/images/edits + mask + input_fidelity:"high". The model
+        // sees the original photo, preserves the unmasked center pixel-faithfully, and
+        // naturally extends the visible scene into the masked (transparent) bands.
+        // We still composite the original back on top with feathered edges as a
+        // belt-and-suspenders guarantee of pixel-perfect identity.
         try {
-            const scenePrompt = buildSceneGenPrompt({ visualPrompt: parsed.visual_prompt, targetFormat });
-            const sceneBuffer = await generateCleanScene({ prompt: scenePrompt, width: targetW, height: targetH });
-            const composed = await compositeOriginalOnScene(sceneBuffer, resizedOriginal, layout);
+            const prompt = buildOutpaintingPrompt({ visualPrompt: parsed.visual_prompt, layout });
+            const aiBuffer = await generateOutpainting({ paddedImage, maskImage, prompt, width: targetW, height: targetH });
+            const composed = await compositeOriginalOnAi(aiBuffer, resizedOriginal, layout);
             finalUrl = await uploadGeneratedImage({ buffer: composed, clubId, variant: targetFormat });
         } catch (e) {
             imageError = e.message;
-            console.warn('[STUDIO] Scene generation failed, falling back to framed original:', e.message);
+            console.warn('[STUDIO] Outpainting failed, falling back to framed original:', e.message);
         }
 
-        // 4) Fallback: deliver the enhanced original framed against a neutral backdrop so
-        //    the user is never blocked.
+        // Fallback: deliver the enhanced original framed against a neutral backdrop so
+        // the user is never blocked.
         if (!finalUrl) {
             const framedFallback = await sharp({
                 create: { width: targetW, height: targetH, channels: 3, background: { r: 245, g: 245, b: 245 } }

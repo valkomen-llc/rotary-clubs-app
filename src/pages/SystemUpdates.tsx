@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.316 | 2026-05-15 (POSTGEN — feathered composite + atmosphere-matched prompt 🌫️)
-// Cache bust: 2026-05-15 19:30 (POSTGEN SEAMLESS v4.316 🌫️)
+// DISTRICT HEALTH IQ V4.317 | 2026-05-15 (POSTGEN — true outpainting via gpt-image-1 input_fidelity:high 🎯)
+// Cache bust: 2026-05-15 20:30 (POSTGEN HI-FIDELITY v4.317 🎯)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.317',
+        date: '2026-05-15',
+        title: 'Content Studio AI: True Outpainting con input_fidelity:high 🎯',
+        description: 'Cambio fundamental: la IA ahora SÍ ve la foto original y extiende la escena visible en sus bordes, en vez de inventar un escenario separado.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Problema observado en v4.315/v4.316: el flujo de scene-gen + composite generaba un escenario completamente nuevo (paredes, ventanas, cortinas inventadas) y la foto original quedaba colocada encima como un collage. La extensión no continuaba el ambiente real de la foto.',
+            'Causa: en /v1/images/generations la IA no ve la foto original, así que inventaba un escenario distinto. Ningún ajuste de prompt podía hacer que matcheara perfecto.',
+            'Solución: volver a /v1/images/edits + máscara CON el nuevo parámetro `input_fidelity: "high"` que OpenAI introdujo recientemente. Este parámetro hace que gpt-image-1 preserve estrictamente el contenido del input y extienda únicamente las áreas transparentes — verdadero outpainting.',
+            'La IA ahora ve los bordes del original y continúa el cielo/piso/paredes que ya están en la foto, en vez de inventar escenarios separados.',
+            'El composite-back del original con feathering de 40px se mantiene como red de seguridad pixel-perfect.',
+            'Bump del timeout de Vercel de 60s a 120s para acomodar el procesamiento más lento de input_fidelity:high.',
+            'Engine reportado en metadata: "gpt-image-1+hi-fidelity+composite".'
+        ]
+    },
     {
         version: 'v4.316',
         date: '2026-05-15',
