@@ -21,11 +21,28 @@ import { toast } from 'sonner';
 
 type Platform = 'facebook' | 'instagram' | 'x' | 'linkedin';
 type TargetFormat = 'portrait' | 'landscape';
+type EngineId = 'kie' | 'flux_kontext' | 'nano_banana' | 'higgsfield' | 'openai';
 
 interface AIConfig {
     interestArea: string;
     type: string;
+    engine: EngineId;
 }
+
+interface EngineMeta {
+    id: EngineId;
+    label: string;
+    sub: string;
+    available: boolean;
+}
+
+const ENGINES: EngineMeta[] = [
+    { id: 'kie',          label: 'KIE.AI',        sub: 'Nano Banana (Gemini 2.5 Flash Image)', available: true },
+    { id: 'flux_kontext', label: 'Flux Kontext',  sub: 'Próximamente — identity-preserving outpainting', available: false },
+    { id: 'nano_banana',  label: 'Nano Banana',   sub: 'Próximamente — Gemini 2.5 standalone', available: false },
+    { id: 'higgsfield',   label: 'Higgsfield',    sub: 'Próximamente — cinematic enhancement', available: false },
+    { id: 'openai',       label: 'OpenAI',        sub: 'gpt-image-1 (experimental)', available: true }
+];
 
 interface PostContent {
     copy: string;
@@ -68,7 +85,8 @@ const PostGenerator: React.FC = () => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [aiConfig, setAiConfig] = useState<AIConfig>({
         interestArea: 'general',
-        type: 'standard'
+        type: 'standard',
+        engine: 'kie'
     });
     const [activePlatform, setActivePlatform] = useState<Platform>('facebook');
     const [generatedContent, setGeneratedContent] = useState<GeneratedData | null>(null);
@@ -85,10 +103,12 @@ const PostGenerator: React.FC = () => {
         }
 
         setIsGenerating(true);
+        const engineMeta = ENGINES.find((e) => e.id === aiConfig.engine);
+        const engineLabel = engineMeta?.label || 'IA';
         const toastId = toast.loading(
             format === 'landscape'
-                ? 'Generando versión landscape para X...'
-                : 'Generando publicación profesional con IA…'
+                ? `Generando versión landscape con ${engineLabel}…`
+                : `Generando publicación con ${engineLabel}…`
         );
 
         try {
@@ -282,6 +302,45 @@ const PostGenerator: React.FC = () => {
                                 <option value="water">Agua y Saneamiento</option>
                                 <option value="environment">Medio Ambiente</option>
                             </select>
+                        </div>
+
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4 block">Motor IA</label>
+                            <div className="space-y-2">
+                                {ENGINES.map((engine) => {
+                                    const selected = aiConfig.engine === engine.id;
+                                    const disabled = !engine.available;
+                                    return (
+                                        <button
+                                            key={engine.id}
+                                            type="button"
+                                            disabled={disabled}
+                                            onClick={() => !disabled && setAiConfig({ ...aiConfig, engine: engine.id })}
+                                            className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
+                                                selected
+                                                    ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200'
+                                                    : disabled
+                                                        ? 'bg-gray-50 border-gray-100 text-gray-300 cursor-not-allowed'
+                                                        : 'bg-white border-gray-100 text-gray-600 hover:border-blue-300 hover:bg-blue-50/30'
+                                            }`}
+                                        >
+                                            <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
+                                                selected ? 'border-white' : disabled ? 'border-gray-200' : 'border-gray-300'
+                                            }`}>
+                                                {selected && <div className="w-2 h-2 rounded-full bg-white" />}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className={`text-xs font-black tracking-wide ${selected ? 'text-white' : disabled ? 'text-gray-300' : 'text-gray-800'}`}>
+                                                    {engine.label.toUpperCase()}
+                                                </div>
+                                                <div className={`text-[10px] font-bold mt-0.5 ${selected ? 'text-blue-100' : disabled ? 'text-gray-300' : 'text-gray-400'}`}>
+                                                    {engine.sub}
+                                                </div>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
                     </div>
 

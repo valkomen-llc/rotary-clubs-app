@@ -27,27 +27,44 @@ Usar incrementos de patch (`v4.323` → `v4.324`) para fixes. Major-feel changes
 
 Archivo principal: `server/controllers/contentStudioController.js`. Función `generatePost`.
 
-**Regla #1: NO POSTPROCESAR el output de gpt-image-1.** Equipo cliente rechazó múltiples versiones donde aplicamos composite-back / máscara / blur sobre el output del modelo — siempre se ve "overlay / pegado / montaje". ChatGPT (referencia explícita del equipo) no postprocesa. Replicar ese flujo: foto + prompt → output as-is.
+**Regla #1: NO POSTPROCESAR el output del modelo de imagen.** Equipo cliente rechazó múltiples versiones donde aplicamos composite-back / máscara / blur sobre el output — siempre se ve "overlay / pegado / montaje". ChatGPT (referencia explícita del equipo) no postprocesa. Replicar ese flujo: foto + prompt → output as-is. **Aplica a TODOS los engines del registry**, no solo a OpenAI.
 
-Pipeline actual (v4.325 — direct i2i):
+### Arquitectura multi-engine (v4.326)
 
-1. Fetch + `enhanceOriginal` (sharp, pixel-space, identidad intacta).
-2. GPT-4o multimodal para copy social (FB/IG/X/LinkedIn). El `visual_prompt` ya no se usa.
-3. `gpt-image-1` `/v1/images/edits` **sin máscara** con `input_fidelity:"high"` y `quality:"high"` al `size` target. Prompt corto (3 líneas) pidiendo conversión a portrait/landscape preservando sujetos.
-4. **Devolver el buffer del modelo TAL CUAL.** Sin composite, sin máscara, sin feather, sin blur, sin nada.
+Registry `ENGINES` en `contentStudioController.js`. Cada engine tiene metadata `{ label, engineKey, available }`. `generatePost` rutea según `config.engine` (mandado por el frontend), con fallback a `DEFAULT_ENGINE = 'kie'` si el solicitado no existe o no está available.
 
-Trade-off aceptado por el equipo: la IA regenera el scene completo, hay leve drift de rostros / ropa (visible incluso en la salida ChatGPT que tomaron como referencia). A cambio: cero overlays visibles.
+Engines en Fase 1:
 
-Approaches DESCARTADOS (no volver a probarlos sin razón muy fuerte):
+- `kie` (default) — KIE.AI gateway con modelo `google/nano-banana-edit`. Implementado vía `kieService.js` (createTask → poll → fetch). Async, ~30-60s típico.
+- `openai` — gpt-image-1 directo en `/v1/images/edits` sin máscara, `input_fidelity:high`, `quality:high`. Sync, ~20-40s típico.
 
-- **Masked outpainting con bandas grandes** (v4.317-v4.320): `gpt-image-1` con máscara grande duplica intermitentemente (efecto mosaico / tiling). Sin solución por prompt.
+Placeholders en el registry (UI los muestra como "Próximamente"): `flux_kontext`, `nano_banana`, `higgsfield`. Para implementarlos, agregar la función `generateWithX` + flag `available: true` + (si va vía KIE) usar `createKieImageTask` con el modelo correcto.
+
+### Pipeline común para todos los engines
+
+1. Fetch + `enhanceOriginal` (sharp, pixel-space, identidad intacta). Solo se usa para engines que reciben buffer (OpenAI); KIE recibe el `imageUrl` original directo.
+2. GPT-4o multimodal para copy social (FB/IG/X/LinkedIn). El `visual_prompt` no se usa por los engines de imagen.
+3. Despacho al engine: `generateWithKie` o `generateWithOpenAI`, todos con el mismo `buildSimplePrompt({ targetFormat })`.
+4. **Devolver el buffer TAL CUAL** que produzca el modelo. Sin composite, sin máscara, sin feather, sin blur. Upload a S3.
+
+Trade-off aceptado: regeneración semántica = leve drift de rostros / ropa (visible incluso en la salida ChatGPT). A cambio: cero overlays visibles.
+
+### Approaches DESCARTADOS (no volver a probarlos sin razón muy fuerte)
+
+- **Masked outpainting con bandas grandes** (v4.317-v4.320): `gpt-image-1` con máscara grande duplica intermitentemente (efecto mosaico / tiling).
 - **Letterbox / blur background** (v4.321): equipo rechazó — "no quiero fondos difuminados".
-- **Composite-back del original** (v4.323-v4.324): equipo rechazó — "se ve overlay / montaje". Aunque preserve identidad, el seam visible entre original e IA arruina el resultado.
-- **Seeded mirror + masked edit** (v4.324): inteligente en teoría pero termina siendo otra forma de composite, mismo rechazo.
+- **Composite-back del original** (v4.323-v4.324): equipo rechazó — "se ve overlay / montaje".
+- **Seeded mirror + masked edit** (v4.324): otra forma de composite, mismo rechazo.
 
-Prompts largos con listas negras (NO banderas, NO logos, NO X, NO Y) son contraproducentes — el modelo se obsesiona con lo prohibido. Mantener prompts cortos y positivos.
+Prompts largos con listas negras son contraproducentes — el modelo se obsesiona con lo prohibido. Mantener prompts cortos y positivos.
 
-`vercel.json` tiene `maxDuration: 120s` para `/api` — necesario por la latencia de `gpt-image-1` con `quality:"high"`.
+`vercel.json` tiene `maxDuration: 120s` para `/api` — necesario por la latencia de `gpt-image-1` con `quality:"high"` y el polling de KIE.
+
+### Variables de entorno
+
+- `KIE_API_KEY` — para todos los modelos via KIE.AI gateway (Nano Banana, Flux Kontext, Seedream, etc.).
+- `OPENAI_API_KEY` — gpt-image-1 directo + GPT-4o para copy.
+- `HIGGSFIELD_API_KEY` — pendiente, se usará cuando implementemos ese engine.
 
 ## GitHub
 

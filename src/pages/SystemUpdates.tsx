@@ -24,9 +24,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.325 | 2026-05-16 (POSTGEN — direct gpt-image-1 i2i, no composite, no postprocesado — flujo ChatGPT puro ⚡)
-// Cache bust: 2026-05-16 03:00 (POSTGEN DIRECT I2I v4.325 ⚡)
+// DISTRICT HEALTH IQ V4.326 | 2026-05-16 (POSTGEN — multi-engine: KIE.AI Nano Banana (default) + OpenAI gpt-image-1; placeholders para Flux/Higgsfield 🔀)
+// Cache bust: 2026-05-16 03:30 (POSTGEN MULTI-ENGINE v4.326 🔀)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.326',
+        date: '2026-05-16',
+        title: 'Content Studio AI: Arquitectura Multi-Engine — Fase 1 (KIE.AI) 🔀',
+        description: 'El Generador de Publicaciones ahora soporta múltiples motores IA seleccionables desde la UI. Default cambiado a KIE.AI (Nano Banana / Gemini 2.5 Flash Image). OpenAI queda como opción experimental.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Cambio de arquitectura: de un único proveedor (gpt-image-1) a un sistema modular multi-engine donde cada motor IA es una alternativa seleccionable.',
+            'Motores disponibles en Fase 1: (1) KIE.AI — Nano Banana via gateway (model="google/nano-banana-edit"), especializado en regeneración con preservación de identidad; (2) OpenAI gpt-image-1 — experimental, mantenido por compatibilidad.',
+            'Placeholders en la UI (próximas fases): Flux Kontext, Nano Banana standalone, Higgsfield. Aparecen en el selector marcados como "Próximamente" para anticipar el roadmap al equipo.',
+            'Backend: nuevo registry ENGINES en contentStudioController.js con metadata por motor (label, engineKey, available). generatePost rutea según config.engine con fallback al default. kieService.js extendido con createKieImageTask + pollKieImageTask + fetchKieImageBuffer (flow async con polling, timeout 100s para acomodarse al maxDuration de Vercel).',
+            'UI: selector de motor agregado al panel de configuración del Post Generator, justo debajo de Tipo + Enfoque Rotary. Radio buttons con label + sub-descripción por motor. Los no-disponibles aparecen disabled con estilo "próximamente".',
+            'Toast de loading personalizado por motor para que el usuario sepa qué proveedor está corriendo (KIE.AI puede tomar 30-60s, OpenAI 20-40s).',
+            'Todos los motores comparten el mismo prompt interno y las mismas reglas del sistema. El usuario no escribe prompts manualmente — solo selecciona la imagen y el motor.',
+            'Engine metadata reportado: "kie+nano-banana-edit" (default) o "gpt-image-1+i2i-direct".'
+        ]
+    },
     {
         version: 'v4.325',
         date: '2026-05-16',
