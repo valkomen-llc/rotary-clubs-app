@@ -24,9 +24,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.190 | 2026-05-13 (EMAIL PERSISTENCE 📧)
-// Cache bust: 2026-05-13 15:45 (EMAIL DB WIRED 🔌)
+// DISTRICT HEALTH IQ V4.308 | 2026-05-14 (UI OPTIMIZATION 🚀)
+// Cache bust: 2026-05-14 20:45 (RYE 4281 UI FIX 🛡️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.308',
+        date: '2026-05-14',
+        title: 'RYE 4281: Optimización de Interfaz 🚀',
+        description: 'Limpieza de la sección de programas de intercambio para RYE 4281.',
+        type: 'improvement',
+        changes: [
+            { type: 'removed', text: 'Se eliminó la sección de CTA final y estadísticas en el Programa RYE 4281 por solicitud institucional.' }
+        ],
+        details: [
+            'Remoción de la sección "¿Quieres ser parte del cambio?" en el sitio de RYE 4281.',
+            'Ocultamiento de las estadísticas históricas para priorizar la navegación de programas.',
+            'Optimización de la jerarquía visual en la sección especial de intercambio.'
+        ]
+    },
     {
         version: 'v4.307',
         date: '2026-05-14',

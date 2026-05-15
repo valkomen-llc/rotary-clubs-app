@@ -202,44 +202,46 @@ const LatirSpecialSection = () => {
         </div>
 
         {/* Final CTA Section */}
-        <div className="mt-24 text-center">
-          <div className="bg-gradient-to-r from-rotary-blue to-[#002d5c] p-12 md:p-16 rounded-[48px] relative overflow-hidden">
-            {/* Background Decoration */}
-            <div className="absolute top-0 right-0 w-1/2 h-full opacity-10">
-              <Globe className="w-full h-full text-white translate-x-1/4" />
+        {club?.subdomain?.toLowerCase() !== 'rye4281' && (
+          <div className="mt-24 text-center">
+            <div className="bg-gradient-to-r from-rotary-blue to-[#002d5c] p-12 md:p-16 rounded-[48px] relative overflow-hidden">
+              {/* Background Decoration */}
+              <div className="absolute top-0 right-0 w-1/2 h-full opacity-10">
+                <Globe className="w-full h-full text-white translate-x-1/4" />
+              </div>
+              
+              <div className="relative z-10 max-w-2xl mx-auto">
+                <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">¿Quieres ser parte del cambio?</h2>
+                <p className="text-blue-100 text-lg mb-10 leading-relaxed">
+                  Inscríbete hoy mismo para recibir más información sobre cómo puedes participar en nuestros programas de intercambio internacional.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                  <button className="px-10 py-5 bg-white text-rotary-blue rounded-2xl font-bold hover:shadow-2xl hover:scale-105 transition-all duration-300">
+                    Inscribirme Ahora
+                  </button>
+                  <button className="px-10 py-5 bg-white/10 text-white border border-white/20 rounded-2xl font-bold backdrop-blur-sm hover:bg-white/20 transition-all duration-300">
+                    Ver Preguntas Frecuentes
+                  </button>
+                </div>
+              </div>
             </div>
             
-            <div className="relative z-10 max-w-2xl mx-auto">
-              <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">¿Quieres ser parte del cambio?</h2>
-              <p className="text-blue-100 text-lg mb-10 leading-relaxed">
-                Inscríbete hoy mismo para recibir más información sobre cómo puedes participar en nuestros programas de intercambio internacional.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <button className="px-10 py-5 bg-white text-rotary-blue rounded-2xl font-bold hover:shadow-2xl hover:scale-105 transition-all duration-300">
-                  Inscribirme Ahora
-                </button>
-                <button className="px-10 py-5 bg-white/10 text-white border border-white/20 rounded-2xl font-bold backdrop-blur-sm hover:bg-white/20 transition-all duration-300">
-                  Ver Preguntas Frecuentes
-                </button>
-              </div>
+            {/* Stats / Numbers */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mt-20 pt-20 border-t border-gray-100">
+              {[
+                { label: "Años de Historia", value: "25+" },
+                { label: "Países Conectados", value: "40+" },
+                { label: "Jóvenes Intercambiados", value: "1,200+" },
+                { label: "Familias Anfitrionas", value: "850+" }
+              ].map((stat, idx) => (
+                <div key={idx} className="group">
+                  <div className="text-3xl font-black text-rotary-blue mb-2 group-hover:scale-110 transition-transform duration-300">{stat.value}</div>
+                  <div className="text-xs font-bold tracking-widest uppercase text-gray-400 group-hover:text-rotary-blue transition-colors">{stat.label}</div>
+                </div>
+              ))}
             </div>
           </div>
-          
-          {/* Stats / Numbers */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mt-20 pt-20 border-t border-gray-100">
-            {[
-              { label: "Años de Historia", value: "25+" },
-              { label: "Países Conectados", value: "40+" },
-              { label: "Jóvenes Intercambiados", value: "1,200+" },
-              { label: "Familias Anfitrionas", value: "850+" }
-            ].map((stat, idx) => (
-              <div key={idx} className="group">
-                <div className="text-3xl font-black text-rotary-blue mb-2 group-hover:scale-110 transition-transform duration-300">{stat.value}</div>
-                <div className="text-xs font-bold tracking-widest uppercase text-gray-400 group-hover:text-rotary-blue transition-colors">{stat.label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+        )}
       </div>
 
       <style dangerouslySetInnerHTML={{ __html: `
