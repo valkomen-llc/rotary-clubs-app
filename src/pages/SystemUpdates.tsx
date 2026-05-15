@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.322 | 2026-05-16 (POSTGEN — gpt-image-1 maskless image-to-image regeneration, ChatGPT-style ✨)
-// Cache bust: 2026-05-16 01:15 (POSTGEN I2I REGENERATION v4.322 ✨)
+// DISTRICT HEALTH IQ V4.323 | 2026-05-16 (POSTGEN — i2i regeneration + identity-lock composite, pixel-perfect faces 🎯)
+// Cache bust: 2026-05-16 02:00 (POSTGEN I2I + IDENTITY-LOCK v4.323 🎯)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.323',
+        date: '2026-05-16',
+        title: 'Content Studio AI: Identity-Lock — Rostros Pixel-Perfect 🎯',
+        description: 'Resuelve la deriva de rostros de v4.322. La extensión sigue siendo la regeneración AI estilo ChatGPT, pero ahora se compone el original encima para preservar caras / banderas / objetos exactamente.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Feedback de v4.322: la composición y extensión se ven bien, pero los rostros generados por la IA son diferentes / deformes respecto al original. Es el trade-off conocido de la regeneración semántica.',
+            'Solución: pipeline en dos pasos. Paso (a) gpt-image-1 maskless image-to-image — la IA regenera el scene completo al aspecto target, dando una extensión natural del entorno arriba/abajo. Paso (b) composite del original (pixel-perfect) encima del resultado AI, centrado, con feather de 80px en los bordes.',
+            'Combina las fortalezas de los dos approaches previos: maskless i2i evita la duplicación / tiling que tenía el outpainting con máscara (v4.317-v4.320); composite-back garantiza identidad pixel-perfect de caras / banderas / banners (lo que el regeneración pura no podía).',
+            'Lo que el usuario ve: caras y elementos del centro = los originales sin alteración. Bandas superior/inferior = extensión natural del entorno generada por la IA (cielo, árboles, calzada, según corresponda). Costura entre ambos = feathered 80px, queda suave.',
+            'Re-introducidos featherOriginal y compositeOriginalOnAi en el controller. Añadido computePlacement helper para evitar duplicación de cálculos de scale/centrado.',
+            'Engine reportado en metadata: "gpt-image-1+i2i-maskless+identity-composite".'
+        ]
+    },
     {
         version: 'v4.322',
         date: '2026-05-16',
