@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.326 | 2026-05-16 (POSTGEN — multi-engine: KIE.AI Nano Banana (default) + OpenAI gpt-image-1; placeholders para Flux/Higgsfield 🔀)
-// Cache bust: 2026-05-16 03:30 (POSTGEN MULTI-ENGINE v4.326 🔀)
+// DISTRICT HEALTH IQ V4.327 | 2026-05-16 (POSTGEN — fix KIE.AI flag: error surfacing + dual aspect_ratio/image_size params 🔍)
+// Cache bust: 2026-05-16 04:00 (POSTGEN KIE DEBUG v4.327 🔍)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.327',
+        date: '2026-05-16',
+        title: 'Content Studio AI: Fix KIE.AI — Surfacing del Error Real 🔍',
+        description: 'v4.326 mostraba "SHARP-FRAMED-ONLY" como output cuando la llamada a KIE.AI fallaba, sin indicar la causa. Esta versión surface el error exacto del motor y mejora los params del request.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Diagnóstico de v4.326: cuando el usuario seleccionaba KIE.AI y el motor fallaba, el sistema caía silenciosamente al fallback framed-only (imagen original centrada sobre fondo gris) y el toast decía "Imagen mejorada sin outpainting IA". El equipo no podía ver el error real para diagnosticar.',
+            'Fix #1 — Surfacing del error en la UI: el toast ahora muestra el mensaje exacto que devolvió el motor (truncado a 200 chars) cuando hay fallback. Permite ver si es problema de API key, de nombre de modelo, de aspect ratio, o de timeout.',
+            'Fix #2 — Dual params en el request a KIE: distintos modelos del gateway usan distintos nombres para los mismos campos (image_size vs aspect_ratio; image_url vs image_urls). Ahora enviamos ambos en cada request; KIE silenciosamente ignora los que no aplican al modelo elegido.',
+            'Fix #3 — Mejor diagnóstico en kieService.js: errores ahora incluyen el body crudo de la respuesta de KIE (primeros 400 chars). Si falla createTask o getTaskDetail, vemos exactamente qué dijo el servidor.',
+            'Fix #4 — Detección de errores HTTP 200 con code != 200: algunas APIs devuelven HTTP 200 pero un campo "code" distinto de 200 que indica error de aplicación. Ahora detectamos esos casos.',
+            'Fix #5 — Soporte de más variantes de campo en el output (image_urls, images, result_urls, image_url, result_url) para compatibilidad con distintos modelos.',
+            'No cambia el comportamiento de generación cuando KIE responde OK; solo cambia el comportamiento cuando falla (ahora informa, antes silenciaba).'
+        ]
+    },
     {
         version: 'v4.326',
         date: '2026-05-16',

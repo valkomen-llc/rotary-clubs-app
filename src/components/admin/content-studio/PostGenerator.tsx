@@ -136,9 +136,13 @@ const PostGenerator: React.FC = () => {
                 setGeneratedFormat(data.metadata?.format || format);
                 setMetadata(data.metadata || null);
                 if (data.metadata?.imageError) {
-                    toast.warning('Imagen mejorada sin outpainting IA (fallback). Reintenta para el resultado completo.', { id: toastId });
+                    const errMsg = String(data.metadata.imageError).slice(0, 200);
+                    toast.error(
+                        `Motor ${engineLabel} falló (fallback aplicado). Error: ${errMsg}`,
+                        { id: toastId, duration: 15000 }
+                    );
                 } else {
-                    toast.success('¡Contenido generado con éxito!', { id: toastId });
+                    toast.success(`¡Contenido generado con ${engineLabel}!`, { id: toastId });
                 }
             } else {
                 toast.error(data.error || 'Error al generar el contenido', { id: toastId });
