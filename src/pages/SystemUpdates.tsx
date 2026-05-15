@@ -24,9 +24,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.328 | 2026-05-16 (POSTGEN — fix endpoint KIE: getTaskDetail→recordInfo, soporta nuevo formato resultJson 🎯)
-// Cache bust: 2026-05-16 04:30 (POSTGEN KIE ENDPOINT FIX v4.328 🎯)
+// DISTRICT HEALTH IQ V4.329 | 2026-05-16 (SOCIAL ENGINE — Fase 1: OAuth Meta robusto con Page tokens + IG Business + cifrado AES-256-GCM 🔌)
+// Cache bust: 2026-05-16 05:00 (SOCIAL ENGINE PHASE 1 v4.329 🔌)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.329',
+        date: '2026-05-16',
+        title: 'Motor de Publicación Social — Fase 1: Foundation 🔌',
+        description: 'Arquitectura base del módulo que va a permitir publicar automáticamente en redes sociales. Fase 1 cubre conexión robusta vía OAuth con Facebook + Instagram. Publicar y programar quedan para Fase 2 y 3.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Nueva arquitectura modular: separación clara entre OAuth, persistencia, y futuro motor de publicación. Cada plataforma (Facebook, Instagram, LinkedIn, X) es un módulo independiente.',
+            'OAuth Meta corregido: la implementación previa sólo guardaba el token del USUARIO (que NO sirve para publicar en Páginas). Ahora el flujo captura los Page Access Tokens (long-lived) de TODAS las Páginas que el usuario administra + descubre automáticamente las cuentas de Instagram Business linkeadas a cada Página.',
+            'Cifrado de tokens: AES-256-GCM con tags de autenticación, IV aleatorio por token, prefijo de versión "v1:" para soportar key rotation futura. Implementación en server/lib/tokenCrypto.js. Requiere TOKEN_ENCRYPTION_KEY (32 bytes hex) en Vercel.',
+            'OAuth flow protegido por state HMAC-firmado con ventana de 30 minutos — evita CSRF y replay attacks de la callback.',
+            'Nuevo schema: campos agregados a SocialAccount (pageId, permissions, metadata, lastVerifiedAt, tokenVersion) + unique constraint (clubId, platform, platformId) para evitar duplicados. Nueva tabla SocialPublication con relación M2M a SocialAccount, lista para Fase 2.',
+            'UI refactorizada en "Cuentas Sociales": hero card "Conectar Facebook & Instagram" que dispara OAuth de Meta, grilla de plataformas con health badges (Activa / Reconectar / Expirada), botones por cuenta para verificar token y desconectar. LinkedIn y X aparecen como "Próximamente — Fase 2/3".',
+            'API endpoints: GET /api/social/connect/meta (genera URL OAuth), GET /api/social/callback/meta (público, handler de Meta), GET /api/social/accounts (lista), POST /api/social/accounts/:id/verify (ping live al token), DELETE /api/social/accounts/:id.',
+            'Migración SQL aditiva en server/prisma/migrations/social_publishing_phase_1.sql. Compatible con filas existentes (tokenVersion=0 → marca needsReconnect=true; usuario re-OAuth para upgrade).',
+            'PENDIENTES post-merge: (1) configurar TOKEN_ENCRYPTION_KEY en Vercel, (2) configurar FB_APP_SECRET en Vercel (FB_APP_ID ya está), (3) correr npm run db:push para aplicar el schema en producción.'
+        ]
+    },
     {
         version: 'v4.328',
         date: '2026-05-16',
