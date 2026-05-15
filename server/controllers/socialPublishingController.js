@@ -118,8 +118,13 @@ export const getMetaAuthUrl = async (req, res) => {
                     : 'No tenés un club asociado a tu cuenta'
             });
         }
-        if (!process.env.FB_APP_ID || !process.env.FB_APP_SECRET) {
-            return res.status(500).json({ error: 'FB_APP_ID / FB_APP_SECRET no configuradas en el servidor' });
+        // FB_APP_ID has a hardcoded fallback (it's a public client id); only
+        // FB_APP_SECRET must be set in Vercel. If it's missing the whole OAuth
+        // round-trip is unrecoverable, so we fail fast with a clear message.
+        if (!process.env.FB_APP_SECRET) {
+            return res.status(500).json({
+                error: 'FB_APP_SECRET no está configurada en Vercel. Settings → Environment Variables → agregar FB_APP_SECRET (el "App Secret" de la Facebook Developer App).'
+            });
         }
         const state = signState({ clubId, userId: req.user.id });
         const url = buildAuthUrl({ state, redirectUri: getRedirectUri(req) });
