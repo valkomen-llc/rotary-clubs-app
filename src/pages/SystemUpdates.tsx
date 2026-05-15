@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.319 | 2026-05-15 (POSTGEN — centered layout + quality:high + reinforced fidelity 🎞️)
-// Cache bust: 2026-05-15 22:30 (POSTGEN CENTERED HQ v4.319 🎞️)
+// DISTRICT HEALTH IQ V4.320 | 2026-05-15 (POSTGEN — regression fix: anti-tiling prompt + revert to quality:medium 🚫)
+// Cache bust: 2026-05-15 23:30 (POSTGEN ANTI-TILING v4.320 🚫)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.320',
+        date: '2026-05-15',
+        title: 'Content Studio AI: Fix Regresión — Anti-Tiling 🚫',
+        description: 'Fix de regresión en v4.319: la foto se duplicaba arriba y abajo (efecto mosaico). Revert a configuración estable + nueva prohibición explícita anti-tiling.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Problema crítico observado en v4.319: gpt-image-1 empezó a "tilear" la foto original — la imagen aparecía duplicada en las bandas superior e inferior, con la banderola "rotary youth exchange" repetida dos veces, las personas en silla de ruedas duplicadas, etc.',
+            'Causa raíz: el cambio simultáneo de quality:medium → quality:high + el nuevo prompt "extra pixels at the edges as if the camera had captured a wider frame" hizo que el modelo interpretara "wider frame" como "más fotografía igual" y duplicara el contenido. quality:high amplificó el efecto.',
+            'Fix #1: Revert de quality:high → quality:medium. La calidad media es suficiente y no incentiva al modelo a hacer composiciones complejas tipo mosaico.',
+            'Fix #2: Prompt restaurado al estilo de v4.318 (que funcionaba bien con centrado).',
+            'Fix #3: Nueva instrucción ⚠️ ABSOLUTAMENTE CRÍTICA explícita: "DO NOT contain a copy, duplicate, mirror, tile, echo, or repetition of the unmasked photograph". No replicar la escena, no mostrar las mismas personas otra vez, no mostrar el mismo banner/sign/edificio otra vez.',
+            'Mantengo: centrado siempre, input_fidelity:high, lista negra de objetos, composite-back con feathering, timeout 120s.',
+            'Engine reportado en metadata sigue siendo "gpt-image-1+hi-fidelity+composite".'
+        ]
+    },
     {
         version: 'v4.319',
         date: '2026-05-15',

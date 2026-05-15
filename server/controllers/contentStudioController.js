@@ -143,12 +143,14 @@ const buildOutpaintingPrompt = ({ visualPrompt, layout }) => {
     if (layout.left > 0 || rightPad > 0) directions.push('SIDEWAYS: continue whatever is visible at the side edges (walls, scenery, vegetation, distance) naturally outward');
 
     return [
-        'PURE PHOTOGRAPH EXTENSION TASK. The unmasked center of this canvas is a real photograph that must remain EXACTLY as it is — do not reinterpret, redraw, restyle or modify it in any way. The transparent (masked) areas must be filled with a literal continuation of what the camera would have captured if it had a wider frame.',
+        'Photograph extension task. The transparent areas of this image must be filled with a natural continuation of the unmasked photograph.',
         '',
-        'This is NOT a creative reinterpretation. This is NOT a new image inspired by the original. This is the SAME PHOTOGRAPH with extra pixels added at the edges. Treat the unmasked photograph as a fixed truth and extend only what is logically present at its borders:',
+        'CRITICAL: This is one continuous photograph, not a composite. The unmasked area contains a real photograph — extend the scene that is visible at its edges into the transparent regions:',
         ...directions.map(d => `  • ${d}`),
         '',
-        'The extension must read as the SAME photograph captured by the SAME camera in the SAME moment, simply with a wider frame. Match perspective, lighting direction, color temperature, depth-of-field and grain exactly. Quality should be that of professional photography or cinematic camera capture — high resolution, natural realism.',
+        'The extension must read as the SAME photograph captured by the SAME camera in the SAME moment, simply with a wider frame. Match perspective, lighting direction, color temperature, depth-of-field and grain exactly.',
+        '',
+        '⚠️ ABSOLUTELY CRITICAL — the transparent extension areas MUST NOT contain a copy, duplicate, mirror, tile, echo, or repetition of the unmasked photograph. Do NOT replicate the scene above or below itself. Do NOT show the same people again. Do NOT show the same banner, sign, building, table, or any element again. The extension areas must contain ENTIRELY DIFFERENT pixels — only the surrounding environment that lies just beyond the original frame.',
         '',
         'STRICT — the extension regions must NOT contain:',
         '  • Any people, faces, bodies, silhouettes, figures, hands or crowds (they all already exist in the unmasked center; do not add more)',
@@ -175,7 +177,7 @@ const generateOutpainting = async ({ paddedImage, maskImage, prompt, width, heig
     formData.append('mask', new Blob([maskImage], { type: 'image/png' }), 'mask.png');
     formData.append('prompt', prompt);
     formData.append('size', `${width}x${height}`);
-    formData.append('quality', 'high');
+    formData.append('quality', 'medium');
     formData.append('input_fidelity', 'high');
     formData.append('n', '1');
 
@@ -245,7 +247,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.319 — centered layout + quality:high + reinforced fidelity prompt) ---');
+        console.log('--- START GENERATE POST (v4.320 — REGRESSION FIX: revert to medium quality + explicit anti-tiling prompt) ---');
         const { imageUrl, config = {} } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
