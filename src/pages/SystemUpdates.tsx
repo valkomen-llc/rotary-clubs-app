@@ -24,9 +24,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.338 | 2026-05-16 (POSTGEN — un solo click genera portrait + landscape en paralelo, auto-switch por tab 🔀)
-// Cache bust: 2026-05-16 20:00 (POSTGEN DUAL FORMAT v4.338 🔀)
+// DISTRICT HEALTH IQ V4.339 | 2026-05-16 (MEDIA LIBRARY — categorización por fuente: Clubes/Distritos/Proyectos/Plataforma + búsqueda inteligente 📚)
+// Cache bust: 2026-05-16 20:30 (MEDIA LIBRARY SOURCE TAGGING v4.339 📚)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.339',
+        date: '2026-05-16',
+        title: 'Biblioteca Multimedia — Fase 1: Categorización por Fuente 📚',
+        description: 'Refactor del modal de selección de imágenes con filtros por categoría (Clubes/Distritos/Proyectos/Plataforma), drill-down por sitio específico, búsqueda inteligente y badges visuales.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Schema: Media gana tres campos nuevos — sourceType (club/district/project/platform), sourceId (id del owner), sourceLabel (nombre cacheado para listing rápido sin joins). Índice (sourceType, sourceId) para queries eficientes.',
+            'Backfill automático en la migración SQL: imágenes con clubId existente quedan asociadas al club correspondiente (sourceLabel = club.name); imágenes sin clubId van a "platform" (assets globales). Aditivo e idempotente — no rompe filas existentes.',
+            'Upload endpoint mejorado: infiere automáticamente sourceType+sourceLabel desde el contexto del request (clubId del usuario). Puede recibir overrides explícitos vía body params para uploads desde proyectos o eventos en el futuro.',
+            'Listing endpoint GET /api/media: nuevos query params sourceType, sourceId, search. Filtra a nivel SQL (no in-memory) → escalable a bibliotecas con miles de imágenes.',
+            'Nuevo endpoint GET /api/media/sources?type=club: devuelve las fuentes distintas que el caller puede ver, con conteo de imágenes por sitio. Powers el dropdown drill-down.',
+            'Frontend MediaPicker rediseñado: chips de categoría en el toolbar superior (con conteos), dropdown drill-down de sitio específico, buscador con debounce 250ms, badges de categoría con icono + color por tipo en cada thumbnail, source label en hover/selected.',
+            'Eliminado el texto "Se enviarán las imágenes a OpenAI DALL-E 3 HD" del footer (ya no es exacto con el sistema multi-motor de v4.326+).',
+            'Próximas fases: agregar nuevas entidades (Event, Foundation, Conference, Association) cuando los modelos correspondientes existan en el schema. La arquitectura ya soporta sumar categorías sin tocar el resto del flow.'
+        ]
+    },
     {
         version: 'v4.338',
         date: '2026-05-16',
