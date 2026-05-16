@@ -94,21 +94,20 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
         }
     }, [API, selectedCategory, selectedSourceId, searchQuery]);
 
-    // Load distinct sources whenever the category filter changes (so the second
-    // dropdown only lists relevant entities — clubs when category=club, etc.).
+    // Load ALL sources once (no type filter). We slice them client-side for the
+    // dropdown so chip counts stay stable regardless of the active category.
     const fetchSources = useCallback(async () => {
         try {
             const token = localStorage.getItem('rotary_token');
-            const url = selectedCategory === 'all'
-                ? `${API}/media/sources`
-                : `${API}/media/sources?type=${encodeURIComponent(selectedCategory)}`;
-            const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+            const response = await fetch(`${API}/media/sources`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
             if (response.ok) {
                 const data = await response.json();
                 setSources(data);
             }
         } catch { /* silent */ }
-    }, [API, selectedCategory]);
+    }, [API]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -116,13 +115,22 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]);
 
+    // Load the full sources list once when the modal opens.
     useEffect(() => {
         if (!isOpen) return;
-        // Reset source filter when changing category (the previously selected
-        // source belongs to a different category and would never match).
-        setSelectedSourceId('');
         fetchSources();
-    }, [isOpen, selectedCategory, fetchSources]);
+    }, [isOpen, fetchSources]);
+
+    // Reset the source filter when the user switches category.
+    useEffect(() => {
+        setSelectedSourceId('');
+    }, [selectedCategory]);
+
+    // Sources filtered to the active category — drives the dropdown.
+    const sourcesForCategory = useMemo(() => {
+        if (selectedCategory === 'all' || selectedCategory === 'platform') return [];
+        return sources.filter(s => s.sourceType === selectedCategory);
+    }, [sources, selectedCategory]);
 
     // Debounce media fetch on search input to avoid hammering the API on every keystroke.
     useEffect(() => {
@@ -180,7 +188,7 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
                 </div>
 
                 {/* Category chips */}
-                <div className="px-4 pt-4 pb-2 bg-white border-b border-gray-50 flex gap-2 overflow-x-auto scrollbar-hide">
+                <div className="px-4 pt-3 pb-2 bg-white border-b border-gray-50 flex gap-1.5 overflow-x-auto scrollbar-hide">
                     {CATEGORIES.map(cat => {
                         const Icon = cat.icon;
                         const active = selectedCategory === cat.id;
@@ -189,17 +197,17 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
                             <button
                                 key={cat.id}
                                 onClick={() => setSelectedCategory(cat.id)}
-                                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-black whitespace-nowrap transition-all border ${
+                                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-black whitespace-nowrap transition-all border flex-shrink-0 ${
                                     active
                                         ? `${cat.bg} ${cat.color} border-current shadow-sm`
                                         : 'bg-gray-50 border-gray-100 text-gray-500 hover:bg-gray-100'
                                 }`}
                             >
-                                <Icon className="w-3.5 h-3.5" />
+                                <Icon className="w-3 h-3" />
                                 <span className="uppercase tracking-wide">{cat.label}</span>
                                 {count > 0 && (
-                                    <span className={`text-[9px] px-1.5 py-0.5 rounded-md ${active ? 'bg-white/60' : 'bg-gray-200 text-gray-600'}`}>
-                                        {count}
+                                    <span className={`text-[9px] px-1 py-0.5 rounded ${active ? 'bg-white/70' : 'bg-gray-200 text-gray-600'}`}>
+                                        {count > 999 ? `${Math.floor(count / 1000)}k` : count}
                                     </span>
                                 )}
                             </button>
@@ -223,12 +231,12 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
                         <select
                             value={selectedSourceId}
                             onChange={(e) => setSelectedSourceId(e.target.value)}
-                            className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all sm:w-64"
+                            className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all sm:w-72"
                         >
-                            <option value="">— Todos los {categoryMeta(selectedCategory).label.toLowerCase()} —</option>
-                            {sources.map(s => (
+                            <option value="">— Todos los {categoryMeta(selectedCategory).label.toLowerCase()} ({sourcesForCategory.length}) —</option>
+                            {sourcesForCategory.map(s => (
                                 <option key={`${s.sourceType}:${s.sourceId}`} value={s.sourceId || ''}>
-                                    {s.sourceLabel} ({s.imageCount})
+                                    {s.sourceLabel}{s.imageCount > 0 ? ` (${s.imageCount})` : ''}
                                 </option>
                             ))}
                         </select>

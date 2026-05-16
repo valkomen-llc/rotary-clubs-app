@@ -403,55 +403,86 @@ router.get('/', authMiddleware, async (req, res) => {
 });
 
 // GET /api/media/sources?type=club
-// Returns the distinct sources the caller can see, grouped by sourceType, with
-// image counts. Powers the "Asignar a..." dropdown in the MediaPicker so users
-// can drill into a specific club / district / project without scrolling through
-// thousands of images.
+// Returns the universe of "destinations" the caller can pick to drill into:
+// every entity from the corresponding table (Club / District / Project) PLUS
+// the image count for each. Entities with zero images are still returned so
+// the user can see the full structure of the platform and tag new uploads
+// to any of them.
 router.get('/sources', authMiddleware, async (req, res) => {
     try {
         const { role, clubId: userClubId, districtId } = req.user;
         const requestedType = req.query.type || null;
 
-        const where = [];
-        const params = [];
-        let p = 1;
+        const types = requestedType ? [requestedType] : ['club', 'district', 'project', 'platform'];
+        const results = [];
 
-        if (role === 'administrator') {
-            // sees all
-        } else if (role === 'district_admin') {
-            const dId = districtId || userClubId;
-            where.push(`("clubId" = $${p} OR "clubId" IN (SELECT id FROM "Club" WHERE "districtId" = $${p + 1}) OR "clubId" IS NULL)`);
-            params.push(userClubId, dId);
-            p += 2;
-        } else if (userClubId) {
-            where.push(`"clubId" = $${p}`);
-            params.push(userClubId);
-            p += 1;
-        } else {
-            where.push(`"clubId" IS NULL`);
+        // ----- CLUBS -----
+        if (types.includes('club')) {
+            let cQ, cParams;
+            if (role === 'administrator') {
+                cQ = `SELECT c."id", c."name",
+                        (SELECT COUNT(*)::int FROM "Media" m
+                         WHERE m."sourceType" = 'club' AND m."sourceId" = c."id") AS "imageCount"
+                      FROM "Club" c ORDER BY c."name" ASC`;
+                cParams = [];
+            } else if (role === 'district_admin') {
+                const dId = districtId || userClubId;
+                cQ = `SELECT c."id", c."name",
+                        (SELECT COUNT(*)::int FROM "Media" m
+                         WHERE m."sourceType" = 'club' AND m."sourceId" = c."id") AS "imageCount"
+                      FROM "Club" c
+                      WHERE c."id" = $1 OR c."districtId" = $2
+                      ORDER BY c."name" ASC`;
+                cParams = [userClubId, dId];
+            } else if (userClubId) {
+                cQ = `SELECT c."id", c."name",
+                        (SELECT COUNT(*)::int FROM "Media" m
+                         WHERE m."sourceType" = 'club' AND m."sourceId" = c."id") AS "imageCount"
+                      FROM "Club" c WHERE c."id" = $1`;
+                cParams = [userClubId];
+            } else {
+                cQ = null;
+            }
+            if (cQ) {
+                const r = await db.query(cQ, cParams);
+                for (const row of r.rows) {
+                    results.push({ sourceType: 'club', sourceId: row.id, sourceLabel: row.name || 'Sin nombre', imageCount: row.imageCount });
+                }
+            }
         }
 
-        if (requestedType) {
-            where.push(`"sourceType" = $${p}`);
-            params.push(requestedType);
-            p += 1;
+        // ----- DISTRICTS -----
+        if (types.includes('district')) {
+            const dQ = `SELECT d."id", d."name",
+                          (SELECT COUNT(*)::int FROM "Media" m
+                           WHERE m."sourceType" = 'district' AND m."sourceId" = d."id") AS "imageCount"
+                        FROM "District" d ORDER BY d."name" ASC`;
+            const r = await db.query(dQ);
+            for (const row of r.rows) {
+                results.push({ sourceType: 'district', sourceId: row.id, sourceLabel: row.name || 'Sin nombre', imageCount: row.imageCount });
+            }
         }
 
-        let query = `SELECT "sourceType", "sourceId", "sourceLabel", COUNT(*)::int AS "imageCount"
-                     FROM "Media"`;
-        if (where.length) query += ' WHERE ' + where.join(' AND ');
-        query += ` GROUP BY "sourceType", "sourceId", "sourceLabel"
-                   ORDER BY COUNT(*) DESC`;
+        // ----- PROJECTS (uses `title`, not `name`) -----
+        if (types.includes('project')) {
+            const pQ = `SELECT p."id", p."title",
+                          (SELECT COUNT(*)::int FROM "Media" m
+                           WHERE m."sourceType" = 'project' AND m."sourceId" = p."id") AS "imageCount"
+                        FROM "Project" p ORDER BY p."title" ASC`;
+            const r = await db.query(pQ);
+            for (const row of r.rows) {
+                results.push({ sourceType: 'project', sourceId: row.id, sourceLabel: row.title || 'Sin título', imageCount: row.imageCount });
+            }
+        }
 
-        const result = await db.query(query, params);
-        // Sources with NULL labels get a friendly default so the UI never shows blanks.
-        const sources = result.rows.map(r => ({
-            sourceType: r.sourceType,
-            sourceId: r.sourceId,
-            sourceLabel: r.sourceLabel || (r.sourceType === 'platform' ? 'Plataforma' : 'Sin nombre'),
-            imageCount: r.imageCount
-        }));
-        res.json(sources);
+        // ----- PLATFORM (synthetic single entry) -----
+        if (types.includes('platform')) {
+            const pfQ = `SELECT COUNT(*)::int AS c FROM "Media" WHERE "sourceType" = 'platform'`;
+            const r = await db.query(pfQ);
+            results.push({ sourceType: 'platform', sourceId: null, sourceLabel: 'Plataforma', imageCount: r.rows[0]?.c || 0 });
+        }
+
+        res.json(results);
     } catch (error) {
         console.error('Fetch media sources error:', error);
         res.status(500).json({ error: 'Error fetching media sources' });
