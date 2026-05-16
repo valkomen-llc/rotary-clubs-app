@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.335 | 2026-05-16 (SOCIAL ENGINE — Fase 2: botón PUBLICAR AHORA real con Graph API a FB Pages + IG Business 📤)
-// Cache bust: 2026-05-16 18:00 (SOCIAL ENGINE PHASE 2 PUBLISH v4.335 📤)
+// DISTRICT HEALTH IQ V4.336 | 2026-05-16 (POSTGEN — cambio a 4:5 (1080×1350) para portrait, ratio nativo FB/IG sin margenes 🖼)
+// Cache bust: 2026-05-16 19:00 (POSTGEN PORTRAIT 4:5 v4.336 🖼)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.336',
+        date: '2026-05-16',
+        title: 'PostGenerator — Portrait 4:5 (ratio nativo FB/IG) 🖼',
+        description: 'Cambiado el aspecto portrait de 2:3 (1024×1536) a 4:5 (1080×1350). Es el ratio recomendado oficial por Meta para posts portrait en Facebook e Instagram.',
+        type: 'enhancement',
+        author: 'Claude',
+        details: [
+            'Problema observado: al publicar a Facebook con el formato 2:3 previo, la imagen se veía angosta con "márgenes" del fondo gris/negro del dark mode de FB a los lados, porque la columna del feed espera ratios más cercanos a 4:5.',
+            'Cambio: FORMAT_SIZES.portrait pasa de 1024×1536 (2:3) a 1080×1350 (4:5). Mismo aspect que IG/FB usan internamente para portrait feed.',
+            'KIE.AI Nano Banana: ahora le pedimos directamente aspect_ratio "4:5" en el createTask.',
+            'OpenAI gpt-image-1: la API solo acepta tres sizes (1024×1024, 1024×1536, 1536×1024). Para 4:5 generamos en el más cercano (1024×1536 = 2:3) y centre-cropeamos a 4:5 vía sharp. La crop es geometría pura — no aplica composite/mask/blur — respeta la regla "no postprocesar" del equipo.',
+            'Nueva función normaliseToTarget en el controller: aplicada al output de TODOS los engines para garantizar dimensiones canónicas (1080×1350 portrait). fit: "cover" centrado, sin distorsión.',
+            'Bonus: como la AI ahora tiene que extender menos verticalmente, hay menos "drift" / contenido inventado en los bordes superior/inferior. Las personas y el contexto central quedan más cerca del original.',
+            'Badge en la UI actualizado: "FB · IG · LINKEDIN · 4:5".'
+        ]
+    },
     {
         version: 'v4.335',
         date: '2026-05-16',

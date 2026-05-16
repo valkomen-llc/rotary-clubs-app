@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.335.0",
-  "cache_bust": "2026-05-16 18:00 (SOCIAL ENGINE PHASE 2 PUBLISH v4.335 📤)",
+  "version": "4.336.0",
+  "cache_bust": "2026-05-16 19:00 (POSTGEN PORTRAIT 4:5 v4.336 🖼)",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.335 | 2026-05-16 (SOCIAL ENGINE — Fase 2: botón PUBLICAR AHORA real con Graph API a FB Pages + IG Business 📤)",
+  "//": "DISTRICT HEALTH IQ V4.336 | 2026-05-16 (POSTGEN — cambio a 4:5 (1080×1350) para portrait, ratio nativo FB/IG sin margenes 🖼)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
