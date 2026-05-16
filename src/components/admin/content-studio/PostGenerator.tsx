@@ -118,10 +118,21 @@ const PostGenerator: React.FC = () => {
     });
     const [activePlatform, setActivePlatform] = useState<Platform>('facebook');
     const [generatedContent, setGeneratedContent] = useState<GeneratedData | null>(null);
-    const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
-    const [generatedFormat, setGeneratedFormat] = useState<TargetFormat | null>(null);
+    // Map of format → url. The legacy `generatedImageUrl` is derived from this map
+    // (it points at the image for the format that matches the active platform).
+    const [generatedImages, setGeneratedImages] = useState<Partial<Record<TargetFormat, string>>>({});
     const [metadata, setMetadata] = useState<GenerationMetadata | null>(null);
     const [editingCopy, setEditingCopy] = useState(false);
+
+    // Derived: which image to show for the currently active platform.
+    const activeFormat: TargetFormat = PLATFORM_TO_FORMAT[activePlatform];
+    const generatedImageUrl = generatedImages[activeFormat]
+        || generatedImages.portrait
+        || generatedImages.landscape
+        || null;
+    const generatedFormat: TargetFormat | null = generatedImages[activeFormat]
+        ? activeFormat
+        : (generatedImages.portrait ? 'portrait' : (generatedImages.landscape ? 'landscape' : null));
 
     // Publishing state (Fase 2 del Motor Social)
     const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
@@ -130,7 +141,7 @@ const PostGenerator: React.FC = () => {
     const [publishOutcomes, setPublishOutcomes] = useState<PublishOutcome[] | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const runGeneration = async (format: TargetFormat) => {
+    const runGeneration = async () => {
         if (!selectedImage) {
             toast.error('Por favor selecciona una imagen primero');
             return;
@@ -139,11 +150,7 @@ const PostGenerator: React.FC = () => {
         setIsGenerating(true);
         const engineMeta = ENGINES.find((e) => e.id === aiConfig.engine);
         const engineLabel = engineMeta?.label || 'IA';
-        const toastId = toast.loading(
-            format === 'landscape'
-                ? `Generando versión landscape con ${engineLabel}…`
-                : `Generando publicación con ${engineLabel}…`
-        );
+        const toastId = toast.loading(`Generando portrait + landscape con ${engineLabel}…`);
 
         try {
             const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/content-studio/generate-post`, {
@@ -157,7 +164,9 @@ const PostGenerator: React.FC = () => {
                     imageUrl: selectedImage.url,
                     config: {
                         ...aiConfig,
-                        targetFormat: format
+                        // Pedimos los dos formatos en paralelo: el backend genera portrait
+                        // (FB/IG/LinkedIn) y landscape (X) en una sola corrida.
+                        formats: ['portrait', 'landscape']
                     }
                 })
             });
@@ -166,8 +175,16 @@ const PostGenerator: React.FC = () => {
 
             if (response.ok && data.success) {
                 setGeneratedContent(data.content);
-                setGeneratedImageUrl(data.generatedImageUrl);
-                setGeneratedFormat(data.metadata?.format || format);
+                // Map nuevo del backend: { portrait: { url, engine }, landscape: { url, engine } }
+                const imgMap: Partial<Record<TargetFormat, string>> = {};
+                if (data.generatedImages?.portrait?.url) imgMap.portrait = data.generatedImages.portrait.url;
+                if (data.generatedImages?.landscape?.url) imgMap.landscape = data.generatedImages.landscape.url;
+                // Fallback al campo legacy si el backend solo devolvió uno
+                if (!imgMap.portrait && !imgMap.landscape && data.generatedImageUrl) {
+                    const fmt = (data.metadata?.format || 'portrait') as TargetFormat;
+                    imgMap[fmt] = data.generatedImageUrl;
+                }
+                setGeneratedImages(imgMap);
                 setMetadata(data.metadata || null);
                 const imgErr = data.metadata?.imageError;
                 const copyErr = data.metadata?.copyError;
@@ -178,7 +195,8 @@ const PostGenerator: React.FC = () => {
                 } else if (copyErr) {
                     toast.warning(`Imagen OK con ${engineLabel}, pero el copy falló: ${String(copyErr).slice(0, 200)}`, { id: toastId, duration: 15000 });
                 } else {
-                    toast.success(`¡Contenido generado con ${engineLabel}!`, { id: toastId });
+                    const formats = Object.keys(imgMap).length;
+                    toast.success(`¡Contenido generado en ${formats} formato${formats !== 1 ? 's' : ''} con ${engineLabel}!`, { id: toastId });
                 }
             } else {
                 toast.error(data.error || 'Error al generar el contenido', { id: toastId });
@@ -190,9 +208,14 @@ const PostGenerator: React.FC = () => {
         }
     };
 
-    const handleGenerate = () => runGeneration(PLATFORM_TO_FORMAT[activePlatform]);
+    const handleGenerate = () => runGeneration();
 
-    const formatMismatch = generatedFormat !== null && generatedFormat !== PLATFORM_TO_FORMAT[activePlatform];
+    // Mismatch only possible if the backend returned a single format (older API
+    // version or a partial failure). In normal flow both formats arrive together
+    // and the active platform's format is always available.
+    const formatMismatch = generatedFormat !== null
+        && generatedFormat !== PLATFORM_TO_FORMAT[activePlatform]
+        && !generatedImages[PLATFORM_TO_FORMAT[activePlatform]];
 
     const handleCopyAll = async () => {
         if (!generatedContent) return;
@@ -235,8 +258,7 @@ const PostGenerator: React.FC = () => {
             if (response.ok) {
                 setSelectedImage({ id: data.id, url: data.url, name: file.name });
                 setGeneratedContent(null);
-                setGeneratedImageUrl(null);
-                setGeneratedFormat(null);
+                setGeneratedImages({});
                 toast.success('Imagen lista', { id: toastId });
             }
         } catch (error: any) {
@@ -274,12 +296,15 @@ const PostGenerator: React.FC = () => {
         } catch { /* silent */ }
     }, []);
 
+    // Re-fetch accounts and reset outcomes when a NEW generation completes (vs
+    // just switching between portrait/landscape tabs). We watch generatedImages
+    // identity, which only changes on a fresh generation.
     useEffect(() => {
-        if (generatedImageUrl) {
+        if (Object.keys(generatedImages).length > 0) {
             fetchConnectedAccounts();
             setPublishOutcomes(null);
         }
-    }, [generatedImageUrl, fetchConnectedAccounts]);
+    }, [generatedImages, fetchConnectedAccounts]);
 
     const toggleAccount = (id: string) => {
         setSelectedAccountIds(prev => {
@@ -291,7 +316,11 @@ const PostGenerator: React.FC = () => {
     };
 
     const publishNow = async () => {
-        if (!generatedImageUrl || !generatedContent) {
+        // Phase 2 currently supports FB Pages + IG Business — both want the
+        // portrait 4:5 image, not the landscape one. We prefer portrait, fall
+        // back to whatever is available if portrait somehow didn't generate.
+        const publishImageUrl = generatedImages.portrait || generatedImages.landscape || null;
+        if (!publishImageUrl || !generatedContent) {
             toast.error('Generá la publicación antes de publicar');
             return;
         }
@@ -312,7 +341,7 @@ const PostGenerator: React.FC = () => {
                 },
                 body: JSON.stringify({
                     accountIds: Array.from(selectedAccountIds),
-                    imageUrl: generatedImageUrl,
+                    imageUrl: publishImageUrl,
                     copies: generatedContent,
                     generatedBy: metadata?.engine ? `ai-${metadata.engine.split('+')[0]}` : 'ai'
                 })
@@ -565,20 +594,20 @@ const PostGenerator: React.FC = () => {
                                         <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
                                         <div className="flex-1">
                                             <p className="text-xs font-black text-amber-900 mb-1">
-                                                Esta plataforma usa otro formato
+                                                Falta el formato de esta plataforma
                                             </p>
                                             <p className="text-[11px] text-amber-800 mb-3 font-bold">
                                                 {activePlatform === 'x'
-                                                    ? 'X usa landscape 3:2. La imagen actual es portrait.'
-                                                    : 'Esta red usa portrait 4:5. La imagen actual es landscape.'}
+                                                    ? 'X usa landscape 3:2. La generación no completó esa versión.'
+                                                    : 'Esta red usa portrait 4:5. La generación no completó esa versión.'}
                                             </p>
                                             <button
-                                                onClick={() => runGeneration(PLATFORM_TO_FORMAT[activePlatform])}
+                                                onClick={runGeneration}
                                                 disabled={isGenerating}
                                                 className="bg-amber-600 text-white text-[10px] font-black px-3 py-2 rounded-xl hover:bg-amber-700 disabled:bg-gray-300 flex items-center gap-2"
                                             >
                                                 <RefreshCw className={`w-3 h-3 ${isGenerating ? 'animate-spin' : ''}`} />
-                                                GENERAR VERSIÓN {activePlatform === 'x' ? 'LANDSCAPE' : 'PORTRAIT'}
+                                                REGENERAR AMBOS FORMATOS
                                             </button>
                                         </div>
                                     </div>

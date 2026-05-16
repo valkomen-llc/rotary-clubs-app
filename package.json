@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.337.0",
-  "cache_bust": "2026-05-16 19:30 (POSTGEN PREVIEW 4:5 v4.337 📐)",
+  "version": "4.338.0",
+  "cache_bust": "2026-05-16 20:00 (POSTGEN DUAL FORMAT v4.338 🔀)",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.337 | 2026-05-16 (POSTGEN — fix preview container al ratio 4:5 real, sin margenes negros 📐)",
+  "//": "DISTRICT HEALTH IQ V4.338 | 2026-05-16 (POSTGEN — un solo click genera portrait + landscape en paralelo, auto-switch por tab 🔀)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
