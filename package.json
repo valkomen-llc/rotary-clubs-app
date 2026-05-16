@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.333.0",
-  "cache_bust": "2026-05-16 07:00 (SOCIAL META ENV NAMING v4.333 🏷️)",
+  "version": "4.334.0",
+  "cache_bust": "2026-05-16 17:30 (POSTGEN COPY ERROR SURFACE v4.334 📝)",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.333 | 2026-05-16 (SOCIAL ENGINE — aceptar META_APP_* además de FB_APP_*; usar las env vars existentes del equipo 🏷️)",
+  "//": "DISTRICT HEALTH IQ V4.334 | 2026-05-16 (POSTGEN — surface error de GPT-4o copy cuando falla silenciosamente 📝)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

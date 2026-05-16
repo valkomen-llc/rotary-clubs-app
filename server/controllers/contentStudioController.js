@@ -231,6 +231,7 @@ export const generatePost = async (req, res) => {
             linkedin: { copy: '', hashtags: '', cta: '' },
             visual_prompt: ''
         };
+        let copyError = null;
         try {
             const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
@@ -288,12 +289,18 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
                 })
             });
             const gptData = await gptResponse.json();
-            const raw = gptData?.choices?.[0]?.message?.content;
-            if (raw) {
-                const parsedRaw = JSON.parse(raw);
-                parsed = { ...parsed, ...parsedRaw };
+            if (!gptResponse.ok) {
+                const reason = gptData?.error?.message || `HTTP ${gptResponse.status}`;
+                throw new Error(`GPT-4o copy falló: ${reason}`);
             }
+            const raw = gptData?.choices?.[0]?.message?.content;
+            if (!raw) {
+                throw new Error(`GPT-4o devolvió sin contenido (finish_reason: ${gptData?.choices?.[0]?.finish_reason || 'unknown'})`);
+            }
+            const parsedRaw = JSON.parse(raw);
+            parsed = { ...parsed, ...parsedRaw };
         } catch (e) {
+            copyError = e.message;
             console.error('[STUDIO] GPT-4o copy/analysis failed:', e.message);
             // Continue with empty copy rather than failing the whole pipeline.
         }
@@ -351,7 +358,8 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
                 format: targetFormat,
                 dimensions: `${targetW}x${targetH}`,
                 limits: PLATFORM_LIMITS,
-                ...(imageError ? { imageError } : {})
+                ...(imageError ? { imageError } : {}),
+                ...(copyError ? { copyError } : {})
             }
         });
     } catch (error) {
