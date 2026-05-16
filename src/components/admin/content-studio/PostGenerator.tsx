@@ -531,10 +531,10 @@ const PostGenerator: React.FC = () => {
                             </div>
                         ) : (
                             <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 flex flex-col gap-6 h-full">
-                                {/* Preview Container — aspect matches the format that was actually generated */}
-                                <div className={`relative group mx-auto bg-black rounded-3xl overflow-hidden shadow-2xl border-[8px] border-white transition-all duration-500 ${generatedFormat === 'landscape' ? 'max-w-full aspect-[3/2]' : 'max-w-[340px] aspect-[2/3]'}`}>
+                                {/* Preview Container — aspect matches the format that was actually generated (4:5 portrait or 3:2 landscape) */}
+                                <div className={`relative group mx-auto bg-gray-50 rounded-3xl overflow-hidden shadow-2xl border-[8px] border-white transition-all duration-500 ${generatedFormat === 'landscape' ? 'max-w-full aspect-[3/2]' : 'max-w-[380px] aspect-[4/5]'}`}>
                                     {generatedImageUrl ? (
-                                        <img src={generatedImageUrl} alt="AI Created" className="w-full h-full object-contain" />
+                                        <img src={generatedImageUrl} alt="AI Created" className="w-full h-full object-cover" />
                                     ) : null}
 
                                     <div className="absolute top-4 right-4 flex gap-2">

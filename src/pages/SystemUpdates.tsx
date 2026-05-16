@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.336 | 2026-05-16 (POSTGEN — cambio a 4:5 (1080×1350) para portrait, ratio nativo FB/IG sin margenes 🖼)
-// Cache bust: 2026-05-16 19:00 (POSTGEN PORTRAIT 4:5 v4.336 🖼)
+// DISTRICT HEALTH IQ V4.337 | 2026-05-16 (POSTGEN — fix preview container al ratio 4:5 real, sin margenes negros 📐)
+// Cache bust: 2026-05-16 19:30 (POSTGEN PREVIEW 4:5 v4.337 📐)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.337',
+        date: '2026-05-16',
+        title: 'PostGenerator — Fix Preview al Ratio 4:5 📐',
+        description: 'Tras el cambio a 4:5 en v4.336, el container de preview seguía en 2:3 y dejaba bordes negros arriba/abajo de la imagen. Ajustado al ratio real.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Cambio aspect-[2/3] → aspect-[4/5] en el preview container para portrait. Ahora la imagen llena exactamente el frame sin letterboxing.',
+            'Fondo del container: bg-black → bg-gray-50 (por si en algún momento futuro un engine devuelve un ratio distinto al esperado, no se ve negro de letterbox sino un gris discreto).',
+            'object-contain → object-cover: la imagen llena el container exactamente. Como el output del backend está garantizado a 1080×1350 (4:5), no hay distorsión ni recorte adicional.',
+            'max-w-[340px] → max-w-[380px]: leve aumento del ancho del preview para aprovechar mejor el espacio disponible en el panel derecho.'
+        ]
+    },
     {
         version: 'v4.336',
         date: '2026-05-16',
