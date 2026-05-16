@@ -331,47 +331,83 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
             // Continue with empty copy rather than failing the whole pipeline.
         }
 
-        // 3) Image regeneration. Dispatch to the selected engine. All engines obey the
-        //    same contract: same internal prompt, same target aspect, output returned
-        //    AS-IS without composite-back / mask / blur (that postprocessing was
-        //    rejected by the team — see CLAUDE.md for the history).
-        const { width: targetW, height: targetH } = FORMAT_SIZES[targetFormat];
-        const prompt = buildSimplePrompt({ targetFormat });
+        // 3) Image regeneration. By default we now generate BOTH formats in parallel
+        //    (portrait for FB/IG/LinkedIn + landscape for X) so the user doesn't
+        //    have to click "Generar landscape" when they switch tabs. The legacy
+        //    `targetFormat` field is kept for backward compatibility — if explicitly
+        //    set, only that one format is generated.
+        const requestedFormats = Array.isArray(config.formats) && config.formats.length
+            ? config.formats.filter(f => f === 'portrait' || f === 'landscape')
+            : ['portrait', 'landscape'];
+        // If the caller explicitly asked for a single format via `targetFormat`,
+        // honour that. Otherwise default to both.
+        const formatsToGenerate = config.targetFormat && requestedFormats.length === 2
+            ? requestedFormats
+            : requestedFormats;
 
-        let finalUrl = null;
-        let usedEngine = ENGINES[requestedEngine].engineKey;
-        let imageError = null;
-
-        try {
-            let aiBuffer;
-            if (requestedEngine === 'kie') {
-                aiBuffer = await generateWithKie({ imageUrl, prompt, targetFormat });
-            } else if (requestedEngine === 'openai') {
-                aiBuffer = await generateWithOpenAI({
-                    originalBuffer: enhancedBuffer,
-                    prompt,
-                    targetFormat
-                });
-            } else {
-                throw new Error(`Engine '${requestedEngine}' marcado como available pero sin implementación`);
+        const generateOneFormat = async (format) => {
+            const { width: w, height: h } = FORMAT_SIZES[format];
+            const prompt = buildSimplePrompt({ targetFormat: format });
+            try {
+                let aiBuffer;
+                if (requestedEngine === 'kie') {
+                    aiBuffer = await generateWithKie({ imageUrl, prompt, targetFormat: format });
+                } else if (requestedEngine === 'openai') {
+                    aiBuffer = await generateWithOpenAI({
+                        originalBuffer: enhancedBuffer,
+                        prompt,
+                        targetFormat: format
+                    });
+                } else {
+                    throw new Error(`Engine '${requestedEngine}' marcado como available pero sin implementación`);
+                }
+                // Engines return whatever native aspect they support; centre-crop to the
+                // canonical FB/IG dimensions before uploading. Geometry only — no AI,
+                // no overlays, no masks. Preserves identity intact.
+                aiBuffer = await normaliseToTarget(aiBuffer, { width: w, height: h });
+                const url = await uploadGeneratedImage({ buffer: aiBuffer, clubId, variant: `${format}-${requestedEngine}` });
+                return { format, url, engine: ENGINES[requestedEngine].engineKey, error: null, width: w, height: h };
+            } catch (e) {
+                console.warn(`[STUDIO] Engine '${requestedEngine}' falló para ${format}, fallback a framed original:`, e.message);
+                try {
+                    const framedFallback = await buildFramedFallback(enhancedBuffer, w, h);
+                    const url = await uploadGeneratedImage({ buffer: framedFallback, clubId, variant: `${format}-fallback` });
+                    return { format, url, engine: 'sharp-framed-only', error: e.message, width: w, height: h };
+                } catch (fallbackErr) {
+                    return { format, url: null, engine: null, error: `${e.message} | fallback: ${fallbackErr.message}`, width: w, height: h };
+                }
             }
-            // Engines return whatever native aspect they support; centre-crop to the
-            // canonical FB/IG dimensions before uploading. Geometry only — no AI,
-            // no overlays, no masks. Preserves identity intact.
-            aiBuffer = await normaliseToTarget(aiBuffer, { width: targetW, height: targetH });
-            finalUrl = await uploadGeneratedImage({ buffer: aiBuffer, clubId, variant: `${targetFormat}-${requestedEngine}` });
-        } catch (e) {
-            imageError = e.message;
-            console.warn(`[STUDIO] Engine '${requestedEngine}' falló, fallback a framed original:`, e.message);
-        }
+        };
 
-        // Fallback: deliver the enhanced original framed against a neutral backdrop so
-        // the user is never blocked when the AI call errors out.
-        if (!finalUrl) {
-            const framedFallback = await buildFramedFallback(enhancedBuffer, targetW, targetH);
-            finalUrl = await uploadGeneratedImage({ buffer: framedFallback, clubId, variant: `${targetFormat}-fallback` });
-            usedEngine = 'sharp-framed-only';
+        // Run all requested formats in parallel — both KIE.AI calls go out at the
+        // same time, halving the wait compared to sequential generation.
+        const formatResults = await Promise.all(formatsToGenerate.map(generateOneFormat));
+
+        // Build the response: a map { portrait: {...}, landscape: {...} } plus
+        // top-level legacy fields (generatedImageUrl, format, engine) pointing at
+        // the primary format (the one the caller explicitly asked for, or portrait
+        // by default) so existing frontend code keeps working unchanged.
+        const primaryFormat = config.targetFormat === 'landscape' ? 'landscape' : 'portrait';
+        const generatedImages = {};
+        let imageError = null;
+        let usedEngine = null;
+        for (const r of formatResults) {
+            if (r.url) {
+                generatedImages[r.format] = {
+                    url: r.url,
+                    engine: r.engine,
+                    dimensions: `${r.width}x${r.height}`,
+                    error: r.error
+                };
+            }
+            if (r.format === primaryFormat) {
+                imageError = r.error;
+                usedEngine = r.engine;
+            }
         }
+        const primary = generatedImages[primaryFormat] || generatedImages.portrait || generatedImages.landscape;
+        const finalUrl = primary?.url || null;
+        if (!usedEngine && primary?.engine) usedEngine = primary.engine;
 
         res.json({
             success: true,
@@ -381,11 +417,15 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
                 x: parsed.x,
                 linkedin: parsed.linkedin
             },
+            // Legacy: single primary image (kept for backward compat with older callers).
             generatedImageUrl: finalUrl,
+            // New (v4.338+): all generated formats in a map.
+            generatedImages,
             metadata: {
                 engine: usedEngine,
-                format: targetFormat,
-                dimensions: `${targetW}x${targetH}`,
+                format: primaryFormat,
+                formats: Object.keys(generatedImages),
+                dimensions: primary ? `${primary.dimensions}` : null,
                 limits: PLATFORM_LIMITS,
                 ...(imageError ? { imageError } : {}),
                 ...(copyError ? { copyError } : {})

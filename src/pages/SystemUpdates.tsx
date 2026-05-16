@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.337 | 2026-05-16 (POSTGEN — fix preview container al ratio 4:5 real, sin margenes negros 📐)
-// Cache bust: 2026-05-16 19:30 (POSTGEN PREVIEW 4:5 v4.337 📐)
+// DISTRICT HEALTH IQ V4.338 | 2026-05-16 (POSTGEN — un solo click genera portrait + landscape en paralelo, auto-switch por tab 🔀)
+// Cache bust: 2026-05-16 20:00 (POSTGEN DUAL FORMAT v4.338 🔀)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.338',
+        date: '2026-05-16',
+        title: 'PostGenerator — Dual Format Auto (Portrait + Landscape en 1 Click) 🔀',
+        description: 'Antes había que generar manualmente la versión landscape cada vez que el usuario quería preview de X/Twitter. Ahora un solo click en GENERAR CON IA produce los dos formatos en paralelo y se cambia automáticamente al hacer click en cada tab.',
+        type: 'enhancement',
+        author: 'Claude',
+        details: [
+            'Backend: el endpoint /generate-post ahora acepta config.formats = ["portrait", "landscape"] y corre las generaciones en PARALELO con Promise.all. El copy de GPT-4o se ejecuta una sola vez (mismo output para los 4 platforms), las dos imágenes en simultáneo. Latencia total similar a generar solo una.',
+            'Backend: response ampliado con generatedImages = { portrait: { url, engine, dimensions }, landscape: { url, engine, dimensions } }. El campo legacy generatedImageUrl sigue apuntando al primary (compat con clientes viejos).',
+            'Frontend: estado generatedImages: Partial<Record<TargetFormat, string>>. El imageUrl mostrado se deriva automáticamente del activePlatform (FB → portrait, X → landscape). Al cambiar de tab, el preview cambia instantáneamente sin nueva llamada al backend.',
+            'Frontend: eliminado el botón manual "GENERAR VERSIÓN LANDSCAPE" y el banner amarillo de mismatch del flujo principal. Solo aparece como fallback si la generación de uno de los dos formatos falló parcialmente (ej. timeout en KIE).',
+            'Publish: la función publishNow ahora usa explícitamente la URL portrait (FB Pages + IG Business siempre quieren portrait), independientemente del tab activo. Antes mandaba la del tab → riesgo de publicar landscape a IG si estabas en X.',
+            'Toast actualizado: "¡Contenido generado en 2 formatos con KIE.AI!" para confirmar al usuario que ambos están listos.',
+            'Costo: doble llamada al motor de imagen por generación, lo cual el equipo ya hacía manualmente cuando quería ambos formatos. No hay aumento neto, solo mejor UX.'
+        ]
+    },
     {
         version: 'v4.337',
         date: '2026-05-16',
