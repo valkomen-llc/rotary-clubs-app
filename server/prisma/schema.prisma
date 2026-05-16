@@ -198,16 +198,27 @@ model ClubDocument {
 }
 
 model Media {
-  id        String   @id @default(uuid())
-  filename  String
-  url       String
-  type      String
-  size      Int
-  bucket    String?
-  region    String?
-  clubId    String?
-  createdAt DateTime @default(now())
-  s3Key     String?
+  id          String   @id @default(uuid())
+  filename    String
+  url         String
+  type        String
+  size        Int
+  bucket      String?
+  region      String?
+  clubId      String?
+  createdAt   DateTime @default(now())
+  s3Key       String?
+
+  // Source tagging (v4.339): qué entidad/sitio "owns" esta media.
+  // sourceType: "club" | "district" | "project" | "platform" (extensible)
+  // sourceId:   id de la entidad (clubId/districtId/projectId) — null si platform
+  // sourceLabel: nombre legible cacheado para listing rápido sin joins
+  sourceType  String?  @default("platform")
+  sourceId    String?
+  sourceLabel String?
+
+  @@index([sourceType, sourceId])
+  @@index([clubId])
 }
 
 model Project {

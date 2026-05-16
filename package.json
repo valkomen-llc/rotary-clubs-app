@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.338.0",
-  "cache_bust": "2026-05-16 20:00 (POSTGEN DUAL FORMAT v4.338 🔀)",
+  "version": "4.339.0",
+  "cache_bust": "2026-05-16 20:30 (MEDIA LIBRARY SOURCE TAGGING v4.339 📚)",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.338 | 2026-05-16 (POSTGEN — un solo click genera portrait + landscape en paralelo, auto-switch por tab 🔀)",
+  "//": "DISTRICT HEALTH IQ V4.339 | 2026-05-16 (MEDIA LIBRARY — categorización por fuente: Clubes/Distritos/Proyectos/Plataforma + búsqueda inteligente 📚)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

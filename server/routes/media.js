@@ -223,10 +223,41 @@ router.post('/upload', authMiddleware, async (req, res) => {
             const fileUrl = `https://${bucket}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${encodedKey}`;
 
             try {
+                // Resolve source tagging from upload context. Frontend can override
+                // by sending explicit sourceType/sourceId; otherwise we infer from
+                // the most specific entity in scope (clubId beats districtId beats
+                // platform-wide).
+                let sourceType = req.body.sourceType || null;
+                let sourceId = req.body.sourceId || null;
+                let sourceLabel = req.body.sourceLabel || null;
+                if (!sourceType) {
+                    if (targetClubId) {
+                        sourceType = 'club';
+                        sourceId = targetClubId;
+                        try {
+                            const c = await db.query('SELECT name FROM "Club" WHERE id = $1', [targetClubId]);
+                            sourceLabel = c.rows[0]?.name || null;
+                        } catch { /* ignore */ }
+                    } else {
+                        sourceType = 'platform';
+                    }
+                } else if (sourceType !== 'platform' && sourceId && !sourceLabel) {
+                    // Caller gave us the source type+id but no label — try to resolve it.
+                    try {
+                        const tableMap = { club: 'Club', district: 'District', project: 'Project' };
+                        const tbl = tableMap[sourceType];
+                        if (tbl) {
+                            const labelColumn = sourceType === 'project' ? 'title' : 'name';
+                            const r = await db.query(`SELECT "${labelColumn}" AS label FROM "${tbl}" WHERE id = $1`, [sourceId]);
+                            sourceLabel = r.rows[0]?.label || null;
+                        }
+                    } catch { /* ignore */ }
+                }
+
                 const result = await db.query(
-                    `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "createdAt")
-                     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING *`,
-                    [req.file.originalname, fileUrl, fileTypeLocal, req.file.buffer.length, bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, s3Key]
+                    `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "sourceType", "sourceId", "sourceLabel", "createdAt")
+                     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW()) RETURNING *`,
+                    [req.file.originalname, fileUrl, fileTypeLocal, req.file.buffer.length, bucket, process.env.AWS_REGION || 'us-east-1', targetClubId, s3Key, sourceType, sourceId, sourceLabel]
                 );
                 res.json(result.rows[0]);
             } catch (dbError) {
@@ -313,36 +344,117 @@ router.get('/folders', authMiddleware, async (req, res) => {
 router.get('/', authMiddleware, async (req, res) => {
     try {
         const { role, clubId: userClubId, districtId } = req.user;
-        const requestedClubId = req.query.clubId;
-        
-        let query = 'SELECT * FROM "Media"';
-        let params = [];
+        const { sourceType, sourceId, search, type } = req.query;
 
+        const where = [];
+        const params = [];
+        let p = 1;
+
+        // Role-based visibility (kept identical to previous behaviour).
         if (role === 'administrator') {
-            // System Admin sees EVERYTHING across all clubs
-            // No WHERE clause, just the base SELECT
+            // System Admin sees EVERYTHING across all clubs — no clause.
         } else if (role === 'district_admin') {
-            // District admin sees media from their club OR any club in their district
-            // Also include media where clubId is NULL if they are at the district level
             const dId = districtId || userClubId;
-            query += ` WHERE ("clubId" = $1 OR "clubId" IN (SELECT id FROM "Club" WHERE "districtId" = $2) OR "clubId" IS NULL)`;
+            where.push(`("clubId" = $${p} OR "clubId" IN (SELECT id FROM "Club" WHERE "districtId" = $${p + 1}) OR "clubId" IS NULL)`);
             params.push(userClubId, dId);
+            p += 2;
         } else if (userClubId) {
-            // Regular club admin only sees their own club's media
-            query += ' WHERE "clubId" = $1';
+            where.push(`"clubId" = $${p}`);
             params.push(userClubId);
+            p += 1;
         } else {
-            // Fallback for users without clubId
-            query += ' WHERE "clubId" IS NULL';
+            where.push(`"clubId" IS NULL`);
         }
 
+        // New source-tagging filters (v4.339): sourceType is the category
+        // (club/district/project/platform). sourceId narrows to one specific
+        // entity inside that category.
+        if (sourceType) {
+            where.push(`"sourceType" = $${p}`);
+            params.push(sourceType);
+            p += 1;
+        }
+        if (sourceId) {
+            where.push(`"sourceId" = $${p}`);
+            params.push(sourceId);
+            p += 1;
+        }
+        if (type) {
+            where.push(`"type" = $${p}`);
+            params.push(type);
+            p += 1;
+        }
+        if (search) {
+            where.push(`("filename" ILIKE $${p} OR "sourceLabel" ILIKE $${p})`);
+            params.push(`%${search}%`);
+            p += 1;
+        }
+
+        let query = 'SELECT * FROM "Media"';
+        if (where.length) query += ' WHERE ' + where.join(' AND ');
         query += ' ORDER BY "createdAt" DESC';
-        
+
         const result = await db.query(query, params);
         res.json(result.rows);
     } catch (error) {
         console.error('Fetch media error:', error);
         res.status(500).json({ error: 'Error fetching media library' });
+    }
+});
+
+// GET /api/media/sources?type=club
+// Returns the distinct sources the caller can see, grouped by sourceType, with
+// image counts. Powers the "Asignar a..." dropdown in the MediaPicker so users
+// can drill into a specific club / district / project without scrolling through
+// thousands of images.
+router.get('/sources', authMiddleware, async (req, res) => {
+    try {
+        const { role, clubId: userClubId, districtId } = req.user;
+        const requestedType = req.query.type || null;
+
+        const where = [];
+        const params = [];
+        let p = 1;
+
+        if (role === 'administrator') {
+            // sees all
+        } else if (role === 'district_admin') {
+            const dId = districtId || userClubId;
+            where.push(`("clubId" = $${p} OR "clubId" IN (SELECT id FROM "Club" WHERE "districtId" = $${p + 1}) OR "clubId" IS NULL)`);
+            params.push(userClubId, dId);
+            p += 2;
+        } else if (userClubId) {
+            where.push(`"clubId" = $${p}`);
+            params.push(userClubId);
+            p += 1;
+        } else {
+            where.push(`"clubId" IS NULL`);
+        }
+
+        if (requestedType) {
+            where.push(`"sourceType" = $${p}`);
+            params.push(requestedType);
+            p += 1;
+        }
+
+        let query = `SELECT "sourceType", "sourceId", "sourceLabel", COUNT(*)::int AS "imageCount"
+                     FROM "Media"`;
+        if (where.length) query += ' WHERE ' + where.join(' AND ');
+        query += ` GROUP BY "sourceType", "sourceId", "sourceLabel"
+                   ORDER BY COUNT(*) DESC`;
+
+        const result = await db.query(query, params);
+        // Sources with NULL labels get a friendly default so the UI never shows blanks.
+        const sources = result.rows.map(r => ({
+            sourceType: r.sourceType,
+            sourceId: r.sourceId,
+            sourceLabel: r.sourceLabel || (r.sourceType === 'platform' ? 'Plataforma' : 'Sin nombre'),
+            imageCount: r.imageCount
+        }));
+        res.json(sources);
+    } catch (error) {
+        console.error('Fetch media sources error:', error);
+        res.status(500).json({ error: 'Error fetching media sources' });
     }
 });
 
