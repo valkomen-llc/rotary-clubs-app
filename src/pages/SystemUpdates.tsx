@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.340 | 2026-05-16 (MEDIA LIBRARY — fix layout chips + dropdown lista entities de la DB no solo de media existente 🔧)
-// Cache bust: 2026-05-16 20:45 (MEDIA LIBRARY FIX SOURCES v4.340 🔧)
+// DISTRICT HEALTH IQ V4.341 | 2026-05-16 (MEDIA — recovery del clubId desde s3Key path + fallback en endpoints para imágenes no backfilleadas 🧩)
+// Cache bust: 2026-05-16 21:00 (MEDIA RECOVERY FROM S3KEY v4.341 🧩)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.341',
+        date: '2026-05-16',
+        title: 'Biblioteca Multimedia — Recovery del clubId desde el Path S3 🧩',
+        description: 'En v4.340 el dropdown listaba todos los clubs pero todos en "0 imágenes" porque las 2k imágenes históricas tenían clubId=NULL aunque el path S3 sí guarda el clubId (clubs/<uuid>/images/...). Ahora se recupera.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Migración nueva: media_recovery_from_s3key.sql. Extrae el segundo segmento de s3Key, lo valida contra la tabla Club, y si matchea actualiza sourceType, sourceId, clubId y sourceLabel. Aditivo e idempotente — solo toca rows todavía clasificadas como "platform".',
+            'Endpoint /api/media (listing): fallback de 3 vías cuando se filtra por sourceId — match contra sourceId NUEVO, clubId LEGACY, o el segmento del path s3. Esto hace que el modal funcione INMEDIATAMENTE sin esperar al backfill.',
+            'Endpoint /api/media/sources: el conteo de cada club ahora usa el mismo fallback (sourceId OR clubId OR path s3). Los conteos en el dropdown finalmente reflejan la realidad.',
+            'Conteo de "Plataforma" ajustado: ahora excluye las imágenes que en realidad pertenecen a un club (que estaban duplicadas: contadas en Plataforma Y en su club). Solo cuenta las verdaderamente globales (path "global" o sin segundo segmento UUID).',
+            'Recomendado correr la migración SQL nueva en Neon (server/prisma/migrations/media_recovery_from_s3key.sql) para que el sourceType persistido también quede correcto. El fallback runtime cubre mientras tanto.',
+            'Pendiente Phase 2: refactorizar el tab "Biblioteca" del Content Studio para que muestre imágenes por club (no solo videos AI como ahora).'
+        ]
+    },
     {
         version: 'v4.340',
         date: '2026-05-16',
