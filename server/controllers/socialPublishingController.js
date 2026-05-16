@@ -1,5 +1,5 @@
 /**
- * Social Publishing — Phase 1 controller.
+ * Social Publishing — controller (Phase 1 + Phase 2).
  *
  * Endpoints exposed:
  *
@@ -8,12 +8,14 @@
  *   GET    /api/social/accounts                → list connected accounts for the user's club
  *   POST   /api/social/accounts/:id/verify     → ping token, update status
  *   DELETE /api/social/accounts/:id            → disconnect / forget the account
+ *   POST   /api/social/publish                 → publish a post to one or more accounts (Phase 2)
  *
- * Goal of Phase 1: capture LONG-LIVED Page access tokens (not user tokens) so
- * Phase 2 can actually publish. The previous implementation stored only the
- * user-level token, which the Graph API rejects on /{page}/feed.
+ * Phase 1 captures LONG-LIVED Page access tokens during OAuth. Phase 2 uses
+ * those tokens (decrypted on demand) to call /{page-id}/photos for Facebook
+ * and the 2-step container/publish flow for Instagram. Each publish creates a
+ * SocialPublication row with per-account outcomes for audit and history.
  *
- * Multi-account behaviour: a single OAuth handshake registers EVERY Page the
+ * Multi-account OAuth behaviour: a single handshake registers EVERY Page the
  * user manages as a separate SocialAccount row, and for each Page that has an
  * Instagram Business account linked, a second row is created with
  * platform="instagram" and the IG-side token (same as the Page token, per
@@ -33,6 +35,7 @@ import {
     verifyToken,
     META_SCOPES
 } from '../services/metaService.js';
+import { publishToAccount } from '../services/socialPublishService.js';
 
 const TOKEN_VERSION_CURRENT = 1;
 
@@ -382,5 +385,119 @@ export const disconnectAccount = async (req, res) => {
     } catch (e) {
         console.error('[social] disconnectAccount error:', e);
         res.status(500).json({ error: e.message });
+    }
+};
+
+// ============================================================================
+// POST /api/social/publish
+//
+// Body:
+//   {
+//     accountIds: string[],          // SocialAccount ids to publish to
+//     imageUrl: string,              // The S3 URL of the generated/uploaded image
+//     copies: {                      // Per-platform copy blocks from gpt-4o
+//       facebook:  { copy, hashtags, cta },
+//       instagram: { copy, hashtags, cta },
+//       ...
+//     },
+//     sourceImageId?: string,        // Media-library id if reused (lineage)
+//     generatedBy?: string,          // e.g. "ai-kie", "ai-openai", "manual"
+//   }
+//
+// Authorisation: caller must own (or be admin of) every account id passed.
+// Returns the SocialPublication record with per-account outcomes.
+// ============================================================================
+export const publishPost = async (req, res) => {
+    try {
+        const { accountIds, imageUrl, copies = {}, sourceImageId, generatedBy } = req.body || {};
+        if (!Array.isArray(accountIds) || accountIds.length === 0) {
+            return res.status(400).json({ error: 'accountIds requerido (al menos uno)' });
+        }
+        if (!imageUrl) return res.status(400).json({ error: 'imageUrl requerido' });
+
+        const isAdmin = req.user.role === 'administrator';
+        const accountWhere = { id: { in: accountIds } };
+        if (!isAdmin) {
+            if (!req.user.clubId) return res.status(403).json({ error: 'No tenés club asociado' });
+            accountWhere.clubId = req.user.clubId;
+        }
+        const accounts = await prisma.socialAccount.findMany({ where: accountWhere });
+        if (accounts.length === 0) {
+            return res.status(404).json({ error: 'Ninguna de las cuentas indicadas existe o tenés permiso para usarla' });
+        }
+
+        // All accounts must belong to a single club (a publication is tied to one club).
+        const clubIds = [...new Set(accounts.map(a => a.clubId).filter(Boolean))];
+        if (clubIds.length !== 1) {
+            return res.status(400).json({ error: 'Las cuentas seleccionadas pertenecen a clubs distintos' });
+        }
+        const clubId = clubIds[0];
+
+        // Run all account publishes in parallel. Each returns { ok, externalId?, error? }.
+        const outcomes = await Promise.all(accounts.map(async (acc) => {
+            if (acc.tokenVersion === 0) {
+                return { accountId: acc.id, platform: acc.platform, ok: false, error: 'Token legacy — reconectar Meta para usar esta cuenta' };
+            }
+            if (acc.status !== 'active') {
+                return { accountId: acc.id, platform: acc.platform, ok: false, error: `Cuenta en estado '${acc.status}' — reconectar` };
+            }
+            try {
+                const token = decryptToken(acc.accessToken);
+                const result = await publishToAccount({ account: acc, decryptedToken: token, imageUrl, copies });
+                return {
+                    accountId: acc.id,
+                    platform: acc.platform,
+                    accountName: acc.accountName,
+                    ok: result.ok,
+                    externalId: result.externalId || null,
+                    externalUrl: result.externalUrl || null,
+                    error: result.error || null,
+                    publishedAt: result.ok ? new Date().toISOString() : null
+                };
+            } catch (e) {
+                console.error(`[social] publish to ${acc.id} (${acc.platform}) threw:`, e.message);
+                return { accountId: acc.id, platform: acc.platform, ok: false, error: e.message };
+            }
+        }));
+
+        const someOk = outcomes.some(o => o.ok);
+        const allOk = outcomes.every(o => o.ok);
+        const status = allOk ? 'published' : someOk ? 'partial' : 'error';
+
+        // Persist the publication record for history / audit / future re-publish.
+        const publication = await prisma.socialPublication.create({
+            data: {
+                clubId,
+                userId: req.user.id || null,
+                imageUrl,
+                platformCopies: copies,
+                targetAccounts: outcomes,
+                status,
+                publishedAt: someOk ? new Date() : null,
+                sourceImageId: sourceImageId || null,
+                generatedBy: generatedBy || null,
+                accounts: { connect: accounts.map(a => ({ id: a.id })) }
+            }
+        });
+
+        // Update each account's lastVerifiedAt opportunistically — a successful
+        // publish proves the token works right now.
+        const okAccountIds = outcomes.filter(o => o.ok).map(o => o.accountId);
+        if (okAccountIds.length) {
+            await prisma.socialAccount.updateMany({
+                where: { id: { in: okAccountIds } },
+                data: { lastVerifiedAt: new Date(), status: 'active' }
+            });
+        }
+
+        return res.json({
+            ok: someOk,
+            status,
+            publicationId: publication.id,
+            outcomes
+        });
+    } catch (e) {
+        console.error('[social] publishPost error:', e);
+        return res.status(500).json({ error: e.message });
     }
 };
