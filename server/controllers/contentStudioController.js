@@ -43,10 +43,20 @@ const INTEREST_AREAS = {
 
 const PLATFORM_LIMITS = { facebook: 600, instagram: 2200, x: 280, linkedin: 1300 };
 
-// Native gpt-image-1 sizes. We pick the closest aspect to the user's target.
+// Output dimensions per format. Portrait is 4:5 — Facebook & Instagram's native
+// recommendation for feed posts (less tall than 2:3, so it fills the feed column
+// without leaving dark side margins in FB's dark-mode interface, and the AI has
+// to extend less of the scene = less drift / less filler in top/bottom).
 const FORMAT_SIZES = {
-    portrait: { width: 1024, height: 1536 },  // 2:3 — used for FB / IG / LinkedIn
+    portrait: { width: 1080, height: 1350 },  // 4:5 — used for FB / IG / LinkedIn
     landscape: { width: 1536, height: 1024 }  // 3:2 — used for X / Twitter
+};
+
+// gpt-image-1 only supports three sizes (1024×1024 / 1024×1536 / 1536×1024), so
+// for portrait we ask for the closest (1024×1536 = 2:3) and crop centred to 4:5.
+const ENGINE_NATIVE_SIZES = {
+    portrait: '1024x1536',
+    landscape: '1536x1024'
 };
 
 const fetchImageBuffer = async (url) => {
@@ -75,7 +85,7 @@ const enhanceOriginal = async (buffer) => {
 const buildSimplePrompt = ({ targetFormat }) => {
     const aspectLabel = targetFormat === 'landscape'
         ? 'landscape 3:2 (1536×1024)'
-        : 'portrait 2:3 (1024×1536)';
+        : 'portrait 4:5 (1080×1350)';
     const extendDirection = targetFormat === 'landscape'
         ? 'extending the side scenery (left and right) naturally outward'
         : 'extending the upper background (sky, treetops, ceiling) upward and the lower surface (ground, grass, floor) downward';
@@ -83,16 +93,29 @@ const buildSimplePrompt = ({ targetFormat }) => {
     return `Regenerate this photograph in higher quality and convert it to ${aspectLabel} aspect ratio, ${extendDirection}. Preserve all the people in the original, their faces, expressions, clothing, flags, banners, signs and objects. The extension must read as the same scene captured by the same camera with a different frame. Output a single coherent natural photograph.`;
 };
 
+// Normalise the engine's output to the target dimensions. Most engines support
+// a discrete set of aspect ratios that don't match 4:5 exactly, so we centre-crop
+// & resize to the canonical FB/IG portrait size. This is geometry only — no
+// composite / no mask / no blur — so it doesn't break the "no postprocess" rule.
+const normaliseToTarget = async (buffer, { width, height }) => {
+    return sharp(buffer)
+        .resize(width, height, { fit: 'cover', position: 'center' })
+        .png()
+        .toBuffer();
+};
+
 // ENGINE: OpenAI gpt-image-1 (image-to-image, no mask).
-// The model receives the original photo as a reference and regenerates it at the target
-// aspect ratio. input_fidelity:"high" keeps people / faces close to the input. Output
-// is returned as-is with NO post-processing — the same flow ChatGPT uses internally.
-const generateWithOpenAI = async ({ originalBuffer, width, height, prompt }) => {
+// The model receives the original photo as a reference and regenerates it at the
+// engine's nearest native size (1024x1536 for portrait, 1536x1024 for landscape).
+// input_fidelity:"high" keeps people / faces close to the input. Output is then
+// centre-cropped to the canonical 4:5 (1080×1350) — geometry only, no mask /
+// composite / blur.
+const generateWithOpenAI = async ({ originalBuffer, prompt, targetFormat }) => {
     const formData = new FormData();
     formData.append('model', 'gpt-image-1');
     formData.append('image', new Blob([originalBuffer], { type: 'image/png' }), 'image.png');
     formData.append('prompt', prompt);
-    formData.append('size', `${width}x${height}`);
+    formData.append('size', ENGINE_NATIVE_SIZES[targetFormat]);
     formData.append('quality', 'high');
     formData.append('input_fidelity', 'high');
     formData.append('n', '1');
@@ -117,7 +140,10 @@ const generateWithOpenAI = async ({ originalBuffer, width, height, prompt }) => 
 // the task, poll until completion (~30-60s typical), then download the produced image
 // and return its buffer so the standard upload flow can place it in our S3 bucket.
 const generateWithKie = async ({ imageUrl, prompt, targetFormat }) => {
-    const aspectRatio = targetFormat === 'landscape' ? '3:2' : '2:3';
+    // Ask KIE for the closest aspect ratio it accepts. For portrait we want 4:5;
+    // if Nano Banana rejects it we'll fall back to the closest available (3:4)
+    // and let normaliseToTarget do the final centre-crop.
+    const aspectRatio = targetFormat === 'landscape' ? '3:2' : '4:5';
     const taskId = await createKieImageTask({
         model: 'google/nano-banana-edit',
         prompt,
@@ -323,13 +349,16 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
             } else if (requestedEngine === 'openai') {
                 aiBuffer = await generateWithOpenAI({
                     originalBuffer: enhancedBuffer,
-                    width: targetW,
-                    height: targetH,
-                    prompt
+                    prompt,
+                    targetFormat
                 });
             } else {
                 throw new Error(`Engine '${requestedEngine}' marcado como available pero sin implementación`);
             }
+            // Engines return whatever native aspect they support; centre-crop to the
+            // canonical FB/IG dimensions before uploading. Geometry only — no AI,
+            // no overlays, no masks. Preserves identity intact.
+            aiBuffer = await normaliseToTarget(aiBuffer, { width: targetW, height: targetH });
             finalUrl = await uploadGeneratedImage({ buffer: aiBuffer, clubId, variant: `${targetFormat}-${requestedEngine}` });
         } catch (e) {
             imageError = e.message;

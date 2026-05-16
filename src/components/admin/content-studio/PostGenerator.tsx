@@ -550,7 +550,7 @@ const PostGenerator: React.FC = () => {
                                     <div className="absolute bottom-4 left-4 flex flex-col gap-2">
                                         <span className="bg-blue-600/90 backdrop-blur-md text-white text-[10px] font-black px-4 py-2 rounded-xl shadow-2xl flex items-center gap-2">
                                             <BarChart3 className="w-4 h-4" />
-                                            {generatedFormat === 'landscape' ? 'X / TWITTER · 3:2' : 'FB · IG · LINKEDIN · 2:3'}
+                                            {generatedFormat === 'landscape' ? 'X / TWITTER · 3:2' : 'FB · IG · LINKEDIN · 4:5'}
                                         </span>
                                         {metadata?.engine && (
                                             <span className="bg-black/60 backdrop-blur-md text-white/90 text-[9px] font-black px-3 py-1.5 rounded-lg tracking-wider">
@@ -570,7 +570,7 @@ const PostGenerator: React.FC = () => {
                                             <p className="text-[11px] text-amber-800 mb-3 font-bold">
                                                 {activePlatform === 'x'
                                                     ? 'X usa landscape 3:2. La imagen actual es portrait.'
-                                                    : 'Esta red usa portrait 2:3. La imagen actual es landscape.'}
+                                                    : 'Esta red usa portrait 4:5. La imagen actual es landscape.'}
                                             </p>
                                             <button
                                                 onClick={() => runGeneration(PLATFORM_TO_FORMAT[activePlatform])}
