@@ -37,12 +37,14 @@ import {
 const TOKEN_VERSION_CURRENT = 1;
 
 // state param protects the OAuth round-trip and carries the club id we want to
-// attribute the connection to. We sign it with a HMAC keyed on FB_APP_SECRET so
-// a returning callback can't be replayed for a different club.
+// attribute the connection to. We sign it with a HMAC keyed on the Meta App
+// secret so a returning callback can't be replayed for a different club.
+const getHmacKey = () => process.env.META_APP_SECRET || process.env.FB_APP_SECRET || 'fallback';
+
 const signState = ({ clubId, userId }) => {
     const payload = `${clubId}|${userId}|${Date.now()}|${crypto.randomBytes(8).toString('hex')}`;
     const sig = crypto
-        .createHmac('sha256', process.env.FB_APP_SECRET || 'fallback')
+        .createHmac('sha256', getHmacKey())
         .update(payload)
         .digest('hex')
         .slice(0, 16);
@@ -57,7 +59,7 @@ const verifyState = (state) => {
         const [clubId, userId, timestamp, nonce, sig] = parts;
         const payload = `${clubId}|${userId}|${timestamp}|${nonce}`;
         const expected = crypto
-            .createHmac('sha256', process.env.FB_APP_SECRET || 'fallback')
+            .createHmac('sha256', getHmacKey())
             .update(payload)
             .digest('hex')
             .slice(0, 16);
@@ -118,12 +120,12 @@ export const getMetaAuthUrl = async (req, res) => {
                     : 'No tenés un club asociado a tu cuenta'
             });
         }
-        // FB_APP_ID has a hardcoded fallback (it's a public client id); only
-        // FB_APP_SECRET must be set in Vercel. If it's missing the whole OAuth
-        // round-trip is unrecoverable, so we fail fast with a clear message.
-        if (!process.env.FB_APP_SECRET) {
+        // META_APP_ID has a hardcoded fallback (it's a public client id); only
+        // the app secret must be set in Vercel. Accept either META_APP_SECRET
+        // (current naming in this project) or FB_APP_SECRET (legacy name).
+        if (!process.env.META_APP_SECRET && !process.env.FB_APP_SECRET) {
             return res.status(500).json({
-                error: 'FB_APP_SECRET no está configurada en Vercel. Settings → Environment Variables → agregar FB_APP_SECRET (el "App Secret" de la Facebook Developer App).'
+                error: 'META_APP_SECRET no está configurada en Vercel. Settings → Environment Variables → agregar META_APP_SECRET (el "App Secret" de la Meta Developer App).'
             });
         }
         const state = signState({ clubId, userId: req.user.id });

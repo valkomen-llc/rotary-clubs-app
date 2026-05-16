@@ -27,12 +27,15 @@
 const GRAPH_VERSION = 'v18.0';
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
-// FB_APP_ID is the public client id of the Meta Developer App. It's not a secret,
-// so a default keeps the historical setup working when only FB_APP_SECRET is set
-// in Vercel. FB_APP_SECRET must always come from env — never hardcode it.
-const DEFAULT_FB_APP_ID = '2190338908168499';
-const getAppId = () => process.env.FB_APP_ID || DEFAULT_FB_APP_ID;
-const getAppSecret = () => process.env.FB_APP_SECRET || '';
+// META_APP_ID is the public client id of the Meta Developer App. It's not a secret,
+// so a default keeps the historical setup working when no env var is set.
+// META_APP_SECRET must always come from env — never hardcode it.
+//
+// Accept both `META_APP_*` (preferred, matches what the team already has in Vercel)
+// and `FB_APP_*` (historical name used in the old code) for backward compat.
+const DEFAULT_APP_ID = '2190338908168499';
+const getAppId = () => process.env.META_APP_ID || process.env.FB_APP_ID || DEFAULT_APP_ID;
+const getAppSecret = () => process.env.META_APP_SECRET || process.env.FB_APP_SECRET || '';
 
 const REQUIRED_SCOPES = [
     'pages_show_list',
