@@ -140,21 +140,32 @@ export const getMetaAuthUrl = async (req, res) => {
 // Public endpoint hit by Facebook after the user grants permissions.
 // ============================================================================
 export const handleMetaCallback = async (req, res) => {
+    console.log('[social] callback hit', {
+        host: req.hostname,
+        path: req.path,
+        hasCode: !!req.query.code,
+        hasState: !!req.query.state,
+        oauthError: req.query.error || null
+    });
     const { code, state, error: oauthError, error_description } = req.query;
     const redirectBase = '/admin/content-studio?tab=accounts';
 
     if (oauthError) {
+        console.warn('[social] OAuth provider returned error:', oauthError, error_description);
         return res.redirect(`${redirectBase}&social=error&message=${encodeURIComponent(error_description || oauthError)}`);
     }
     if (!code || !state) {
+        console.warn('[social] callback missing code or state');
         return res.redirect(`${redirectBase}&social=error&message=missing_code_or_state`);
     }
 
     const verified = verifyState(state);
     if (!verified) {
+        console.warn('[social] state verification failed');
         return res.redirect(`${redirectBase}&social=error&message=invalid_state`);
     }
     const { clubId } = verified;
+    console.log('[social] state verified, clubId:', clubId);
 
     try {
         const redirectUri = getRedirectUri(req);
@@ -286,9 +297,10 @@ export const handleMetaCallback = async (req, res) => {
             }
         }
 
+        console.log(`[social] OAuth completed: fb=${connectedFb} ig=${connectedIg}`);
         return res.redirect(`${redirectBase}&social=connected&fb=${connectedFb}&ig=${connectedIg}`);
     } catch (e) {
-        console.error('[social] handleMetaCallback error:', e);
+        console.error('[social] handleMetaCallback error:', e.message, e.stack);
         return res.redirect(`${redirectBase}&social=error&message=${encodeURIComponent(e.message.slice(0, 200))}`);
     }
 };
