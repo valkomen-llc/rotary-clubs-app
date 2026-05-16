@@ -15,7 +15,8 @@ import {
     handleMetaCallback,
     listAccounts,
     verifyAccount,
-    disconnectAccount
+    disconnectAccount,
+    publishPost
 } from '../controllers/socialPublishingController.js';
 
 const router = express.Router();
@@ -28,5 +29,8 @@ router.get('/connect/meta', authMiddleware, getMetaAuthUrl);
 router.get('/accounts', authMiddleware, listAccounts);
 router.post('/accounts/:id/verify', authMiddleware, verifyAccount);
 router.delete('/accounts/:id', authMiddleware, disconnectAccount);
+
+// Phase 2: publish a post to one or more connected accounts.
+router.post('/publish', authMiddleware, publishPost);
 
 export default router;

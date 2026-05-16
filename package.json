@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.334.0",
-  "cache_bust": "2026-05-16 17:30 (POSTGEN COPY ERROR SURFACE v4.334 📝)",
+  "version": "4.335.0",
+  "cache_bust": "2026-05-16 18:00 (SOCIAL ENGINE PHASE 2 PUBLISH v4.335 📤)",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.334 | 2026-05-16 (POSTGEN — surface error de GPT-4o copy cuando falla silenciosamente 📝)",
+  "//": "DISTRICT HEALTH IQ V4.335 | 2026-05-16 (SOCIAL ENGINE — Fase 2: botón PUBLICAR AHORA real con Graph API a FB Pages + IG Business 📤)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

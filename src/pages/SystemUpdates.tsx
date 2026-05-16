@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.334 | 2026-05-16 (POSTGEN — surface error de GPT-4o copy cuando falla silenciosamente 📝)
-// Cache bust: 2026-05-16 17:30 (POSTGEN COPY ERROR SURFACE v4.334 📝)
+// DISTRICT HEALTH IQ V4.335 | 2026-05-16 (SOCIAL ENGINE — Fase 2: botón PUBLICAR AHORA real con Graph API a FB Pages + IG Business 📤)
+// Cache bust: 2026-05-16 18:00 (SOCIAL ENGINE PHASE 2 PUBLISH v4.335 📤)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.335',
+        date: '2026-05-16',
+        title: 'Motor Social Fase 2 — Publicar Inmediato a FB + IG 📤',
+        description: 'El Post Generator ahora tiene un botón PUBLICAR AHORA real que postea el contenido generado (imagen + copy) directamente a las cuentas de Facebook Pages e Instagram Business conectadas en Fase 1.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Nuevo servicio backend `socialPublishService.js` con helpers por plataforma. Facebook: POST /{page-id}/photos con url + caption. Instagram: dance de 2 pasos (POST /{ig-user-id}/media → poll status hasta FINISHED → POST /{ig-user-id}/media_publish). Token decriptado on-demand desde el SocialAccount cifrado.',
+            'Nuevo endpoint `POST /api/social/publish`: recibe accountIds + imageUrl + copies (por plataforma) + lineage. Corre todas las publicaciones en paralelo (Promise.all), crea SocialPublication record con outcomes por cuenta, actualiza lastVerifiedAt de las cuentas exitosas.',
+            'Panel UI en el Post Generator (aparece automáticamente cuando hay imagen generada): lista las cuentas conectadas con icon + nombre + check, auto-selecciona las activas, deshabilita las que necesitan reconectar.',
+            'Botón "PUBLICAR AHORA" reemplaza al "PROGRAMAR AHORA" placeholder que no hacía nada. Toast con resultado: éxito total, parcial, o todos los fallos.',
+            'Estados por cuenta tras publicar: ✓ verde con link a la publicación (si la plataforma devuelve URL), o ✗ rojo con mensaje del error específico de Graph API.',
+            'Storage: cada publicación queda en SocialPublication para historial / audit / próximas features (re-publicar, calendar view).',
+            'Acción "PROGRAMAR" queda pendiente para Fase 3 (Vercel Cron worker + queue).'
+        ]
+    },
     {
         version: 'v4.334',
         date: '2026-05-16',

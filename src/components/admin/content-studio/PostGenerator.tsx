@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import {
     Image as ImageIcon,
     Sparkles,
@@ -14,7 +14,13 @@ import {
     Copy as CopyIcon,
     Pencil,
     Check,
-    AlertTriangle
+    AlertTriangle,
+    Facebook,
+    Instagram,
+    Loader2,
+    CheckCircle2,
+    XCircle,
+    ExternalLink
 } from 'lucide-react';
 import MediaPicker from './MediaPicker';
 import { toast } from 'sonner';
@@ -63,6 +69,28 @@ interface GenerationMetadata {
     dimensions?: string;
     limits?: Record<Platform, number>;
     imageError?: string;
+    copyError?: string;
+}
+
+interface ConnectedAccount {
+    id: string;
+    platform: 'facebook' | 'instagram' | 'linkedin' | 'x';
+    accountName: string | null;
+    avatar: string | null;
+    status: string;
+    needsReconnect: boolean;
+    club?: { id: string; name: string } | null;
+}
+
+interface PublishOutcome {
+    accountId: string;
+    platform: string;
+    accountName?: string | null;
+    ok: boolean;
+    externalId: string | null;
+    externalUrl: string | null;
+    error: string | null;
+    publishedAt: string | null;
 }
 
 const PLATFORM_TO_FORMAT: Record<Platform, TargetFormat> = {
@@ -94,6 +122,12 @@ const PostGenerator: React.FC = () => {
     const [generatedFormat, setGeneratedFormat] = useState<TargetFormat | null>(null);
     const [metadata, setMetadata] = useState<GenerationMetadata | null>(null);
     const [editingCopy, setEditingCopy] = useState(false);
+
+    // Publishing state (Fase 2 del Motor Social)
+    const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
+    const [selectedAccountIds, setSelectedAccountIds] = useState<Set<string>>(new Set());
+    const [isPublishing, setIsPublishing] = useState(false);
+    const [publishOutcomes, setPublishOutcomes] = useState<PublishOutcome[] | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const runGeneration = async (format: TargetFormat) => {
@@ -214,6 +248,95 @@ const PostGenerator: React.FC = () => {
         if (!generatedImageUrl) return;
         const proxyUrl = `${import.meta.env.VITE_API_URL || '/api'}/content-studio/download?url=${encodeURIComponent(generatedImageUrl)}`;
         window.location.href = proxyUrl;
+    };
+
+    // Load connected accounts for publishing. Re-fetches when generation finishes
+    // so the panel reflects the current state at the moment of publishing.
+    const fetchConnectedAccounts = useCallback(async () => {
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const API = import.meta.env.VITE_API_URL || '/api';
+            const userRaw = JSON.parse(localStorage.getItem('rotary_user') || '{}');
+            const clubId = userRaw?.clubId || '';
+            const qs = clubId ? `?clubId=${encodeURIComponent(clubId)}` : '';
+            const resp = await fetch(`${API}/social/accounts${qs}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const filtered: ConnectedAccount[] = (Array.isArray(data) ? data : [])
+                .filter((a: any) => a.platform === 'facebook' || a.platform === 'instagram');
+            setConnectedAccounts(filtered);
+            // Auto-select active accounts so a one-click publish is possible.
+            setSelectedAccountIds(new Set(
+                filtered.filter(a => a.status === 'active' && !a.needsReconnect).map(a => a.id)
+            ));
+        } catch { /* silent */ }
+    }, []);
+
+    useEffect(() => {
+        if (generatedImageUrl) {
+            fetchConnectedAccounts();
+            setPublishOutcomes(null);
+        }
+    }, [generatedImageUrl, fetchConnectedAccounts]);
+
+    const toggleAccount = (id: string) => {
+        setSelectedAccountIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const publishNow = async () => {
+        if (!generatedImageUrl || !generatedContent) {
+            toast.error('Generá la publicación antes de publicar');
+            return;
+        }
+        if (selectedAccountIds.size === 0) {
+            toast.error('Seleccioná al menos una cuenta');
+            return;
+        }
+        setIsPublishing(true);
+        const toastId = toast.loading(`Publicando en ${selectedAccountIds.size} cuenta(s)…`);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const API = import.meta.env.VITE_API_URL || '/api';
+            const resp = await fetch(`${API}/social/publish`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    accountIds: Array.from(selectedAccountIds),
+                    imageUrl: generatedImageUrl,
+                    copies: generatedContent,
+                    generatedBy: metadata?.engine ? `ai-${metadata.engine.split('+')[0]}` : 'ai'
+                })
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                toast.error(data.error || 'Error al publicar', { id: toastId, duration: 12000 });
+                return;
+            }
+            setPublishOutcomes(data.outcomes || []);
+            const okCount = (data.outcomes || []).filter((o: PublishOutcome) => o.ok).length;
+            const failCount = (data.outcomes || []).length - okCount;
+            if (data.status === 'published') {
+                toast.success(`Publicado en ${okCount} cuenta(s) ✓`, { id: toastId });
+            } else if (data.status === 'partial') {
+                toast.warning(`Publicado en ${okCount}, falló en ${failCount}. Revisá el detalle.`, { id: toastId, duration: 15000 });
+            } else {
+                toast.error(`Falló en las ${failCount} cuenta(s). Revisá el detalle.`, { id: toastId, duration: 15000 });
+            }
+        } catch (e: any) {
+            toast.error(`Error de red: ${e.message || 'desconocido'}`, { id: toastId });
+        } finally {
+            setIsPublishing(false);
+        }
     };
 
     return (
@@ -522,10 +645,88 @@ const PostGenerator: React.FC = () => {
                                         </div>
                                     </div>
 
-                                    <div className="flex gap-4">
-                                        <button className="flex-1 bg-blue-600 text-white py-5 rounded-3xl font-black text-sm shadow-xl hover:bg-blue-700 flex items-center justify-center gap-3 transition-all transform hover:-translate-y-1">
-                                            <Send className="w-5 h-5" />
-                                            PROGRAMAR AHORA
+                                    {/* Publish panel — Phase 2 del Motor Social */}
+                                    <div className="space-y-3 pt-2">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Publicar en</label>
+                                            {connectedAccounts.length > 0 && (
+                                                <span className="text-[10px] font-bold text-gray-400">
+                                                    {selectedAccountIds.size} de {connectedAccounts.length} seleccionada(s)
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        {connectedAccounts.length === 0 ? (
+                                            <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 text-center">
+                                                <p className="text-xs font-bold text-amber-800 mb-2">No hay cuentas conectadas</p>
+                                                <a href="/admin/content-studio?tab=accounts" className="text-[10px] font-black text-amber-700 underline">
+                                                    Ir a Cuentas Sociales → conectar Meta
+                                                </a>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {connectedAccounts.map(acc => {
+                                                    const checked = selectedAccountIds.has(acc.id);
+                                                    const disabled = acc.needsReconnect || acc.status !== 'active';
+                                                    const outcome = publishOutcomes?.find(o => o.accountId === acc.id);
+                                                    const Icon = acc.platform === 'instagram' ? Instagram : Facebook;
+                                                    return (
+                                                        <div key={acc.id} className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
+                                                            checked && !disabled ? 'bg-blue-50 border-blue-200' :
+                                                            disabled ? 'bg-gray-50 border-gray-100 opacity-60' :
+                                                            'bg-white border-gray-100 hover:border-gray-200'
+                                                        }`}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={checked}
+                                                                disabled={disabled}
+                                                                onChange={() => toggleAccount(acc.id)}
+                                                                className="w-4 h-4 rounded accent-blue-600 cursor-pointer disabled:cursor-not-allowed"
+                                                            />
+                                                            <Icon className={`w-4 h-4 ${acc.platform === 'instagram' ? 'text-pink-600' : 'text-blue-600'}`} />
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-xs font-black text-gray-800 truncate">{acc.accountName || acc.platform}</p>
+                                                                {disabled && (
+                                                                    <p className="text-[9px] font-bold text-amber-600 mt-0.5">Reconectar para usar</p>
+                                                                )}
+                                                            </div>
+                                                            {outcome && (
+                                                                outcome.ok ? (
+                                                                    outcome.externalUrl
+                                                                        ? <a href={outcome.externalUrl} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:text-green-700" title="Ver publicación">
+                                                                            <ExternalLink className="w-4 h-4" />
+                                                                        </a>
+                                                                        : <CheckCircle2 className="w-4 h-4 text-green-600" />
+                                                                ) : (
+                                                                    <span title={outcome.error || ''}>
+                                                                        <XCircle className="w-4 h-4 text-red-500" />
+                                                                    </span>
+                                                                )
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+
+                                        {publishOutcomes && publishOutcomes.some(o => !o.ok) && (
+                                            <div className="bg-red-50 border border-red-100 rounded-xl p-3 space-y-1">
+                                                {publishOutcomes.filter(o => !o.ok).map(o => (
+                                                    <p key={o.accountId} className="text-[10px] font-bold text-red-700">
+                                                        <span className="uppercase">{o.platform}</span>: {o.error}
+                                                    </p>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        <button
+                                            onClick={publishNow}
+                                            disabled={isPublishing || selectedAccountIds.size === 0 || !generatedImageUrl}
+                                            className="w-full bg-blue-600 text-white py-5 rounded-3xl font-black text-sm shadow-xl hover:bg-blue-700 flex items-center justify-center gap-3 transition-all transform hover:-translate-y-1 disabled:opacity-50 disabled:hover:translate-y-0 disabled:cursor-not-allowed"
+                                        >
+                                            {isPublishing
+                                                ? <><Loader2 className="w-5 h-5 animate-spin" /> PUBLICANDO…</>
+                                                : <><Send className="w-5 h-5" /> PUBLICAR AHORA</>}
                                         </button>
                                     </div>
                                 </div>
