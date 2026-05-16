@@ -24,9 +24,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.332 | 2026-05-16 (SOCIAL ENGINE — quitar display=popup que rompía redirect + logging detallado del callback 🪟)
-// Cache bust: 2026-05-16 06:30 (SOCIAL OAUTH NO POPUP v4.332 🪟)
+// DISTRICT HEALTH IQ V4.333 | 2026-05-16 (SOCIAL ENGINE — aceptar META_APP_* además de FB_APP_*; usar las env vars existentes del equipo 🏷️)
+// Cache bust: 2026-05-16 07:00 (SOCIAL META ENV NAMING v4.333 🏷️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.333',
+        date: '2026-05-16',
+        title: 'Motor Social — Fix Env Var Naming (META_* en lugar de FB_*) 🏷️',
+        description: 'El equipo tenía configuradas META_APP_ID y META_APP_SECRET en Vercel desde Apr 22. Mi código nuevo buscaba FB_APP_ID/FB_APP_SECRET, por eso el token exchange fallaba.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Diagnóstico tras ver el listado de env vars en Vercel: ya existían META_APP_ID y META_APP_SECRET (configuradas el 22 de abril), pero NO existían FB_APP_ID ni FB_APP_SECRET. Mi refactor de v4.329 usaba los nombres FB_*, así que la fase de intercambio code→token devolvía silenciosamente "client_secret missing" desde Meta.',
+            'Fix: metaService.js — getAppId() y getAppSecret() ahora aceptan META_APP_* (preferred) o FB_APP_* (legacy fallback) con orden de prioridad correcto.',
+            'Fix: socialPublishingController.js — el HMAC del state también acepta cualquiera de los dos nombres (getHmacKey helper).',
+            'Fix: el check de configuración faltante ahora menciona META_APP_SECRET (lo que el equipo tiene) en lugar de FB_APP_SECRET.',
+            'No requiere reconfigurar nada — usa las env vars que ya están en producción.'
+        ]
+    },
     {
         version: 'v4.332',
         date: '2026-05-16',

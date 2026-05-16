@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.332.0",
-  "cache_bust": "2026-05-16 06:30 (SOCIAL OAUTH NO POPUP v4.332 🪟)",
+  "version": "4.333.0",
+  "cache_bust": "2026-05-16 07:00 (SOCIAL META ENV NAMING v4.333 🏷️)",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.332 | 2026-05-16 (SOCIAL ENGINE — quitar display=popup que rompía redirect + logging detallado del callback 🪟)",
+  "//": "DISTRICT HEALTH IQ V4.333 | 2026-05-16 (SOCIAL ENGINE — aceptar META_APP_* además de FB_APP_*; usar las env vars existentes del equipo 🏷️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
