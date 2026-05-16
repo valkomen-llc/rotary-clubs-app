@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.340.0",
-  "cache_bust": "2026-05-16 20:45 (MEDIA LIBRARY FIX SOURCES v4.340 🔧)",
+  "version": "4.341.0",
+  "cache_bust": "2026-05-16 21:00 (MEDIA RECOVERY FROM S3KEY v4.341 🧩)",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.340 | 2026-05-16 (MEDIA LIBRARY — fix layout chips + dropdown lista entities de la DB no solo de media existente 🔧)",
+  "//": "DISTRICT HEALTH IQ V4.341 | 2026-05-16 (MEDIA — recovery del clubId desde s3Key path + fallback en endpoints para imágenes no backfilleadas 🧩)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

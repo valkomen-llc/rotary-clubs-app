@@ -366,16 +366,29 @@ router.get('/', authMiddleware, async (req, res) => {
             where.push(`"clubId" IS NULL`);
         }
 
-        // New source-tagging filters (v4.339): sourceType is the category
+        // New source-tagging filters (v4.339+). sourceType is the category
         // (club/district/project/platform). sourceId narrows to one specific
         // entity inside that category.
         if (sourceType) {
-            where.push(`"sourceType" = $${p}`);
-            params.push(sourceType);
-            p += 1;
+            // For "club" we accept either the canonical sourceType='club' OR
+            // legacy rows that still have only clubId set (not yet backfilled
+            // via media_recovery_from_s3key.sql). Same logic for district when
+            // the underlying tables wire up later.
+            if (sourceType === 'club') {
+                where.push(`("sourceType" = $${p} OR ("sourceType" = 'platform' AND "s3Key" LIKE 'clubs/%/%'))`);
+                params.push(sourceType);
+                p += 1;
+            } else {
+                where.push(`"sourceType" = $${p}`);
+                params.push(sourceType);
+                p += 1;
+            }
         }
         if (sourceId) {
-            where.push(`"sourceId" = $${p}`);
+            // Match new sourceId, OR legacy clubId, OR the second segment of s3Key
+            // ("clubs/<uuid>/..."). Three-way fallback covers rows in different
+            // stages of the v4.339→v4.341 backfill.
+            where.push(`("sourceId" = $${p} OR "clubId" = $${p} OR SPLIT_PART("s3Key", '/', 2) = $${p})`);
             params.push(sourceId);
             p += 1;
         }
@@ -418,27 +431,28 @@ router.get('/sources', authMiddleware, async (req, res) => {
 
         // ----- CLUBS -----
         if (types.includes('club')) {
+            // imageCount fallback (v4.341): contar la imagen si alguno de
+            // sourceId, clubId, o el path s3 apunta al club. Cubre rows con
+            // tagging viejo / no backfilleado.
+            const countSubquery = `(
+                SELECT COUNT(*)::int FROM "Media" m
+                WHERE (
+                    (m."sourceType" = 'club' AND m."sourceId" = c."id")
+                    OR (m."clubId" = c."id")
+                    OR SPLIT_PART(m."s3Key", '/', 2) = c."id"
+                )
+            ) AS "imageCount"`;
             let cQ, cParams;
             if (role === 'administrator') {
-                cQ = `SELECT c."id", c."name",
-                        (SELECT COUNT(*)::int FROM "Media" m
-                         WHERE m."sourceType" = 'club' AND m."sourceId" = c."id") AS "imageCount"
-                      FROM "Club" c ORDER BY c."name" ASC`;
+                cQ = `SELECT c."id", c."name", ${countSubquery} FROM "Club" c ORDER BY c."name" ASC`;
                 cParams = [];
             } else if (role === 'district_admin') {
                 const dId = districtId || userClubId;
-                cQ = `SELECT c."id", c."name",
-                        (SELECT COUNT(*)::int FROM "Media" m
-                         WHERE m."sourceType" = 'club' AND m."sourceId" = c."id") AS "imageCount"
-                      FROM "Club" c
-                      WHERE c."id" = $1 OR c."districtId" = $2
-                      ORDER BY c."name" ASC`;
+                cQ = `SELECT c."id", c."name", ${countSubquery}
+                      FROM "Club" c WHERE c."id" = $1 OR c."districtId" = $2 ORDER BY c."name" ASC`;
                 cParams = [userClubId, dId];
             } else if (userClubId) {
-                cQ = `SELECT c."id", c."name",
-                        (SELECT COUNT(*)::int FROM "Media" m
-                         WHERE m."sourceType" = 'club' AND m."sourceId" = c."id") AS "imageCount"
-                      FROM "Club" c WHERE c."id" = $1`;
+                cQ = `SELECT c."id", c."name", ${countSubquery} FROM "Club" c WHERE c."id" = $1`;
                 cParams = [userClubId];
             } else {
                 cQ = null;
@@ -476,8 +490,16 @@ router.get('/sources', authMiddleware, async (req, res) => {
         }
 
         // ----- PLATFORM (synthetic single entry) -----
+        // Solo las que NO pueden atribuirse a ningún club (path 'global' o sin
+        // segundo segmento UUID, y sin clubId ni sourceId hacia un club real).
         if (types.includes('platform')) {
-            const pfQ = `SELECT COUNT(*)::int AS c FROM "Media" WHERE "sourceType" = 'platform'`;
+            const pfQ = `SELECT COUNT(*)::int AS c FROM "Media" m
+                         WHERE m."sourceType" = 'platform'
+                           AND m."clubId" IS NULL
+                           AND NOT EXISTS (
+                               SELECT 1 FROM "Club" c
+                               WHERE c."id" = SPLIT_PART(m."s3Key", '/', 2)
+                           )`;
             const r = await db.query(pfQ);
             results.push({ sourceType: 'platform', sourceId: null, sourceLabel: 'Plataforma', imageCount: r.rows[0]?.c || 0 });
         }
