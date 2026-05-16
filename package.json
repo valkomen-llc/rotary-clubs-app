@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.339.0",
-  "cache_bust": "2026-05-16 20:30 (MEDIA LIBRARY SOURCE TAGGING v4.339 📚)",
+  "version": "4.340.0",
+  "cache_bust": "2026-05-16 20:45 (MEDIA LIBRARY FIX SOURCES v4.340 🔧)",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.339 | 2026-05-16 (MEDIA LIBRARY — categorización por fuente: Clubes/Distritos/Proyectos/Plataforma + búsqueda inteligente 📚)",
+  "//": "DISTRICT HEALTH IQ V4.340 | 2026-05-16 (MEDIA LIBRARY — fix layout chips + dropdown lista entities de la DB no solo de media existente 🔧)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

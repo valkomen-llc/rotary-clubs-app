@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.339 | 2026-05-16 (MEDIA LIBRARY — categorización por fuente: Clubes/Distritos/Proyectos/Plataforma + búsqueda inteligente 📚)
-// Cache bust: 2026-05-16 20:30 (MEDIA LIBRARY SOURCE TAGGING v4.339 📚)
+// DISTRICT HEALTH IQ V4.340 | 2026-05-16 (MEDIA LIBRARY — fix layout chips + dropdown lista entities de la DB no solo de media existente 🔧)
+// Cache bust: 2026-05-16 20:45 (MEDIA LIBRARY FIX SOURCES v4.340 🔧)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.340',
+        date: '2026-05-16',
+        title: 'Biblioteca Multimedia — Fix Layout Chips + Dropdown con Entities Reales 🔧',
+        description: 'Tras desplegar v4.339, los chips de categoría se cortaban visualmente y el dropdown de "Clubes" salía vacío porque solo listaba clubs con media ya asignado. Arreglados ambos.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Backend /api/media/sources: ahora consulta directamente las tablas Club, District y Project en vez de agregar por sourceId de Media. Incluye entities con 0 imágenes para que el usuario vea toda la estructura y pueda filtrar / etiquetar desde el inicio.',
+            'Respeta visibility por rol: admin ve todos los clubs, district admin solo los de su distrito, club admin solo el suyo.',
+            'Frontend: chips más compactos (padding reducido + texto 10px en vez de 12px + conteos abreviados >999 como "1k", "2k") para que entren todas las categorías sin cortarse en viewports angostos.',
+            'Frontend: fetch de sources ahora corre UNA SOLA VEZ al abrir el modal (sin filtrar por type). El dropdown se filtra client-side via useMemo. Los conteos de los chips quedan estables al cambiar de categoría (antes se recalculaban y se ponían en 0 las otras).',
+            'Empty state mejorado: cuando la categoría no tiene imágenes asociadas aún, el dropdown sigue mostrando todos los clubs/distritos del schema con label "(0)" para que sea claro que existen pero están vacíos.',
+            'Nota Phase 2: el "Plataforma" tag sigue siendo el default para imágenes históricas sin contexto de club. En una próxima fase agregaremos UI admin para reasignar masivamente imágenes de Plataforma a clubs específicos.'
+        ]
+    },
     {
         version: 'v4.339',
         date: '2026-05-16',
