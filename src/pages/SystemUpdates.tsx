@@ -24,9 +24,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.333 | 2026-05-16 (SOCIAL ENGINE — aceptar META_APP_* además de FB_APP_*; usar las env vars existentes del equipo 🏷️)
-// Cache bust: 2026-05-16 07:00 (SOCIAL META ENV NAMING v4.333 🏷️)
+// DISTRICT HEALTH IQ V4.334 | 2026-05-16 (POSTGEN — surface error de GPT-4o copy cuando falla silenciosamente 📝)
+// Cache bust: 2026-05-16 17:30 (POSTGEN COPY ERROR SURFACE v4.334 📝)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.334',
+        date: '2026-05-16',
+        title: 'Content Studio — Surface del Error de Copy 📝',
+        description: 'El Generador de Publicaciones a veces devolvía la imagen OK pero con copy vacío. La causa era una falla de GPT-4o que el try/catch silenciaba. Esta versión expone el error en la UI.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Diagnóstico: cuando GPT-4o falla (rate limit, key inválida, response sin JSON parseable, etc.) el catch suprimía el error y devolvía copy vacío. El toast decía "¡Contenido generado!" pero las cuatro plataformas tenían strings vacíos.',
+            'Fix backend: además de log a console, el error se captura en una variable `copyError` y se devuelve en `metadata.copyError` de la response, igual que ya hacíamos con `imageError` para el motor de imagen.',
+            'Fix frontend: el toast diferencia 4 casos: (1) todo OK → success; (2) solo imagen falló → error con fallback aplicado; (3) solo copy falló → warning con detalle del error; (4) ambos fallaron → error con resumen de ambos.',
+            'Además, el backend ahora detecta varios sub-fallos de GPT-4o explícitamente: HTTP no-2xx (con mensaje del error de OpenAI), respuesta sin content (con finish_reason para ver si fue cortado por content filter), y JSON parse error.',
+            'Próximo paso: Fase 2 del Motor Social — botón "Publicar Ahora" que llame a Graph API y postee a las cuentas conectadas en Fase 1.'
+        ]
+    },
     {
         version: 'v4.333',
         date: '2026-05-16',

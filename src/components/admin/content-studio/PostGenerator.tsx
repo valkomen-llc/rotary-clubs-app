@@ -135,12 +135,14 @@ const PostGenerator: React.FC = () => {
                 setGeneratedImageUrl(data.generatedImageUrl);
                 setGeneratedFormat(data.metadata?.format || format);
                 setMetadata(data.metadata || null);
-                if (data.metadata?.imageError) {
-                    const errMsg = String(data.metadata.imageError).slice(0, 200);
-                    toast.error(
-                        `Motor ${engineLabel} falló (fallback aplicado). Error: ${errMsg}`,
-                        { id: toastId, duration: 15000 }
-                    );
+                const imgErr = data.metadata?.imageError;
+                const copyErr = data.metadata?.copyError;
+                if (imgErr && copyErr) {
+                    toast.error(`Imagen y copy fallaron. Imagen: ${String(imgErr).slice(0, 100)}. Copy: ${String(copyErr).slice(0, 100)}`, { id: toastId, duration: 18000 });
+                } else if (imgErr) {
+                    toast.error(`Motor ${engineLabel} falló (fallback aplicado). Error: ${String(imgErr).slice(0, 200)}`, { id: toastId, duration: 15000 });
+                } else if (copyErr) {
+                    toast.warning(`Imagen OK con ${engineLabel}, pero el copy falló: ${String(copyErr).slice(0, 200)}`, { id: toastId, duration: 15000 });
                 } else {
                     toast.success(`¡Contenido generado con ${engineLabel}!`, { id: toastId });
                 }
