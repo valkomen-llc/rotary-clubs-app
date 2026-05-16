@@ -50,8 +50,11 @@ export const buildAuthUrl = ({ state, redirectUri }) => {
         redirect_uri: redirectUri,
         scope: REQUIRED_SCOPES.join(','),
         response_type: 'code',
-        state,
-        display: 'popup'
+        state
+        // Intentionally no `display: 'popup'` — we do a full-page redirect via
+        // window.location.href, not an actual popup window. With display=popup
+        // Facebook tries to post-message back to a non-existent opener and the
+        // page ends up at "/" with a "#_=_" hash artifact (diagnosed v4.331).
     });
     return `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth?${params.toString()}`;
 };

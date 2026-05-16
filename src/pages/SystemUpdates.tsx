@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.331 | 2026-05-16 (SOCIAL ENGINE — restaurar fallback hardcodeado de FB_APP_ID + error claro si falta FB_APP_SECRET 🔑)
-// Cache bust: 2026-05-16 06:00 (SOCIAL FB_APP_ID FALLBACK v4.331 🔑)
+// DISTRICT HEALTH IQ V4.332 | 2026-05-16 (SOCIAL ENGINE — quitar display=popup que rompía redirect + logging detallado del callback 🪟)
+// Cache bust: 2026-05-16 06:30 (SOCIAL OAUTH NO POPUP v4.332 🪟)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.332',
+        date: '2026-05-16',
+        title: 'Motor Social Fase 1 — Fix OAuth Redirect a /_=_ 🪟',
+        description: 'v4.331 redirigía a / con hash #_=_ después del OAuth en lugar de a /admin/content-studio. Causa: display=popup mal usado en un flow full-page redirect.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Diagnóstico: el OAuth URL incluía display=popup, que le dice a Facebook que está hablando con una ventana popup. Pero nosotros redirigimos en la misma ventana (window.location.href), no abrimos popup. Facebook intentaba hacer post-message a un window.opener inexistente y caía al fallback de redirect a la raíz con un hash artifact #_=_.',
+            'Fix: quitado display=popup del URL de OAuth. Default behavior (display=page) hace el redirect normal de full-page, que es lo que necesitamos. La cuenta debería volver correctamente a /admin/content-studio?tab=accounts&social=connected.',
+            'Logging mejorado en el callback: console.log al ingresar, al verificar state, al completar OAuth. Si vuelve a fallar, los logs de Vercel van a tener detalles precisos para diagnosticar.',
+            'No requiere acciones del usuario. El URL de OAuth se genera al clickear CONECTAR META, así que el siguiente intento ya usará el formato correcto.'
+        ]
+    },
     {
         version: 'v4.331',
         date: '2026-05-16',
