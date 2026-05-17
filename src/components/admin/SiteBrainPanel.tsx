@@ -61,7 +61,7 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, i
     const [initializing, setInitializing] = useState(false);
     const [migrating, setMigrating] = useState(false);
     const [errorState, setErrorState] = useState<{ status: number | null; message: string; isPingFail?: boolean; code?: string } | null>(null);
-    const [tab, setTab] = useState<'overview' | 'graph' | 'docs' | 'memories' | 'search' | 'config'>('overview');
+    const [tab, setTab] = useState<'overview' | 'graph' | 'docs' | 'memories' | 'search' | 'config'>('graph');
 
     const fetchMe = useCallback(async () => {
         setLoading(true);
@@ -396,8 +396,8 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, i
             {/* Tabs */}
             <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
                 <div className="flex border-b border-gray-100 overflow-x-auto">
-                    <TabBtn id="overview" current={tab} onClick={setTab} icon={<Sparkles className="w-4 h-4" />}>Resumen</TabBtn>
                     <TabBtn id="graph"    current={tab} onClick={setTab} icon={<Atom className="w-4 h-4" />}>Grafo</TabBtn>
+                    <TabBtn id="overview" current={tab} onClick={setTab} icon={<Sparkles className="w-4 h-4" />}>Resumen</TabBtn>
                     <TabBtn id="docs"     current={tab} onClick={setTab} icon={<BookOpen className="w-4 h-4" />}>Documentos</TabBtn>
                     <TabBtn id="memories" current={tab} onClick={setTab} icon={<Database className="w-4 h-4" />}>Memorias <span className="ml-1 text-[10px] bg-violet-100 text-violet-700 rounded-full px-1.5">{brain.memoryCount}</span></TabBtn>
                     <TabBtn id="search"   current={tab} onClick={setTab} icon={<Search className="w-4 h-4" />}>Búsqueda</TabBtn>
