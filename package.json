@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.360.0",
-  "cache_bust": "2026-05-18 00:30 (EMERGENCY DEGRADED MODE v4.360 🚨)",
+  "version": "4.361.0",
+  "cache_bust": "2026-05-18 02:00 (BRAIN QUICK BYPASS v4.361 🆘)",
   "type": "module",
-  "//": "EMERGENCY DEGRADED MODE V4.360 | 2026-05-18 (CEREBROS — timeouts internos por query + cache de ensureReady + degraded scope para no colgar nunca 🚨)",
+  "//": "BRAIN QUICK BYPASS V4.361 | 2026-05-18 (CEREBROS — endpoints de emergencia /api/brain-quick/* declarados directamente en server.js bypaseando el router brains 🆘)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

@@ -32,6 +32,102 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
+// v4.361 — Brain emergency endpoints DIRECTAMENTE en server.js, bypaseando
+// el router /api/brains/* que en producción no responde. Si /brain-quick
+// responde y /api/brains/ping no, sabemos que el problema es el router.
+app.get('/api/brain-quick', (req, res) => {
+    res.json({
+        ok: true,
+        version: 'v4.361',
+        timestamp: new Date().toISOString(),
+        mountedDirect: true,
+        env: {
+            node: process.version,
+            vercelRegion: process.env.VERCEL_REGION || null,
+            hasDbUrl: !!process.env.DATABASE_URL,
+            dbUrlHost: process.env.DATABASE_URL?.match(/@([^/?]+)/)?.[1] || null,
+            hasGemini: !!process.env.GEMINI_API_KEY,
+        },
+    });
+});
+
+// Mismo pero con un query Prisma mínimo y timeout interno. Si esto responde
+// rápido pero /api/brains/me se cuelga, el problema NO es Prisma — es algo
+// en el router brains. Si esto también se cuelga, es Prisma/DB.
+app.get('/api/brain-quick/db', async (req, res) => {
+    const t0 = Date.now();
+    try {
+        const result = await Promise.race([
+            prisma.brain.count().then(c => ({ ok: true, count: c })).catch(e => ({ ok: false, error: e.code || e.message?.slice(0, 100) })),
+            new Promise(resolve => setTimeout(() => resolve({ ok: false, timeout: true }), 4000)),
+        ]);
+        res.json({
+            ...result,
+            elapsedMs: Date.now() - t0,
+            version: 'v4.361',
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message?.slice(0, 200), elapsedMs: Date.now() - t0 });
+    }
+});
+
+// Brain "me" minimalist — la solución de emergencia. Si /api/brains/me sigue
+// colgándose, el frontend lo usa como fallback. Solo lectura, sin middleware
+// pesado, con timeout interno explícito.
+import { authMiddleware as brainQuickAuth } from './middleware/auth.js';
+app.get('/api/brain-quick/me', brainQuickAuth, async (req, res) => {
+    const t0 = Date.now();
+    const QUERY_TIMEOUT = 3500;
+    const tryQuery = (promise, fallback) => Promise.race([
+        promise.then(v => v).catch(e => ({ __error: e.code || e.message?.slice(0, 80) })),
+        new Promise(resolve => setTimeout(() => resolve({ __timeout: true }), QUERY_TIMEOUT)),
+    ]).then(v => v ?? fallback);
+
+    try {
+        const masterPromise = tryQuery(
+            prisma.brain.findFirst({ where: { isMaster: true }, select: { id: true, name: true, memoryCount: true } }),
+            null,
+        );
+
+        let brainPromise = Promise.resolve(null);
+        if (req.user?.clubId) {
+            brainPromise = tryQuery(
+                prisma.brain.findUnique({
+                    where: { clubId: req.user.clubId },
+                    select: { id: true, name: true, kind: true, isMaster: true, memoryCount: true, identityPrompt: true, metadata: true, clubId: true, districtId: true },
+                }),
+                null,
+            );
+        }
+
+        const [master, brain] = await Promise.all([masterPromise, brainPromise]);
+        const elapsedMs = Date.now() - t0;
+
+        const masterOk = master && !master.__timeout && !master.__error;
+        const brainOk = brain && !brain.__timeout && !brain.__error;
+
+        if (!masterOk && (master?.__timeout || master?.__error)) {
+            return res.json({
+                scope: 'degraded',
+                detail: master.__timeout ? 'Master query timeout' : `Master query error: ${master.__error}`,
+                elapsedMs, version: 'v4.361',
+            });
+        }
+
+        res.json({
+            scope: !masterOk ? 'not-initialized' : (!req.user?.clubId ? 'master-only' : (brainOk ? 'site' : 'not-initialized')),
+            master: masterOk ? master : null,
+            brain: brainOk ? brain : null,
+            reason: !masterOk ? 'no-master' : (brain?.__timeout ? 'brain-timeout' : (brain?.__error ? 'brain-error' : (!brainOk ? 'no-site-brain' : undefined))),
+            diagnostic: { masterRaw: master, brainRaw: brain, clubId: req.user?.clubId || null },
+            elapsedMs,
+            version: 'v4.361',
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message?.slice(0, 200), elapsedMs: Date.now() - t0, version: 'v4.361' });
+    }
+});
+
 import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
 import clubRoutes from './routes/clubs.js';
