@@ -50,7 +50,10 @@ const MEMORY_KIND_META: Record<string, { label: string; icon: React.ReactNode; c
 
 const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser }) => {
     const [data, setData] = useState<BrainMe | null>(null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [extras, setExtras] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [loadingExtras, setLoadingExtras] = useState(false);
     const [errorState, setErrorState] = useState<{ status: number | null; message: string } | null>(null);
     const [tab, setTab] = useState<'overview' | 'docs' | 'memories' | 'search' | 'config'>('overview');
 
@@ -58,7 +61,7 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser })
         setLoading(true);
         setErrorState(null);
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20_000);
+        const timeoutId = setTimeout(() => controller.abort(), 45_000);
         try {
             const r = await fetch(`${API}/brains/me`, { headers, signal: controller.signal });
             if (r.ok) {
@@ -80,7 +83,7 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser })
             setErrorState({
                 status: null,
                 message: isAbort
-                    ? 'Timeout: el endpoint /api/brains/me no respondió en 20s — probable error del servidor.'
+                    ? 'Timeout: el endpoint /api/brains/me no respondió en 45s — probable error del servidor o cold start severo de Vercel.'
                     : e.message,
             });
             toast.error(isAbort ? 'Timeout cargando el cerebro' : `Error: ${e.message}`);
@@ -90,13 +93,41 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser })
         }
     }, [headers]);
 
+    const fetchExtras = useCallback(async () => {
+        setLoadingExtras(true);
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 45_000);
+            const r = await fetch(`${API}/brains/me/extras`, { headers, signal: controller.signal });
+            clearTimeout(timeoutId);
+            if (r.ok) {
+                setExtras(await r.json());
+            } else {
+                // No bloquea — solo loguea
+                console.warn('[SiteBrainPanel] extras failed:', r.status);
+            }
+        } catch (err) {
+            console.warn('[SiteBrainPanel] extras error:', (err as Error).message);
+        } finally {
+            setLoadingExtras(false);
+        }
+    }, [headers]);
+
     useEffect(() => { fetchMe(); }, [fetchMe]);
+
+    // Una vez que tenemos el brain básico, cargamos las cosas pesadas en background
+    useEffect(() => {
+        if (data?.brain?.id && !extras) {
+            fetchExtras();
+        }
+    }, [data?.brain?.id, extras, fetchExtras]);
 
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center p-16 gap-3">
                 <Loader2 className="w-6 h-6 text-violet-500 animate-spin" />
                 <p className="text-xs text-gray-500">Cargando tu cerebro…</p>
+                <p className="text-[10px] text-gray-400">Primera carga puede tardar unos segundos por cold start</p>
             </div>
         );
     }
@@ -163,9 +194,9 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser })
                 </div>
 
                 <div className="p-6">
-                    {tab === 'overview' && <OverviewTab brain={brain} memories={data.recentMemories} master={data.master} />}
-                    {tab === 'docs'     && <BrainDocumentsPanel brainId={brain.id} brainName={brain.name} canUpload={canEdit} headers={headers} onChange={fetchMe} />}
-                    {tab === 'memories' && <MemoriesTab brainId={brain.id} memories={data.recentMemories} headers={headers} />}
+                    {tab === 'overview' && <OverviewTab brain={brain} memories={extras?.memories || []} master={data.master} loadingExtras={loadingExtras} />}
+                    {tab === 'docs'     && <BrainDocumentsPanel brainId={brain.id} brainName={brain.name} canUpload={canEdit} headers={headers} onChange={fetchExtras} />}
+                    {tab === 'memories' && <MemoriesTab brainId={brain.id} memories={extras?.memories || []} headers={headers} loadingExtras={loadingExtras} />}
                     {tab === 'search'   && <SearchTab brain={brain} master={data.master} headers={headers} />}
                     {tab === 'config'   && <ConfigTab brain={brain} canEdit={canEdit} headers={headers} onUpdate={fetchMe} />}
                 </div>
@@ -309,7 +340,7 @@ const HeroStat: React.FC<{ label: string; value: number; icon: React.ReactNode; 
 
 // ─── Overview tab ────────────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const OverviewTab: React.FC<{ brain: any; memories: any[]; master: any }> = ({ brain, memories, master }) => {
+const OverviewTab: React.FC<{ brain: any; memories: any[]; master: any; loadingExtras?: boolean }> = ({ brain, memories, master, loadingExtras }) => {
     const memoryKindsCount = useMemo(() => {
         const map: Record<string, number> = {};
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -366,7 +397,13 @@ const OverviewTab: React.FC<{ brain: any; memories: any[]; master: any }> = ({ b
                 </div>
             )}
 
-            {memories?.length === 0 && (
+            {loadingExtras && memories?.length === 0 && (
+                <div className="flex items-center justify-center py-8 gap-2 bg-gray-50 rounded-xl">
+                    <Loader2 className="w-4 h-4 text-violet-500 animate-spin" />
+                    <p className="text-xs text-gray-500">Cargando memorias…</p>
+                </div>
+            )}
+            {!loadingExtras && memories?.length === 0 && (
                 <div className="text-center py-8 bg-gray-50 rounded-xl">
                     <Lightbulb className="w-10 h-10 text-gray-300 mx-auto mb-2" />
                     <p className="text-sm font-medium text-gray-600">Tu cerebro todavía está vacío</p>
@@ -381,7 +418,7 @@ const OverviewTab: React.FC<{ brain: any; memories: any[]; master: any }> = ({ b
 
 // ─── Memories tab ────────────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const MemoriesTab: React.FC<{ brainId: string; memories: any[]; headers: Record<string, string> }> = ({ brainId, memories: initialMemories, headers }) => {
+const MemoriesTab: React.FC<{ brainId: string; memories: any[]; headers: Record<string, string>; loadingExtras?: boolean }> = ({ brainId, memories: initialMemories, headers, loadingExtras: _loadingExtras }) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [memories, setMemories] = useState<any[]>(initialMemories || []);
     const [loading, setLoading] = useState(false);
