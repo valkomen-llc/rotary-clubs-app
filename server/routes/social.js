@@ -17,7 +17,8 @@ import {
     verifyAccount,
     disconnectAccount,
     publishPost,
-    listPublications
+    listPublications,
+    deletePublication
 } from '../controllers/socialPublishingController.js';
 
 const router = express.Router();
@@ -35,5 +36,6 @@ router.delete('/accounts/:id', authMiddleware, disconnectAccount);
 // histórica del Content Studio.
 router.post('/publish', authMiddleware, publishPost);
 router.get('/publications', authMiddleware, listPublications);
+router.delete('/publications/:id', authMiddleware, deletePublication);
 
 export default router;
