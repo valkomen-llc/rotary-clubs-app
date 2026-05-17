@@ -23,6 +23,10 @@ import {
     StickyNote,
     Download,
     Atom,
+    Stethoscope,
+    CheckCircle2,
+    XCircle,
+    AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
@@ -128,8 +132,15 @@ const AICore: React.FC = () => {
     const [queryResults, setQueryResults] = useState<SearchHit[] | null>(null);
     const [querying, setQuerying] = useState(false);
 
-    // Reindex state
+    // Reindex state (paginated)
     const [reindexing, setReindexing] = useState(false);
+    const [reindexProgress, setReindexProgress] = useState<{ done: number; total: number; phase: string } | null>(null);
+
+    // Diagnostic state
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [diagnostic, setDiagnostic] = useState<any>(null);
+    const [diagnosticOpen, setDiagnosticOpen] = useState(false);
+    const [diagnosticLoading, setDiagnosticLoading] = useState(false);
 
     // Export state
     const [exporting, setExporting] = useState(false);
@@ -215,39 +226,125 @@ const AICore: React.FC = () => {
         }
     };
 
+    // Reindex paginado (v4.354) — múltiples llamadas chicas en serie, evitando
+    // el timeout de Vercel. El frontend muestra progress real.
     const runReindex = async () => {
-        if (!confirm('Re-indexar todo el contenido existente?\n\nProcesa en lotes de hasta 90s (límite de Vercel). Si queda truncado, volvé a clickear para continuar — los items ya procesados se saltean.')) return;
+        if (!confirm('Re-indexar todo el contenido existente?\n\nSe procesa en lotes pequeños para evitar timeouts. Vas a ver el progreso en vivo.')) return;
         setReindexing(true);
-        try {
-            const r = await fetch(`${API}/brains/reindex`, {
-                method: 'POST',
-                headers: { ...headers, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ skipExisting: true }),
-            });
-            const data = await r.json().catch(() => ({}));
-            if (r.ok) {
-                const s = data.stats || {};
-                const total = (s.posts || 0) + (s.projects || 0) + (s.events || 0) + (s.knowledge || 0);
-                let msg = `Reindex: +${total} memorias (${s.posts || 0} noticias, ${s.projects || 0} proyectos, ${s.events || 0} eventos, ${s.knowledge || 0} fuentes)`;
-                if (s.skipped) msg += ` · ${s.skipped} ya indexadas`;
-                if (data.truncated) msg += ` · TRUNCADO por tiempo — re-clickeá para continuar`;
-                if (s.errors) msg += ` · ${s.errors} errores: ${s.firstError || ''}`;
+        setReindexProgress({ done: 0, total: 0, phase: 'POST' });
 
-                if (s.errors > 0 && total === 0) {
-                    toast.error(msg);
-                } else if (data.truncated || s.errors > 0) {
-                    toast.warning(msg);
-                } else {
-                    toast.success(msg);
-                }
-                await fetchEverything();
-            } else {
-                toast.error(`Error al re-indexar: ${data.detail || data.error || 'desconocido'}`);
+        // Primero traemos el total real para mostrar progreso preciso
+        let grandTotal = 0;
+        try {
+            const pr = await fetch(`${API}/brains/reindex/progress`, { headers });
+            if (pr.ok) {
+                const p = await pr.json();
+                grandTotal = p.grandTotal || 0;
+                setReindexProgress({ done: p.grandIndexed || 0, total: grandTotal, phase: 'POST' });
             }
+        } catch { /* no crítico */ }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let cursor: any = null;
+        let totalProcessed = 0;
+        let totalSkipped = 0;
+        let totalErrors = 0;
+        let firstError: string | null = null;
+        let consecutiveFails = 0;
+        const MAX_CONSECUTIVE_FAILS = 3;
+
+        try {
+            while (true) {
+                let r: Response;
+                try {
+                    r = await fetch(`${API}/brains/reindex/batch`, {
+                        method: 'POST',
+                        headers: { ...headers, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ cursor, batchSize: 15, timeBudgetMs: 25_000, skipExisting: true }),
+                    });
+                } catch (netErr) {
+                    consecutiveFails++;
+                    if (consecutiveFails >= MAX_CONSECUTIVE_FAILS) {
+                        toast.error(`Falló la conexión 3 veces seguidas: ${(netErr as Error).message}`);
+                        break;
+                    }
+                    await new Promise(res => setTimeout(res, 2000));
+                    continue;
+                }
+
+                // Manejo robusto de respuestas no-JSON (ej. 504 de Vercel devuelve HTML)
+                let data: { ok?: boolean; stats?: { processed?: number; skipped?: number; errors?: number; firstError?: string | null }; cursor?: { phase?: string; offset?: number }; done?: boolean; error?: string; detail?: string };
+                try {
+                    data = await r.json();
+                } catch {
+                    consecutiveFails++;
+                    if (consecutiveFails >= MAX_CONSECUTIVE_FAILS) {
+                        toast.error(`Respuesta no-JSON ${r.status} ${r.statusText} — probable timeout de Vercel`);
+                        break;
+                    }
+                    await new Promise(res => setTimeout(res, 2000));
+                    continue;
+                }
+
+                if (!r.ok) {
+                    if (data.error === 'BRAINS_NOT_MIGRATED') {
+                        toast.error('Las tablas Brain no están migradas — corré `prisma db push` en producción.');
+                    } else {
+                        toast.error(`Error: ${data.detail || data.error || `HTTP ${r.status}`}`);
+                    }
+                    break;
+                }
+
+                consecutiveFails = 0;
+                const s = data.stats || {};
+                totalProcessed += s.processed || 0;
+                totalSkipped += s.skipped || 0;
+                totalErrors += s.errors || 0;
+                if (!firstError && s.firstError) firstError = s.firstError;
+
+                setReindexProgress({
+                    done: totalProcessed + totalSkipped,
+                    total: Math.max(grandTotal, totalProcessed + totalSkipped),
+                    phase: data.cursor?.phase || 'DONE',
+                });
+
+                if (data.done) break;
+                cursor = data.cursor;
+            }
+
+            // Mensaje final
+            const msg = `Reindex completo: +${totalProcessed} memorias, ${totalSkipped} ya indexadas` +
+                (totalErrors > 0 ? `, ${totalErrors} errores (${firstError?.slice(0, 80) || ''})` : '');
+            if (totalErrors > 0 && totalProcessed === 0) toast.error(msg);
+            else if (totalErrors > 0) toast.warning(msg);
+            else toast.success(msg);
+            await fetchEverything();
         } catch (err) {
             toast.error(`Error al re-indexar: ${(err as Error).message}`);
         } finally {
             setReindexing(false);
+            setReindexProgress(null);
+        }
+    };
+
+    const runDiagnostic = async () => {
+        setDiagnosticLoading(true);
+        setDiagnosticOpen(true);
+        try {
+            const r = await fetch(`${API}/brains/diagnose`, { headers });
+            if (r.ok) {
+                const data = await r.json();
+                setDiagnostic(data);
+            } else {
+                const data = await r.json().catch(() => ({}));
+                toast.error(`Diagnóstico falló: ${data.error || r.status}`);
+                setDiagnosticOpen(false);
+            }
+        } catch (err) {
+            toast.error(`Diagnóstico falló: ${(err as Error).message}`);
+            setDiagnosticOpen(false);
+        } finally {
+            setDiagnosticLoading(false);
         }
     };
 
@@ -357,8 +454,16 @@ const AICore: React.FC = () => {
                         {isSuperAdmin && (
                             <>
                                 <button
+                                    onClick={runDiagnostic}
+                                    className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 hover:border-amber-300 rounded-xl text-sm font-medium text-gray-700 transition-colors"
+                                    title="Ver estado del sistema"
+                                >
+                                    <Stethoscope className="w-4 h-4" />
+                                    Diagnóstico
+                                </button>
+                                <button
                                     onClick={bootstrap}
-                                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 hover:border-violet-300 rounded-xl text-sm font-medium text-gray-700 transition-colors"
+                                    className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 hover:border-violet-300 rounded-xl text-sm font-medium text-gray-700 transition-colors"
                                 >
                                     <Network className="w-4 h-4" />
                                     Reconstruir Relaciones
@@ -369,7 +474,9 @@ const AICore: React.FC = () => {
                                     className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:bg-violet-300 text-white rounded-xl text-sm font-medium transition-colors shadow-sm shadow-violet-500/20"
                                 >
                                     {reindexing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                                    {reindexing ? 'Re-indexando…' : 'Re-indexar todo'}
+                                    {reindexing
+                                        ? (reindexProgress ? `${reindexProgress.done}/${reindexProgress.total || '?'} (${reindexProgress.phase})` : 'Re-indexando…')
+                                        : 'Re-indexar todo'}
                                 </button>
                             </>
                         )}
@@ -523,7 +630,7 @@ const AICore: React.FC = () => {
                             <div className="flex items-center gap-2">
                                 <Atom className="w-5 h-5 text-violet-600" />
                                 <h3 className="font-bold text-gray-900 text-lg">Grafo de Conocimiento 3D</h3>
-                                <span className="px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full text-[10px] font-bold uppercase tracking-wider">v4.353</span>
+                                <span className="px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full text-[10px] font-bold uppercase tracking-wider">v4.354</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 {showGraph && graphData && (
@@ -631,7 +738,7 @@ const AICore: React.FC = () => {
                 <div className="mt-12 pt-6 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400 flex-wrap gap-2">
                     <div className="flex items-center gap-2">
                         <Sparkles className="w-3.5 h-3.5" />
-                        Centro de Inteligencia v4.353 · Fase 3: Carga documental (PDF / DOCX / TXT / MD) + Reindex resiliente
+                        Centro de Inteligencia v4.354 · Fase 4: Reindex paginado con cursor + Diagnóstico del sistema
                     </div>
                     <div className="flex items-center gap-4 flex-wrap">
                         <span>Embedding: Gemini text-embedding-004 (768d)</span>
@@ -641,6 +748,105 @@ const AICore: React.FC = () => {
             </div>
 
             {/* Drawer */}
+            {/* Modal de diagnóstico */}
+            {diagnosticOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setDiagnosticOpen(false)}>
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+                    <div className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                        <div className="sticky top-0 bg-white/95 backdrop-blur-md border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Stethoscope className="w-5 h-5 text-amber-600" />
+                                <h3 className="font-bold text-gray-900">Diagnóstico del Sistema</h3>
+                            </div>
+                            <button onClick={() => setDiagnosticOpen(false)} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
+                        </div>
+                        <div className="p-6">
+                            {diagnosticLoading || !diagnostic ? (
+                                <div className="flex items-center justify-center py-12">
+                                    <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
+                                </div>
+                            ) : (
+                                <div className="space-y-5 text-sm">
+                                    {/* Warnings */}
+                                    {diagnostic.warnings?.length > 0 && (
+                                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                                            <div className="flex items-center gap-2 mb-2 text-amber-800 font-bold text-xs uppercase tracking-wider">
+                                                <AlertTriangle className="w-4 h-4" />Advertencias ({diagnostic.warnings.length})
+                                            </div>
+                                            <ul className="space-y-1.5">
+                                                {diagnostic.warnings.map((w: string, i: number) => (
+                                                    <li key={i} className="text-xs text-amber-900">• {w}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {/* Entorno */}
+                                    <DiagSection title="Entorno">
+                                        <DiagRow label="GEMINI_API_KEY" ok={diagnostic.env?.geminiConfigured} okText="Configurada" failText="FALTANTE" />
+                                        <DiagRow label="AWS S3 (uploads)" ok={diagnostic.env?.awsConfigured} okText="Configurado" failText="No configurado" />
+                                        <DiagRow label="Vercel region" value={diagnostic.env?.vercelRegion || 'local / no-vercel'} />
+                                    </DiagSection>
+
+                                    {/* Tablas */}
+                                    <DiagSection title="Tablas de la base de datos">
+                                        <DiagRow label="Brain" value={diagnostic.tables?.brain} />
+                                        <DiagRow label="BrainMemory" value={diagnostic.tables?.brainMemory} />
+                                        <DiagRow label="BrainRelation" value={diagnostic.tables?.brainRelation} />
+                                        <DiagRow label="BrainDocument" value={diagnostic.tables?.brainDocument} />
+                                    </DiagSection>
+
+                                    {/* Datos del brain system */}
+                                    {diagnostic.brain && !diagnostic.brain.error && (
+                                        <DiagSection title="Cerebros + memorias">
+                                            <DiagRow label="Cerebros creados" value={String(diagnostic.brain.totalBrains)} />
+                                            <DiagRow label="Maestro existe" ok={diagnostic.brain.hasMaster} okText="Sí" failText="No (se crea al primer GET /master)" />
+                                            <DiagRow label="Memorias totales" value={String(diagnostic.brain.totalMemories)} />
+                                            <DiagRow label="Documentos cargados" value={String(diagnostic.brain.totalDocuments ?? '—')} />
+                                            <DiagRow label="Relaciones" value={String(diagnostic.brain.totalRelations)} />
+                                        </DiagSection>
+                                    )}
+
+                                    {/* Fuentes */}
+                                    {diagnostic.sources && !diagnostic.sources.error && (
+                                        <DiagSection title="Indexación por fuente">
+                                            {(['posts', 'projects', 'events', 'knowledge'] as const).map(k => {
+                                                const s = diagnostic.sources?.[k];
+                                                if (!s) return null;
+                                                const pct = s.total > 0 ? Math.round((s.indexed / s.total) * 100) : 0;
+                                                return (
+                                                    <div key={k} className="flex items-center gap-3 py-1.5 text-xs">
+                                                        <div className="w-24 text-gray-600 capitalize">{k}</div>
+                                                        <div className="flex-1">
+                                                            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                                                <div className="h-full bg-violet-500" style={{ width: `${pct}%` }} />
+                                                            </div>
+                                                        </div>
+                                                        <div className="w-32 text-right text-gray-700 font-medium">
+                                                            {s.indexed} / {s.total}
+                                                            {s.pending > 0 && <span className="text-amber-600 ml-1">(+{s.pending})</span>}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                            {diagnostic.totalPending > 0 && (
+                                                <div className="mt-3 text-xs bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 text-violet-900">
+                                                    <strong>{diagnostic.totalPending}</strong> items pendientes de indexar. Cerrá este modal y clickeá <strong>Re-indexar todo</strong>.
+                                                </div>
+                                            )}
+                                        </DiagSection>
+                                    )}
+
+                                    <div className="text-[10px] text-gray-400 text-right pt-2">
+                                        {diagnostic.timestamp} · {diagnostic.version}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {openBrainId && (
                 <BrainDrawer
                     brainId={openBrainId}
@@ -906,6 +1112,38 @@ const BrainDrawer: React.FC<BrainDrawerProps> = ({ detail, loading, onClose, onR
                             )}
                         </div>
                     </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const DiagSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+    <div>
+        <div className="text-[10px] uppercase tracking-widest text-gray-500 font-bold mb-2">{title}</div>
+        <div className="bg-gray-50 rounded-xl p-3 space-y-1">{children}</div>
+    </div>
+);
+
+const DiagRow: React.FC<{ label: string; ok?: boolean; okText?: string; failText?: string; value?: string }> = ({ label, ok, okText, failText, value }) => {
+    const isStatus = typeof ok === 'boolean';
+    const tableStatus = typeof value === 'string' && value !== 'ok';
+    return (
+        <div className="flex items-center gap-2 py-1 text-xs">
+            <div className="w-40 text-gray-600">{label}</div>
+            <div className="flex-1 flex items-center gap-1.5">
+                {isStatus ? (
+                    ok ? (
+                        <><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /><span className="text-emerald-700 font-medium">{okText || 'OK'}</span></>
+                    ) : (
+                        <><XCircle className="w-3.5 h-3.5 text-red-600" /><span className="text-red-700 font-medium">{failText || 'FAIL'}</span></>
+                    )
+                ) : value === 'ok' ? (
+                    <><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /><span className="text-emerald-700 font-medium">ok</span></>
+                ) : tableStatus ? (
+                    <><XCircle className="w-3.5 h-3.5 text-red-600" /><span className="text-red-700 font-mono text-[11px]">{value}</span></>
+                ) : (
+                    <span className="text-gray-700 font-mono text-[11px]">{value || '—'}</span>
                 )}
             </div>
         </div>

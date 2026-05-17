@@ -10,7 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import prisma from '../lib/prisma.js';
 
-console.log('🧠 BRAIN SERVICE v4.353 — cerebros + grafo 3D + obsidian export + carga documental + reindex resiliente 📚');
+console.log('🧠 BRAIN SERVICE v4.354 — cerebros + grafo 3D + obsidian export + docs + reindex paginado con cursor + diagnose 🩺');
 
 // Las tablas Brain/BrainMemory/BrainRelation se crean vía `prisma db push`.
 // Hasta que ese push se corra en producción, todas las operaciones aquí
@@ -412,6 +412,200 @@ export async function bootstrapRelations() {
     // matching cross-brain.
 
     return { master: master.id, brains: allBrains.length, edges };
+}
+
+// ─── Backfill / reindex paginado (v4.354) ────────────────────────────────────
+// reindexBatch procesa UN solo lote pequeño con cursor — diseñado para que el
+// frontend llame en loop hasta done=true. Cada llamada es < 30s (default), muy
+// por debajo del límite Vercel de 120s, así nunca hay timeout HTTP.
+//
+// Cursor: { phase: 'POST'|'PROJECT'|'EVENT'|'KNOWLEDGE'|'BOOTSTRAP'|'DONE', offset: number }
+
+const PHASES = ['POST', 'PROJECT', 'EVENT', 'KNOWLEDGE', 'BOOTSTRAP', 'DONE'];
+
+async function fetchSourcesForPhase(phase, offset, batchSize) {
+    if (phase === 'POST') {
+        return prisma.post.findMany({
+            where: { clubId: { not: null } },
+            select: { id: true, title: true, content: true, clubId: true, category: true, published: true, createdAt: true },
+            orderBy: { createdAt: 'asc' },
+            skip: offset,
+            take: batchSize,
+        });
+    }
+    if (phase === 'PROJECT') {
+        return prisma.project.findMany({
+            where: { deletedAt: null, clubId: { not: null } },
+            select: { id: true, title: true, description: true, clubId: true, category: true, status: true, impacto: true, ubicacion: true, beneficiarios: true, createdAt: true },
+            orderBy: { createdAt: 'asc' },
+            skip: offset,
+            take: batchSize,
+        });
+    }
+    if (phase === 'EVENT') {
+        return prisma.calendarEvent.findMany({
+            select: { id: true, title: true, description: true, htmlContent: true, clubId: true, type: true, startDate: true, endDate: true, location: true },
+            orderBy: { startDate: 'asc' },
+            skip: offset,
+            take: batchSize,
+        });
+    }
+    if (phase === 'KNOWLEDGE') {
+        return prisma.knowledgeSource.findMany({
+            orderBy: { id: 'asc' },
+            skip: offset,
+            take: batchSize,
+        });
+    }
+    return [];
+}
+
+async function totalForPhase(phase) {
+    if (phase === 'POST')      return prisma.post.count({ where: { clubId: { not: null } } });
+    if (phase === 'PROJECT')   return prisma.project.count({ where: { deletedAt: null, clubId: { not: null } } });
+    if (phase === 'EVENT')     return prisma.calendarEvent.count();
+    if (phase === 'KNOWLEDGE') return prisma.knowledgeSource.count();
+    return 0;
+}
+
+function ingestArgsFor(phase, row) {
+    if (phase === 'POST') return {
+        clubId: row.clubId, kind: 'POST', sourceType: 'Post', sourceId: row.id,
+        title: row.title || '(sin título)', content: row.content || '',
+        metadata: { category: row.category, published: row.published, createdAt: row.createdAt },
+    };
+    if (phase === 'PROJECT') return {
+        clubId: row.clubId, kind: 'PROJECT', sourceType: 'Project', sourceId: row.id,
+        title: row.title || '(sin título)',
+        content: [row.description, row.impacto].filter(Boolean).join('\n\n'),
+        metadata: { category: row.category, status: row.status, ubicacion: row.ubicacion, beneficiarios: row.beneficiarios },
+    };
+    if (phase === 'EVENT') return {
+        clubId: row.clubId, kind: 'EVENT', sourceType: 'CalendarEvent', sourceId: row.id,
+        title: row.title || '(sin título)',
+        content: [row.description, row.htmlContent].filter(Boolean).join('\n\n').replace(/<[^>]+>/g, ' '),
+        metadata: { type: row.type, startDate: row.startDate, endDate: row.endDate, location: row.location },
+    };
+    if (phase === 'KNOWLEDGE') return {
+        clubId: row.clubId, kind: 'KNOWLEDGE', sourceType: 'KnowledgeSource', sourceId: row.id,
+        title: row.title || '(sin título)', content: row.content || '',
+        metadata: { type: row.type, fileUrl: row.fileUrl, isGlobal: !row.clubId },
+    };
+    return null;
+}
+
+export async function reindexBatch({ cursor, batchSize = 15, timeBudgetMs = 25_000, skipExisting = true } = {}) {
+    if (!(await ensureTables())) {
+        return {
+            error: 'BRAINS_NOT_MIGRATED',
+            message: 'Las tablas Brain no existen. Correr `prisma db push` antes de re-indexar.',
+        };
+    }
+
+    let phase = cursor?.phase || 'POST';
+    let offset = cursor?.offset || 0;
+    const deadline = Date.now() + timeBudgetMs;
+    const batchStats = { processed: 0, skipped: 0, errors: 0, firstError: null, lastError: null };
+
+    // Pre-cargar sourceIds ya existentes para esta fase (rápido).
+    let existing = new Set();
+    if (skipExisting && phase !== 'BOOTSTRAP' && phase !== 'DONE') {
+        const sourceType = phase === 'POST' ? 'Post' : phase === 'PROJECT' ? 'Project' : phase === 'EVENT' ? 'CalendarEvent' : 'KnowledgeSource';
+        const rows = await prisma.brainMemory.findMany({
+            where: { sourceType },
+            select: { sourceId: true },
+        });
+        existing = new Set(rows.map(r => r.sourceId));
+    }
+
+    const captureErr = (where, err) => {
+        batchStats.errors++;
+        const msg = `${where}: ${err?.message || String(err)}`.slice(0, 300);
+        if (!batchStats.firstError) batchStats.firstError = msg;
+        batchStats.lastError = msg;
+    };
+
+    // Procesar la fase actual
+    while (phase !== 'DONE' && phase !== 'BOOTSTRAP') {
+        if (Date.now() >= deadline) {
+            return { cursor: { phase, offset }, stats: batchStats, done: false, phase };
+        }
+
+        const rows = await fetchSourcesForPhase(phase, offset, batchSize);
+        if (rows.length === 0) {
+            // Fase agotada → pasar a la siguiente
+            const idx = PHASES.indexOf(phase);
+            phase = PHASES[idx + 1];
+            offset = 0;
+            continue;
+        }
+
+        for (const row of rows) {
+            if (Date.now() >= deadline) {
+                return { cursor: { phase, offset }, stats: batchStats, done: false, phase };
+            }
+            offset++;
+            if (existing.has(row.id)) {
+                batchStats.skipped++;
+                continue;
+            }
+            try {
+                await ingestMemory(ingestArgsFor(phase, row));
+                batchStats.processed++;
+            } catch (err) {
+                captureErr(`${phase} ${row.id}`, err);
+            }
+        }
+    }
+
+    // BOOTSTRAP: relaciones deterministas — rápido.
+    if (phase === 'BOOTSTRAP') {
+        try {
+            const rel = await bootstrapRelations();
+            return {
+                cursor: { phase: 'DONE', offset: 0 },
+                stats: batchStats,
+                relations: rel,
+                done: true,
+                phase: 'DONE',
+            };
+        } catch (err) {
+            captureErr('bootstrapRelations', err);
+            return { cursor: { phase: 'DONE', offset: 0 }, stats: batchStats, done: true, phase: 'DONE' };
+        }
+    }
+
+    return { cursor: { phase: 'DONE', offset: 0 }, stats: batchStats, done: true, phase: 'DONE' };
+}
+
+// Helper para que el frontend sepa cuánto falta y muestre progress.
+export async function reindexProgress() {
+    if (!(await ensureTables())) return null;
+
+    const [posts, projects, events, knowledge, indexed] = await Promise.all([
+        prisma.post.count({ where: { clubId: { not: null } } }),
+        prisma.project.count({ where: { deletedAt: null, clubId: { not: null } } }),
+        prisma.calendarEvent.count(),
+        prisma.knowledgeSource.count(),
+        prisma.brainMemory.groupBy({
+            by: ['sourceType'],
+            _count: { sourceType: true },
+            where: { sourceType: { in: ['Post', 'Project', 'CalendarEvent', 'KnowledgeSource'] } },
+        }),
+    ]);
+
+    const indexedMap = Object.fromEntries(indexed.map(r => [r.sourceType, r._count.sourceType]));
+    return {
+        totals: { posts, projects, events, knowledge },
+        indexed: {
+            posts: indexedMap.Post || 0,
+            projects: indexedMap.Project || 0,
+            events: indexedMap.CalendarEvent || 0,
+            knowledge: indexedMap.KnowledgeSource || 0,
+        },
+        grandTotal: posts + projects + events + knowledge,
+        grandIndexed: (indexedMap.Post || 0) + (indexedMap.Project || 0) + (indexedMap.CalendarEvent || 0) + (indexedMap.KnowledgeSource || 0),
+    };
 }
 
 // ─── Backfill / reindex ──────────────────────────────────────────────────────

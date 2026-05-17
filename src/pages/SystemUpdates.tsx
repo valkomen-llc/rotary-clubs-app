@@ -24,9 +24,30 @@ interface UpdateItem {
     details?: string[];
 }
 
-// BRAIN DOCUMENTS V4.353 | 2026-05-17 (CEREBROS — carga documental PDF/DOCX/TXT/MD por sitio + master, reindex resiliente con time-budget y skip-existing 📚)
-// Cache bust: 2026-05-17 12:00 (DOCUMENT KNOWLEDGE LAYER v4.353 📚)
+// BRAIN REINDEX v4.354 | 2026-05-17 (CEREBROS — reindex paginado con cursor sin riesgo de timeout + modal de diagnóstico del sistema 🩺)
+// Cache bust: 2026-05-17 15:30 (PAGINATED REINDEX + DIAGNOSTIC v4.354 🩺)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.354',
+        date: '2026-05-17',
+        title: 'AI Brains — Reindex paginado con cursor + Diagnóstico del sistema 🩺',
+        description: 'Resuelve el "Error al re-indexar: desconocido" reportado en producción. El reindex masivo ahora corre como múltiples llamadas chicas (25s cada una) imposibles de timeoutear, con barra de progreso en vivo. Además, un nuevo endpoint de diagnóstico permite ver exactamente qué pasa adentro del sistema (tablas migradas, API keys configuradas, conteos, items pendientes).',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Causa root del bug v4.353: cuando Vercel cortaba la conexión HTTP a los 120s, el response no era JSON parseable (HTML de gateway timeout). El frontend caía en el fallback `data.detail || data.error || "desconocido"` y mostraba el último, sin dar ningún contexto accionable al admin.',
+            'Solución estructural: reindex paginado con cursor. Cada llamada procesa hasta 15 items con timeBudgetMs=25s (muy por debajo de los 120s de Vercel), devuelve el cursor donde quedó, y el frontend hace loop hasta que `done:true`. Imposible de timeoutear: cada call individual termina en menos de 30s.',
+            'Endpoint nuevo: POST /api/brains/reindex/batch — acepta `{ cursor, batchSize, timeBudgetMs, skipExisting }` y devuelve `{ stats, cursor, done, phase }`. El cursor tiene forma `{ phase: "POST"|"PROJECT"|"EVENT"|"KNOWLEDGE"|"BOOTSTRAP"|"DONE", offset: number }`.',
+            'Endpoint nuevo: GET /api/brains/reindex/progress — devuelve los totales de cada fuente vs lo ya indexado para mostrar barra de progreso precisa antes/durante el reindex.',
+            'Endpoint nuevo: GET /api/brains/diagnose (super admin) — reporta el estado completo del sistema: tablas (Brain / BrainMemory / BrainRelation / BrainDocument migradas?), env (GEMINI_API_KEY / AWS configurados, región Vercel), conteos (brains creados, master existe, memorias, documentos, relaciones), indexación por fuente con porcentaje, warnings accionables.',
+            'UI: nuevo botón "Diagnóstico" en el header (super admin) que abre un modal con todo el estado del sistema. Cada chequeo tiene un check verde o cruz roja con el error concreto. Si BrainDocument no está migrada, lo dice. Si GEMINI_API_KEY falta, lo dice. Si todo el contenido ya está indexado, lo dice.',
+            'UI: el botón "Re-indexar todo" ahora muestra progreso real en vivo, ej. `47/312 (PROJECT)`. Toast final con totales precisos: procesadas, ya indexadas (saltadas), errores con el firstError visible.',
+            'Manejo robusto de respuestas no-JSON: si Vercel devuelve HTML por algún motivo, el frontend muestra `HTTP 504 Gateway Timeout — probable timeout de Vercel` en vez de "desconocido". 3 reintentos con backoff antes de abortar.',
+            'Manejo robusto de errores BRAINS_NOT_MIGRATED: si las tablas no existen, el frontend muestra mensaje accionable ("corré `prisma db push` en producción") en vez de un error genérico.',
+            'Retrocompatibilidad: el endpoint POST /api/brains/reindex sigue existiendo (legacy single-call). El frontend ya no lo usa.',
+            'Roadmap: v4.355 chat RAG sobre el cerebro maestro, v4.356 detección de SIMILAR_TO entre brains, v4.357 OCR opcional para PDFs escaneados.',
+        ]
+    },
     {
         version: 'v4.353',
         date: '2026-05-17',
