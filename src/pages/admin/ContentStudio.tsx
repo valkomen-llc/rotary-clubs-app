@@ -12,6 +12,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import VideoCreator from '../../components/admin/content-studio/VideoCreator';
 import ProjectLibrary from '../../components/admin/content-studio/ProjectLibrary';
+import PublicationLibrary from '../../components/admin/content-studio/PublicationLibrary';
 import AccountManager from '../../components/admin/content-studio/AccountManager';
 import ContentQueue from '../../components/admin/content-studio/ContentQueue';
 import PostGenerator from '../../components/admin/content-studio/PostGenerator';
@@ -75,8 +76,20 @@ const ContentStudio: React.FC = () => {
                         <PostGenerator />
                     </TabsContent>
 
-                    <TabsContent value="library" className="mt-0 focus-visible:outline-none">
-                        <ProjectLibrary />
+                    <TabsContent value="library" className="mt-0 focus-visible:outline-none space-y-8">
+                        {/* v4.346: Biblioteca de Publicaciones (drafts, programadas, publicadas)
+                            es ahora el contenido principal de la tab. La videoteca histórica
+                            queda accesible al final para no romper el flujo de los videos AI. */}
+                        <PublicationLibrary />
+                        <details className="bg-white rounded-2xl border border-gray-100 shadow-sm">
+                            <summary className="cursor-pointer p-5 font-black text-gray-700 text-sm hover:bg-gray-50 transition-colors flex items-center justify-between">
+                                <span>Videos AI generados</span>
+                                <span className="text-[10px] font-bold text-gray-400">Click para expandir</span>
+                            </summary>
+                            <div className="p-5 border-t border-gray-50">
+                                <ProjectLibrary />
+                            </div>
+                        </details>
                     </TabsContent>
 
                     <TabsContent value="accounts" className="mt-0 focus-visible:outline-none">
