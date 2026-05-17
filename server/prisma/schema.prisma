@@ -69,6 +69,12 @@ model District {
 model Club {
   id                       String                  @id @default(uuid())
   name                     String
+  // Sub-tipo de Club para categorización en la Biblioteca Multimedia (v4.342).
+  // Valores: club | association | exchange_program | event | conference |
+  // project_fair | foundation. Cada uno aparece como una "categoría" propia
+  // en el MediaPicker. Default 'club' para que las filas existentes mantengan
+  // el comportamiento previo.
+  category                 String                  @default("club")
   city                     String?
   country                  String?
   district                 String?

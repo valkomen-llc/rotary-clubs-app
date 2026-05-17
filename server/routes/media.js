@@ -366,16 +366,24 @@ router.get('/', authMiddleware, async (req, res) => {
             where.push(`"clubId" IS NULL`);
         }
 
-        // New source-tagging filters (v4.339+). sourceType is the category
-        // (club/district/project/platform). sourceId narrows to one specific
-        // entity inside that category.
+        // New source-tagging filters (v4.339+). sourceType drives the category
+        // chip. v4.342 expanded the vocabulary: 'club' plus its sub-types
+        // (association, exchange_program, event, conference, project_fair,
+        // foundation) all live in the Club table — they differ only by
+        // Club.category. For any of these we narrow Media to those whose
+        // owner club has the matching category.
+        const CLUB_SUBCATEGORIES = ['club', 'association', 'exchange_program', 'event', 'conference', 'project_fair', 'foundation'];
         if (sourceType) {
-            // For "club" we accept either the canonical sourceType='club' OR
-            // legacy rows that still have only clubId set (not yet backfilled
-            // via media_recovery_from_s3key.sql). Same logic for district when
-            // the underlying tables wire up later.
-            if (sourceType === 'club') {
-                where.push(`("sourceType" = $${p} OR ("sourceType" = 'platform' AND "s3Key" LIKE 'clubs/%/%'))`);
+            if (CLUB_SUBCATEGORIES.includes(sourceType)) {
+                where.push(`(
+                    EXISTS (
+                        SELECT 1 FROM "Club" c
+                        WHERE c."category" = $${p}
+                          AND (c."id" = "Media"."sourceId"
+                               OR c."id" = "Media"."clubId"
+                               OR c."id" = SPLIT_PART("Media"."s3Key", '/', 2))
+                    )
+                )`);
                 params.push(sourceType);
                 p += 1;
             } else {
@@ -421,19 +429,28 @@ router.get('/', authMiddleware, async (req, res) => {
 // the image count for each. Entities with zero images are still returned so
 // the user can see the full structure of the platform and tag new uploads
 // to any of them.
+//
+// v4.342: Club rows are sub-typed by Club.category (club / association /
+// exchange_program / event / conference / project_fair / foundation). When
+// `type` matches one of those sub-types we filter Club WHERE category=type.
 router.get('/sources', authMiddleware, async (req, res) => {
     try {
         const { role, clubId: userClubId, districtId } = req.user;
         const requestedType = req.query.type || null;
 
-        const types = requestedType ? [requestedType] : ['club', 'district', 'project', 'platform'];
+        // Sub-types of Club. They all live in the Club table; what
+        // differentiates them is the `category` column.
+        const CLUB_SUBCATEGORIES = ['club', 'association', 'exchange_program', 'event', 'conference', 'project_fair', 'foundation'];
+        const types = requestedType
+            ? [requestedType]
+            : [...CLUB_SUBCATEGORIES, 'district', 'project', 'platform'];
         const results = [];
 
-        // ----- CLUBS -----
-        if (types.includes('club')) {
-            // imageCount fallback (v4.341): contar la imagen si alguno de
-            // sourceId, clubId, o el path s3 apunta al club. Cubre rows con
-            // tagging viejo / no backfilleado.
+        // ----- CLUB SUB-CATEGORIES -----
+        for (const subcat of CLUB_SUBCATEGORIES) {
+            if (!types.includes(subcat)) continue;
+            // The image-count fallback still queries by id (sourceId / clubId /
+            // s3Key path) — independent of how the Club is sub-categorised.
             const countSubquery = `(
                 SELECT COUNT(*)::int FROM "Media" m
                 WHERE (
@@ -444,23 +461,31 @@ router.get('/sources', authMiddleware, async (req, res) => {
             ) AS "imageCount"`;
             let cQ, cParams;
             if (role === 'administrator') {
-                cQ = `SELECT c."id", c."name", ${countSubquery} FROM "Club" c ORDER BY c."name" ASC`;
-                cParams = [];
+                cQ = `SELECT c."id", c."name", ${countSubquery}
+                      FROM "Club" c
+                      WHERE c."category" = $1
+                      ORDER BY c."name" ASC`;
+                cParams = [subcat];
             } else if (role === 'district_admin') {
                 const dId = districtId || userClubId;
                 cQ = `SELECT c."id", c."name", ${countSubquery}
-                      FROM "Club" c WHERE c."id" = $1 OR c."districtId" = $2 ORDER BY c."name" ASC`;
-                cParams = [userClubId, dId];
+                      FROM "Club" c
+                      WHERE c."category" = $1
+                        AND (c."id" = $2 OR c."districtId" = $3)
+                      ORDER BY c."name" ASC`;
+                cParams = [subcat, userClubId, dId];
             } else if (userClubId) {
-                cQ = `SELECT c."id", c."name", ${countSubquery} FROM "Club" c WHERE c."id" = $1`;
-                cParams = [userClubId];
+                cQ = `SELECT c."id", c."name", ${countSubquery}
+                      FROM "Club" c
+                      WHERE c."category" = $1 AND c."id" = $2`;
+                cParams = [subcat, userClubId];
             } else {
                 cQ = null;
             }
             if (cQ) {
                 const r = await db.query(cQ, cParams);
                 for (const row of r.rows) {
-                    results.push({ sourceType: 'club', sourceId: row.id, sourceLabel: row.name || 'Sin nombre', imageCount: row.imageCount });
+                    results.push({ sourceType: subcat, sourceId: row.id, sourceLabel: row.name || 'Sin nombre', imageCount: row.imageCount });
                 }
             }
         }

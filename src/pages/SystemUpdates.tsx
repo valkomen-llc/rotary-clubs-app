@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.341 | 2026-05-16 (MEDIA — recovery del clubId desde s3Key path + fallback en endpoints para imágenes no backfilleadas 🧩)
-// Cache bust: 2026-05-16 21:00 (MEDIA RECOVERY FROM S3KEY v4.341 🧩)
+// DISTRICT HEALTH IQ V4.342 | 2026-05-16 (MEDIA — Club.category con 7 sub-tipos: club, association, exchange_program, event, conference, project_fair, foundation 🏷️)
+// Cache bust: 2026-05-16 21:30 (MEDIA CLUB CATEGORIES v4.342 🏷️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.342',
+        date: '2026-05-16',
+        title: 'Biblioteca Multimedia — 7 Categorías Institucionales (Asociaciones, Programas, Eventos, etc.) 🏷️',
+        description: 'Sumadas 6 categorías nuevas sin crear tablas: Asociaciones, Programas de Intercambio, Eventos, Conferencias, Ferias de Proyectos, Fundaciones. Cada Club ahora tiene una columna `category` que determina bajo qué chip aparece.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Schema: Club.category (default "club"). Valores soportados: club, association, exchange_program, event, conference, project_fair, foundation. Sin tablas nuevas — todo vive en Club.',
+            'Migración SQL con auto-detección por nombre: COLROTARIOS y Asoc* → association; RYE* + "Youth Exchange" + Intercambio → exchange_program; Conference/Conferencia → conference; Feria/Project Fair → project_fair; Event/Evento → event; Foundation/Fundación → foundation. Resto queda como club.',
+            'Backend /api/media/sources: itera sobre las 7 sub-categorías y devuelve los Clubs filtrados por Club.category=X. Cada uno con su conteo de imágenes vía el fallback de 3 vías de v4.341.',
+            'Backend /api/media listing: cuando se filtra por sourceType en cualquier sub-categoría, hace JOIN implícito a Club para narrowing por Club.category. El image-count y el filtering quedan consistentes.',
+            'Frontend MediaPicker: 11 chips ahora (Todas + 7 sub-tipos de Club + Distritos + Proyectos + Plataforma) con iconos y colores propios por categoría. Scroll horizontal automático en viewports angostos.',
+            'Si la heurística por nombre no captura tu COLROTARIOS o RYE4281 (por nombre exacto distinto), corré: UPDATE "Club" SET "category" = \'association\' WHERE "name" = \'<nombre exacto>\';'
+        ]
+    },
     {
         version: 'v4.341',
         date: '2026-05-16',
