@@ -305,14 +305,20 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
                 userText: userPrompt,
                 imageUrl,
                 temperature: typeof config.temperature === 'number' ? config.temperature : 0.6,
-                maxTokens: 1400,
+                // Generoso: 4 plataformas con copy + hashtags + cta + visual_prompt.
+                // Gemini hardcaps a 4000 internamente; OpenAI y Anthropic usan este valor.
+                maxTokens: 2400,
                 jsonMode: true,
                 fallbackChain: [requestedCopyEngine, DEFAULT_COPY_PROVIDER]
             });
             copyProvider = result.provider;
             copyModel = result.model;
-            const parsedRaw = JSON.parse(result.content);
-            parsed = { ...parsed, ...parsedRaw };
+            try {
+                const parsedRaw = JSON.parse(result.content);
+                parsed = { ...parsed, ...parsedRaw };
+            } catch (parseErr) {
+                throw new Error(`${result.provider} (${result.model}) devolvió JSON inválido: ${parseErr.message}. Primeros 200 chars: ${result.content.slice(0, 200)}`);
+            }
             console.log(`[STUDIO] Copy generado por ${result.provider} (${result.model})`);
         } catch (e) {
             copyError = e.message;

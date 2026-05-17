@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.343.0",
-  "cache_bust": "2026-05-16 22:00 (COPY MULTI-MODEL v4.343 🤖)",
+  "version": "4.344.0",
+  "cache_bust": "2026-05-16 22:30 (COPY GEMINI MAX_TOKENS FIX v4.344 ✂️)",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.343 | 2026-05-16 (COPY — arquitectura multi-modelo Fase 1: OpenAI + Anthropic Claude + Google Gemini con selector visual y fallback automático 🤖)",
+  "//": "DISTRICT HEALTH IQ V4.344 | 2026-05-16 (COPY — fix Gemini truncado por MAX_TOKENS: bump output cap a 4000 + strip markdown defensivo + mejor error de JSON.parse ✂️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
