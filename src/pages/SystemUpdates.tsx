@@ -24,9 +24,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.342 | 2026-05-16 (MEDIA — Club.category con 7 sub-tipos: club, association, exchange_program, event, conference, project_fair, foundation 🏷️)
-// Cache bust: 2026-05-16 21:30 (MEDIA CLUB CATEGORIES v4.342 🏷️)
+// DISTRICT HEALTH IQ V4.343 | 2026-05-16 (COPY — arquitectura multi-modelo Fase 1: OpenAI + Anthropic Claude + Google Gemini con selector visual y fallback automático 🤖)
+// Cache bust: 2026-05-16 22:00 (COPY MULTI-MODEL v4.343 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.343',
+        date: '2026-05-16',
+        title: 'Motor IA Copy — Arquitectura Multi-Modelo Fase 1 🤖',
+        description: 'Generación de copies ahora soporta múltiples proveedores de IA seleccionables: OpenAI (GPT-4o), Anthropic (Claude Sonnet 4.6) y Google (Gemini 2.5 Flash). Fallback automático si el seleccionado falla.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Nuevo servicio server/services/copywritingService.js con adapter pattern. Cada proveedor implementa generateCopy({ system, userText, imageUrl, temperature, maxTokens, jsonMode }) → { content, raw, provider, model }. Mismo contrato across providers.',
+            'Adapters Fase 1: OpenAI GPT-4o (chat/completions con JSON mode nativo), Anthropic Claude Sonnet 4.6 (v1/messages con image_url nativo, JSON via prompt), Google Gemini 2.5 Flash (generateContent con inline_data base64, JSON via responseMimeType).',
+            'Sistema de fallback chain: si el proveedor seleccionado falla o no tiene env key, intenta el siguiente. Solo throw cuando TODOS fallaron. El frontend recibe el provider efectivo en metadata.copyProvider.',
+            'Refactor de contentStudioController.generatePost: la sección "GPT-4o copywriter" pasó a usar generateCopy() — 60 líneas menos de fetch hardcodeado, mismo prompt institucional.',
+            'Nuevo endpoint GET /api/content-studio/copy-providers: lista los proveedores disponibles (con flag .available según env vars configuradas). Powers el selector del frontend.',
+            'UI: nuevo panel "Motor IA · Copy" en el PostGenerator, debajo del de Imagen. Radio buttons con label + modelo + indicador de visión multimodal. Los proveedores sin API key configurada aparecen disabled con mensaje claro.',
+            'Auto-default inteligente: si el usuario tenía openai seleccionado pero no está configurado, arranca con el primer provider disponible.',
+            'Env vars nuevas (configurar en Vercel para habilitar): ANTHROPIC_API_KEY (de console.anthropic.com), GEMINI_API_KEY (de aistudio.google.com/apikey). OPENAI_API_KEY ya está.',
+            'Phase 2 pendiente: Perplexity Sonar (text-only con web search), Claude Opus, Gemini Pro, modo comparativo (generar el mismo copy con 2-3 modelos lado a lado), per-use-case routing (storytelling → Claude, hashtags → Gemini Flash).'
+        ]
+    },
     {
         version: 'v4.342',
         date: '2026-05-16',
