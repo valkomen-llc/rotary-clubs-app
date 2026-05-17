@@ -1,11 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, Suspense } from 'react';
 import {
     Brain, Sparkles, BookOpen, Database, Search, Settings, Loader2,
     CheckCircle2, AlertCircle, RefreshCw, Save, Download, Globe,
-    FileText, Lightbulb, MessageCircle, ChevronRight,
+    FileText, Lightbulb, MessageCircle, ChevronRight, Atom,
     Calendar as CalendarIcon, FolderKanban, Users, StickyNote, Layers,
 } from 'lucide-react';
 import { toast } from 'sonner';
+
+// Lazy load del componente de grafo 3D — Three.js es ~1.3MB
+const BrainGraph3D = React.lazy(() => import('./BrainGraph3D'));
 import BrainDocumentsPanel from './BrainDocumentsPanel';
 import { buildObsidianVault, triggerDownload, type ExportPayload } from '../../lib/obsidianExporter';
 
@@ -58,7 +61,7 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, i
     const [initializing, setInitializing] = useState(false);
     const [migrating, setMigrating] = useState(false);
     const [errorState, setErrorState] = useState<{ status: number | null; message: string; isPingFail?: boolean; code?: string } | null>(null);
-    const [tab, setTab] = useState<'overview' | 'docs' | 'memories' | 'search' | 'config'>('overview');
+    const [tab, setTab] = useState<'overview' | 'graph' | 'docs' | 'memories' | 'search' | 'config'>('overview');
 
     const fetchMe = useCallback(async () => {
         setLoading(true);
@@ -394,6 +397,7 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, i
             <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
                 <div className="flex border-b border-gray-100 overflow-x-auto">
                     <TabBtn id="overview" current={tab} onClick={setTab} icon={<Sparkles className="w-4 h-4" />}>Resumen</TabBtn>
+                    <TabBtn id="graph"    current={tab} onClick={setTab} icon={<Atom className="w-4 h-4" />}>Grafo</TabBtn>
                     <TabBtn id="docs"     current={tab} onClick={setTab} icon={<BookOpen className="w-4 h-4" />}>Documentos</TabBtn>
                     <TabBtn id="memories" current={tab} onClick={setTab} icon={<Database className="w-4 h-4" />}>Memorias <span className="ml-1 text-[10px] bg-violet-100 text-violet-700 rounded-full px-1.5">{brain.memoryCount}</span></TabBtn>
                     <TabBtn id="search"   current={tab} onClick={setTab} icon={<Search className="w-4 h-4" />}>Búsqueda</TabBtn>
@@ -402,6 +406,7 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, i
 
                 <div className="p-6">
                     {tab === 'overview' && <OverviewTab brain={brain} memories={extras?.memories || []} master={data.master} loadingExtras={loadingExtras} />}
+                    {tab === 'graph'    && <GraphTab brain={brain} headers={headers} />}
                     {tab === 'docs'     && <BrainDocumentsPanel brainId={brain.id} brainName={brain.name} canUpload={canEdit} headers={headers} onChange={fetchExtras} />}
                     {tab === 'memories' && <MemoriesTab brainId={brain.id} memories={extras?.memories || []} headers={headers} loadingExtras={loadingExtras} />}
                     {tab === 'search'   && <SearchTab brain={brain} master={data.master} headers={headers} />}
@@ -544,6 +549,116 @@ const HeroStat: React.FC<{ label: string; value: number; icon: React.ReactNode; 
         {sub && <div className="text-[10px] text-white/60">{sub}</div>}
     </div>
 );
+
+// ─── Graph tab ───────────────────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const GraphTab: React.FC<{ brain: any; headers: Record<string, string> }> = ({ brain, headers }) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [graphData, setGraphData] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+    const [includeMaster, setIncludeMaster] = useState(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [selectedNode, setSelectedNode] = useState<any>(null);
+
+    const loadGraph = useCallback(async () => {
+        setLoading(true);
+        try {
+            const r = await fetch(`${API}/brains/me/graph?master=${includeMaster}&memoryLimit=300`, { headers });
+            if (r.ok) {
+                const data = await r.json();
+                setGraphData(data);
+            } else {
+                toast.error('No se pudo cargar el grafo');
+            }
+        } catch (err) {
+            toast.error(`Error: ${(err as Error).message}`);
+        } finally {
+            setLoading(false);
+        }
+    }, [headers, includeMaster]);
+
+    useEffect(() => { loadGraph(); }, [loadGraph]);
+
+    return (
+        <div className="space-y-4">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                    <div className="text-xs text-gray-500">
+                        Visualización tipo Obsidian de tu cerebro. Cada esfera es una memoria o brain conectado.
+                    </div>
+                    {graphData?.stats && (
+                        <div className="text-[10px] text-gray-400 mt-1 flex items-center gap-3 flex-wrap">
+                            <span>{graphData.stats.brains} brains</span>
+                            <span>{graphData.stats.memories} memorias</span>
+                            <span>{graphData.stats.relations} relaciones</span>
+                        </div>
+                    )}
+                </div>
+                <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                        <input type="checkbox" checked={includeMaster} onChange={e => setIncludeMaster(e.target.checked)} className="accent-violet-600" />
+                        Incluir Cerebro Maestro
+                    </label>
+                    <button
+                        onClick={loadGraph}
+                        disabled={loading}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-100 hover:bg-violet-200 disabled:opacity-50 text-violet-700 rounded-lg text-xs font-medium"
+                    >
+                        {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                        Refrescar
+                    </button>
+                </div>
+            </div>
+
+            {loading && !graphData ? (
+                <div className="flex items-center justify-center py-20 bg-slate-900 rounded-2xl">
+                    <Loader2 className="w-6 h-6 text-violet-400 animate-spin" />
+                </div>
+            ) : !graphData || graphData.nodes.length === 0 ? (
+                <div className="text-center py-12 bg-gray-50 rounded-xl">
+                    <Atom className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                    <p className="text-sm font-medium text-gray-600">Sin contenido en el grafo</p>
+                    <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
+                        Empezá creando noticias, proyectos o subiendo documentos. Cada uno aparece como un nodo conectado a <strong>{brain.name}</strong>.
+                    </p>
+                </div>
+            ) : (
+                <Suspense fallback={<div className="h-[620px] flex items-center justify-center bg-slate-950 rounded-2xl"><Loader2 className="w-8 h-8 text-violet-400 animate-spin" /></div>}>
+                    <BrainGraph3D
+                        data={graphData}
+                        height={620}
+                        onNodeClick={(node) => setSelectedNode(node)}
+                    />
+                </Suspense>
+            )}
+
+            {selectedNode && (
+                <div className="bg-gradient-to-br from-violet-50 to-indigo-50 border border-violet-200 rounded-xl p-4">
+                    <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                            <div className="text-[10px] uppercase tracking-widest text-violet-700 font-bold mb-1">
+                                {selectedNode.nodeType === 'brain' ? `Cerebro · ${selectedNode.kind}` : `Memoria · ${selectedNode.kind}`}
+                                {selectedNode.isMine && <span className="ml-2 px-1.5 py-0.5 bg-violet-200 rounded text-[9px]">Mi cerebro</span>}
+                                {selectedNode.isMaster && <span className="ml-2 px-1.5 py-0.5 bg-amber-200 text-amber-900 rounded text-[9px]">Maestro</span>}
+                            </div>
+                            <div className="text-sm font-bold text-gray-900">{selectedNode.name}</div>
+                            {selectedNode.location && <div className="text-xs text-gray-600 mt-0.5">{selectedNode.location}</div>}
+                            {selectedNode.memoryCount !== undefined && (
+                                <div className="text-xs text-gray-500 mt-1">{selectedNode.memoryCount} memorias</div>
+                            )}
+                            {selectedNode.sourceType && (
+                                <div className="text-[10px] text-gray-500 mt-1 font-mono">
+                                    {selectedNode.sourceType} · {selectedNode.sourceId || 'sin id'}
+                                </div>
+                            )}
+                        </div>
+                        <button onClick={() => setSelectedNode(null)} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
 
 // ─── Overview tab ────────────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
