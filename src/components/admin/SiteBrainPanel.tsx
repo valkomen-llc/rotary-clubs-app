@@ -382,10 +382,16 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, i
     }
 
     const brain = data.brain;
-    const canEdit = !!currentUser && (
-        (brain.clubId && currentUser.clubId === brain.clubId) ||
-        (brain.districtId && currentUser.districtId === brain.districtId)
-    );
+    // v4.372: el backend ya decide canEdit usando resolveUserScope (mira el
+    // JWT primero, después la User table, después el subdomain). Confiar en
+    // su decisión en vez de re-checar acá donde el JWT puede no tener clubId.
+    // Fallback al check del frontend si por algún motivo no viene en el response.
+    const canEdit = data.canEdit !== undefined
+        ? !!data.canEdit
+        : !!currentUser && (
+            (brain.clubId && currentUser.clubId === brain.clubId) ||
+            (brain.districtId && currentUser.districtId === brain.districtId)
+        );
     const onboardingCompleted = !!data.onboarding?.completed;
 
     return (
