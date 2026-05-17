@@ -216,35 +216,27 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, i
                         <p className="text-sm text-gray-700 mb-4">
                             Las tablas de la base de datos para el Cerebro Inteligente no fueron creadas en este entorno todavía.
                         </p>
-                        {isSuperAdmin ? (
-                            <>
-                                <div className="text-xs text-gray-600 mb-5 bg-white/80 rounded-xl p-4 max-w-md mx-auto text-left">
-                                    <p className="font-bold text-gray-800 mb-2 flex items-center gap-1.5">
-                                        <Sparkles className="w-3.5 h-3.5" />Como super admin podés migrar ahora
-                                    </p>
-                                    <p className="mb-2">Se van a crear estas tablas con <code>CREATE TABLE IF NOT EXISTS</code>:</p>
-                                    <ul className="space-y-0.5 list-disc list-inside font-mono text-[11px]">
-                                        <li>Brain</li>
-                                        <li>BrainMemory</li>
-                                        <li>BrainRelation</li>
-                                        <li>BrainDocument</li>
-                                    </ul>
-                                    <p className="mt-2 text-amber-700 font-medium">Operación segura: no toca datos existentes.</p>
-                                </div>
-                                <button
-                                    onClick={migrateTables}
-                                    disabled={migrating}
-                                    className="px-6 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 disabled:opacity-60 text-white rounded-xl text-sm font-medium shadow-md shadow-amber-500/20 flex items-center gap-2 mx-auto"
-                                >
-                                    {migrating ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                                    {migrating ? 'Migrando tablas…' : 'Ejecutar migración ahora'}
-                                </button>
-                            </>
-                        ) : (
-                            <div className="text-xs text-gray-600 bg-white/80 rounded-xl p-4 max-w-md mx-auto">
-                                Las tablas requieren ser creadas por un super administrador global de Club Platform. Contactá a soporte o esperá a que se complete el deploy técnico.
-                            </div>
-                        )}
+                        <div className="text-xs text-gray-600 mb-5 bg-white/80 rounded-xl p-4 max-w-md mx-auto text-left">
+                            <p className="font-bold text-gray-800 mb-2 flex items-center gap-1.5">
+                                <Sparkles className="w-3.5 h-3.5" />Activación rápida y segura
+                            </p>
+                            <p className="mb-2">Se van a crear estas tablas con <code>CREATE TABLE IF NOT EXISTS</code>:</p>
+                            <ul className="space-y-0.5 list-disc list-inside font-mono text-[11px]">
+                                <li>Brain</li>
+                                <li>BrainMemory</li>
+                                <li>BrainRelation</li>
+                                <li>BrainDocument</li>
+                            </ul>
+                            <p className="mt-2 text-amber-700 font-medium">Operación segura e idempotente: no toca datos existentes.</p>
+                        </div>
+                        <button
+                            onClick={migrateTables}
+                            disabled={migrating}
+                            className="px-6 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 disabled:opacity-60 text-white rounded-xl text-sm font-medium shadow-md shadow-amber-500/20 flex items-center gap-2 mx-auto"
+                        >
+                            {migrating ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                            {migrating ? 'Migrando tablas…' : 'Activar el sistema ahora'}
+                        </button>
                     </div>
                 </div>
             );

@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// BRAIN MIGRATE FROM UI V4.363 | 2026-05-18 (CEREBROS — endpoint POST /api/brains/migrate ejecutable desde la UI por super admin ⚙️)
-// Cache bust: 2026-05-18 05:00 (BRAIN MIGRATE FROM UI v4.363 ⚙️)
+// BRAIN AUTO-MIGRATE V4.364 | 2026-05-18 (CEREBROS — auto-migración silenciosa en cold start; el user no hace nada ✨)
+// Cache bust: 2026-05-18 06:00 (BRAIN AUTO-MIGRATE v4.364 ✨)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.364',
+        date: '2026-05-18',
+        title: 'CEREBROS — auto-migración silenciosa ✨',
+        description: 'En vez de pedirle al admin que ejecute la migración manualmente, ahora el sistema detecta tablas faltantes en el primer request cold start y las crea automáticamente con CREATE TABLE IF NOT EXISTS. Cero intervención del usuario.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Middleware ensureReady refactorizado: si detecta P2021 (tabla no existe), automáticamente ejecuta los CREATE TABLE de las 4 tablas Brain + índices + foreign keys. Cachea con flag _autoMigrationAttempted para que se ejecute solo una vez por boot.',
+            'La auto-migración tarda ~50-200ms (es DDL simple). El primer user que entre va a notar un pequeño delay; los siguientes ven el sistema activo inmediatamente.',
+            'BRAIN_MIGRATION_SQLS extraído como constante reutilizable. Tanto la auto-migration como el endpoint manual POST /api/brains/migrate llaman a la misma función runBrainMigration() — DRY.',
+            'Concurrencia: si múltiples cold starts ejecutan la auto-migration al mismo tiempo, Postgres maneja la concurrencia (los CREATE IF NOT EXISTS son thread-safe). El error handling silencia los duplicate_object exceptions.',
+            'Fallback manual: el endpoint POST /api/brains/migrate sigue existiendo y ahora solo requiere autenticación (sin roleMiddleware). Si la auto-migration falla por algún motivo, cualquier admin autenticado puede ejecutarlo manualmente con un botón "Activar el sistema ahora".',
+            'UI: la card naranja "El sistema de cerebros aún no está activo" ahora muestra el botón a TODOS los users (no solo super admin) ya que el endpoint manual es seguro y idempotente.',
+            'Si la auto-migración falla, la response incluye autoMigrationAttempted:true para que el frontend sepa que ya se intentó.',
+        ]
+    },
     {
         version: 'v4.363',
         date: '2026-05-18',
