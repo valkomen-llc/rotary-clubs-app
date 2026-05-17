@@ -23,6 +23,8 @@ import {
     relateBrains,
     bootstrapRelations,
     reindexAll,
+    reindexBatch,
+    reindexProgress,
     ingestMemory,
 } from '../services/brainService.js';
 import { processDocumentSafe, deleteDocument } from '../services/documentProcessor.js';
@@ -98,6 +100,106 @@ async function userCanReadBrain(req, brain) {
     if (brain.districtId && brain.districtId === req.user.districtId) return true;
     return false;
 }
+
+// ─── Diagnóstico (admin only) ──────────────────────────────────────────────
+// IMPORTANT: declarado ANTES de router.use(ensureReady) porque el diagnóstico
+// también tiene que poder reportar el caso "tablas no migradas".
+
+router.get('/diagnose', authMiddleware, roleMiddleware(['administrator']), async (req, res) => {
+    const report = {
+        timestamp: new Date().toISOString(),
+        version: 'v4.354',
+        env: {
+            geminiConfigured: !!process.env.GEMINI_API_KEY,
+            awsConfigured: !!(process.env.AWS_BUCKET_NAME && (process.env.ROTARY_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID)),
+            vercelRegion: process.env.VERCEL_REGION || null,
+        },
+        tables: {},
+        brain: {},
+        sources: {},
+        warnings: [],
+    };
+
+    // Check de tablas
+    try {
+        await prisma.brain.findFirst({ select: { id: true } });
+        report.tables.brain = 'ok';
+    } catch (err) {
+        report.tables.brain = `ERROR: ${err.code || err.message?.slice(0, 100)}`;
+        report.warnings.push('Tablas Brain no migradas — correr `npm run db:push` o `prisma db push` en producción.');
+    }
+    try { await prisma.brainMemory.findFirst({ select: { id: true } }); report.tables.brainMemory = 'ok'; }
+    catch (err) { report.tables.brainMemory = `ERROR: ${err.code || err.message?.slice(0, 100)}`; }
+    try { await prisma.brainRelation.findFirst({ select: { id: true } }); report.tables.brainRelation = 'ok'; }
+    catch (err) { report.tables.brainRelation = `ERROR: ${err.code || err.message?.slice(0, 100)}`; }
+    try { await prisma.brainDocument.findFirst({ select: { id: true } }); report.tables.brainDocument = 'ok'; }
+    catch (err) {
+        report.tables.brainDocument = `ERROR: ${err.code || err.message?.slice(0, 100)}`;
+        report.warnings.push('Tabla BrainDocument no migrada — el feature de carga documental (v4.353) requiere `prisma db push` en producción.');
+    }
+
+    // Conteos del brain system
+    if (report.tables.brain === 'ok') {
+        try {
+            const [brainsCount, hasMaster, memoriesCount, docsCount, relsCount] = await Promise.all([
+                prisma.brain.count(),
+                prisma.brain.findFirst({ where: { isMaster: true }, select: { id: true } }),
+                prisma.brainMemory.count(),
+                report.tables.brainDocument === 'ok' ? prisma.brainDocument.count() : Promise.resolve(null),
+                prisma.brainRelation.count(),
+            ]);
+            report.brain = {
+                totalBrains: brainsCount,
+                hasMaster: !!hasMaster,
+                totalMemories: memoriesCount,
+                totalDocuments: docsCount,
+                totalRelations: relsCount,
+            };
+        } catch (err) {
+            report.brain.error = err.message?.slice(0, 200);
+        }
+    }
+
+    // Conteos de las fuentes vs lo ya indexado (= pending de reindex)
+    if (report.tables.brain === 'ok') {
+        try {
+            const [posts, projects, events, knowledge, indexedSourceIds] = await Promise.all([
+                prisma.post.count({ where: { clubId: { not: null } } }),
+                prisma.project.count({ where: { deletedAt: null, clubId: { not: null } } }),
+                prisma.calendarEvent.count(),
+                prisma.knowledgeSource.count(),
+                prisma.brainMemory.groupBy({
+                    by: ['sourceType'],
+                    _count: { sourceType: true },
+                    where: { sourceType: { in: ['Post', 'Project', 'CalendarEvent', 'KnowledgeSource', 'BrainDocument'] } },
+                }),
+            ]);
+            const indexedMap = Object.fromEntries(indexedSourceIds.map(r => [r.sourceType, r._count.sourceType]));
+            report.sources = {
+                posts: { total: posts, indexed: indexedMap.Post || 0, pending: Math.max(0, posts - (indexedMap.Post || 0)) },
+                projects: { total: projects, indexed: indexedMap.Project || 0, pending: Math.max(0, projects - (indexedMap.Project || 0)) },
+                events: { total: events, indexed: indexedMap.CalendarEvent || 0, pending: Math.max(0, events - (indexedMap.CalendarEvent || 0)) },
+                knowledge: { total: knowledge, indexed: indexedMap.KnowledgeSource || 0, pending: Math.max(0, knowledge - (indexedMap.KnowledgeSource || 0)) },
+                documents: indexedMap.BrainDocument || 0,
+            };
+
+            const totalPending = report.sources.posts.pending + report.sources.projects.pending +
+                                 report.sources.events.pending + report.sources.knowledge.pending;
+            report.totalPending = totalPending;
+            if (totalPending === 0 && (posts + projects + events + knowledge) > 0) {
+                report.warnings.push('Todo el contenido ya está indexado.');
+            }
+        } catch (err) {
+            report.sources.error = err.message?.slice(0, 200);
+        }
+    }
+
+    if (!report.env.geminiConfigured) {
+        report.warnings.push('GEMINI_API_KEY no está configurada — los embeddings quedan vacíos y la búsqueda semántica no funciona.');
+    }
+
+    res.json(report);
+});
 
 // ─── List + master ─────────────────────────────────────────────────────────
 
@@ -414,18 +516,43 @@ router.get('/export/payload', authMiddleware, async (req, res) => {
 
 // ─── Reindex + bootstrap (admin only) ──────────────────────────────────────
 
+// Versión legacy — re-indexa todo en una llamada. Mantenida por compatibilidad
+// pero el frontend a partir de v4.354 usa /reindex/batch + /reindex/progress.
 router.post('/reindex', authMiddleware, roleMiddleware(['administrator']), async (req, res) => {
     try {
         const onlyKind = req.body?.onlyKind || null;
         const skipExisting = req.body?.skipExisting === true;
         const timeBudgetMs = Math.min(parseInt(req.body?.timeBudgetMs) || 90_000, 110_000);
         const result = await reindexAll({ onlyKind, skipExisting, timeBudgetMs });
-        // Aunque haya errores parciales, devolvemos 200 con el detalle. El
-        // frontend decide si mostrar warning según stats.errors / firstError.
         res.json({ ok: true, ...result });
     } catch (err) {
         console.error('[brains] reindex:', err);
         res.status(500).json({ error: 'Error reindexing', detail: err.message });
+    }
+});
+
+// Reindex paginado (v4.354) — el frontend loopea hasta done=true.
+router.post('/reindex/batch', authMiddleware, roleMiddleware(['administrator']), async (req, res) => {
+    try {
+        const cursor = req.body?.cursor || null;
+        const batchSize = Math.min(parseInt(req.body?.batchSize) || 15, 50);
+        const timeBudgetMs = Math.min(parseInt(req.body?.timeBudgetMs) || 25_000, 100_000);
+        const skipExisting = req.body?.skipExisting !== false;
+        const result = await reindexBatch({ cursor, batchSize, timeBudgetMs, skipExisting });
+        res.json({ ok: true, ...result });
+    } catch (err) {
+        console.error('[brains] reindex batch:', err);
+        res.status(500).json({ error: 'Error in reindex batch', detail: err.message });
+    }
+});
+
+router.get('/reindex/progress', authMiddleware, roleMiddleware(['administrator']), async (req, res) => {
+    try {
+        const data = await reindexProgress();
+        if (!data) return res.status(503).json({ error: 'BRAINS_NOT_MIGRATED' });
+        res.json(data);
+    } catch (err) {
+        res.status(500).json({ error: 'Error fetching progress', detail: err.message });
     }
 });
 

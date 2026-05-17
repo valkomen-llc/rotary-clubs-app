@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.353.0",
-  "cache_bust": "2026-05-17 12:00 (DOCUMENT KNOWLEDGE LAYER v4.353 📚)",
+  "version": "4.354.0",
+  "cache_bust": "2026-05-17 15:30 (PAGINATED REINDEX + DIAGNOSTIC v4.354 🩺)",
   "type": "module",
-  "//": "BRAIN DOCUMENTS V4.353 | 2026-05-17 (CEREBROS — carga documental PDF/DOCX/TXT/MD por sitio + master, reindex resiliente con time-budget y skip-existing 📚)",
+  "//": "BRAIN REINDEX v4.354 | 2026-05-17 (CEREBROS — reindex paginado con cursor sin riesgo de timeout + modal de diagnóstico del sistema 🩺)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
