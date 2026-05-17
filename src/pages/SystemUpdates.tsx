@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.347 | 2026-05-17 (COPY — default cambiado de OpenAI a Gemini 2.5 Flash; frontend respeta el default del servidor en lugar de hardcodearlo 🟢)
-// Cache bust: 2026-05-17 00:00 (COPY DEFAULT GEMINI v4.347 🟢)
+// DISTRICT HEALTH IQ V4.348 | 2026-05-17 (AUTOSAVE — resolver clubId desde Media o s3 path cuando el user no es club admin (system admin) 🔗)
+// Cache bust: 2026-05-17 00:30 (AUTOSAVE CLUBID RESOLUTION v4.348 🔗)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.348',
+        date: '2026-05-17',
+        title: 'Biblioteca — Fix Autosave para System Admins 🔗',
+        description: 'Tras v4.345 el autosave dejaba a system admins sin draft (porque su req.user.clubId es null y el frontend no manda clubId). Ahora se resuelve el clubId desde el Media row o el path s3 de la imagen.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Diagnóstico: el autosave en generatePost requería resolvedClubId no-null para insertar en SocialPublication. Para users con clubId asignado funcionaba. Para system admin (admin@rotary.org sin club) el draft se skipeaba silenciosamente.',
+            'Fallback de 3 vías para resolver el clubId del draft:',
+            '  (1) clubId resuelto por getCallerClubId (existing behavior — req.user.clubId o body.clubId)',
+            '  (2) Si imageId es UUID de Media, lookup directo a Media.clubId o Media.sourceId',
+            '  (3) Si imageUrl tiene path "clubs/<uuid>/...", verificar que sea un Club real y usarlo',
+            '  (4) Si todas fallan, log warning y skip — no se rompe el flujo (la imagen y copy igual vuelven al frontend).',
+            'Las publicaciones publicadas o programadas siguen funcionando como antes (resolución desde el SocialAccount.clubId). Solo arregla el autosave de DRAFTS.'
+        ]
+    },
     {
         version: 'v4.347',
         date: '2026-05-17',

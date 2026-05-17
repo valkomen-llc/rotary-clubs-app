@@ -407,14 +407,43 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
         // ─── Autosave en la Biblioteca de Publicaciones (v4.345) ─────────────
         // Toda generación exitosa queda guardada como draft en SocialPublication
         // para historial / reuso / re-publicación, independientemente de si el
-        // usuario después publica o no. Si falla la persistencia no rompemos el
-        // flujo principal — la imagen y el copy igual vuelven al frontend.
+        // usuario después publica o no.
+        //
+        // Resolución del clubId para el draft (en orden de fallback):
+        //   1) clubId resuelto por getCallerClubId (req.user.clubId o body.clubId)
+        //   2) Si la imagen viene de la Library (req.body.imageId UUID), la
+        //      clubId del Media row.
+        //   3) Si el imageUrl es un path tipo "clubs/<uuid>/...", verificar
+        //      que ese uuid sea un Club real y usarlo.
+        //   4) Si todo falla, skipeamos el autosave silenciosamente — un system
+        //      admin generando sin contexto de club no rompe el flujo.
         let draftId = null;
-        if (finalUrl && clubId) {
+        let resolvedClubId = clubId;
+        if (!resolvedClubId && req.body.imageId && req.body.imageId !== 'uploaded') {
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+            if (uuidRegex.test(req.body.imageId)) {
+                try {
+                    const m = await prisma.media.findUnique({ where: { id: req.body.imageId }, select: { clubId: true, sourceId: true, sourceType: true } });
+                    if (m?.clubId) resolvedClubId = m.clubId;
+                    else if (m?.sourceType === 'club' && m?.sourceId) resolvedClubId = m.sourceId;
+                } catch { /* ignore */ }
+            }
+        }
+        if (!resolvedClubId && imageUrl) {
+            const pathMatch = imageUrl.match(/\/clubs\/([0-9a-f-]{36})\//i);
+            if (pathMatch) {
+                try {
+                    const c = await prisma.club.findUnique({ where: { id: pathMatch[1] }, select: { id: true } });
+                    if (c) resolvedClubId = c.id;
+                } catch { /* ignore */ }
+            }
+        }
+
+        if (finalUrl && resolvedClubId) {
             try {
                 const draft = await prisma.socialPublication.create({
                     data: {
-                        clubId,
+                        clubId: resolvedClubId,
                         userId: req.user.id || null,
                         imageUrl: finalUrl,
                         imageUrlLandscape: generatedImages.landscape?.url || null,
@@ -433,10 +462,12 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
                     }
                 });
                 draftId = draft.id;
-                console.log(`[STUDIO] Draft guardado en biblioteca: ${draftId}`);
+                console.log(`[STUDIO] Draft guardado en biblioteca: ${draftId} (club ${resolvedClubId})`);
             } catch (e) {
                 console.warn('[STUDIO] No se pudo autoguardar el draft:', e.message);
             }
+        } else if (finalUrl) {
+            console.warn(`[STUDIO] Autosave skippeado: no se pudo resolver clubId para la imagen ${imageUrl}`);
         }
 
         res.json({
