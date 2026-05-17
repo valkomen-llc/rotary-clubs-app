@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.350.0",
-  "cache_bust": "2026-05-17 01:30 (LIBRARY CROSS CLUB ACCOUNTS v4.350 🔁)",
+  "version": "4.351.0",
+  "cache_bust": "2026-05-17 02:30 (AI BRAINS FOUNDATION v4.351 🧠)",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.350 | 2026-05-17 (BIBLIOTECA — modal lista TODAS las cuentas accesibles, no solo del club del draft; marcadas las de otro club 🔁)",
+  "//": "AI BRAINS V4.351 | 2026-05-17 (CEREBROS DISTRIBUIDOS — master + per-site brains, embeddings Gemini, ingestión automática, búsqueda semántica 🧠)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

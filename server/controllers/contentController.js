@@ -1,5 +1,6 @@
 import db from '../lib/db.js';
 import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (ESTABILIDAD TOTAL)
+import { ingestMemorySafe } from '../services/brainService.js';
 
 // Public: Get posts for a specific club
 export const getPublicPosts = async (req, res) => {
@@ -134,6 +135,17 @@ export const createPost = async (req, res) => {
 
     try {
         const post = await runCreate();
+        if (post?.clubId) {
+            ingestMemorySafe({
+                clubId: post.clubId,
+                kind: 'POST',
+                sourceType: 'Post',
+                sourceId: post.id,
+                title: post.title,
+                content: post.content,
+                metadata: { category: post.category, published: post.published, isAI: post.isAI },
+            });
+        }
         res.status(201).json(post);
     } catch (error) {
         // Auto-heal: If columns are missing, add them and retry
@@ -146,6 +158,17 @@ export const createPost = async (req, res) => {
                     await db.query(`ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "${col}" ${type};`);
                 }
                 const retryPost = await runCreate();
+                if (retryPost?.clubId) {
+                    ingestMemorySafe({
+                        clubId: retryPost.clubId,
+                        kind: 'POST',
+                        sourceType: 'Post',
+                        sourceId: retryPost.id,
+                        title: retryPost.title,
+                        content: retryPost.content,
+                        metadata: { category: retryPost.category, published: retryPost.published },
+                    });
+                }
                 return res.status(201).json(retryPost);
             } catch (migrationError) {
                 console.error('Migration failed:', migrationError);
@@ -201,7 +224,20 @@ export const updatePost = async (req, res) => {
 
     try {
         const post = await runUpdate();
-        if (post) res.json(post);
+        if (post) {
+            if (post.clubId) {
+                ingestMemorySafe({
+                    clubId: post.clubId,
+                    kind: 'POST',
+                    sourceType: 'Post',
+                    sourceId: post.id,
+                    title: post.title,
+                    content: post.content,
+                    metadata: { category: post.category, published: post.published },
+                });
+            }
+            res.json(post);
+        }
     } catch (error) {
         // Auto-heal: If columns are missing, add them and retry
         const missingCols = ['seoImage', 'socialCopy', 'ctaCopy', 'videoGallery'];
@@ -323,6 +359,17 @@ export const createProject = async (req, res) => {
                 actualizaciones
             }
         });
+        if (project?.clubId) {
+            ingestMemorySafe({
+                clubId: project.clubId,
+                kind: 'PROJECT',
+                sourceType: 'Project',
+                sourceId: project.id,
+                title: project.title,
+                content: [project.description, project.impacto].filter(Boolean).join('\n\n'),
+                metadata: { category: project.category, status: project.status, ubicacion: project.ubicacion, beneficiarios: project.beneficiarios },
+            });
+        }
         res.set('Cache-Control', 'no-store');
         res.status(201).json(project);
     } catch (error) {
@@ -362,6 +409,17 @@ export const updateProject = async (req, res) => {
                 actualizaciones
             }
         });
+        if (project?.clubId) {
+            ingestMemorySafe({
+                clubId: project.clubId,
+                kind: 'PROJECT',
+                sourceType: 'Project',
+                sourceId: project.id,
+                title: project.title,
+                content: [project.description, project.impacto].filter(Boolean).join('\n\n'),
+                metadata: { category: project.category, status: project.status, ubicacion: project.ubicacion, beneficiarios: project.beneficiarios },
+            });
+        }
         res.json(project);
     } catch (error) {
         console.error(error);

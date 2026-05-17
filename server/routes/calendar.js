@@ -4,6 +4,7 @@ import db from '../lib/db.js';
 import multer from 'multer';
 import multerS3 from 'multer-s3';
 import { s3 } from '../lib/storage.js';
+import { ingestMemorySafe } from '../services/brainService.js';
 
 const router = express.Router();
 
@@ -98,7 +99,19 @@ router.post('/events', authMiddleware, async (req, res) => {
              VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11) RETURNING *`,
             [title, description, htmlContent || null, new Date(startDate), endDate ? new Date(endDate) : null, location, type, image || null, images || [], req.user.clubId, metadata || {}]
         );
-        res.json(result.rows[0]);
+        const event = result.rows[0];
+        if (event?.clubId) {
+            ingestMemorySafe({
+                clubId: event.clubId,
+                kind: 'EVENT',
+                sourceType: 'CalendarEvent',
+                sourceId: event.id,
+                title: event.title,
+                content: [event.description, (event.htmlContent || '').replace(/<[^>]+>/g, ' ')].filter(Boolean).join('\n\n'),
+                metadata: { type: event.type, startDate: event.startDate, endDate: event.endDate, location: event.location },
+            });
+        }
+        res.json(event);
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error al crear el evento' });
@@ -121,7 +134,19 @@ router.put('/events/:id', authMiddleware, async (req, res) => {
              WHERE id=$11 RETURNING *`,
             [title, description, htmlContent || null, new Date(startDate), endDate ? new Date(endDate) : null, location, type, image || null, images || [], metadata || {}, id]
         );
-        res.json(result.rows[0]);
+        const updated = result.rows[0];
+        if (updated?.clubId) {
+            ingestMemorySafe({
+                clubId: updated.clubId,
+                kind: 'EVENT',
+                sourceType: 'CalendarEvent',
+                sourceId: updated.id,
+                title: updated.title,
+                content: [updated.description, (updated.htmlContent || '').replace(/<[^>]+>/g, ' ')].filter(Boolean).join('\n\n'),
+                metadata: { type: updated.type, startDate: updated.startDate, endDate: updated.endDate, location: updated.location },
+            });
+        }
+        res.json(updated);
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error al actualizar el evento' });

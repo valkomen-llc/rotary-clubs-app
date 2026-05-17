@@ -64,6 +64,7 @@ model District {
   notificationLevel        Int                     @default(0)
   clubs         Club[]
   admins        User[]
+  brain         Brain?
 }
 
 model Club {
@@ -144,6 +145,7 @@ model Club {
   technicalRequests         TechnicalRequest[]
   crowdfundPools            CrowdfundPool[]         @relation("ClubPools")
   emailAccounts             EmailAccount[]
+  brain                     Brain?
 }
 
 model EmailAccount {
@@ -1126,4 +1128,80 @@ model TechnicalRequest {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   club          Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
+}
+
+// Brain = unidad de inteligencia. Hay 1 MASTER (singleton) + N por sitio
+// (Club / District). El kind se infiere del Club.category o del owner.
+// Valores de kind: MASTER | CLUB | DISTRICT | ASSOCIATION | PROGRAM |
+// CONFERENCE | EVENT | PROJECT_FAIR | FOUNDATION.
+model Brain {
+  id              String          @id @default(uuid())
+  kind            String          @default("CLUB")
+  name            String
+  identityPrompt  String?
+  clubId          String?         @unique
+  districtId      String?         @unique
+  isMaster        Boolean         @default(false)
+  memoryCount     Int             @default(0)
+  metadata        Json?           @default("{}")
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  club            Club?           @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  district        District?       @relation(fields: [districtId], references: [id], onDelete: Cascade)
+
+  memories        BrainMemory[]
+  outgoingRelations BrainRelation[] @relation("FromBrain")
+  incomingRelations BrainRelation[] @relation("ToBrain")
+
+  @@index([kind])
+  @@index([isMaster])
+}
+
+// BrainMemory = fragmento indexado de un brain. Cada Post/Project/Event/etc.
+// se replica como una memory en el brain del sitio y en el MASTER.
+// kind: POST | PROJECT | EVENT | KNOWLEDGE | MEMBER | DOCUMENT |
+// PUBLICATION | NOTE.
+model BrainMemory {
+  id          String    @id @default(uuid())
+  brainId     String
+  kind        String
+  sourceId    String?
+  sourceType  String?
+  title       String
+  content     String
+  embedding   Float[]   @default([])
+  metadata    Json?     @default("{}")
+  clubId      String?
+  districtId  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  brain       Brain     @relation(fields: [brainId], references: [id], onDelete: Cascade)
+
+  @@unique([brainId, sourceType, sourceId])
+  @@index([brainId])
+  @@index([sourceId])
+  @@index([kind])
+  @@index([clubId])
+}
+
+// BrainRelation = arista del grafo entre cerebros. kind: PARENT_OF | MEMBER_OF
+// | COLLABORATES_WITH | SIMILAR_TO | PARTICIPATES_IN. source: auto | manual.
+model BrainRelation {
+  id          String    @id @default(uuid())
+  fromBrainId String
+  toBrainId   String
+  kind        String
+  weight      Float     @default(1.0)
+  source      String    @default("auto")
+  metadata    Json?     @default("{}")
+  createdAt   DateTime  @default(now())
+
+  fromBrain   Brain     @relation("FromBrain", fields: [fromBrainId], references: [id], onDelete: Cascade)
+  toBrain     Brain     @relation("ToBrain", fields: [toBrainId], references: [id], onDelete: Cascade)
+
+  @@unique([fromBrainId, toBrainId, kind])
+  @@index([fromBrainId])
+  @@index([toBrainId])
 }

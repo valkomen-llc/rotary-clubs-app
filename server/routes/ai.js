@@ -1,6 +1,7 @@
 import db from '../lib/db.js';
 import { routeToModel, getDefaultModel, BUILTIN_MODELS, encryptKey, decryptKey } from '../lib/ai-router.js';
 import { getToolsForAgent, getToolsSummary, executeTool, getWorkflowSuggestions } from '../lib/agent-tools.js';
+import { ingestMemorySafe } from '../services/brainService.js';
 
 // Generate social media suggestions based on month and knowledge base
 import express from 'express';
@@ -1084,7 +1085,19 @@ router.post('/knowledge', authMiddleware, async (req, res) => {
              VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW()) RETURNING *`,
             [title, type, content, fileUrl, targetClubId]
         );
-        res.json(result.rows[0]);
+        const knowledge = result.rows[0];
+        if (knowledge) {
+            ingestMemorySafe({
+                clubId: knowledge.clubId || undefined,
+                kind: 'KNOWLEDGE',
+                sourceType: 'KnowledgeSource',
+                sourceId: knowledge.id,
+                title: knowledge.title,
+                content: knowledge.content,
+                metadata: { type: knowledge.type, fileUrl: knowledge.fileUrl, isGlobal: !knowledge.clubId },
+            });
+        }
+        res.json(knowledge);
     } catch (error) {
         res.status(500).json({ error: 'Error adding knowledge source' });
     }

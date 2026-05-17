@@ -24,9 +24,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.350 | 2026-05-17 (BIBLIOTECA — modal lista TODAS las cuentas accesibles, no solo del club del draft; marcadas las de otro club 🔁)
-// Cache bust: 2026-05-17 01:30 (LIBRARY CROSS CLUB ACCOUNTS v4.350 🔁)
+// AI BRAINS V4.351 | 2026-05-17 (CEREBROS DISTRIBUIDOS — master + per-site brains, embeddings Gemini, ingestión automática, búsqueda semántica 🧠)
+// Cache bust: 2026-05-17 02:30 (AI BRAINS FOUNDATION v4.351 🧠)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.351',
+        date: '2026-05-17',
+        title: 'AI Brains Fase 1 — Cerebro Maestro + Cerebros Independientes 🧠',
+        description: 'Arquitectura de inteligencia distribuida para Club Platform. Un Cerebro Maestro global que conoce toda la red + un cerebro independiente por cada club, distrito, asociación, programa, conferencia o feria. Cada uno con memoria propia, embeddings vectoriales y búsqueda semántica.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Schema Prisma: 3 modelos nuevos — Brain (1 MASTER + N por sitio), BrainMemory (fragmento indexado con embedding Float[768]), BrainRelation (grafo entre cerebros con kinds PARENT_OF / MEMBER_OF / COLLABORATES_WITH / SIMILAR_TO / PARTICIPATES_IN).',
+            'Brain.kind se infiere del Club.category: club → CLUB, association → ASSOCIATION, exchange_program → PROGRAM, event → EVENT, conference → CONFERENCE, project_fair → PROJECT_FAIR, foundation → FOUNDATION. Los Distritos generan brains DISTRICT independientes.',
+            'brainService.js: embeddings con Gemini text-embedding-004 (768d). Cosine similarity en JS — performante hasta ~50k memorias por brain, después migraremos a pgvector. Ingest idempotente vía upsert sobre (brainId, sourceType, sourceId).',
+            'Ingestión automática enganchada en cuatro flujos: createPost / updatePost (contentController), createProject / updateProject (contentController), POST/PUT /api/calendar/events (calendar.js), POST /api/ai/knowledge (ai.js). Fire-and-forget — si falla el embed, la creación del row NO se rompe.',
+            'Replicación cross-brain: cada memory se persiste en (a) el brain del sitio, (b) el brain del distrito si el club pertenece a uno, (c) el Cerebro Maestro. Una sola llamada a embed para los tres targets.',
+            '7 endpoints nuevos bajo /api/brains: GET / (lista con scope por rol), GET /master (stats globales), GET /:id (detalle + memorias), GET /:id/memories, POST /:id/query (semantic search), POST /master/query (búsqueda global filtrada por rol), POST /relate, POST /reindex (backfill admin), POST /bootstrap (recalcula relaciones deterministas Club→District).',
+            'UI nueva: /admin/inteligencia — Centro de Inteligencia. Card del Cerebro Maestro con stats globales (memorias totales, # cerebros, # relaciones, distribución por kind). Búsqueda semántica con scope master/site. Grid de cerebros independientes con filtros por tipo y conteo de memorias + conexiones. Drawer lateral con detalle, relaciones bidireccionales y notas manuales.',
+            'Acceso por rol: super admin ve todo; club admin / district admin ven solo su propio cerebro + el master (filtrado en backend). Endpoints reindex / bootstrap / relate manual son admin-only.',
+            'Roadmap declarado: v4.352 grafo visual interactivo (cytoscape/d3), v4.353 recomendaciones cross-brain con LLM, v4.354 RAG chat sobre el master, v4.355 sync a vault Obsidian (Markdown + frontmatter + wikilinks), vN migración a pgvector cuando el volumen lo justifique.',
+        ]
+    },
     {
         version: 'v4.350',
         date: '2026-05-17',
