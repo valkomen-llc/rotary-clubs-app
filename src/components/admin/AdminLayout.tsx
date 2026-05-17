@@ -45,7 +45,8 @@ import {
     MessageSquare,
     Video,
     Share2,
-    Activity
+    Activity,
+    Brain
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -350,6 +351,18 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: Activity, label: 'District Health IQ', path: '/admin/district-iq', category: 'Management', keywords: ['salud', 'distrito', 'analitica', 'prediccion', 'iq'], badge: 'ia' },
             );
         }
+
+        // Centro de Inteligencia — visible para todos los roles autenticados.
+        // Super admin ve todos los cerebros; club/district admins ven el suyo
+        // + el cerebro maestro (filtrado en backend).
+        items.push({
+            icon: Brain,
+            label: 'Centro de Inteligencia',
+            path: '/admin/inteligencia',
+            category: isSuperAdmin ? 'Management' : 'General',
+            keywords: ['cerebro', 'brain', 'ai core', 'memoria', 'embedding', 'knowledge', 'inteligencia', 'maestro'],
+            badge: 'ia',
+        });
 
         if (isSuperAdmin) {
             items.push(
