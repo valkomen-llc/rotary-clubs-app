@@ -61,13 +61,21 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser })
     const fetchMe = useCallback(async () => {
         setLoading(true);
         setErrorState(null);
+        // v4.361: usamos el endpoint de emergencia /api/brain-quick/me que está
+        // declarado directamente en server.js (no en el router brains que estaba
+        // colgándose). Si funciona, sabemos que el problema era el router.
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30_000);
+        const timeoutId = setTimeout(() => controller.abort(), 12_000);
         try {
-            const r = await fetch(`${API}/brains/me`, { headers, signal: controller.signal });
+            const r = await fetch(`${API}/brain-quick/me`, { headers, signal: controller.signal });
             if (r.ok) {
                 const json = await r.json();
-                setData(json);
+                // Normalize shape para que coincida con lo que esperaba el frontend
+                if (json.scope === 'site' && json.brain) {
+                    setData({ scope: 'site', brain: json.brain, master: json.master, onboarding: { completed: false }, _quick: true });
+                } else {
+                    setData(json);
+                }
             } else {
                 const err = await r.json().catch(() => ({}));
                 setErrorState({
@@ -81,26 +89,25 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser })
         } catch (err) {
             const e = err as Error;
             const isAbort = e.name === 'AbortError';
-            // Si /me cayó por timeout, hacemos un ping rápido para distinguir
-            // entre "Vercel/red caída" vs "endpoint /me específicamente bloqueado".
-            let isPingFail = false;
+            // Test si /api/brain-quick (sin DB) responde, para diagnosticar
+            let isInfraFail = false;
             if (isAbort) {
                 try {
                     const pingCtrl = new AbortController();
-                    setTimeout(() => pingCtrl.abort(), 5000);
-                    const pr = await fetch(`${API}/brains/ping`, { signal: pingCtrl.signal });
-                    if (!pr.ok) isPingFail = true;
+                    setTimeout(() => pingCtrl.abort(), 4000);
+                    const pr = await fetch(`${API}/brain-quick`, { signal: pingCtrl.signal });
+                    if (!pr.ok) isInfraFail = true;
                 } catch {
-                    isPingFail = true;
+                    isInfraFail = true;
                 }
             }
             setErrorState({
                 status: null,
-                isPingFail,
+                isPingFail: isInfraFail,
                 message: isAbort
-                    ? (isPingFail
-                        ? 'El servidor entero no responde — Vercel está caído o cold start crítico.'
-                        : 'Timeout: /api/brains/me se cuelga, pero el resto del API responde (ping ✅). Probable problema con la conexión a la base de datos.')
+                    ? (isInfraFail
+                        ? 'El servidor (Vercel) no responde — quizás está caído o el deploy todavía no terminó.'
+                        : 'Timeout: /api/brain-quick/me se cuelga, pero /brain-quick (sin DB) responde ✅. Problema confirmado en la base de datos.')
                     : e.message,
             });
             toast.error(isAbort ? 'Timeout cargando el cerebro' : `Error: ${e.message}`);

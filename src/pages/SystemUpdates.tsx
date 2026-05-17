@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// EMERGENCY DEGRADED MODE V4.360 | 2026-05-18 (CEREBROS — timeouts internos por query + cache de ensureReady + degraded scope para no colgar nunca 🚨)
-// Cache bust: 2026-05-18 00:30 (EMERGENCY DEGRADED MODE v4.360 🚨)
+// BRAIN QUICK BYPASS V4.361 | 2026-05-18 (CEREBROS — endpoints de emergencia /api/brain-quick/* declarados directamente en server.js bypaseando el router brains 🆘)
+// Cache bust: 2026-05-18 02:00 (BRAIN QUICK BYPASS v4.361 🆘)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.361',
+        date: '2026-05-18',
+        title: 'Cerebro Inteligente — endpoints de emergencia bypaseando el router 🆘',
+        description: 'Después de 4 intentos fallidos (v4.357-4.360) de hacer responder /api/brains/me, declaré endpoints de emergencia DIRECTAMENTE en server.js (fuera del router /api/brains/*). Si estos responden y los del router no, sabremos definitivamente que el problema es el router brains (alguna importación lenta o middleware bloqueante). Si tampoco responden, el problema es infraestructura general.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Verificación local: el módulo server/routes/brains.js carga en <300ms localmente (express 100ms, prisma 38ms, storage 153ms, brainService 1ms, documentProcessor 1ms). Entonces el problema NO está en imports lentos.',
+            'GET /api/brain-quick (sin auth, sin DB, declarado en server.js antes de cualquier router) — devuelve env info para verificar conectividad básica.',
+            'GET /api/brain-quick/db (sin auth, con prisma.brain.count() y timeout 4s) — verifica si Prisma responde rápido sin pasar por el router brains.',
+            'GET /api/brain-quick/me (con authMiddleware, queries con timeout 3.5s cada una) — versión minimalist del endpoint /me declarado en server.js. Solo lectura, sin ensureReady middleware, sin nada que pueda bloquear.',
+            'Frontend: el panel SiteBrainPanel ahora usa /api/brain-quick/me como primary. Timeout del cliente bajado a 12s (era 30s) — si el endpoint emergency también tarda más, es definitivo: problema de DB/Vercel, no del router brains.',
+            'Diagnóstico mejorado: si /brain-quick/me falla, el frontend hace ping a /brain-quick (sin DB). Distingue claramente "Vercel caído" (ambos fallan) vs "DB caída" (brain-quick responde, brain-quick/me no).',
+            'Esta es una solución de emergencia mientras diagnosticamos. Cuando entendamos la causa, los endpoints /api/brains/me originales se pueden volver a usar.',
+        ]
+    },
     {
         version: 'v4.360',
         date: '2026-05-18',
