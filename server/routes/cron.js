@@ -3,9 +3,33 @@ import { PrismaClient } from '@prisma/client';
 import { routeToModel } from '../lib/ai-router.js';
 import WhatsAppService from '../services/WhatsAppService.js';
 import EmailService from '../services/EmailService.js';
+import { runScheduledPublicationsDue } from '../controllers/socialPublishingController.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+// ── Vercel Cron endpoint: /api/cron/publish-scheduled ───────────────────────
+// Configurar en vercel.json con schedule "*/5 * * * *" (cada 5 minutos).
+// Tomá las SocialPublications con status='scheduled' y scheduledFor <= NOW
+// y publicalas via la lógica de socialPublishingController.publishToAccount.
+// Protegido por CRON_SECRET (Vercel envía Authorization: Bearer <CRON_SECRET>).
+router.get('/publish-scheduled', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        console.warn('[CRON publish-scheduled] Unauthorized');
+        return res.status(401).json({ error: 'Unauthorized cron trigger' });
+    }
+    try {
+        const startedAt = new Date();
+        const summary = await runScheduledPublicationsDue({ now: startedAt });
+        const elapsedMs = Date.now() - startedAt.getTime();
+        console.log(`[CRON publish-scheduled] processed=${summary.processed} in ${elapsedMs}ms`);
+        res.json({ ok: true, ...summary, elapsedMs });
+    } catch (e) {
+        console.error('[CRON publish-scheduled] error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
 
 // Vercel Cron endpoint: /api/cron/process-expirations
 // Se ejecuta diariamente para alertar sobre renovaciones de SaaS

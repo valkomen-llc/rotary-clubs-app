@@ -404,6 +404,41 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
         const finalUrl = primary?.url || null;
         if (!usedEngine && primary?.engine) usedEngine = primary.engine;
 
+        // ─── Autosave en la Biblioteca de Publicaciones (v4.345) ─────────────
+        // Toda generación exitosa queda guardada como draft en SocialPublication
+        // para historial / reuso / re-publicación, independientemente de si el
+        // usuario después publica o no. Si falla la persistencia no rompemos el
+        // flujo principal — la imagen y el copy igual vuelven al frontend.
+        let draftId = null;
+        if (finalUrl && clubId) {
+            try {
+                const draft = await prisma.socialPublication.create({
+                    data: {
+                        clubId,
+                        userId: req.user.id || null,
+                        imageUrl: finalUrl,
+                        imageUrlLandscape: generatedImages.landscape?.url || null,
+                        platformCopies: {
+                            facebook: parsed.facebook,
+                            instagram: parsed.instagram,
+                            x: parsed.x,
+                            linkedin: parsed.linkedin
+                        },
+                        targetAccounts: [], // se completa cuando el user publica/programa
+                        status: 'draft',
+                        sourceImageId: req.body.imageId && req.body.imageId !== 'uploaded' ? req.body.imageId : null,
+                        generatedBy: usedEngine ? `ai-${usedEngine.split('+')[0]}` : 'ai',
+                        aiModelImage: usedEngine,
+                        aiModelCopy: copyProvider && copyModel ? `${copyProvider}/${copyModel}` : null
+                    }
+                });
+                draftId = draft.id;
+                console.log(`[STUDIO] Draft guardado en biblioteca: ${draftId}`);
+            } catch (e) {
+                console.warn('[STUDIO] No se pudo autoguardar el draft:', e.message);
+            }
+        }
+
         res.json({
             success: true,
             content: {
@@ -416,6 +451,10 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
             generatedImageUrl: finalUrl,
             // New (v4.338+): all generated formats in a map.
             generatedImages,
+            // New (v4.345): id del draft creado en la Biblioteca para que el
+            // publish/schedule subsiguiente pueda referenciarlo en vez de
+            // duplicar la row.
+            publicationId: draftId,
             metadata: {
                 engine: usedEngine,
                 format: primaryFormat,
@@ -424,6 +463,7 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
                 limits: PLATFORM_LIMITS,
                 copyProvider,
                 copyModel,
+                publicationId: draftId,
                 ...(imageError ? { imageError } : {}),
                 ...(copyError ? { copyError } : {})
             }
