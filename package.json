@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.359.0",
-  "cache_bust": "2026-05-17 23:30 (READ-ONLY /me + EXPLICIT INIT v4.359 🔑)",
+  "version": "4.360.0",
+  "cache_bust": "2026-05-18 00:30 (EMERGENCY DEGRADED MODE v4.360 🚨)",
   "type": "module",
-  "//": "BRAIN READ-ONLY ME V4.359 | 2026-05-17 (CEREBROS — endpoint /me solo lectura + endpoint /me/initialize explícito + /ping de diagnóstico 🔑)",
+  "//": "EMERGENCY DEGRADED MODE V4.360 | 2026-05-18 (CEREBROS — timeouts internos por query + cache de ensureReady + degraded scope para no colgar nunca 🚨)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
