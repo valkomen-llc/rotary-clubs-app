@@ -10,7 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import prisma from '../lib/prisma.js';
 
-console.log('🧠 BRAIN SERVICE v4.351 — cerebros distribuidos online');
+console.log('🧠 BRAIN SERVICE v4.352 — cerebros distribuidos + grafo 3D + obsidian export online 🪐');
 
 // Las tablas Brain/BrainMemory/BrainRelation se crean vía `prisma db push`.
 // Hasta que ese push se corra en producción, todas las operaciones aquí

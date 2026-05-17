@@ -24,9 +24,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// AI BRAINS V4.351 | 2026-05-17 (CEREBROS DISTRIBUIDOS — master + per-site brains, embeddings Gemini, ingestión automática, búsqueda semántica 🧠)
-// Cache bust: 2026-05-17 02:30 (AI BRAINS FOUNDATION v4.351 🧠)
+// BRAIN GRAPH 3D V4.352 | 2026-05-17 (CEREBROS — visualizador 3D orbital tipo Obsidian + export a Vault Markdown con wikilinks 🪐)
+// Cache bust: 2026-05-17 04:00 (KNOWLEDGE GRAPH 3D + OBSIDIAN VAULT v4.352 🪐)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.352',
+        date: '2026-05-17',
+        title: 'AI Brains Fase 2 — Grafo de Conocimiento 3D + Export a Obsidian Vault 🪐',
+        description: 'El Centro de Inteligencia ahora visualiza todo el ecosistema como un grafo orbital tridimensional estilo Obsidian (rotar, zoom, click en nodo para enfocar) y exporta toda la memoria como un Vault Markdown listo para abrir en Obsidian local con wikilinks nativos.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Nuevo componente BrainGraph3D.tsx — wrapper de react-force-graph-3d (Three.js). Renderiza el ecosistema en 3D: cerebros como esferas con halo glow (tamaño proporcional a memoryCount, color por kind), memorias como esferas chicas orbitando su brain, relaciones con partículas direccionales animadas según tipo (PARENT_OF / MEMBER_OF / SIMILAR_TO / COLLABORATES_WITH / PARTICIPATES_IN).',
+            'Tema dark cosmic — fondo gradient slate-950 → violet-950, controles flotantes (toggle memorias, reset vista), tooltip de hover, leyenda en esquina, stats live. Inspirado en Obsidian Graph View.',
+            'Interactividad: click en nodo brain → zoom suave a 1.2s y abre el drawer de detalle. Hover → highlight del nodo + vecinos (resto se atenúa). Click en memoria → resalta sin acción.',
+            'Lazy load — el chunk de Three.js (~1.3 MB / 351 KB gzip) solo se descarga cuando el usuario hace click en "Visualizar grafo 3D". El bundle inicial de /admin/inteligencia sigue chico.',
+            'Endpoint GET /api/brains/graph/full — devuelve nodos + edges para react-force-graph-3d. Brains siempre, memorias opcionales (memoryLimit param, default 500, max 2000). Para >2k memorias, conviene togglear "solo cerebros".',
+            'Exportador a Obsidian Vault — botón "Exportar a Obsidian" en el header de AICore. GET /api/brains/export/payload devuelve toda la data textual (sin embeddings, scope-aware por rol), el frontend arma un ZIP con jszip:',
+            '  • README.md raíz con índice, instrucciones de uso, estadísticas y leyenda de relaciones (tagged #index)',
+            '  • Brains/<slug>.md por cada cerebro — frontmatter con kind, location, subdomain, tags; cuerpo con identidad, memorias indexadas (top 50 como wikilinks), relaciones entrantes y salientes',
+            '  • Memories/<brainSlug>/<id>.md por cada memoria — frontmatter con sourceType, sourceId, fechas, tags; cuerpo con contenido + metadata JSON; wikilink al cerebro padre',
+            '  • Graph/relations.md — tabla markdown de todas las relaciones para auditar',
+            'Al abrir el ZIP en Obsidian (Open folder as vault), Graph View nativo de Obsidian dibuja el grafo automáticamente con wikilinks como aristas. Funciona offline, navegable, editable, sincronizable a Obsidian Sync o iCloud.',
+            'Scope respetado: super admin descarga el vault completo (todos los clubes + master); club/district admin descarga solo su scope (master + propio cerebro + cerebro del distrito si aplica).',
+            'Roadmap actualizado: v4.353 chat RAG sobre el cerebro maestro + detección semántica de SIMILAR_TO entre brains, v4.354 panel de configuración por brain (identidad editable, toggles de fuentes, visibilidad cross-brain), v4.355 panel de oportunidades + recomendaciones diarias.',
+        ]
+    },
     {
         version: 'v4.351',
         date: '2026-05-17',
