@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.368.0",
-  "cache_bust": "2026-05-18 10:00 (FIX BLANK SCREEN TDZ v4.368 🩹)",
+  "version": "4.369.0",
+  "cache_bust": "2026-05-18 11:00 (AUTO-RETRY /me v4.369 🔁)",
   "type": "module",
-  "//": "FIX BLANK SCREEN TDZ V4.368 | 2026-05-18 (CEREBROS — fix Temporal Dead Zone en SiteBrainPanel: initializeBrain referenciaba fetchExtras antes de su definición; se reordenó 🩹)",
+  "//": "AUTO-RETRY /me V4.369 | 2026-05-18 (CEREBROS — fetchMe auto-retry transparente cuando devuelve brain:null con scope:site, resolviendo read-after-write lag de Prisma 🔁)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
