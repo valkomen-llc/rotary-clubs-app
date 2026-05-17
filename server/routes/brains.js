@@ -147,6 +147,156 @@ const withTimeout = (promise, ms, fallback) => Promise.race([
     new Promise(resolve => setTimeout(() => resolve(fallback), ms)),
 ]);
 
+// ─── Migración manual (admin only) ──────────────────────────────────────────
+// Crea las tablas Brain/BrainMemory/BrainRelation/BrainDocument si no existen,
+// usando CREATE TABLE IF NOT EXISTS. Solo super admin. Útil cuando el deploy
+// de Vercel no incluye `prisma db push` y las tablas faltan en producción.
+//
+// IMPORTANT: declarado ANTES de router.use(ensureReady) porque la migración es
+// justamente lo que CREA las tablas.
+
+router.post('/migrate', authMiddleware, roleMiddleware(['administrator']), async (req, res) => {
+    const t0 = Date.now();
+    const results = [];
+
+    const sqls = [
+        // Brain
+        `CREATE TABLE IF NOT EXISTS "Brain" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "kind" TEXT NOT NULL DEFAULT 'CLUB',
+            "name" TEXT NOT NULL,
+            "identityPrompt" TEXT,
+            "clubId" TEXT,
+            "districtId" TEXT,
+            "isMaster" BOOLEAN NOT NULL DEFAULT false,
+            "memoryCount" INTEGER NOT NULL DEFAULT 0,
+            "metadata" JSONB DEFAULT '{}',
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS "Brain_clubId_key" ON "Brain"("clubId")`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS "Brain_districtId_key" ON "Brain"("districtId")`,
+        `CREATE INDEX IF NOT EXISTS "Brain_kind_idx" ON "Brain"("kind")`,
+        `CREATE INDEX IF NOT EXISTS "Brain_isMaster_idx" ON "Brain"("isMaster")`,
+        // FK del Brain a Club / District (best effort, podrían no estar todavía)
+        `DO $$ BEGIN
+            ALTER TABLE "Brain" ADD CONSTRAINT "Brain_clubId_fkey"
+                FOREIGN KEY ("clubId") REFERENCES "Club"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+        EXCEPTION WHEN duplicate_object THEN NULL; WHEN undefined_table THEN NULL; END $$`,
+        `DO $$ BEGIN
+            ALTER TABLE "Brain" ADD CONSTRAINT "Brain_districtId_fkey"
+                FOREIGN KEY ("districtId") REFERENCES "District"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+        EXCEPTION WHEN duplicate_object THEN NULL; WHEN undefined_table THEN NULL; END $$`,
+
+        // BrainMemory
+        `CREATE TABLE IF NOT EXISTS "BrainMemory" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "brainId" TEXT NOT NULL,
+            "kind" TEXT NOT NULL,
+            "sourceId" TEXT,
+            "sourceType" TEXT,
+            "title" TEXT NOT NULL,
+            "content" TEXT NOT NULL,
+            "embedding" DOUBLE PRECISION[] DEFAULT ARRAY[]::DOUBLE PRECISION[],
+            "metadata" JSONB DEFAULT '{}',
+            "clubId" TEXT,
+            "districtId" TEXT,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS "BrainMemory_brainId_sourceType_sourceId_key"
+            ON "BrainMemory"("brainId", "sourceType", "sourceId")`,
+        `CREATE INDEX IF NOT EXISTS "BrainMemory_brainId_idx" ON "BrainMemory"("brainId")`,
+        `CREATE INDEX IF NOT EXISTS "BrainMemory_sourceId_idx" ON "BrainMemory"("sourceId")`,
+        `CREATE INDEX IF NOT EXISTS "BrainMemory_kind_idx" ON "BrainMemory"("kind")`,
+        `CREATE INDEX IF NOT EXISTS "BrainMemory_clubId_idx" ON "BrainMemory"("clubId")`,
+        `DO $$ BEGIN
+            ALTER TABLE "BrainMemory" ADD CONSTRAINT "BrainMemory_brainId_fkey"
+                FOREIGN KEY ("brainId") REFERENCES "Brain"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+
+        // BrainRelation
+        `CREATE TABLE IF NOT EXISTS "BrainRelation" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "fromBrainId" TEXT NOT NULL,
+            "toBrainId" TEXT NOT NULL,
+            "kind" TEXT NOT NULL,
+            "weight" DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+            "source" TEXT NOT NULL DEFAULT 'auto',
+            "metadata" JSONB DEFAULT '{}',
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS "BrainRelation_fromBrainId_toBrainId_kind_key"
+            ON "BrainRelation"("fromBrainId", "toBrainId", "kind")`,
+        `CREATE INDEX IF NOT EXISTS "BrainRelation_fromBrainId_idx" ON "BrainRelation"("fromBrainId")`,
+        `CREATE INDEX IF NOT EXISTS "BrainRelation_toBrainId_idx" ON "BrainRelation"("toBrainId")`,
+        `DO $$ BEGIN
+            ALTER TABLE "BrainRelation" ADD CONSTRAINT "BrainRelation_fromBrainId_fkey"
+                FOREIGN KEY ("fromBrainId") REFERENCES "Brain"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+        `DO $$ BEGIN
+            ALTER TABLE "BrainRelation" ADD CONSTRAINT "BrainRelation_toBrainId_fkey"
+                FOREIGN KEY ("toBrainId") REFERENCES "Brain"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+
+        // BrainDocument
+        `CREATE TABLE IF NOT EXISTS "BrainDocument" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "brainId" TEXT NOT NULL,
+            "filename" TEXT NOT NULL,
+            "mimeType" TEXT NOT NULL,
+            "size" INTEGER NOT NULL DEFAULT 0,
+            "fileUrl" TEXT,
+            "s3Key" TEXT,
+            "category" TEXT,
+            "description" TEXT,
+            "status" TEXT NOT NULL DEFAULT 'pending',
+            "errorMessage" TEXT,
+            "chunkCount" INTEGER NOT NULL DEFAULT 0,
+            "charCount" INTEGER NOT NULL DEFAULT 0,
+            "uploadedBy" TEXT,
+            "metadata" JSONB DEFAULT '{}',
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "processedAt" TIMESTAMP(3),
+            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE INDEX IF NOT EXISTS "BrainDocument_brainId_idx" ON "BrainDocument"("brainId")`,
+        `CREATE INDEX IF NOT EXISTS "BrainDocument_status_idx" ON "BrainDocument"("status")`,
+        `DO $$ BEGIN
+            ALTER TABLE "BrainDocument" ADD CONSTRAINT "BrainDocument_brainId_fkey"
+                FOREIGN KEY ("brainId") REFERENCES "Brain"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    ];
+
+    for (let i = 0; i < sqls.length; i++) {
+        const sql = sqls[i];
+        const sqlSummary = sql.split('\n')[0].slice(0, 80);
+        try {
+            await prisma.$executeRawUnsafe(sql);
+            results.push({ step: i + 1, summary: sqlSummary, ok: true });
+        } catch (err) {
+            results.push({
+                step: i + 1,
+                summary: sqlSummary,
+                ok: false,
+                error: err.message?.slice(0, 200),
+                code: err.code,
+            });
+        }
+    }
+
+    // Invalidar cache de ensureReady
+    _tablesOkUntil = 0;
+
+    res.json({
+        ok: results.every(r => r.ok),
+        elapsedMs: Date.now() - t0,
+        version: 'v4.363',
+        results,
+        message: 'Tablas Brain/BrainMemory/BrainRelation/BrainDocument creadas (o ya existían). Refrescá la página.',
+    });
+});
+
 // ─── Diagnóstico (admin only) ──────────────────────────────────────────────
 // IMPORTANT: declarado ANTES de router.use(ensureReady) porque el diagnóstico
 // también tiene que poder reportar el caso "tablas no migradas".

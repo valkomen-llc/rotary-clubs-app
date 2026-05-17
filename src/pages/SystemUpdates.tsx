@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// BRAINS ROUTER MOUNTED IN VERCEL V4.362 | 2026-05-18 (CEREBROS — fix definitivo: el router /api/brains/* nunca estaba montado en api/index.js que es el entry point real de Vercel. Por eso v4.351-4.361 fallaban en prod 🎯)
-// Cache bust: 2026-05-18 04:00 (BRAINS ROUTER MOUNTED IN VERCEL v4.362 🎯)
+// BRAIN MIGRATE FROM UI V4.363 | 2026-05-18 (CEREBROS — endpoint POST /api/brains/migrate ejecutable desde la UI por super admin ⚙️)
+// Cache bust: 2026-05-18 05:00 (BRAIN MIGRATE FROM UI v4.363 ⚙️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.363',
+        date: '2026-05-18',
+        title: 'CEREBROS — botón de migración de tablas desde la UI ⚙️',
+        description: 'Después de mergear v4.362, el router brains finalmente respondió en producción con un error claro: HTTP 503 BRAINS_NOT_MIGRATED. Las tablas Brain no existían en la DB de producción porque `prisma db push` nunca corrió ahí. Solución: endpoint POST /api/brains/migrate que crea las tablas usando CREATE TABLE IF NOT EXISTS desde un click en la UI.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'POST /api/brains/migrate (super admin only) — ejecuta SQL DDL idempotente con prisma.$executeRawUnsafe para crear las 4 tablas: Brain, BrainMemory, BrainRelation, BrainDocument. Plus todos los índices y foreign keys.',
+            'Declarado ANTES de router.use(ensureReady) — si no, no se podría llamar (porque ensureReady falla justamente con BRAINS_NOT_MIGRATED).',
+            'Cada CREATE TABLE usa IF NOT EXISTS, cada CREATE INDEX usa IF NOT EXISTS, cada ALTER TABLE usa DO $$ BEGIN ... EXCEPTION WHEN duplicate_object ... END $$. Idempotente: podés correr la migración 10 veces sin daño.',
+            'Devuelve un array de results por paso: { step, summary, ok, error?, code? }. Si algún paso falla (ej. FK a Club.id porque la tabla Club tiene otro nombre), continúa con los demás y reporta cuáles funcionaron.',
+            'UI: SiteBrainPanel detecta el error code BRAINS_NOT_MIGRATED y muestra una card naranja con el botón "Ejecutar migración ahora" (visible solo si el user es super admin). Después de migrar, refresca el panel automáticamente.',
+            'Para users no-admin (club admin sin role administrator), muestra mensaje: "Las tablas requieren ser creadas por un super administrador global. Contactá a soporte."',
+            'Limpia cache de ensureReady al finalizar la migración para que el próximo request vea las tablas inmediatamente.',
+        ]
+    },
     {
         version: 'v4.362',
         date: '2026-05-18',
