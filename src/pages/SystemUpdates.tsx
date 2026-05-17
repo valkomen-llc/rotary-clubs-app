@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.345 | 2026-05-16 (POSTGEN — autosave de cada generación en SocialPublication + scheduling con Vercel Cron worker 📅)
-// Cache bust: 2026-05-16 23:00 (PUBLISH AUTOSAVE + SCHEDULING v4.345 📅)
+// DISTRICT HEALTH IQ V4.346 | 2026-05-16 (CONTENT STUDIO — nueva tab Biblioteca con grid de SocialPublication: drafts auto-guardados, programadas, publicadas + filtros por estado 📚)
+// Cache bust: 2026-05-16 23:30 (PUBLICATION LIBRARY UI v4.346 📚)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.346',
+        date: '2026-05-16',
+        title: 'Biblioteca de Publicaciones — UI con Grid + Filtros 📚',
+        description: 'La tab Biblioteca ahora muestra todas las publicaciones autoguardadas en v4.345 (drafts, programadas, publicadas) en una grilla con filtros por estado, búsqueda y badges de modelo IA.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Nuevo componente PublicationLibrary.tsx: fetch a GET /api/social/publications (creado en v4.345). Grid responsive de cards 4:5.',
+            'Cada card muestra: thumbnail (portrait), status badge animado para "publicando", platform icons en pile, copy preview (primeras 140 chars del FB copy), badges de Club + motor de imagen + motor de copy usados, fecha (programada / publicada / generada según estado), botón copiar copy al portapapeles.',
+            'Para publicaciones publicadas con externalUrl (Facebook): links directos clickeables al post real en cada red.',
+            'Para publicaciones partial: banner naranja con conteo de OK vs error.',
+            'Filtros: chips superiores con conteos por estado — Todas / Borradores / Programadas / Publicadas / Parciales / Con error. Search input con debounce 250ms (busca en copies y caption).',
+            'Tab Biblioteca refactorizada: PublicationLibrary es el view principal. El ProjectLibrary viejo (videos AI) queda accesible debajo en un <details> colapsable — no se rompe nada del flujo de videos.',
+            'Solución al issue reportado: el autosave de v4.345 ya estaba persistiendo en SocialPublication, pero la tab mostraba solo el viejo ProjectLibrary. Ahora se ven las publicaciones generadas con IA correctamente.'
+        ]
+    },
     {
         version: 'v4.345',
         date: '2026-05-16',
