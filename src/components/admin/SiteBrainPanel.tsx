@@ -300,15 +300,31 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, i
     }
 
     if (!data?.brain) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const diagnostic = (data as any)?.diagnostic;
         return (
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-8 text-center">
-                <Brain className="w-10 h-10 text-amber-500 mx-auto mb-3" />
-                <p className="text-sm font-medium text-amber-900 mb-1">Tu cerebro aún no se creó</p>
-                <p className="text-xs text-amber-700">
-                    {data?.scope === 'master-only'
-                        ? 'Tu usuario no está vinculado a un club o distrito específico. Como super admin podés usar el panel global.'
-                        : 'Esto puede pasar si tu usuario no está vinculado a un sitio. Contactá a soporte.'}
-                </p>
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-8">
+                <div className="max-w-2xl mx-auto text-center">
+                    <Brain className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+                    <p className="text-sm font-medium text-amber-900 mb-2">Tu cerebro aún no se creó</p>
+                    <p className="text-xs text-amber-700 mb-4">
+                        {data?.scope === 'master-only'
+                            ? 'No pudimos identificar el club o distrito de tu usuario. El JWT no incluye clubId y el lookup en DB tampoco lo encontró.'
+                            : 'Esto puede pasar si tu usuario no está vinculado a un sitio. Contactá a soporte.'}
+                    </p>
+                    {diagnostic && (
+                        <details className="text-left bg-white/70 rounded-lg p-3 mb-4 text-[10px] font-mono">
+                            <summary className="cursor-pointer text-amber-900 font-bold">Información de diagnóstico</summary>
+                            <pre className="mt-2 text-amber-800 whitespace-pre-wrap break-all">{JSON.stringify(diagnostic, null, 2)}</pre>
+                        </details>
+                    )}
+                    <button
+                        onClick={() => fetchMe()}
+                        className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 mx-auto"
+                    >
+                        <RefreshCw className="w-3.5 h-3.5" />Reintentar
+                    </button>
+                </div>
             </div>
         );
     }

@@ -244,6 +244,48 @@ const ensureReady = async (req, res, next) => {
 
 const isSuperAdmin = (req) => req.user?.role === 'administrator';
 
+// v4.365: resuelve clubId/districtId del user. El JWT puede no incluirlos
+// (tokens viejos), entonces caemos al User table por userId. Si tampoco
+// está, intentamos inferir clubId del Host header (subdomain → Club).
+async function resolveUserScope(req) {
+    if (req.__resolvedScope) return req.__resolvedScope;
+    let clubId = req.user?.clubId || null;
+    let districtId = req.user?.districtId || null;
+
+    if (!clubId && !districtId && (req.user?.userId || req.user?.id)) {
+        try {
+            const userId = req.user.userId || req.user.id;
+            const u = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { clubId: true, districtId: true },
+            }).catch(() => null);
+            if (u) {
+                clubId = u.clubId || null;
+                districtId = u.districtId || null;
+            }
+        } catch { /* ignore */ }
+    }
+
+    if (!clubId && !districtId) {
+        const host = req.headers?.host || '';
+        const parts = host.split('.');
+        const subdomain = parts.length >= 3 ? parts[0] : null;
+        try {
+            const club = await prisma.club.findFirst({
+                where: subdomain ? { subdomain } : { domain: host },
+                select: { id: true, districtId: true },
+            }).catch(() => null);
+            if (club) {
+                clubId = club.id;
+                districtId = districtId || club.districtId || null;
+            }
+        } catch { /* ignore */ }
+    }
+
+    req.__resolvedScope = { clubId, districtId, role: req.user?.role || null };
+    return req.__resolvedScope;
+}
+
 // Devuelve los brains que el caller puede ver. Super admin: todos. Resto:
 // el master + el del propio club (+ distrito si aplica).
 async function visibleBrainsFor(req) {
@@ -491,6 +533,9 @@ router.get('/me', authMiddleware, async (req, res) => {
     const QUERY_TIMEOUT_MS = 5000;
 
     try {
+        const scope = await resolveUserScope(req);
+        timings.resolveScope = Date.now() - t0;
+
         const masterPromise = withTimeout(
             prisma.brain.findFirst({
                 where: { isMaster: true },
@@ -504,10 +549,10 @@ router.get('/me', authMiddleware, async (req, res) => {
         );
 
         let myBrainPromise = Promise.resolve(null);
-        if (req.user?.clubId) {
+        if (scope.clubId) {
             myBrainPromise = withTimeout(
                 prisma.brain.findUnique({
-                    where: { clubId: req.user.clubId },
+                    where: { clubId: scope.clubId },
                     include: {
                         club:     { select: { id: true, name: true, subdomain: true, city: true, country: true, category: true, type: true, logo: true, description: true, email: true, phone: true } },
                         _count:   { select: { memories: true, outgoingRelations: true, incomingRelations: true } },
@@ -516,10 +561,10 @@ router.get('/me', authMiddleware, async (req, res) => {
                 QUERY_TIMEOUT_MS,
                 { __timeout: true }
             );
-        } else if (req.user?.districtId) {
+        } else if (scope.districtId) {
             myBrainPromise = withTimeout(
                 prisma.brain.findUnique({
-                    where: { districtId: req.user.districtId },
+                    where: { districtId: scope.districtId },
                     include: {
                         district: { select: { id: true, name: true, number: true, subdomain: true } },
                         _count:   { select: { memories: true, outgoingRelations: true, incomingRelations: true } },
@@ -530,10 +575,10 @@ router.get('/me', authMiddleware, async (req, res) => {
             );
         }
 
-        const onboardingPromise = req.user?.clubId
+        const onboardingPromise = scope.clubId
             ? withTimeout(
                 prisma.setting.findFirst({
-                    where: { clubId: req.user.clubId, key: 'onboarding_completed' },
+                    where: { clubId: scope.clubId, key: 'onboarding_completed' },
                 }).catch(() => null),
                 QUERY_TIMEOUT_MS,
                 null
@@ -553,48 +598,45 @@ router.get('/me', authMiddleware, async (req, res) => {
         const master = (masterRaw && !masterTimedOut && !masterErrored) ? masterRaw : null;
         const myBrain = (myBrainRaw && !brainTimedOut && !brainErrored) ? myBrainRaw : null;
 
-        // Si TODAS las queries timeoutearon, devolvemos 'degraded' — el panel
-        // muestra mensaje de "DB lenta, reintentá" en lugar de spinner perpetuo.
-        if (masterTimedOut && (brainTimedOut || !req.user?.clubId && !req.user?.districtId)) {
+        if (masterTimedOut && (brainTimedOut || (!scope.clubId && !scope.districtId))) {
             return res.json({
                 scope: 'degraded',
-                detail: 'La base de datos no responde en este momento. Probable connection pool exhausto en Vercel o cold start crítico. Reintentá en unos segundos.',
+                detail: 'La base de datos no responde en este momento. Reintentá en unos segundos.',
                 timings,
-                version: 'v4.360',
-                diagnostic: { masterTimedOut, brainTimedOut, masterErrored, brainErrored },
+                version: 'v4.365',
+                diagnostic: { masterTimedOut, brainTimedOut, masterErrored, brainErrored, resolvedScope: scope },
             });
         }
 
-        // Master no existe → not-initialized
         if (!master && !masterTimedOut && !masterErrored) {
             return res.json({
                 scope: 'not-initialized',
                 reason: 'no-master',
                 detail: 'El cerebro maestro aún no fue creado. Hacé click en "Inicializar mi cerebro" para crearlo.',
-                clubId: req.user?.clubId || null,
-                districtId: req.user?.districtId || null,
+                clubId: scope.clubId,
+                districtId: scope.districtId,
                 timings,
-                version: 'v4.360',
+                version: 'v4.365',
             });
         }
 
-        // Si el master erroreó (no timeout, error real ej. tabla faltante)
         if (masterErrored) {
             return res.json({
                 scope: 'degraded',
-                detail: `Error de DB al leer el cerebro maestro: ${masterErrored}. Probable tabla Brain no migrada (correr prisma db push).`,
+                detail: `Error de DB al leer el cerebro maestro: ${masterErrored}.`,
                 timings,
-                version: 'v4.360',
+                version: 'v4.365',
                 diagnostic: { masterErrored },
             });
         }
 
-        if (!req.user?.clubId && !req.user?.districtId) {
+        if (!scope.clubId && !scope.districtId) {
             return res.json({
                 scope: 'master-only',
                 master,
                 timings,
-                version: 'v4.360',
+                version: 'v4.365',
+                diagnostic: { resolvedScope: scope, jwtUser: { clubId: req.user?.clubId || null, districtId: req.user?.districtId || null, role: req.user?.role || null } },
             });
         }
 
@@ -603,15 +645,14 @@ router.get('/me', authMiddleware, async (req, res) => {
                 scope: 'not-initialized',
                 reason: 'no-site-brain',
                 detail: 'El cerebro de tu sitio aún no se creó. Hacé click en "Inicializar mi cerebro" para crearlo a partir de la información del onboarding.',
-                clubId: req.user?.clubId || null,
-                districtId: req.user?.districtId || null,
+                clubId: scope.clubId,
+                districtId: scope.districtId,
                 master,
                 timings,
-                version: 'v4.360',
+                version: 'v4.365',
             });
         }
 
-        // Todo OK
         res.json({
             scope: 'site',
             brain: myBrain,
@@ -621,11 +662,11 @@ router.get('/me', authMiddleware, async (req, res) => {
                 step: null,
             },
             timings,
-            version: 'v4.360',
+            version: 'v4.365',
         });
     } catch (err) {
         console.error('[brains] me:', err, 'timings:', timings);
-        res.status(500).json({ error: 'Error fetching own brain', detail: err.message?.slice(0, 300), timings, version: 'v4.360' });
+        res.status(500).json({ error: 'Error fetching own brain', detail: err.message?.slice(0, 300), timings, version: 'v4.365' });
     }
 });
 
@@ -634,23 +675,22 @@ router.get('/me', authMiddleware, async (req, res) => {
 router.post('/me/initialize', authMiddleware, async (req, res) => {
     const t0 = Date.now();
     try {
-        // 1. Master
+        const scope = await resolveUserScope(req);
+
         const master = await getOrCreateMasterBrain();
         if (!master) {
             return res.status(500).json({ error: 'Could not create master brain' });
         }
 
-        // 2. Brain del user
         let myBrain = null;
-        if (req.user?.clubId) {
-            myBrain = await getOrCreateBrainForClub(req.user.clubId);
-        } else if (req.user?.districtId) {
-            myBrain = await getOrCreateBrainForDistrict(req.user.districtId);
+        if (scope.clubId) {
+            myBrain = await getOrCreateBrainForClub(scope.clubId);
+        } else if (scope.districtId) {
+            myBrain = await getOrCreateBrainForDistrict(scope.districtId);
         }
 
-        // 3. Sync con onboarding si hay clubId (best effort, fire-and-forget)
-        if (myBrain && req.user?.clubId) {
-            syncBrainWithOnboarding(req.user.clubId).catch(err =>
+        if (myBrain && scope.clubId) {
+            syncBrainWithOnboarding(scope.clubId).catch(err =>
                 console.warn('[brains/initialize] sync onboarding:', err.message)
             );
         }
@@ -660,6 +700,7 @@ router.post('/me/initialize', authMiddleware, async (req, res) => {
             elapsedMs: Date.now() - t0,
             master: master ? { id: master.id, name: master.name } : null,
             brain: myBrain ? { id: myBrain.id, name: myBrain.name, kind: myBrain.kind } : null,
+            scope,
         });
     } catch (err) {
         console.error('[brains] initialize:', err);
