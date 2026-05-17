@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// BRAIN QUICK BYPASS V4.361 | 2026-05-18 (CEREBROS — endpoints de emergencia /api/brain-quick/* declarados directamente en server.js bypaseando el router brains 🆘)
-// Cache bust: 2026-05-18 02:00 (BRAIN QUICK BYPASS v4.361 🆘)
+// BRAINS ROUTER MOUNTED IN VERCEL V4.362 | 2026-05-18 (CEREBROS — fix definitivo: el router /api/brains/* nunca estaba montado en api/index.js que es el entry point real de Vercel. Por eso v4.351-4.361 fallaban en prod 🎯)
+// Cache bust: 2026-05-18 04:00 (BRAINS ROUTER MOUNTED IN VERCEL v4.362 🎯)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.362',
+        date: '2026-05-18',
+        title: 'CEREBROS — fix definitivo: el router nunca estuvo montado en Vercel 🎯',
+        description: 'Causa raíz finalmente identificada después de 5 intentos fallidos (v4.357-4.361). En producción Vercel usa /api/index.js como entry point serverless (definido en vercel.json), NO server/server.js. Todas las versiones anteriores agregaban código a server.js que solo se usa en dev local. En producción, los endpoints /api/brains/* simplemente NO EXISTÍAN.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Cómo lo descubrí: revisé vercel.json y vi `{ "source": "/api/(.*)", "destination": "/api/index.js" }` — Vercel routea todo /api/* a ese archivo. Luego confirmé con `grep -n "brains" api/index.js` que el router brains NUNCA estaba importado ahí.',
+            'Por eso v4.351 a v4.361 fallaron en producción: el frontend pedía /api/brains/me, Vercel lo mandaba a api/index.js, y como ese archivo no tiene el router brains montado, el request caía en el catch-all SPA y se quedaba esperando indefinidamente hasta el maxDuration de Vercel (120s) o el timeout del cliente.',
+            'En dev local, server/server.js sí monta el router brains, así que TODOS los tests locales funcionaban. Esto explica la disonancia entre "funciona en local, falla en prod".',
+            'Fix: agregué `import brainsRoutes` con el patrón lazy-load existente y lo monté en `/api/brains` en api/index.js. Patrón idéntico al de calendar, ai, orders, etc.',
+            'Bonus: agregué /api/brain-quick (sin DB) y /api/brain-quick/db (con prisma.count timeout 4s) directamente en api/index.js como endpoints de diagnóstico para futuros casos similares.',
+            'Frontend: SiteBrainPanel vuelve a usar /api/brains/me (que ya existía y tenía toda la lógica defensiva de v4.360). Timeout cliente 20s — debería ser MUY suficiente ahora que el router está realmente montado.',
+            'Lección aprendida: en proyectos con dual entry point (server/server.js para dev, api/index.js para Vercel), CADA ruta nueva tiene que registrarse en AMBOS archivos. La regla durable: agregar al checklist de cada PR que toca routes/.',
+        ]
+    },
     {
         version: 'v4.361',
         date: '2026-05-18',
