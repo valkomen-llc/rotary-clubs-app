@@ -15,10 +15,12 @@
 import prisma from '../lib/prisma.js';
 import { searchMemories } from './brainService.js';
 
-console.log('🤖 BRAIN AGENT v4.375 — chat conversacional + tools + activity log online');
+console.log('🤖 BRAIN AGENT v4.376 — chat conversacional + tools + activity log online');
 
-const GEMINI_CHAT_MODEL = 'gemini-2.0-flash-exp';
-const GEMINI_CHAT_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_CHAT_MODEL}:generateContent`;
+// v4.376: gemini-2.0-flash-exp devolvía 404. Cambiado a gemini-2.0-flash
+// (estable). Si ese también falla, hacemos fallback a gemini-1.5-flash.
+const GEMINI_MODELS_FALLBACK = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-latest'];
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 // ─── Activity log ───────────────────────────────────────────────────────────
 
@@ -238,18 +240,38 @@ async function callGemini({ systemPrompt, history, userMessage, enableTools = tr
         ...(enableTools ? { tools: [{ functionDeclarations: toolsToGeminiFunctions() }] } : {}),
     };
 
-    try {
-        const r = await fetch(`${GEMINI_CHAT_ENDPOINT}?key=${encodeURIComponent(key)}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        });
-        if (!r.ok) {
+    // v4.376: probar cada modelo de la lista hasta que uno funcione.
+    let lastErr = null;
+    let data = null;
+    for (const model of GEMINI_MODELS_FALLBACK) {
+        try {
+            const r = await fetch(`${GEMINI_BASE}/${model}:generateContent?key=${encodeURIComponent(key)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            if (r.ok) {
+                data = await r.json();
+                break; // primer modelo OK
+            }
             const errText = await r.text().catch(() => '');
-            console.warn('[brainAgent] gemini err:', r.status, errText.slice(0, 200));
-            return { text: `Error del LLM (${r.status}). Intentá de nuevo.`, toolCalls: [], error: true };
+            lastErr = { status: r.status, model, text: errText.slice(0, 300) };
+            console.warn(`[brainAgent] gemini ${model} err ${r.status}:`, errText.slice(0, 200));
+            // Si es 404 (modelo no existe) probamos el siguiente
+            // Si es 403 (auth) o 429 (quota), no vale la pena probar otro modelo
+            if (r.status === 403 || r.status === 429) break;
+        } catch (err) {
+            lastErr = { error: err.message, model };
+            console.warn(`[brainAgent] gemini ${model} exception:`, err.message);
         }
-        const data = await r.json();
+    }
+
+    if (!data) {
+        const detail = lastErr ? `${lastErr.status || ''} ${lastErr.text || lastErr.error || 'unknown'}`.slice(0, 200) : 'unknown';
+        return { text: `Error del LLM (${lastErr?.status || '?'}): ${detail}. Probá de nuevo.`, toolCalls: [], error: true };
+    }
+
+    try {
         const candidate = data?.candidates?.[0];
         const parts = candidate?.content?.parts || [];
 
