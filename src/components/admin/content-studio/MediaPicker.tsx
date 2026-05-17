@@ -10,7 +10,13 @@ import {
     MapPin,
     Briefcase,
     Globe,
-    Filter
+    Filter,
+    Users,
+    GraduationCap,
+    Calendar,
+    Mic,
+    Lightbulb,
+    Heart
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -39,16 +45,27 @@ interface MediaPickerProps {
     initialSelection?: string[];
 }
 
-// Las categorías que ya están modeladas en la DB. Cuando se agreguen entidades
-// nuevas (Event, Foundation, Conference, etc.) se suman acá.
-type CategoryId = 'all' | 'club' | 'district' | 'project' | 'platform';
+// Cada categoría se mapea a un valor de Club.category (excepto district,
+// project y platform que tienen tablas propias o son globales). La columna
+// Club.category se agregó en v4.342 para permitir esta categorización sin
+// tablas adicionales.
+type CategoryId =
+    | 'all'
+    | 'club' | 'association' | 'exchange_program' | 'event' | 'conference' | 'project_fair' | 'foundation'
+    | 'district' | 'project' | 'platform';
 
 const CATEGORIES: { id: CategoryId; label: string; icon: React.FC<{ className?: string }>; color: string; bg: string }[] = [
-    { id: 'all',      label: 'Todas',       icon: Filter,    color: 'text-gray-600',   bg: 'bg-gray-100' },
-    { id: 'club',     label: 'Clubes',      icon: Building2, color: 'text-blue-700',   bg: 'bg-blue-50' },
-    { id: 'district', label: 'Distritos',   icon: MapPin,    color: 'text-purple-700', bg: 'bg-purple-50' },
-    { id: 'project',  label: 'Proyectos',   icon: Briefcase, color: 'text-amber-700',  bg: 'bg-amber-50' },
-    { id: 'platform', label: 'Plataforma',  icon: Globe,     color: 'text-emerald-700', bg: 'bg-emerald-50' }
+    { id: 'all',              label: 'Todas',         icon: Filter,         color: 'text-gray-600',     bg: 'bg-gray-100' },
+    { id: 'club',             label: 'Clubes',        icon: Building2,      color: 'text-blue-700',     bg: 'bg-blue-50' },
+    { id: 'association',      label: 'Asociaciones',  icon: Users,          color: 'text-indigo-700',   bg: 'bg-indigo-50' },
+    { id: 'exchange_program', label: 'Programas',     icon: GraduationCap,  color: 'text-pink-700',     bg: 'bg-pink-50' },
+    { id: 'event',            label: 'Eventos',       icon: Calendar,       color: 'text-orange-700',   bg: 'bg-orange-50' },
+    { id: 'conference',       label: 'Conferencias',  icon: Mic,            color: 'text-rose-700',     bg: 'bg-rose-50' },
+    { id: 'project_fair',     label: 'Ferias',        icon: Lightbulb,      color: 'text-yellow-700',   bg: 'bg-yellow-50' },
+    { id: 'foundation',       label: 'Fundaciones',   icon: Heart,          color: 'text-red-700',      bg: 'bg-red-50' },
+    { id: 'district',         label: 'Distritos',     icon: MapPin,         color: 'text-purple-700',   bg: 'bg-purple-50' },
+    { id: 'project',          label: 'Proyectos',     icon: Briefcase,      color: 'text-amber-700',    bg: 'bg-amber-50' },
+    { id: 'platform',         label: 'Plataforma',    icon: Globe,          color: 'text-emerald-700',  bg: 'bg-emerald-50' }
 ];
 
 const categoryMeta = (id: string | null | undefined) =>

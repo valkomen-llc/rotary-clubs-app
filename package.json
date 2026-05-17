@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.341.0",
-  "cache_bust": "2026-05-16 21:00 (MEDIA RECOVERY FROM S3KEY v4.341 🧩)",
+  "version": "4.342.0",
+  "cache_bust": "2026-05-16 21:30 (MEDIA CLUB CATEGORIES v4.342 🏷️)",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.341 | 2026-05-16 (MEDIA — recovery del clubId desde s3Key path + fallback en endpoints para imágenes no backfilleadas 🧩)",
+  "//": "DISTRICT HEALTH IQ V4.342 | 2026-05-16 (MEDIA — Club.category con 7 sub-tipos: club, association, exchange_program, event, conference, project_fair, foundation 🏷️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
