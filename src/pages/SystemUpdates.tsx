@@ -24,9 +24,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// FIX BLANK SCREEN TDZ V4.368 | 2026-05-18 (CEREBROS — Temporal Dead Zone en SiteBrainPanel 🩹)
-// Cache bust: 2026-05-18 10:00 (FIX BLANK SCREEN TDZ v4.368 🩹)
+// AUTO-RETRY /me V4.369 | 2026-05-18 (CEREBROS — fetchMe auto-retry transparente 🔁)
+// Cache bust: 2026-05-18 11:00 (AUTO-RETRY /me v4.369 🔁)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.369',
+        date: '2026-05-18',
+        title: 'CEREBROS — auto-retry transparente para read-after-write lag 🔁',
+        description: 'Después del fix de v4.367 (initialize devuelve brain completo), el flujo de "click forzar creación → panel aparece" funciona. Pero al refrescar la página, GET /me a veces devuelve brain:null la primera vez (read-after-write lag de Prisma con connection pooling). El user tenía que clickear "Reintentar" manualmente. Ahora el retry es automático y transparente.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'fetchMe refactorizado con loop interno de retry: si /me devuelve scope:"site" pero brain:null, reintenta hasta 3 veces con backoff 800ms → 1500ms → 3000ms (total ~5s).',
+            'Solo se reintenta el caso retry-able específico (scope="site" + brain=null). Otros estados (not-initialized, master-only, degraded, errores) se devuelven inmediatamente sin retry.',
+            'Loading state se mantiene durante todo el loop — el user solo ve un spinner único en vez de oscilación entre estados.',
+            'Si después de los 3 retries el brain sigue null, mostramos el último response (típicamente cae en la card de "Tu cerebro aún no se creó" con botón "Forzar creación del cerebro").',
+            'En el caso normal (brain ya existe y Prisma lo encuentra inmediatamente), no hay overhead — el primer fetch retorna éxito y salimos del loop.',
+        ]
+    },
     {
         version: 'v4.368',
         date: '2026-05-18',

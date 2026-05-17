@@ -63,35 +63,65 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, i
     const fetchMe = useCallback(async () => {
         setLoading(true);
         setErrorState(null);
-        // v4.362: el router brains ahora está montado correctamente en
-        // api/index.js (entry point de Vercel). Volvemos a /api/brains/me.
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20_000);
-        try {
-            const r = await fetch(`${API}/brains/me`, { headers, signal: controller.signal });
-            if (r.ok) {
-                const json = await r.json();
-                // Normalize shape para que coincida con lo que esperaba el frontend
-                if (json.scope === 'site' && json.brain) {
-                    setData({ scope: 'site', brain: json.brain, master: json.master, onboarding: { completed: false }, _quick: true });
-                } else {
-                    setData(json);
+
+        // v4.369: auto-retry transparente para read-after-write lag.
+        // Cuando /me devuelve brain:null pero scope:site (el user tiene clubId
+        // pero Prisma todavía no encuentra el brain), reintentamos hasta 3 veces
+        // con backoff. Resuelve el caso edge del primer load tras crear el brain.
+        const RETRY_DELAYS_MS = [800, 1500, 3000];
+
+        async function singleFetch() {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 20_000);
+            try {
+                const r = await fetch(`${API}/brains/me`, { headers, signal: controller.signal });
+                if (r.ok) {
+                    const json = await r.json();
+                    return { ok: true as const, json };
                 }
-            } else {
                 const err = await r.json().catch(() => ({}));
-                setErrorState({
-                    status: r.status,
-                    code: err.error,
-                    message: err.message || err.detail || err.error || `HTTP ${r.status} ${r.statusText || 'sin detalle'}`,
-                });
-                if (r.status !== 503) {
-                    toast.error(err.detail || err.error || `No se pudo cargar el cerebro (${r.status})`);
-                }
+                return { ok: false as const, status: r.status, err };
+            } finally {
+                clearTimeout(timeoutId);
             }
+        }
+
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            let lastJson: any = null;
+            for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+                const result = await singleFetch();
+                if (!result.ok) {
+                    setErrorState({
+                        status: result.status,
+                        code: result.err?.error,
+                        message: result.err?.message || result.err?.detail || result.err?.error || `HTTP ${result.status}`,
+                    });
+                    if (result.status !== 503) {
+                        toast.error(result.err?.detail || result.err?.error || `No se pudo cargar el cerebro (${result.status})`);
+                    }
+                    return;
+                }
+                lastJson = result.json;
+                // Caso éxito
+                if (result.json.scope === 'site' && result.json.brain) {
+                    setData(result.json);
+                    return;
+                }
+                // Caso retry-able: scope=site pero brain:null
+                if (result.json.scope === 'site' && !result.json.brain && attempt < RETRY_DELAYS_MS.length) {
+                    await new Promise(res => setTimeout(res, RETRY_DELAYS_MS[attempt]));
+                    continue;
+                }
+                // Otros casos terminales (not-initialized, master-only, degraded)
+                setData(result.json);
+                return;
+            }
+            // Agotamos retries
+            if (lastJson) setData(lastJson);
         } catch (err) {
             const e = err as Error;
             const isAbort = e.name === 'AbortError';
-            // Test si /api/brain-quick (sin DB) responde, para diagnosticar
             let isInfraFail = false;
             if (isAbort) {
                 try {
@@ -109,12 +139,11 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, i
                 message: isAbort
                     ? (isInfraFail
                         ? 'El servidor (Vercel) no responde — quizás está caído o el deploy todavía no terminó.'
-                        : 'Timeout: /api/brain-quick/me se cuelga, pero /brain-quick (sin DB) responde ✅. Problema confirmado en la base de datos.')
+                        : 'Timeout: /api/brains/me se cuelga, pero /brain-quick (sin DB) responde. Problema en la base de datos.')
                     : e.message,
             });
             toast.error(isAbort ? 'Timeout cargando el cerebro' : `Error: ${e.message}`);
         } finally {
-            clearTimeout(timeoutId);
             setLoading(false);
         }
     }, [headers]);
