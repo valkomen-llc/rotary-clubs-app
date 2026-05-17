@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.376.0",
-  "cache_bust": "2026-05-18 18:00 (GEMINI MODEL FIX v4.376 🔧)",
+  "version": "4.377.0",
+  "cache_bust": "2026-05-18 19:00 (GEMINI EXTENDED CASCADE + LLM-INFO v4.377 🔍)",
   "type": "module",
-  "//": "GEMINI MODEL FIX V4.376 | 2026-05-18 (CEREBROS — gemini-2.0-flash-exp devolvía 404; ahora probamos gemini-2.0-flash → 1.5-flash → 1.5-flash-latest con fallback automático 🔧)",
+  "//": "GEMINI EXTENDED CASCADE + LLM-INFO V4.377 | 2026-05-18 (CEREBROS — cascada extendida de 11 combinaciones model+version, endpoint /llm-info para diagnosticar, cache del modelo que funcione 🔍)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

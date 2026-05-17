@@ -15,12 +15,53 @@
 import prisma from '../lib/prisma.js';
 import { searchMemories } from './brainService.js';
 
-console.log('🤖 BRAIN AGENT v4.376 — chat conversacional + tools + activity log online');
+console.log('🤖 BRAIN AGENT v4.377 — chat conversacional + tools + activity log online');
 
-// v4.376: gemini-2.0-flash-exp devolvía 404. Cambiado a gemini-2.0-flash
-// (estable). Si ese también falla, hacemos fallback a gemini-1.5-flash.
-const GEMINI_MODELS_FALLBACK = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-latest'];
-const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+// v4.377: lista ampliada de combinaciones model+apiVersion. La API key del proyecto
+// puede tener acceso solo a ciertos modelos en ciertas versiones.
+const GEMINI_CANDIDATES = [
+    { model: 'gemini-2.0-flash',         version: 'v1beta' },
+    { model: 'gemini-2.0-flash-001',     version: 'v1beta' },
+    { model: 'gemini-1.5-flash',         version: 'v1beta' },
+    { model: 'gemini-1.5-flash-002',     version: 'v1beta' },
+    { model: 'gemini-1.5-flash-latest',  version: 'v1beta' },
+    { model: 'gemini-1.5-pro',           version: 'v1beta' },
+    { model: 'gemini-1.5-pro-latest',    version: 'v1beta' },
+    { model: 'gemini-pro',               version: 'v1beta' },
+    { model: 'gemini-pro',               version: 'v1' },
+    { model: 'gemini-1.0-pro',           version: 'v1' },
+    { model: 'gemini-1.0-pro',           version: 'v1beta' },
+];
+
+// Cache del primer modelo que funcione — evita probar toda la cascada cada vez.
+let _workingCandidate = null;
+
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com';
+
+// Helper de diagnóstico: lista modelos disponibles para la API key actual.
+export async function listAvailableGeminiModels() {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) return { error: 'GEMINI_API_KEY missing' };
+    const results = {};
+    for (const v of ['v1beta', 'v1']) {
+        try {
+            const r = await fetch(`${GEMINI_BASE}/${v}/models?key=${encodeURIComponent(key)}`);
+            if (r.ok) {
+                const data = await r.json();
+                results[v] = (data.models || []).map(m => ({
+                    name: m.name,
+                    supportedGenerationMethods: m.supportedGenerationMethods,
+                }));
+            } else {
+                const txt = await r.text().catch(() => '');
+                results[v] = { error: `HTTP ${r.status}`, detail: txt.slice(0, 200) };
+            }
+        } catch (err) {
+            results[v] = { error: err.message };
+        }
+    }
+    return results;
+}
 
 // ─── Activity log ───────────────────────────────────────────────────────────
 
@@ -240,35 +281,56 @@ async function callGemini({ systemPrompt, history, userMessage, enableTools = tr
         ...(enableTools ? { tools: [{ functionDeclarations: toolsToGeminiFunctions() }] } : {}),
     };
 
-    // v4.376: probar cada modelo de la lista hasta que uno funcione.
+    // v4.377: probar combinaciones model+version. Si tenemos un working candidate
+    // cacheado, lo probamos primero. Si no, cascada completa.
+    const tried = [];
     let lastErr = null;
     let data = null;
-    for (const model of GEMINI_MODELS_FALLBACK) {
+
+    const candidates = _workingCandidate
+        ? [_workingCandidate, ...GEMINI_CANDIDATES.filter(c => c.model !== _workingCandidate.model || c.version !== _workingCandidate.version)]
+        : GEMINI_CANDIDATES;
+
+    for (const c of candidates) {
+        tried.push(`${c.version}/${c.model}`);
         try {
-            const r = await fetch(`${GEMINI_BASE}/${model}:generateContent?key=${encodeURIComponent(key)}`, {
+            const url = `${GEMINI_BASE}/${c.version}/models/${c.model}:generateContent?key=${encodeURIComponent(key)}`;
+            const r = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             });
             if (r.ok) {
                 data = await r.json();
-                break; // primer modelo OK
+                _workingCandidate = c; // cache para próximas calls
+                console.log(`[brainAgent] gemini OK con ${c.version}/${c.model}`);
+                break;
             }
             const errText = await r.text().catch(() => '');
-            lastErr = { status: r.status, model, text: errText.slice(0, 300) };
-            console.warn(`[brainAgent] gemini ${model} err ${r.status}:`, errText.slice(0, 200));
-            // Si es 404 (modelo no existe) probamos el siguiente
-            // Si es 403 (auth) o 429 (quota), no vale la pena probar otro modelo
+            lastErr = { status: r.status, ...c, text: errText.slice(0, 300) };
+            console.warn(`[brainAgent] gemini ${c.version}/${c.model} err ${r.status}:`, errText.slice(0, 200));
+            // Si es 403 (auth) o 429 (quota), problema global → no probamos otros
             if (r.status === 403 || r.status === 429) break;
+            // Si el modelo cacheado falló, invalidamos y seguimos la cascada
+            if (_workingCandidate && _workingCandidate.model === c.model && _workingCandidate.version === c.version) {
+                _workingCandidate = null;
+            }
         } catch (err) {
-            lastErr = { error: err.message, model };
-            console.warn(`[brainAgent] gemini ${model} exception:`, err.message);
+            lastErr = { error: err.message, ...c };
+            console.warn(`[brainAgent] gemini ${c.version}/${c.model} exception:`, err.message);
         }
     }
 
     if (!data) {
-        const detail = lastErr ? `${lastErr.status || ''} ${lastErr.text || lastErr.error || 'unknown'}`.slice(0, 200) : 'unknown';
-        return { text: `Error del LLM (${lastErr?.status || '?'}): ${detail}. Probá de nuevo.`, toolCalls: [], error: true };
+        const detail = lastErr
+            ? `${lastErr.status || ''} ${lastErr.text || lastErr.error || 'unknown'}`.slice(0, 200)
+            : 'unknown';
+        return {
+            text: `❌ No pude conectar con ningún modelo Gemini. Último intento: ${lastErr?.version || '?'}/${lastErr?.model || '?'} → ${detail}\n\nProbá llamar GET /api/brains/me/llm-info para ver qué modelos están disponibles para esta API key.`,
+            toolCalls: [],
+            error: true,
+            triedModels: tried,
+        };
     }
 
     try {
