@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.346 | 2026-05-16 (CONTENT STUDIO — nueva tab Biblioteca con grid de SocialPublication: drafts auto-guardados, programadas, publicadas + filtros por estado 📚)
-// Cache bust: 2026-05-16 23:30 (PUBLICATION LIBRARY UI v4.346 📚)
+// DISTRICT HEALTH IQ V4.347 | 2026-05-17 (COPY — default cambiado de OpenAI a Gemini 2.5 Flash; frontend respeta el default del servidor en lugar de hardcodearlo 🟢)
+// Cache bust: 2026-05-17 00:00 (COPY DEFAULT GEMINI v4.347 🟢)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.347',
+        date: '2026-05-17',
+        title: 'Copy IA — Default cambiado a Gemini 2.5 Flash 🟢',
+        description: 'El motor por defecto para generación de copies ahora es Google Gemini 2.5 Flash en vez de OpenAI GPT-4o. El frontend respeta el default reportado por el servidor.',
+        type: 'enhancement',
+        author: 'Claude',
+        details: [
+            'Backend: DEFAULT_COPY_PROVIDER en copywritingService.js pasa de "openai" a "gemini". El endpoint /api/content-studio/copy-providers marca a Gemini con isDefault: true.',
+            'Frontend: aiConfig.copyEngine inicia como string vacío en vez de hardcodear "openai". El useEffect lo setea cuando recibe la lista del servidor.',
+            'Lógica de auto-selección actualizada: prioridad (1) lo que el usuario ya tenía elegido si sigue disponible, (2) el default que reporta el servidor (isDefault === true), (3) el primer provider disponible. Antes solo respetaba (1) y (3) — ignoraba el default platform-wide.',
+            'Resultado: al recargar el PostGenerator, el chip "DEFAULT" aparece sobre Gemini y queda pre-seleccionado automáticamente. Cambiar manualmente a OpenAI o Anthropic sigue funcionando y queda persistido durante la sesión.'
+        ]
+    },
     {
         version: 'v4.346',
         date: '2026-05-16',
