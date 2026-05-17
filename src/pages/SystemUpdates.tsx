@@ -24,9 +24,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// AUTO-RETRY /me V4.369 | 2026-05-18 (CEREBROS — fetchMe auto-retry transparente 🔁)
-// Cache bust: 2026-05-18 11:00 (AUTO-RETRY /me v4.369 🔁)
+// SITE GRAPH VIEW V4.370 | 2026-05-18 (CEREBROS — grafo 3D del sitio estilo Obsidian 🕸️)
+// Cache bust: 2026-05-18 12:00 (SITE GRAPH VIEW v4.370 🕸️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.370',
+        date: '2026-05-18',
+        title: 'CEREBROS — Knowledge Graph dentro del panel del sitio 🕸️',
+        description: 'Fase 1 del plan de "Cerebro Vivo": nueva tab "Grafo" en el panel del sitio (no solo en el global del super admin). Visualización 3D orbital estilo Obsidian — el brain del sitio en el centro, las memorias orbitando, conexiones al Cerebro Maestro y otros brains relacionados. Click en cualquier nodo abre un preview con metadata.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Nueva tab "Grafo" en SiteBrainPanel.tsx (entre Resumen y Documentos) — visible para cualquier admin de sitio.',
+            'Endpoint nuevo GET /api/brains/me/graph — payload optimizado centrado en el brain del user: brain + memorias (max 300 por default, 800 cap) + master opcional + brains relacionados via outgoing/incoming. ~1 query por entidad, no requiere joins pesados.',
+            'Reutilización del componente BrainGraph3D existente (v4.352) — mismo motor Three.js con tema dark cosmic, partículas direccionales en links de relación, halo glow en brains.',
+            'Toggle "Incluir Cerebro Maestro" — controla si se muestra el nodo del master conectado vía PARENT_OF. Default ON para que el user vea su conexión al ecosistema.',
+            'Click en nodo (brain o memoria) → preview lateral con metadata: tipo, kind, ubicación, conteo de memorias, sourceType/sourceId si aplica.',
+            'Stats compactas: N brains · M memorias · K relaciones (en el header del tab).',
+            'Empty state amigable: "Empezá creando noticias, proyectos o subiendo documentos. Cada uno aparece como un nodo conectado a {nombre}".',
+            'Lazy load del chunk de Three.js — solo se descarga al primer click en la tab Grafo. El bundle inicial del panel sigue chico.',
+            'Roadmap continúa: v4.371 detección SIMILAR_TO automática entre memorias (clustering semántico), v4.372 cron jobs para el cerebro vivo, v4.373 chat RAG sobre el brain.',
+        ]
+    },
     {
         version: 'v4.369',
         date: '2026-05-18',

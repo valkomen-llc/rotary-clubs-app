@@ -762,6 +762,142 @@ router.post('/me/initialize', authMiddleware, async (req, res) => {
     }
 });
 
+// GET /api/brains/me/graph — payload nodos+links para el grafo del sitio.
+// Centrado en el brain del user, incluye memorias del sitio + master (opcional)
+// + brains relacionados. v4.370.
+router.get('/me/graph', authMiddleware, async (req, res) => {
+    try {
+        const scope = await resolveUserScope(req);
+        const includeMaster = req.query.master !== 'false';
+        const memoryLimit = Math.min(parseInt(req.query.memoryLimit) || 200, 800);
+
+        let myBrain = null;
+        if (scope.clubId) {
+            myBrain = await prisma.brain.findUnique({
+                where: { clubId: scope.clubId },
+                select: { id: true, name: true, kind: true, memoryCount: true, isMaster: true,
+                          club: { select: { logo: true, subdomain: true, city: true, country: true } } },
+            }).catch(() => null);
+        } else if (scope.districtId) {
+            myBrain = await prisma.brain.findUnique({
+                where: { districtId: scope.districtId },
+                select: { id: true, name: true, kind: true, memoryCount: true, isMaster: true,
+                          district: { select: { subdomain: true, number: true } } },
+            }).catch(() => null);
+        }
+
+        if (!myBrain) {
+            return res.json({ nodes: [], links: [], stats: { brains: 0, memories: 0, relations: 0 } });
+        }
+
+        const memories = await prisma.brainMemory.findMany({
+            where: { brainId: myBrain.id },
+            take: memoryLimit,
+            orderBy: { updatedAt: 'desc' },
+            select: { id: true, kind: true, title: true, sourceType: true, sourceId: true, createdAt: true },
+        }).catch(() => []);
+
+        const outgoing = await prisma.brainRelation.findMany({
+            where: { fromBrainId: myBrain.id },
+            include: { toBrain: { select: { id: true, name: true, kind: true, memoryCount: true, isMaster: true } } },
+        }).catch(() => []);
+        const incoming = await prisma.brainRelation.findMany({
+            where: { toBrainId: myBrain.id },
+            include: { fromBrain: { select: { id: true, name: true, kind: true, memoryCount: true, isMaster: true } } },
+        }).catch(() => []);
+
+        let master = null;
+        if (includeMaster) {
+            master = await prisma.brain.findFirst({
+                where: { isMaster: true, NOT: { id: myBrain.id } },
+                select: { id: true, name: true, kind: true, memoryCount: true, isMaster: true },
+            }).catch(() => null);
+        }
+
+        const relatedBrains = new Map();
+        relatedBrains.set(myBrain.id, myBrain);
+        outgoing.forEach(r => { if (r.toBrain) relatedBrains.set(r.toBrain.id, r.toBrain); });
+        incoming.forEach(r => { if (r.fromBrain) relatedBrains.set(r.fromBrain.id, r.fromBrain); });
+        if (master) relatedBrains.set(master.id, master);
+
+        const nodes = [
+            ...Array.from(relatedBrains.values()).map(b => ({
+                id: `brain:${b.id}`,
+                nodeType: 'brain',
+                kind: b.kind,
+                name: b.name,
+                isMaster: b.isMaster,
+                isMine: b.id === myBrain.id,
+                memoryCount: b.memoryCount,
+                logo: b.club?.logo || null,
+                location: b.club?.city && b.club?.country ? `${b.club.city}, ${b.club.country}` :
+                          b.district?.number ? `Distrito ${b.district.number}` : null,
+            })),
+            ...memories.map(m => ({
+                id: `memory:${m.id}`,
+                nodeType: 'memory',
+                kind: m.kind,
+                name: m.title,
+                brainId: `brain:${myBrain.id}`,
+                sourceType: m.sourceType,
+                sourceId: m.sourceId,
+                createdAt: m.createdAt,
+            })),
+        ];
+
+        const masterAlreadyLinked = master && (
+            outgoing.some(r => r.toBrainId === master.id) ||
+            incoming.some(r => r.fromBrainId === master.id)
+        );
+
+        const links = [
+            ...memories.map(m => ({
+                source: `memory:${m.id}`,
+                target: `brain:${myBrain.id}`,
+                linkType: 'belongs',
+                weight: 0.3,
+            })),
+            ...outgoing.map(r => ({
+                source: `brain:${myBrain.id}`,
+                target: `brain:${r.toBrainId}`,
+                linkType: 'relation',
+                kind: r.kind,
+                weight: r.weight,
+            })),
+            ...incoming.map(r => ({
+                source: `brain:${r.fromBrainId}`,
+                target: `brain:${myBrain.id}`,
+                linkType: 'relation',
+                kind: r.kind,
+                weight: r.weight,
+            })),
+            ...(master && !masterAlreadyLinked
+                ? [{
+                    source: `brain:${master.id}`,
+                    target: `brain:${myBrain.id}`,
+                    linkType: 'relation',
+                    kind: 'PARENT_OF',
+                    weight: 1.0,
+                }]
+                : []),
+        ];
+
+        res.json({
+            nodes,
+            links,
+            stats: {
+                brains: relatedBrains.size,
+                memories: memories.length,
+                relations: outgoing.length + incoming.length,
+            },
+            myBrainId: `brain:${myBrain.id}`,
+        });
+    } catch (err) {
+        console.error('[brains] me/graph:', err);
+        res.status(500).json({ error: 'Error fetching graph', detail: err.message?.slice(0, 200) });
+    }
+});
+
 // Carga diferida: memorias recientes + documentos + relaciones detalladas.
 // El frontend lo pide después de pintar el hero, así el panel aparece rápido.
 router.get('/me/extras', authMiddleware, async (req, res) => {
