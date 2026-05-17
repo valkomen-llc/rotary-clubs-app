@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// GRAPH AS DEFAULT TAB V4.371 | 2026-05-18 (CEREBROS — Grafo como tab default 🎯)
-// Cache bust: 2026-05-18 13:00 (GRAPH AS DEFAULT TAB v4.371 🎯)
+// PERMISSIONS FROM RESOLVED SCOPE V4.372 | 2026-05-18 (CEREBROS — permisos via resolveUserScope 🔓)
+// Cache bust: 2026-05-18 14:00 (PERMISSIONS FROM RESOLVED SCOPE v4.372 🔓)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.372',
+        date: '2026-05-18',
+        title: 'CEREBROS — fix permisos de edición ("Solo lectura" incorrecto) 🔓',
+        description: 'El admin de Rotary Nuevo Cali no podía editar la configuración de su cerebro — veía "Solo lectura — no tenés permisos para editar este cerebro". Causa: el check de permisos en el frontend usaba `currentUser.clubId` del JWT, que en algunos usuarios no está set. Fix: el backend ahora decide canEdit usando resolveUserScope (que cae a DB y subdomain) y el frontend lo usa directamente.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'GET /api/brains/me ahora devuelve `canEdit: true` cuando el scope resolvió a "site" (es decir, el user efectivamente es admin del brain).',
+            'POST /api/brains/me/initialize también devuelve canEdit basado en si se creó el brain.',
+            'Frontend SiteBrainPanel: `canEdit` ahora prioriza `data.canEdit` del backend, con fallback al check viejo basado en currentUser por backward compatibility.',
+            'Backend: PATCH /api/brains/:id/settings, POST /:id/sync-onboarding, POST /:id/documents, DELETE /documents/:id y POST /documents/:id/reprocess ahora usan resolveUserScope en lugar de req.user.clubId directo.',
+            'userCanReadBrain (helper compartido por GET /:id, GET /:id/memories, etc.) también usa resolveUserScope.',
+            'Si access se deniega, el response incluye `scope` y `brainClubId` para debug.',
+        ]
+    },
     {
         version: 'v4.371',
         date: '2026-05-18',
