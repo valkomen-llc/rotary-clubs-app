@@ -54,14 +54,15 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser })
     const [extras, setExtras] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [loadingExtras, setLoadingExtras] = useState(false);
-    const [errorState, setErrorState] = useState<{ status: number | null; message: string } | null>(null);
+    const [initializing, setInitializing] = useState(false);
+    const [errorState, setErrorState] = useState<{ status: number | null; message: string; isPingFail?: boolean } | null>(null);
     const [tab, setTab] = useState<'overview' | 'docs' | 'memories' | 'search' | 'config'>('overview');
 
     const fetchMe = useCallback(async () => {
         setLoading(true);
         setErrorState(null);
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 45_000);
+        const timeoutId = setTimeout(() => controller.abort(), 30_000);
         try {
             const r = await fetch(`${API}/brains/me`, { headers, signal: controller.signal });
             if (r.ok) {
@@ -80,10 +81,26 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser })
         } catch (err) {
             const e = err as Error;
             const isAbort = e.name === 'AbortError';
+            // Si /me cayó por timeout, hacemos un ping rápido para distinguir
+            // entre "Vercel/red caída" vs "endpoint /me específicamente bloqueado".
+            let isPingFail = false;
+            if (isAbort) {
+                try {
+                    const pingCtrl = new AbortController();
+                    setTimeout(() => pingCtrl.abort(), 5000);
+                    const pr = await fetch(`${API}/brains/ping`, { signal: pingCtrl.signal });
+                    if (!pr.ok) isPingFail = true;
+                } catch {
+                    isPingFail = true;
+                }
+            }
             setErrorState({
                 status: null,
+                isPingFail,
                 message: isAbort
-                    ? 'Timeout: el endpoint /api/brains/me no respondió en 45s — probable error del servidor o cold start severo de Vercel.'
+                    ? (isPingFail
+                        ? 'El servidor entero no responde — Vercel está caído o cold start crítico.'
+                        : 'Timeout: /api/brains/me se cuelga, pero el resto del API responde (ping ✅). Probable problema con la conexión a la base de datos.')
                     : e.message,
             });
             toast.error(isAbort ? 'Timeout cargando el cerebro' : `Error: ${e.message}`);
@@ -92,6 +109,25 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser })
             setLoading(false);
         }
     }, [headers]);
+
+    const initializeBrain = useCallback(async () => {
+        setInitializing(true);
+        try {
+            const r = await fetch(`${API}/brains/me/initialize`, { method: 'POST', headers });
+            if (r.ok) {
+                const j = await r.json();
+                toast.success(`Cerebro creado en ${j.elapsedMs}ms`);
+                await fetchMe();
+            } else {
+                const err = await r.json().catch(() => ({}));
+                toast.error(err.detail || err.error || 'No se pudo inicializar el cerebro');
+            }
+        } catch (err) {
+            toast.error(`Error: ${(err as Error).message}`);
+        } finally {
+            setInitializing(false);
+        }
+    }, [headers, fetchMe]);
 
     const fetchExtras = useCallback(async () => {
         setLoadingExtras(true);
@@ -152,6 +188,39 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser })
                             <RefreshCw className="w-3.5 h-3.5" />Reintentar
                         </button>
                     </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (data?.scope === 'not-initialized') {
+        return (
+            <div className="bg-gradient-to-br from-violet-50 via-indigo-50 to-blue-50 border border-violet-200 rounded-2xl p-8">
+                <div className="max-w-2xl mx-auto text-center">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
+                        <Brain className="w-8 h-8 text-white" />
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-900 mb-2">Inicializá tu cerebro inteligente</h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                        {(data as any).detail || 'Tu cerebro institucional aún no fue creado. Es un proceso rápido y automático.'}
+                    </p>
+                    <div className="text-xs text-gray-500 mb-5 bg-white/60 rounded-xl p-3 max-w-md mx-auto text-left">
+                        <p className="font-bold text-gray-700 mb-1">¿Qué pasa al inicializar?</p>
+                        <ul className="space-y-1 list-disc list-inside">
+                            <li>Se crea el cerebro de tu sitio con identidad derivada del onboarding</li>
+                            <li>Se sincroniza la descripción, contacto y redes sociales como memorias</li>
+                            <li>Quedás conectado al Cerebro Maestro de Club Platform</li>
+                        </ul>
+                    </div>
+                    <button
+                        onClick={initializeBrain}
+                        disabled={initializing}
+                        className="px-6 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 disabled:opacity-60 text-white rounded-xl text-sm font-medium shadow-md shadow-violet-500/20 flex items-center gap-2 mx-auto"
+                    >
+                        {initializing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                        {initializing ? 'Creando cerebro…' : 'Inicializar mi cerebro'}
+                    </button>
                 </div>
             </div>
         );

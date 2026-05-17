@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.358.0",
-  "cache_bust": "2026-05-17 22:00 (PROGRESSIVE BRAIN LOAD v4.358 ⚡)",
+  "version": "4.359.0",
+  "cache_bust": "2026-05-17 23:30 (READ-ONLY /me + EXPLICIT INIT v4.359 🔑)",
   "type": "module",
-  "//": "PROGRESSIVE BRAIN LOAD V4.358 | 2026-05-17 (CEREBROS — endpoint /me ultra-ligero + /me/extras async para evitar timeouts de cold start ⚡)",
+  "//": "BRAIN READ-ONLY ME V4.359 | 2026-05-17 (CEREBROS — endpoint /me solo lectura + endpoint /me/initialize explícito + /ping de diagnóstico 🔑)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

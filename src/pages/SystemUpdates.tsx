@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// PROGRESSIVE BRAIN LOAD V4.358 | 2026-05-17 (CEREBROS — endpoint /me ultra-ligero + /me/extras async para evitar timeouts de cold start ⚡)
-// Cache bust: 2026-05-17 22:00 (PROGRESSIVE BRAIN LOAD v4.358 ⚡)
+// BRAIN READ-ONLY ME V4.359 | 2026-05-17 (CEREBROS — endpoint /me solo lectura + endpoint /me/initialize explícito + /ping de diagnóstico 🔑)
+// Cache bust: 2026-05-17 23:30 (READ-ONLY /me + EXPLICIT INIT v4.359 🔑)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.359',
+        date: '2026-05-17',
+        title: 'Cerebro Inteligente — /me read-only + inicialización explícita 🔑',
+        description: 'El endpoint /api/brains/me se colgaba intermitentemente >45s en producción incluso con la versión liviana de v4.358. La causa subyacente: las funciones getOrCreateMasterBrain() y getOrCreateBrainForClub() hacen un CREATE cuando el brain no existe, y ese write puede quedar bloqueado por locks de DB o connection pool exhausto en cold start. Solución: separar READ y WRITE en endpoints distintos.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'GET /api/brains/me ahora es 100% read-only — solo hace findFirst / findUnique. Si el brain no existe, devuelve scope="not-initialized" instantáneamente con detail explicando qué falta.',
+            'POST /api/brains/me/initialize (nuevo) — crea el master y el brain del sitio si no existen. Sincroniza con onboarding fire-and-forget. Es el único endpoint que hace writes.',
+            'GET /api/brains/ping (nuevo, sin auth, sin DB) — endpoint mínimo para verificar que el router brains responde. Útil para distinguir "Vercel caído" vs "endpoint /me específicamente bloqueado".',
+            'Frontend: si /me responde con scope="not-initialized", muestra una card de bienvenida con explicación y botón "Inicializar mi cerebro" que llama POST /me/initialize. UX clara, sin spinners infinitos.',
+            'Frontend: cuando /me cae por timeout, ahora hace un ping rápido (5s) para distinguir entre "Vercel entero caído" y "solo el endpoint /me está bloqueado (probable problema de DB)". El mensaje de error es específico según el caso.',
+            'Backend: timings detallados en la response de /me — frontend puede mostrar cuánto tardó cada stage para diagnóstico.',
+            'Timeout del frontend bajó a 30s (era 45s). Con /me siendo solo lectura, no debería tardar más que eso ni en cold start.',
+        ]
+    },
     {
         version: 'v4.358',
         date: '2026-05-17',
