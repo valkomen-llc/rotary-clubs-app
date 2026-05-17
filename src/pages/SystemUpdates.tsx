@@ -24,9 +24,35 @@ interface UpdateItem {
     details?: string[];
 }
 
-// RESILIENT FINDUNIQUE + CONFIG SANITIZE V4.374 | 2026-05-18 (CEREBROS — findUnique con fallback + sanitización metadata 🛡️)
-// Cache bust: 2026-05-18 16:00 (RESILIENT FINDUNIQUE + CONFIG SANITIZE v4.374 🛡️)
+// OPERATIONAL AGENT V4.375 | 2026-05-18 (CEREBROS — agente operativo: chat RAG + tools + activity log 🤖)
+// Cache bust: 2026-05-18 17:00 (OPERATIONAL AGENT v4.375 🤖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.375',
+        date: '2026-05-18',
+        title: 'CEREBROS — Agente Operativo: chat conversacional + tools + activity log 🤖',
+        description: 'Salto cualitativo del Cerebro Inteligente: pasa de IA pasiva (configura, aprende) a Agente Operativo (entiende, ejecuta, actúa). Tres capacidades nuevas integradas en una sola release: chat conversacional con RAG, function calling con 4 tools iniciales, y registro de actividad visible para el admin.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            '🆕 Schema: 2 modelos nuevos — BrainActivity (registro de cada acción del cerebro: ingestas, docs procesados, chats, tools, syncs) y BrainChatMessage (historial de conversaciones agrupado por sessionId con role user/assistant/tool).',
+            '🆕 Auto-migration: las 2 tablas nuevas se crean automáticamente en el primer cold start tras el deploy (mismo mecanismo de v4.364).',
+            '🆕 Chat conversacional: nueva tab "Chat" (default ahora). UI tipo ChatGPT — input al fondo, mensajes con bubbles, suggestions iniciales, persistencia de sesión vía localStorage, historial de sesiones anteriores con preview.',
+            '🆕 RAG (Retrieval-Augmented Generation): cada mensaje del user dispara búsqueda semántica top-5 sobre las memorias del brain. Las memorias relevantes se inyectan al system prompt para que el LLM responda con contexto real del sitio.',
+            '🆕 Function calling con Gemini 2.0 Flash: el agente decide cuándo ejecutar uno de 4 tools:',
+            '  · search_memories(query, k) — busca info indexada del sitio',
+            '  · create_post_draft(title, content, category) — crea Post draft en la DB (NO publica)',
+            '  · summarize_recent_activity(days) — resume actividad reciente del cerebro',
+            '  · list_upcoming_events(daysAhead) — eventos del calendario futuros',
+            '🆕 Loop multi-turn: si el LLM ejecuta tools, hay segunda pasada con los resultados para construir respuesta natural.',
+            '🆕 Activity log automático: ingestMemory ahora dispara logActivity() fire-and-forget. Cada chat, tool, sync queda registrado.',
+            '🆕 Tab "Actividad" con widget que muestra: emoji + título + timestamp por cada actividad, badges con conteos de los últimos 7 días agrupados por kind.',
+            '🆕 Endpoints: POST /api/brains/me/chat, GET /me/chat/history?sessionId=X, GET /me/activity',
+            'Cuando el LLM ejecuta un tool, en la UI aparece un bubble naranja "Ejecuté tool: create_post_draft" con argumentos y resultado expandibles.',
+            'Si no hay GEMINI_API_KEY, el chat devuelve mensaje informativo sin crashear.',
+            'Orden actual de tabs: Chat (default) · Grafo · Actividad · Resumen · Documentos · Memorias · Búsqueda · Configuración.',
+        ]
+    },
     {
         version: 'v4.374',
         date: '2026-05-18',

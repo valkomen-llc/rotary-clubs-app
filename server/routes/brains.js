@@ -29,6 +29,7 @@ import {
     syncBrainWithOnboarding,
 } from '../services/brainService.js';
 import { processDocumentSafe, deleteDocument } from '../services/documentProcessor.js';
+import { chatWithBrain, listChatHistory, listChatSessions, listActivities } from '../services/brainAgent.js';
 
 const router = express.Router();
 
@@ -152,6 +153,45 @@ const BRAIN_MIGRATION_SQLS = [
     `CREATE INDEX IF NOT EXISTS "BrainDocument_status_idx" ON "BrainDocument"("status")`,
     `DO $$ BEGIN
         ALTER TABLE "BrainDocument" ADD CONSTRAINT "BrainDocument_brainId_fkey"
+            FOREIGN KEY ("brainId") REFERENCES "Brain"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+
+    // BrainActivity (v4.375)
+    `CREATE TABLE IF NOT EXISTS "BrainActivity" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "brainId" TEXT NOT NULL,
+        "kind" TEXT NOT NULL,
+        "title" TEXT NOT NULL,
+        "detail" TEXT,
+        "metadata" JSONB DEFAULT '{}',
+        "userId" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE INDEX IF NOT EXISTS "BrainActivity_brainId_createdAt_idx" ON "BrainActivity"("brainId", "createdAt")`,
+    `CREATE INDEX IF NOT EXISTS "BrainActivity_kind_idx" ON "BrainActivity"("kind")`,
+    `DO $$ BEGIN
+        ALTER TABLE "BrainActivity" ADD CONSTRAINT "BrainActivity_brainId_fkey"
+            FOREIGN KEY ("brainId") REFERENCES "Brain"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+
+    // BrainChatMessage (v4.375)
+    `CREATE TABLE IF NOT EXISTS "BrainChatMessage" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "brainId" TEXT NOT NULL,
+        "sessionId" TEXT NOT NULL,
+        "role" TEXT NOT NULL,
+        "content" TEXT NOT NULL,
+        "toolName" TEXT,
+        "toolArgs" JSONB,
+        "toolResult" JSONB,
+        "metadata" JSONB DEFAULT '{}',
+        "userId" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE INDEX IF NOT EXISTS "BrainChatMessage_brainId_sessionId_createdAt_idx" ON "BrainChatMessage"("brainId", "sessionId", "createdAt")`,
+    `CREATE INDEX IF NOT EXISTS "BrainChatMessage_brainId_createdAt_idx" ON "BrainChatMessage"("brainId", "createdAt")`,
+    `DO $$ BEGIN
+        ALTER TABLE "BrainChatMessage" ADD CONSTRAINT "BrainChatMessage_brainId_fkey"
             FOREIGN KEY ("brainId") REFERENCES "Brain"("id") ON DELETE CASCADE ON UPDATE CASCADE;
     EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
 ];
@@ -938,6 +978,90 @@ router.get('/me/graph', authMiddleware, async (req, res) => {
 
 // Carga diferida: memorias recientes + documentos + relaciones detalladas.
 // El frontend lo pide después de pintar el hero, así el panel aparece rápido.
+// ─── Chat con el cerebro (v4.375 Agente Operativo) ────────────────────────
+
+router.post('/me/chat', authMiddleware, async (req, res) => {
+    try {
+        const scope = await resolveUserScope(req);
+        if (!scope.clubId && !scope.districtId) {
+            return res.status(400).json({ error: 'No clubId/districtId asociado al user' });
+        }
+
+        const myBrain = scope.clubId
+            ? await prisma.brain.findUnique({ where: { clubId: scope.clubId } })
+            : await prisma.brain.findUnique({ where: { districtId: scope.districtId } });
+        if (!myBrain) return res.status(404).json({ error: 'Brain not found — inicializalo primero' });
+
+        const { message, sessionId } = req.body || {};
+        if (!message || !message.trim()) return res.status(400).json({ error: 'message required' });
+        const safeSession = (sessionId && typeof sessionId === 'string')
+            ? sessionId.slice(0, 60)
+            : `s-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+        const result = await chatWithBrain({
+            brainId: myBrain.id,
+            brain: myBrain,
+            sessionId: safeSession,
+            message: message.slice(0, 4000),
+            clubId: scope.clubId,
+            userId: req.user?.userId || req.user?.id || null,
+        });
+
+        res.json({ ...result, sessionId: safeSession });
+    } catch (err) {
+        console.error('[brains] chat:', err);
+        res.status(500).json({ error: 'Error en el chat', detail: err.message?.slice(0, 300) });
+    }
+});
+
+router.get('/me/chat/history', authMiddleware, async (req, res) => {
+    try {
+        const scope = await resolveUserScope(req);
+        const myBrain = scope.clubId
+            ? await prisma.brain.findUnique({ where: { clubId: scope.clubId } }).catch(() => null)
+            : scope.districtId ? await prisma.brain.findUnique({ where: { districtId: scope.districtId } }).catch(() => null) : null;
+        if (!myBrain) return res.json({ messages: [], sessions: [] });
+
+        const sessionId = req.query.sessionId;
+        const [messages, sessions] = await Promise.all([
+            sessionId ? listChatHistory({ brainId: myBrain.id, sessionId }) : Promise.resolve([]),
+            listChatSessions({ brainId: myBrain.id, limit: 10 }),
+        ]);
+        res.json({ messages, sessions });
+    } catch (err) {
+        console.error('[brains] chat history:', err);
+        res.status(500).json({ error: 'Error fetching chat history' });
+    }
+});
+
+router.get('/me/activity', authMiddleware, async (req, res) => {
+    try {
+        const scope = await resolveUserScope(req);
+        const myBrain = scope.clubId
+            ? await prisma.brain.findUnique({ where: { clubId: scope.clubId } }).catch(() => null)
+            : scope.districtId ? await prisma.brain.findUnique({ where: { districtId: scope.districtId } }).catch(() => null) : null;
+        if (!myBrain) return res.json({ activities: [], stats: {} });
+
+        const limit = Math.min(parseInt(req.query.limit) || 30, 100);
+        const kind = req.query.kind || undefined;
+        const activities = await listActivities({ brainId: myBrain.id, limit, kind });
+
+        // Stats: count by kind (últimos 7 días)
+        const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const recentByKind = await prisma.brainActivity.groupBy({
+            by: ['kind'],
+            where: { brainId: myBrain.id, createdAt: { gte: since } },
+            _count: { kind: true },
+        }).catch(() => []);
+        const stats = Object.fromEntries(recentByKind.map(r => [r.kind, r._count.kind]));
+
+        res.json({ activities, stats, periodDays: 7 });
+    } catch (err) {
+        console.error('[brains] activity:', err);
+        res.status(500).json({ error: 'Error fetching activity', detail: err.message?.slice(0, 300) });
+    }
+});
+
 router.get('/me/extras', authMiddleware, async (req, res) => {
     try {
         let myBrain = null;

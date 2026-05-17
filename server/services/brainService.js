@@ -10,7 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import prisma from '../lib/prisma.js';
 
-console.log('🧠 BRAIN SERVICE v4.356 — cerebros + grafo 3D + obsidian + docs + reindex paginado + sync con onboarding + identityPrompt editable 🎛️');
+console.log('🧠 BRAIN SERVICE v4.375 — cerebros + grafo 3D + obsidian + docs + reindex paginado + chat agente operativo 🤖');
 
 // Las tablas Brain/BrainMemory/BrainRelation se crean vía `prisma db push`.
 // Hasta que ese push se corra en producción, todas las operaciones aquí
@@ -497,6 +497,21 @@ export async function ingestMemory({
             prisma.brain.update({ where: { id: b.id }, data: { memoryCount: count } })
         ).catch(() => {})
     )).catch(() => {});
+
+    // v4.375: Activity log (fire-and-forget, lazy import para evitar ciclo)
+    if (results.length > 0) {
+        import('./brainAgent.js').then(({ logActivity }) => {
+            for (const brain of targets) {
+                logActivity({
+                    brainId: brain.id,
+                    kind: 'memory_ingested',
+                    title: `Memoria ${kind}: ${safeTitle.slice(0, 80)}`,
+                    detail: `sourceType=${sourceType} · embeddings=${embedding.length}d`,
+                    metadata: { sourceType, sourceId, kind },
+                });
+            }
+        }).catch(() => {});
+    }
 
     return { embeddingLength: embedding.length, written: results.length };
 }

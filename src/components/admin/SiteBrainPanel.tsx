@@ -2,10 +2,11 @@ import React, { useCallback, useEffect, useMemo, useState, Suspense } from 'reac
 import {
     Brain, Sparkles, BookOpen, Database, Search, Settings, Loader2,
     CheckCircle2, AlertCircle, RefreshCw, Save, Download, Globe,
-    FileText, Lightbulb, MessageCircle, ChevronRight, Atom,
+    FileText, Lightbulb, MessageCircle, ChevronRight, Atom, Activity,
     Calendar as CalendarIcon, FolderKanban, Users, StickyNote, Layers,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import BrainChatTab, { BrainActivityWidget } from './BrainChatTab';
 
 // Lazy load del componente de grafo 3D — Three.js es ~1.3MB
 const BrainGraph3D = React.lazy(() => import('./BrainGraph3D'));
@@ -61,7 +62,7 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, i
     const [initializing, setInitializing] = useState(false);
     const [migrating, setMigrating] = useState(false);
     const [errorState, setErrorState] = useState<{ status: number | null; message: string; isPingFail?: boolean; code?: string } | null>(null);
-    const [tab, setTab] = useState<'overview' | 'graph' | 'docs' | 'memories' | 'search' | 'config'>('graph');
+    const [tab, setTab] = useState<'overview' | 'graph' | 'chat' | 'activity' | 'docs' | 'memories' | 'search' | 'config'>('chat');
 
     const fetchMe = useCallback(async () => {
         setLoading(true);
@@ -402,7 +403,9 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, i
             {/* Tabs */}
             <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
                 <div className="flex border-b border-gray-100 overflow-x-auto">
+                    <TabBtn id="chat"     current={tab} onClick={setTab} icon={<MessageCircle className="w-4 h-4" />}>Chat</TabBtn>
                     <TabBtn id="graph"    current={tab} onClick={setTab} icon={<Atom className="w-4 h-4" />}>Grafo</TabBtn>
+                    <TabBtn id="activity" current={tab} onClick={setTab} icon={<Activity className="w-4 h-4" />}>Actividad</TabBtn>
                     <TabBtn id="overview" current={tab} onClick={setTab} icon={<Sparkles className="w-4 h-4" />}>Resumen</TabBtn>
                     <TabBtn id="docs"     current={tab} onClick={setTab} icon={<BookOpen className="w-4 h-4" />}>Documentos</TabBtn>
                     <TabBtn id="memories" current={tab} onClick={setTab} icon={<Database className="w-4 h-4" />}>Memorias <span className="ml-1 text-[10px] bg-violet-100 text-violet-700 rounded-full px-1.5">{brain.memoryCount}</span></TabBtn>
@@ -411,6 +414,8 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, i
                 </div>
 
                 <div className="p-6">
+                    {tab === 'chat'     && <BrainChatTab brain={brain} headers={headers} />}
+                    {tab === 'activity' && <ActivityTab headers={headers} />}
                     {tab === 'overview' && <OverviewTab brain={brain} memories={extras?.memories || []} master={data.master} loadingExtras={loadingExtras} />}
                     {tab === 'graph'    && <GraphTab brain={brain} headers={headers} />}
                     {tab === 'docs'     && <BrainDocumentsPanel brainId={brain.id} brainName={brain.name} canUpload={canEdit} headers={headers} onChange={fetchExtras} />}
@@ -553,6 +558,21 @@ const HeroStat: React.FC<{ label: string; value: number; icon: React.ReactNode; 
         </div>
         <div className="text-2xl font-bold">{value.toLocaleString()}</div>
         {sub && <div className="text-[10px] text-white/60">{sub}</div>}
+    </div>
+);
+
+// ─── Activity tab ────────────────────────────────────────────────────────────
+const ActivityTab: React.FC<{ headers: Record<string, string> }> = ({ headers }) => (
+    <div className="space-y-3">
+        <div>
+            <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-violet-600" />Actividad del cerebro
+            </h4>
+            <p className="text-xs text-gray-500 mt-0.5">
+                Todo lo que tu cerebro hizo recientemente: memorias indexadas, documentos procesados, conversaciones, tools ejecutados, sincronizaciones.
+            </p>
+        </div>
+        <BrainActivityWidget headers={headers} limit={50} />
     </div>
 );
 

@@ -1152,6 +1152,8 @@ model Brain {
 
   memories        BrainMemory[]
   documents       BrainDocument[]
+  activities      BrainActivity[]
+  chatMessages    BrainChatMessage[]
   outgoingRelations BrainRelation[] @relation("FromBrain")
   incomingRelations BrainRelation[] @relation("ToBrain")
 
@@ -1235,4 +1237,44 @@ model BrainDocument {
 
   @@index([brainId])
   @@index([status])
+}
+
+// BrainActivity = registro de todo lo que el cerebro hizo. Visible en el feed
+// "Actividad reciente" del panel del sitio. Sirve para que el admin vea cómo
+// el cerebro está aprendiendo y actuando.
+model BrainActivity {
+  id          String    @id @default(uuid())
+  brainId     String
+  kind        String    // memory_ingested | document_processed | chat_message | tool_executed | sync_onboarding | embedding_generated | relation_created
+  title       String
+  detail      String?
+  metadata    Json?     @default("{}")
+  userId      String?   // user que disparó la acción (si aplica)
+  createdAt   DateTime  @default(now())
+
+  brain       Brain     @relation(fields: [brainId], references: [id], onDelete: Cascade)
+
+  @@index([brainId, createdAt])
+  @@index([kind])
+}
+
+// BrainChatMessage = historial de conversaciones con el cerebro. Una sesión
+// puede tener muchos mensajes intercalando user / assistant / tool.
+model BrainChatMessage {
+  id          String    @id @default(uuid())
+  brainId     String
+  sessionId   String    // agrupa mensajes de una misma conversación
+  role        String    // user | assistant | tool
+  content     String
+  toolName    String?   // si role='tool', nombre de la función ejecutada
+  toolArgs    Json?     // args de input
+  toolResult  Json?     // resultado del tool
+  metadata    Json?     @default("{}")
+  userId      String?
+  createdAt   DateTime  @default(now())
+
+  brain       Brain     @relation(fields: [brainId], references: [id], onDelete: Cascade)
+
+  @@index([brainId, sessionId, createdAt])
+  @@index([brainId, createdAt])
 }

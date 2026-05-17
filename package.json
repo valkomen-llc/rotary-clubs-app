@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.374.0",
-  "cache_bust": "2026-05-18 16:00 (RESILIENT FINDUNIQUE + CONFIG SANITIZE v4.374 🛡️)",
+  "version": "4.375.0",
+  "cache_bust": "2026-05-18 17:00 (OPERATIONAL AGENT v4.375 🤖)",
   "type": "module",
-  "//": "RESILIENT FINDUNIQUE + CONFIG SANITIZE V4.374 | 2026-05-18 (CEREBROS — findUnique con fallback sin include si falla; sanitización del metadata en PATCH /settings 🛡️)",
+  "//": "OPERATIONAL AGENT V4.375 | 2026-05-18 (CEREBROS — agente operativo: chat conversacional con RAG, tools/function calling (create_post_draft, search_memories, summarize_recent, list_events), activity log con feed visible 🤖)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
