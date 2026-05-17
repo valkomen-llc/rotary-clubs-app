@@ -49,7 +49,7 @@ const MEMORY_KIND_META: Record<string, { label: string; icon: React.ReactNode; c
     PUBLICATION: { label: 'Publicación', icon: <Layers className="w-3 h-3" />,       color: 'bg-cyan-50 text-cyan-700' },
 };
 
-const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, isSuperAdmin }) => {
+const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, isSuperAdmin: _isSuperAdmin }) => {
     const [data, setData] = useState<BrainMe | null>(null);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [extras, setExtras] = useState<any>(null);
@@ -119,6 +119,25 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, i
         }
     }, [headers]);
 
+    const fetchExtras = useCallback(async () => {
+        setLoadingExtras(true);
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 45_000);
+            const r = await fetch(`${API}/brains/me/extras`, { headers, signal: controller.signal });
+            clearTimeout(timeoutId);
+            if (r.ok) {
+                setExtras(await r.json());
+            } else {
+                // No bloquea — solo loguea
+                console.warn('[SiteBrainPanel] extras failed:', r.status);
+            }
+        } catch (err) {
+            console.warn('[SiteBrainPanel] extras error:', (err as Error).message);
+        } finally {
+            setLoadingExtras(false);
+        }
+    }, [headers]);
     const migrateTables = useCallback(async () => {
         setMigrating(true);
         try {
@@ -172,25 +191,6 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, i
         }
     }, [headers, fetchExtras]);
 
-    const fetchExtras = useCallback(async () => {
-        setLoadingExtras(true);
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 45_000);
-            const r = await fetch(`${API}/brains/me/extras`, { headers, signal: controller.signal });
-            clearTimeout(timeoutId);
-            if (r.ok) {
-                setExtras(await r.json());
-            } else {
-                // No bloquea — solo loguea
-                console.warn('[SiteBrainPanel] extras failed:', r.status);
-            }
-        } catch (err) {
-            console.warn('[SiteBrainPanel] extras error:', (err as Error).message);
-        } finally {
-            setLoadingExtras(false);
-        }
-    }, [headers]);
 
     useEffect(() => { fetchMe(); }, [fetchMe]);
 
