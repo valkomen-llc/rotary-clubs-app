@@ -129,9 +129,10 @@ app.get('/api/health', async (req, res) => {
 });
 
 // ── Route loaders (Legacy Dynamic for less critical routes) ──────────────────
-let _calendar, _ai, _orders, _payments, _products, _communications, _translate, _analytics, _leads, _faqs, _agents, _siteProgress, _districts, _whatsappCRM, _platformConfig, _scoutGrants, _documents, _system, _whatsappQr, _contentStudio, _domains, _cron, _distAnalytics;
+let _calendar, _ai, _orders, _payments, _products, _communications, _translate, _analytics, _leads, _faqs, _agents, _siteProgress, _districts, _whatsappCRM, _platformConfig, _scoutGrants, _documents, _system, _whatsappQr, _contentStudio, _domains, _cron, _distAnalytics, _brains;
 const getCalendar = async () => _calendar || (({ default: _calendar } = await import('../server/routes/calendar.js')), _calendar);
 const getAI = async () => _ai || (({ default: _ai } = await import('../server/routes/ai.js')), _ai);
+const getBrains = async () => _brains || (({ default: _brains } = await import('../server/routes/brains.js')), _brains);
 
 const getOrders = async () => _orders || (({ default: _orders } = await import('../server/routes/orders.js')), _orders);
 const getPayments = async () => _payments || (({ default: _payments } = await import('../server/routes/payments.js')), _payments);
@@ -169,6 +170,38 @@ app.use('/api/email-accounts', emailAccountsRoutes);
 
 app.use('/api/calendar', async (req, res, next) => { try { return (await getCalendar())(req, res, next); } catch (e) { console.error('API Error [calendar]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/ai', async (req, res, next) => { try { return (await getAI())(req, res, next); } catch (e) { console.error('API Error [ai]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/brains', async (req, res, next) => { try { return (await getBrains())(req, res, next); } catch (e) { console.error('API Error [brains]:', e); res.status(500).json({ error: 'Error in brains router', detail: e.message?.slice(0, 200) }); } });
+
+// v4.362 — emergency endpoints declarados directamente acá, FUERA del router
+// brains. Si en algún momento el router brains tiene un problema de carga, estos
+// siguen respondiendo. Sin auth, sin DB.
+app.get('/api/brain-quick', (req, res) => {
+    res.json({
+        ok: true,
+        version: 'v4.362',
+        timestamp: new Date().toISOString(),
+        runtime: 'vercel-api-index',
+        env: {
+            node: process.version,
+            vercelRegion: process.env.VERCEL_REGION || null,
+            hasDbUrl: !!process.env.DATABASE_URL,
+            hasGemini: !!process.env.GEMINI_API_KEY,
+        },
+    });
+});
+
+app.get('/api/brain-quick/db', async (req, res) => {
+    const t0 = Date.now();
+    try {
+        const result = await Promise.race([
+            prisma.brain.count().then(c => ({ ok: true, count: c })).catch(e => ({ ok: false, error: e.code || e.message?.slice(0, 100) })),
+            new Promise(resolve => setTimeout(() => resolve({ ok: false, timeout: true }), 4000)),
+        ]);
+        res.json({ ...result, elapsedMs: Date.now() - t0, version: 'v4.362' });
+    } catch (err) {
+        res.status(500).json({ error: err.message?.slice(0, 200), elapsedMs: Date.now() - t0 });
+    }
+});
 app.use('/api/orders', async (req, res, next) => { try { return (await getOrders())(req, res, next); } catch (e) { console.error('API Error [orders]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/payments', async (req, res, next) => { try { return (await getPayments())(req, res, next); } catch (e) { console.error('API Error [payments]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/products', async (req, res, next) => { try { return (await getProducts())(req, res, next); } catch (e) { console.error('API Error [products]:', e); res.status(500).json({ error: e.message }); } });

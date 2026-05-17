@@ -61,13 +61,12 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser })
     const fetchMe = useCallback(async () => {
         setLoading(true);
         setErrorState(null);
-        // v4.361: usamos el endpoint de emergencia /api/brain-quick/me que está
-        // declarado directamente en server.js (no en el router brains que estaba
-        // colgándose). Si funciona, sabemos que el problema era el router.
+        // v4.362: el router brains ahora está montado correctamente en
+        // api/index.js (entry point de Vercel). Volvemos a /api/brains/me.
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 12_000);
+        const timeoutId = setTimeout(() => controller.abort(), 20_000);
         try {
-            const r = await fetch(`${API}/brain-quick/me`, { headers, signal: controller.signal });
+            const r = await fetch(`${API}/brains/me`, { headers, signal: controller.signal });
             if (r.ok) {
                 const json = await r.json();
                 // Normalize shape para que coincida con lo que esperaba el frontend
