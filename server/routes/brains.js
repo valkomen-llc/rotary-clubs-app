@@ -550,28 +550,48 @@ router.get('/me', authMiddleware, async (req, res) => {
             { __timeout: true }
         );
 
+        // v4.374: query con fallback. Si findUnique con include falla por
+        // cualquier razón (deserialización JSON, _count issue, etc.), reintenta
+        // sin include para garantizar que al menos el brain base llegue.
+        const findBrainWithFallback = async (where, includeOption) => {
+            try {
+                return await prisma.brain.findUnique({ where, include: includeOption });
+            } catch (err) {
+                console.warn('[brains/me] findUnique with include failed:', err.code, '-', err.message?.slice(0, 200));
+                // Fallback: sin include
+                try {
+                    const bare = await prisma.brain.findUnique({ where });
+                    if (!bare) return null;
+                    return { ...bare, _count: { memories: bare.memoryCount || 0, outgoingRelations: 0, incomingRelations: 0 }, __degraded: true };
+                } catch (err2) {
+                    console.warn('[brains/me] bare findUnique also failed:', err2.code, '-', err2.message?.slice(0, 200));
+                    return { __error: `${err.code || err.message?.slice(0, 80) || 'unknown'} (bare: ${err2.code || err2.message?.slice(0, 60) || 'unknown'})` };
+                }
+            }
+        };
+
         let myBrainPromise = Promise.resolve(null);
         if (scope.clubId) {
             myBrainPromise = withTimeout(
-                prisma.brain.findUnique({
-                    where: { clubId: scope.clubId },
-                    include: {
+                findBrainWithFallback(
+                    { clubId: scope.clubId },
+                    {
                         club:     { select: { id: true, name: true, subdomain: true, city: true, country: true, category: true, type: true, logo: true, description: true, email: true, phone: true } },
                         _count:   { select: { memories: true, outgoingRelations: true, incomingRelations: true } },
-                    },
-                }).catch(err => { console.warn('[brains/me] club brain err:', err.message); return { __error: err.code || 'unknown' }; }),
+                    }
+                ),
                 QUERY_TIMEOUT_MS,
                 { __timeout: true }
             );
         } else if (scope.districtId) {
             myBrainPromise = withTimeout(
-                prisma.brain.findUnique({
-                    where: { districtId: scope.districtId },
-                    include: {
+                findBrainWithFallback(
+                    { districtId: scope.districtId },
+                    {
                         district: { select: { id: true, name: true, number: true, subdomain: true } },
                         _count:   { select: { memories: true, outgoingRelations: true, incomingRelations: true } },
-                    },
-                }).catch(err => { console.warn('[brains/me] district brain err:', err.message); return { __error: err.code || 'unknown' }; }),
+                    }
+                ),
                 QUERY_TIMEOUT_MS,
                 { __timeout: true }
             );
@@ -982,10 +1002,14 @@ router.patch('/:id/settings', authMiddleware, async (req, res) => {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const data = {};
-        const md = brain.metadata || {};
+        // v4.374: sanitización defensiva del metadata existente.
+        // Prisma JsonValue puede venir como object | array | string | number | null.
+        // Si no es un object plain, usar {} como base.
+        const md = (brain.metadata && typeof brain.metadata === 'object' && !Array.isArray(brain.metadata))
+            ? brain.metadata
+            : {};
 
         if (resetIdentityToAuto) {
-            // Volver al identityPrompt derivado del Club + quitar el override flag
             const club = brain.clubId ? await prisma.club.findUnique({ where: { id: brain.clubId } }) : null;
             if (club) {
                 const { buildIdentityPromptFromClub } = await import('../services/brainService.js');
@@ -997,22 +1021,32 @@ router.patch('/:id/settings', authMiddleware, async (req, res) => {
             data.metadata = { ...md, identityPromptOverridden: true };
         }
 
-        if (config && typeof config === 'object') {
-            const existingConfig = (md.config || {});
+        if (config && typeof config === 'object' && !Array.isArray(config)) {
+            const existingConfig = (md.config && typeof md.config === 'object' && !Array.isArray(md.config)) ? md.config : {};
+            // Limpiar undefined values del config para evitar problemas con JSON serialization
+            const cleanConfig = {};
+            for (const [k, v] of Object.entries(config)) {
+                if (v !== undefined) cleanConfig[k] = v;
+            }
             data.metadata = {
                 ...(data.metadata || md),
                 config: {
                     ...existingConfig,
-                    ...config,
+                    ...cleanConfig,
                 },
             };
+        }
+
+        // Si no hay nada que actualizar, salir temprano (no romper con prisma.update con data vacío)
+        if (Object.keys(data).length === 0) {
+            return res.json({ ok: true, brain, noop: true, message: 'Nada para actualizar.' });
         }
 
         const updated = await prisma.brain.update({ where: { id: brain.id }, data });
         res.json({ ok: true, brain: updated });
     } catch (err) {
         console.error('[brains] settings:', err);
-        res.status(500).json({ error: 'Error updating settings', detail: err.message });
+        res.status(500).json({ error: 'Error updating settings', detail: err.message?.slice(0, 300), code: err.code });
     }
 });
 

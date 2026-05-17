@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// BRAIN-NULL HANDLING V4.373 | 2026-05-18 (CEREBROS — brain=null → not-initialized en vez de site genérico 🩺)
-// Cache bust: 2026-05-18 15:00 (BRAIN-NULL HANDLING v4.373 🩺)
+// RESILIENT FINDUNIQUE + CONFIG SANITIZE V4.374 | 2026-05-18 (CEREBROS — findUnique con fallback + sanitización metadata 🛡️)
+// Cache bust: 2026-05-18 16:00 (RESILIENT FINDUNIQUE + CONFIG SANITIZE v4.374 🛡️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.374',
+        date: '2026-05-18',
+        title: 'CEREBROS — findUnique con fallback + sanitización del metadata 🛡️',
+        description: 'Después de guardar la configuración, el GET /me devolvía "Error de DB al leer el brain: unknown" porque el findUnique con includes (club + _count) fallaba por alguna razón (probable corrupción del metadata JSON). Fix: query con fallback automático sin include si el primero falla + sanitización defensiva del metadata en el PATCH /settings.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'findBrainWithFallback helper: intenta findUnique con include primero. Si falla (error de runtime, deserialización, etc.), reintenta sin include y construye un _count mock con memoryCount. El brain base llega al frontend aunque el include falle.',
+            'Si ambas queries fallan, se retorna { __error: "primero (bare: segundo)" } con ambos códigos para diagnosticar.',
+            'PATCH /settings: sanitiza el metadata antes de update. Si brain.metadata viene como array o primitivo (Prisma JsonValue puede serlo), usa {} como base en vez de spread directo (que en arrays generaría keys numéricas).',
+            'PATCH /settings: limpia undefined values del config object antes de mergear (JSON.serialize trata undefined inconsistentemente).',
+            'PATCH /settings: si data está vacío después de procesar, devuelve early con noop:true en vez de hacer prisma.update con {} (que puede fallar).',
+            'Errores en PATCH /settings ahora incluyen err.code en la response para diagnóstico rápido.',
+        ]
+    },
     {
         version: 'v4.373',
         date: '2026-05-18',
