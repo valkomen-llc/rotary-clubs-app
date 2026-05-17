@@ -24,9 +24,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.349 | 2026-05-17 (BIBLIOTECA — click en cards abre modal de detalle con Publicar Ahora / Programar / Eliminar 🎬)
-// Cache bust: 2026-05-17 01:00 (LIBRARY ACTIONS v4.349 🎬)
+// DISTRICT HEALTH IQ V4.350 | 2026-05-17 (BIBLIOTECA — modal lista TODAS las cuentas accesibles, no solo del club del draft; marcadas las de otro club 🔁)
+// Cache bust: 2026-05-17 01:30 (LIBRARY CROSS CLUB ACCOUNTS v4.350 🔁)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.350',
+        date: '2026-05-17',
+        title: 'Biblioteca — Publicar Cross-Club desde el Modal 🔁',
+        description: 'El modal de detalle filtraba las cuentas al club del draft, pero un user puede tener un draft con imagen de COLROTARIOS y querer publicarlo a la página de Club Platform for Rotary. Ahora muestra TODAS las cuentas accesibles.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Causa: en openDetail() pasábamos ?clubId=<draft.clubId> a /api/social/accounts, así que si el draft estaba taggeado a COLROTARIOS (porque la imagen vino de ahí) y la única página FB conectada estaba bajo "Club Platform for Rotary", el modal salía con 0 cuentas + mensaje "No hay cuentas conectadas para este club".',
+            'Fix: el modal ahora pide /api/social/accounts SIN filtro de club. El admin ve todas sus cuentas y elige libremente. Para users no-admin, el backend ya devuelve solo las de su propio club (no cambia nada para ellos).',
+            'Auto-selección refinada: si hay cuentas activas que matchean el clubId del draft, esas se pre-marcan. Si no, la selección queda vacía y el usuario marca explícitamente — evita publicar por error a una cuenta de otro club.',
+            'UI: cada cuenta cuyo clubId difiere del draft.clubId muestra el aviso "Cuenta de otro club — al publicar la pieza se moverá ahí" en amber. El publish endpoint actualiza el clubId de la SocialPublication para que el row quede consistente con su destino real.',
+            'Empty state actualizado para ser más general: "No tenés cuentas sociales conectadas. Andá a Cuentas Sociales para conectar Facebook + Instagram." (antes decía "para este club" que ahora ya no aplica).'
+        ]
+    },
     {
         version: 'v4.349',
         date: '2026-05-17',

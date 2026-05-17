@@ -180,17 +180,18 @@ const PublicationLibrary: React.FC = () => {
         }
     };
 
-    // Cargar cuentas conectadas cuando se abre el modal de detalle, filtradas
-    // al club de la publicación seleccionada (no se puede publicar a cuentas
-    // de otro club).
+    // Cargar cuentas conectadas cuando se abre el modal de detalle. Para admin
+    // mostramos TODAS las cuentas accesibles (no solo las del club del draft) —
+    // permite publicar el contenido a redes de otros clubs sin recrear el
+    // borrador. El publish endpoint se encarga de "mover" la publicación al
+    // club destino vía el clubId de las cuentas seleccionadas.
     const openDetail = async (pub: Publication) => {
         setSelected(pub);
         setShowSchedule(false);
         setSelectedAccountIds(new Set());
         try {
             const token = localStorage.getItem('rotary_token');
-            const qs = pub.clubId ? `?clubId=${encodeURIComponent(pub.clubId)}` : '';
-            const resp = await fetch(`${API}/social/accounts${qs}`, {
+            const resp = await fetch(`${API}/social/accounts`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (resp.ok) {
@@ -198,9 +199,15 @@ const PublicationLibrary: React.FC = () => {
                 const filtered: ConnectedAccount[] = (Array.isArray(data) ? data : [])
                     .filter((a: any) => a.platform === 'facebook' || a.platform === 'instagram');
                 setConnectedAccounts(filtered);
-                setSelectedAccountIds(new Set(
-                    filtered.filter(a => a.status === 'active' && !a.needsReconnect).map(a => a.id)
-                ));
+                // Preferimos auto-seleccionar las cuentas del club al que pertenece
+                // el draft (si tiene). Si no hay match, dejamos la selección vacía
+                // para que el usuario marque explícitamente.
+                const ownClubMatches = filtered.filter(a =>
+                    a.status === 'active' && !a.needsReconnect && a.clubId === pub.clubId
+                );
+                if (ownClubMatches.length > 0) {
+                    setSelectedAccountIds(new Set(ownClubMatches.map(a => a.id)));
+                }
             }
         } catch { /* silent */ }
     };
@@ -560,7 +567,7 @@ const PublicationLibrary: React.FC = () => {
                                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Publicar en</p>
                                         {connectedAccounts.length === 0 ? (
                                             <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-[11px] font-bold text-amber-800">
-                                                No hay cuentas conectadas para este club. Andá a "Cuentas Sociales" para conectarlas.
+                                                No tenés cuentas sociales conectadas. Andá a la tab "Cuentas Sociales" para conectar Facebook + Instagram.
                                             </div>
                                         ) : (
                                             <div className="space-y-1.5 max-h-40 overflow-y-auto">
@@ -568,6 +575,7 @@ const PublicationLibrary: React.FC = () => {
                                                     const checked = selectedAccountIds.has(acc.id);
                                                     const disabled = acc.needsReconnect || acc.status !== 'active';
                                                     const Icon = acc.platform === 'instagram' ? Instagram : Facebook;
+                                                    const isOtherClub = selected.clubId && acc.clubId && acc.clubId !== selected.clubId;
                                                     return (
                                                         <label key={acc.id} className={`flex items-center gap-2 p-2 rounded-lg border-2 cursor-pointer transition-all ${
                                                             checked && !disabled ? 'bg-blue-50 border-blue-200' : disabled ? 'bg-gray-50 border-gray-100 opacity-50 cursor-not-allowed' : 'bg-white border-gray-100 hover:border-gray-200'
@@ -579,9 +587,14 @@ const PublicationLibrary: React.FC = () => {
                                                                 onChange={() => toggleAccount(acc.id)}
                                                                 className="w-3.5 h-3.5 rounded accent-blue-600"
                                                             />
-                                                            <Icon className={`w-3.5 h-3.5 ${acc.platform === 'instagram' ? 'text-pink-600' : 'text-blue-600'}`} />
-                                                            <span className="text-[11px] font-black text-gray-800 truncate flex-1">{acc.accountName || acc.platform}</span>
-                                                            {disabled && <span className="text-[9px] font-bold text-amber-600">RECONECTAR</span>}
+                                                            <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${acc.platform === 'instagram' ? 'text-pink-600' : 'text-blue-600'}`} />
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-[11px] font-black text-gray-800 truncate">{acc.accountName || acc.platform}</p>
+                                                                {isOtherClub && (
+                                                                    <p className="text-[9px] font-bold text-amber-600">Cuenta de otro club — al publicar la pieza se moverá ahí</p>
+                                                                )}
+                                                            </div>
+                                                            {disabled && <span className="text-[9px] font-bold text-amber-600 flex-shrink-0">RECONECTAR</span>}
                                                         </label>
                                                     );
                                                 })}
