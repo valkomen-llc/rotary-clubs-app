@@ -237,6 +237,163 @@ router.get('/master/graph', authMiddleware, async (req, res) => {
     }
 });
 
+// Full graph para react-force-graph-3d — incluye brains + memorias como nodos.
+// Frontend puede togglear si renderiza solo brains o brains + memorias.
+router.get('/graph/full', authMiddleware, async (req, res) => {
+    try {
+        const includeMemories = req.query.memories !== 'false';
+        const memoryLimit = Math.min(parseInt(req.query.memoryLimit) || 500, 2000);
+
+        const [brains, relations] = await Promise.all([
+            prisma.brain.findMany({
+                select: {
+                    id: true, name: true, kind: true, isMaster: true, memoryCount: true,
+                    clubId: true, districtId: true,
+                    club: { select: { logo: true, subdomain: true, city: true, country: true } },
+                    district: { select: { subdomain: true, number: true } },
+                },
+            }),
+            prisma.brainRelation.findMany({
+                select: { id: true, fromBrainId: true, toBrainId: true, kind: true, weight: true, source: true },
+            }),
+        ]);
+
+        let memories = [];
+        if (includeMemories) {
+            memories = await prisma.brainMemory.findMany({
+                take: memoryLimit,
+                orderBy: { updatedAt: 'desc' },
+                select: {
+                    id: true, brainId: true, kind: true, title: true, sourceType: true, sourceId: true,
+                    createdAt: true,
+                },
+            });
+        }
+
+        const nodes = [
+            ...brains.map(b => ({
+                id: `brain:${b.id}`,
+                nodeType: 'brain',
+                kind: b.kind,
+                name: b.name,
+                isMaster: b.isMaster,
+                memoryCount: b.memoryCount,
+                logo: b.club?.logo || null,
+                subdomain: b.club?.subdomain || b.district?.subdomain || null,
+                location: b.club?.city && b.club?.country ? `${b.club.city}, ${b.club.country}` :
+                          b.district?.number ? `Distrito ${b.district.number}` : null,
+            })),
+            ...memories.map(m => ({
+                id: `memory:${m.id}`,
+                nodeType: 'memory',
+                kind: m.kind,
+                name: m.title,
+                brainId: `brain:${m.brainId}`,
+                sourceType: m.sourceType,
+                sourceId: m.sourceId,
+                createdAt: m.createdAt,
+            })),
+        ];
+
+        const links = [
+            ...relations.map(r => ({
+                source: `brain:${r.fromBrainId}`,
+                target: `brain:${r.toBrainId}`,
+                linkType: 'relation',
+                kind: r.kind,
+                weight: r.weight,
+            })),
+            ...memories.map(m => ({
+                source: `memory:${m.id}`,
+                target: `brain:${m.brainId}`,
+                linkType: 'belongs',
+                weight: 0.3,
+            })),
+        ];
+
+        res.json({
+            nodes,
+            links,
+            stats: { brains: brains.length, memories: memories.length, relations: relations.length },
+        });
+    } catch (err) {
+        console.error('[brains] full graph:', err);
+        res.status(500).json({ error: 'Error fetching full graph' });
+    }
+});
+
+// Export payload para Obsidian Vault — toda la info textual para que el
+// frontend arme el ZIP. Filtrado por rol: super admin descarga todo, otros
+// solo su scope (master + propio brain + brain del distrito si aplica).
+router.get('/export/payload', authMiddleware, async (req, res) => {
+    try {
+        const isAdmin = req.user?.role === 'administrator';
+        const myClubId = req.user?.clubId;
+        const myDistrictId = req.user?.districtId;
+
+        const orClauses = [{ isMaster: true }];
+        if (myClubId)     orClauses.push({ clubId: myClubId });
+        if (myDistrictId) orClauses.push({ districtId: myDistrictId });
+
+        const brainWhere = isAdmin ? {} : { OR: orClauses };
+
+        const brains = await prisma.brain.findMany({
+            where: brainWhere,
+            include: {
+                club: { select: { name: true, subdomain: true, city: true, country: true, category: true, description: true } },
+                district: { select: { name: true, number: true, subdomain: true } },
+            },
+        });
+
+        const brainIds = brains.map(b => b.id);
+
+        const [memories, relations] = await Promise.all([
+            prisma.brainMemory.findMany({
+                where: { brainId: { in: brainIds } },
+                select: {
+                    id: true, brainId: true, kind: true, sourceType: true, sourceId: true,
+                    title: true, content: true, metadata: true, clubId: true,
+                    createdAt: true, updatedAt: true,
+                },
+                orderBy: { updatedAt: 'desc' },
+            }),
+            prisma.brainRelation.findMany({
+                where: {
+                    OR: [
+                        { fromBrainId: { in: brainIds } },
+                        { toBrainId: { in: brainIds } },
+                    ],
+                },
+                select: { fromBrainId: true, toBrainId: true, kind: true, weight: true, source: true },
+            }),
+        ]);
+
+        res.json({
+            generatedAt: new Date().toISOString(),
+            version: 'v4.352',
+            scope: isAdmin ? 'global' : 'scoped',
+            brains: brains.map(b => ({
+                id: b.id,
+                name: b.name,
+                kind: b.kind,
+                isMaster: b.isMaster,
+                identityPrompt: b.identityPrompt,
+                memoryCount: b.memoryCount,
+                clubId: b.clubId,
+                districtId: b.districtId,
+                club: b.club,
+                district: b.district,
+                createdAt: b.createdAt,
+            })),
+            memories,
+            relations,
+        });
+    } catch (err) {
+        console.error('[brains] export payload:', err);
+        res.status(500).json({ error: 'Error generating export payload', detail: err.message });
+    }
+});
+
 // ─── Reindex + bootstrap (admin only) ──────────────────────────────────────
 
 router.post('/reindex', authMiddleware, roleMiddleware(['administrator']), async (req, res) => {

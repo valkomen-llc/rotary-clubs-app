@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, Suspense } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Brain,
@@ -21,9 +21,15 @@ import {
     FolderKanban,
     Users,
     StickyNote,
+    Download,
+    Atom,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
+import { buildObsidianVault, triggerDownload, type ExportPayload } from '../../lib/obsidianExporter';
+
+// Lazy load del componente de grafo 3D — usa Three.js (~600KB)
+const BrainGraph3D = React.lazy(() => import('../../components/admin/BrainGraph3D'));
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -123,6 +129,15 @@ const AICore: React.FC = () => {
 
     // Reindex state
     const [reindexing, setReindexing] = useState(false);
+
+    // Export state
+    const [exporting, setExporting] = useState(false);
+
+    // Graph state
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [graphData, setGraphData] = useState<any>(null);
+    const [graphLoading, setGraphLoading] = useState(false);
+    const [showGraph, setShowGraph] = useState(false);
 
     // Drawer state
     const [openBrainId, setOpenBrainId] = useState<string | null>(null);
@@ -229,6 +244,54 @@ const AICore: React.FC = () => {
         }
     };
 
+    const loadGraph = async () => {
+        setGraphLoading(true);
+        setShowGraph(true);
+        try {
+            const r = await fetch(`${API}/brains/graph/full?memoryLimit=400`, { headers });
+            if (r.ok) {
+                const data = await r.json();
+                setGraphData(data);
+            } else if (r.status === 503) {
+                toast.error('El sistema de cerebros aún no está activo en este entorno.');
+                setShowGraph(false);
+            } else {
+                toast.error('Error al cargar el grafo');
+                setShowGraph(false);
+            }
+        } catch {
+            toast.error('Error al cargar el grafo');
+            setShowGraph(false);
+        } finally {
+            setGraphLoading(false);
+        }
+    };
+
+    const exportObsidian = async () => {
+        setExporting(true);
+        try {
+            const r = await fetch(`${API}/brains/export/payload`, { headers });
+            if (!r.ok) {
+                if (r.status === 503) {
+                    toast.error('El sistema de cerebros aún no está activo.');
+                } else {
+                    toast.error('Error al generar el export');
+                }
+                return;
+            }
+            const payload: ExportPayload = await r.json();
+            const blob = await buildObsidianVault(payload);
+            const date = new Date().toISOString().slice(0, 10);
+            triggerDownload(blob, `club-platform-vault-${date}.zip`);
+            toast.success(`Vault listo: ${payload.brains.length} cerebros, ${payload.memories.length} memorias.`);
+        } catch (err) {
+            console.error(err);
+            toast.error('Error al construir el vault');
+        } finally {
+            setExporting(false);
+        }
+    };
+
     const filteredBrains = brains
         .filter(b => !b.isMaster) // master se muestra arriba aparte
         .filter(b => filter === 'all' || b.kind === filter)
@@ -261,25 +324,36 @@ const AICore: React.FC = () => {
                             </p>
                         </div>
                     </div>
-                    {isSuperAdmin && (
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={bootstrap}
-                                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 hover:border-violet-300 rounded-xl text-sm font-medium text-gray-700 transition-colors"
-                            >
-                                <Network className="w-4 h-4" />
-                                Reconstruir Relaciones
-                            </button>
-                            <button
-                                onClick={runReindex}
-                                disabled={reindexing}
-                                className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:bg-violet-300 text-white rounded-xl text-sm font-medium transition-colors shadow-sm shadow-violet-500/20"
-                            >
-                                {reindexing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                                {reindexing ? 'Re-indexando…' : 'Re-indexar todo'}
-                            </button>
-                        </div>
-                    )}
+                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                        <button
+                            onClick={exportObsidian}
+                            disabled={exporting || dormant}
+                            className="flex items-center gap-2 px-4 py-2 bg-white border border-violet-200 hover:border-violet-400 hover:bg-violet-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-sm font-medium text-violet-700 transition-colors"
+                            title="Descargar un vault Obsidian con todos los cerebros, memorias y relaciones"
+                        >
+                            {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                            {exporting ? 'Generando…' : 'Exportar a Obsidian'}
+                        </button>
+                        {isSuperAdmin && (
+                            <>
+                                <button
+                                    onClick={bootstrap}
+                                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 hover:border-violet-300 rounded-xl text-sm font-medium text-gray-700 transition-colors"
+                                >
+                                    <Network className="w-4 h-4" />
+                                    Reconstruir Relaciones
+                                </button>
+                                <button
+                                    onClick={runReindex}
+                                    disabled={reindexing}
+                                    className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:bg-violet-300 text-white rounded-xl text-sm font-medium transition-colors shadow-sm shadow-violet-500/20"
+                                >
+                                    {reindexing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                                    {reindexing ? 'Re-indexando…' : 'Re-indexar todo'}
+                                </button>
+                            </>
+                        )}
+                    </div>
                 </div>
 
                 {/* Dormant state — tables not migrated */}
@@ -422,6 +496,64 @@ const AICore: React.FC = () => {
                     </div>
                 </div>
 
+                {/* Knowledge Graph 3D — Obsidian-style */}
+                {!dormant && (
+                    <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-8 shadow-sm">
+                        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+                            <div className="flex items-center gap-2">
+                                <Atom className="w-5 h-5 text-violet-600" />
+                                <h3 className="font-bold text-gray-900 text-lg">Grafo de Conocimiento 3D</h3>
+                                <span className="px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full text-[10px] font-bold uppercase tracking-wider">v4.352</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {showGraph && graphData && (
+                                    <span className="text-xs text-gray-500">
+                                        Click un nodo para zoom · arrastrá para rotar · scroll para zoom
+                                    </span>
+                                )}
+                                <button
+                                    onClick={showGraph ? () => setShowGraph(false) : loadGraph}
+                                    disabled={graphLoading}
+                                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 disabled:opacity-50 text-white rounded-xl text-sm font-medium shadow-md shadow-violet-500/20 transition-all"
+                                >
+                                    {graphLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Atom className="w-4 h-4" />}
+                                    {showGraph ? 'Ocultar grafo' : graphLoading ? 'Cargando Three.js…' : 'Visualizar grafo 3D'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {!showGraph ? (
+                            <div className="bg-gradient-to-br from-slate-50 to-violet-50/30 border border-dashed border-violet-200 rounded-xl p-8 text-center">
+                                <Atom className="w-12 h-12 text-violet-400 mx-auto mb-3" />
+                                <p className="text-sm text-gray-600 font-medium mb-1">Vista de grafo tridimensional estilo Obsidian</p>
+                                <p className="text-xs text-gray-500 max-w-md mx-auto">
+                                    Visualizá todos los cerebros y memorias como un grafo orbital interactivo.
+                                    Tipo de relaciones, conexiones cruzadas y densidad de conocimiento por sitio.
+                                </p>
+                            </div>
+                        ) : (
+                            <Suspense fallback={<div className="h-[600px] flex items-center justify-center bg-slate-950 rounded-2xl"><Loader2 className="w-8 h-8 text-violet-400 animate-spin" /></div>}>
+                                {graphData ? (
+                                    <BrainGraph3D
+                                        data={graphData}
+                                        height={620}
+                                        onNodeClick={(node) => {
+                                            if (node.nodeType === 'brain') {
+                                                const brainId = node.id.replace('brain:', '');
+                                                openBrain(brainId);
+                                            }
+                                        }}
+                                    />
+                                ) : (
+                                    <div className="h-[620px] flex items-center justify-center bg-slate-950 rounded-2xl">
+                                        <Loader2 className="w-8 h-8 text-violet-400 animate-spin" />
+                                    </div>
+                                )}
+                            </Suspense>
+                        )}
+                    </div>
+                )}
+
                 {/* Brains grid */}
                 <div className="mb-4 flex items-center justify-between gap-2 flex-wrap">
                     <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
@@ -476,14 +608,14 @@ const AICore: React.FC = () => {
                 )}
 
                 {/* Footer / version stripe */}
-                <div className="mt-12 pt-6 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
+                <div className="mt-12 pt-6 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400 flex-wrap gap-2">
                     <div className="flex items-center gap-2">
                         <Sparkles className="w-3.5 h-3.5" />
-                        Centro de Inteligencia v4.351 · Fase 1: Foundation
+                        Centro de Inteligencia v4.352 · Fase 2: Knowledge Graph 3D + Obsidian Vault
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 flex-wrap">
                         <span>Embedding: Gemini text-embedding-004 (768d)</span>
-                        <span>Storage: Float[] + cosine en JS</span>
+                        <span>Render: react-force-graph-3d · Three.js</span>
                     </div>
                 </div>
             </div>
