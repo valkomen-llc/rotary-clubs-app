@@ -24,9 +24,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// SITE GRAPH VIEW V4.370 | 2026-05-18 (CEREBROS — grafo 3D del sitio estilo Obsidian 🕸️)
-// Cache bust: 2026-05-18 12:00 (SITE GRAPH VIEW v4.370 🕸️)
+// GRAPH AS DEFAULT TAB V4.371 | 2026-05-18 (CEREBROS — Grafo como tab default 🎯)
+// Cache bust: 2026-05-18 13:00 (GRAPH AS DEFAULT TAB v4.371 🎯)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.371',
+        date: '2026-05-18',
+        title: 'CEREBROS — Grafo como tab inicial 🎯',
+        description: 'El Knowledge Graph 3D ahora es lo primero que se ve al entrar al Centro de Inteligencia de un sitio — en lugar de "Resumen". El admin obtiene una vista visual e impactante del estado de su cerebro institucional desde el primer instante.',
+        type: 'enhancement',
+        author: 'Claude',
+        details: [
+            'Tab "Grafo" ahora es el primer ítem del menú de tabs en SiteBrainPanel (antes era el segundo, después de Resumen).',
+            'useState inicial del tab pasa de "overview" a "graph" — el grafo carga inmediato al entrar al panel.',
+            'Orden final de tabs: Grafo · Resumen · Documentos · Memorias · Búsqueda · Configuración.',
+        ]
+    },
     {
         version: 'v4.370',
         date: '2026-05-18',

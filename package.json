@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.370.0",
-  "cache_bust": "2026-05-18 12:00 (SITE GRAPH VIEW v4.370 🕸️)",
+  "version": "4.371.0",
+  "cache_bust": "2026-05-18 13:00 (GRAPH AS DEFAULT TAB v4.371 🎯)",
   "type": "module",
-  "//": "SITE GRAPH VIEW V4.370 | 2026-05-18 (CEREBROS — nueva tab Grafo en el panel del sitio: visualización 3D estilo Obsidian con memorias del brain + master + brains relacionados 🕸️)",
+  "//": "GRAPH AS DEFAULT TAB V4.371 | 2026-05-18 (CEREBROS — Grafo como tab default y primero del menú; el user ve el knowledge graph apenas entra al panel 🎯)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
