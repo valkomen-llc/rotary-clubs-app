@@ -1151,6 +1151,7 @@ model Brain {
   district        District?       @relation(fields: [districtId], references: [id], onDelete: Cascade)
 
   memories        BrainMemory[]
+  documents       BrainDocument[]
   outgoingRelations BrainRelation[] @relation("FromBrain")
   incomingRelations BrainRelation[] @relation("ToBrain")
 
@@ -1204,4 +1205,34 @@ model BrainRelation {
   @@unique([fromBrainId, toBrainId, kind])
   @@index([fromBrainId])
   @@index([toBrainId])
+}
+
+// BrainDocument = archivo institucional cargado por un admin (PDF, DOCX, TXT,
+// MD). Se procesa en background: extract → chunk → embed → BrainMemory por
+// cada chunk con sourceType='BrainDocument', sourceId=`${docId}:c${idx}`.
+// El archivo original queda en S3 (fileUrl) por si se necesita re-procesar.
+model BrainDocument {
+  id            String    @id @default(uuid())
+  brainId       String
+  filename      String
+  mimeType      String
+  size          Int       @default(0)
+  fileUrl       String?
+  s3Key         String?
+  category      String?   // 'reglamento' | 'estatuto' | 'manual' | 'plan_estrategico' | etc.
+  description   String?
+  status        String    @default("pending") // pending | processing | completed | failed
+  errorMessage  String?
+  chunkCount    Int       @default(0)
+  charCount     Int       @default(0)
+  uploadedBy    String?
+  metadata      Json?     @default("{}")
+  createdAt     DateTime  @default(now())
+  processedAt   DateTime?
+  updatedAt     DateTime  @updatedAt
+
+  brain         Brain     @relation(fields: [brainId], references: [id], onDelete: Cascade)
+
+  @@index([brainId])
+  @@index([status])
 }
