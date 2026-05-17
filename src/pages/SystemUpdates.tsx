@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// RESOLVE CLUBID FROM DB V4.365 | 2026-05-18 (CEREBROS — resolveUserScope: lookup en DB + inferencia por subdomain 🔍)
-// Cache bust: 2026-05-18 07:00 (RESOLVE CLUBID FROM DB v4.365 🔍)
+// FULL DIAGNOSTIC V4.366 | 2026-05-18 (CEREBROS — diagnostic.steps detallado + frontend muestra dump completo del response 🔬)
+// Cache bust: 2026-05-18 08:00 (FULL DIAGNOSTIC v4.366 🔬)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.366',
+        date: '2026-05-18',
+        title: 'CEREBROS — diagnóstico completo del proceso de inicialización 🔬',
+        description: 'Cuando el cerebro de un sitio no se logra crear, ahora podemos ver EXACTAMENTE qué paso falló: el response incluye un array `diagnostic.steps` con cada operación (resolveScope → getOrCreateMasterBrain → getOrCreateBrainForClub → sync). El frontend muestra el dump JSON completo de la respuesta del backend para diagnóstico inmediato.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'POST /api/brains/me/initialize ahora construye un objeto `diagnostic` con: resolvedScope, jwtUser (lo que vino en el JWT), host del request, y un array steps con cada operación intentada.',
+            'Cada step incluye: { step: nombre, ok: bool, ...campos relevantes (brainId, error, code, etc.) }',
+            'Si getOrCreateBrainForClub falla, el step muestra el error de Prisma exacto (ej. P2025 Foreign key constraint violation if Club.id no existe).',
+            'Si no hay clubId ni districtId después de resolveUserScope, hay un step explícito "no-scope" con mensaje claro.',
+            'Frontend: la card amber "Tu cerebro aún no se creó" ahora muestra `<details open>` con el dump JSON completo del response, max-height 60 con scroll. Permite copiar/pegar el JSON para soporte.',
+            'Nuevo botón "Forzar creación del cerebro" que llama POST /me/initialize y muestra el diagnostic si falla (en lugar del response de /me).',
+            'Todo esto permite identificar la causa REAL del fallo en el próximo intento del usuario.',
+        ]
+    },
     {
         version: 'v4.365',
         date: '2026-05-18',

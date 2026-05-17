@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.365.0",
-  "cache_bust": "2026-05-18 07:00 (RESOLVE CLUBID FROM DB v4.365 🔍)",
+  "version": "4.366.0",
+  "cache_bust": "2026-05-18 08:00 (FULL DIAGNOSTIC v4.366 🔬)",
   "type": "module",
-  "//": "RESOLVE CLUBID FROM DB V4.365 | 2026-05-18 (CEREBROS — si el JWT no incluye clubId, lookup en User table + fallback a inferencia por subdomain 🔍)",
+  "//": "FULL DIAGNOSTIC V4.366 | 2026-05-18 (CEREBROS — initialize devuelve diagnostic.steps con detalle de qué falló; frontend muestra dump completo del response del backend 🔬)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
