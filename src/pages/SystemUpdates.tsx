@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// OPERATIONAL AGENT V4.375 | 2026-05-18 (CEREBROS — agente operativo: chat RAG + tools + activity log 🤖)
-// Cache bust: 2026-05-18 17:00 (OPERATIONAL AGENT v4.375 🤖)
+// GEMINI MODEL FIX V4.376 | 2026-05-18 (CEREBROS — fallback automático de modelos Gemini 🔧)
+// Cache bust: 2026-05-18 18:00 (GEMINI MODEL FIX v4.376 🔧)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.376',
+        date: '2026-05-18',
+        title: 'CEREBROS — fix Error 404 del LLM en el chat 🔧',
+        description: 'El chat del Agente Operativo devolvía "Error del LLM (404). Intentá de nuevo." porque el modelo gemini-2.0-flash-exp ya no está disponible. Fix: probamos modelos en cascada hasta que uno funcione.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Causa: el endpoint /v1beta/models/gemini-2.0-flash-exp:generateContent devuelve 404. El sufijo "-exp" parece haber sido deprecado o nunca estuvo disponible en esa región.',
+            'Fix: callGemini ahora itera sobre GEMINI_MODELS_FALLBACK = [gemini-2.0-flash, gemini-1.5-flash, gemini-1.5-flash-latest]. El primero que responde OK se usa.',
+            'Si la falla es 403 (auth) o 429 (quota), no probamos otros modelos — son problemas que afectan a todos.',
+            'Si todos fallan, mensaje de error incluye el status code y el detalle del último intento (no solo "404 desconocido").',
+        ]
+    },
     {
         version: 'v4.375',
         date: '2026-05-18',
