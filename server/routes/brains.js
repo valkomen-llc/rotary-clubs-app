@@ -29,7 +29,7 @@ import {
     syncBrainWithOnboarding,
 } from '../services/brainService.js';
 import { processDocumentSafe, deleteDocument } from '../services/documentProcessor.js';
-import { chatWithBrain, listChatHistory, listChatSessions, listActivities } from '../services/brainAgent.js';
+import { chatWithBrain, listChatHistory, listChatSessions, listActivities, listAvailableGeminiModels } from '../services/brainAgent.js';
 
 const router = express.Router();
 
@@ -1031,6 +1031,23 @@ router.get('/me/chat/history', authMiddleware, async (req, res) => {
     } catch (err) {
         console.error('[brains] chat history:', err);
         res.status(500).json({ error: 'Error fetching chat history' });
+    }
+});
+
+// GET /api/brains/me/llm-info — listar modelos Gemini disponibles para la API key actual.
+// Diagnóstico: si el chat devuelve 404 en todos los modelos, este endpoint
+// muestra exactamente cuáles modelos sí soporta la key.
+router.get('/me/llm-info', authMiddleware, async (req, res) => {
+    try {
+        const models = await listAvailableGeminiModels();
+        res.json({
+            ok: true,
+            hasKey: !!process.env.GEMINI_API_KEY,
+            models,
+            timestamp: new Date().toISOString(),
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message?.slice(0, 200) });
     }
 });
 

@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// GEMINI MODEL FIX V4.376 | 2026-05-18 (CEREBROS — fallback automático de modelos Gemini 🔧)
-// Cache bust: 2026-05-18 18:00 (GEMINI MODEL FIX v4.376 🔧)
+// GEMINI EXTENDED CASCADE V4.377 | 2026-05-18 (CEREBROS — cascada 11 modelos + endpoint diagnóstico 🔍)
+// Cache bust: 2026-05-18 19:00 (GEMINI EXTENDED CASCADE + LLM-INFO v4.377 🔍)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.377',
+        date: '2026-05-18',
+        title: 'CEREBROS — cascada extendida de modelos Gemini + endpoint diagnóstico 🔍',
+        description: 'Tras v4.376, los 3 modelos de la cascada seguían devolviendo 404. La API key del proyecto puede estar restringida a un conjunto específico de modelos/versiones. Solución: cascada extendida a 11 combinaciones model+apiVersion (v1beta y v1), cache del primero que funcione, y endpoint /llm-info que lista exactamente qué modelos soporta la API key.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Cascada nueva GEMINI_CANDIDATES con 11 combinaciones: gemini-2.0-flash, gemini-2.0-flash-001, gemini-1.5-flash, gemini-1.5-flash-002, gemini-1.5-flash-latest, gemini-1.5-pro, gemini-1.5-pro-latest, gemini-pro (v1beta), gemini-pro (v1), gemini-1.0-pro (v1), gemini-1.0-pro (v1beta).',
+            'Cache `_workingCandidate` (en memoria del proceso): el primero que devuelve 200 se cachea y se prueba primero en las próximas llamadas. Cero overhead tras el primer éxito.',
+            'GET /api/brains/me/llm-info (nuevo): llama ListModels en v1beta + v1 y devuelve el catálogo real de modelos soportados por la API key. Útil para diagnóstico inmediato si el chat falla.',
+            'Mensaje de error mejorado: cuando todos los modelos fallan, incluye el último intento + detalle real + sugerencia de llamar /llm-info.',
+        ]
+    },
     {
         version: 'v4.376',
         date: '2026-05-18',
