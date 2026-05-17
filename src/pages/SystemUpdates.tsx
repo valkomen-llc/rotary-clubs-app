@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// BRAIN READ-ONLY ME V4.359 | 2026-05-17 (CEREBROS — endpoint /me solo lectura + endpoint /me/initialize explícito + /ping de diagnóstico 🔑)
-// Cache bust: 2026-05-17 23:30 (READ-ONLY /me + EXPLICIT INIT v4.359 🔑)
+// EMERGENCY DEGRADED MODE V4.360 | 2026-05-18 (CEREBROS — timeouts internos por query + cache de ensureReady + degraded scope para no colgar nunca 🚨)
+// Cache bust: 2026-05-18 00:30 (EMERGENCY DEGRADED MODE v4.360 🚨)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.360',
+        date: '2026-05-18',
+        title: 'Cerebro Inteligente — emergency degraded mode 🚨',
+        description: 'El endpoint /api/brains/me seguía colgándose en producción >45s en sitios sin cerebro creado todavía (rye-4281, otros). Diagnóstico: el problema NO era código — era infraestructura (Prisma connection pool exhausto, locks de DB, o cold start crítico de Vercel). Solución: timeouts internos por query (Promise.race) + cache del middleware ensureReady + scope "degraded" que devuelve respuesta rápida en lugar de colgar.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Backend: helper withTimeout(promise, ms, fallback) que race una promise contra un setTimeout. Si la promise tarda más que ms, resuelve con el fallback en vez de quedarse esperando indefinidamente.',
+            'Backend: cada query en /me ahora está envuelta con withTimeout 5s. Si una falla, el endpoint sigue y devuelve los datos parciales. Si todas timeoutean, devuelve scope="degraded" con detalle de qué falló.',
+            'Backend: el middleware ensureReady ahora cachea el resultado por 5 minutos. Si las tablas existen una vez, no volvemos a chequearlas en cada request. Reduce drásticamente la carga sobre Prisma.',
+            'Backend: ensureReady también tiene timeout interno de 3s — si el chequeo no responde, deja pasar al endpoint en vez de devolver 503 falso. El endpoint maneja la situación con sus propios catches.',
+            'Backend: cada respuesta de /me incluye `version: "v4.360"` para confirmar qué versión está corriendo. Si seguís viendo respuestas de versiones anteriores, hay caché de Vercel pendiente.',
+            'Backend: cuando una query erroreó (no timeout, sino error real), el objeto fallback tiene __error con el código Prisma. Esto se reporta en diagnostic para identificar problemas concretos.',
+            'Backend: cuando el master timeoutea, el endpoint detecta el degraded mode y devuelve el aviso de "DB no responde, reintentá" — el panel muestra un retry button en vez de fallar.',
+        ]
+    },
     {
         version: 'v4.359',
         date: '2026-05-17',

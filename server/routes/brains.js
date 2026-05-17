@@ -47,10 +47,29 @@ const docUpload = multer({
 
 // Antes de cualquier endpoint, validamos que las tablas existan. Si están
 // dormant (db push pendiente), devolvemos 503 con un mensaje accionable.
+// Cache: una vez que las tablas existen, no chequeamos en cada request — solo
+// invalidamos si pasaron >5min sin chequear o el server reinició.
+let _tablesOkUntil = 0;
+
 const ensureReady = async (req, res, next) => {
+    // Cache hit — saltar el query si chequeamos hace poco
+    if (Date.now() < _tablesOkUntil) return next();
+
     try {
-        await prisma.brain.findFirst({ select: { id: true } });
-        next();
+        // Timeout 3s — si Prisma no responde en ese tiempo, asumimos que el
+        // problema es la conexión, NO la migración. Dejamos pasar al endpoint
+        // que tiene su propio manejo defensivo. Mejor que devolver 503 falso.
+        const result = await Promise.race([
+            prisma.brain.findFirst({ select: { id: true } }).then(() => 'ok'),
+            new Promise(resolve => setTimeout(() => resolve('timeout'), 3000)),
+        ]);
+
+        if (result === 'timeout') {
+            console.warn('[brains/ensureReady] DB check timed out — letting through');
+            return next();
+        }
+        _tablesOkUntil = Date.now() + 5 * 60 * 1000; // cachear 5 min
+        return next();
     } catch (err) {
         if (err?.code === 'P2021' || /does not exist/i.test(err.message || '')) {
             return res.status(503).json({
@@ -105,10 +124,13 @@ async function userCanReadBrain(req, brain) {
 // ─── Ping (sin auth, sin DB) ───────────────────────────────────────────────
 // Endpoint super liviano para verificar que el router brains responde. Útil
 // para descartar problemas de Vercel / proxy / autenticación.
+// CRITICAL: declarado lo MÁS arriba posible, antes de cualquier middleware
+// que pueda colgar. NO usa await, NO toca DB, NO requiere auth.
 router.get('/ping', (req, res) => {
+    res.set('X-Brains-Version', 'v4.360');
     res.json({
         ok: true,
-        version: 'v4.359',
+        version: 'v4.360',
         timestamp: new Date().toISOString(),
         env: {
             vercelRegion: process.env.VERCEL_REGION || null,
@@ -116,6 +138,14 @@ router.get('/ping', (req, res) => {
         },
     });
 });
+
+// Helper: race una promise contra un timeout. Si la promise tarda más que
+// `ms`, resuelve con el fallback en vez de quedarse colgada indefinidamente.
+// Útil cuando el connection pool de Prisma está bloqueado o lento.
+const withTimeout = (promise, ms, fallback) => Promise.race([
+    promise,
+    new Promise(resolve => setTimeout(() => resolve(fallback), ms)),
+]);
 
 // ─── Diagnóstico (admin only) ──────────────────────────────────────────────
 // IMPORTANT: declarado ANTES de router.use(ensureReady) porque el diagnóstico
@@ -218,6 +248,10 @@ router.get('/diagnose', authMiddleware, roleMiddleware(['administrator']), async
 });
 
 // ─── List + master ─────────────────────────────────────────────────────────
+// ATENCIÓN (v4.360): /ping, /diagnose, /me, /me/initialize, /me/extras están
+// declarados ANTES de este `router.use(ensureReady)` para que sigan respondiendo
+// incluso si las tablas Brain no están migradas o si la DB está lenta. Ellos
+// hacen su propio chequeo defensivo con timeouts.
 
 router.use(ensureReady);
 
@@ -258,62 +292,98 @@ async function brainGlobalStats() {
     };
 }
 
-// ─── Brain del user actual (v4.359 read-only fast path) ─────────────────────
-// Endpoint READ-ONLY: NO crea brains, solo los lee. Si el brain del sitio
-// (o el master) no existen, devuelve scope='not-initialized' rápido y el
-// frontend ofrece un botón para inicializar explícitamente vía POST /me/initialize.
+// ─── Brain del user actual (v4.360 emergency degraded mode) ─────────────────
+// Endpoint READ-ONLY con timeouts internos en cada query (Promise.race con
+// 5s). Si Prisma está colgado o el connection pool exhausto, devolvemos un
+// estado 'degraded' rápido en vez de quedarnos esperando indefinidamente.
 //
-// Diseño v4.359: la versión anterior (v4.356-358) hacía getOrCreateBrainFor*
-// que podía estar bloqueada por DB cuando el create era lento (índices, locks,
-// connection pool). Ahora separamos read y write — el panel aparece siempre,
-// aunque haya que crear el brain con un click.
+// v4.360: el problema reportado en producción no era cold start ni código
+// pesado — era infraestructura (connection pool / DB lento / Prisma engine).
+// Solución: race-condition entre las queries y un timeout, devolvemos lo que
+// haya antes de los 5 segundos. Si todo timeoutea, scope='degraded' y el user
+// puede reintentar.
 router.get('/me', authMiddleware, async (req, res) => {
     const t0 = Date.now();
     const timings = {};
+    const QUERY_TIMEOUT_MS = 5000;
+
     try {
-        // Helper para loguear stages — útil en Vercel logs para diagnosticar lentitud.
-        const stage = (name) => { timings[name] = Date.now() - t0; };
+        const masterPromise = withTimeout(
+            prisma.brain.findFirst({
+                where: { isMaster: true },
+                select: { id: true, name: true, memoryCount: true, kind: true },
+            }).catch(err => {
+                console.warn('[brains/me] master find err:', err.message);
+                return { __error: err.code || 'unknown' };
+            }),
+            QUERY_TIMEOUT_MS,
+            { __timeout: true }
+        );
 
-        // Read-only: ¿existe el master?
-        const masterPromise = prisma.brain.findFirst({
-            where: { isMaster: true },
-            select: { id: true, name: true, memoryCount: true, kind: true },
-        }).catch(err => { console.warn('[brains/me] master find err:', err.message); return null; });
-
-        // Read-only: ¿existe el brain del sitio?
         let myBrainPromise = Promise.resolve(null);
         if (req.user?.clubId) {
-            myBrainPromise = prisma.brain.findUnique({
-                where: { clubId: req.user.clubId },
-                include: {
-                    club:     { select: { id: true, name: true, subdomain: true, city: true, country: true, category: true, type: true, logo: true, description: true, email: true, phone: true } },
-                    _count:   { select: { memories: true, outgoingRelations: true, incomingRelations: true } },
-                },
-            }).catch(err => { console.warn('[brains/me] club brain err:', err.message); return null; });
+            myBrainPromise = withTimeout(
+                prisma.brain.findUnique({
+                    where: { clubId: req.user.clubId },
+                    include: {
+                        club:     { select: { id: true, name: true, subdomain: true, city: true, country: true, category: true, type: true, logo: true, description: true, email: true, phone: true } },
+                        _count:   { select: { memories: true, outgoingRelations: true, incomingRelations: true } },
+                    },
+                }).catch(err => { console.warn('[brains/me] club brain err:', err.message); return { __error: err.code || 'unknown' }; }),
+                QUERY_TIMEOUT_MS,
+                { __timeout: true }
+            );
         } else if (req.user?.districtId) {
-            myBrainPromise = prisma.brain.findUnique({
-                where: { districtId: req.user.districtId },
-                include: {
-                    district: { select: { id: true, name: true, number: true, subdomain: true } },
-                    _count:   { select: { memories: true, outgoingRelations: true, incomingRelations: true } },
-                },
-            }).catch(err => { console.warn('[brains/me] district brain err:', err.message); return null; });
+            myBrainPromise = withTimeout(
+                prisma.brain.findUnique({
+                    where: { districtId: req.user.districtId },
+                    include: {
+                        district: { select: { id: true, name: true, number: true, subdomain: true } },
+                        _count:   { select: { memories: true, outgoingRelations: true, incomingRelations: true } },
+                    },
+                }).catch(err => { console.warn('[brains/me] district brain err:', err.message); return { __error: err.code || 'unknown' }; }),
+                QUERY_TIMEOUT_MS,
+                { __timeout: true }
+            );
         }
 
-        // Onboarding status (read-only, defensive).
         const onboardingPromise = req.user?.clubId
-            ? prisma.setting.findFirst({
-                where: { clubId: req.user.clubId, key: 'onboarding_completed' },
-            }).catch(() => null)
+            ? withTimeout(
+                prisma.setting.findFirst({
+                    where: { clubId: req.user.clubId, key: 'onboarding_completed' },
+                }).catch(() => null),
+                QUERY_TIMEOUT_MS,
+                null
+            )
             : Promise.resolve(null);
 
-        const [master, myBrain, onboardingRow] = await Promise.all([
+        const [masterRaw, myBrainRaw, onboardingRow] = await Promise.all([
             masterPromise, myBrainPromise, onboardingPromise,
         ]);
-        stage('queries');
+        timings.queries = Date.now() - t0;
 
-        // Caso 1: master no existe todavía → not-initialized
-        if (!master) {
+        const masterTimedOut = masterRaw?.__timeout === true;
+        const masterErrored = masterRaw?.__error;
+        const brainTimedOut = myBrainRaw?.__timeout === true;
+        const brainErrored = myBrainRaw?.__error;
+
+        const master = (masterRaw && !masterTimedOut && !masterErrored) ? masterRaw : null;
+        const myBrain = (myBrainRaw && !brainTimedOut && !brainErrored) ? myBrainRaw : null;
+
+        // Si TODAS las queries timeoutearon, devolvemos 'degraded' — el panel
+        // muestra mensaje de "DB lenta, reintentá" en lugar de spinner perpetuo.
+        if (masterTimedOut && (brainTimedOut || !req.user?.clubId && !req.user?.districtId)) {
+            return res.json({
+                scope: 'degraded',
+                detail: 'La base de datos no responde en este momento. Probable connection pool exhausto en Vercel o cold start crítico. Reintentá en unos segundos.',
+                timings,
+                version: 'v4.360',
+                diagnostic: { masterTimedOut, brainTimedOut, masterErrored, brainErrored },
+            });
+        }
+
+        // Master no existe → not-initialized
+        if (!master && !masterTimedOut && !masterErrored) {
             return res.json({
                 scope: 'not-initialized',
                 reason: 'no-master',
@@ -321,22 +391,31 @@ router.get('/me', authMiddleware, async (req, res) => {
                 clubId: req.user?.clubId || null,
                 districtId: req.user?.districtId || null,
                 timings,
-                version: 'v4.359',
+                version: 'v4.360',
             });
         }
 
-        // Caso 2: el user no tiene clubId/districtId → master-only
+        // Si el master erroreó (no timeout, error real ej. tabla faltante)
+        if (masterErrored) {
+            return res.json({
+                scope: 'degraded',
+                detail: `Error de DB al leer el cerebro maestro: ${masterErrored}. Probable tabla Brain no migrada (correr prisma db push).`,
+                timings,
+                version: 'v4.360',
+                diagnostic: { masterErrored },
+            });
+        }
+
         if (!req.user?.clubId && !req.user?.districtId) {
             return res.json({
                 scope: 'master-only',
                 master,
                 timings,
-                version: 'v4.359',
+                version: 'v4.360',
             });
         }
 
-        // Caso 3: brain del sitio no existe todavía → not-initialized para club
-        if (!myBrain) {
+        if (!myBrain && !brainTimedOut && !brainErrored) {
             return res.json({
                 scope: 'not-initialized',
                 reason: 'no-site-brain',
@@ -345,11 +424,11 @@ router.get('/me', authMiddleware, async (req, res) => {
                 districtId: req.user?.districtId || null,
                 master,
                 timings,
-                version: 'v4.359',
+                version: 'v4.360',
             });
         }
 
-        // Caso 4: todo OK → devolver brain del sitio + master
+        // Todo OK
         res.json({
             scope: 'site',
             brain: myBrain,
@@ -359,11 +438,11 @@ router.get('/me', authMiddleware, async (req, res) => {
                 step: null,
             },
             timings,
-            version: 'v4.359',
+            version: 'v4.360',
         });
     } catch (err) {
         console.error('[brains] me:', err, 'timings:', timings);
-        res.status(500).json({ error: 'Error fetching own brain', detail: err.message?.slice(0, 300), timings });
+        res.status(500).json({ error: 'Error fetching own brain', detail: err.message?.slice(0, 300), timings, version: 'v4.360' });
     }
 });
 
