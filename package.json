@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.346.0",
-  "cache_bust": "2026-05-16 23:30 (PUBLICATION LIBRARY UI v4.346 📚)",
+  "version": "4.347.0",
+  "cache_bust": "2026-05-17 00:00 (COPY DEFAULT GEMINI v4.347 🟢)",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.346 | 2026-05-16 (CONTENT STUDIO — nueva tab Biblioteca con grid de SocialPublication: drafts auto-guardados, programadas, publicadas + filtros por estado 📚)",
+  "//": "DISTRICT HEALTH IQ V4.347 | 2026-05-17 (COPY — default cambiado de OpenAI a Gemini 2.5 Flash; frontend respeta el default del servidor en lugar de hardcodearlo 🟢)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

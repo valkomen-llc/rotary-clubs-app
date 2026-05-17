@@ -129,7 +129,10 @@ const PostGenerator: React.FC = () => {
         interestArea: 'general',
         type: 'standard',
         engine: 'kie',
-        copyEngine: 'openai'
+        // copyEngine se setea en el useEffect al recibir /copy-providers — así
+        // siempre arrancamos con el default que reporta el servidor
+        // (DEFAULT_COPY_PROVIDER en copywritingService.js).
+        copyEngine: ''
     });
     const [copyProviders, setCopyProviders] = useState<CopyProviderInfo[]>([]);
     const [activePlatform, setActivePlatform] = useState<Platform>('facebook');
@@ -349,12 +352,18 @@ const PostGenerator: React.FC = () => {
                 const data = await resp.json();
                 const providers: CopyProviderInfo[] = data.providers || [];
                 setCopyProviders(providers);
+                // Preferencia de selección (en orden):
+                //   1) Lo que el usuario ya tenía elegido si sigue disponible
+                //   2) El default que reporta el servidor (DEFAULT_COPY_PROVIDER)
+                //   3) El primer provider disponible
+                const platformDefault = providers.find(p => p.isDefault && p.available);
                 const firstAvailable = providers.find(p => p.available);
-                if (firstAvailable) {
+                const fallback = platformDefault || firstAvailable;
+                if (fallback) {
                     setAiConfig(prev => ({
                         ...prev,
                         copyEngine: providers.find(p => p.id === prev.copyEngine && p.available)?.id
-                            || firstAvailable.id
+                            || fallback.id
                     }));
                 }
             } catch { /* silent */ }

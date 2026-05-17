@@ -53,7 +53,7 @@ export const COPY_PROVIDERS = {
     }
 };
 
-export const DEFAULT_COPY_PROVIDER = 'openai';
+export const DEFAULT_COPY_PROVIDER = 'gemini';
 
 export const isProviderAvailable = (providerId) => {
     const p = COPY_PROVIDERS[providerId];
