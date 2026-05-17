@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// INITIALIZE RETURNS FULL BRAIN V4.367 | 2026-05-18 (CEREBROS — initialize devuelve brain completo; no más read-after-write 🪐)
-// Cache bust: 2026-05-18 09:00 (INITIALIZE RETURNS FULL BRAIN v4.367 🪐)
+// FIX BLANK SCREEN TDZ V4.368 | 2026-05-18 (CEREBROS — Temporal Dead Zone en SiteBrainPanel 🩹)
+// Cache bust: 2026-05-18 10:00 (FIX BLANK SCREEN TDZ v4.368 🩹)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.368',
+        date: '2026-05-18',
+        title: 'CEREBROS — fix pantalla blanca por Temporal Dead Zone 🩹',
+        description: 'En v4.367 cambiamos initializeBrain para que dispare fetchExtras() (en vez de fetchMe), pero fetchExtras estaba declarado DESPUÉS de initializeBrain en el archivo. Las useCallback deps array contenía una referencia a fetchExtras que estaba en Temporal Dead Zone — JavaScript tira ReferenceError y React no puede renderizar nada → pantalla blanca total.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Síntoma: pantalla blanca al entrar a /admin/inteligencia. Sin sidebar, sin error visible. Indica que el componente completo crashea antes de pintar.',
+            'Causa: en SiteBrainPanel.tsx, initializeBrain useCallback tenía [headers, fetchExtras] como deps. JavaScript ejecuta el body del componente de arriba abajo. Cuando llega a la línea de useCallback de initializeBrain, intenta leer fetchExtras que aún no fue inicializado (TDZ con const). ReferenceError.',
+            'Fix: reordené las definiciones — fetchExtras ahora se declara ANTES de initializeBrain. Orden final: fetchMe → fetchExtras → migrateTables → initializeBrain.',
+            'Lección: cuando usás useCallback con deps que son otras useCallbacks, asegurate que las dependencias estén declaradas ANTES. El analizador de TypeScript NO te avisa de este error porque referencias en useCallback deps son legítimas — la falla ocurre solo en runtime.',
+        ]
+    },
     {
         version: 'v4.367',
         date: '2026-05-18',
