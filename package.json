@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.372.0",
-  "cache_bust": "2026-05-18 14:00 (PERMISSIONS FROM RESOLVED SCOPE v4.372 🔓)",
+  "version": "4.373.0",
+  "cache_bust": "2026-05-18 15:00 (BRAIN-NULL HANDLING v4.373 🩺)",
   "type": "module",
-  "//": "PERMISSIONS FROM RESOLVED SCOPE V4.372 | 2026-05-18 (CEREBROS — todos los checks de permisos usan resolveUserScope (DB + subdomain fallback) en vez del JWT directo; el backend reporta canEdit en /me 🔓)",
+  "//": "BRAIN-NULL HANDLING V4.373 | 2026-05-18 (CEREBROS — cualquier caso brain=null (timeout/error/no-existe) devuelve scope=not-initialized con razón específica en vez de caer al scope=site genérico 🩺)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
