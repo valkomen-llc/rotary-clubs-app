@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// SITE BRAIN PANEL V4.356 | 2026-05-17 (CEREBROS — panel dedicado para admin de sitio: identity editable, sync con onboarding, tabs Resumen/Docs/Memorias/Búsqueda/Config 🎛️)
-// Cache bust: 2026-05-17 19:00 (SITE BRAIN PANEL v4.356 🎛️)
+// BRAIN ME DEFENSIVE V4.357 | 2026-05-17 (CEREBROS — endpoint /me defensivo contra tabla BrainDocument faltante + timeout 20s y mensaje de error visible en frontend 🛡️)
+// Cache bust: 2026-05-17 20:30 (BRAIN ME DEFENSIVE v4.357 🛡️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.357',
+        date: '2026-05-17',
+        title: 'Cerebro Inteligente — panel del sitio no se queda cargando 🛡️',
+        description: 'Resuelve el bug donde el panel SiteBrainPanel se quedaba con el spinner infinito si la tabla BrainDocument no estaba migrada en el entorno. El endpoint /api/brains/me ahora es defensivo y el frontend muestra error claro con botón de reintento si algo falla.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Causa root: el query del endpoint /api/brains/me usaba `_count.documents` en el include de Prisma, que requiere la tabla BrainDocument (introducida en v4.353). Si el deploy no había corrido `prisma db push` en producción, ese include crasheaba con P2021 y el endpoint devolvía 500 con el spinner ya pintado.',
+            'Backend: refactor del endpoint /me — saqué `documents` del include de _count y lo cuento aparte con `prisma.brainDocument.count().catch(() => 0)`. También aislé `findMany(brainDocument)`, `setting.findFirst` y `getOrCreateBrainForClub` con try/catch independientes para que la falla de uno no rompa el resto. Cada error grave se loguea con su código Prisma.',
+            'Backend: payload de error incluye `detail` truncado a 300 chars para que el frontend pueda mostrarlo sin romper la UI con stacktraces gigantes.',
+            'Frontend: agregado AbortController con timeout de 20s sobre el fetch a /me. Si el endpoint no responde a tiempo, abortamos y mostramos error claro en vez de spinner perpetuo.',
+            'Frontend: nuevo estado errorState — si el endpoint falla con 500/timeout/network error, mostramos una card roja con el detalle (status + message), un párrafo explicando causas probables y un botón "Reintentar".',
+            'UX: el spinner ahora incluye texto "Cargando tu cerebro…" para que sea evidente que está trabajando, no congelado.',
+            'Caso edge: si /me devuelve scope="master-only" (super admin que entra acá sin clubId), el panel ahora muestra mensaje específico en vez del genérico "Tu cerebro aún no se creó".',
+        ]
+    },
     {
         version: 'v4.356',
         date: '2026-05-17',

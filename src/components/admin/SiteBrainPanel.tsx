@@ -51,23 +51,41 @@ const MEMORY_KIND_META: Record<string, { label: string; icon: React.ReactNode; c
 const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser }) => {
     const [data, setData] = useState<BrainMe | null>(null);
     const [loading, setLoading] = useState(true);
+    const [errorState, setErrorState] = useState<{ status: number | null; message: string } | null>(null);
     const [tab, setTab] = useState<'overview' | 'docs' | 'memories' | 'search' | 'config'>('overview');
 
     const fetchMe = useCallback(async () => {
+        setLoading(true);
+        setErrorState(null);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20_000);
         try {
-            const r = await fetch(`${API}/brains/me`, { headers });
+            const r = await fetch(`${API}/brains/me`, { headers, signal: controller.signal });
             if (r.ok) {
                 const json = await r.json();
                 setData(json);
-            } else if (r.status === 503) {
-                toast.error('El sistema de cerebros aún no está activo.');
             } else {
                 const err = await r.json().catch(() => ({}));
-                toast.error(err.detail || err.error || 'No se pudo cargar el cerebro');
+                setErrorState({
+                    status: r.status,
+                    message: err.detail || err.error || `HTTP ${r.status} ${r.statusText || 'sin detalle'}`,
+                });
+                if (r.status !== 503) {
+                    toast.error(err.detail || err.error || `No se pudo cargar el cerebro (${r.status})`);
+                }
             }
         } catch (err) {
-            toast.error(`Error: ${(err as Error).message}`);
+            const e = err as Error;
+            const isAbort = e.name === 'AbortError';
+            setErrorState({
+                status: null,
+                message: isAbort
+                    ? 'Timeout: el endpoint /api/brains/me no respondió en 20s — probable error del servidor.'
+                    : e.message,
+            });
+            toast.error(isAbort ? 'Timeout cargando el cerebro' : `Error: ${e.message}`);
         } finally {
+            clearTimeout(timeoutId);
             setLoading(false);
         }
     }, [headers]);
@@ -75,7 +93,37 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser })
     useEffect(() => { fetchMe(); }, [fetchMe]);
 
     if (loading) {
-        return <div className="flex items-center justify-center p-16"><Loader2 className="w-6 h-6 text-violet-500 animate-spin" /></div>;
+        return (
+            <div className="flex flex-col items-center justify-center p-16 gap-3">
+                <Loader2 className="w-6 h-6 text-violet-500 animate-spin" />
+                <p className="text-xs text-gray-500">Cargando tu cerebro…</p>
+            </div>
+        );
+    }
+
+    if (errorState) {
+        return (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-6">
+                <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                        <p className="text-sm font-bold text-red-900 mb-1">No se pudo cargar el Cerebro Inteligente</p>
+                        <p className="text-xs text-red-700 font-mono bg-red-100/60 rounded px-2 py-1 mt-2 break-all">
+                            {errorState.status ? `HTTP ${errorState.status} · ` : ''}{errorState.message}
+                        </p>
+                        <p className="text-xs text-red-700 mt-3">
+                            Posibles causas: el endpoint <code>/api/brains/me</code> está tardando demasiado, las tablas Brain no están migradas en este entorno, o el servicio está temporalmente caído.
+                        </p>
+                        <button
+                            onClick={() => fetchMe()}
+                            className="mt-3 px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-medium flex items-center gap-1.5"
+                        >
+                            <RefreshCw className="w-3.5 h-3.5" />Reintentar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     if (!data?.brain) {
@@ -83,7 +131,11 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser })
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-8 text-center">
                 <Brain className="w-10 h-10 text-amber-500 mx-auto mb-3" />
                 <p className="text-sm font-medium text-amber-900 mb-1">Tu cerebro aún no se creó</p>
-                <p className="text-xs text-amber-700">Esto puede pasar si tu usuario no está vinculado a un sitio. Contactá a soporte.</p>
+                <p className="text-xs text-amber-700">
+                    {data?.scope === 'master-only'
+                        ? 'Tu usuario no está vinculado a un club o distrito específico. Como super admin podés usar el panel global.'
+                        : 'Esto puede pasar si tu usuario no está vinculado a un sitio. Contactá a soporte.'}
+                </p>
             </div>
         );
     }

@@ -246,54 +246,96 @@ async function brainGlobalStats() {
 // ─── Brain del user actual (v4.356) ─────────────────────────────────────────
 // Endpoint optimizado para el panel del site admin: devuelve SU brain con
 // stats, memorias recientes, documentos y el master en read-only.
+//
+// v4.357: defensivo contra tabla BrainDocument faltante. La tabla solo existe
+// desde v4.353; si el deploy no corrió `prisma db push`, los queries que la
+// referencian crasheaban y el endpoint devolvía 500 silenciosamente. Ahora
+// cada operación que toca BrainDocument está aislada con try/catch.
 router.get('/me', authMiddleware, async (req, res) => {
     try {
         const master = await getOrCreateMasterBrain();
 
         let myBrain = null;
         if (req.user?.clubId) {
-            myBrain = await getOrCreateBrainForClub(req.user.clubId);
+            try {
+                myBrain = await getOrCreateBrainForClub(req.user.clubId);
+            } catch (e) {
+                console.error('[brains/me] getOrCreateBrainForClub:', e.message);
+            }
         } else if (req.user?.districtId) {
-            myBrain = await getOrCreateBrainForDistrict(req.user.districtId);
+            try {
+                myBrain = await getOrCreateBrainForDistrict(req.user.districtId);
+            } catch (e) {
+                console.error('[brains/me] getOrCreateBrainForDistrict:', e.message);
+            }
         }
 
         if (!myBrain) {
-            // Super admins llegando acá no tienen brain "propio" — devolvemos solo el master
-            return res.json({ scope: 'master-only', master: { id: master.id, name: master.name, kind: master.kind } });
+            // Super admins o users sin club/distrito: devolvemos solo el master
+            return res.json({
+                scope: 'master-only',
+                master: { id: master.id, name: master.name, kind: master.kind, memoryCount: master.memoryCount },
+            });
         }
 
-        const [detail, memories, docs, masterStats] = await Promise.all([
-            prisma.brain.findUnique({
-                where: { id: myBrain.id },
-                include: {
-                    club:     { select: { id: true, name: true, subdomain: true, city: true, country: true, category: true, type: true, logo: true, description: true, email: true, phone: true } },
-                    district: { select: { id: true, name: true, number: true, subdomain: true } },
-                    outgoingRelations: { include: { toBrain:   { select: { id: true, name: true, kind: true } } } },
-                    incomingRelations: { include: { fromBrain: { select: { id: true, name: true, kind: true } } } },
-                    _count: { select: { memories: true, documents: true, outgoingRelations: true, incomingRelations: true } },
-                },
-            }),
-            prisma.brainMemory.findMany({
-                where: { brainId: myBrain.id },
-                orderBy: { updatedAt: 'desc' },
-                take: 20,
-                select: { id: true, kind: true, title: true, content: true, sourceType: true, createdAt: true, updatedAt: true },
-            }),
-            prisma.brainDocument.findMany({
-                where: { brainId: myBrain.id },
-                orderBy: { createdAt: 'desc' },
-                take: 50,
-            }).catch(() => []),
-            prisma.brain.findFirst({
-                where: { isMaster: true },
-                select: { id: true, name: true, memoryCount: true, _count: { select: { memories: true } } },
-            }),
+        // El _count.documents fue removido del include — la relación
+        // `documents` requiere la tabla BrainDocument. Lo contamos aparte y lo
+        // adjuntamos al detail al final.
+        const detailPromise = prisma.brain.findUnique({
+            where: { id: myBrain.id },
+            include: {
+                club:     { select: { id: true, name: true, subdomain: true, city: true, country: true, category: true, type: true, logo: true, description: true, email: true, phone: true } },
+                district: { select: { id: true, name: true, number: true, subdomain: true } },
+                outgoingRelations: { include: { toBrain:   { select: { id: true, name: true, kind: true } } } },
+                incomingRelations: { include: { fromBrain: { select: { id: true, name: true, kind: true } } } },
+                _count: { select: { memories: true, outgoingRelations: true, incomingRelations: true } },
+            },
+        });
+
+        const memoriesPromise = prisma.brainMemory.findMany({
+            where: { brainId: myBrain.id },
+            orderBy: { updatedAt: 'desc' },
+            take: 20,
+            select: { id: true, kind: true, title: true, content: true, sourceType: true, createdAt: true, updatedAt: true },
+        });
+
+        const masterStatsPromise = prisma.brain.findFirst({
+            where: { isMaster: true },
+            select: { id: true, name: true, memoryCount: true, _count: { select: { memories: true } } },
+        });
+
+        // Operaciones aisladas contra BrainDocument — si la tabla no existe en
+        // este entorno, devolvemos arrays/conteos vacíos sin tirar el endpoint.
+        const documentsPromise = prisma.brainDocument.findMany({
+            where: { brainId: myBrain.id },
+            orderBy: { createdAt: 'desc' },
+            take: 50,
+        }).catch(err => {
+            console.warn('[brains/me] brainDocument.findMany unavailable:', err.code || err.message?.slice(0, 80));
+            return [];
+        });
+
+        const documentsCountPromise = prisma.brainDocument.count({
+            where: { brainId: myBrain.id },
+        }).catch(() => 0);
+
+        const onboardingPromise = prisma.setting.findFirst({
+            where: { clubId: req.user.clubId || undefined, key: 'onboarding_completed' },
+        }).catch(() => null);
+
+        const [detail, memories, docs, docsCount, masterStats, onboardingRow] = await Promise.all([
+            detailPromise,
+            memoriesPromise,
+            documentsPromise,
+            documentsCountPromise,
+            masterStatsPromise,
+            onboardingPromise,
         ]);
 
-        // Detectar si el onboarding se completó (lectura de Setting)
-        const onboardingCompleted = await prisma.setting.findFirst({
-            where: { clubId: req.user.clubId, key: 'onboarding_completed' },
-        });
+        // Adjuntar documents count al detail
+        if (detail && detail._count) {
+            detail._count.documents = docsCount;
+        }
 
         res.json({
             scope: 'site',
@@ -302,13 +344,13 @@ router.get('/me', authMiddleware, async (req, res) => {
             documents: docs,
             master: masterStats,
             onboarding: {
-                completed: onboardingCompleted?.value === 'true',
+                completed: onboardingRow?.value === 'true',
                 step: null,
             },
         });
     } catch (err) {
         console.error('[brains] me:', err);
-        res.status(500).json({ error: 'Error fetching own brain', detail: err.message });
+        res.status(500).json({ error: 'Error fetching own brain', detail: err.message?.slice(0, 300) });
     }
 });
 
