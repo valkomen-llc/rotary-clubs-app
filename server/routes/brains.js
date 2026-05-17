@@ -674,37 +674,67 @@ router.get('/me', authMiddleware, async (req, res) => {
 // existen. Separado de /me para que la carga del panel sea siempre rápida.
 router.post('/me/initialize', authMiddleware, async (req, res) => {
     const t0 = Date.now();
+    const diag = { steps: [] };
     try {
         const scope = await resolveUserScope(req);
+        diag.resolvedScope = scope;
+        diag.jwtUser = {
+            clubId: req.user?.clubId || null,
+            districtId: req.user?.districtId || null,
+            role: req.user?.role || null,
+            userId: req.user?.userId || req.user?.id || null,
+        };
+        diag.host = req.headers?.host || null;
+        diag.steps.push({ step: 'resolveScope', ok: true, scope });
 
         const master = await getOrCreateMasterBrain();
+        diag.steps.push({ step: 'getOrCreateMasterBrain', ok: !!master, masterId: master?.id || null });
         if (!master) {
-            return res.status(500).json({ error: 'Could not create master brain' });
+            return res.status(500).json({ error: 'Could not create master brain', diagnostic: diag });
         }
 
         let myBrain = null;
         if (scope.clubId) {
-            myBrain = await getOrCreateBrainForClub(scope.clubId);
+            try {
+                myBrain = await getOrCreateBrainForClub(scope.clubId);
+                diag.steps.push({ step: 'getOrCreateBrainForClub', clubId: scope.clubId, ok: !!myBrain, brainId: myBrain?.id || null });
+            } catch (e) {
+                diag.steps.push({ step: 'getOrCreateBrainForClub', clubId: scope.clubId, ok: false, error: e.message?.slice(0, 200), code: e.code });
+            }
         } else if (scope.districtId) {
-            myBrain = await getOrCreateBrainForDistrict(scope.districtId);
+            try {
+                myBrain = await getOrCreateBrainForDistrict(scope.districtId);
+                diag.steps.push({ step: 'getOrCreateBrainForDistrict', districtId: scope.districtId, ok: !!myBrain, brainId: myBrain?.id || null });
+            } catch (e) {
+                diag.steps.push({ step: 'getOrCreateBrainForDistrict', districtId: scope.districtId, ok: false, error: e.message?.slice(0, 200), code: e.code });
+            }
+        } else {
+            diag.steps.push({ step: 'no-scope', message: 'No clubId ni districtId después de resolveUserScope. El user no parece estar vinculado a un sitio.' });
         }
 
         if (myBrain && scope.clubId) {
             syncBrainWithOnboarding(scope.clubId).catch(err =>
                 console.warn('[brains/initialize] sync onboarding:', err.message)
             );
+            diag.steps.push({ step: 'syncBrainWithOnboarding', triggered: true });
         }
 
         res.json({
-            ok: true,
+            ok: !!myBrain,
             elapsedMs: Date.now() - t0,
             master: master ? { id: master.id, name: master.name } : null,
             brain: myBrain ? { id: myBrain.id, name: myBrain.name, kind: myBrain.kind } : null,
             scope,
+            diagnostic: diag,
+            version: 'v4.366',
         });
     } catch (err) {
         console.error('[brains] initialize:', err);
-        res.status(500).json({ error: 'Error initializing brain', detail: err.message?.slice(0, 300) });
+        res.status(500).json({
+            error: 'Error initializing brain',
+            detail: err.message?.slice(0, 300),
+            diagnostic: diag,
+        });
     }
 });
 

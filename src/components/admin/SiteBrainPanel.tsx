@@ -148,13 +148,18 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, i
         setInitializing(true);
         try {
             const r = await fetch(`${API}/brains/me/initialize`, { method: 'POST', headers });
-            if (r.ok) {
-                const j = await r.json();
+            const j = await r.json().catch(() => ({}));
+            if (r.ok && j.brain?.id) {
                 toast.success(`Cerebro creado en ${j.elapsedMs}ms`);
                 await fetchMe();
+            } else if (r.ok && j.ok === false && j.diagnostic) {
+                // El endpoint respondió 200 pero no creó el brain — diagnóstico disponible
+                console.warn('[initializeBrain] no brain created:', j.diagnostic);
+                toast.warning('No se pudo crear el cerebro — revisá el diagnóstico abajo');
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                setData(j as any); // mostramos el response del initialize en lugar del de /me
             } else {
-                const err = await r.json().catch(() => ({}));
-                toast.error(err.detail || err.error || 'No se pudo inicializar el cerebro');
+                toast.error(j.detail || j.error || `HTTP ${r.status}: no se pudo inicializar`);
             }
         } catch (err) {
             toast.error(`Error: ${(err as Error).message}`);
@@ -301,29 +306,40 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, i
 
     if (!data?.brain) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const diagnostic = (data as any)?.diagnostic;
+        const d = data as any;
+        const scopeText = d?.scope || 'unknown';
         return (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-8">
                 <div className="max-w-2xl mx-auto text-center">
                     <Brain className="w-10 h-10 text-amber-500 mx-auto mb-3" />
                     <p className="text-sm font-medium text-amber-900 mb-2">Tu cerebro aún no se creó</p>
                     <p className="text-xs text-amber-700 mb-4">
-                        {data?.scope === 'master-only'
-                            ? 'No pudimos identificar el club o distrito de tu usuario. El JWT no incluye clubId y el lookup en DB tampoco lo encontró.'
-                            : 'Esto puede pasar si tu usuario no está vinculado a un sitio. Contactá a soporte.'}
+                        Scope detectado: <code className="bg-amber-100 px-1 rounded">{scopeText}</code>
+                        {d?.detail && <> — {d.detail}</>}
                     </p>
-                    {diagnostic && (
-                        <details className="text-left bg-white/70 rounded-lg p-3 mb-4 text-[10px] font-mono">
-                            <summary className="cursor-pointer text-amber-900 font-bold">Información de diagnóstico</summary>
-                            <pre className="mt-2 text-amber-800 whitespace-pre-wrap break-all">{JSON.stringify(diagnostic, null, 2)}</pre>
-                        </details>
-                    )}
-                    <button
-                        onClick={() => fetchMe()}
-                        className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 mx-auto"
-                    >
-                        <RefreshCw className="w-3.5 h-3.5" />Reintentar
-                    </button>
+
+                    {/* Dump completo del response del backend para debug */}
+                    <details className="text-left bg-white/80 rounded-lg p-3 mb-4 text-[10px] font-mono" open>
+                        <summary className="cursor-pointer text-amber-900 font-bold mb-2">Información del backend (click para expandir/colapsar)</summary>
+                        <pre className="mt-2 text-amber-800 whitespace-pre-wrap break-all max-h-60 overflow-y-auto">{JSON.stringify(d, null, 2)}</pre>
+                    </details>
+
+                    <div className="flex flex-col gap-2 items-center">
+                        <button
+                            onClick={initializeBrain}
+                            disabled={initializing}
+                            className="px-5 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 disabled:opacity-60 text-white rounded-lg text-xs font-medium flex items-center gap-1.5"
+                        >
+                            {initializing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                            {initializing ? 'Creando…' : 'Forzar creación del cerebro'}
+                        </button>
+                        <button
+                            onClick={() => fetchMe()}
+                            className="px-4 py-1.5 text-xs text-amber-800 hover:bg-amber-100 rounded-lg font-medium flex items-center gap-1.5"
+                        >
+                            <RefreshCw className="w-3 h-3" />Reintentar
+                        </button>
+                    </div>
                 </div>
             </div>
         );
