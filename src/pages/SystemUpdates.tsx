@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// PERMISSIONS FROM RESOLVED SCOPE V4.372 | 2026-05-18 (CEREBROS — permisos via resolveUserScope 🔓)
-// Cache bust: 2026-05-18 14:00 (PERMISSIONS FROM RESOLVED SCOPE v4.372 🔓)
+// BRAIN-NULL HANDLING V4.373 | 2026-05-18 (CEREBROS — brain=null → not-initialized en vez de site genérico 🩺)
+// Cache bust: 2026-05-18 15:00 (BRAIN-NULL HANDLING v4.373 🩺)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.373',
+        date: '2026-05-18',
+        title: 'CEREBROS — fix caso edge brain=null tras editar configuración 🩺',
+        description: 'Después de guardar la configuración del cerebro en Rotary Nuevo Cali, el panel mostraba la card amber "Tu cerebro aún no se creó" con un dump JSON donde scope era "site" pero brain era null. Causa: el GET /me devolvía scope="site" + brain=null en algunos casos edge (query timeout o error), en vez de scope="not-initialized" con acción posible.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'GET /api/brains/me: refactor del flujo de respuesta. Antes había un check `if (!myBrain && !brainTimedOut && !brainErrored)` que solo devolvía not-initialized cuando el brain era null SIN error/timeout. Los casos de error o timeout caían al res.json final con scope:"site" brain:null — render confuso en el frontend.',
+            'Ahora: cualquier caso donde myBrain sea null (no existe, timeout, error) devuelve scope:"not-initialized" con razón específica:',
+            '  · reason="no-site-brain" → el brain literalmente no existe → muestra botón "Inicializar mi cerebro"',
+            '  · reason="brain-timeout" → query tardó >5s → mensaje "Reintentá en unos segundos"',
+            '  · reason="brain-error" → Prisma tiró error (ej. P2021 tabla missing) → mensaje específico con código',
+            'Response incluye diagnostic.brainTimedOut, diagnostic.brainErrored, diagnostic.resolvedScope para debug.',
+            'Esto resuelve el caso edge donde el user editaba la config (PATCH /settings ok), pero el fetchMe() posterior caía en este caso y le mostraba la card amber inacable.',
+        ]
+    },
     {
         version: 'v4.372',
         date: '2026-05-18',

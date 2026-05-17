@@ -642,16 +642,30 @@ router.get('/me', authMiddleware, async (req, res) => {
             });
         }
 
-        if (!myBrain && !brainTimedOut && !brainErrored) {
+        // v4.373: cualquier caso donde el brain del sitio sea null (no existe,
+        // timeout, o error de query) ahora devuelve 'not-initialized' con razón
+        // específica. Antes, los casos de error/timeout caían al res.json final
+        // con scope='site' brain=null, que el frontend renderizaba como una
+        // card amber genérica "Tu cerebro aún no se creó" sin acción posible.
+        if (!myBrain) {
+            const reason = brainTimedOut ? 'brain-timeout'
+                : brainErrored ? 'brain-error'
+                : 'no-site-brain';
+            const detail = brainTimedOut
+                ? 'La consulta del brain timed out en 5s. Reintentá en unos segundos.'
+                : brainErrored
+                ? `Error de DB al leer el brain: ${brainErrored}. Probable issue con la tabla Brain.`
+                : 'El cerebro de tu sitio aún no se creó. Hacé click en "Inicializar mi cerebro" para crearlo a partir de la información del onboarding.';
             return res.json({
                 scope: 'not-initialized',
-                reason: 'no-site-brain',
-                detail: 'El cerebro de tu sitio aún no se creó. Hacé click en "Inicializar mi cerebro" para crearlo a partir de la información del onboarding.',
+                reason,
+                detail,
                 clubId: scope.clubId,
                 districtId: scope.districtId,
                 master,
+                diagnostic: { brainTimedOut, brainErrored, resolvedScope: scope },
                 timings,
-                version: 'v4.365',
+                version: 'v4.373',
             });
         }
 
