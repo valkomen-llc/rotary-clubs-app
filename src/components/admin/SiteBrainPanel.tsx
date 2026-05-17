@@ -23,6 +23,7 @@ type BrainMe = any; // shape devuelta por GET /api/brains/me
 interface SiteBrainPanelProps {
     headers: Record<string, string>;
     currentUser: { clubId?: string | null; districtId?: string | null } | null;
+    isSuperAdmin?: boolean;
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -48,14 +49,15 @@ const MEMORY_KIND_META: Record<string, { label: string; icon: React.ReactNode; c
     PUBLICATION: { label: 'Publicación', icon: <Layers className="w-3 h-3" />,       color: 'bg-cyan-50 text-cyan-700' },
 };
 
-const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser }) => {
+const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, isSuperAdmin }) => {
     const [data, setData] = useState<BrainMe | null>(null);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [extras, setExtras] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [loadingExtras, setLoadingExtras] = useState(false);
     const [initializing, setInitializing] = useState(false);
-    const [errorState, setErrorState] = useState<{ status: number | null; message: string; isPingFail?: boolean } | null>(null);
+    const [migrating, setMigrating] = useState(false);
+    const [errorState, setErrorState] = useState<{ status: number | null; message: string; isPingFail?: boolean; code?: string } | null>(null);
     const [tab, setTab] = useState<'overview' | 'docs' | 'memories' | 'search' | 'config'>('overview');
 
     const fetchMe = useCallback(async () => {
@@ -79,7 +81,8 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser })
                 const err = await r.json().catch(() => ({}));
                 setErrorState({
                     status: r.status,
-                    message: err.detail || err.error || `HTTP ${r.status} ${r.statusText || 'sin detalle'}`,
+                    code: err.error,
+                    message: err.message || err.detail || err.error || `HTTP ${r.status} ${r.statusText || 'sin detalle'}`,
                 });
                 if (r.status !== 503) {
                     toast.error(err.detail || err.error || `No se pudo cargar el cerebro (${r.status})`);
@@ -115,6 +118,31 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser })
             setLoading(false);
         }
     }, [headers]);
+
+    const migrateTables = useCallback(async () => {
+        setMigrating(true);
+        try {
+            const r = await fetch(`${API}/brains/migrate`, { method: 'POST', headers });
+            if (r.ok) {
+                const j = await r.json();
+                const okCount = j.results?.filter((x: { ok: boolean }) => x.ok).length || 0;
+                const failCount = (j.results?.length || 0) - okCount;
+                if (j.ok) {
+                    toast.success(`Migración OK · ${okCount} pasos ejecutados en ${j.elapsedMs}ms`);
+                } else {
+                    toast.warning(`Migración parcial · ${okCount} ok / ${failCount} fallidos`);
+                }
+                await fetchMe();
+            } else {
+                const err = await r.json().catch(() => ({}));
+                toast.error(`Migración falló: ${err.detail || err.error || r.status}`);
+            }
+        } catch (err) {
+            toast.error(`Error: ${(err as Error).message}`);
+        } finally {
+            setMigrating(false);
+        }
+    }, [headers, fetchMe]);
 
     const initializeBrain = useCallback(async () => {
         setInitializing(true);
@@ -175,6 +203,53 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser })
     }
 
     if (errorState) {
+        const isNotMigrated = errorState.code === 'BRAINS_NOT_MIGRATED' || errorState.status === 503;
+
+        if (isNotMigrated) {
+            return (
+                <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-8">
+                    <div className="max-w-2xl mx-auto text-center">
+                        <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+                            <Brain className="w-8 h-8 text-white" />
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-900 mb-2">El sistema de cerebros aún no está activo</h3>
+                        <p className="text-sm text-gray-700 mb-4">
+                            Las tablas de la base de datos para el Cerebro Inteligente no fueron creadas en este entorno todavía.
+                        </p>
+                        {isSuperAdmin ? (
+                            <>
+                                <div className="text-xs text-gray-600 mb-5 bg-white/80 rounded-xl p-4 max-w-md mx-auto text-left">
+                                    <p className="font-bold text-gray-800 mb-2 flex items-center gap-1.5">
+                                        <Sparkles className="w-3.5 h-3.5" />Como super admin podés migrar ahora
+                                    </p>
+                                    <p className="mb-2">Se van a crear estas tablas con <code>CREATE TABLE IF NOT EXISTS</code>:</p>
+                                    <ul className="space-y-0.5 list-disc list-inside font-mono text-[11px]">
+                                        <li>Brain</li>
+                                        <li>BrainMemory</li>
+                                        <li>BrainRelation</li>
+                                        <li>BrainDocument</li>
+                                    </ul>
+                                    <p className="mt-2 text-amber-700 font-medium">Operación segura: no toca datos existentes.</p>
+                                </div>
+                                <button
+                                    onClick={migrateTables}
+                                    disabled={migrating}
+                                    className="px-6 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 disabled:opacity-60 text-white rounded-xl text-sm font-medium shadow-md shadow-amber-500/20 flex items-center gap-2 mx-auto"
+                                >
+                                    {migrating ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                                    {migrating ? 'Migrando tablas…' : 'Ejecutar migración ahora'}
+                                </button>
+                            </>
+                        ) : (
+                            <div className="text-xs text-gray-600 bg-white/80 rounded-xl p-4 max-w-md mx-auto">
+                                Las tablas requieren ser creadas por un super administrador global de Club Platform. Contactá a soporte o esperá a que se complete el deploy técnico.
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <div className="bg-red-50 border border-red-200 rounded-2xl p-6">
                 <div className="flex items-start gap-3">

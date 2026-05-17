@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.362.0",
-  "cache_bust": "2026-05-18 04:00 (BRAINS ROUTER MOUNTED IN VERCEL v4.362 🎯)",
+  "version": "4.363.0",
+  "cache_bust": "2026-05-18 05:00 (BRAIN MIGRATE FROM UI v4.363 ⚙️)",
   "type": "module",
-  "//": "BRAINS ROUTER MOUNTED IN VERCEL V4.362 | 2026-05-18 (CEREBROS — fix definitivo: el router /api/brains/* nunca estaba montado en api/index.js que es el entry point real de Vercel. Por eso v4.351-4.361 fallaban en prod 🎯)",
+  "//": "BRAIN MIGRATE FROM UI V4.363 | 2026-05-18 (CEREBROS — endpoint POST /api/brains/migrate ejecutable desde la UI por super admin: crea las tablas Brain/BrainMemory/BrainRelation/BrainDocument con CREATE TABLE IF NOT EXISTS sin perder data ⚙️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

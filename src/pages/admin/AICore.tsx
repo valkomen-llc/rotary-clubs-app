@@ -132,6 +132,7 @@ const AICore: React.FC = () => {
                     <SiteBrainPanel
                         headers={headers}
                         currentUser={user ? { clubId: user.clubId, districtId: null } : null}
+                        isSuperAdmin={isSuperAdmin}
                     />
                 </div>
             </AdminLayout>
