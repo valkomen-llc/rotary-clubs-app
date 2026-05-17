@@ -719,14 +719,38 @@ router.post('/me/initialize', authMiddleware, async (req, res) => {
             diag.steps.push({ step: 'syncBrainWithOnboarding', triggered: true });
         }
 
+        // v4.367: leer el brain con detail completo dentro del mismo handler
+        // (misma conexión Prisma) para evitar read-after-write inconsistency.
+        // El frontend va a usar este brain directamente sin re-fetch /me.
+        let brainDetail = null;
+        if (myBrain) {
+            try {
+                brainDetail = await prisma.brain.findUnique({
+                    where: { id: myBrain.id },
+                    include: {
+                        club:     { select: { id: true, name: true, subdomain: true, city: true, country: true, category: true, type: true, logo: true, description: true, email: true, phone: true } },
+                        district: { select: { id: true, name: true, number: true, subdomain: true } },
+                        _count:   { select: { memories: true, outgoingRelations: true, incomingRelations: true } },
+                    },
+                });
+                diag.steps.push({ step: 'fetchBrainDetail', ok: !!brainDetail });
+            } catch (e) {
+                diag.steps.push({ step: 'fetchBrainDetail', ok: false, error: e.message?.slice(0, 200) });
+                brainDetail = { id: myBrain.id, name: myBrain.name, kind: myBrain.kind };
+            }
+        }
+
         res.json({
             ok: !!myBrain,
             elapsedMs: Date.now() - t0,
-            master: master ? { id: master.id, name: master.name } : null,
-            brain: myBrain ? { id: myBrain.id, name: myBrain.name, kind: myBrain.kind } : null,
-            scope,
+            master: master ? { id: master.id, name: master.name, memoryCount: master.memoryCount, kind: master.kind } : null,
+            // Shape COMPLETO del brain: el frontend lo usa directamente
+            scope: myBrain ? 'site' : 'master-only',
+            brain: brainDetail,
+            onboarding: { completed: false, step: null },
             diagnostic: diag,
-            version: 'v4.366',
+            resolvedScope: scope,
+            version: 'v4.367',
         });
     } catch (err) {
         console.error('[brains] initialize:', err);

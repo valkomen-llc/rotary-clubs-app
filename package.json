@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.366.0",
-  "cache_bust": "2026-05-18 08:00 (FULL DIAGNOSTIC v4.366 🔬)",
+  "version": "4.367.0",
+  "cache_bust": "2026-05-18 09:00 (INITIALIZE RETURNS FULL BRAIN v4.367 🪐)",
   "type": "module",
-  "//": "FULL DIAGNOSTIC V4.366 | 2026-05-18 (CEREBROS — initialize devuelve diagnostic.steps con detalle de qué falló; frontend muestra dump completo del response del backend 🔬)",
+  "//": "INITIALIZE RETURNS FULL BRAIN V4.367 | 2026-05-18 (CEREBROS — el endpoint /me/initialize devuelve el brain completo con detail+club+_count; frontend no hace re-fetch evitando read-after-write inconsistency 🪐)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
