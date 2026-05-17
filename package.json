@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.357.0",
-  "cache_bust": "2026-05-17 20:30 (BRAIN ME DEFENSIVE v4.357 🛡️)",
+  "version": "4.358.0",
+  "cache_bust": "2026-05-17 22:00 (PROGRESSIVE BRAIN LOAD v4.358 ⚡)",
   "type": "module",
-  "//": "BRAIN ME DEFENSIVE V4.357 | 2026-05-17 (CEREBROS — endpoint /me defensivo contra tabla BrainDocument faltante + timeout 20s y mensaje de error visible en frontend 🛡️)",
+  "//": "PROGRESSIVE BRAIN LOAD V4.358 | 2026-05-17 (CEREBROS — endpoint /me ultra-ligero + /me/extras async para evitar timeouts de cold start ⚡)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

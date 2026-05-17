@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// BRAIN ME DEFENSIVE V4.357 | 2026-05-17 (CEREBROS — endpoint /me defensivo contra tabla BrainDocument faltante + timeout 20s y mensaje de error visible en frontend 🛡️)
-// Cache bust: 2026-05-17 20:30 (BRAIN ME DEFENSIVE v4.357 🛡️)
+// PROGRESSIVE BRAIN LOAD V4.358 | 2026-05-17 (CEREBROS — endpoint /me ultra-ligero + /me/extras async para evitar timeouts de cold start ⚡)
+// Cache bust: 2026-05-17 22:00 (PROGRESSIVE BRAIN LOAD v4.358 ⚡)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.358',
+        date: '2026-05-17',
+        title: 'Cerebro Inteligente — carga progresiva del panel del sitio ⚡',
+        description: 'El panel /admin/inteligencia tardaba >20s y se cortaba por timeout en producción. La causa: el endpoint /api/brains/me hacía Promise.all con 6 queries pesadas + creación de brains nuevos en cold start de Vercel. Resuelto con carga progresiva — primero llega el brain básico (1-2s), después memorias/documentos/relaciones en background.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Antes: GET /me hacía en serie getOrCreateMasterBrain → getOrCreateBrainForClub → Promise.all con 6 queries (detail con includes, memorias, docs, count docs, master stats, onboarding). Cold start + DB lento + creación de brains nuevos = >20s en el peor caso.',
+            'Ahora: GET /me hace SOLO lo esencial — brain básico + master id/name + onboarding completed. Una sola query con joins ligeros. Apunta a <2s incluso en cold start.',
+            'Nuevo endpoint GET /api/brains/me/extras — carga diferida de memorias recientes, documentos, relaciones outgoing/incoming. Lo llama el frontend después de pintar el hero, en background.',
+            'Frontend: hero card + tabs aparecen inmediato. Los tabs Resumen y Memorias muestran spinner mientras llega /extras. Si /extras falla, el panel sigue funcional — solo se ven vacíos esos tabs.',
+            'Timeout del frontend subió a 45s (era 20s) para tolerar cold starts severos de Vercel sin abortar prematuramente.',
+            'Mensaje de error mejorado: "probable error del servidor o cold start severo de Vercel" para que el admin sepa que probablemente con un retry funciona.',
+            'Spinner inicial ahora incluye texto secundario "Primera carga puede tardar unos segundos por cold start".',
+        ]
+    },
     {
         version: 'v4.357',
         date: '2026-05-17',
