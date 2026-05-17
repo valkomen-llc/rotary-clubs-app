@@ -24,9 +24,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// BRAIN REINDEX v4.354 | 2026-05-17 (CEREBROS — reindex paginado con cursor sin riesgo de timeout + modal de diagnóstico del sistema 🩺)
-// Cache bust: 2026-05-17 15:30 (PAGINATED REINDEX + DIAGNOSTIC v4.354 🩺)
+// BRAIN ALWAYS ON V4.355 | 2026-05-17 (CEREBROS — desbloqueo del Centro de Inteligencia durante setup; el cerebro absorbe contenido desde el día 1 🧽)
+// Cache bust: 2026-05-17 17:00 (INTELIGENCIA SIEMPRE DISPONIBLE v4.355 🧽)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.355',
+        date: '2026-05-17',
+        title: 'Centro de Inteligencia — disponible desde el día 1 (sin esperar setup completo) 🧽',
+        description: 'Antes el Centro de Inteligencia aparecía bloqueado con candado en el sidebar mientras el sitio estaba en modo configuración (< 100% completado). Eso contradecía la naturaleza del feature: el cerebro tiene que poder absorber todo el contenido que se le suministra al sitio mientras se configura, no después.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Path `/admin/inteligencia` agregado a SETUP_ALLOWED_PATHS en `useSetupProgress.ts`. El cerebro ya estaba ingiriendo memorias automáticamente desde los controllers de post/project/event/knowledge/document desde v4.351 — el único bloqueo era visual: el admin no podía ver el panel mientras configuraba.',
+            'Ahora un nuevo sitio puede abrir Centro de Inteligencia desde su primer acceso, ver el cerebro maestro, agregar notas manuales, subir documentos institucionales (reglamentos, planes), y ver cómo va creciendo la memoria a medida que configura el resto.',
+            'Sin cambios de backend: la ingestión ya era setup-agnostic. Sin cambios de permisos: cada admin sigue viendo solo su brain + master.',
+        ]
+    },
     {
         version: 'v4.354',
         date: '2026-05-17',

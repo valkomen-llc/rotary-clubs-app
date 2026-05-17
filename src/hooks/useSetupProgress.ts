@@ -48,6 +48,11 @@ export const SETUP_ALLOWED_PATHS = [
     '/admin/ordenes',
     '/admin/boveda',
     '/admin/estados-financieros',
+    // Centro de Inteligencia disponible desde el día 1 — el cerebro absorbe
+    // contenido (posts, proyectos, eventos, documentos institucionales)
+    // automáticamente mientras se configura el sitio. Bloquearlo durante
+    // setup contradice la naturaleza del feature: que aprenda mientras crece.
+    '/admin/inteligencia',
 ];
 
 export function useSetupProgress(): SetupProgress {
