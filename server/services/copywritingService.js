@@ -148,6 +148,11 @@ const generateWithAnthropic = async ({ system, userText, imageUrl, temperature, 
 
 // Google Gemini via generateContent endpoint. Image must be inline base64
 // (Gemini's Files API would need pre-upload — simpler to encode here).
+//
+// Note on maxOutputTokens: Gemini cuts the response hard at the limit and
+// produces unterminated JSON. We default to a generous cap (4000) because
+// Gemini Flash has 8K output capacity and our copy responses can run 1500-2500
+// tokens (4 platforms × full copies + hashtags + visual_prompt).
 const generateWithGemini = async ({ system, userText, imageUrl, temperature, maxTokens, jsonMode, model }) => {
     const parts = [{ text: userText }];
     if (imageUrl) {
@@ -164,7 +169,9 @@ const generateWithGemini = async ({ system, userText, imageUrl, temperature, max
         contents: [{ role: 'user', parts }],
         generationConfig: {
             temperature: temperature ?? 0.6,
-            maxOutputTokens: maxTokens ?? 1400,
+            // Bump default for Gemini specifically: truncated output produces
+            // unterminated JSON. 4000 fits within Flash's 8K output ceiling.
+            maxOutputTokens: maxTokens ? Math.max(maxTokens, 4000) : 4000,
             ...(jsonMode ? { responseMimeType: 'application/json' } : {})
         }
     };
@@ -179,10 +186,23 @@ const generateWithGemini = async ({ system, userText, imageUrl, temperature, max
         throw new Error(`Gemini ${m}: ${reason}`);
     }
     const cand = data?.candidates?.[0];
-    const content = (cand?.content?.parts || []).map(p => p.text).filter(Boolean).join('').trim();
+    const finishReason = cand?.finishReason;
+    let content = (cand?.content?.parts || []).map(p => p.text).filter(Boolean).join('').trim();
     if (!content) {
-        throw new Error(`Gemini ${m} sin contenido (finish_reason: ${cand?.finishReason || 'unknown'})`);
+        throw new Error(`Gemini ${m} sin contenido (finish_reason: ${finishReason || 'unknown'})`);
     }
+    // Si finishReason == MAX_TOKENS y pedimos JSON, el output está truncado
+    // y JSON.parse va a fallar. Reportamos un error claro en vez de devolver
+    // string roto.
+    if (jsonMode && finishReason === 'MAX_TOKENS') {
+        throw new Error(`Gemini ${m} truncado por MAX_TOKENS (output incompleto, no JSON válido). Bump maxOutputTokens en la llamada.`);
+    }
+    // Strip markdown code fences defensivamente — pueden aparecer incluso con
+    // responseMimeType:application/json en algunos casos edge.
+    content = content
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/```\s*$/i, '')
+        .trim();
     return { content, raw: data, provider: 'gemini', model: m };
 };
 

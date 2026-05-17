@@ -24,9 +24,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.343 | 2026-05-16 (COPY — arquitectura multi-modelo Fase 1: OpenAI + Anthropic Claude + Google Gemini con selector visual y fallback automático 🤖)
-// Cache bust: 2026-05-16 22:00 (COPY MULTI-MODEL v4.343 🤖)
+// DISTRICT HEALTH IQ V4.344 | 2026-05-16 (COPY — fix Gemini truncado por MAX_TOKENS: bump output cap a 4000 + strip markdown defensivo + mejor error de JSON.parse ✂️)
+// Cache bust: 2026-05-16 22:30 (COPY GEMINI MAX_TOKENS FIX v4.344 ✂️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.344',
+        date: '2026-05-16',
+        title: 'Copy IA — Fix Gemini Truncado por MAX_TOKENS ✂️',
+        description: 'Al generar copy con Google Gemini el output se cortaba con error "Unterminated string in JSON at position 182". Causa: maxOutputTokens demasiado bajo (1400) para una respuesta con 4 plataformas + hashtags + visual_prompt.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Diagnóstico: el copy prompt genera 4 bloques completos (FB/IG/X/LinkedIn) con texto, hashtags y CTA, más el visual_prompt en inglés. Total típico: 1500-2500 tokens. Con cap 1400 Gemini Flash cortaba mid-string y rompía el JSON.',
+            'Fix copywritingService.js (Gemini adapter): default maxOutputTokens sube a 4000 (Gemini Flash tiene 8K de capacidad). Si el caller pasa un valor menor, se usa Math.max(value, 4000) para garantizar margen.',
+            'Detección explícita: si finishReason == MAX_TOKENS y pedimos JSON, throws error claro en vez de devolver string roto que JSON.parse no puede manejar.',
+            'Strip markdown defensivo: Gemini a veces devuelve ```json…``` aunque pidamos responseMimeType:application/json. Ahora se limpia antes de parsear.',
+            'Fix contentStudioController.js: maxTokens en la llamada sube de 1400 → 2400 (OpenAI y Anthropic igual). El error de JSON.parse ahora incluye los primeros 200 chars de la respuesta para diagnóstico futuro.'
+        ]
+    },
     {
         version: 'v4.343',
         date: '2026-05-16',
