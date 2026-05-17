@@ -245,6 +245,18 @@ router.patch('/clubs/:id/complete-onboarding', roleMiddleware(adminRoles), async
             `UPDATE "Club" SET status = 'active', "updatedAt" = NOW() WHERE id = $1`,
             [clubId]
         );
+
+        // Sync brain con la información del onboarding (fire-and-forget — si
+        // falla el embed no rompemos el flujo).
+        try {
+            const { syncBrainWithOnboarding } = await import('../services/brainService.js');
+            syncBrainWithOnboarding(clubId).catch(err =>
+                console.warn('[admin] sync brain on complete-onboarding:', err.message)
+            );
+        } catch (err) {
+            console.warn('[admin] brain sync setup:', err.message);
+        }
+
         res.json({ ok: true, onboardingCompleted: true, status: 'active' });
     } catch (error) {
         console.error('Complete onboarding error:', error);

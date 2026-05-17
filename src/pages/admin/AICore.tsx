@@ -32,6 +32,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
 import { buildObsidianVault, triggerDownload, type ExportPayload } from '../../lib/obsidianExporter';
 import BrainDocumentsPanel from '../../components/admin/BrainDocumentsPanel';
+import SiteBrainPanel from '../../components/admin/SiteBrainPanel';
 
 // Lazy load del componente de grafo 3D — usa Three.js (~600KB)
 const BrainGraph3D = React.lazy(() => import('../../components/admin/BrainGraph3D'));
@@ -118,6 +119,32 @@ const AICore: React.FC = () => {
     const { user, token } = useAuth();
     const isSuperAdmin = user?.role === 'administrator';
 
+    const headers = useMemo<Record<string, string>>(
+        () => (token ? { Authorization: `Bearer ${token}` } : ({} as Record<string, string>)),
+        [token]
+    );
+
+    // Site admin → vista dedicada. Super admin → dashboard global (abajo).
+    if (!isSuperAdmin) {
+        return (
+            <AdminLayout>
+                <div className="p-6 max-w-7xl mx-auto">
+                    <SiteBrainPanel
+                        headers={headers}
+                        currentUser={user ? { clubId: user.clubId, districtId: null } : null}
+                    />
+                </div>
+            </AdminLayout>
+        );
+    }
+
+    return <AICoreSuperAdmin />;
+};
+
+const AICoreSuperAdmin: React.FC = () => {
+    const { user, token } = useAuth();
+    const isSuperAdmin = user?.role === 'administrator';
+
     const [brains, setBrains] = useState<BrainRow[]>([]);
     const [masterStats, setMasterStats] = useState<MasterStats | null>(null);
     const [loading, setLoading] = useState(true);
@@ -156,7 +183,7 @@ const AICore: React.FC = () => {
     const [openBrainDetail, setOpenBrainDetail] = useState<BrainRow & { recentMemories?: MemoryRow[]; outgoingRelations?: Array<{ id: string; kind: string; toBrain: { id: string; name: string; kind: string } }>; incomingRelations?: Array<{ id: string; kind: string; fromBrain: { id: string; name: string; kind: string } }> } | null>(null);
     const [openBrainLoading, setOpenBrainLoading] = useState(false);
 
-    const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
+    const headers = useMemo<Record<string, string>>(() => (token ? { Authorization: `Bearer ${token}` } : ({} as Record<string, string>)), [token]);
 
     const fetchEverything = async () => {
         setLoading(true);
