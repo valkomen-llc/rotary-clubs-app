@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.373.0",
-  "cache_bust": "2026-05-18 15:00 (BRAIN-NULL HANDLING v4.373 🩺)",
+  "version": "4.374.0",
+  "cache_bust": "2026-05-18 16:00 (RESILIENT FINDUNIQUE + CONFIG SANITIZE v4.374 🛡️)",
   "type": "module",
-  "//": "BRAIN-NULL HANDLING V4.373 | 2026-05-18 (CEREBROS — cualquier caso brain=null (timeout/error/no-existe) devuelve scope=not-initialized con razón específica en vez de caer al scope=site genérico 🩺)",
+  "//": "RESILIENT FINDUNIQUE + CONFIG SANITIZE V4.374 | 2026-05-18 (CEREBROS — findUnique con fallback sin include si falla; sanitización del metadata en PATCH /settings 🛡️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
