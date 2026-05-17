@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.355.0",
-  "cache_bust": "2026-05-17 17:00 (INTELIGENCIA SIEMPRE DISPONIBLE v4.355 🧽)",
+  "version": "4.356.0",
+  "cache_bust": "2026-05-17 19:00 (SITE BRAIN PANEL v4.356 🎛️)",
   "type": "module",
-  "//": "BRAIN ALWAYS ON V4.355 | 2026-05-17 (CEREBROS — desbloqueo del Centro de Inteligencia durante setup; el cerebro absorbe contenido desde el día 1 🧽)",
+  "//": "SITE BRAIN PANEL V4.356 | 2026-05-17 (CEREBROS — panel dedicado para admin de sitio: identity editable, sync con onboarding, tabs Resumen/Docs/Memorias/Búsqueda/Config 🎛️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

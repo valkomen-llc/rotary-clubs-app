@@ -26,6 +26,7 @@ import {
     reindexBatch,
     reindexProgress,
     ingestMemory,
+    syncBrainWithOnboarding,
 } from '../services/brainService.js';
 import { processDocumentSafe, deleteDocument } from '../services/documentProcessor.js';
 
@@ -241,6 +242,147 @@ async function brainGlobalStats() {
         memoriesByKind: byKind.reduce((acc, r) => ({ ...acc, [r.kind]: r._count.kind }), {}),
     };
 }
+
+// ─── Brain del user actual (v4.356) ─────────────────────────────────────────
+// Endpoint optimizado para el panel del site admin: devuelve SU brain con
+// stats, memorias recientes, documentos y el master en read-only.
+router.get('/me', authMiddleware, async (req, res) => {
+    try {
+        const master = await getOrCreateMasterBrain();
+
+        let myBrain = null;
+        if (req.user?.clubId) {
+            myBrain = await getOrCreateBrainForClub(req.user.clubId);
+        } else if (req.user?.districtId) {
+            myBrain = await getOrCreateBrainForDistrict(req.user.districtId);
+        }
+
+        if (!myBrain) {
+            // Super admins llegando acá no tienen brain "propio" — devolvemos solo el master
+            return res.json({ scope: 'master-only', master: { id: master.id, name: master.name, kind: master.kind } });
+        }
+
+        const [detail, memories, docs, masterStats] = await Promise.all([
+            prisma.brain.findUnique({
+                where: { id: myBrain.id },
+                include: {
+                    club:     { select: { id: true, name: true, subdomain: true, city: true, country: true, category: true, type: true, logo: true, description: true, email: true, phone: true } },
+                    district: { select: { id: true, name: true, number: true, subdomain: true } },
+                    outgoingRelations: { include: { toBrain:   { select: { id: true, name: true, kind: true } } } },
+                    incomingRelations: { include: { fromBrain: { select: { id: true, name: true, kind: true } } } },
+                    _count: { select: { memories: true, documents: true, outgoingRelations: true, incomingRelations: true } },
+                },
+            }),
+            prisma.brainMemory.findMany({
+                where: { brainId: myBrain.id },
+                orderBy: { updatedAt: 'desc' },
+                take: 20,
+                select: { id: true, kind: true, title: true, content: true, sourceType: true, createdAt: true, updatedAt: true },
+            }),
+            prisma.brainDocument.findMany({
+                where: { brainId: myBrain.id },
+                orderBy: { createdAt: 'desc' },
+                take: 50,
+            }).catch(() => []),
+            prisma.brain.findFirst({
+                where: { isMaster: true },
+                select: { id: true, name: true, memoryCount: true, _count: { select: { memories: true } } },
+            }),
+        ]);
+
+        // Detectar si el onboarding se completó (lectura de Setting)
+        const onboardingCompleted = await prisma.setting.findFirst({
+            where: { clubId: req.user.clubId, key: 'onboarding_completed' },
+        });
+
+        res.json({
+            scope: 'site',
+            brain: detail,
+            recentMemories: memories,
+            documents: docs,
+            master: masterStats,
+            onboarding: {
+                completed: onboardingCompleted?.value === 'true',
+                step: null,
+            },
+        });
+    } catch (err) {
+        console.error('[brains] me:', err);
+        res.status(500).json({ error: 'Error fetching own brain', detail: err.message });
+    }
+});
+
+// PATCH /api/brains/:id/settings — el admin de sitio edita identityPrompt
+// y config del brain. Marca `identityPromptOverridden:true` para que el sync
+// del onboarding no pise la customización.
+router.patch('/:id/settings', authMiddleware, async (req, res) => {
+    try {
+        const brain = await prisma.brain.findUnique({ where: { id: req.params.id } });
+        if (!brain) return res.status(404).json({ error: 'Brain not found' });
+
+        const canEdit = isSuperAdmin(req) ||
+            (brain.clubId && brain.clubId === req.user.clubId) ||
+            (brain.districtId && brain.districtId === req.user.districtId);
+        if (!canEdit) return res.status(403).json({ error: 'Access denied' });
+
+        const { identityPrompt, config, resetIdentityToAuto } = req.body || {};
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const data = {};
+        const md = brain.metadata || {};
+
+        if (resetIdentityToAuto) {
+            // Volver al identityPrompt derivado del Club + quitar el override flag
+            const club = brain.clubId ? await prisma.club.findUnique({ where: { id: brain.clubId } }) : null;
+            if (club) {
+                const { buildIdentityPromptFromClub } = await import('../services/brainService.js');
+                data.identityPrompt = buildIdentityPromptFromClub(club);
+            }
+            data.metadata = { ...md, identityPromptOverridden: false };
+        } else if (typeof identityPrompt === 'string') {
+            data.identityPrompt = identityPrompt.slice(0, 4000);
+            data.metadata = { ...md, identityPromptOverridden: true };
+        }
+
+        if (config && typeof config === 'object') {
+            const existingConfig = (md.config || {});
+            data.metadata = {
+                ...(data.metadata || md),
+                config: {
+                    ...existingConfig,
+                    ...config,
+                },
+            };
+        }
+
+        const updated = await prisma.brain.update({ where: { id: brain.id }, data });
+        res.json({ ok: true, brain: updated });
+    } catch (err) {
+        console.error('[brains] settings:', err);
+        res.status(500).json({ error: 'Error updating settings', detail: err.message });
+    }
+});
+
+// POST /api/brains/:id/sync-onboarding — re-extrae info del Club + Settings +
+// ContentSections y la persiste como memorias en el brain.
+router.post('/:id/sync-onboarding', authMiddleware, async (req, res) => {
+    try {
+        const brain = await prisma.brain.findUnique({ where: { id: req.params.id } });
+        if (!brain) return res.status(404).json({ error: 'Brain not found' });
+
+        const canSync = isSuperAdmin(req) ||
+            (brain.clubId && brain.clubId === req.user.clubId);
+        if (!canSync) return res.status(403).json({ error: 'Access denied' });
+
+        if (!brain.clubId) return res.status(400).json({ error: 'Brain has no clubId — no hay onboarding del cual sincronizar' });
+
+        const result = await syncBrainWithOnboarding(brain.clubId);
+        res.json(result);
+    } catch (err) {
+        console.error('[brains] sync-onboarding:', err);
+        res.status(500).json({ error: 'Error syncing onboarding', detail: err.message });
+    }
+});
 
 // ─── Brain detail + recent memories ────────────────────────────────────────
 

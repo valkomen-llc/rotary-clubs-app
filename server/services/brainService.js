@@ -10,7 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import prisma from '../lib/prisma.js';
 
-console.log('🧠 BRAIN SERVICE v4.354 — cerebros + grafo 3D + obsidian export + docs + reindex paginado con cursor + diagnose 🩺');
+console.log('🧠 BRAIN SERVICE v4.356 — cerebros + grafo 3D + obsidian + docs + reindex paginado + sync con onboarding + identityPrompt editable 🎛️');
 
 // Las tablas Brain/BrainMemory/BrainRelation se crean vía `prisma db push`.
 // Hasta que ese push se corra en producción, todas las operaciones aquí
@@ -129,6 +129,43 @@ export async function getOrCreateMasterBrain() {
     return master;
 }
 
+// Construye un identityPrompt rico a partir de los datos del Club (poblados
+// por el onboarding). Si todavía no hay data, devuelve uno genérico.
+export function buildIdentityPromptFromClub(club) {
+    if (!club) return null;
+
+    const kindLabel = {
+        CLUB: 'Club Rotary',
+        ASSOCIATION: 'Asociación Rotaria',
+        PROGRAM: 'Programa de Intercambio',
+        EVENT: 'Evento Rotario',
+        CONFERENCE: 'Conferencia Rotaria',
+        PROJECT_FAIR: 'Feria de Proyectos',
+        FOUNDATION: 'Fundación',
+    }[CATEGORY_TO_KIND[club.category] || 'CLUB'] || 'Sitio Rotario';
+
+    const location = [club.city, club.country].filter(Boolean).join(', ');
+    const lines = [
+        `Eres el cerebro institucional de "${club.name}" — ${kindLabel}${location ? ` en ${location}` : ''}.`,
+    ];
+
+    if (club.description) {
+        lines.push(`\nDescripción del sitio: ${club.description.slice(0, 800)}`);
+    }
+    if (club.email)   lines.push(`\nContacto: ${club.email}${club.phone ? ` · ${club.phone}` : ''}`);
+
+    lines.push(
+        '\nTu rol es:',
+        '· Aprender de cada noticia, proyecto, evento y documento que el sitio publica.',
+        '· Construir memoria institucional coherente con la voz y los valores del sitio.',
+        '· Generar respuestas, recomendaciones y contenido alineados con esa identidad.',
+        '· Mantener el contexto histórico y reglamentario disponible para razonar.',
+        '\nNo inventes información que no esté en tu memoria. Si te falta contexto, decilo.'
+    );
+
+    return lines.join('\n');
+}
+
 export async function getOrCreateBrainForClub(clubId) {
     if (!clubId) return null;
     if (!(await ensureTables())) return null;
@@ -144,16 +181,21 @@ export async function getOrCreateBrainForClub(clubId) {
             kind,
             name: club.name,
             clubId: club.id,
-            identityPrompt:
-                `Eres el cerebro de "${club.name}". Aprende únicamente de este sitio: ` +
-                `recuerda sus proyectos, directivos, líneas de acción, eventos y voz. ` +
-                `Genera contenido coherente con su identidad.`,
+            identityPrompt: buildIdentityPromptFromClub(club),
             metadata: {
                 city: club.city,
                 country: club.country,
                 subdomain: club.subdomain,
                 category: club.category,
                 type: club.type,
+                config: {
+                    learnFromPosts: true,
+                    learnFromProjects: true,
+                    learnFromEvents: true,
+                    learnFromDocuments: true,
+                    learnFromMembers: true,
+                    shareWithMaster: true,
+                },
             },
         },
     });
@@ -200,6 +242,172 @@ export async function resolveBrainsForClub(clubId) {
         club.districtId ? getOrCreateBrainForDistrict(club.districtId) : Promise.resolve(null),
     ]);
     return { site, district };
+}
+
+// ─── Sync con onboarding ─────────────────────────────────────────────────────
+// Toma datos del Club + Settings + ContentSections (poblados durante el wizard
+// de setup) y los persiste en el brain como (a) identityPrompt enriquecido y
+// (b) memorias NOTE estructuradas — identidad, misión, contacto, redes, etc.
+// Idempotente: las memorias usan sourceType='Onboarding' con sourceId fijo, así
+// llamar varias veces solo refresca el contenido.
+export async function syncBrainWithOnboarding(clubId) {
+    if (!clubId) return { ok: false, error: 'clubId required' };
+    if (!(await ensureTables())) return { ok: false, error: 'brain tables not ready' };
+
+    const club = await prisma.club.findUnique({ where: { id: clubId } });
+    if (!club) return { ok: false, error: 'club not found' };
+
+    const brain = await getOrCreateBrainForClub(clubId);
+    if (!brain) return { ok: false, error: 'could not create brain' };
+
+    // Actualizar identityPrompt con la info más fresca (sin pisar customizaciones
+    // manuales: si el admin editó manualmente, marca metadata.identityPromptOverridden).
+    const md = brain.metadata || {};
+    if (!md.identityPromptOverridden) {
+        await prisma.brain.update({
+            where: { id: brain.id },
+            data: { identityPrompt: buildIdentityPromptFromClub(club) },
+        });
+    }
+
+    // Extraer Settings y ContentSections relevantes
+    const [settings, sections] = await Promise.all([
+        prisma.setting.findMany({
+            where: {
+                clubId,
+                key: { in: [
+                    'mission', 'vision', 'values', 'brand_voice', 'brand_tone',
+                    'hero_title', 'hero_subtitle', 'about_text', 'cta_text',
+                    'primary_color', 'secondary_color', 'social_links',
+                    'onboarding_step', 'onboarding_completed',
+                ] },
+            },
+        }),
+        prisma.contentSection.findMany({
+            where: { clubId, page: { in: ['home', 'about', 'identity'] } },
+        }),
+    ]);
+
+    const sMap = Object.fromEntries(settings.map(s => [s.key, s.value]));
+    const sectMap = Object.fromEntries(sections.map(s => [`${s.page}:${s.section}`, s.content]));
+
+    // Construir memorias NOTE clasificadas
+    const memories = [];
+
+    if (club.description) {
+        memories.push({
+            title: `Descripción institucional — ${club.name}`,
+            content: club.description,
+            sourceId: `onboarding:description:${clubId}`,
+        });
+    }
+
+    const mission = sMap.mission || sectMap['about:mission'];
+    if (mission) {
+        memories.push({
+            title: `Misión — ${club.name}`,
+            content: mission,
+            sourceId: `onboarding:mission:${clubId}`,
+        });
+    }
+
+    const vision = sMap.vision || sectMap['about:vision'];
+    if (vision) {
+        memories.push({
+            title: `Visión — ${club.name}`,
+            content: vision,
+            sourceId: `onboarding:vision:${clubId}`,
+        });
+    }
+
+    const values = sMap.values || sectMap['about:values'];
+    if (values) {
+        memories.push({
+            title: `Valores institucionales — ${club.name}`,
+            content: values,
+            sourceId: `onboarding:values:${clubId}`,
+        });
+    }
+
+    // Hero content (lo que el sitio le dice al mundo en la home)
+    const heroParts = [sMap.hero_title, sMap.hero_subtitle, sMap.about_text, sMap.cta_text]
+        .filter(Boolean);
+    if (heroParts.length > 0) {
+        memories.push({
+            title: `Mensaje principal del sitio — ${club.name}`,
+            content: heroParts.join('\n\n'),
+            sourceId: `onboarding:hero:${clubId}`,
+        });
+    }
+
+    // Brand voice/tone (si lo definieron)
+    const voiceParts = [
+        sMap.brand_voice ? `Voz: ${sMap.brand_voice}` : null,
+        sMap.brand_tone  ? `Tono: ${sMap.brand_tone}`  : null,
+    ].filter(Boolean);
+    if (voiceParts.length > 0) {
+        memories.push({
+            title: `Identidad de marca — ${club.name}`,
+            content: voiceParts.join('\n'),
+            sourceId: `onboarding:brand:${clubId}`,
+        });
+    }
+
+    // Contacto + ubicación
+    const contactParts = [
+        club.email   ? `Email: ${club.email}`     : null,
+        club.phone   ? `Teléfono: ${club.phone}`  : null,
+        club.address ? `Dirección: ${club.address}` : null,
+        club.city || club.country ? `Ubicación: ${[club.city, club.country].filter(Boolean).join(', ')}` : null,
+    ].filter(Boolean);
+    if (contactParts.length > 0) {
+        memories.push({
+            title: `Información de contacto — ${club.name}`,
+            content: contactParts.join('\n'),
+            sourceId: `onboarding:contact:${clubId}`,
+        });
+    }
+
+    // Redes sociales (vienen como JSON string en settings.social_links)
+    if (sMap.social_links) {
+        try {
+            const links = JSON.parse(sMap.social_links);
+            if (Array.isArray(links) && links.length > 0) {
+                memories.push({
+                    title: `Presencia digital — ${club.name}`,
+                    content: links.map(l => `${l.platform}: ${l.url}`).join('\n'),
+                    sourceId: `onboarding:social:${clubId}`,
+                });
+            }
+        } catch { /* ignore */ }
+    }
+
+    // Ingestar todo
+    let ingested = 0;
+    for (const mem of memories) {
+        try {
+            await ingestMemory({
+                clubId,
+                kind: 'KNOWLEDGE',
+                sourceType: 'Onboarding',
+                sourceId: mem.sourceId,
+                title: mem.title,
+                content: mem.content,
+                metadata: { from: 'onboarding', clubName: club.name },
+            });
+            ingested++;
+        } catch (err) {
+            console.warn('[brainService] sync onboarding:', err.message);
+        }
+    }
+
+    return {
+        ok: true,
+        brainId: brain.id,
+        ingested,
+        total: memories.length,
+        identityRefreshed: !md.identityPromptOverridden,
+    };
 }
 
 // ─── Ingestión de memorias ───────────────────────────────────────────────────

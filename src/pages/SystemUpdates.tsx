@@ -24,9 +24,33 @@ interface UpdateItem {
     details?: string[];
 }
 
-// BRAIN ALWAYS ON V4.355 | 2026-05-17 (CEREBROS — desbloqueo del Centro de Inteligencia durante setup; el cerebro absorbe contenido desde el día 1 🧽)
-// Cache bust: 2026-05-17 17:00 (INTELIGENCIA SIEMPRE DISPONIBLE v4.355 🧽)
+// SITE BRAIN PANEL V4.356 | 2026-05-17 (CEREBROS — panel dedicado para admin de sitio: identity editable, sync con onboarding, tabs Resumen/Docs/Memorias/Búsqueda/Config 🎛️)
+// Cache bust: 2026-05-17 19:00 (SITE BRAIN PANEL v4.356 🎛️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.356',
+        date: '2026-05-17',
+        title: 'Cerebro Inteligente — panel dedicado por sitio + sincronización con onboarding 🎛️',
+        description: 'El admin de un sitio (club, programa, distrito) ahora ve un panel completamente dedicado a SU cerebro al entrar a /admin/inteligencia: hero card con su brain como protagonista, identidad editable, sincronización automática con el onboarding del sitio, tabs claras y herramientas pensadas para él. Nada de la complejidad del dashboard global del super admin.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Antes el panel /admin/inteligencia era el mismo para todos los roles — un admin de sitio veía la misma UI multi-brain que el super admin (búsqueda con scope "todo", lista de cerebros de otros sitios, botones de re-indexar global, etc.). Era confuso y le pedía decisiones que no le incumben.',
+            'Ahora el componente AICore.tsx detecta el rol y renderiza dos UIs distintas: SiteBrainPanel.tsx para site/district admin, AICoreSuperAdmin (la antigua) para el super admin global.',
+            'SiteBrainPanel — Hero card con el cerebro del sitio como protagonista (nombre, tipo, stats: memorias / documentos / relaciones / acceso al maestro). Aviso explícito si el setup está incompleto, sin bloquear.',
+            'SiteBrainPanel — 5 tabs claras: Resumen (identidad + distribución por tipo de memoria + conexión al maestro), Documentos (drag & drop de PDFs/DOCX/TXT/MD que el cerebro absorbe), Memorias (lista completa con filtros + agregar notas manuales), Búsqueda (semantic search restringida a su brain con toggle "incluir maestro"), Configuración.',
+            'Tab Configuración — identityPrompt EDITABLE (cómo razona el cerebro, qué voz tiene, qué sabe). Marca metadata.identityPromptOverridden:true para que el sync del onboarding no pise tu customización. Botón "Restaurar desde onboarding" para volver al texto automático.',
+            'Tab Configuración — toggles de aprendizaje automático: aprender de noticias / proyectos / eventos / documentos / miembros. Toggle "compartir con maestro" para visibilidad cross-brain. La preferencia queda en `brain.metadata.config`.',
+            'Sync con onboarding — nuevo endpoint POST /api/brains/:id/sync-onboarding que recolecta datos del Club + Settings + ContentSections (descripción, misión, visión, valores, hero/about, voz/tono, contacto, redes sociales) y los convierte en memorias NOTE estructuradas con sourceType="Onboarding". Idempotente (los sourceId son fijos por clubId).',
+            'Sync automático — al completar el onboarding del sitio (`PATCH /admin/clubs/:id/complete-onboarding`), se dispara automáticamente syncBrainWithOnboarding(clubId) fire-and-forget. El cerebro queda configurado solo.',
+            'Sync manual — botón "Sincronizar con setup" en el hero, útil si el admin actualiza la descripción del sitio o agrega redes y quiere que el cerebro lo absorba inmediatamente.',
+            'Endpoint nuevo GET /api/brains/me — devuelve el brain del user actual con todo lo necesario para el panel en una sola call (detalle, memorias recientes, documentos, master stats, estado de onboarding). Optimiza el tiempo de carga inicial.',
+            'Endpoint nuevo PATCH /api/brains/:id/settings — actualiza identityPrompt + metadata.config. Permisos: site admin solo puede editar SU brain.',
+            'IdentityPrompt rico — buildIdentityPromptFromClub() genera un system prompt detallado a partir del nombre, categoría, ubicación, descripción y contacto del club, en vez del texto genérico anterior. Aplica para brains nuevos y se refresca en cada sync (si no fue editado manualmente).',
+            'Botón "Exportar a Obsidian" disponible para el admin de sitio — descarga un vault con SU brain + el master en read-only (el backend ya filtraba por scope desde v4.352).',
+            'Roadmap: v4.357 chat RAG sobre el cerebro maestro, v4.358 detección de SIMILAR_TO entre brains, v4.359 OCR para PDFs escaneados.',
+        ]
+    },
     {
         version: 'v4.355',
         date: '2026-05-17',
