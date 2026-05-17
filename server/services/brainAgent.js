@@ -322,15 +322,77 @@ async function callGemini({ systemPrompt, history, userMessage, enableTools = tr
     }
 
     if (!data) {
-        const detail = lastErr
-            ? `${lastErr.status || ''} ${lastErr.text || lastErr.error || 'unknown'}`.slice(0, 200)
-            : 'unknown';
-        return {
-            text: `❌ No pude conectar con ningún modelo Gemini. Último intento: ${lastErr?.version || '?'}/${lastErr?.model || '?'} → ${detail}\n\nProbá llamar GET /api/brains/me/llm-info para ver qué modelos están disponibles para esta API key.`,
-            toolCalls: [],
-            error: true,
-            triedModels: tried,
-        };
+        // v4.378: si todos fallaron con 404, auto-llamar ListModels para mostrar
+        // qué modelos sí están disponibles. Y si encontramos alguno con
+        // supportedGenerationMethods que incluya generateContent, lo agregamos
+        // a la cascada en caliente y reintentamos UNA vez.
+        const allowedModels = [];
+        let availableInfo = '';
+        try {
+            const avail = await listAvailableGeminiModels();
+            const allMethods = [];
+            for (const v of ['v1beta', 'v1']) {
+                const list = avail[v];
+                if (Array.isArray(list)) {
+                    for (const m of list) {
+                        const supports = (m.supportedGenerationMethods || []).includes('generateContent');
+                        if (supports) {
+                            const shortName = (m.name || '').replace(/^models\//, '');
+                            allowedModels.push({ model: shortName, version: v });
+                            allMethods.push(`  · ${v}/${shortName}`);
+                        }
+                    }
+                }
+            }
+            if (allMethods.length > 0) {
+                availableInfo = `\n\n✅ Modelos disponibles para esta API key (generateContent):\n${allMethods.slice(0, 10).join('\n')}`;
+            } else {
+                availableInfo = '\n\n⚠️ Ningún modelo soporta generateContent con esta API key. Verificá que la key tenga acceso a Gemini chat (no solo embeddings).';
+            }
+        } catch (e) {
+            availableInfo = `\n\n(No se pudo listar modelos: ${e.message})`;
+        }
+
+        // Si encontramos modelos disponibles, intentar UNO de ellos para responder ahora mismo
+        if (allowedModels.length > 0) {
+            for (const c of allowedModels.slice(0, 3)) {
+                if (tried.includes(`${c.version}/${c.model}`)) continue;
+                try {
+                    const url = `${GEMINI_BASE}/${c.version}/models/${c.model}:generateContent?key=${encodeURIComponent(key)}`;
+                    const r = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body),
+                    });
+                    if (r.ok) {
+                        data = await r.json();
+                        _workingCandidate = c;
+                        console.log(`[brainAgent] gemini OK con modelo descubierto ${c.version}/${c.model}`);
+                        break;
+                    }
+                } catch { /* siguiente */ }
+            }
+        }
+
+        // Si después de todo NADA funcionó, devolver error con info de modelos disponibles
+        if (!data) {
+            const detail = lastErr
+                ? `${lastErr.status || ''} ${lastErr.text || lastErr.error || 'unknown'}`.slice(0, 200)
+                : 'unknown';
+            return {
+                text: `❌ No pude conectar con ningún modelo Gemini. Último intento: ${lastErr?.version || '?'}/${lastErr?.model || '?'} → ${detail}${availableInfo}`,
+                toolCalls: [],
+                error: true,
+                triedModels: tried,
+                allowedModels,
+            };
+        }
+        // Si encontró uno via auto-discovery, continúa abajo con el flow normal de procesado
+    }
+
+    // Tira de control de flujo: si data es null acá, sería bug. Por si acaso:
+    if (!data) {
+        return { text: '❌ Error interno: data está null después del flujo de modelos.', toolCalls: [], error: true };
     }
 
     try {

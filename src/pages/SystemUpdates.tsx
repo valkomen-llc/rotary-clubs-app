@@ -24,9 +24,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// GEMINI EXTENDED CASCADE V4.377 | 2026-05-18 (CEREBROS — cascada 11 modelos + endpoint diagnóstico 🔍)
-// Cache bust: 2026-05-18 19:00 (GEMINI EXTENDED CASCADE + LLM-INFO v4.377 🔍)
+// AUTO-DISCOVER MODELS V4.378 | 2026-05-18 (CEREBROS — auto-listar + reintentar con modelos descubiertos 🎯)
+// Cache bust: 2026-05-18 20:00 (AUTO-DISCOVER MODELS v4.378 🎯)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.378',
+        date: '2026-05-18',
+        title: 'CEREBROS — auto-descubrimiento de modelos Gemini disponibles 🎯',
+        description: 'Tras v4.377, todos los 11 modelos hardcoded de la cascada devolvían 404 para la API key del proyecto. Solución: si la cascada inicial falla, callGemini ahora llama automáticamente a ListModels, filtra los que soportan generateContent, y los reintenta UNA vez. Si encuentra uno que funcione → respuesta exitosa. Si no, error con lista visible de modelos disponibles.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Cuando todos los modelos hardcoded fallan, automáticamente llamamos a ListModels en v1beta y v1.',
+            'Filtramos los que tienen `generateContent` en supportedGenerationMethods.',
+            'Probamos los primeros 3 modelos descubiertos como fallback final.',
+            'Si alguno responde OK, se cachea en _workingCandidate para próximas calls.',
+            'Si igual nada funciona, el error muestra la lista de modelos disponibles con `v1beta/foo` y `v1/bar` para que el admin sepa qué pedir a Google.',
+        ]
+    },
     {
         version: 'v4.377',
         date: '2026-05-18',
