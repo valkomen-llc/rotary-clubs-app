@@ -24,9 +24,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// BRAIN AUTO-MIGRATE V4.364 | 2026-05-18 (CEREBROS — auto-migración silenciosa en cold start; el user no hace nada ✨)
-// Cache bust: 2026-05-18 06:00 (BRAIN AUTO-MIGRATE v4.364 ✨)
+// RESOLVE CLUBID FROM DB V4.365 | 2026-05-18 (CEREBROS — resolveUserScope: lookup en DB + inferencia por subdomain 🔍)
+// Cache bust: 2026-05-18 07:00 (RESOLVE CLUBID FROM DB v4.365 🔍)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.365',
+        date: '2026-05-18',
+        title: 'CEREBROS — resolver clubId del user via DB cuando el JWT no lo incluye 🔍',
+        description: 'Después de v4.364 (auto-migración), el endpoint /api/brains/me/initialize creaba el master OK pero NO creaba el brain del sitio en Rotary Nuevo Cali. Causa: req.user.clubId no estaba en el JWT decodificado del user admin@rotarynuevocali.org. Solución: helper resolveUserScope que cae a la DB y al subdomain si el JWT no incluye clubId.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Nuevo helper async resolveUserScope(req) que resuelve { clubId, districtId, role } del user en 3 etapas con cache per-request:',
+            '  1. Si req.user.clubId está en el JWT → usar directo',
+            '  2. Sino, lookup en User table por userId (req.user.userId || req.user.id)',
+            '  3. Sino, inferir del Host header: subdomain → Club.subdomain, o domain → Club.domain',
+            'Cache en req.__resolvedScope para no consultar DB múltiples veces dentro del mismo handler.',
+            'GET /api/brains/me y POST /api/brains/me/initialize ahora usan resolveUserScope en lugar de req.user.clubId directo. El initialize ahora siempre encuentra el club del user si está vinculado a uno.',
+            'Frontend: si /me devuelve scope=master-only sin brain creado, mostramos info de diagnóstico expandible (qué scope se resolvió, qué venía en el JWT) y botón "Reintentar" en vez del simple mensaje "contactá a soporte".',
+            'GET /me response ahora incluye `diagnostic.resolvedScope` y `diagnostic.jwtUser` cuando devuelve master-only — facilita debug si seguimos viendo el caso edge.',
+        ]
+    },
     {
         version: 'v4.364',
         date: '2026-05-18',

@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.364.0",
-  "cache_bust": "2026-05-18 06:00 (BRAIN AUTO-MIGRATE v4.364 ✨)",
+  "version": "4.365.0",
+  "cache_bust": "2026-05-18 07:00 (RESOLVE CLUBID FROM DB v4.365 🔍)",
   "type": "module",
-  "//": "BRAIN AUTO-MIGRATE V4.364 | 2026-05-18 (CEREBROS — auto-migración silenciosa en el primer request cold start; el user no necesita hacer nada manualmente ✨)",
+  "//": "RESOLVE CLUBID FROM DB V4.365 | 2026-05-18 (CEREBROS — si el JWT no incluye clubId, lookup en User table + fallback a inferencia por subdomain 🔍)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
