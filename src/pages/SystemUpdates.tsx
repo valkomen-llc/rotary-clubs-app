@@ -24,9 +24,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// FULL DIAGNOSTIC V4.366 | 2026-05-18 (CEREBROS — diagnostic.steps detallado + frontend muestra dump completo del response 🔬)
-// Cache bust: 2026-05-18 08:00 (FULL DIAGNOSTIC v4.366 🔬)
+// INITIALIZE RETURNS FULL BRAIN V4.367 | 2026-05-18 (CEREBROS — initialize devuelve brain completo; no más read-after-write 🪐)
+// Cache bust: 2026-05-18 09:00 (INITIALIZE RETURNS FULL BRAIN v4.367 🪐)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.367',
+        date: '2026-05-18',
+        title: 'CEREBROS — fix read-after-write en initialize 🪐',
+        description: 'El POST /me/initialize creaba el brain exitosamente (toast verde "Cerebro creado en 14ms"), pero el GET /me posterior devolvía brain:null por read-after-write inconsistency de Prisma/Postgres. Fix: el initialize ahora devuelve el shape COMPLETO del /me incluyendo el detail del brain con club/_count/relations en la misma conexión Prisma, y el frontend lo usa directamente sin re-fetch.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'POST /api/brains/me/initialize: tras crear el brain via getOrCreateBrainForClub, hace findUnique con full include (club, district, _count) en la MISMA conexión Prisma para garantizar consistencia.',
+            'Response del initialize ahora tiene shape idéntico al de /me (scope, brain con detail, master, onboarding, diagnostic). El frontend lo usa como autoritative sin necesidad de fetchMe.',
+            'SiteBrainPanel.initializeBrain: cambia setData(j) en vez de fetchMe(). Cero round-trip extra. Cero exposición a read-after-write inconsistency.',
+            'fetchExtras() se sigue llamando en background después del initialize para traer memorias/documentos.',
+            'El read-after-write era el bug real detrás del problema de Rotary Nuevo Cali: el brain SE estaba creando (POST 14ms), pero el subsequent GET /me hacía findUnique en otra conexión que aún no veía el commit.',
+        ]
+    },
     {
         version: 'v4.366',
         date: '2026-05-18',

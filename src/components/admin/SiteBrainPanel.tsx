@@ -151,13 +151,17 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, i
             const j = await r.json().catch(() => ({}));
             if (r.ok && j.brain?.id) {
                 toast.success(`Cerebro creado en ${j.elapsedMs}ms`);
-                await fetchMe();
+                // v4.367: usamos la respuesta del initialize DIRECTAMENTE sin
+                // fetchMe — evita read-after-write inconsistency en Prisma.
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                setData(j as any);
+                // Cargar los extras (memorias, docs, relaciones) en background
+                fetchExtras();
             } else if (r.ok && j.ok === false && j.diagnostic) {
-                // El endpoint respondió 200 pero no creó el brain — diagnóstico disponible
                 console.warn('[initializeBrain] no brain created:', j.diagnostic);
                 toast.warning('No se pudo crear el cerebro — revisá el diagnóstico abajo');
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                setData(j as any); // mostramos el response del initialize en lugar del de /me
+                setData(j as any);
             } else {
                 toast.error(j.detail || j.error || `HTTP ${r.status}: no se pudo inicializar`);
             }
@@ -166,7 +170,7 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, i
         } finally {
             setInitializing(false);
         }
-    }, [headers, fetchMe]);
+    }, [headers, fetchExtras]);
 
     const fetchExtras = useCallback(async () => {
         setLoadingExtras(true);
