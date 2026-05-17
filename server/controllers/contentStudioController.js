@@ -3,6 +3,7 @@ import sharp from 'sharp';
 import { s3 } from '../lib/storage.js';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { createKieImageTask, pollKieImageTask, fetchKieImageBuffer } from '../services/kieService.js';
+import { generateCopy, COPY_PROVIDERS, DEFAULT_COPY_PROVIDER, isProviderAvailable } from '../services/copywritingService.js';
 
 // Multi-engine registry. Each entry maps the public engine id (used by the UI) to its
 // implementation metadata. Phase 1 (v4.326): KIE.AI via Nano Banana + OpenAI gpt-image-1.
@@ -258,29 +259,19 @@ export const generatePost = async (req, res) => {
             visual_prompt: ''
         };
         let copyError = null;
+        let copyProvider = null;
+        let copyModel = null;
         try {
-            const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-                },
-                body: JSON.stringify({
-                    model: 'gpt-4o',
-                    response_format: { type: 'json_object' },
-                    temperature: 0.6,
-                    max_tokens: 1400,
-                    messages: [
-                        {
-                            role: 'system',
-                            content: 'Eres director creativo de Rotary International. Escribes copies institucionales en español rioplatense/neutro, con voz humana, sin clichés, sin exclamaciones excesivas. Devuelves SIEMPRE JSON válido.'
-                        },
-                        {
-                            role: 'user',
-                            content: [
-                                {
-                                    type: 'text',
-                                    text: `Imagen para el club: "${clubName}".
+            // Resolve the copy provider: caller-supplied (config.copyEngine) or
+            // platform default. The service handles fallback if the requested
+            // one fails or has no env key configured.
+            const requestedCopyEngine = config.copyEngine && COPY_PROVIDERS[config.copyEngine]
+                ? config.copyEngine
+                : DEFAULT_COPY_PROVIDER;
+
+            const systemPrompt = 'Eres director creativo de Rotary International. Escribes copies institucionales en español rioplatense/neutro, con voz humana, sin clichés, sin exclamaciones excesivas. Devuelves SIEMPRE JSON válido.';
+
+            const userPrompt = `Imagen para el club: "${clubName}".
 Tipo de publicación: ${config.type || 'standard'} — tono ${typeMeta.tone}, foco ${typeMeta.focus}.
 Área de enfoque Rotary: ${areaMeta}.
 
@@ -306,28 +297,26 @@ visual_prompt (en INGLÉS, 2-4 frases muy específicas): describe SOLAMENTE el e
   - Iluminación (dirección, calidez, intensidad: ej "soft morning sunlight from the upper right, slightly hazy, low-contrast")
   - Atmósfera general (humedad, polvo, niebla si aplica)
   - Distant background elements (vegetación, agua, paredes, ventanas)
-NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elementos institucionales. Esta descripción genera un escenario que debe MATCHEAR la atmósfera real de la foto para que el composite no se note. Ejemplo bueno: "Tropical beach in the early morning, wet darker tan sand with footprints and small debris, calm ocean horizon with low warm haze, pale grey-blue sky with thin streaky clouds, soft directional sunlight from the upper-left low in the sky, light coastal humidity in the air". Ejemplo malo: "Six people in blue Rotary shirts smiling at the camera".`
-                                },
-                                { type: 'image_url', image_url: { url: imageUrl } }
-                            ]
-                        }
-                    ]
-                })
+NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elementos institucionales.`;
+
+            const result = await generateCopy({
+                provider: requestedCopyEngine,
+                system: systemPrompt,
+                userText: userPrompt,
+                imageUrl,
+                temperature: typeof config.temperature === 'number' ? config.temperature : 0.6,
+                maxTokens: 1400,
+                jsonMode: true,
+                fallbackChain: [requestedCopyEngine, DEFAULT_COPY_PROVIDER]
             });
-            const gptData = await gptResponse.json();
-            if (!gptResponse.ok) {
-                const reason = gptData?.error?.message || `HTTP ${gptResponse.status}`;
-                throw new Error(`GPT-4o copy falló: ${reason}`);
-            }
-            const raw = gptData?.choices?.[0]?.message?.content;
-            if (!raw) {
-                throw new Error(`GPT-4o devolvió sin contenido (finish_reason: ${gptData?.choices?.[0]?.finish_reason || 'unknown'})`);
-            }
-            const parsedRaw = JSON.parse(raw);
+            copyProvider = result.provider;
+            copyModel = result.model;
+            const parsedRaw = JSON.parse(result.content);
             parsed = { ...parsed, ...parsedRaw };
+            console.log(`[STUDIO] Copy generado por ${result.provider} (${result.model})`);
         } catch (e) {
             copyError = e.message;
-            console.error('[STUDIO] GPT-4o copy/analysis failed:', e.message);
+            console.error('[STUDIO] Copy generation failed:', e.message);
             // Continue with empty copy rather than failing the whole pipeline.
         }
 
@@ -427,6 +416,8 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
                 formats: Object.keys(generatedImages),
                 dimensions: primary ? `${primary.dimensions}` : null,
                 limits: PLATFORM_LIMITS,
+                copyProvider,
+                copyModel,
                 ...(imageError ? { imageError } : {}),
                 ...(copyError ? { copyError } : {})
             }

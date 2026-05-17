@@ -1,9 +1,9 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { 
-    createVideoProject, 
-    getVideoProjects, 
-    connectSocialAccount, 
+import {
+    createVideoProject,
+    getVideoProjects,
+    connectSocialAccount,
     getSocialAccounts,
     schedulePost,
     getScheduledPosts,
@@ -14,6 +14,7 @@ import {
     generatePost,
     downloadProxy
 } from '../controllers/contentStudioController.js';
+import { COPY_PROVIDERS, DEFAULT_COPY_PROVIDER, isProviderAvailable } from '../services/copywritingService.js';
 
 const router = express.Router();
 
@@ -29,6 +30,20 @@ router.post('/webhook', handleKieWebhook);
 
 // Content Generation
 router.post('/generate-post', authMiddleware, generatePost);
+
+// GET /api/content-studio/copy-providers — lista de motores de copy disponibles
+// para el selector del frontend. Devuelve solo los configurados con API key.
+router.get('/copy-providers', authMiddleware, (req, res) => {
+    const providers = Object.values(COPY_PROVIDERS).map(p => ({
+        id: p.id,
+        label: p.label,
+        defaultModel: p.defaultModel,
+        vision: p.vision,
+        available: isProviderAvailable(p.id),
+        isDefault: p.id === DEFAULT_COPY_PROVIDER
+    }));
+    res.json({ providers, default: DEFAULT_COPY_PROVIDER });
+});
 
 // Projects
 router.post('/projects', authMiddleware, createVideoProject);

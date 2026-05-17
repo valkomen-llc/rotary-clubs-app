@@ -32,7 +32,17 @@ type EngineId = 'kie' | 'flux_kontext' | 'nano_banana' | 'higgsfield' | 'openai'
 interface AIConfig {
     interestArea: string;
     type: string;
-    engine: EngineId;
+    engine: EngineId;          // motor de IMAGEN (KIE.AI / OpenAI gpt-image-1 / ...)
+    copyEngine: string;        // motor de COPY (openai / anthropic / gemini)
+}
+
+interface CopyProviderInfo {
+    id: string;
+    label: string;
+    defaultModel: string;
+    vision: boolean;
+    available: boolean;
+    isDefault: boolean;
 }
 
 interface EngineMeta {
@@ -70,6 +80,8 @@ interface GenerationMetadata {
     limits?: Record<Platform, number>;
     imageError?: string;
     copyError?: string;
+    copyProvider?: string;
+    copyModel?: string;
 }
 
 interface ConnectedAccount {
@@ -114,8 +126,10 @@ const PostGenerator: React.FC = () => {
     const [aiConfig, setAiConfig] = useState<AIConfig>({
         interestArea: 'general',
         type: 'standard',
-        engine: 'kie'
+        engine: 'kie',
+        copyEngine: 'openai'
     });
+    const [copyProviders, setCopyProviders] = useState<CopyProviderInfo[]>([]);
     const [activePlatform, setActivePlatform] = useState<Platform>('facebook');
     const [generatedContent, setGeneratedContent] = useState<GeneratedData | null>(null);
     // Map of format → url. The legacy `generatedImageUrl` is derived from this map
@@ -306,6 +320,32 @@ const PostGenerator: React.FC = () => {
         }
     }, [generatedImages, fetchConnectedAccounts]);
 
+    // Cargar la lista de motores de copy disponibles (definida por la config
+    // del servidor + env vars). Default = primero "available" o el reportado.
+    useEffect(() => {
+        (async () => {
+            try {
+                const token = localStorage.getItem('rotary_token');
+                const API = import.meta.env.VITE_API_URL || '/api';
+                const resp = await fetch(`${API}/content-studio/copy-providers`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!resp.ok) return;
+                const data = await resp.json();
+                const providers: CopyProviderInfo[] = data.providers || [];
+                setCopyProviders(providers);
+                const firstAvailable = providers.find(p => p.available);
+                if (firstAvailable) {
+                    setAiConfig(prev => ({
+                        ...prev,
+                        copyEngine: providers.find(p => p.id === prev.copyEngine && p.available)?.id
+                            || firstAvailable.id
+                    }));
+                }
+            } catch { /* silent */ }
+        })();
+    }, []);
+
     const toggleAccount = (id: string) => {
         setSelectedAccountIds(prev => {
             const next = new Set(prev);
@@ -463,7 +503,7 @@ const PostGenerator: React.FC = () => {
                         </div>
 
                         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4 block">Motor IA</label>
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4 block">Motor IA · Imagen</label>
                             <div className="space-y-2">
                                 {ENGINES.map((engine) => {
                                     const selected = aiConfig.engine === engine.id;
@@ -500,6 +540,52 @@ const PostGenerator: React.FC = () => {
                                 })}
                             </div>
                         </div>
+
+                        {copyProviders.length > 0 && (
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4 block">Motor IA · Copy</label>
+                                <div className="space-y-2">
+                                    {copyProviders.map((p) => {
+                                        const selected = aiConfig.copyEngine === p.id;
+                                        const disabled = !p.available;
+                                        return (
+                                            <button
+                                                key={p.id}
+                                                type="button"
+                                                disabled={disabled}
+                                                onClick={() => !disabled && setAiConfig({ ...aiConfig, copyEngine: p.id })}
+                                                className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
+                                                    selected
+                                                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-200'
+                                                        : disabled
+                                                            ? 'bg-gray-50 border-gray-100 text-gray-300 cursor-not-allowed'
+                                                            : 'bg-white border-gray-100 text-gray-600 hover:border-indigo-300 hover:bg-indigo-50/30'
+                                                }`}
+                                            >
+                                                <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
+                                                    selected ? 'border-white' : disabled ? 'border-gray-200' : 'border-gray-300'
+                                                }`}>
+                                                    {selected && <div className="w-2 h-2 rounded-full bg-white" />}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className={`text-xs font-black tracking-wide ${selected ? 'text-white' : disabled ? 'text-gray-300' : 'text-gray-800'}`}>
+                                                        {p.label.toUpperCase()}
+                                                    </div>
+                                                    <div className={`text-[10px] font-bold mt-0.5 ${selected ? 'text-indigo-100' : disabled ? 'text-gray-300' : 'text-gray-400'}`}>
+                                                        {disabled ? 'API key no configurada en Vercel' : `${p.defaultModel}${p.vision ? ' · visión multimodal' : ''}`}
+                                                    </div>
+                                                </div>
+                                                {p.isDefault && (
+                                                    <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-md ${selected ? 'bg-white/20' : 'bg-gray-100 text-gray-500'}`}>
+                                                        Default
+                                                    </span>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <button
