@@ -400,16 +400,21 @@ export const disconnectAccount = async (req, res) => {
 //       instagram: { copy, hashtags, cta },
 //       ...
 //     },
+//     publicationId?: string,        // If present, update that draft instead of creating new
+//     scheduledFor?: ISO date string,// If present, save as scheduled (no immediate publish)
+//     timezone?: string,             // IANA tz (audit/UI)
 //     sourceImageId?: string,        // Media-library id if reused (lineage)
 //     generatedBy?: string,          // e.g. "ai-kie", "ai-openai", "manual"
 //   }
 //
 // Authorisation: caller must own (or be admin of) every account id passed.
-// Returns the SocialPublication record with per-account outcomes.
+// Behaviour: if scheduledFor is provided, the publication is saved with
+// status='scheduled' and will be picked up by the cron worker
+// (cron.js → publishScheduledPublications). Otherwise published immediately.
 // ============================================================================
 export const publishPost = async (req, res) => {
     try {
-        const { accountIds, imageUrl, copies = {}, sourceImageId, generatedBy } = req.body || {};
+        const { accountIds, imageUrl, copies = {}, publicationId, scheduledFor, timezone, sourceImageId, generatedBy } = req.body || {};
         if (!Array.isArray(accountIds) || accountIds.length === 0) {
             return res.status(400).json({ error: 'accountIds requerido (al menos uno)' });
         }
@@ -433,6 +438,52 @@ export const publishPost = async (req, res) => {
         }
         const clubId = clubIds[0];
 
+        // ─── Schedule branch: save and return, no immediate publish ──────────
+        if (scheduledFor) {
+            const scheduledAt = new Date(scheduledFor);
+            if (Number.isNaN(scheduledAt.getTime())) {
+                return res.status(400).json({ error: 'scheduledFor inválido (ISO date string esperado)' });
+            }
+            if (scheduledAt.getTime() <= Date.now() + 60_000) {
+                return res.status(400).json({ error: 'La fecha programada debe estar al menos a 1 minuto del presente' });
+            }
+            const pendingOutcomes = accounts.map(a => ({
+                accountId: a.id,
+                platform: a.platform,
+                accountName: a.accountName,
+                ok: false,
+                externalId: null,
+                error: null,
+                publishedAt: null,
+                pending: true
+            }));
+            const upsertData = {
+                clubId,
+                userId: req.user.id || null,
+                imageUrl,
+                platformCopies: copies,
+                targetAccounts: pendingOutcomes,
+                status: 'scheduled',
+                scheduledFor: scheduledAt,
+                timezone: timezone || null,
+                sourceImageId: sourceImageId || null,
+                generatedBy: generatedBy || null,
+                accounts: { set: accounts.map(a => ({ id: a.id })) }
+            };
+            const pub = publicationId
+                ? await prisma.socialPublication.update({ where: { id: publicationId }, data: upsertData })
+                : await prisma.socialPublication.create({ data: upsertData });
+            return res.json({
+                ok: true,
+                status: 'scheduled',
+                publicationId: pub.id,
+                scheduledFor: pub.scheduledFor,
+                timezone: pub.timezone,
+                outcomes: pendingOutcomes
+            });
+        }
+
+        // ─── Immediate publish branch ────────────────────────────────────────
         // Run all account publishes in parallel. Each returns { ok, externalId?, error? }.
         const outcomes = await Promise.all(accounts.map(async (acc) => {
             if (acc.tokenVersion === 0) {
@@ -464,21 +515,23 @@ export const publishPost = async (req, res) => {
         const allOk = outcomes.every(o => o.ok);
         const status = allOk ? 'published' : someOk ? 'partial' : 'error';
 
-        // Persist the publication record for history / audit / future re-publish.
-        const publication = await prisma.socialPublication.create({
-            data: {
-                clubId,
-                userId: req.user.id || null,
-                imageUrl,
-                platformCopies: copies,
-                targetAccounts: outcomes,
-                status,
-                publishedAt: someOk ? new Date() : null,
-                sourceImageId: sourceImageId || null,
-                generatedBy: generatedBy || null,
-                accounts: { connect: accounts.map(a => ({ id: a.id })) }
-            }
-        });
+        // Persist the publication record (update the draft if we got publicationId,
+        // create new otherwise).
+        const persistData = {
+            clubId,
+            userId: req.user.id || null,
+            imageUrl,
+            platformCopies: copies,
+            targetAccounts: outcomes,
+            status,
+            publishedAt: someOk ? new Date() : null,
+            sourceImageId: sourceImageId || null,
+            generatedBy: generatedBy || null,
+            accounts: { set: accounts.map(a => ({ id: a.id })) }
+        };
+        const publication = publicationId
+            ? await prisma.socialPublication.update({ where: { id: publicationId }, data: persistData })
+            : await prisma.socialPublication.create({ data: persistData });
 
         // Update each account's lastVerifiedAt opportunistically — a successful
         // publish proves the token works right now.
@@ -500,4 +553,145 @@ export const publishPost = async (req, res) => {
         console.error('[social] publishPost error:', e);
         return res.status(500).json({ error: e.message });
     }
+};
+
+// ============================================================================
+// GET /api/social/publications
+//
+// Lista las SocialPublications visibles para el caller. Filtros via query:
+//   ?status=draft|scheduled|published|partial|error  (puede ser CSV)
+//   ?clubId=<id>  (admin only)
+//   ?search=<keyword>  (filtra por caption / hashtag)
+//   ?limit=50  (default 50, max 200)
+//
+// Devuelve más reciente primero. Power para el tab "Biblioteca de
+// Publicaciones" del Content Studio.
+// ============================================================================
+export const listPublications = async (req, res) => {
+    try {
+        const isAdmin = req.user.role === 'administrator';
+        const where = {};
+        if (isAdmin && req.query.clubId) {
+            where.clubId = req.query.clubId;
+        } else if (!isAdmin) {
+            if (!req.user.clubId) return res.json([]);
+            where.clubId = req.user.clubId;
+        }
+        if (req.query.status) {
+            const statuses = String(req.query.status).split(',').map(s => s.trim()).filter(Boolean);
+            if (statuses.length) where.status = { in: statuses };
+        }
+        const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
+
+        const publications = await prisma.socialPublication.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            take: limit,
+            include: {
+                club: { select: { id: true, name: true } },
+                accounts: { select: { id: true, platform: true, accountName: true, avatar: true } }
+            }
+        });
+
+        // Defensive: filter by search on the server (cheap; we already capped at 200)
+        let result = publications;
+        if (req.query.search) {
+            const q = String(req.query.search).toLowerCase().trim();
+            result = result.filter(p => {
+                const blob = JSON.stringify(p.platformCopies || {}).toLowerCase();
+                return blob.includes(q) || (p.caption || '').toLowerCase().includes(q);
+            });
+        }
+
+        res.json(result.map(p => ({
+            id: p.id,
+            clubId: p.clubId,
+            club: p.club,
+            imageUrl: p.imageUrl,
+            imageUrlLandscape: p.imageUrlLandscape,
+            platformCopies: p.platformCopies,
+            targetAccounts: p.targetAccounts,
+            accounts: p.accounts,
+            status: p.status,
+            scheduledFor: p.scheduledFor,
+            publishedAt: p.publishedAt,
+            timezone: p.timezone,
+            aiModelImage: p.aiModelImage,
+            aiModelCopy: p.aiModelCopy,
+            generatedBy: p.generatedBy,
+            createdAt: p.createdAt,
+            updatedAt: p.updatedAt
+        })));
+    } catch (e) {
+        console.error('[social] listPublications error:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// ============================================================================
+// Internal: run any SocialPublication whose scheduledFor is now-or-past.
+// Called by the cron worker (server/routes/cron.js → /publish-scheduled).
+// Returns a summary suitable for the cron response body.
+// ============================================================================
+export const runScheduledPublicationsDue = async ({ now = new Date() } = {}) => {
+    // Pick up scheduled ones whose time has come.
+    const due = await prisma.socialPublication.findMany({
+        where: { status: 'scheduled', scheduledFor: { lte: now } },
+        take: 20,  // batch cap per cron run to stay inside function timeouts
+        include: { accounts: true }
+    });
+    if (due.length === 0) return { processed: 0, results: [] };
+
+    const results = [];
+    for (const pub of due) {
+        // Lock the row optimistically so a second concurrent cron tick can't
+        // double-publish. updateMany with the current status as guard.
+        const locked = await prisma.socialPublication.updateMany({
+            where: { id: pub.id, status: 'scheduled' },
+            data: { status: 'publishing' }
+        });
+        if (locked.count !== 1) {
+            results.push({ id: pub.id, skipped: 'already-locked' });
+            continue;
+        }
+
+        const accounts = pub.accounts || [];
+        const outcomes = await Promise.all(accounts.map(async (acc) => {
+            if (acc.tokenVersion === 0) {
+                return { accountId: acc.id, platform: acc.platform, ok: false, error: 'Token legacy' };
+            }
+            if (acc.status !== 'active') {
+                return { accountId: acc.id, platform: acc.platform, ok: false, error: `Cuenta en estado '${acc.status}'` };
+            }
+            try {
+                const token = decryptToken(acc.accessToken);
+                const r = await publishToAccount({ account: acc, decryptedToken: token, imageUrl: pub.imageUrl, copies: pub.platformCopies || {} });
+                return {
+                    accountId: acc.id,
+                    platform: acc.platform,
+                    accountName: acc.accountName,
+                    ok: r.ok,
+                    externalId: r.externalId || null,
+                    externalUrl: r.externalUrl || null,
+                    error: r.error || null,
+                    publishedAt: r.ok ? new Date().toISOString() : null
+                };
+            } catch (e) {
+                return { accountId: acc.id, platform: acc.platform, ok: false, error: e.message };
+            }
+        }));
+
+        const someOk = outcomes.some(o => o.ok);
+        const status = outcomes.every(o => o.ok) ? 'published' : someOk ? 'partial' : 'error';
+        await prisma.socialPublication.update({
+            where: { id: pub.id },
+            data: {
+                status,
+                publishedAt: someOk ? new Date() : null,
+                targetAccounts: outcomes
+            }
+        });
+        results.push({ id: pub.id, status, outcomes });
+    }
+    return { processed: due.length, results };
 };

@@ -16,7 +16,8 @@ import {
     listAccounts,
     verifyAccount,
     disconnectAccount,
-    publishPost
+    publishPost,
+    listPublications
 } from '../controllers/socialPublishingController.js';
 
 const router = express.Router();
@@ -30,7 +31,9 @@ router.get('/accounts', authMiddleware, listAccounts);
 router.post('/accounts/:id/verify', authMiddleware, verifyAccount);
 router.delete('/accounts/:id', authMiddleware, disconnectAccount);
 
-// Phase 2: publish a post to one or more connected accounts.
+// Phase 2+3: publish (immediate o scheduled) y listado para la Biblioteca
+// histórica del Content Studio.
 router.post('/publish', authMiddleware, publishPost);
+router.get('/publications', authMiddleware, listPublications);
 
 export default router;

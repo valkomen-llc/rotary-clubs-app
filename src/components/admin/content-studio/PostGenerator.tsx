@@ -20,7 +20,9 @@ import {
     Loader2,
     CheckCircle2,
     XCircle,
-    ExternalLink
+    ExternalLink,
+    Calendar as CalendarIcon,
+    Clock
 } from 'lucide-react';
 import MediaPicker from './MediaPicker';
 import { toast } from 'sonner';
@@ -153,6 +155,18 @@ const PostGenerator: React.FC = () => {
     const [selectedAccountIds, setSelectedAccountIds] = useState<Set<string>>(new Set());
     const [isPublishing, setIsPublishing] = useState(false);
     const [publishOutcomes, setPublishOutcomes] = useState<PublishOutcome[] | null>(null);
+    // v4.345: scheduling
+    const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+    const [scheduleDate, setScheduleDate] = useState('');
+    const [scheduleTime, setScheduleTime] = useState('');
+    const [scheduleTimezone, setScheduleTimezone] = useState(
+        Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Bogota'
+    );
+    const [isScheduling, setIsScheduling] = useState(false);
+    // v4.345: id de la publicación auto-guardada por el backend al generar.
+    // Usado para que publish/schedule actualicen ese mismo row en vez de
+    // crear duplicados en la Biblioteca.
+    const [publicationId, setPublicationId] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const runGeneration = async () => {
@@ -200,6 +214,7 @@ const PostGenerator: React.FC = () => {
                 }
                 setGeneratedImages(imgMap);
                 setMetadata(data.metadata || null);
+                setPublicationId(data.publicationId || data.metadata?.publicationId || null);
                 const imgErr = data.metadata?.imageError;
                 const copyErr = data.metadata?.copyError;
                 if (imgErr && copyErr) {
@@ -355,6 +370,88 @@ const PostGenerator: React.FC = () => {
         });
     };
 
+    // v4.345 — agenda la publicación para una fecha futura. El backend la
+    // guarda con status='scheduled' y un cron worker (Vercel Cron cada 5min)
+    // la levanta cuando llega la hora.
+    const schedulePublication = async () => {
+        const publishImageUrl = generatedImages.portrait || generatedImages.landscape || null;
+        if (!publishImageUrl || !generatedContent) {
+            toast.error('Generá la publicación antes de programar');
+            return;
+        }
+        if (selectedAccountIds.size === 0) {
+            toast.error('Seleccioná al menos una cuenta');
+            return;
+        }
+        if (!scheduleDate || !scheduleTime) {
+            toast.error('Completá fecha y hora');
+            return;
+        }
+        // Combinamos fecha + hora + tz en un ISO UTC. Usamos la lib nativa con
+        // un truquito: construyo un Date local y le explicito el offset si la
+        // tz elegida es distinta a la del navegador, sino confío en local.
+        const localIso = `${scheduleDate}T${scheduleTime}:00`;
+        let scheduledIso: string;
+        try {
+            // toLocaleString en la tz target da la representación de ese mismo
+            // wall-clock time en otra zona — no es lo que queremos. Mejor:
+            // interpretamos el localIso como "wall clock en scheduleTimezone"
+            // y derivamos el instante UTC correspondiente.
+            // Truco: Date.UTC + offset calculado vía Intl.
+            const guess = new Date(localIso);
+            const utcGuess = new Date(guess.toLocaleString('en-US', { timeZone: 'UTC' }));
+            const tzGuess = new Date(guess.toLocaleString('en-US', { timeZone: scheduleTimezone }));
+            const offsetMs = utcGuess.getTime() - tzGuess.getTime();
+            scheduledIso = new Date(guess.getTime() + offsetMs).toISOString();
+        } catch {
+            scheduledIso = new Date(localIso).toISOString();
+        }
+        const scheduledAt = new Date(scheduledIso);
+        if (scheduledAt.getTime() <= Date.now() + 60_000) {
+            toast.error('La fecha programada debe ser al menos 1 minuto en el futuro');
+            return;
+        }
+
+        setIsScheduling(true);
+        const toastId = toast.loading(
+            `Programando para ${scheduledAt.toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}…`
+        );
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const API = import.meta.env.VITE_API_URL || '/api';
+            const resp = await fetch(`${API}/social/publish`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    accountIds: Array.from(selectedAccountIds),
+                    imageUrl: publishImageUrl,
+                    copies: generatedContent,
+                    scheduledFor: scheduledIso,
+                    timezone: scheduleTimezone,
+                    publicationId,
+                    generatedBy: metadata?.engine ? `ai-${metadata.engine.split('+')[0]}` : 'ai'
+                })
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                toast.error(data.error || 'Error al programar', { id: toastId, duration: 12000 });
+                return;
+            }
+            toast.success(
+                `Publicación programada para ${scheduledAt.toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })} ✓`,
+                { id: toastId, duration: 6000 }
+            );
+            setIsScheduleModalOpen(false);
+        } catch (e: any) {
+            toast.error(`Error de red: ${e.message || 'desconocido'}`, { id: toastId });
+        } finally {
+            setIsScheduling(false);
+        }
+    };
+
     const publishNow = async () => {
         // Phase 2 currently supports FB Pages + IG Business — both want the
         // portrait 4:5 image, not the landscape one. We prefer portrait, fall
@@ -383,6 +480,7 @@ const PostGenerator: React.FC = () => {
                     accountIds: Array.from(selectedAccountIds),
                     imageUrl: publishImageUrl,
                     copies: generatedContent,
+                    publicationId,
                     generatedBy: metadata?.engine ? `ai-${metadata.engine.split('+')[0]}` : 'ai'
                 })
             });
@@ -834,15 +932,26 @@ const PostGenerator: React.FC = () => {
                                             </div>
                                         )}
 
-                                        <button
-                                            onClick={publishNow}
-                                            disabled={isPublishing || selectedAccountIds.size === 0 || !generatedImageUrl}
-                                            className="w-full bg-blue-600 text-white py-5 rounded-3xl font-black text-sm shadow-xl hover:bg-blue-700 flex items-center justify-center gap-3 transition-all transform hover:-translate-y-1 disabled:opacity-50 disabled:hover:translate-y-0 disabled:cursor-not-allowed"
-                                        >
-                                            {isPublishing
-                                                ? <><Loader2 className="w-5 h-5 animate-spin" /> PUBLICANDO…</>
-                                                : <><Send className="w-5 h-5" /> PUBLICAR AHORA</>}
-                                        </button>
+                                        <div className="flex gap-3">
+                                            <button
+                                                onClick={() => setIsScheduleModalOpen(true)}
+                                                disabled={isPublishing || isScheduling || selectedAccountIds.size === 0 || !generatedImageUrl}
+                                                className="flex-1 bg-white border-2 border-blue-600 text-blue-600 py-5 rounded-3xl font-black text-sm shadow-md hover:bg-blue-50 flex items-center justify-center gap-2 transition-all transform hover:-translate-y-1 disabled:opacity-50 disabled:hover:translate-y-0 disabled:cursor-not-allowed"
+                                                title="Programar publicación para una fecha futura"
+                                            >
+                                                <CalendarIcon className="w-4 h-4" />
+                                                PROGRAMAR
+                                            </button>
+                                            <button
+                                                onClick={publishNow}
+                                                disabled={isPublishing || isScheduling || selectedAccountIds.size === 0 || !generatedImageUrl}
+                                                className="flex-[2] bg-blue-600 text-white py-5 rounded-3xl font-black text-sm shadow-xl hover:bg-blue-700 flex items-center justify-center gap-3 transition-all transform hover:-translate-y-1 disabled:opacity-50 disabled:hover:translate-y-0 disabled:cursor-not-allowed"
+                                            >
+                                                {isPublishing
+                                                    ? <><Loader2 className="w-5 h-5 animate-spin" /> PUBLICANDO…</>
+                                                    : <><Send className="w-5 h-5" /> PUBLICAR AHORA</>}
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -850,6 +959,100 @@ const PostGenerator: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Schedule modal — v4.345 */}
+            {isScheduleModalOpen && (
+                <div
+                    className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-in fade-in duration-200"
+                    onClick={(e) => { if (e.target === e.currentTarget) setIsScheduleModalOpen(false); }}
+                >
+                    <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-6 border-b border-gray-100 bg-gradient-to-br from-indigo-50 to-blue-50">
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+                                    <CalendarIcon className="w-5 h-5 text-white" />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black text-gray-900">Programar Publicación</h3>
+                                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                                        {selectedAccountIds.size} cuenta{selectedAccountIds.size !== 1 ? 's' : ''} seleccionada{selectedAccountIds.size !== 1 ? 's' : ''}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1 block flex items-center gap-1">
+                                        <CalendarIcon className="w-3 h-3" /> Fecha
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={scheduleDate}
+                                        onChange={(e) => setScheduleDate(e.target.value)}
+                                        min={new Date().toISOString().slice(0, 10)}
+                                        className="w-full px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm font-bold outline-none focus:border-blue-500 transition-all"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1 block flex items-center gap-1">
+                                        <Clock className="w-3 h-3" /> Hora
+                                    </label>
+                                    <input
+                                        type="time"
+                                        value={scheduleTime}
+                                        onChange={(e) => setScheduleTime(e.target.value)}
+                                        className="w-full px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm font-bold outline-none focus:border-blue-500 transition-all"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1 block">Zona horaria</label>
+                                <select
+                                    value={scheduleTimezone}
+                                    onChange={(e) => setScheduleTimezone(e.target.value)}
+                                    className="w-full px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm font-bold outline-none focus:border-blue-500 transition-all"
+                                >
+                                    <option value="America/Bogota">America/Bogotá (UTC-5)</option>
+                                    <option value="America/Lima">America/Lima (UTC-5)</option>
+                                    <option value="America/Mexico_City">America/Ciudad de México (UTC-6)</option>
+                                    <option value="America/Buenos_Aires">America/Buenos Aires (UTC-3)</option>
+                                    <option value="America/Santiago">America/Santiago (UTC-3)</option>
+                                    <option value="America/Caracas">America/Caracas (UTC-4)</option>
+                                    <option value="America/Guatemala">America/Guatemala (UTC-6)</option>
+                                    <option value="America/Panama">America/Panamá (UTC-5)</option>
+                                    <option value="America/Costa_Rica">America/Costa Rica (UTC-6)</option>
+                                    <option value="Europe/Madrid">Europe/Madrid (UTC+1)</option>
+                                    <option value="UTC">UTC</option>
+                                </select>
+                            </div>
+                            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-[11px] text-blue-900 font-medium">
+                                Se publicará automáticamente en la fecha y hora seleccionadas. El sistema chequea cada 5 minutos y dispara la publicación cuando llega el momento.
+                            </div>
+                        </div>
+
+                        <div className="p-5 border-t border-gray-100 flex justify-end items-center gap-3 bg-gray-50/50">
+                            <button
+                                onClick={() => setIsScheduleModalOpen(false)}
+                                disabled={isScheduling}
+                                className="px-5 py-2.5 rounded-xl text-sm font-bold text-gray-500 hover:bg-gray-200 transition-all disabled:opacity-50"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={schedulePublication}
+                                disabled={isScheduling || !scheduleDate || !scheduleTime}
+                                className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-black disabled:opacity-50 shadow-xl shadow-blue-600/20 hover:scale-105 transition-all flex items-center gap-2"
+                            >
+                                {isScheduling
+                                    ? <><Loader2 className="w-4 h-4 animate-spin" /> PROGRAMANDO…</>
+                                    : <><CalendarIcon className="w-4 h-4" /> CONFIRMAR PROGRAMACIÓN</>}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <MediaPicker
                 isOpen={isMediaPickerOpen}

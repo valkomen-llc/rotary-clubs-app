@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.344.0",
-  "cache_bust": "2026-05-16 22:30 (COPY GEMINI MAX_TOKENS FIX v4.344 ✂️)",
+  "version": "4.345.0",
+  "cache_bust": "2026-05-16 23:00 (PUBLISH AUTOSAVE + SCHEDULING v4.345 📅)",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.344 | 2026-05-16 (COPY — fix Gemini truncado por MAX_TOKENS: bump output cap a 4000 + strip markdown defensivo + mejor error de JSON.parse ✂️)",
+  "//": "DISTRICT HEALTH IQ V4.345 | 2026-05-16 (POSTGEN — autosave de cada generación en SocialPublication + scheduling con Vercel Cron worker 📅)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

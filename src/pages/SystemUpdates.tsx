@@ -24,9 +24,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.344 | 2026-05-16 (COPY — fix Gemini truncado por MAX_TOKENS: bump output cap a 4000 + strip markdown defensivo + mejor error de JSON.parse ✂️)
-// Cache bust: 2026-05-16 22:30 (COPY GEMINI MAX_TOKENS FIX v4.344 ✂️)
+// DISTRICT HEALTH IQ V4.345 | 2026-05-16 (POSTGEN — autosave de cada generación en SocialPublication + scheduling con Vercel Cron worker 📅)
+// Cache bust: 2026-05-16 23:00 (PUBLISH AUTOSAVE + SCHEDULING v4.345 📅)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.345',
+        date: '2026-05-16',
+        title: 'PostGenerator — Autosave + Programación de Publicaciones 📅',
+        description: 'Toda generación con IA queda automáticamente guardada como draft en la Biblioteca histórica de Publicaciones. Nuevo botón PROGRAMAR + cron worker (Vercel Cron cada 5min) que publica automáticamente cuando llega la hora.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Autosave: cada generación exitosa crea automáticamente un SocialPublication.status=draft con imageUrl, copies por plataforma, aiModelImage (motor de imagen usado), aiModelCopy (motor + modelo de copy usado), sourceImageId, userId, clubId, createdAt. Si falla la persistencia, la generación NO se rompe — la imagen y copy igual vuelven al frontend.',
+            'Schema: SocialPublication gana 3 columnas — timezone (IANA tz para scheduling), aiModelImage, aiModelCopy. Nuevo índice (status, scheduledFor) usado por el cron worker para queries eficientes.',
+            'PublishPost extendido: si el body incluye scheduledFor (ISO date), el endpoint guarda como status=scheduled sin publicar inmediatamente. Validación: mínimo 1 minuto en el futuro. Si incluye publicationId también, actualiza ese row en vez de duplicar.',
+            'Nuevo endpoint GET /api/social/publications: lista con filtros por status, clubId (admin), search keyword. Power para la futura tab "Biblioteca de Publicaciones" del Content Studio (Fase siguiente).',
+            'Cron worker: nuevo endpoint /api/cron/publish-scheduled protegido por CRON_SECRET. Encuentra publications con status=scheduled AND scheduledFor <= NOW (batch 20), las lockea con updateMany (anti-double-fire), publica via Graph API, actualiza outcomes y status final.',
+            'vercel.json: nueva sección crons con schedule "*/5 * * * *" (cada 5 minutos). El plan de Vercel debe soportar Crons (Hobby incluye 2 jobs, Pro incluye más).',
+            'UI: botón "PROGRAMAR" (variante outline) reemplaza el slot único de antes, lado a lado con "PUBLICAR AHORA" (bg-blue). Click en PROGRAMAR abre modal con date / time / timezone picker (default = tz del browser, lista de tz LATAM + UTC + España). Botón confirma → calcula ISO UTC respetando la tz elegida → llama publish con scheduledFor.',
+            'publishNow y schedulePublication ahora ambos mandan publicationId para no duplicar drafts en la biblioteca.',
+            'Migración SQL aditiva en server/prisma/migrations/social_publication_scheduling.sql.',
+            'Pendiente Phase 4: tab "Biblioteca de Publicaciones" en el Content Studio con grid de cards (thumbnail + status badge + filtros + duplicar / re-publicar).'
+        ]
+    },
     {
         version: 'v4.344',
         date: '2026-05-16',

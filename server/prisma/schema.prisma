@@ -1026,10 +1026,13 @@ model SocialPublication {
   status            String          @default("draft") // draft|scheduled|queued|publishing|published|partial|error
   scheduledFor      DateTime?
   publishedAt       DateTime?
+  timezone          String?         // IANA tz (ej "America/Bogota") cuando viene de la UI de scheduling
 
   // Lineage
   sourceImageId     String?
-  generatedBy       String?         // "ai-kie" | "ai-openai" | "manual"
+  generatedBy       String?         // "ai-kie" | "ai-openai" | "manual" (legacy, mantengo compat)
+  aiModelImage      String?         // "kie+nano-banana-edit" | "gpt-image-1+i2i-direct" | etc.
+  aiModelCopy       String?         // "openai/gpt-4o" | "anthropic/claude-sonnet-4-6" | etc.
 
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
@@ -1040,6 +1043,7 @@ model SocialPublication {
 
   @@index([clubId, status])
   @@index([scheduledFor])
+  @@index([status, scheduledFor])
 }
 
 model Comment {
