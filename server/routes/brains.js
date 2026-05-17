@@ -1,13 +1,17 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// 🧠 BRAINS API v4.351 — Endpoints del Centro de Inteligencia
+// 🧠 BRAINS API v4.353 — Endpoints del Centro de Inteligencia
 //
 // Reglas de acceso:
 //   - administrator: ve todo (master + todos los brains)
 //   - resto: ve solo el brain de su club / distrito + el master en read-only
 // ─────────────────────────────────────────────────────────────────────────────
 import express from 'express';
+import multer from 'multer';
 import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
 import prisma from '../lib/prisma.js';
+import { s3 } from '../lib/storage.js';
+import pkg from '@aws-sdk/client-s3';
+const { PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = pkg;
 import {
     getOrCreateMasterBrain,
     getOrCreateBrainForClub,
@@ -21,8 +25,22 @@ import {
     reindexAll,
     ingestMemory,
 } from '../services/brainService.js';
+import { processDocumentSafe, deleteDocument } from '../services/documentProcessor.js';
 
 const router = express.Router();
+
+// Multer para upload de documentos brain — memoryStorage para tener el buffer
+// y procesarlo + subirlo a S3 desde el mismo handler.
+const docUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 25 * 1024 * 1024 }, // 25 MB max por archivo
+    fileFilter: (req, file, cb) => {
+        const ext = (file.originalname || '').toLowerCase().split('.').pop();
+        const allowed = ['pdf', 'docx', 'doc', 'txt', 'md', 'markdown', 'rtf'];
+        if (allowed.includes(ext)) return cb(null, true);
+        cb(new Error(`Tipo no soportado. Permitidos: ${allowed.join(', ')}`));
+    },
+});
 
 // Antes de cualquier endpoint, validamos que las tablas existan. Si están
 // dormant (db push pendiente), devolvemos 503 con un mensaje accionable.
@@ -399,7 +417,11 @@ router.get('/export/payload', authMiddleware, async (req, res) => {
 router.post('/reindex', authMiddleware, roleMiddleware(['administrator']), async (req, res) => {
     try {
         const onlyKind = req.body?.onlyKind || null;
-        const result = await reindexAll({ onlyKind });
+        const skipExisting = req.body?.skipExisting === true;
+        const timeBudgetMs = Math.min(parseInt(req.body?.timeBudgetMs) || 90_000, 110_000);
+        const result = await reindexAll({ onlyKind, skipExisting, timeBudgetMs });
+        // Aunque haya errores parciales, devolvemos 200 con el detalle. El
+        // frontend decide si mostrar warning según stats.errors / firstError.
         res.json({ ok: true, ...result });
     } catch (err) {
         console.error('[brains] reindex:', err);
@@ -414,6 +436,168 @@ router.post('/bootstrap', authMiddleware, roleMiddleware(['administrator']), asy
     } catch (err) {
         console.error('[brains] bootstrap:', err);
         res.status(500).json({ error: 'Error bootstrapping', detail: err.message });
+    }
+});
+
+// ─── Documentos del cerebro ────────────────────────────────────────────────
+// Cada admin puede subir documentos institucionales (reglamentos, estatutos,
+// manuales, etc.) al brain de su sitio. El super admin puede subir al master
+// para que la información alimente a todos los cerebros.
+
+router.get('/:id/documents', authMiddleware, async (req, res) => {
+    try {
+        const brain = await prisma.brain.findUnique({ where: { id: req.params.id } });
+        if (!brain) return res.status(404).json({ error: 'Brain not found' });
+        if (!(await userCanReadBrain(req, brain))) return res.status(403).json({ error: 'Access denied' });
+
+        const docs = await prisma.brainDocument.findMany({
+            where: { brainId: brain.id },
+            orderBy: { createdAt: 'desc' },
+            select: {
+                id: true, filename: true, mimeType: true, size: true, fileUrl: true,
+                category: true, description: true, status: true, errorMessage: true,
+                chunkCount: true, charCount: true, uploadedBy: true,
+                createdAt: true, processedAt: true,
+            },
+        });
+        res.json(docs);
+    } catch (err) {
+        console.error('[brains] documents list:', err);
+        res.status(500).json({ error: 'Error listing documents', detail: err.message });
+    }
+});
+
+router.post('/:id/documents', authMiddleware, docUpload.single('file'), async (req, res) => {
+    try {
+        const brain = await prisma.brain.findUnique({ where: { id: req.params.id } });
+        if (!brain) return res.status(404).json({ error: 'Brain not found' });
+
+        // Permisos para subir: super admin todo. Resto: solo a su propio brain.
+        const canUpload = isSuperAdmin(req) ||
+            (brain.clubId && brain.clubId === req.user.clubId) ||
+            (brain.districtId && brain.districtId === req.user.districtId);
+        if (!canUpload) return res.status(403).json({ error: 'Access denied' });
+
+        if (!req.file) return res.status(400).json({ error: 'file required' });
+
+        const { category, description } = req.body || {};
+        const buffer = req.file.buffer;
+        const filename = req.file.originalname || 'documento';
+        const mimeType = req.file.mimetype || 'application/octet-stream';
+        const size = req.file.size || buffer.length;
+
+        // Subir a S3 — clave bajo brains/<brainId>/documents/
+        const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
+        const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120);
+        const s3Key = `brains/${brain.id}/documents/${Date.now()}-${safeName}`;
+        let fileUrl = null;
+        try {
+            await s3.send(new PutObjectCommand({
+                Bucket: bucket,
+                Key: s3Key,
+                Body: buffer,
+                ContentType: mimeType,
+            }));
+            fileUrl = `https://${bucket}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${s3Key}`;
+        } catch (uploadErr) {
+            // Si S3 falla, igual procesamos — el binario solo se necesita ahora,
+            // y el texto extraído queda en BrainMemory.
+            console.warn('[brains] S3 upload fallback:', uploadErr.message);
+        }
+
+        // Crear el row en DB
+        const doc = await prisma.brainDocument.create({
+            data: {
+                brainId: brain.id,
+                filename,
+                mimeType,
+                size,
+                fileUrl,
+                s3Key,
+                category: category || null,
+                description: description || null,
+                status: 'pending',
+                uploadedBy: req.user?.userId || req.user?.id || null,
+                metadata: {},
+            },
+        });
+
+        // Procesar async — no bloqueamos la response
+        processDocumentSafe({ documentId: doc.id, buffer });
+
+        res.status(202).json({ ok: true, document: doc });
+    } catch (err) {
+        console.error('[brains] document upload:', err);
+        res.status(500).json({ error: 'Error uploading document', detail: err.message });
+    }
+});
+
+router.delete('/documents/:docId', authMiddleware, async (req, res) => {
+    try {
+        const doc = await prisma.brainDocument.findUnique({
+            where: { id: req.params.docId },
+            include: { brain: true },
+        });
+        if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+        const canDelete = isSuperAdmin(req) ||
+            (doc.brain.clubId && doc.brain.clubId === req.user.clubId) ||
+            (doc.brain.districtId && doc.brain.districtId === req.user.districtId);
+        if (!canDelete) return res.status(403).json({ error: 'Access denied' });
+
+        // Borrar el binario de S3 (best effort)
+        if (doc.s3Key) {
+            try {
+                await s3.send(new DeleteObjectCommand({
+                    Bucket: process.env.AWS_BUCKET_NAME || 'rotary-platform-assets',
+                    Key: doc.s3Key,
+                }));
+            } catch (s3Err) {
+                console.warn('[brains] s3 delete fallback:', s3Err.message);
+            }
+        }
+
+        const result = await deleteDocument(doc.id);
+        res.json({ ok: true, ...result });
+    } catch (err) {
+        console.error('[brains] document delete:', err);
+        res.status(500).json({ error: 'Error deleting document', detail: err.message });
+    }
+});
+
+// Re-procesar un documento ya cargado (útil cuando se ajusta el chunking).
+router.post('/documents/:docId/reprocess', authMiddleware, async (req, res) => {
+    try {
+        const doc = await prisma.brainDocument.findUnique({
+            where: { id: req.params.docId },
+            include: { brain: true },
+        });
+        if (!doc) return res.status(404).json({ error: 'Document not found' });
+        const canReprocess = isSuperAdmin(req) ||
+            (doc.brain.clubId && doc.brain.clubId === req.user.clubId) ||
+            (doc.brain.districtId && doc.brain.districtId === req.user.districtId);
+        if (!canReprocess) return res.status(403).json({ error: 'Access denied' });
+
+        if (!doc.s3Key) return res.status(400).json({ error: 'No s3Key — el archivo original no está disponible para re-procesar.' });
+
+        // Descargar el binario de S3 y volver a procesar
+        const obj = await s3.send(new GetObjectCommand({
+            Bucket: process.env.AWS_BUCKET_NAME || 'rotary-platform-assets',
+            Key: doc.s3Key,
+        }));
+        const chunks = [];
+        for await (const chunk of obj.Body) chunks.push(chunk);
+        const buffer = Buffer.concat(chunks);
+
+        // Borrar memorias previas, luego procesar
+        await prisma.brainMemory.deleteMany({
+            where: { sourceType: 'BrainDocument', sourceId: { startsWith: `${doc.id}:` } },
+        });
+        processDocumentSafe({ documentId: doc.id, buffer });
+        res.status(202).json({ ok: true });
+    } catch (err) {
+        console.error('[brains] document reprocess:', err);
+        res.status(500).json({ error: 'Error reprocessing document', detail: err.message });
     }
 });
 

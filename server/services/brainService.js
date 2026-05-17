@@ -10,7 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import prisma from '../lib/prisma.js';
 
-console.log('🧠 BRAIN SERVICE v4.352 — cerebros distribuidos + grafo 3D + obsidian export online 🪐');
+console.log('🧠 BRAIN SERVICE v4.353 — cerebros + grafo 3D + obsidian export + carga documental + reindex resiliente 📚');
 
 // Las tablas Brain/BrainMemory/BrainRelation se crean vía `prisma db push`.
 // Hasta que ese push se corra en producción, todas las operaciones aquí
@@ -418,94 +418,143 @@ export async function bootstrapRelations() {
 
 // Re-ingesta todo el contenido existente como memorias. Idempotente gracias al
 // upsert sobre (brainId, sourceType, sourceId).
-export async function reindexAll({ onlyKind } = {}) {
-    const stats = { posts: 0, projects: 0, events: 0, knowledge: 0, errors: 0 };
-
+//
+// Resiliencia (v4.353):
+//   - Cada error individual se captura con detalle (primer error preservado
+//     en `firstError` para mostrar al user el motivo concreto del fallo).
+//   - Soporta `timeBudgetMs` (default 90s, < Vercel maxDuration de 120s) para
+//     cortar el batch antes del timeout HTTP y devolver progreso parcial.
+//   - Cuando se corta por tiempo, `truncated: true` y el caller puede llamar
+//     /reindex de nuevo para continuar (los items ya procesados se saltean por
+//     el upsert idempotente y la skip-list de sourceId existentes).
+//   - Soporta `skipExisting: true` para saltear memorias ya indexadas — útil
+//     cuando se llama repetidamente para continuar un reindex incompleto.
+export async function reindexAll({ onlyKind, timeBudgetMs = 90_000, skipExisting = false } = {}) {
+    const stats = {
+        posts: 0, projects: 0, events: 0, knowledge: 0,
+        skipped: 0, errors: 0,
+        firstError: null, lastError: null,
+    };
+    const deadline = Date.now() + timeBudgetMs;
     const want = (k) => !onlyKind || onlyKind === k;
 
-    if (want('POST')) {
+    const captureErr = (where, err) => {
+        stats.errors++;
+        const msg = `${where}: ${err?.message || String(err)}`.slice(0, 400);
+        if (!stats.firstError) stats.firstError = msg;
+        stats.lastError = msg;
+    };
+
+    // Pre-cargar sourceIds ya existentes por tipo para skip rápido
+    let existing = null;
+    if (skipExisting) {
+        const rows = await prisma.brainMemory.findMany({
+            where: { sourceType: { in: ['Post', 'Project', 'CalendarEvent', 'KnowledgeSource'] } },
+            select: { sourceType: true, sourceId: true },
+        });
+        existing = new Set(rows.map(r => `${r.sourceType}:${r.sourceId}`));
+    }
+    const shouldSkip = (type, id) => existing && existing.has(`${type}:${id}`);
+
+    if (want('POST') && Date.now() < deadline) {
         const posts = await prisma.post.findMany({
             where: { clubId: { not: null } },
             select: { id: true, title: true, content: true, clubId: true, category: true, published: true, createdAt: true },
         });
         for (const p of posts) {
+            if (Date.now() >= deadline) return { stats, truncated: true };
+            if (shouldSkip('Post', p.id)) { stats.skipped++; continue; }
             try {
                 await ingestMemory({
                     clubId: p.clubId,
                     kind: 'POST',
                     sourceType: 'Post',
                     sourceId: p.id,
-                    title: p.title,
-                    content: p.content,
+                    title: p.title || '(sin título)',
+                    content: p.content || '',
                     metadata: { category: p.category, published: p.published, createdAt: p.createdAt },
                 });
                 stats.posts++;
-            } catch { stats.errors++; }
+            } catch (err) { captureErr(`Post ${p.id}`, err); }
         }
     }
 
-    if (want('PROJECT')) {
+    if (want('PROJECT') && Date.now() < deadline) {
         const projects = await prisma.project.findMany({
             where: { deletedAt: null, clubId: { not: null } },
             select: { id: true, title: true, description: true, clubId: true, category: true, status: true, impacto: true, ubicacion: true, beneficiarios: true, createdAt: true },
         });
         for (const p of projects) {
+            if (Date.now() >= deadline) return { stats, truncated: true };
+            if (shouldSkip('Project', p.id)) { stats.skipped++; continue; }
             try {
                 await ingestMemory({
                     clubId: p.clubId,
                     kind: 'PROJECT',
                     sourceType: 'Project',
                     sourceId: p.id,
-                    title: p.title,
+                    title: p.title || '(sin título)',
                     content: [p.description, p.impacto].filter(Boolean).join('\n\n'),
                     metadata: { category: p.category, status: p.status, ubicacion: p.ubicacion, beneficiarios: p.beneficiarios },
                 });
                 stats.projects++;
-            } catch { stats.errors++; }
+            } catch (err) { captureErr(`Project ${p.id}`, err); }
         }
     }
 
-    if (want('EVENT')) {
+    if (want('EVENT') && Date.now() < deadline) {
         const events = await prisma.calendarEvent.findMany({
             select: { id: true, title: true, description: true, htmlContent: true, clubId: true, type: true, startDate: true, endDate: true, location: true },
         });
         for (const e of events) {
+            if (Date.now() >= deadline) return { stats, truncated: true };
+            if (shouldSkip('CalendarEvent', e.id)) { stats.skipped++; continue; }
             try {
                 await ingestMemory({
                     clubId: e.clubId,
                     kind: 'EVENT',
                     sourceType: 'CalendarEvent',
                     sourceId: e.id,
-                    title: e.title,
+                    title: e.title || '(sin título)',
                     content: [e.description, e.htmlContent].filter(Boolean).join('\n\n').replace(/<[^>]+>/g, ' '),
                     metadata: { type: e.type, startDate: e.startDate, endDate: e.endDate, location: e.location },
                 });
                 stats.events++;
-            } catch { stats.errors++; }
+            } catch (err) { captureErr(`Event ${e.id}`, err); }
         }
     }
 
-    if (want('KNOWLEDGE')) {
+    if (want('KNOWLEDGE') && Date.now() < deadline) {
         const sources = await prisma.knowledgeSource.findMany();
         for (const k of sources) {
+            if (Date.now() >= deadline) return { stats, truncated: true };
+            if (shouldSkip('KnowledgeSource', k.id)) { stats.skipped++; continue; }
             try {
                 await ingestMemory({
                     clubId: k.clubId,
                     kind: 'KNOWLEDGE',
                     sourceType: 'KnowledgeSource',
                     sourceId: k.id,
-                    title: k.title,
-                    content: k.content,
+                    title: k.title || '(sin título)',
+                    content: k.content || '',
                     metadata: { type: k.type, fileUrl: k.fileUrl, isGlobal: !k.clubId },
                 });
                 stats.knowledge++;
-            } catch { stats.errors++; }
+            } catch (err) { captureErr(`KnowledgeSource ${k.id}`, err); }
         }
     }
 
-    // Recalcular relaciones al final.
-    const rel = await bootstrapRelations();
-    return { stats, relations: rel };
+    // Recalcular relaciones al final (solo si terminamos a tiempo).
+    let rel = null;
+    if (Date.now() < deadline) {
+        try {
+            rel = await bootstrapRelations();
+        } catch (err) {
+            captureErr('bootstrapRelations', err);
+        }
+    }
+
+    return { stats, relations: rel, truncated: false };
 }
 
 // ─── Listado / detalle ───────────────────────────────────────────────────────

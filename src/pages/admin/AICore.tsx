@@ -27,6 +27,7 @@ import {
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
 import { buildObsidianVault, triggerDownload, type ExportPayload } from '../../lib/obsidianExporter';
+import BrainDocumentsPanel from '../../components/admin/BrainDocumentsPanel';
 
 // Lazy load del componente de grafo 3D — usa Three.js (~600KB)
 const BrainGraph3D = React.lazy(() => import('../../components/admin/BrainGraph3D'));
@@ -215,17 +216,36 @@ const AICore: React.FC = () => {
     };
 
     const runReindex = async () => {
-        if (!confirm('Re-indexar todo el contenido existente? Puede tomar varios minutos.')) return;
+        if (!confirm('Re-indexar todo el contenido existente?\n\nProcesa en lotes de hasta 90s (límite de Vercel). Si queda truncado, volvé a clickear para continuar — los items ya procesados se saltean.')) return;
         setReindexing(true);
         try {
-            const r = await fetch(`${API}/brains/reindex`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: '{}' });
+            const r = await fetch(`${API}/brains/reindex`, {
+                method: 'POST',
+                headers: { ...headers, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ skipExisting: true }),
+            });
+            const data = await r.json().catch(() => ({}));
             if (r.ok) {
-                const data = await r.json();
-                toast.success(`Reindex listo: ${data.stats?.posts || 0} noticias, ${data.stats?.projects || 0} proyectos, ${data.stats?.events || 0} eventos, ${data.stats?.knowledge || 0} fuentes.`);
+                const s = data.stats || {};
+                const total = (s.posts || 0) + (s.projects || 0) + (s.events || 0) + (s.knowledge || 0);
+                let msg = `Reindex: +${total} memorias (${s.posts || 0} noticias, ${s.projects || 0} proyectos, ${s.events || 0} eventos, ${s.knowledge || 0} fuentes)`;
+                if (s.skipped) msg += ` · ${s.skipped} ya indexadas`;
+                if (data.truncated) msg += ` · TRUNCADO por tiempo — re-clickeá para continuar`;
+                if (s.errors) msg += ` · ${s.errors} errores: ${s.firstError || ''}`;
+
+                if (s.errors > 0 && total === 0) {
+                    toast.error(msg);
+                } else if (data.truncated || s.errors > 0) {
+                    toast.warning(msg);
+                } else {
+                    toast.success(msg);
+                }
                 await fetchEverything();
             } else {
-                toast.error('Error al re-indexar');
+                toast.error(`Error al re-indexar: ${data.detail || data.error || 'desconocido'}`);
             }
+        } catch (err) {
+            toast.error(`Error al re-indexar: ${(err as Error).message}`);
         } finally {
             setReindexing(false);
         }
@@ -503,7 +523,7 @@ const AICore: React.FC = () => {
                             <div className="flex items-center gap-2">
                                 <Atom className="w-5 h-5 text-violet-600" />
                                 <h3 className="font-bold text-gray-900 text-lg">Grafo de Conocimiento 3D</h3>
-                                <span className="px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full text-[10px] font-bold uppercase tracking-wider">v4.352</span>
+                                <span className="px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full text-[10px] font-bold uppercase tracking-wider">v4.353</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 {showGraph && graphData && (
@@ -611,11 +631,11 @@ const AICore: React.FC = () => {
                 <div className="mt-12 pt-6 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400 flex-wrap gap-2">
                     <div className="flex items-center gap-2">
                         <Sparkles className="w-3.5 h-3.5" />
-                        Centro de Inteligencia v4.352 · Fase 2: Knowledge Graph 3D + Obsidian Vault
+                        Centro de Inteligencia v4.353 · Fase 3: Carga documental (PDF / DOCX / TXT / MD) + Reindex resiliente
                     </div>
                     <div className="flex items-center gap-4 flex-wrap">
                         <span>Embedding: Gemini text-embedding-004 (768d)</span>
-                        <span>Render: react-force-graph-3d · Three.js</span>
+                        <span>Extract: pdf-parse · mammoth</span>
                     </div>
                 </div>
             </div>
@@ -630,6 +650,7 @@ const AICore: React.FC = () => {
                     onReloaded={() => openBrain(openBrainId)}
                     headers={headers}
                     isSuperAdmin={isSuperAdmin}
+                    currentUser={user ? { clubId: user.clubId, districtId: null } : null}
                 />
             )}
         </AdminLayout>
@@ -698,9 +719,16 @@ interface BrainDrawerProps {
     onReloaded: () => void;
     headers: Record<string, string>;
     isSuperAdmin: boolean;
+    currentUser: { clubId?: string | null; districtId?: string | null } | null;
 }
 
-const BrainDrawer: React.FC<BrainDrawerProps> = ({ detail, loading, onClose, onReloaded, headers, isSuperAdmin }) => {
+const BrainDrawer: React.FC<BrainDrawerProps> = ({ detail, loading, onClose, onReloaded, headers, isSuperAdmin, currentUser }) => {
+    const canUploadDocs = !!detail && (
+        isSuperAdmin ||
+        (detail.clubId && currentUser?.clubId === detail.clubId) ||
+        (detail.districtId && currentUser?.districtId === detail.districtId)
+    );
+
     const [noteOpen, setNoteOpen] = useState(false);
     const [noteTitle, setNoteTitle] = useState('');
     const [noteContent, setNoteContent] = useState('');
@@ -795,8 +823,19 @@ const BrainDrawer: React.FC<BrainDrawerProps> = ({ detail, loading, onClose, onR
                             </div>
                         )}
 
+                        {/* Documentos institucionales */}
+                        <div className="border-t border-gray-100 pt-5">
+                            <BrainDocumentsPanel
+                                brainId={detail.id}
+                                brainName={detail.name}
+                                canUpload={!!canUploadDocs}
+                                headers={headers}
+                                onChange={onReloaded}
+                            />
+                        </div>
+
                         {/* Memories */}
-                        <div>
+                        <div className="border-t border-gray-100 pt-5">
                             <div className="flex items-center justify-between mb-2">
                                 <div className="text-sm font-bold text-gray-900 flex items-center gap-2">
                                     <Database className="w-4 h-4 text-violet-600" /> Memorias recientes

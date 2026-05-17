@@ -24,9 +24,34 @@ interface UpdateItem {
     details?: string[];
 }
 
-// BRAIN GRAPH 3D V4.352 | 2026-05-17 (CEREBROS — visualizador 3D orbital tipo Obsidian + export a Vault Markdown con wikilinks 🪐)
-// Cache bust: 2026-05-17 04:00 (KNOWLEDGE GRAPH 3D + OBSIDIAN VAULT v4.352 🪐)
+// BRAIN DOCUMENTS V4.353 | 2026-05-17 (CEREBROS — carga documental PDF/DOCX/TXT/MD por sitio + master, reindex resiliente con time-budget y skip-existing 📚)
+// Cache bust: 2026-05-17 12:00 (DOCUMENT KNOWLEDGE LAYER v4.353 📚)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.353',
+        date: '2026-05-17',
+        title: 'AI Brains Fase 3 — Carga documental institucional + Reindex resiliente 📚',
+        description: 'Cada cerebro ahora puede ser alimentado con documentos institucionales (PDFs, Word, Markdown, TXT). El sistema extrae el texto, lo trocea semánticamente, lo vectoriza y lo agrega a la memoria del cerebro correspondiente. Además, el reindex masivo dejó de devolver "Error al re-indexar" sin contexto: ahora reporta detalle de error, soporta time-budget para evitar timeouts de Vercel y permite reanudación incremental.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Nuevo modelo Prisma BrainDocument — rastrea cada archivo subido por separado de los chunks (filename, mimeType, size, fileUrl en S3, category, description, status, errorMessage, chunkCount, charCount). Las memorias derivadas se persisten como BrainMemory con sourceType="BrainDocument" y sourceId=`${docId}:c${idx}`.',
+            'documentProcessor.js (nuevo): pipeline end-to-end → extracción de texto (pdf-parse para PDF, mammoth para .docx, utf-8 directo para TXT/MD/RTF) → chunking semántico por párrafos con overlap de 200 chars y límite de 1500 chars por chunk (~375 tokens, dentro del límite de Gemini) → ingestMemory por chunk → status final (completed/failed/partial).',
+            'Resiliencia: si un chunk individual falla por timeout o quota de Gemini, los demás continúan. El doc queda "completed" si al menos un chunk se ingestó, "failed" solo si no se extrajo texto (ej. PDF escaneado sin OCR). errorMessage queda visible en la UI.',
+            'Endpoints nuevos bajo /api/brains:',
+            '  • POST /:id/documents (multipart/form-data, max 25 MB) — sube + dispara procesamiento async, responde 202 con el row',
+            '  • GET /:id/documents — listado con status, chunks indexados, char count',
+            '  • DELETE /documents/:docId — elimina el doc + sus memorias derivadas + borra el binario de S3',
+            '  • POST /documents/:docId/reprocess — descarga el original de S3 y re-procesa (útil al ajustar el chunking)',
+            'Permisos: super admin sube/elimina en cualquier cerebro (incluido el master para alimentar la "capa superior" compartida). Club admin solo en el cerebro de su club. Lectura: cualquiera con acceso al cerebro.',
+            'UI: BrainDocumentsPanel.tsx — panel embebido dentro del drawer de detalle de cada cerebro. Drag & drop multi-archivo, selector de categoría (reglamento / estatuto / manual / plan estratégico / historia / presentación / informe / política / otro), polling cada 4s mientras hay docs en pending/processing, badges de status, botones de re-procesar y eliminar, mensajes de error visibles cuando algo falla.',
+            'Reindex resiliente: el endpoint POST /api/brains/reindex ahora acepta `timeBudgetMs` (default 90s, < Vercel maxDuration 120s) — corta el batch antes del timeout y devuelve `truncated:true` con stats parciales. El frontend lo entiende: si quedó truncado, mostrá un warning y volver a clickear continúa (skipExisting=true saltea memorias ya indexadas vía pre-fetch de sourceIds existentes).',
+            'Reindex con detalle de error: antes el frontend mostraba "Error al re-indexar" sin contexto. Ahora captura el primer y último error con id del item afectado y lo muestra en el toast. Si hay errores parciales pero algunos items se indexaron, el toast es warning en vez de error.',
+            'Dependencias nuevas: pdf-parse ^2.4, mammoth ^1.12. Ambas server-side, no afectan bundle del frontend.',
+            'Tipos de archivo soportados explícitamente: PDF, DOCX, TXT, MD, Markdown, RTF. El legacy .doc devuelve mensaje claro pidiendo conversión a .docx o PDF (mammoth no lo soporta de manera robusta).',
+            'Roadmap actualizado: v4.354 chat RAG sobre el cerebro maestro (LLM con context window de memorias top-k), v4.355 detección automática de SIMILAR_TO entre brains usando KNN sobre embeddings de proyectos, v4.356 OCR opcional para PDFs escaneados (vía Tesseract o Gemini Vision).',
+        ]
+    },
     {
         version: 'v4.352',
         date: '2026-05-17',
