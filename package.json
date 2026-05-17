@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.356.0",
-  "cache_bust": "2026-05-17 19:00 (SITE BRAIN PANEL v4.356 🎛️)",
+  "version": "4.357.0",
+  "cache_bust": "2026-05-17 20:30 (BRAIN ME DEFENSIVE v4.357 🛡️)",
   "type": "module",
-  "//": "SITE BRAIN PANEL V4.356 | 2026-05-17 (CEREBROS — panel dedicado para admin de sitio: identity editable, sync con onboarding, tabs Resumen/Docs/Memorias/Búsqueda/Config 🎛️)",
+  "//": "BRAIN ME DEFENSIVE V4.357 | 2026-05-17 (CEREBROS — endpoint /me defensivo contra tabla BrainDocument faltante + timeout 20s y mensaje de error visible en frontend 🛡️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
