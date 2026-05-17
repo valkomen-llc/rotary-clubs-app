@@ -102,6 +102,21 @@ async function userCanReadBrain(req, brain) {
     return false;
 }
 
+// ─── Ping (sin auth, sin DB) ───────────────────────────────────────────────
+// Endpoint super liviano para verificar que el router brains responde. Útil
+// para descartar problemas de Vercel / proxy / autenticación.
+router.get('/ping', (req, res) => {
+    res.json({
+        ok: true,
+        version: 'v4.359',
+        timestamp: new Date().toISOString(),
+        env: {
+            vercelRegion: process.env.VERCEL_REGION || null,
+            nodeEnv: process.env.NODE_ENV || null,
+        },
+    });
+});
+
 // ─── Diagnóstico (admin only) ──────────────────────────────────────────────
 // IMPORTANT: declarado ANTES de router.use(ensureReady) porque el diagnóstico
 // también tiene que poder reportar el caso "tablas no migradas".
@@ -243,73 +258,150 @@ async function brainGlobalStats() {
     };
 }
 
-// ─── Brain del user actual (v4.358 progressive load) ───────────────────────
-// Endpoint ultra-ligero para pintar el panel del site admin INMEDIATAMENTE.
-// Solo devuelve la info esencial — brain + master básicos + onboarding status.
-// Las memorias, documentos y relaciones detalladas vienen en /me/extras.
+// ─── Brain del user actual (v4.359 read-only fast path) ─────────────────────
+// Endpoint READ-ONLY: NO crea brains, solo los lee. Si el brain del sitio
+// (o el master) no existen, devuelve scope='not-initialized' rápido y el
+// frontend ofrece un botón para inicializar explícitamente vía POST /me/initialize.
 //
-// Diseño: cold start + Promise.all con 6 queries era >20s. Ahora hacemos las
-// menos queries posibles en /me; el resto se lazy-loadea desde el frontend
-// para que el panel aparezca en 1-2 segundos.
+// Diseño v4.359: la versión anterior (v4.356-358) hacía getOrCreateBrainFor*
+// que podía estar bloqueada por DB cuando el create era lento (índices, locks,
+// connection pool). Ahora separamos read y write — el panel aparece siempre,
+// aunque haya que crear el brain con un click.
 router.get('/me', authMiddleware, async (req, res) => {
+    const t0 = Date.now();
+    const timings = {};
     try {
-        // Lectura del onboarding en paralelo con la creación del master
-        // (independientes, no nos cuesta nada).
-        const [master, onboardingRow] = await Promise.all([
-            getOrCreateMasterBrain(),
-            req.user?.clubId
-                ? prisma.setting.findFirst({
-                    where: { clubId: req.user.clubId, key: 'onboarding_completed' },
-                }).catch(() => null)
-                : Promise.resolve(null),
-        ]);
+        // Helper para loguear stages — útil en Vercel logs para diagnosticar lentitud.
+        const stage = (name) => { timings[name] = Date.now() - t0; };
 
-        let myBrain = null;
+        // Read-only: ¿existe el master?
+        const masterPromise = prisma.brain.findFirst({
+            where: { isMaster: true },
+            select: { id: true, name: true, memoryCount: true, kind: true },
+        }).catch(err => { console.warn('[brains/me] master find err:', err.message); return null; });
+
+        // Read-only: ¿existe el brain del sitio?
+        let myBrainPromise = Promise.resolve(null);
         if (req.user?.clubId) {
-            try {
-                myBrain = await getOrCreateBrainForClub(req.user.clubId);
-            } catch (e) {
-                console.error('[brains/me] getOrCreateBrainForClub:', e.message);
-            }
+            myBrainPromise = prisma.brain.findUnique({
+                where: { clubId: req.user.clubId },
+                include: {
+                    club:     { select: { id: true, name: true, subdomain: true, city: true, country: true, category: true, type: true, logo: true, description: true, email: true, phone: true } },
+                    _count:   { select: { memories: true, outgoingRelations: true, incomingRelations: true } },
+                },
+            }).catch(err => { console.warn('[brains/me] club brain err:', err.message); return null; });
         } else if (req.user?.districtId) {
-            try {
-                myBrain = await getOrCreateBrainForDistrict(req.user.districtId);
-            } catch (e) {
-                console.error('[brains/me] getOrCreateBrainForDistrict:', e.message);
-            }
+            myBrainPromise = prisma.brain.findUnique({
+                where: { districtId: req.user.districtId },
+                include: {
+                    district: { select: { id: true, name: true, number: true, subdomain: true } },
+                    _count:   { select: { memories: true, outgoingRelations: true, incomingRelations: true } },
+                },
+            }).catch(err => { console.warn('[brains/me] district brain err:', err.message); return null; });
         }
 
-        if (!myBrain) {
+        // Onboarding status (read-only, defensive).
+        const onboardingPromise = req.user?.clubId
+            ? prisma.setting.findFirst({
+                where: { clubId: req.user.clubId, key: 'onboarding_completed' },
+            }).catch(() => null)
+            : Promise.resolve(null);
+
+        const [master, myBrain, onboardingRow] = await Promise.all([
+            masterPromise, myBrainPromise, onboardingPromise,
+        ]);
+        stage('queries');
+
+        // Caso 1: master no existe todavía → not-initialized
+        if (!master) {
             return res.json({
-                scope: 'master-only',
-                master: { id: master.id, name: master.name, kind: master.kind, memoryCount: master.memoryCount },
+                scope: 'not-initialized',
+                reason: 'no-master',
+                detail: 'El cerebro maestro aún no fue creado. Hacé click en "Inicializar mi cerebro" para crearlo.',
+                clubId: req.user?.clubId || null,
+                districtId: req.user?.districtId || null,
+                timings,
+                version: 'v4.359',
             });
         }
 
-        // Brain del sitio + relaciones contadas — UNA query con joins ligeros.
-        // Sin _count.documents (requiere BrainDocument), sin incluir las
-        // relaciones completas; el frontend las pide separado si las necesita.
-        const detail = await prisma.brain.findUnique({
-            where: { id: myBrain.id },
-            include: {
-                club:     { select: { id: true, name: true, subdomain: true, city: true, country: true, category: true, type: true, logo: true, description: true, email: true, phone: true } },
-                district: { select: { id: true, name: true, number: true, subdomain: true } },
-                _count:   { select: { memories: true, outgoingRelations: true, incomingRelations: true } },
-            },
-        });
+        // Caso 2: el user no tiene clubId/districtId → master-only
+        if (!req.user?.clubId && !req.user?.districtId) {
+            return res.json({
+                scope: 'master-only',
+                master,
+                timings,
+                version: 'v4.359',
+            });
+        }
 
+        // Caso 3: brain del sitio no existe todavía → not-initialized para club
+        if (!myBrain) {
+            return res.json({
+                scope: 'not-initialized',
+                reason: 'no-site-brain',
+                detail: 'El cerebro de tu sitio aún no se creó. Hacé click en "Inicializar mi cerebro" para crearlo a partir de la información del onboarding.',
+                clubId: req.user?.clubId || null,
+                districtId: req.user?.districtId || null,
+                master,
+                timings,
+                version: 'v4.359',
+            });
+        }
+
+        // Caso 4: todo OK → devolver brain del sitio + master
         res.json({
             scope: 'site',
-            brain: detail,
-            master: { id: master.id, name: master.name, memoryCount: master.memoryCount },
+            brain: myBrain,
+            master,
             onboarding: {
                 completed: onboardingRow?.value === 'true',
                 step: null,
             },
+            timings,
+            version: 'v4.359',
         });
     } catch (err) {
-        console.error('[brains] me:', err);
-        res.status(500).json({ error: 'Error fetching own brain', detail: err.message?.slice(0, 300) });
+        console.error('[brains] me:', err, 'timings:', timings);
+        res.status(500).json({ error: 'Error fetching own brain', detail: err.message?.slice(0, 300), timings });
+    }
+});
+
+// POST /api/brains/me/initialize — crea el master y/o el brain del sitio si no
+// existen. Separado de /me para que la carga del panel sea siempre rápida.
+router.post('/me/initialize', authMiddleware, async (req, res) => {
+    const t0 = Date.now();
+    try {
+        // 1. Master
+        const master = await getOrCreateMasterBrain();
+        if (!master) {
+            return res.status(500).json({ error: 'Could not create master brain' });
+        }
+
+        // 2. Brain del user
+        let myBrain = null;
+        if (req.user?.clubId) {
+            myBrain = await getOrCreateBrainForClub(req.user.clubId);
+        } else if (req.user?.districtId) {
+            myBrain = await getOrCreateBrainForDistrict(req.user.districtId);
+        }
+
+        // 3. Sync con onboarding si hay clubId (best effort, fire-and-forget)
+        if (myBrain && req.user?.clubId) {
+            syncBrainWithOnboarding(req.user.clubId).catch(err =>
+                console.warn('[brains/initialize] sync onboarding:', err.message)
+            );
+        }
+
+        res.json({
+            ok: true,
+            elapsedMs: Date.now() - t0,
+            master: master ? { id: master.id, name: master.name } : null,
+            brain: myBrain ? { id: myBrain.id, name: myBrain.name, kind: myBrain.kind } : null,
+        });
+    } catch (err) {
+        console.error('[brains] initialize:', err);
+        res.status(500).json({ error: 'Error initializing brain', detail: err.message?.slice(0, 300) });
     }
 });
 
