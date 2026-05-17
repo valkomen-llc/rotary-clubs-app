@@ -629,6 +629,36 @@ export const listPublications = async (req, res) => {
 };
 
 // ============================================================================
+// DELETE /api/social/publications/:id
+// Eliminar una publicación de la biblioteca. Solo permitido para:
+//   - Drafts (no se ha publicado nada)
+//   - Scheduled (cancelar antes de la hora programada)
+//   - Error (limpieza)
+// Para publicadas, no permitimos delete (queda registro histórico). Si el user
+// quiere "ocultarlas" en el futuro, agregamos un soft-delete con visibility.
+// ============================================================================
+export const deletePublication = async (req, res) => {
+    try {
+        const isAdmin = req.user.role === 'administrator';
+        const where = { id: req.params.id };
+        if (!isAdmin) {
+            if (!req.user.clubId) return res.status(403).json({ error: 'No tenés club asociado' });
+            where.clubId = req.user.clubId;
+        }
+        const pub = await prisma.socialPublication.findFirst({ where });
+        if (!pub) return res.status(404).json({ error: 'Publicación no encontrada' });
+        if (pub.status === 'published' || pub.status === 'partial') {
+            return res.status(400).json({ error: 'No se puede eliminar una publicación que ya fue posteada. Para ocultarla en futuras vistas, contactá soporte.' });
+        }
+        await prisma.socialPublication.delete({ where: { id: pub.id } });
+        res.json({ ok: true });
+    } catch (e) {
+        console.error('[social] deletePublication error:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// ============================================================================
 // Internal: run any SocialPublication whose scheduledFor is now-or-past.
 // Called by the cron worker (server/routes/cron.js → /publish-scheduled).
 // Returns a summary suitable for the cron response body.

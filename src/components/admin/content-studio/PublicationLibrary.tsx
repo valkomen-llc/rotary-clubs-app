@@ -15,7 +15,10 @@ import {
     Facebook,
     Instagram,
     Twitter,
-    Linkedin
+    Linkedin,
+    X as XIcon,
+    Send,
+    Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -104,11 +107,33 @@ const formatDate = (iso: string | null) => {
     } catch { return iso; }
 };
 
+interface ConnectedAccount {
+    id: string;
+    platform: 'facebook' | 'instagram' | 'linkedin' | 'x';
+    accountName: string | null;
+    status: string;
+    needsReconnect: boolean;
+    clubId: string;
+}
+
 const PublicationLibrary: React.FC = () => {
     const [items, setItems] = useState<Publication[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<'all' | PubStatus>('all');
+
+    // Detail modal (click en una card) — Phase 1: publish / schedule / delete.
+    const [selected, setSelected] = useState<Publication | null>(null);
+    const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
+    const [selectedAccountIds, setSelectedAccountIds] = useState<Set<string>>(new Set());
+    const [isPublishing, setIsPublishing] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [showSchedule, setShowSchedule] = useState(false);
+    const [scheduleDate, setScheduleDate] = useState('');
+    const [scheduleTime, setScheduleTime] = useState('');
+    const [scheduleTimezone, setScheduleTimezone] = useState(
+        Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Bogota'
+    );
 
     const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -152,6 +177,142 @@ const PublicationLibrary: React.FC = () => {
             toast.success('Copy copiado al portapapeles');
         } catch {
             toast.error('No se pudo copiar');
+        }
+    };
+
+    // Cargar cuentas conectadas cuando se abre el modal de detalle, filtradas
+    // al club de la publicación seleccionada (no se puede publicar a cuentas
+    // de otro club).
+    const openDetail = async (pub: Publication) => {
+        setSelected(pub);
+        setShowSchedule(false);
+        setSelectedAccountIds(new Set());
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const qs = pub.clubId ? `?clubId=${encodeURIComponent(pub.clubId)}` : '';
+            const resp = await fetch(`${API}/social/accounts${qs}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (resp.ok) {
+                const data = await resp.json();
+                const filtered: ConnectedAccount[] = (Array.isArray(data) ? data : [])
+                    .filter((a: any) => a.platform === 'facebook' || a.platform === 'instagram');
+                setConnectedAccounts(filtered);
+                setSelectedAccountIds(new Set(
+                    filtered.filter(a => a.status === 'active' && !a.needsReconnect).map(a => a.id)
+                ));
+            }
+        } catch { /* silent */ }
+    };
+
+    const closeDetail = () => {
+        setSelected(null);
+        setShowSchedule(false);
+    };
+
+    const toggleAccount = (id: string) => {
+        setSelectedAccountIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const publishFromDraft = async (scheduledFor?: string, timezone?: string) => {
+        if (!selected) return;
+        if (selectedAccountIds.size === 0) {
+            toast.error('Seleccioná al menos una cuenta');
+            return;
+        }
+        const portraitUrl = selected.imageUrl;
+        if (!portraitUrl) {
+            toast.error('La publicación no tiene imagen asociada');
+            return;
+        }
+        setIsPublishing(true);
+        const toastId = toast.loading(scheduledFor ? 'Programando…' : `Publicando en ${selectedAccountIds.size} cuenta(s)…`);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const resp = await fetch(`${API}/social/publish`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({
+                    accountIds: Array.from(selectedAccountIds),
+                    imageUrl: portraitUrl,
+                    copies: selected.platformCopies || {},
+                    publicationId: selected.id,
+                    scheduledFor,
+                    timezone
+                })
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                toast.error(data.error || 'Error al publicar', { id: toastId, duration: 12000 });
+                return;
+            }
+            if (scheduledFor) {
+                toast.success(`Programada para ${new Date(scheduledFor).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}`, { id: toastId });
+            } else {
+                const ok = (data.outcomes || []).filter((o: any) => o.ok).length;
+                const fail = (data.outcomes || []).length - ok;
+                if (data.status === 'published') toast.success(`Publicado en ${ok} cuenta(s) ✓`, { id: toastId });
+                else if (data.status === 'partial') toast.warning(`Publicado en ${ok}, falló en ${fail}`, { id: toastId, duration: 12000 });
+                else toast.error(`Falló en ${fail} cuenta(s)`, { id: toastId, duration: 12000 });
+            }
+            await fetchItems();
+            closeDetail();
+        } catch (e: any) {
+            toast.error(`Error de red: ${e.message || 'desconocido'}`, { id: toastId });
+        } finally {
+            setIsPublishing(false);
+        }
+    };
+
+    const handleScheduleSubmit = () => {
+        if (!scheduleDate || !scheduleTime) {
+            toast.error('Completá fecha y hora');
+            return;
+        }
+        const localIso = `${scheduleDate}T${scheduleTime}:00`;
+        let scheduledIso: string;
+        try {
+            const guess = new Date(localIso);
+            const utcGuess = new Date(guess.toLocaleString('en-US', { timeZone: 'UTC' }));
+            const tzGuess = new Date(guess.toLocaleString('en-US', { timeZone: scheduleTimezone }));
+            const offsetMs = utcGuess.getTime() - tzGuess.getTime();
+            scheduledIso = new Date(guess.getTime() + offsetMs).toISOString();
+        } catch {
+            scheduledIso = new Date(localIso).toISOString();
+        }
+        const scheduledAt = new Date(scheduledIso);
+        if (scheduledAt.getTime() <= Date.now() + 60_000) {
+            toast.error('La fecha debe ser al menos 1 minuto en el futuro');
+            return;
+        }
+        publishFromDraft(scheduledIso, scheduleTimezone);
+    };
+
+    const deletePublication = async () => {
+        if (!selected) return;
+        if (!window.confirm('¿Eliminar esta publicación de la biblioteca?')) return;
+        setIsDeleting(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const resp = await fetch(`${API}/social/publications/${selected.id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (resp.ok) {
+                toast.success('Publicación eliminada');
+                await fetchItems();
+                closeDetail();
+            } else {
+                const err = await resp.json().catch(() => ({}));
+                toast.error(err.error || 'No se pudo eliminar');
+            }
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -222,7 +383,12 @@ const PublicationLibrary: React.FC = () => {
                         const preview = (fbCopy || igCopy || '').slice(0, 140);
                         const isLoading = p.status === 'queued' || p.status === 'publishing';
                         return (
-                            <div key={p.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-xl hover:-translate-y-0.5 transition-all flex flex-col">
+                            <div
+                                key={p.id}
+                                onClick={() => openDetail(p)}
+                                className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-xl hover:-translate-y-0.5 transition-all flex flex-col cursor-pointer group/card"
+                                title="Click para abrir y publicar / programar"
+                            >
                                 <div className="relative aspect-[4/5] bg-gray-100">
                                     {p.imageUrl ? (
                                         <img src={p.imageUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
@@ -289,7 +455,7 @@ const PublicationLibrary: React.FC = () => {
                                         </span>
                                         {fbCopy && (
                                             <button
-                                                onClick={() => copyToClipboard(fbCopy)}
+                                                onClick={(e) => { e.stopPropagation(); copyToClipboard(fbCopy); }}
                                                 className="text-gray-400 hover:text-indigo-600 transition-colors"
                                                 title="Copiar copy de Facebook"
                                             >
@@ -310,6 +476,7 @@ const PublicationLibrary: React.FC = () => {
                                                     href={o.externalUrl!}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
+                                                    onClick={(e) => e.stopPropagation()}
                                                     className="inline-flex items-center gap-1 text-[9px] font-black uppercase px-2 py-1 rounded-md bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
                                                 >
                                                     <ExternalLink className="w-2.5 h-2.5" />
@@ -322,6 +489,204 @@ const PublicationLibrary: React.FC = () => {
                             </div>
                         );
                     })}
+                </div>
+            )}
+
+            {/* Detail modal — click en una card abre acciones */}
+            {selected && (
+                <div
+                    className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-md animate-in fade-in duration-200"
+                    onClick={(e) => { if (e.target === e.currentTarget) closeDetail(); }}
+                >
+                    <div className="bg-white w-full max-w-3xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col">
+                        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+                            <div className="flex items-center gap-3">
+                                {(() => {
+                                    const b = statusBadgeFor(selected.status);
+                                    const BI = b.Icon;
+                                    return (
+                                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-black uppercase ${b.cls}`}>
+                                            <BI className="w-3 h-3" />
+                                            {b.label}
+                                        </span>
+                                    );
+                                })()}
+                                {selected.club?.name && (
+                                    <span className="text-[11px] font-black text-gray-600">{selected.club.name}</span>
+                                )}
+                            </div>
+                            <button onClick={closeDetail} className="p-1.5 hover:bg-gray-200 rounded-full transition-all">
+                                <XIcon className="w-4 h-4 text-gray-500" />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-3">
+                                {selected.imageUrl && (
+                                    <div className="aspect-[4/5] rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+                                        <img src={selected.imageUrl} alt="" className="w-full h-full object-cover" />
+                                    </div>
+                                )}
+                                <div className="flex flex-wrap gap-1">
+                                    {selected.aiModelImage && (
+                                        <span className="text-[9px] font-bold px-2 py-1 rounded-md bg-purple-50 text-purple-700" title={selected.aiModelImage}>
+                                            🎨 {selected.aiModelImage.split('+')[0]}
+                                        </span>
+                                    )}
+                                    {selected.aiModelCopy && (
+                                        <span className="text-[9px] font-bold px-2 py-1 rounded-md bg-indigo-50 text-indigo-700" title={selected.aiModelCopy}>
+                                            ✍ {selected.aiModelCopy.split('/')[0]}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 max-h-72 overflow-y-auto">
+                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Copy Facebook</p>
+                                    <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">
+                                        {selected.platformCopies?.facebook?.copy || '(sin copy)'}
+                                    </p>
+                                    {selected.platformCopies?.facebook?.hashtags && (
+                                        <p className="text-[11px] text-indigo-600 font-bold mt-2">{selected.platformCopies.facebook.hashtags}</p>
+                                    )}
+                                    {selected.platformCopies?.facebook?.cta && (
+                                        <p className="text-xs text-gray-800 font-bold mt-2">{selected.platformCopies.facebook.cta}</p>
+                                    )}
+                                </div>
+
+                                {(selected.status === 'draft' || selected.status === 'scheduled' || selected.status === 'error') && (
+                                    <div>
+                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Publicar en</p>
+                                        {connectedAccounts.length === 0 ? (
+                                            <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-[11px] font-bold text-amber-800">
+                                                No hay cuentas conectadas para este club. Andá a "Cuentas Sociales" para conectarlas.
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                                                {connectedAccounts.map(acc => {
+                                                    const checked = selectedAccountIds.has(acc.id);
+                                                    const disabled = acc.needsReconnect || acc.status !== 'active';
+                                                    const Icon = acc.platform === 'instagram' ? Instagram : Facebook;
+                                                    return (
+                                                        <label key={acc.id} className={`flex items-center gap-2 p-2 rounded-lg border-2 cursor-pointer transition-all ${
+                                                            checked && !disabled ? 'bg-blue-50 border-blue-200' : disabled ? 'bg-gray-50 border-gray-100 opacity-50 cursor-not-allowed' : 'bg-white border-gray-100 hover:border-gray-200'
+                                                        }`}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={checked}
+                                                                disabled={disabled}
+                                                                onChange={() => toggleAccount(acc.id)}
+                                                                className="w-3.5 h-3.5 rounded accent-blue-600"
+                                                            />
+                                                            <Icon className={`w-3.5 h-3.5 ${acc.platform === 'instagram' ? 'text-pink-600' : 'text-blue-600'}`} />
+                                                            <span className="text-[11px] font-black text-gray-800 truncate flex-1">{acc.accountName || acc.platform}</span>
+                                                            {disabled && <span className="text-[9px] font-bold text-amber-600">RECONECTAR</span>}
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Schedule sub-modal (inline) */}
+                        {showSchedule && (
+                            <div className="border-t border-gray-100 bg-blue-50/30 px-6 py-4">
+                                <p className="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-3 flex items-center gap-1">
+                                    <CalendarIcon className="w-3 h-3" /> Programar publicación
+                                </p>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <input type="date" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} min={new Date().toISOString().slice(0, 10)}
+                                        className="px-3 py-2 bg-white border border-gray-100 rounded-lg text-xs font-bold outline-none focus:border-blue-500" />
+                                    <input type="time" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)}
+                                        className="px-3 py-2 bg-white border border-gray-100 rounded-lg text-xs font-bold outline-none focus:border-blue-500" />
+                                    <select value={scheduleTimezone} onChange={e => setScheduleTimezone(e.target.value)}
+                                        className="px-2 py-2 bg-white border border-gray-100 rounded-lg text-[11px] font-bold outline-none focus:border-blue-500">
+                                        <option value="America/Bogota">Bogotá UTC-5</option>
+                                        <option value="America/Lima">Lima UTC-5</option>
+                                        <option value="America/Mexico_City">CDMX UTC-6</option>
+                                        <option value="America/Buenos_Aires">BA UTC-3</option>
+                                        <option value="America/Santiago">Santiago UTC-3</option>
+                                        <option value="America/Caracas">Caracas UTC-4</option>
+                                        <option value="America/Guatemala">GT UTC-6</option>
+                                        <option value="America/Panama">PA UTC-5</option>
+                                        <option value="Europe/Madrid">Madrid UTC+1</option>
+                                        <option value="UTC">UTC</option>
+                                    </select>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="px-6 py-4 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2 bg-gray-50/50">
+                            <button
+                                onClick={deletePublication}
+                                disabled={isDeleting || isPublishing || selected.status === 'published' || selected.status === 'partial'}
+                                className="px-3 py-2 rounded-xl text-xs font-bold text-red-500 hover:bg-red-50 transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title={selected.status === 'published' || selected.status === 'partial' ? 'No se puede eliminar una publicación posteada' : 'Eliminar de la biblioteca'}
+                            >
+                                {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                Eliminar
+                            </button>
+                            <div className="flex items-center gap-2">
+                                {(selected.status === 'draft' || selected.status === 'error') && (
+                                    <>
+                                        {showSchedule ? (
+                                            <>
+                                                <button onClick={() => setShowSchedule(false)} className="px-4 py-2.5 rounded-xl text-xs font-bold text-gray-500 hover:bg-gray-200 transition-all">
+                                                    Cancelar
+                                                </button>
+                                                <button
+                                                    onClick={handleScheduleSubmit}
+                                                    disabled={isPublishing || !scheduleDate || !scheduleTime}
+                                                    className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-black disabled:opacity-50 hover:bg-blue-700 transition-all flex items-center gap-2"
+                                                >
+                                                    {isPublishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CalendarIcon className="w-3.5 h-3.5" />}
+                                                    Confirmar programación
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <button
+                                                    onClick={() => setShowSchedule(true)}
+                                                    disabled={isPublishing || selectedAccountIds.size === 0}
+                                                    className="px-4 py-2.5 rounded-xl text-xs font-black text-blue-600 border-2 border-blue-600 hover:bg-blue-50 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    <CalendarIcon className="w-3.5 h-3.5" />
+                                                    Programar
+                                                </button>
+                                                <button
+                                                    onClick={() => publishFromDraft()}
+                                                    disabled={isPublishing || selectedAccountIds.size === 0}
+                                                    className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-black disabled:opacity-50 hover:bg-blue-700 transition-all flex items-center gap-2"
+                                                >
+                                                    {isPublishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                                                    Publicar Ahora
+                                                </button>
+                                            </>
+                                        )}
+                                    </>
+                                )}
+                                {selected.status === 'scheduled' && !showSchedule && (
+                                    <>
+                                        <span className="text-[11px] font-bold text-amber-700">
+                                            Programada para {formatDate(selected.scheduledFor)} ({selected.timezone || 'tz?'})
+                                        </span>
+                                        <button
+                                            onClick={() => publishFromDraft()}
+                                            disabled={isPublishing || selectedAccountIds.size === 0}
+                                            className="px-4 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-black disabled:opacity-50 hover:bg-blue-700 transition-all flex items-center gap-2"
+                                        >
+                                            {isPublishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                                            Publicar ahora
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

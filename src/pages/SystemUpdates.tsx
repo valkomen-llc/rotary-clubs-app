@@ -24,9 +24,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// DISTRICT HEALTH IQ V4.348 | 2026-05-17 (AUTOSAVE — resolver clubId desde Media o s3 path cuando el user no es club admin (system admin) 🔗)
-// Cache bust: 2026-05-17 00:30 (AUTOSAVE CLUBID RESOLUTION v4.348 🔗)
+// DISTRICT HEALTH IQ V4.349 | 2026-05-17 (BIBLIOTECA — click en cards abre modal de detalle con Publicar Ahora / Programar / Eliminar 🎬)
+// Cache bust: 2026-05-17 01:00 (LIBRARY ACTIONS v4.349 🎬)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.349',
+        date: '2026-05-17',
+        title: 'Biblioteca — Click en Cards → Acciones (Publicar / Programar / Eliminar) 🎬',
+        description: 'Las cards de la Biblioteca ahora son interactivas: click abre un modal con preview completo + selector de cuentas + botones Publicar Ahora / Programar / Eliminar. Cada draft ya no es solo informativo.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'PublicationLibrary.tsx: las cards tienen onClick que abre un modal con detalle de la publicación.',
+            'Modal incluye: preview de imagen 4:5, copy completo de Facebook (con hashtags y CTA), badges de motor IA usado, selector de cuentas conectadas del club filtradas a FB+IG, botones de acción contextuales por estado.',
+            'Para DRAFTS y ERROR: botones Publicar Ahora / Programar / Eliminar. El selector de cuentas se carga desde /api/social/accounts?clubId=<id> filtrado al club dueño de la publicación, auto-marca las activas.',
+            'Para SCHEDULED: badge con fecha y timezone programados + botón "Publicar ahora" para forzar el envío antes de la hora.',
+            'Para PUBLISHED / PARTIAL: solo lectura del estado (sin acción posible). El botón Eliminar queda disabled con tooltip explicativo (las publicaciones posteadas no se borran para mantener histórico).',
+            'Schedule inline: al click en Programar, el modal expande con date/time/timezone picker (mismo set de LATAM + Madrid + UTC). Mismo cálculo de ISO UTC respetando la tz elegida.',
+            'Backend: nuevo endpoint DELETE /api/social/publications/:id que valida el ownership por rol (admin ve todo, club admin solo lo suyo) y bloquea delete de published/partial.',
+            'Reuso completo: publishFromDraft llama a POST /api/social/publish con publicationId — actualiza el row existente en vez de crear duplicado. Mismo flow que el botón PUBLICAR AHORA del PostGenerator.',
+            'Tras publicar / programar / eliminar exitosamente, se refresca la lista automáticamente y se cierra el modal.'
+        ]
+    },
     {
         version: 'v4.348',
         date: '2026-05-17',

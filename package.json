@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.348.0",
-  "cache_bust": "2026-05-17 00:30 (AUTOSAVE CLUBID RESOLUTION v4.348 🔗)",
+  "version": "4.349.0",
+  "cache_bust": "2026-05-17 01:00 (LIBRARY ACTIONS v4.349 🎬)",
   "type": "module",
-  "//": "DISTRICT HEALTH IQ V4.348 | 2026-05-17 (AUTOSAVE — resolver clubId desde Media o s3 path cuando el user no es club admin (system admin) 🔗)",
+  "//": "DISTRICT HEALTH IQ V4.349 | 2026-05-17 (BIBLIOTECA — click en cards abre modal de detalle con Publicar Ahora / Programar / Eliminar 🎬)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
