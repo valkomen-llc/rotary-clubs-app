@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.407.0",
-  "cache_bust": "2026-05-19 23:00 (BIBLIOTECA MULTIMEDIA — filtros sólo para super admins v4.407 🔒)",
+  "version": "4.408.0",
+  "cache_bust": "2026-05-20 00:00 (NAV — bypass setup wizard para RYE 4281 v4.408 🔓)",
   "type": "module",
-  "//": "BIBLIOTECA MULTIMEDIA V4.407 | 2026-05-19 (BIBLIOTECA MULTIMEDIA — los filtros de categoría (TODAS, CLUBES, ASOCIACIONES, PROGRAMAS, EVENTOS, CONFERENCIAS, FERIAS, FUNDACIONES, DISTRITOS) y el dropdown de sources ahora se ocultan para admins de club/distrito/asociación. Sólo visibles para super admins. El backend ya filtra por rol — el cambio es solo cosmético para limpiar la UI 🔒)",
+  "//": "NAV V4.408 | 2026-05-20 (NAV — bypass del setup wizard para sitios en desarrollo: RYE 4281 (Programa de Intercambio). El menú entero del sidebar queda activado aunque el setup % esté incompleto, permitiendo configurar todas las secciones en paralelo. Lista de bypass extensible en useSetupProgress.ts 🔓)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

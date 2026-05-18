@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// BIBLIOTECA MULTIMEDIA V4.407 | 2026-05-19 (BIBLIOTECA MULTIMEDIA — filtros sólo para super admins 🔒)
-// Cache bust: 2026-05-19 23:00 (BIBLIOTECA MULTIMEDIA — filtros sólo super admin v4.407 🔒)
+// NAV V4.408 | 2026-05-20 (NAV — bypass setup wizard para RYE 4281 (Programa de Intercambio) 🔓)
+// Cache bust: 2026-05-20 00:00 (NAV — bypass RYE 4281 v4.408 🔓)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.408',
+        date: '2026-05-20',
+        title: 'Nav — Bypass del setup wizard para RYE 4281 🔓',
+        description: 'El menú lateral entero queda activado para el sitio Programa de Intercambio RYE 4281 aunque el setup % esté incompleto. Esto permite configurar todas las secciones (Noticias, Proyectos, Calendario, Miembros, Tienda, Centro de Inteligencia, Content Studio, etc.) en paralelo en vez de tener que completar primero el wizard. Lista de bypass extensible en useSetupProgress.ts para sumar más sitios en desarrollo.',
+        type: 'added',
+        author: 'Claude',
+        details: [
+            'useSetupProgress.ts: nueva lista SETUP_BYPASS_PATTERNS = ["rye 4281", "rye-4281", "rye4281"]. Match case-insensitive contra club.name o club.subdomain.',
+            'Cuando el club matchea, isComplete=true y pct=100% — el sidebar trata el sitio como si tuviera el setup completo.',
+            'Sin cambios en backend ni en otros componentes — el bypass solo afecta el cálculo de setup en el frontend, que es lo único que controla qué items del menú están "locked".',
+            'Para agregar más sitios al bypass en el futuro: editar SETUP_BYPASS_PATTERNS. Para hacerlo dinámico (configurable desde DB), agregar feature flag al modelo Club.'
+        ]
+    },
     {
         version: 'v4.407',
         date: '2026-05-19',

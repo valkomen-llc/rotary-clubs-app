@@ -55,6 +55,28 @@ export const SETUP_ALLOWED_PATHS = [
     '/admin/inteligencia',
 ];
 
+// v4.408: lista de sitios cuyo setup wizard se bypassea — el menú entero
+// se activa aunque el setup % esté incompleto. Útil para sitios en desarrollo
+// que necesitan acceso a todas las secciones para configurarse en paralelo
+// (ej. Programa de Intercambio RYE 4281 mientras se carga el contenido inicial).
+//
+// Match case-insensitive contra club.name o club.subdomain. Para agregar otro,
+// sumar string acá. Para hacerlo dinámico en el futuro: feature flag en DB.
+const SETUP_BYPASS_PATTERNS = [
+    'rye 4281',
+    'rye-4281',
+    'rye4281'
+];
+
+const clubMatchesBypass = (club: any): boolean => {
+    if (!club) return false;
+    const name = String(club?.name || '').toLowerCase();
+    const subdomain = String(club?.subdomain || '').toLowerCase();
+    return SETUP_BYPASS_PATTERNS.some(pattern =>
+        name.includes(pattern) || subdomain === pattern
+    );
+};
+
 export function useSetupProgress(): SetupProgress {
     const { token, user } = useAuth();
     const [stats, setStats] = useState<any>(null);
@@ -144,10 +166,12 @@ export function useSetupProgress(): SetupProgress {
 
     // Super admins bypass setup requirements
     const isSuperAdmin = user?.role === 'administrator';
+    // v4.408: sitios marcados como bypass también saltean el wizard.
+    const isBypassedClub = clubMatchesBypass(club);
 
     return {
-        pct: isSuperAdmin ? 100 : pct,
-        isComplete: isSuperAdmin ? true : pct >= 100,
+        pct: (isSuperAdmin || isBypassedClub) ? 100 : pct,
+        isComplete: (isSuperAdmin || isBypassedClub) ? true : pct >= 100,
         items,
         remaining: items.filter(i => !i.done).length,
         loading,
