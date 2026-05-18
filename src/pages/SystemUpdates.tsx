@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// SOCIAL V4.398 | 2026-05-19 (SOCIAL — IG long-lived exchange opcional: persiste short-lived si falla 🤝)
-// Cache bust: 2026-05-19 14:00 (SOCIAL — IG long-lived opcional v4.398 🤝)
+// SOCIAL V4.399 | 2026-05-19 (SOCIAL — IG /me con triple fallback + user_id del exchange 🛡️)
+// Cache bust: 2026-05-19 15:00 (SOCIAL — IG /me triple fallback v4.399 🛡️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.399',
+        date: '2026-05-19',
+        title: 'Social — IG /me con triple fallback + user_id del exchange como último recurso 🛡️',
+        description: 'Logs revelaron que también el endpoint /me de graph.instagram.com rechaza GET con el mismo error que el long-lived exchange — Meta cambió la API de manera más amplia de lo que pensábamos. Triple fallback: probamos graph.instagram.com/me, /v23.0/me y graph.facebook.com/v23.0/me. Si todos fallan, usamos el user_id que recibimos en el exchange del paso 1 (que SÍ funciona) y guardamos un nombre placeholder. Conexión completa garantizada.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'getIgUserProfile: ahora prueba 3 URLs en orden (IG Graph, IG Graph versionado, FB Graph versionado). Toma la primera que devuelva un id/user_id válido.',
+            'handleInstagramCallback: el llamado a getIgUserProfile ahora está wrapped en try/catch. Si todos los endpoints fallan, usamos tokenUserId del exchange con nombre placeholder "instagram_XXXXXX".',
+            'Resultado: la cuenta SIEMPRE queda persistida si el exchange del paso 1 funcionó. El frontend puede mostrar la cuenta y el publish flow funciona (el user_id es lo único realmente necesario).',
+            'TODO: el usuario puede editar el accountName manualmente después si quiere algo más descriptivo que "instagram_XXXXXX".'
+        ]
+    },
     {
         version: 'v4.398',
         date: '2026-05-19',

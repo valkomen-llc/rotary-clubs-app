@@ -385,13 +385,11 @@ export const handleInstagramCallback = async (req, res) => {
 
     try {
         const redirectUri = getIgRedirectUri(req);
-        // 1) Code → short-lived IG user token.
-        const { token: shortToken } = await exchangeCodeForIgToken({ code, redirectUri });
-        // 2) Short-lived → long-lived (~60d, renewable). v4.398: hacemos este paso
-        // OPCIONAL — si Meta rechaza el endpoint (cambió en algún momento), seguimos
-        // con el short-lived token (válido ~1h) y marcamos expiresAt corto para
-        // que el usuario reconnect cuando expire. Mejor tener una conexión de 1h
-        // que ninguna.
+        // 1) Code → short-lived IG user token. Esto SIEMPRE devuelve user_id en
+        // la respuesta — lo usamos como fallback si /me también falla.
+        const { token: shortToken, userId: tokenUserId } = await exchangeCodeForIgToken({ code, redirectUri });
+        // 2) Short-lived → long-lived (~60d, renewable). v4.398: paso OPCIONAL —
+        // si Meta rechaza el endpoint, seguimos con short-lived (~1h).
         let activeToken = shortToken;
         let expiresAt = new Date(Date.now() + 60 * 60 * 1000); // default 1h
         try {
@@ -402,10 +400,23 @@ export const handleInstagramCallback = async (req, res) => {
         } catch (longErr) {
             console.warn('[social] IG-direct long-lived exchange falló, usamos short-lived:', longErr.message);
         }
-        // 3) Identify the IG account.
-        const profile = await getIgUserProfile(activeToken);
+        // 3) Identify the IG account. v4.399: este paso TAMBIÉN es opcional. Si
+        // graph.instagram.com/me rechaza todos los métodos, usamos el user_id
+        // que recibimos en el paso 1 con un nombre placeholder. El usuario
+        // puede editar el nombre después.
+        let profile = { id: null, username: null, accountType: null, avatar: null };
+        try {
+            profile = await getIgUserProfile(activeToken);
+            console.log('[social] IG-direct /me OK:', profile.username, '/', profile.accountType);
+        } catch (meErr) {
+            console.warn('[social] IG-direct /me falló, usamos user_id del exchange:', meErr.message);
+            if (tokenUserId) {
+                profile.id = tokenUserId;
+                profile.username = `instagram_${tokenUserId.slice(-6)}`;
+            }
+        }
         if (!profile.id) {
-            return res.redirect(`${redirectBase}&social=error&message=${encodeURIComponent('No se pudo identificar la cuenta de Instagram')}`);
+            return res.redirect(`${redirectBase}&social=error&message=${encodeURIComponent('No se pudo identificar la cuenta de Instagram (sin user_id en exchange ni en /me)')}`);
         }
 
         // 4) Persist as a SocialAccount with platform='instagram' and a

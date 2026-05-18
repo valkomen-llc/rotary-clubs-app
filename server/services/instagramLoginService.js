@@ -125,19 +125,38 @@ export const exchangeForLongLivedIgToken = async (shortToken) => {
 };
 
 // Step 3: fetch the IG account profile to populate UI metadata.
-// The endpoint /me returns: id, user_id, username, account_type, profile_picture_url.
-// We use `graph.instagram.com` (IG Graph) because the token is an IG user token.
+// v4.399: probamos múltiples hosts/endpoints porque Meta cambió la API y los
+// docs no están actualizados. Si todos fallan, devolvemos null y el caller
+// puede caer al userId del exchange como fallback.
+const IG_PROFILE_FIELDS = 'id,user_id,username,account_type,profile_picture_url';
 export const getIgUserProfile = async (igToken) => {
-    const fields = 'id,user_id,username,account_type,profile_picture_url';
-    const resp = await fetch(`${IG_GRAPH_HOST}/me?fields=${fields}&access_token=${encodeURIComponent(igToken)}`);
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(`Instagram /me falló: ${data.error?.message || resp.status}`);
-    return {
-        id: data.id || data.user_id ? String(data.id || data.user_id) : null,
-        username: data.username || null,
-        accountType: data.account_type || null,
-        avatar: data.profile_picture_url || null
-    };
+    const attempts = [
+        // Endpoint clásico — falla en algunas configuraciones con "Unsupported request"
+        `${IG_GRAPH_HOST}/me?fields=${IG_PROFILE_FIELDS}&access_token=${encodeURIComponent(igToken)}`,
+        // Con prefijo de versión (algunos endpoints Meta sólo aceptan versionado)
+        `${IG_GRAPH_HOST}/v23.0/me?fields=${IG_PROFILE_FIELDS}&access_token=${encodeURIComponent(igToken)}`,
+        // Fallback al graph de Facebook (también acepta tokens IG en algunos casos)
+        `https://graph.facebook.com/v23.0/me?fields=${IG_PROFILE_FIELDS}&access_token=${encodeURIComponent(igToken)}`
+    ];
+    let lastErr = null;
+    for (const url of attempts) {
+        try {
+            const resp = await fetch(url);
+            const data = await resp.json();
+            if (resp.ok && (data.id || data.user_id)) {
+                return {
+                    id: String(data.id || data.user_id),
+                    username: data.username || null,
+                    accountType: data.account_type || null,
+                    avatar: data.profile_picture_url || null
+                };
+            }
+            lastErr = data.error?.message || `HTTP ${resp.status}`;
+        } catch (e) {
+            lastErr = e.message;
+        }
+    }
+    throw new Error(`Instagram /me falló en todos los endpoints. Último: ${lastErr}`);
 };
 
 // Convenience verify hook used by the verifyAccount endpoint for IG-direct accounts.
