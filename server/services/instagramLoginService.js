@@ -101,13 +101,19 @@ export const exchangeCodeForIgToken = async ({ code, redirectUri }) => {
 
 // Step 2: exchange the short-lived token for a long-lived one (~60 days).
 // This call goes to `graph.instagram.com`, not the FB Graph.
+// v4.397: usamos POST con body, no GET con query string — Meta actualizó este
+// endpoint para que rechace GET ("Unsupported request - method type: get").
 export const exchangeForLongLivedIgToken = async (shortToken) => {
-    const params = new URLSearchParams({
+    const form = new URLSearchParams({
         grant_type: 'ig_exchange_token',
         client_secret: getIgAppSecret(),
         access_token: shortToken
     });
-    const resp = await fetch(`${IG_GRAPH_HOST}/access_token?${params.toString()}`);
+    const resp = await fetch(`${IG_GRAPH_HOST}/access_token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: form
+    });
     const data = await resp.json();
     if (!resp.ok || !data.access_token) {
         throw new Error(`Instagram long-lived token falló: ${data.error?.message || JSON.stringify(data)}`);

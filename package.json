@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.396.0",
-  "cache_bust": "2026-05-19 12:00 (SOCIAL — IG OAuth: force_reauth + strip #_ + logging diagnóstico v4.396 🔬)",
+  "version": "4.397.0",
+  "cache_bust": "2026-05-19 13:00 (SOCIAL — IG long-lived token: POST en vez de GET v4.397 🩹)",
   "type": "module",
-  "//": "SOCIAL V4.396 | 2026-05-19 (SOCIAL — Instagram OAuth robusto: agrega force_reauth=true al authorize URL (consent fresh, no usa autorizaciones viejas), stripea sufijo #_ defensivamente del code antes del token exchange, y añade logging diagnóstico en handleInstagramCallback para identificar qué falla 🔬)",
+  "//": "SOCIAL V4.397 | 2026-05-19 (SOCIAL — fix exchangeForLongLivedIgToken: ahora usa POST con form body en vez de GET con query string. Meta actualizó este endpoint y rechaza GET con error 'Unsupported request - method type: get'. Esto bloqueaba completar el OAuth de Instagram Login directo 🩹)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
