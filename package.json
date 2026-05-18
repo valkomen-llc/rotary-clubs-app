@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.380.0",
-  "cache_bust": "2026-05-18 22:00 (CHAT-TO-MEMORY v4.380 🧠)",
+  "version": "4.381.0",
+  "cache_bust": "2026-05-18 23:00 (POSTGEN IG 2:3 FORMAT v4.381 📐)",
   "type": "module",
-  "//": "CHAT-TO-MEMORY V4.380 | 2026-05-18 (CEREBROS — cada conversación se persiste como BrainMemory kind=CHAT (idempotente por sessionId), buscable semánticamente, aparece en el grafo y se conecta con el resto del conocimiento 🧠)",
+  "//": "POSTGEN IG 2:3 V4.381 | 2026-05-18 (POSTGEN — formato dedicado para Instagram: 2:3 (1080×1620), separado de portrait 4:5 (FB/LI) y landscape 3:2 (X). Cada plataforma recibe su variante en publish 📐)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
