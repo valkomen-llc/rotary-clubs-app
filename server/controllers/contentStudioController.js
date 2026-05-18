@@ -236,7 +236,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.389 — autosave SIEMPRE corre aunque clubId sea null; requiere migración SQL para clubId nullable) ---');
+        console.log('--- START GENERATE POST (v4.390 — autosave outcome visible en response + toast en frontend cuando falla) ---');
         const { imageUrl, config = {} } = req.body;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
 
@@ -534,6 +534,7 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
         //   ALTER TABLE "SocialPublication" ALTER COLUMN "clubId" DROP NOT NULL;
         const hasAnyImage = !!finalUrl;
         const autoStatus = hasAnyImage ? 'draft' : 'error';
+        let autosaveError = null; // se devuelve al frontend para que muestre un toast si falló
         // Helper defensivo: si la columna imageUrlInstagram todavía no existe
         // en la DB (migración v4.381 pendiente), reintentamos sin ese campo
         // para no romper el autosave. La columna se agrega corriendo:
@@ -575,10 +576,11 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
             // Si clubId es null y el constraint NOT NULL todavía no se removió,
             // este error es esperado hasta correr la migración SQL v4.389.
             if (!clubId && /null value in column "clubId"|violates not-null|NOT NULL constraint failed/i.test(e.message)) {
-                console.error('[STUDIO] ⚠ La migración SQL v4.389 está PENDIENTE en la DB. Ejecutá: ALTER TABLE "SocialPublication" ALTER COLUMN "clubId" DROP NOT NULL;');
+                autosaveError = 'La migración SQL v4.389 está pendiente en la DB. Ejecutá: ALTER TABLE "SocialPublication" ALTER COLUMN "clubId" DROP NOT NULL;';
             } else {
-                console.error('[STUDIO] ⚠ No se pudo autoguardar la publicación:', e.message);
+                autosaveError = e.message;
             }
+            console.error(`[STUDIO] ⚠ Autosave falló: ${autosaveError}`);
         }
 
         res.json({
@@ -597,6 +599,15 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
             // publish/schedule subsiguiente pueda referenciarlo en vez de
             // duplicar la row.
             publicationId: draftId,
+            // v4.390: outcome explícito del autosave para que el frontend muestre
+            // toast si falló, en vez de descubrirlo recién al refrescar la biblioteca.
+            autosave: {
+                ok: !!draftId,
+                publicationId: draftId,
+                error: autosaveError,
+                clubId: clubId || null,
+                status: autoStatus
+            },
             metadata: {
                 engine: usedEngine,
                 format: primaryFormat,
@@ -607,7 +618,8 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
                 copyModel,
                 publicationId: draftId,
                 ...(imageError ? { imageError } : {}),
-                ...(copyError ? { copyError } : {})
+                ...(copyError ? { copyError } : {}),
+                ...(autosaveError ? { autosaveError } : {})
             }
         });
     } catch (error) {

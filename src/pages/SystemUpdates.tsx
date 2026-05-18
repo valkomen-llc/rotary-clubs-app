@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// BIBLIOTECA V4.389 | 2026-05-19 (BIBLIOTECA — autosave universal aunque clubId sea null; SocialPublication.clubId ahora nullable 📚)
-// Cache bust: 2026-05-19 05:00 (BIBLIOTECA — autosave universal aunque clubId sea null v4.389 📚)
+// BIBLIOTECA V4.390 | 2026-05-19 (BIBLIOTECA — outcome explícito del autosave visible en UI 🔍)
+// Cache bust: 2026-05-19 06:00 (BIBLIOTECA — outcome del autosave visible en UI v4.390 🔍)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.390',
+        date: '2026-05-19',
+        title: 'Biblioteca — Outcome explícito del autosave visible en UI 🔍',
+        description: 'El equipo reportó que aún corriendo la migración SQL de v4.389, algunas generaciones no aparecen en la biblioteca. Para diagnosticar el caso real, ahora el backend devuelve un campo "autosave" con { ok, publicationId, error } en la response del generate-post. Si el autosave falló, el frontend muestra un toast rojo persistente con el mensaje exacto del error en vez de que el usuario tenga que revisar los logs de Vercel.',
+        type: 'improved',
+        author: 'Claude',
+        details: [
+            'Backend (contentStudioController.js): nuevo campo "autosave" en la response del /generate-post: { ok: boolean, publicationId: string | null, error: string | null, clubId: string | null, status: "draft" | "error" }. También se agrega autosaveError dentro de metadata para retro-compat.',
+            'Frontend (PostGenerator.tsx): después del toast de éxito de generación, si data.autosave.ok === false y hay error, se muestra un toast.error persistente (30 segundos) con el mensaje exacto del error. Así si el insert falló por algún motivo distinto al constraint, el equipo lo ve inmediatamente.',
+            'Heurísticas de detección de error mejoradas en el catch: si el error coincide con el patrón de NOT NULL constraint (migración v4.389 pendiente), el mensaje devuelto al frontend incluye la SQL exacta a ejecutar.',
+            'Log de arranque actualizado: "v4.390 — autosave outcome visible en response + toast en frontend cuando falla".'
+        ]
+    },
     {
         version: 'v4.389',
         date: '2026-05-19',
