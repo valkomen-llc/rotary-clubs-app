@@ -62,20 +62,26 @@ export const buildIgAuthUrl = ({ state, redirectUri }) => {
         redirect_uri: redirectUri,
         scope: REQUIRED_IG_SCOPES.join(','),
         response_type: 'code',
-        state
+        state,
+        // v4.396: force_reauth=true asegura que IG pida consent fresh cada vez,
+        // sin usar autorizaciones almacenadas previas (que podrían apuntar a
+        // un redirect URI viejo).
+        force_reauth: 'true'
     });
     return `${IG_AUTHORIZE_HOST}/oauth/authorize?${params.toString()}`;
 };
 
 // Step 1: exchange the OAuth code for a short-lived IG user access token.
 // Note: this hits `api.instagram.com/oauth/access_token`, NOT the Graph API.
+// v4.396: stripeamos el sufijo "#_" que Meta adjunta al code en la redirect.
 export const exchangeCodeForIgToken = async ({ code, redirectUri }) => {
+    const cleanCode = String(code || '').replace(/#_$/, '');
     const form = new URLSearchParams({
         client_id: getIgAppId(),
         client_secret: getIgAppSecret(),
         grant_type: 'authorization_code',
         redirect_uri: redirectUri,
-        code
+        code: cleanCode
     });
     const resp = await fetch(`${IG_TOKEN_HOST}/oauth/access_token`, {
         method: 'POST',

@@ -355,17 +355,29 @@ export const getInstagramAuthUrl = async (req, res) => {
 // without enumerating FB Pages.
 // ============================================================================
 export const handleInstagramCallback = async (req, res) => {
+    console.log('[social] IG-direct callback hit', {
+        host: req.hostname,
+        path: req.path,
+        hasCode: !!req.query.code,
+        codeLen: req.query.code ? String(req.query.code).length : 0,
+        hasState: !!req.query.state,
+        hasError: !!req.query.error,
+        query: Object.keys(req.query)
+    });
     const { code, state, error: igError, error_description } = req.query;
     const redirectBase = `${getBaseUrl(req)}/admin/content-studio?tab=accounts`;
 
     if (igError) {
+        console.warn('[social] IG-direct returned error:', igError, error_description);
         return res.redirect(`${redirectBase}&social=error&message=${encodeURIComponent(error_description || igError)}`);
     }
     if (!code || !state) {
+        console.warn('[social] IG-direct missing params');
         return res.redirect(`${redirectBase}&social=error&message=missing_params`);
     }
     const verified = verifyState(state);
     if (!verified) {
+        console.warn('[social] IG-direct invalid state');
         return res.redirect(`${redirectBase}&social=error&message=invalid_state`);
     }
     const { clubId } = verified;

@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.395.0",
-  "cache_bust": "2026-05-19 11:00 (SOCIAL — fix host autorización IG: www.instagram.com (no api) v4.395 🩹)",
+  "version": "4.396.0",
+  "cache_bust": "2026-05-19 12:00 (SOCIAL — IG OAuth: force_reauth + strip #_ + logging diagnóstico v4.396 🔬)",
   "type": "module",
-  "//": "SOCIAL V4.395 | 2026-05-19 (SOCIAL — fix host de autorización Instagram Login: ahora apunta a www.instagram.com/oauth/authorize como indica la UI de Meta Developer (en v4.394 estaba con api.instagram.com que no acepta este flujo). El token exchange sigue en api.instagram.com y los graph calls en graph.instagram.com 🩹)",
+  "//": "SOCIAL V4.396 | 2026-05-19 (SOCIAL — Instagram OAuth robusto: agrega force_reauth=true al authorize URL (consent fresh, no usa autorizaciones viejas), stripea sufijo #_ defensivamente del code antes del token exchange, y añade logging diagnóstico en handleInstagramCallback para identificar qué falla 🔬)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
