@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// SOCIAL V4.403 | 2026-05-19 (SOCIAL — publish IG directo via graph.facebook.com/v23.0 📤)
-// Cache bust: 2026-05-19 19:00 (SOCIAL — publish IG via FB Graph v4.403 📤)
+// SOCIAL V4.404 | 2026-05-19 (SOCIAL — IG publish: chain de 3 hosts + appsecret_proof 🔄)
+// Cache bust: 2026-05-19 20:00 (SOCIAL — IG publish chain v4.404 🔄)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.404',
+        date: '2026-05-19',
+        title: 'Social — IG publish: chain de 3 hosts + appsecret_proof 🔄',
+        description: 'v4.403 con graph.facebook.com/v23.0 reveló nuevo error "Invalid OAuth access token - Cannot parse access token". Significa que el endpoint acepta la request pero rechaza el token. Dos posibles causas: el token short-lived expiró (ya pasó 1h) o el endpoint requiere appsecret_proof (HMAC del token con app_secret). Solución: probar varios hosts en cadena Y agregar appsecret_proof.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'publishToInstagramBusiness ahora prueba 3 endpoints en orden: graph.instagram.com/v23.0, graph.facebook.com/v23.0, graph.facebook.com/v18.0. Toma el primero que acepte la request.',
+            'appsecret_proof añadido a cada request: HMAC-SHA256(access_token, app_secret).hexdigest() — un param de seguridad que algunos endpoints Meta exigen y sin el cual devuelven errores genéricos como "Invalid OAuth access token - Cannot parse access token".',
+            'Logs detallados: "[publish] IG → intento create container @ <base>" y "[publish] IG → container creado OK @ <base>" o "[publish] IG → falló @ <base>: <error>". Permite identificar qué host realmente funciona.',
+            'IMPORTANTE: si el token short-lived (~1h) expiró, NINGÚN endpoint va a funcionar. Reconectá la cuenta IG primero antes de publicar.'
+        ]
+    },
     {
         version: 'v4.403',
         date: '2026-05-19',
