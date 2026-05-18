@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.394.0",
-  "cache_bust": "2026-05-19 10:00 (SOCIAL — Instagram Login directo (alt. cuando no hay Fanpage vinculada) v4.394 📷)",
+  "version": "4.395.0",
+  "cache_bust": "2026-05-19 11:00 (SOCIAL — fix host autorización IG: www.instagram.com (no api) v4.395 🩹)",
   "type": "module",
-  "//": "SOCIAL V4.394 | 2026-05-19 (SOCIAL — Instagram Login API for Business: flujo OAuth directo (api.instagram.com) para conectar cuentas IG Business/Creator que NO están vinculadas a una Fanpage. Nuevo botón 'Conectar Instagram Directo' en Cuentas Sociales. Requiere env vars INSTAGRAM_APP_ID/INSTAGRAM_APP_SECRET y configurar el producto Instagram en Meta Developer App con redirect URI /api/social/callback/instagram 📷)",
+  "//": "SOCIAL V4.395 | 2026-05-19 (SOCIAL — fix host de autorización Instagram Login: ahora apunta a www.instagram.com/oauth/authorize como indica la UI de Meta Developer (en v4.394 estaba con api.instagram.com que no acepta este flujo). El token exchange sigue en api.instagram.com y los graph calls en graph.instagram.com 🩹)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
