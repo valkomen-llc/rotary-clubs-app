@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// SOCIAL V4.397 | 2026-05-19 (SOCIAL — IG long-lived token: POST en vez de GET 🩹)
-// Cache bust: 2026-05-19 13:00 (SOCIAL — IG long-lived token: POST v4.397 🩹)
+// SOCIAL V4.398 | 2026-05-19 (SOCIAL — IG long-lived exchange opcional: persiste short-lived si falla 🤝)
+// Cache bust: 2026-05-19 14:00 (SOCIAL — IG long-lived opcional v4.398 🤝)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.398',
+        date: '2026-05-19',
+        title: 'Social — Instagram long-lived exchange OPCIONAL: conexión completa con short-lived 🤝',
+        description: 'Confirmamos en los logs que Meta rechaza tanto GET como POST en el endpoint long-lived (cambió y no encontré la versión nueva todavía). Workaround pragmático: ahora el long-lived exchange es OPCIONAL — si falla, persistimos el short-lived token (válido ~1 hora) y marcamos expiresAt corto. El usuario puede publicar durante esa hora y reconnectear cuando expire. Mejor tener una conexión funcional de 1h que ninguna.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'handleInstagramCallback: el paso 2 (short-lived → long-lived) ahora está envuelto en try/catch. Si Meta lo rechaza con "Unsupported request - method type: post" (lo cual está pasando), continúa con el short-lived token.',
+            'expiresAt: si el long-lived exchange falla, marcamos la cuenta con expiresAt = +1 hora. El verifyAccount endpoint puede detectar esto y pedir reconnect.',
+            'Logs claros: "[social] IG-direct long-lived token obtenido" (éxito) vs "[social] IG-direct long-lived exchange falló, usamos short-lived" (fallback).',
+            'TODO pendiente: identificar el endpoint correcto del long-lived exchange para IG Login API for Business (Meta cambió pero los docs todavía dicen el viejo). Cuando lo encontremos, la conexión durará 60 días en vez de 1h.'
+        ]
+    },
     {
         version: 'v4.397',
         date: '2026-05-19',

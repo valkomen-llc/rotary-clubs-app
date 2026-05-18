@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.397.0",
-  "cache_bust": "2026-05-19 13:00 (SOCIAL — IG long-lived token: POST en vez de GET v4.397 🩹)",
+  "version": "4.398.0",
+  "cache_bust": "2026-05-19 14:00 (SOCIAL — IG long-lived exchange opcional: persiste short-lived si falla v4.398 🤝)",
   "type": "module",
-  "//": "SOCIAL V4.397 | 2026-05-19 (SOCIAL — fix exchangeForLongLivedIgToken: ahora usa POST con form body en vez de GET con query string. Meta actualizó este endpoint y rechaza GET con error 'Unsupported request - method type: get'. Esto bloqueaba completar el OAuth de Instagram Login directo 🩹)",
+  "//": "SOCIAL V4.398 | 2026-05-19 (SOCIAL — el long-lived exchange de IG ahora es OPCIONAL: si Meta rechaza el endpoint (cambió y no aceptamos ni GET ni POST), seguimos con el short-lived token (~1h de validez) y marcamos expiresAt corto para que el usuario reconnecte cuando expire. Mejor tener una conexión de 1h que ninguna 🤝)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
