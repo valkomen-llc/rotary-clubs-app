@@ -236,10 +236,50 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.387 — Anti-fechas-inventadas + autosave robusto con status=error en fallas) ---');
+        console.log('--- START GENERATE POST (v4.388 — clubId resuelto desde Media.clubId ANTES del copy + UUID regex laxo) ---');
         const { imageUrl, config = {} } = req.body;
-        const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
+
+        // Resolve clubId from MULTIPLE sources in priority order, BEFORE generating
+        // copy. La biblioteca permite a system admins generar para clubes que ellos
+        // no tienen asignados — el clubId real viene en req.body.imageId (UUID de
+        // Media) o se puede inferir del path del imageUrl. ANTES (v4.387) esta
+        // resolución corría sólo en el bloque de autosave, por lo que el copy ya
+        // se había generado sin el nombre del club (resultado: "En el Club Rotario"
+        // genérico aunque la imagen perteneciera a Club Rotario Buga). Fix v4.388.
+        let clubId = req.user.role === 'administrator'
+            ? (req.body.clubId || req.user.clubId || null)
+            : (req.user.clubId || null);
+
+        // Fallback A: imageId apunta a un Media row. Tomar Media.clubId o
+        // Media.sourceId cuando sourceType='club'. Aceptamos cualquier formato
+        // UUID (no sólo v4) — la regex estricta de antes filtraba casos válidos.
+        if (!clubId && req.body.imageId && req.body.imageId !== 'uploaded') {
+            const anyUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (anyUuid.test(req.body.imageId)) {
+                try {
+                    const m = await prisma.media.findUnique({
+                        where: { id: req.body.imageId },
+                        select: { clubId: true, sourceId: true, sourceType: true }
+                    });
+                    if (m?.clubId) clubId = m.clubId;
+                    else if (m?.sourceType === 'club' && m?.sourceId) clubId = m.sourceId;
+                } catch { /* ignore, sigue intentando los otros fallbacks */ }
+            }
+        }
+
+        // Fallback B: el imageUrl tiene path tipo "clubs/<uuid>/..." (S3 key).
+        if (!clubId && imageUrl) {
+            const pathMatch = imageUrl.match(/\/clubs\/([0-9a-f-]{36})\//i);
+            if (pathMatch) {
+                try {
+                    const c = await prisma.club.findUnique({ where: { id: pathMatch[1] }, select: { id: true } });
+                    if (c) clubId = c.id;
+                } catch { /* ignore */ }
+            }
+        }
+        if (clubId) console.log(`[STUDIO] ClubId resuelto: ${clubId} (req.user=${req.user.clubId || 'null'}, body=${req.body.clubId || 'null'}, imageId=${req.body.imageId || 'null'})`);
+        else console.log(`[STUDIO] ClubId NO resuelto — el copy usará fallback genérico y el autosave se skippeará.`);
 
         const targetFormat = config.targetFormat === 'landscape' ? 'landscape' : 'portrait';
         const typeMeta = TYPE_PROMPTS[config.type] || TYPE_PROMPTS.standard;
@@ -478,52 +518,26 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
         if (!usedEngine && primary?.engine) usedEngine = primary.engine;
 
         // ─── Autosave en la Biblioteca de Publicaciones (v4.345) ─────────────
-        // Toda generación exitosa queda guardada como draft en SocialPublication
-        // para historial / reuso / re-publicación, independientemente de si el
-        // usuario después publica o no.
-        //
-        // Resolución del clubId para el draft (en orden de fallback):
-        //   1) clubId resuelto por getCallerClubId (req.user.clubId o body.clubId)
-        //   2) Si la imagen viene de la Library (req.body.imageId UUID), la
-        //      clubId del Media row.
-        //   3) Si el imageUrl es un path tipo "clubs/<uuid>/...", verificar
-        //      que ese uuid sea un Club real y usarlo.
-        //   4) Si todo falla, skipeamos el autosave silenciosamente — un system
-        //      admin generando sin contexto de club no rompe el flujo.
+        // Toda generación queda guardada en SocialPublication para historial /
+        // reuso / re-publicación, independientemente de si el usuario después
+        // publica o no. El clubId YA fue resuelto al inicio del handler (v4.388),
+        // así que acá lo usamos directamente — antes la resolución corría dos
+        // veces (una vacía para el copy y otra completa para el autosave), por
+        // lo que el copy salía con nombre genérico.
         let draftId = null;
-        let resolvedClubId = clubId;
-        if (!resolvedClubId && req.body.imageId && req.body.imageId !== 'uploaded') {
-            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-            if (uuidRegex.test(req.body.imageId)) {
-                try {
-                    const m = await prisma.media.findUnique({ where: { id: req.body.imageId }, select: { clubId: true, sourceId: true, sourceType: true } });
-                    if (m?.clubId) resolvedClubId = m.clubId;
-                    else if (m?.sourceType === 'club' && m?.sourceId) resolvedClubId = m.sourceId;
-                } catch { /* ignore */ }
-            }
-        }
-        if (!resolvedClubId && imageUrl) {
-            const pathMatch = imageUrl.match(/\/clubs\/([0-9a-f-]{36})\//i);
-            if (pathMatch) {
-                try {
-                    const c = await prisma.club.findUnique({ where: { id: pathMatch[1] }, select: { id: true } });
-                    if (c) resolvedClubId = c.id;
-                } catch { /* ignore */ }
-            }
-        }
 
         // Estado para la biblioteca: 'draft' cuando todo OK, 'error' si la
         // generación de imagen falló total o parcialmente. Así toda intención
         // de generar queda capturada en el historial (v4.387).
         const hasAnyImage = !!finalUrl;
         const autoStatus = hasAnyImage ? 'draft' : 'error';
-        if (resolvedClubId) {
+        if (clubId) {
             // Helper defensivo: si la columna imageUrlInstagram todavía no existe
             // en la DB (migración v4.381 pendiente), reintentamos sin ese campo
             // para no romper el autosave. La columna se agrega corriendo:
             //   ALTER TABLE "SocialPublication" ADD COLUMN IF NOT EXISTS "imageUrlInstagram" TEXT;
             const buildBaseDraftData = (includeInstagram) => ({
-                clubId: resolvedClubId,
+                clubId: clubId,
                 userId: req.user.id || null,
                 imageUrl: finalUrl,
                 ...(includeInstagram ? { imageUrlInstagram: generatedImages.instagram?.url || null } : {}),
@@ -554,7 +568,7 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
                     }
                 }
                 draftId = draft.id;
-                console.log(`[STUDIO] Publicación guardada en biblioteca: ${draftId} (club ${resolvedClubId}, status=${autoStatus})`);
+                console.log(`[STUDIO] Publicación guardada en biblioteca: ${draftId} (club ${clubId}, status=${autoStatus})`);
             } catch (e) {
                 console.warn('[STUDIO] No se pudo autoguardar la publicación:', e.message);
             }
