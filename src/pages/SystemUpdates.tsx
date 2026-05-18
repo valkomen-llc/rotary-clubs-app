@@ -24,9 +24,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// COPY IA V4.386 | 2026-05-19 (COPY IA — reglas institucionales obligatorias para nombre del club, normalización Rotary→Club Rotario, tiempo verbal según fecha 🏛️)
-// Cache bust: 2026-05-19 02:00 (COPY IA — reglas institucionales v4.386 🏛️)
+// COPY IA V4.387 | 2026-05-19 (COPY IA — anti fechas inventadas + autosave robusto guarda con status=error en fallas de generación 🎯)
+// Cache bust: 2026-05-19 03:00 (COPY IA — anti fechas inventadas + autosave robusto v4.387 🎯)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.387',
+        date: '2026-05-19',
+        title: 'Copy IA — Anti fechas inventadas + Biblioteca captura fallas como Error 🎯',
+        description: 'Se reportó que la IA generaba fechas inventadas tipo "el próximo sábado 24 de mayo" cuando ninguna fecha real fue provista. Causa: el prompt inyectaba "Fecha de hoy" y el modelo construía relativas. Ahora está PROHIBIDO inventar fechas/días/horarios; sólo se usan si vienen del contexto. Además, las fallas de generación ahora se guardan en la Biblioteca con status=Error para trazabilidad completa.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Eliminada la inyección automática de "Fecha de hoy" en el prompt. Esa pista hacía que el modelo inventara fechas relativas como "el próximo sábado 24 de mayo".',
+            'Nueva regla #3 en el systemPrompt: "PROHIBIDO INVENTAR FECHAS Y DATOS". El modelo no puede mencionar días/meses/años, nombres de días de la semana, horarios, lugares específicos, montos en dinero, cantidades de personas, ni nombres propios que no estén en el contexto.',
+            'Si no hay fecha real, el modelo debe usar frases neutrales: "próximamente", "en esta jornada", "durante la actividad", "en el marco del proyecto", "en breve", "muy pronto".',
+            'Nuevo parámetro opcional `config.eventDate` (ISO date string). Si el caller lo provee, se inyecta como "Fecha real del evento provista por el sistema: <fecha>" y el modelo puede usarla. Si no se provee, NO hay fecha y el modelo lo respeta.',
+            'CTA actualizado: se eliminó la sugerencia "Sumate este sábado" (mencionaba un día específico). Ahora "Sumate a esta iniciativa", "Conocé más en nuestras redes".',
+            'Regla #4 reforzada: contextualización SIN inventar. Combina nombre + categoría + ciudad + imagen + área Rotary. NO inventa datos que no estén en el contexto.',
+            'Regla #5 actualizada con "precisión informativa (NO inventar)" como prioridad tras el contexto real.',
+            'Autosave en Biblioteca robusto: cuando la generación de imagen falla pero hay clubId resuelto, se guarda igual con status=Error. Antes se descartaba silenciosamente. Esto da trazabilidad completa de TODA intención de generar.',
+            'Log mejorado: "[STUDIO] Publicación guardada en biblioteca: <id> (club <id>, status=<draft|error>)" para distinguir éxito de falla en los logs.'
+        ]
+    },
     {
         version: 'v4.386',
         date: '2026-05-19',
