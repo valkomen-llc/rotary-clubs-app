@@ -60,6 +60,7 @@ const KIND_COLOR_3D: Record<string, string> = {
     PUBLICATION:  '#6366f1',
     MEMBER:       '#ec4899',
     DOCUMENT:     '#f59e0b',
+    CHAT:         '#a78bfa',
 };
 
 const LINK_COLOR: Record<string, string> = {

@@ -51,6 +51,7 @@ const MEMORY_KIND_META: Record<string, { label: string; icon: React.ReactNode; c
     DOCUMENT:    { label: 'Documento',  icon: <FileText className="w-3 h-3" />,      color: 'bg-indigo-50 text-indigo-700' },
     NOTE:        { label: 'Nota',       icon: <StickyNote className="w-3 h-3" />,    color: 'bg-yellow-50 text-yellow-800' },
     PUBLICATION: { label: 'Publicación', icon: <Layers className="w-3 h-3" />,       color: 'bg-cyan-50 text-cyan-700' },
+    CHAT:        { label: 'Conversación', icon: <MessageCircle className="w-3 h-3" />, color: 'bg-violet-50 text-violet-700' },
 };
 
 const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, isSuperAdmin: _isSuperAdmin }) => {

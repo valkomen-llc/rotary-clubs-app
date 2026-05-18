@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// TOOL FOLLOWUP FIX V4.379 | 2026-05-18 (CEREBROS — segunda pasada con formato Gemini correcto 🔧)
-// Cache bust: 2026-05-18 21:00 (TOOL FOLLOWUP FIX v4.379 🔧)
+// CHAT-TO-MEMORY V4.380 | 2026-05-18 (CEREBROS — conversaciones del chat → BrainMemory indexada 🧠)
+// Cache bust: 2026-05-18 22:00 (CHAT-TO-MEMORY v4.380 🧠)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.380',
+        date: '2026-05-18',
+        title: 'CEREBROS — conversaciones del chat se indexan como memorias 🧠',
+        description: 'Cada vez que tenés una conversación con el cerebro, esa sesión completa (todos los user/assistant/tool messages) se persiste como una BrainMemory con kind=CHAT. Resultado: la conversación queda buscable semánticamente, aparece como nodo en el grafo conectado al brain, y el cerebro la recuerda en futuras sesiones via RAG.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Al finalizar cada turno del chat, chatWithBrain ahora dispara ingestMemory con: kind=CHAT, sourceType=BrainChatSession, sourceId=sessionId.',
+            'Idempotente: el upsert se basa en sourceId=sessionId, así cada nuevo mensaje refresca el contenido completo de la conversación (no crea duplicados).',
+            'Contenido indexado: representación legible con emojis 👤/🧠/🛠️ por cada turno + título derivado del primer mensaje del user.',
+            'Metadata incluye: messageCount, lastMessageAt, toolsUsed (lista de tools ejecutados en la sesión).',
+            'Frontend: kind CHAT registrado en MEMORY_KIND_META con icono MessageCircle y color violeta. En el grafo 3D aparece como esfera con tono violet-300.',
+            'Efectos secundarios: las conversaciones aparecen ahora en la tab Memorias del cerebro, en la búsqueda semántica del cerebro maestro (si shareWithMaster), y como nodos en el grafo.',
+            'Cuando una nueva conversación pregunta algo similar a una anterior, el RAG encuentra la sesión vieja en las top-5 memorias y el cerebro tiene contexto histórico real.',
+        ]
+    },
     {
         version: 'v4.379',
         date: '2026-05-18',

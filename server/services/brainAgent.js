@@ -622,6 +622,50 @@ export async function chatWithBrain({ brainId, brain, sessionId, message, clubId
         userId,
     });
 
+    // 10. v4.380: ingestar la sesión como BrainMemory (kind=CHAT) para que
+    // sea buscable semánticamente, aparezca en el grafo y se conecte con el
+    // resto del conocimiento. Idempotente: upsert por sourceId=sessionId.
+    try {
+        const { ingestMemory } = await import('./brainService.js');
+        // Cargar todos los mensajes de la sesión para armar el contenido completo
+        const allMessages = await prisma.brainChatMessage.findMany({
+            where: { brainId, sessionId },
+            orderBy: { createdAt: 'asc' },
+            select: { role: true, content: true, toolName: true, createdAt: true },
+        }).catch(() => []);
+
+        // Construir representación legible de la conversación
+        const conversationText = allMessages.map(m => {
+            if (m.role === 'user')      return `👤 Usuario: ${m.content}`;
+            if (m.role === 'assistant') return `🧠 Cerebro: ${m.content}`;
+            if (m.role === 'tool')      return `🛠️ Tool ejecutado: ${m.toolName || 'unknown'}`;
+            return `${m.role}: ${m.content}`;
+        }).join('\n\n').slice(0, 10000);
+
+        // Primer mensaje user como título (cap a 200 chars)
+        const firstUserMsg = allMessages.find(m => m.role === 'user');
+        const title = firstUserMsg
+            ? `Conversación: ${firstUserMsg.content.slice(0, 180)}`
+            : `Conversación ${sessionId.slice(0, 10)}`;
+
+        await ingestMemory({
+            clubId: clubId || undefined,
+            kind: 'CHAT',
+            sourceType: 'BrainChatSession',
+            sourceId: sessionId,
+            title,
+            content: conversationText,
+            metadata: {
+                sessionId,
+                messageCount: allMessages.length,
+                lastMessageAt: allMessages.length > 0 ? allMessages[allMessages.length - 1].createdAt : new Date(),
+                toolsUsed: [...new Set(allMessages.filter(m => m.toolName).map(m => m.toolName))],
+            },
+        });
+    } catch (err) {
+        console.warn('[brainAgent] ingest chat session:', err.message);
+    }
+
     return {
         ok: true,
         message: { id: assistantMsg?.id, role: 'assistant', content: finalText, createdAt: assistantMsg?.createdAt || new Date() },
