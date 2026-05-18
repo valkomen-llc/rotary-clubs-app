@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.392.0",
-  "cache_bust": "2026-05-19 08:00 (COPY IA — Gemini maxOutputTokens bumped a 8000 v4.392 📏)",
+  "version": "4.393.0",
+  "cache_bust": "2026-05-19 09:00 (CONTENT STUDIO — nuevos presets Networking + End Polio Now + Crowdfunding v4.393 🤝)",
   "type": "module",
-  "//": "COPY IA V4.392 | 2026-05-19 (COPY IA — Gemini maxOutputTokens default 8000 (antes 4000) y controller pide 4000 (antes 2400). Resuelve la truncación por MAX_TOKENS cuando el prompt institucional v4.387 + 4 plataformas + visual_prompt rebasaba el límite, dejando JSON inválido 📏)",
+  "//": "CONTENT STUDIO V4.393 | 2026-05-19 (CONTENT STUDIO — tres nuevos tipos de publicación en el IA Preset: Networking (vínculos inter-clubes/distritos), End Polio Now (campaña global de erradicación) y Crowdfunding (financiamiento colectivo con meta y plazo). Cada uno con su tono y foco específico para guiar al modelo 🤝)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

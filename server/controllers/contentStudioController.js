@@ -31,7 +31,10 @@ const TYPE_PROMPTS = {
     fundraising: { tone: 'inspirador y persuasivo con un llamado claro a la acción', focus: 'la urgencia de la causa y cómo donar transforma vidas' },
     event: { tone: 'energético y convocante', focus: 'invitar a participar del evento, fecha y lugar' },
     project: { tone: 'profesional y orientado a resultados', focus: 'avances medibles y beneficio comunitario del proyecto' },
-    membership: { tone: 'aspiracional y comunitario', focus: 'invitar a sumarse al club, valores de servicio y pertenencia' }
+    membership: { tone: 'aspiracional y comunitario', focus: 'invitar a sumarse al club, valores de servicio y pertenencia' },
+    networking: { tone: 'cercano, profesional y de comunidad', focus: 'fortalecer vínculos entre rotarios, conexiones inter-clubes/distritos, encuentros y oportunidades de colaboración' },
+    endpolio: { tone: 'esperanzador, comprometido y de impacto global', focus: 'la campaña End Polio Now: erradicación de la polio, hito histórico de Rotary International, aporte de cada club al objetivo mundial. Hashtags obligatorios incluyen #EndPolioNow y #RotaryInternational' },
+    crowdfunding: { tone: 'movilizador, transparente y con sentido de urgencia colectiva', focus: 'campaña de financiamiento colectivo con meta pública y plazo; explica qué se va a lograr con los aportes, hace el call-to-action al link de la campaña, suma sensación de comunidad aportando juntos' }
 };
 
 const INTEREST_AREAS = {
@@ -236,7 +239,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.392 — Gemini maxOutputTokens bumped a 8000; controller pide 4000 a la API; evita truncación con prompt institucional largo) ---');
+        console.log('--- START GENERATE POST (v4.393 — nuevos presets de tipo: networking + endpolio + crowdfunding) ---');
         const { imageUrl, config = {} } = req.body;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
 
