@@ -19,6 +19,17 @@ import {
     Heart
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '../../../hooks/useAuth';
+
+// Hosts donde corre la plataforma central (no clubes). Si el usuario está en uno
+// de estos hosts Y tiene role=administrator, lo consideramos super admin y
+// mostramos los filtros completos de la biblioteca multimedia.
+const PLATFORM_HOSTS_FOR_MEDIA = [
+    'app.clubplatform.org',
+    'clubplatform.org',
+    'localhost',
+    '127.0.0.1'
+];
 
 interface MediaItem {
     id: string;
@@ -78,6 +89,14 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
     maxSelection = 5,
     initialSelection = []
 }) => {
+    // v4.407: detectamos si el usuario es super admin de la plataforma. Si NO
+    // lo es (= admin de club/distrito/asociación viendo su propio sitio), los
+    // filtros de categoría se ocultan — solo deberían ver la biblioteca de
+    // su propio sitio sin opciones de cambiar categoría o cargar otros sitios.
+    const { user } = useAuth();
+    const isOnClubDomainForMedia = !PLATFORM_HOSTS_FOR_MEDIA.includes(window.location.hostname);
+    const isSuperAdmin = !isOnClubDomainForMedia && user?.role === 'administrator';
+
     const [media, setMedia] = useState<MediaItem[]>([]);
     const [sources, setSources] = useState<MediaSource[]>([]);
     const [loading, setLoading] = useState(true);
@@ -204,33 +223,38 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
                     </button>
                 </div>
 
-                {/* Category chips */}
-                <div className="px-4 pt-3 pb-2 bg-white border-b border-gray-50 flex gap-1.5 overflow-x-auto scrollbar-hide">
-                    {CATEGORIES.map(cat => {
-                        const Icon = cat.icon;
-                        const active = selectedCategory === cat.id;
-                        const count = categoryCounts[cat.id] || 0;
-                        return (
-                            <button
-                                key={cat.id}
-                                onClick={() => setSelectedCategory(cat.id)}
-                                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-black whitespace-nowrap transition-all border flex-shrink-0 ${
-                                    active
-                                        ? `${cat.bg} ${cat.color} border-current shadow-sm`
-                                        : 'bg-gray-50 border-gray-100 text-gray-500 hover:bg-gray-100'
-                                }`}
-                            >
-                                <Icon className="w-3 h-3" />
-                                <span className="uppercase tracking-wide">{cat.label}</span>
-                                {count > 0 && (
-                                    <span className={`text-[9px] px-1 py-0.5 rounded ${active ? 'bg-white/70' : 'bg-gray-200 text-gray-600'}`}>
-                                        {count > 999 ? `${Math.floor(count / 1000)}k` : count}
-                                    </span>
-                                )}
-                            </button>
-                        );
-                    })}
-                </div>
+                {/* Category chips — v4.407: solo visibles para super admins.
+                    Admins de club/distrito/asociación ven directamente las
+                    imágenes de su propio sitio sin opciones de cambiar
+                    categoría (el backend ya filtra por clubId). */}
+                {isSuperAdmin && (
+                    <div className="px-4 pt-3 pb-2 bg-white border-b border-gray-50 flex gap-1.5 overflow-x-auto scrollbar-hide">
+                        {CATEGORIES.map(cat => {
+                            const Icon = cat.icon;
+                            const active = selectedCategory === cat.id;
+                            const count = categoryCounts[cat.id] || 0;
+                            return (
+                                <button
+                                    key={cat.id}
+                                    onClick={() => setSelectedCategory(cat.id)}
+                                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-black whitespace-nowrap transition-all border flex-shrink-0 ${
+                                        active
+                                            ? `${cat.bg} ${cat.color} border-current shadow-sm`
+                                            : 'bg-gray-50 border-gray-100 text-gray-500 hover:bg-gray-100'
+                                    }`}
+                                >
+                                    <Icon className="w-3 h-3" />
+                                    <span className="uppercase tracking-wide">{cat.label}</span>
+                                    {count > 0 && (
+                                        <span className={`text-[9px] px-1 py-0.5 rounded ${active ? 'bg-white/70' : 'bg-gray-200 text-gray-600'}`}>
+                                            {count > 999 ? `${Math.floor(count / 1000)}k` : count}
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
 
                 {/* Source filter + search */}
                 <div className="p-4 bg-white border-b border-gray-50 flex flex-col sm:flex-row gap-3">
@@ -244,7 +268,7 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                     </div>
-                    {selectedCategory !== 'all' && selectedCategory !== 'platform' && (
+                    {isSuperAdmin && selectedCategory !== 'all' && selectedCategory !== 'platform' && (
                         <select
                             value={selectedSourceId}
                             onChange={(e) => setSelectedSourceId(e.target.value)}

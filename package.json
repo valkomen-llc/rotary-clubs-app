@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.406.0",
-  "cache_bust": "2026-05-19 22:00 (NAV — Content Studio en sidebar General para todos los sitios v4.406 🧭)",
+  "version": "4.407.0",
+  "cache_bust": "2026-05-19 23:00 (BIBLIOTECA MULTIMEDIA — filtros sólo para super admins v4.407 🔒)",
   "type": "module",
-  "//": "NAV V4.406 | 2026-05-19 (NAV — Content Studio AI movido al menú lateral General debajo de 'Centro de Inteligencia', visible para clubs/distritos/asociaciones. Cada sitio ve sólo sus propias publicaciones de la biblioteca (filtrado por clubId en backend). Super admin sigue viéndolo en Management 🧭)",
+  "//": "BIBLIOTECA MULTIMEDIA V4.407 | 2026-05-19 (BIBLIOTECA MULTIMEDIA — los filtros de categoría (TODAS, CLUBES, ASOCIACIONES, PROGRAMAS, EVENTOS, CONFERENCIAS, FERIAS, FUNDACIONES, DISTRITOS) y el dropdown de sources ahora se ocultan para admins de club/distrito/asociación. Sólo visibles para super admins. El backend ya filtra por rol — el cambio es solo cosmético para limpiar la UI 🔒)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
