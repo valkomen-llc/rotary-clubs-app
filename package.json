@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.389.0",
-  "cache_bust": "2026-05-19 05:00 (BIBLIOTECA — autosave universal aunque clubId sea null v4.389 📚)",
+  "version": "4.390.0",
+  "cache_bust": "2026-05-19 06:00 (BIBLIOTECA — outcome del autosave visible en UI v4.390 🔍)",
   "type": "module",
-  "//": "BIBLIOTECA V4.389 | 2026-05-19 (BIBLIOTECA — autosave SIEMPRE corre aunque clubId sea null; SocialPublication.clubId ahora nullable; UI muestra 'Sin club asociado' cuando no hay club. Requiere correr en Neon: ALTER TABLE \"SocialPublication\" ALTER COLUMN \"clubId\" DROP NOT NULL; 📚)",
+  "//": "BIBLIOTECA V4.390 | 2026-05-19 (BIBLIOTECA — outcome explícito del autosave en la response del /generate-post; el frontend muestra toast con el error específico si la publicación no se guardó en la biblioteca, evitando que el usuario tenga que ir a logs de Vercel 🔍)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

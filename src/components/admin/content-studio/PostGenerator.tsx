@@ -241,6 +241,12 @@ const PostGenerator: React.FC = () => {
                     const formats = Object.keys(imgMap).length;
                     toast.success(`¡Contenido generado en ${formats} formato${formats !== 1 ? 's' : ''} con ${engineLabel}!`, { id: toastId });
                 }
+                // v4.390: si el autosave a la Biblioteca falló, lo mostramos
+                // explícito — antes el usuario sólo lo descubría al ir a la
+                // tab Biblioteca y no encontrar la publicación.
+                if (data.autosave && data.autosave.ok === false && data.autosave.error) {
+                    toast.error(`No se pudo guardar en la Biblioteca: ${String(data.autosave.error).slice(0, 300)}`, { duration: 30000 });
+                }
             } else {
                 toast.error(data.error || 'Error al generar el contenido', { id: toastId });
             }
