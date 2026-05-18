@@ -24,9 +24,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// AUTO-DISCOVER MODELS V4.378 | 2026-05-18 (CEREBROS — auto-listar + reintentar con modelos descubiertos 🎯)
-// Cache bust: 2026-05-18 20:00 (AUTO-DISCOVER MODELS v4.378 🎯)
+// TOOL FOLLOWUP FIX V4.379 | 2026-05-18 (CEREBROS — segunda pasada con formato Gemini correcto 🔧)
+// Cache bust: 2026-05-18 21:00 (TOOL FOLLOWUP FIX v4.379 🔧)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.379',
+        date: '2026-05-18',
+        title: 'CEREBROS — fix "(sin respuesta del LLM)" tras ejecutar tools 🔧',
+        description: 'El tool se ejecutaba OK (visible en el chat como "Ejecuté tool: summarize_recent_activity") pero el bubble del assistant después decía "(sin respuesta del LLM)". Causa: la segunda pasada al LLM (con los resultados del tool) usaba un formato de turnos que Gemini no procesaba bien. Fix: ahora seguimos exactamente la sequence que espera Gemini.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Refactor de callGemini: ahora acepta `contents` directos (formato Gemini exacto) además del shape legacy { history, userMessage }.',
+            'chatWithBrain construye los contents él mismo: [...history] + user(message) → primera llamada → si hay tools → model(text + functionCalls) + user(functionResponses) → segunda llamada.',
+            'La sequence respeta el contrato de Gemini: el turn "model" debe contener TANTO el texto opcional COMO los functionCalls; el siguiente turn "user" contiene los functionResponses.',
+            'Si el tool result es primitivo, lo wrappeamos en { value: ... } porque Gemini requiere object para functionResponse.response.',
+            'Fallback inteligente: si la segunda pasada igual no genera texto, generateFallbackTextFromTools() arma un resumen legible de los resultados crudos del tool. Ej: "1 evento próximo: Reunión semanal · 19/may" en vez de "(sin respuesta del LLM)".',
+        ]
+    },
     {
         version: 'v4.378',
         date: '2026-05-18',
