@@ -236,7 +236,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.328 — KIE endpoint fix: getTaskDetail→recordInfo + nuevo formato resultJson) ---');
+        console.log('--- START GENERATE POST (v4.386 — Copy IA con reglas institucionales: nombre específico + normalización Rotary→Club Rotario + tiempo verbal según fecha) ---');
         const { imageUrl, config = {} } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
@@ -253,11 +253,43 @@ export const generatePost = async (req, res) => {
             : DEFAULT_ENGINE;
         console.log(`[STUDIO] Engine resolved: ${requestedEngine} (${ENGINES[requestedEngine].label})`);
 
-        let clubName = 'Club Rotario';
+        // Resolve club identity. We need the full institutional context (name + category
+        // + city) so the copy generator can: (a) always use the SPECIFIC club name
+        // instead of a generic "El Club Rotario", and (b) normalize "Rotary X" → "Club
+        // Rotario X" when the entity is actually a Club (category='club'). Other
+        // categories (association, exchange_program, event, conference, project_fair,
+        // foundation) keep their original wording because "Asociación Rotaria" /
+        // "Programa de Intercambio Rotary" / "Fundación Rotaria" are valid as-is.
+        let clubName = null;
+        let clubCategory = null;
+        let clubCity = null;
         if (clubId) {
-            const club = await prisma.club.findUnique({ where: { id: clubId } });
-            if (club?.name) clubName = club.name;
+            const club = await prisma.club.findUnique({
+                where: { id: clubId },
+                select: { name: true, category: true, city: true }
+            });
+            if (club?.name) {
+                clubName = club.name;
+                clubCategory = club.category || null;
+                clubCity = club.city || null;
+                // Normalización institucional: en clubes rotarios, "Rotary Bogotá Usaquén"
+                // se escribe en español como "Club Rotario Bogotá Usaquén". Aplica solo
+                // a category='club' para no corromper nombres de eventos, fundaciones, etc.
+                if (clubCategory === 'club' && /^rotary\b/i.test(clubName)) {
+                    clubName = `Club Rotario${clubName.slice('Rotary'.length)}`;
+                }
+            }
         }
+        // Fallback solo si no hay club asociado en absoluto. NO genérico — pedimos al
+        // modelo que evite frasear "El Club Rotario" si no hay nombre real disponible.
+        const hasSpecificClubName = !!clubName;
+        if (!clubName) clubName = 'Club Rotario';
+
+        // Fecha actual en español, para que el modelo decida tiempo verbal correcto
+        // cuando el contenido menciona eventos. Formato: "lunes 18 de mayo de 2026".
+        const TODAY_ES = new Date().toLocaleDateString('es-ES', {
+            weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+        });
 
         // 1) Fetch + enhance the original (no AI in this step — preserves identity 100%).
         const originalBuffer = await fetchImageBuffer(imageUrl);
@@ -283,9 +315,23 @@ export const generatePost = async (req, res) => {
                 ? config.copyEngine
                 : DEFAULT_COPY_PROVIDER;
 
-            const systemPrompt = 'Eres director creativo de Rotary International. Escribes copies institucionales en español rioplatense/neutro, con voz humana, sin clichés, sin exclamaciones excesivas. Devuelves SIEMPRE JSON válido.';
+            const systemPrompt = `Eres director creativo de Rotary International. Escribes copies institucionales en español rioplatense/neutro, con voz humana, sin clichés, sin exclamaciones excesivas. Devuelves SIEMPRE JSON válido.
 
-            const userPrompt = `Imagen para el club: "${clubName}".
+Reglas institucionales obligatorias (NO opcionales):
+
+1. IDENTIDAD ESPECÍFICA DEL CLUB. Usás SIEMPRE el nombre institucional completo del club / entidad que se te indica. Nunca escribís frases genéricas como "El Club Rotario", "Nuestro Club Rotario" ni "Un Club Rotario" cuando hay un nombre concreto disponible. Ejemplo correcto: "El Club Rotario Bogotá Usaquén invita…". Ejemplo INCORRECTO: "El Club Rotario invita…".
+
+2. NORMALIZACIÓN "ROTARY" → "CLUB ROTARIO" EN CLUBES. Cuando la entidad es un club (te lo indicamos en el prompt), si el nombre llega como "Rotary X" lo escribís en español como "Club Rotario X". Ej: "Rotary Bogotá Usaquén" → "Club Rotario Bogotá Usaquén". Esto NO aplica a asociaciones, fundaciones, programas de intercambio, eventos ni conferencias: esas entidades conservan su nombre original.
+
+3. TIEMPO VERBAL SEGÚN FECHA. Te indicamos la fecha de hoy. Si el evento/contenido se refiere a una fecha pasada, usás tiempo verbal pasado y tono de agradecimiento / resumen ("Compartimos con orgullo lo vivido…", "Gracias a quienes participaron…"). Si la fecha es futura, usás lenguaje de invitación ("Te invitamos…", "Sumate…"). NUNCA invitás a un evento que ya ocurrió.
+
+4. CONTEXTUALIZACIÓN AUTOMÁTICA. Inferís el sentido de la publicación combinando: nombre de la entidad + categoría + fecha actual + imagen + área de enfoque Rotary. El copy debe sentirse coherente con ese contexto real, no como texto genérico aplicable a cualquier club.
+
+5. PRIORIDAD DE IDENTIDAD INSTITUCIONAL (en este orden): nombre oficial completo → contexto real (categoría, ciudad, área) → temporalidad correcta → lenguaje rotario auténtico → naturalidad humana. Si cualquiera de estos elementos entra en conflicto con un tono más "publicitario", priorizás la identidad institucional.`;
+
+            const userPrompt = `Entidad: "${clubName}"${clubCategory ? ` (categoría: ${clubCategory})` : ''}${clubCity ? ` — ciudad: ${clubCity}` : ''}.
+${hasSpecificClubName ? `Usá EXACTAMENTE este nombre cuando te refieras a la entidad. No uses "El Club Rotario" genérico.` : `No hay nombre específico — evitá nombrar al club; hablá en primera persona plural ("compartimos", "celebramos") sin inventar nombres.`}
+Fecha de hoy: ${TODAY_ES}. Usala para decidir tiempo verbal (pasado vs futuro) si el contenido alude a un evento con fecha.
 Tipo de publicación: ${config.type || 'standard'} — tono ${typeMeta.tone}, foco ${typeMeta.focus}.
 Área de enfoque Rotary: ${areaMeta}.
 
@@ -301,7 +347,7 @@ Devuelve este JSON exacto:
 Reglas de copy:
 - facebook hasta ~600 caracteres, instagram hasta ~2200, x máx 260 (deja aire para hashtags), linkedin hasta ~1300.
 - Hashtags: 5-8 relevantes y específicos al área Rotary + club + temática (sin #rotaryclub genérico repetido en todas).
-- CTA: una sola frase concreta y accionable (ej: "Sumate este sábado", "Doná en el link de la bio").
+- CTA: una sola frase concreta y accionable (ej: "Sumate este sábado", "Doná en el link de la bio"). Si el evento ya pasó, el CTA debe ser de cierre/agradecimiento, NO de invitación.
 - No describas la imagen literalmente; conecta con el propósito y la comunidad.
 - Sin emojis si es linkedin; máx 2 emojis sutiles en las otras.
 

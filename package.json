@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.385.0",
-  "cache_bust": "2026-05-19 01:00 (POSTGEN BLANK SCREEN FIX v4.385 🩹)",
+  "version": "4.386.0",
+  "cache_bust": "2026-05-19 02:00 (COPY IA — reglas institucionales v4.386 🏛️)",
   "type": "module",
-  "//": "POSTGEN FIX V4.385 | 2026-05-19 (POSTGEN — fix pantalla blanca por const outcome eliminado accidentalmente en el refactor IIFE de v4.383 🩹)",
+  "//": "COPY IA V4.386 | 2026-05-19 (COPY IA — reglas institucionales obligatorias: nombre específico del club, normalización Rotary→Club Rotario para category=club, tiempo verbal según fecha actual, sin fallback genérico 🏛️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
