@@ -51,7 +51,7 @@ interface PlatformCopyBlock {
 
 interface Publication {
     id: string;
-    clubId: string;
+    clubId: string | null; // v4.389: nullable para autosaves de system admin sin contexto de club
     club?: { id: string; name: string } | null;
     imageUrl: string | null;
     imageUrlInstagram: string | null;
@@ -448,9 +448,13 @@ const PublicationLibrary: React.FC = () => {
                                         <p className="text-[11px] text-gray-700 line-clamp-3 font-medium">{preview}{preview.length === 140 ? '…' : ''}</p>
                                     )}
                                     <div className="flex flex-wrap gap-1 mt-auto">
-                                        {p.club?.name && (
+                                        {p.club?.name ? (
                                             <span className="text-[9px] font-black uppercase tracking-wide px-2 py-1 rounded-md bg-blue-50 text-blue-700">
                                                 {p.club.name}
+                                            </span>
+                                        ) : (
+                                            <span className="text-[9px] font-black uppercase tracking-wide px-2 py-1 rounded-md bg-slate-100 text-slate-600">
+                                                Sin club asociado
                                             </span>
                                         )}
                                         {p.aiModelImage && (
@@ -533,8 +537,10 @@ const PublicationLibrary: React.FC = () => {
                                         </span>
                                     );
                                 })()}
-                                {selected.club?.name && (
+                                {selected.club?.name ? (
                                     <span className="text-[11px] font-black text-gray-600">{selected.club.name}</span>
+                                ) : (
+                                    <span className="text-[11px] font-black text-slate-500">Sin club asociado</span>
                                 )}
                             </div>
                             <button onClick={closeDetail} className="p-1.5 hover:bg-gray-200 rounded-full transition-all">

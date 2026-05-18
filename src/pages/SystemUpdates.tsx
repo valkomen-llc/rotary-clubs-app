@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// COPY IA V4.388 | 2026-05-19 (COPY IA — clubId resuelto desde Media ANTES del copy; el copy ahora recibe el club real de la imagen 🎯🔗)
-// Cache bust: 2026-05-19 04:00 (COPY IA — clubId resuelto desde Media ANTES del copy v4.388 🎯🔗)
+// BIBLIOTECA V4.389 | 2026-05-19 (BIBLIOTECA — autosave universal aunque clubId sea null; SocialPublication.clubId ahora nullable 📚)
+// Cache bust: 2026-05-19 05:00 (BIBLIOTECA — autosave universal aunque clubId sea null v4.389 📚)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.389',
+        date: '2026-05-19',
+        title: 'Biblioteca — Autosave universal: TODA generación queda registrada 📚',
+        description: 'El equipo reportó que algunas generaciones no quedaban en la biblioteca. Causa: cuando el clubId no se podía resolver (system admin subiendo imagen directa o cuando Media.clubId era null), el autosave se skippeaba silenciosamente porque SocialPublication.clubId era NOT NULL en el schema. Ahora la columna es nullable y el autosave siempre corre. La UI muestra "Sin club asociado" cuando no hay club.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Schema Prisma: SocialPublication.clubId ahora es String? (nullable). La relación club también se hizo opcional (Club?). Permite registrar generaciones sin contexto de club (system admin subiendo imagen directa, o cuando Media.clubId está vacío).',
+            'Backend: eliminado el guard "if (clubId)" en el autosave de contentStudioController.js. Ahora SIEMPRE intentamos guardar la publicación, sea cual sea el estado del clubId. Si la generación de imagen falla, queda con status=error igual.',
+            'Defensa: si la migración SQL aún no se aplicó en la DB y la columna sigue siendo NOT NULL, el insert con clubId=null falla con error claro: "[STUDIO] ⚠ La migración SQL v4.389 está PENDIENTE en la DB. Ejecutá: ALTER TABLE \\"SocialPublication\\" ALTER COLUMN \\"clubId\\" DROP NOT NULL;" — así el equipo sabe exactamente qué correr.',
+            'Frontend: PublicationLibrary.tsx ahora tipa clubId como string | null y muestra el badge "Sin club asociado" en gris cuando no hay club. El resto del flujo (publish/schedule) sigue funcionando.',
+            'MIGRACIÓN SQL REQUERIDA en Neon (idempotente):',
+            '  ALTER TABLE "SocialPublication" ALTER COLUMN "clubId" DROP NOT NULL;',
+            'Sin esta migración, las generaciones DE SYSTEM ADMINS sin clubId resoluble seguirán sin guardarse — pero el log mostrará el error de forma muy clara. Las generaciones de usuarios normales (con clubId asignado) y de admins eligiendo imagen de la Biblioteca de un club específico siguen funcionando sin la migración.'
+        ]
+    },
     {
         version: 'v4.388',
         date: '2026-05-19',
