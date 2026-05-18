@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// POSTGEN IG 2:3 V4.381 | 2026-05-18 (POSTGEN — formato dedicado IG 2:3 (1080×1620), separado de portrait 4:5 (FB/LI) y landscape 3:2 (X). Publish manda variante correcta por plataforma 📐)
-// Cache bust: 2026-05-18 23:00 (POSTGEN IG 2:3 FORMAT v4.381 📐)
+// COPY FALLBACK V4.382 | 2026-05-18 (COPY — fallback automático entre los 3 motores cuando uno falla; toast con error específico si el copy queda vacío 🔁)
+// Cache bust: 2026-05-18 23:30 (COPY FALLBACK CHAIN v4.382 🔁)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.382',
+        date: '2026-05-18',
+        title: 'Copy IA — Fallback Automático entre Motores 🔁',
+        description: 'Si el motor seleccionado (default Gemini) falla, el sistema prueba automáticamente Anthropic y OpenAI antes de rendirse. Antes el chain era ["gemini","gemini"] (dedup) y se quedaba con vacío sin tirar fallback real.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Bug: copywritingService.generateCopy tenía fallbackChain default = [provider, DEFAULT_COPY_PROVIDER]. Como ambos eran "gemini" desde v4.347, el chain quedaba con un solo motor tras dedup. Si Gemini fallaba (rate limit, JSON inválido, timeout) la copy quedaba vacía sin tirar mecanismo de fallback real.',
+            'Fix: el chain default ahora arma [provider, DEFAULT_COPY_PROVIDER, ...allAvailable] — incluye TODOS los providers configurados como red de seguridad. Dedup preserva orden, así que la prioridad sigue siendo: requested > default > resto.',
+            'Si Gemini falla → prueba Anthropic Claude → si falla → prueba OpenAI GPT-4o. Solo throws "todos fallaron" si los 3 caen.',
+            'Logging mejorado: cuando se usa un fallback, console.warn imprime "fallback usado: gemini → openai (fallos previos: gemini: rate limit)" para diagnóstico.',
+            'Frontend: el toast ahora detecta también el caso "todos respondieron OK pero los copies quedaron vacíos" (raro, pero pasa si la API devuelve JSON parseable sin texto dentro). Muestra warning específico sugiriendo regenerar.',
+            'Toast de error de copy más visible: pasa de warning 15s a error 25s con el mensaje específico del motor que falló (no más mensaje genérico oculto).'
+        ]
+    },
     {
         version: 'v4.381',
         date: '2026-05-18',

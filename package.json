@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.381.0",
-  "cache_bust": "2026-05-18 23:00 (POSTGEN IG 2:3 FORMAT v4.381 📐)",
+  "version": "4.382.0",
+  "cache_bust": "2026-05-18 23:30 (COPY FALLBACK CHAIN v4.382 🔁)",
   "type": "module",
-  "//": "POSTGEN IG 2:3 V4.381 | 2026-05-18 (POSTGEN — formato dedicado para Instagram: 2:3 (1080×1620), separado de portrait 4:5 (FB/LI) y landscape 3:2 (X). Cada plataforma recibe su variante en publish 📐)",
+  "//": "COPY FALLBACK V4.382 | 2026-05-18 (COPY — fallback chain auto: si Gemini falla, prueba Anthropic y OpenAI antes de rendirse. Toast con error específico cuando ningún provider devuelve copy 🔁)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
