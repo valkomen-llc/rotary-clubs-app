@@ -1008,7 +1008,7 @@ model SocialAccount {
 // publish flow lands in Phase 2 (immediate publish) and Phase 3 (scheduling).
 model SocialPublication {
   id                String          @id @default(uuid())
-  clubId            String
+  clubId            String?         // v4.389: nullable. Permite autosave de generaciones sin contexto de club (ej. system admin subiendo imagen directa).
   userId            String?
 
   // Content (AI-generated or manual)
@@ -1040,7 +1040,7 @@ model SocialPublication {
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
-  club              Club            @relation(fields: [clubId], references: [id])
+  club              Club?           @relation(fields: [clubId], references: [id])
   user              User?           @relation(fields: [userId], references: [id])
   accounts          SocialAccount[]
 

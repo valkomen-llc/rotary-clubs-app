@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.388.0",
-  "cache_bust": "2026-05-19 04:00 (COPY IA — clubId resuelto desde Media ANTES del copy v4.388 🎯🔗)",
+  "version": "4.389.0",
+  "cache_bust": "2026-05-19 05:00 (BIBLIOTECA — autosave universal aunque clubId sea null v4.389 📚)",
   "type": "module",
-  "//": "COPY IA V4.388 | 2026-05-19 (COPY IA — clubId resuelto desde Media.clubId/sourceId ANTES de generar el copy; UUID regex laxo acepta cualquier versión; el copy ahora recibe el club real de la imagen (ej: Club Rotario Buga) y el autosave guarda en la biblioteca del club correcto 🎯🔗)",
+  "//": "BIBLIOTECA V4.389 | 2026-05-19 (BIBLIOTECA — autosave SIEMPRE corre aunque clubId sea null; SocialPublication.clubId ahora nullable; UI muestra 'Sin club asociado' cuando no hay club. Requiere correr en Neon: ALTER TABLE \"SocialPublication\" ALTER COLUMN \"clubId\" DROP NOT NULL; 📚)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

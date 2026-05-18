@@ -236,7 +236,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.388 — clubId resuelto desde Media.clubId ANTES del copy + UUID regex laxo) ---');
+        console.log('--- START GENERATE POST (v4.389 — autosave SIEMPRE corre aunque clubId sea null; requiere migración SQL para clubId nullable) ---');
         const { imageUrl, config = {} } = req.body;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
 
@@ -529,51 +529,56 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
         // Estado para la biblioteca: 'draft' cuando todo OK, 'error' si la
         // generación de imagen falló total o parcialmente. Así toda intención
         // de generar queda capturada en el historial (v4.387).
+        // v4.389: SIEMPRE intentamos guardar, aunque clubId sea null (system admin
+        // generando sin contexto de club). Requiere migración SQL:
+        //   ALTER TABLE "SocialPublication" ALTER COLUMN "clubId" DROP NOT NULL;
         const hasAnyImage = !!finalUrl;
         const autoStatus = hasAnyImage ? 'draft' : 'error';
-        if (clubId) {
-            // Helper defensivo: si la columna imageUrlInstagram todavía no existe
-            // en la DB (migración v4.381 pendiente), reintentamos sin ese campo
-            // para no romper el autosave. La columna se agrega corriendo:
-            //   ALTER TABLE "SocialPublication" ADD COLUMN IF NOT EXISTS "imageUrlInstagram" TEXT;
-            const buildBaseDraftData = (includeInstagram) => ({
-                clubId: clubId,
-                userId: req.user.id || null,
-                imageUrl: finalUrl,
-                ...(includeInstagram ? { imageUrlInstagram: generatedImages.instagram?.url || null } : {}),
-                imageUrlLandscape: generatedImages.landscape?.url || null,
-                platformCopies: {
-                    facebook: parsed.facebook,
-                    instagram: parsed.instagram,
-                    x: parsed.x,
-                    linkedin: parsed.linkedin
-                },
-                targetAccounts: [], // se completa cuando el user publica/programa
-                status: autoStatus,
-                sourceImageId: req.body.imageId && req.body.imageId !== 'uploaded' ? req.body.imageId : null,
-                generatedBy: usedEngine ? `ai-${usedEngine.split('+')[0]}` : 'ai',
-                aiModelImage: usedEngine,
-                aiModelCopy: copyProvider && copyModel ? `${copyProvider}/${copyModel}` : null
-            });
+        // Helper defensivo: si la columna imageUrlInstagram todavía no existe
+        // en la DB (migración v4.381 pendiente), reintentamos sin ese campo
+        // para no romper el autosave. La columna se agrega corriendo:
+        //   ALTER TABLE "SocialPublication" ADD COLUMN IF NOT EXISTS "imageUrlInstagram" TEXT;
+        const buildBaseDraftData = (includeInstagram) => ({
+            clubId: clubId || null,
+            userId: req.user.id || null,
+            imageUrl: finalUrl,
+            ...(includeInstagram ? { imageUrlInstagram: generatedImages.instagram?.url || null } : {}),
+            imageUrlLandscape: generatedImages.landscape?.url || null,
+            platformCopies: {
+                facebook: parsed.facebook,
+                instagram: parsed.instagram,
+                x: parsed.x,
+                linkedin: parsed.linkedin
+            },
+            targetAccounts: [], // se completa cuando el user publica/programa
+            status: autoStatus,
+            sourceImageId: req.body.imageId && req.body.imageId !== 'uploaded' ? req.body.imageId : null,
+            generatedBy: usedEngine ? `ai-${usedEngine.split('+')[0]}` : 'ai',
+            aiModelImage: usedEngine,
+            aiModelCopy: copyProvider && copyModel ? `${copyProvider}/${copyModel}` : null
+        });
+        try {
+            let draft;
             try {
-                let draft;
-                try {
-                    draft = await prisma.socialPublication.create({ data: buildBaseDraftData(true) });
-                } catch (innerErr) {
-                    if (/imageUrlInstagram|column .* does not exist|Unknown arg/i.test(innerErr.message)) {
-                        console.warn('[STUDIO] Reintentando autosave SIN imageUrlInstagram — la migración SQL v4.381 está pendiente en la DB.');
-                        draft = await prisma.socialPublication.create({ data: buildBaseDraftData(false) });
-                    } else {
-                        throw innerErr;
-                    }
+                draft = await prisma.socialPublication.create({ data: buildBaseDraftData(true) });
+            } catch (innerErr) {
+                if (/imageUrlInstagram|column .* does not exist|Unknown arg/i.test(innerErr.message)) {
+                    console.warn('[STUDIO] Reintentando autosave SIN imageUrlInstagram — la migración SQL v4.381 está pendiente en la DB.');
+                    draft = await prisma.socialPublication.create({ data: buildBaseDraftData(false) });
+                } else {
+                    throw innerErr;
                 }
-                draftId = draft.id;
-                console.log(`[STUDIO] Publicación guardada en biblioteca: ${draftId} (club ${clubId}, status=${autoStatus})`);
-            } catch (e) {
-                console.warn('[STUDIO] No se pudo autoguardar la publicación:', e.message);
             }
-        } else {
-            console.warn(`[STUDIO] Autosave skippeado: no se pudo resolver clubId (imageUrl=${imageUrl || 'null'}, status hubiera sido=${autoStatus})`);
+            draftId = draft.id;
+            console.log(`[STUDIO] Publicación guardada en biblioteca: ${draftId} (club ${clubId || 'NULL'}, status=${autoStatus})`);
+        } catch (e) {
+            // Si clubId es null y el constraint NOT NULL todavía no se removió,
+            // este error es esperado hasta correr la migración SQL v4.389.
+            if (!clubId && /null value in column "clubId"|violates not-null|NOT NULL constraint failed/i.test(e.message)) {
+                console.error('[STUDIO] ⚠ La migración SQL v4.389 está PENDIENTE en la DB. Ejecutá: ALTER TABLE "SocialPublication" ALTER COLUMN "clubId" DROP NOT NULL;');
+            } else {
+                console.error('[STUDIO] ⚠ No se pudo autoguardar la publicación:', e.message);
+            }
         }
 
         res.json({
