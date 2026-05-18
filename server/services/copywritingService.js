@@ -214,9 +214,10 @@ const ADAPTERS = {
 
 // ─── Public API ────────────────────────────────────────────────────────────
 
-// Generate copy with the requested provider. Falls back to DEFAULT_COPY_PROVIDER
-// if the requested one isn't available (env key missing) or fails at runtime.
-// Throws only when ALL configured providers fail.
+// Generate copy with the requested provider. Falls back automatically through
+// every available provider so a transient Gemini hiccup doesn't leave the copy
+// empty — order: requested first, then DEFAULT_COPY_PROVIDER, then any other
+// configured provider as last resort. Throws only when ALL of them fail.
 export const generateCopy = async ({
     provider = DEFAULT_COPY_PROVIDER,
     system,
@@ -228,8 +229,10 @@ export const generateCopy = async ({
     model = null,
     fallbackChain = null
 }) => {
-    // Build the providers to try: requested first, then defaults, dedup.
-    const chain = (fallbackChain || [provider, DEFAULT_COPY_PROVIDER])
+    // Build the providers to try: requested first, then platform default, then
+    // every other configured provider as a safety net. Dedup keeps order.
+    const allAvailable = Object.keys(COPY_PROVIDERS).filter(isProviderAvailable);
+    const chain = (fallbackChain || [provider, DEFAULT_COPY_PROVIDER, ...allAvailable])
         .filter((p, i, a) => p && a.indexOf(p) === i)
         .filter(p => COPY_PROVIDERS[p] && isProviderAvailable(p));
 
@@ -242,7 +245,7 @@ export const generateCopy = async ({
         try {
             const result = await ADAPTERS[p]({ system, userText, imageUrl, temperature, maxTokens, jsonMode, model });
             if (p !== provider) {
-                console.warn(`[copywriting] fallback usado: ${provider} → ${p}`);
+                console.warn(`[copywriting] fallback usado: ${provider} → ${p} (fallos previos: ${errors.join(' | ')})`);
             }
             return result;
         } catch (e) {

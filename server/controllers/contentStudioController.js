@@ -322,8 +322,9 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
                 // Generoso: 4 plataformas con copy + hashtags + cta + visual_prompt.
                 // Gemini hardcaps a 4000 internamente; OpenAI y Anthropic usan este valor.
                 maxTokens: 2400,
-                jsonMode: true,
-                fallbackChain: [requestedCopyEngine, DEFAULT_COPY_PROVIDER]
+                jsonMode: true
+                // Sin fallbackChain custom — usamos el default del service que prueba
+                // requested → DEFAULT → todos los otros configurados como safety net.
             });
             copyProvider = result.provider;
             copyModel = result.model;

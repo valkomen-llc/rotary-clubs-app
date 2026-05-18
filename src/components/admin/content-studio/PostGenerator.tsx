@@ -223,12 +223,19 @@ const PostGenerator: React.FC = () => {
                 setPublicationId(data.publicationId || data.metadata?.publicationId || null);
                 const imgErr = data.metadata?.imageError;
                 const copyErr = data.metadata?.copyError;
-                if (imgErr && copyErr) {
-                    toast.error(`Imagen y copy fallaron. Imagen: ${String(imgErr).slice(0, 100)}. Copy: ${String(copyErr).slice(0, 100)}`, { id: toastId, duration: 18000 });
+                // Detecta también el caso "todos los providers devolvieron OK
+                // pero los copies quedaron vacíos" — no hay copyError pero el
+                // content viene sin texto. Pasa cuando Gemini responde con
+                // JSON parseable pero sin copies dentro.
+                const copyEmpty = !copyErr && (!data.content?.facebook?.copy && !data.content?.instagram?.copy && !data.content?.x?.copy && !data.content?.linkedin?.copy);
+                if (imgErr && (copyErr || copyEmpty)) {
+                    toast.error(`Imagen y copy fallaron. Imagen: ${String(imgErr).slice(0, 100)}. Copy: ${String(copyErr || 'vacío sin error').slice(0, 100)}`, { id: toastId, duration: 20000 });
                 } else if (imgErr) {
                     toast.error(`Motor ${engineLabel} falló (fallback aplicado). Error: ${String(imgErr).slice(0, 200)}`, { id: toastId, duration: 15000 });
                 } else if (copyErr) {
-                    toast.warning(`Imagen OK con ${engineLabel}, pero el copy falló: ${String(copyErr).slice(0, 200)}`, { id: toastId, duration: 15000 });
+                    toast.error(`✗ Copy NO generado. Error de Gemini/OpenAI/Anthropic: ${String(copyErr).slice(0, 280)}. La imagen sí salió OK.`, { id: toastId, duration: 25000 });
+                } else if (copyEmpty) {
+                    toast.warning(`Copy vacío — los proveedores no devolvieron texto. Probá clickear GENERAR de nuevo o cambiar de motor de copy.`, { id: toastId, duration: 20000 });
                 } else {
                     const formats = Object.keys(imgMap).length;
                     toast.success(`¡Contenido generado en ${formats} formato${formats !== 1 ? 's' : ''} con ${engineLabel}!`, { id: toastId });
