@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// COPY IA V4.392 | 2026-05-19 (COPY IA — Gemini maxOutputTokens 8000 evita truncación con prompts institucionales largos 📏)
-// Cache bust: 2026-05-19 08:00 (COPY IA — Gemini maxOutputTokens bumped a 8000 v4.392 📏)
+// CONTENT STUDIO V4.393 | 2026-05-19 (CONTENT STUDIO — nuevos presets Networking + End Polio Now + Crowdfunding 🤝)
+// Cache bust: 2026-05-19 09:00 (CONTENT STUDIO — nuevos presets v4.393 🤝)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.393',
+        date: '2026-05-19',
+        title: 'Content Studio — 3 nuevos tipos de publicación: Networking, End Polio Now, Crowdfunding 🤝',
+        description: 'Se agregaron 3 nuevos presets de "Tipo de Publicación (IA Preset)" para que la IA adapte el tono y el foco del copy según la naturaleza de la pieza. Cada uno tiene un perfil distinto y los presets actuales (Estándar, Storytelling, Fundraising, Evento, Proyecto, Membresía) se mantienen intactos.',
+        type: 'added',
+        author: 'Claude',
+        details: [
+            'Networking — tono cercano, profesional y de comunidad. Foco: fortalecer vínculos entre rotarios, conexiones inter-clubes/distritos, encuentros y oportunidades de colaboración.',
+            'End Polio Now — tono esperanzador, comprometido y de impacto global. Foco: la campaña global de erradicación, hito histórico de Rotary International, aporte de cada club al objetivo mundial. Hashtags obligatorios incluyen #EndPolioNow y #RotaryInternational.',
+            'Crowdfunding — tono movilizador, transparente y con sentido de urgencia colectiva. Foco: campaña de financiamiento colectivo con meta pública y plazo; CTA al link de la campaña; sentido de comunidad aportando juntos.',
+            'Implementación: 3 entries nuevas en TYPE_PROMPTS (contentStudioController.js) + 3 botones nuevos en la grilla del PostGenerator (frontend). Los presets existentes y las reglas institucionales v4.386-v4.388 siguen intactas.'
+        ]
+    },
     {
         version: 'v4.392',
         date: '2026-05-19',

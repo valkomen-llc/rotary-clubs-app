@@ -608,7 +608,10 @@ const PostGenerator: React.FC = () => {
                                     { id: 'fundraising', label: 'Fundraising' },
                                     { id: 'event', label: 'Evento' },
                                     { id: 'project', label: 'Proyecto' },
-                                    { id: 'membership', label: 'Membresía' }
+                                    { id: 'membership', label: 'Membresía' },
+                                    { id: 'networking', label: 'Networking' },
+                                    { id: 'endpolio', label: 'End Polio Now' },
+                                    { id: 'crowdfunding', label: 'Crowdfunding' }
                                 ].map((type) => (
                                     <button
                                         key={type.id}
