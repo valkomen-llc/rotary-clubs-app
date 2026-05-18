@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// SOCIAL V4.399 | 2026-05-19 (SOCIAL — IG /me con triple fallback + user_id del exchange 🛡️)
-// Cache bust: 2026-05-19 15:00 (SOCIAL — IG /me triple fallback v4.399 🛡️)
+// BIBLIOTECA V4.400 | 2026-05-19 (BIBLIOTECA — Sección Formatos Generados con preview por plataforma 🎨)
+// Cache bust: 2026-05-19 16:00 (BIBLIOTECA — Formatos Generados v4.400 🎨)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.400',
+        date: '2026-05-19',
+        title: 'Biblioteca — Nueva sección "Formatos Generados" con preview por plataforma 🎨',
+        description: 'Phase 1 del centro de publicación multicanal: el modal de cada publicación en la Biblioteca ahora tiene una sección "Formatos Generados" con tabs por plataforma (Facebook, Instagram, X, LinkedIn). Cada tab muestra la variante de imagen específica de esa plataforma (4:5 / 2:3 / 3:2) + el copy adaptado + hashtags + CTA + char count vs char limit. Convierte la biblioteca en un visor real de las 3 variantes que se generan por cada pieza.',
+        type: 'added',
+        author: 'Claude',
+        details: [
+            'Tabs por plataforma: Facebook, Instagram, X/Twitter, LinkedIn. Si una plataforma no tiene variante, se ve "— sin variante" en el chip y un placeholder en el preview.',
+            'Imagen por plataforma: FB y LinkedIn usan portrait 4:5 (1080×1350), Instagram usa la variante 2:3 (1080×1620), X usa landscape 3:2 (1536×1024). Si la 2:3 o 3:2 no están disponibles, fallback a la 4:5.',
+            'Copy con char counter dinámico: muestra "X / LIMITE ch" con color rojo si excede el límite recomendado (FB 600, IG 2200, X 260, LinkedIn 1300).',
+            'Dimensiones visibles: chip con "1080 × 1350 (4:5)" o similar según plataforma. Modelo IA usado para imagen y copy también visible.',
+            'Phase 2 (próximo PR): selector explícito de qué cuenta usa qué formato en el botón Publicar / Programar.',
+            'Phase 3: agregar formato Story 9:16 (1080×1920) para Instagram Stories / Facebook Stories.',
+            'Phase 4: botones "Republicar" / "Regenerar para otra plataforma" para reutilizar inteligentemente.'
+        ]
+    },
     {
         version: 'v4.399',
         date: '2026-05-19',
