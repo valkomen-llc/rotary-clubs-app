@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.377.0",
-  "cache_bust": "2026-05-18 19:00 (GEMINI EXTENDED CASCADE + LLM-INFO v4.377 🔍)",
+  "version": "4.378.0",
+  "cache_bust": "2026-05-18 20:00 (AUTO-DISCOVER MODELS v4.378 🎯)",
   "type": "module",
-  "//": "GEMINI EXTENDED CASCADE + LLM-INFO V4.377 | 2026-05-18 (CEREBROS — cascada extendida de 11 combinaciones model+version, endpoint /llm-info para diagnosticar, cache del modelo que funcione 🔍)",
+  "//": "AUTO-DISCOVER MODELS V4.378 | 2026-05-18 (CEREBROS — si todos los modelos hardcodeados fallan, auto-listar modelos disponibles para la API key y reintentar con los descubiertos 🎯)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
