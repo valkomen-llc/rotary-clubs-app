@@ -24,9 +24,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// CHAT-TO-MEMORY V4.380 | 2026-05-18 (CEREBROS — conversaciones del chat → BrainMemory indexada 🧠)
-// Cache bust: 2026-05-18 22:00 (CHAT-TO-MEMORY v4.380 🧠)
+// POSTGEN IG 2:3 V4.381 | 2026-05-18 (POSTGEN — formato dedicado IG 2:3 (1080×1620), separado de portrait 4:5 (FB/LI) y landscape 3:2 (X). Publish manda variante correcta por plataforma 📐)
+// Cache bust: 2026-05-18 23:00 (POSTGEN IG 2:3 FORMAT v4.381 📐)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.381',
+        date: '2026-05-18',
+        title: 'PostGenerator — Formato Dedicado para Instagram (2:3) 📐',
+        description: 'IG ahora se genera en 2:3 (1080×1620, más vertical que el 4:5 de feed estándar) — mayor impacto visual. FB y LinkedIn siguen en 4:5; X en 3:2 landscape. Publish y scheduling mandan la variante correcta a cada cuenta automáticamente.',
+        type: 'major',
+        author: 'Claude',
+        details: [
+            'Nuevo formato "instagram" en el backend (1080×1620 = 2:3). Cada generación con IA ahora produce TRES versiones en paralelo: portrait 4:5 (FB+LinkedIn), instagram 2:3 (IG), landscape 3:2 (X).',
+            'KIE.AI Nano Banana: pedimos aspect_ratio "2:3" directo. OpenAI gpt-image-1: nativo 1024×1536 ya es 2:3 exacto — sin crop ni pérdida de contenido, solo upscale a 1080×1620.',
+            'Schema: SocialPublication.imageUrlInstagram TEXT (nullable). Migración aditiva, drafts pre-v4.381 caen al imageUrl 4:5 por compat.',
+            'Publish endpoint extendido: acepta imagesByPlatform = { facebook, instagram, x, linkedin }. Cada cuenta recibe la variante de su platform. Si falta una específica, fallback al imageUrl general.',
+            'Cron worker actualizado: las publicaciones programadas también usan la variante correcta por plataforma cuando se disparan automáticamente.',
+            'PostGenerator UI: el preview se ajusta dinámicamente al ratio según el tab activo — 4:5 cuando es FB/LinkedIn, 2:3 cuando es Instagram (más alto), 3:2 cuando es X. Badge actualizado: "INSTAGRAM · 2:3" / "FB · LINKEDIN · 4:5" / "X / TWITTER · 3:2".',
+            'PublicationLibrary: el modal de detalle usa la variante correcta al publicar desde un borrador histórico, con fallback a imageUrl si la SocialPublication es pre-v4.381.',
+            'Costo: 50% más por generación (3 imágenes en vez de 2). Latencia igual — siguen en paralelo. Storage 1.5x para nuevas pubs.'
+        ]
+    },
     {
         version: 'v4.380',
         date: '2026-05-18',

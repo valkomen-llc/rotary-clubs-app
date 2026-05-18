@@ -414,11 +414,31 @@ export const disconnectAccount = async (req, res) => {
 // ============================================================================
 export const publishPost = async (req, res) => {
     try {
-        const { accountIds, imageUrl, copies = {}, publicationId, scheduledFor, timezone, sourceImageId, generatedBy } = req.body || {};
+        const {
+            accountIds,
+            imageUrl,
+            // imagesByPlatform es un mapa opcional { facebook, instagram, x, linkedin }
+            // donde cada valor es la URL de la imagen optimizada para esa plataforma.
+            // Si está presente, cada cuenta recibe la imagen del platform correspondiente.
+            // Si no, cae a imageUrl para todas las cuentas (compat hacia atrás).
+            imagesByPlatform = {},
+            copies = {},
+            publicationId,
+            scheduledFor,
+            timezone,
+            sourceImageId,
+            generatedBy
+        } = req.body || {};
         if (!Array.isArray(accountIds) || accountIds.length === 0) {
             return res.status(400).json({ error: 'accountIds requerido (al menos uno)' });
         }
-        if (!imageUrl) return res.status(400).json({ error: 'imageUrl requerido' });
+        if (!imageUrl && !Object.values(imagesByPlatform || {}).some(Boolean)) {
+            return res.status(400).json({ error: 'imageUrl o imagesByPlatform requerido' });
+        }
+        // Resolver la imagen a usar para cada cuenta — IG va con su 2:3, FB con
+        // 4:5, etc. Fallback a imageUrl si no hay variante específica.
+        const resolveImageForPlatform = (platform) =>
+            imagesByPlatform?.[platform] || imageUrl || null;
 
         const isAdmin = req.user.role === 'administrator';
         const accountWhere = { id: { in: accountIds } };
@@ -494,7 +514,11 @@ export const publishPost = async (req, res) => {
             }
             try {
                 const token = decryptToken(acc.accessToken);
-                const result = await publishToAccount({ account: acc, decryptedToken: token, imageUrl, copies });
+                const platformImageUrl = resolveImageForPlatform(acc.platform);
+                if (!platformImageUrl) {
+                    return { accountId: acc.id, platform: acc.platform, ok: false, error: `Sin imagen para plataforma ${acc.platform}` };
+                }
+                const result = await publishToAccount({ account: acc, decryptedToken: token, imageUrl: platformImageUrl, copies });
                 return {
                     accountId: acc.id,
                     platform: acc.platform,
@@ -516,11 +540,15 @@ export const publishPost = async (req, res) => {
         const status = allOk ? 'published' : someOk ? 'partial' : 'error';
 
         // Persist the publication record (update the draft if we got publicationId,
-        // create new otherwise).
+        // create new otherwise). Guardamos las tres variantes de imagen si las
+        // recibimos en imagesByPlatform, así la biblioteca histórica preserva
+        // la versión correcta por plataforma.
         const persistData = {
             clubId,
             userId: req.user.id || null,
-            imageUrl,
+            imageUrl: imagesByPlatform?.facebook || imageUrl,
+            ...(imagesByPlatform?.instagram ? { imageUrlInstagram: imagesByPlatform.instagram } : {}),
+            ...(imagesByPlatform?.x ? { imageUrlLandscape: imagesByPlatform.x } : {}),
             platformCopies: copies,
             targetAccounts: outcomes,
             status,
@@ -608,6 +636,7 @@ export const listPublications = async (req, res) => {
             clubId: p.clubId,
             club: p.club,
             imageUrl: p.imageUrl,
+            imageUrlInstagram: p.imageUrlInstagram,
             imageUrlLandscape: p.imageUrlLandscape,
             platformCopies: p.platformCopies,
             targetAccounts: p.targetAccounts,
@@ -695,7 +724,16 @@ export const runScheduledPublicationsDue = async ({ now = new Date() } = {}) => 
             }
             try {
                 const token = decryptToken(acc.accessToken);
-                const r = await publishToAccount({ account: acc, decryptedToken: token, imageUrl: pub.imageUrl, copies: pub.platformCopies || {} });
+                // Resolve por plataforma: IG → 2:3, X → 3:2, resto (FB/LI) → 4:5.
+                // Fallback a pub.imageUrl si la variante específica no existe.
+                const platformImageUrl =
+                    (acc.platform === 'instagram' && pub.imageUrlInstagram) ||
+                    (acc.platform === 'x' && pub.imageUrlLandscape) ||
+                    pub.imageUrl;
+                if (!platformImageUrl) {
+                    return { accountId: acc.id, platform: acc.platform, ok: false, error: `Sin imagen ${acc.platform} en la publicación` };
+                }
+                const r = await publishToAccount({ account: acc, decryptedToken: token, imageUrl: platformImageUrl, copies: pub.platformCopies || {} });
                 return {
                     accountId: acc.id,
                     platform: acc.platform,

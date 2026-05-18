@@ -44,19 +44,26 @@ const INTEREST_AREAS = {
 
 const PLATFORM_LIMITS = { facebook: 600, instagram: 2200, x: 280, linkedin: 1300 };
 
-// Output dimensions per format. Portrait is 4:5 — Facebook & Instagram's native
-// recommendation for feed posts (less tall than 2:3, so it fills the feed column
-// without leaving dark side margins in FB's dark-mode interface, and the AI has
-// to extend less of the scene = less drift / less filler in top/bottom).
+// Output dimensions per format.
+//   portrait  → 4:5 (1080×1350)   FB / LinkedIn feed
+//   instagram → 2:3 (1080×1620)   IG feed específicamente, más vertical (v4.381)
+//   landscape → 3:2 (1536×1024)   X / Twitter
+//
+// IG acepta hasta 4:5 oficialmente, pero el equipo prefiere 2:3 (más alto sin
+// llegar a 9:16 Stories) — más impacto visual en el feed sin entrar a Reels.
 const FORMAT_SIZES = {
-    portrait: { width: 1080, height: 1350 },  // 4:5 — used for FB / IG / LinkedIn
-    landscape: { width: 1536, height: 1024 }  // 3:2 — used for X / Twitter
+    portrait:  { width: 1080, height: 1350 },
+    instagram: { width: 1080, height: 1620 },
+    landscape: { width: 1536, height: 1024 }
 };
 
-// gpt-image-1 only supports three sizes (1024×1024 / 1024×1536 / 1536×1024), so
-// for portrait we ask for the closest (1024×1536 = 2:3) and crop centred to 4:5.
+// gpt-image-1 only supports three sizes (1024×1024 / 1024×1536 / 1536×1024).
+// portrait  → 1024×1536 (2:3, cropeamos top/bottom para llegar a 4:5)
+// instagram → 1024×1536 (¡es 2:3 exacto! sin crop, sólo resize → lossless)
+// landscape → 1536×1024 (3:2 exacto)
 const ENGINE_NATIVE_SIZES = {
-    portrait: '1024x1536',
+    portrait:  '1024x1536',
+    instagram: '1024x1536',
     landscape: '1536x1024'
 };
 
@@ -84,13 +91,17 @@ const enhanceOriginal = async (buffer) => {
 // composition / extension reasoning itself; complex prompts with long blacklists were
 // counterproductive in prior versions (the model fixated on the listed elements).
 const buildSimplePrompt = ({ targetFormat }) => {
-    const aspectLabel = targetFormat === 'landscape'
-        ? 'landscape 3:2 (1536×1024)'
-        : 'portrait 4:5 (1080×1350)';
-    const extendDirection = targetFormat === 'landscape'
-        ? 'extending the side scenery (left and right) naturally outward'
-        : 'extending the upper background (sky, treetops, ceiling) upward and the lower surface (ground, grass, floor) downward';
-
+    let aspectLabel, extendDirection;
+    if (targetFormat === 'landscape') {
+        aspectLabel = 'landscape 3:2 (1536×1024)';
+        extendDirection = 'extending the side scenery (left and right) naturally outward';
+    } else if (targetFormat === 'instagram') {
+        aspectLabel = 'vertical portrait 2:3 (1080×1620)';
+        extendDirection = 'extending the upper background (sky, treetops, ceiling) upward and the lower surface (ground, grass, floor) downward, with more vertical depth than a standard 4:5 portrait';
+    } else {
+        aspectLabel = 'portrait 4:5 (1080×1350)';
+        extendDirection = 'extending the upper background (sky, treetops, ceiling) upward and the lower surface (ground, grass, floor) downward';
+    }
     return `Regenerate this photograph in higher quality and convert it to ${aspectLabel} aspect ratio, ${extendDirection}. Preserve all the people in the original, their faces, expressions, clothing, flags, banners, signs and objects. The extension must read as the same scene captured by the same camera with a different frame. Output a single coherent natural photograph.`;
 };
 
@@ -141,10 +152,13 @@ const generateWithOpenAI = async ({ originalBuffer, prompt, targetFormat }) => {
 // the task, poll until completion (~30-60s typical), then download the produced image
 // and return its buffer so the standard upload flow can place it in our S3 bucket.
 const generateWithKie = async ({ imageUrl, prompt, targetFormat }) => {
-    // Ask KIE for the closest aspect ratio it accepts. For portrait we want 4:5;
-    // if Nano Banana rejects it we'll fall back to the closest available (3:4)
-    // and let normaliseToTarget do the final centre-crop.
-    const aspectRatio = targetFormat === 'landscape' ? '3:2' : '4:5';
+    // Aspect ratio nativo según target. KIE Nano Banana acepta strings tipo
+    // '4:5', '2:3', '3:2'. normaliseToTarget se encarga del fit final.
+    const aspectRatio = targetFormat === 'landscape'
+        ? '3:2'
+        : targetFormat === 'instagram'
+            ? '2:3'
+            : '4:5';
     const taskId = await createKieImageTask({
         model: 'google/nano-banana-edit',
         prompt,
@@ -326,19 +340,19 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
             // Continue with empty copy rather than failing the whole pipeline.
         }
 
-        // 3) Image regeneration. By default we now generate BOTH formats in parallel
-        //    (portrait for FB/IG/LinkedIn + landscape for X) so the user doesn't
-        //    have to click "Generar landscape" when they switch tabs. The legacy
-        //    `targetFormat` field is kept for backward compatibility — if explicitly
-        //    set, only that one format is generated.
+        // 3) Image regeneration. Generamos los TRES formatos en paralelo:
+        //    - portrait  (4:5)   FB + LinkedIn
+        //    - instagram (2:3)   IG específicamente (más vertical, v4.381)
+        //    - landscape (3:2)   X / Twitter
+        //    El legacy `targetFormat` field se mantiene por compat — si se manda
+        //    solo se genera ese formato.
+        const VALID_FORMATS = ['portrait', 'instagram', 'landscape'];
         const requestedFormats = Array.isArray(config.formats) && config.formats.length
-            ? config.formats.filter(f => f === 'portrait' || f === 'landscape')
-            : ['portrait', 'landscape'];
+            ? config.formats.filter(f => VALID_FORMATS.includes(f))
+            : VALID_FORMATS;
         // If the caller explicitly asked for a single format via `targetFormat`,
         // honour that. Otherwise default to both.
-        const formatsToGenerate = config.targetFormat && requestedFormats.length === 2
-            ? requestedFormats
-            : requestedFormats;
+        const formatsToGenerate = requestedFormats;
 
         const generateOneFormat = async (format) => {
             const { width: w, height: h } = FORMAT_SIZES[format];
@@ -382,7 +396,7 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
         // top-level legacy fields (generatedImageUrl, format, engine) pointing at
         // the primary format (the one the caller explicitly asked for, or portrait
         // by default) so existing frontend code keeps working unchanged.
-        const primaryFormat = config.targetFormat === 'landscape' ? 'landscape' : 'portrait';
+        const primaryFormat = VALID_FORMATS.includes(config.targetFormat) ? config.targetFormat : 'portrait';
         const generatedImages = {};
         let imageError = null;
         let usedEngine = null;
@@ -400,7 +414,7 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
                 usedEngine = r.engine;
             }
         }
-        const primary = generatedImages[primaryFormat] || generatedImages.portrait || generatedImages.landscape;
+        const primary = generatedImages[primaryFormat] || generatedImages.portrait || generatedImages.instagram || generatedImages.landscape;
         const finalUrl = primary?.url || null;
         if (!usedEngine && primary?.engine) usedEngine = primary.engine;
 
@@ -446,6 +460,7 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
                         clubId: resolvedClubId,
                         userId: req.user.id || null,
                         imageUrl: finalUrl,
+                        imageUrlInstagram: generatedImages.instagram?.url || null,
                         imageUrlLandscape: generatedImages.landscape?.url || null,
                         platformCopies: {
                             facebook: parsed.facebook,

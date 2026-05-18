@@ -54,6 +54,7 @@ interface Publication {
     clubId: string;
     club?: { id: string; name: string } | null;
     imageUrl: string | null;
+    imageUrlInstagram: string | null;
     imageUrlLandscape: string | null;
     platformCopies: Record<string, PlatformCopyBlock> | null;
     targetAccounts: PublicationOutcome[] | null;
@@ -232,11 +233,24 @@ const PublicationLibrary: React.FC = () => {
             toast.error('Seleccioná al menos una cuenta');
             return;
         }
-        const portraitUrl = selected.imageUrl;
-        if (!portraitUrl) {
+        const fallbackUrl = selected.imageUrl || selected.imageUrlInstagram || selected.imageUrlLandscape;
+        if (!fallbackUrl) {
             toast.error('La publicación no tiene imagen asociada');
             return;
         }
+        // v4.381: mapa por plataforma. Cada cuenta usa la variante propia
+        // (portrait 4:5 para FB/LinkedIn, instagram 2:3 para IG, landscape
+        // 3:2 para X). Fallback al campo principal si la variante específica
+        // todavía no se guardó (drafts pre-v4.381).
+        const imagesByPlatform: Record<string, string> = {};
+        if (selected.imageUrl) {
+            imagesByPlatform.facebook = selected.imageUrl;
+            imagesByPlatform.linkedin = selected.imageUrl;
+        }
+        if (selected.imageUrlInstagram) imagesByPlatform.instagram = selected.imageUrlInstagram;
+        else if (selected.imageUrl)     imagesByPlatform.instagram = selected.imageUrl; // fallback drafts viejos
+        if (selected.imageUrlLandscape) imagesByPlatform.x = selected.imageUrlLandscape;
+
         setIsPublishing(true);
         const toastId = toast.loading(scheduledFor ? 'Programando…' : `Publicando en ${selectedAccountIds.size} cuenta(s)…`);
         try {
@@ -246,7 +260,8 @@ const PublicationLibrary: React.FC = () => {
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({
                     accountIds: Array.from(selectedAccountIds),
-                    imageUrl: portraitUrl,
+                    imageUrl: fallbackUrl,
+                    imagesByPlatform,
                     copies: selected.platformCopies || {},
                     publicationId: selected.id,
                     scheduledFor,

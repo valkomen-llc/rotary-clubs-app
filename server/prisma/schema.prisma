@@ -1016,8 +1016,9 @@ model SocialPublication {
   platformCopies    Json?           // { facebook: {copy, hashtags, cta}, instagram: {...}, ... }
 
   // Media
-  imageUrl          String?         // portrait variant (FB/IG/LinkedIn feed)
-  imageUrlLandscape String?         // landscape variant (X)
+  imageUrl          String?         // portrait 4:5 (FB / LinkedIn feed)
+  imageUrlInstagram String?         // portrait 2:3 (IG feed, más vertical — v4.381)
+  imageUrlLandscape String?         // landscape 3:2 (X / Twitter)
   mediaType         String          @default("image") // image|video|carousel
   videoProjectId    String?
 

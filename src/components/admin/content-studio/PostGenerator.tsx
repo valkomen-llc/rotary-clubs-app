@@ -28,7 +28,7 @@ import MediaPicker from './MediaPicker';
 import { toast } from 'sonner';
 
 type Platform = 'facebook' | 'instagram' | 'x' | 'linkedin';
-type TargetFormat = 'portrait' | 'landscape';
+type TargetFormat = 'portrait' | 'instagram' | 'landscape';
 type EngineId = 'kie' | 'flux_kontext' | 'nano_banana' | 'higgsfield' | 'openai';
 
 interface AIConfig {
@@ -109,7 +109,7 @@ interface PublishOutcome {
 
 const PLATFORM_TO_FORMAT: Record<Platform, TargetFormat> = {
     facebook: 'portrait',
-    instagram: 'portrait',
+    instagram: 'instagram',  // v4.381: IG usa 2:3 (1080×1620), distinto al 4:5 de FB/LinkedIn
     linkedin: 'portrait',
     x: 'landscape'
 };
@@ -197,7 +197,7 @@ const PostGenerator: React.FC = () => {
                         ...aiConfig,
                         // Pedimos los dos formatos en paralelo: el backend genera portrait
                         // (FB/IG/LinkedIn) y landscape (X) en una sola corrida.
-                        formats: ['portrait', 'landscape']
+                        formats: ['portrait', 'instagram', 'landscape']
                     }
                 })
             });
@@ -206,12 +206,15 @@ const PostGenerator: React.FC = () => {
 
             if (response.ok && data.success) {
                 setGeneratedContent(data.content);
-                // Map nuevo del backend: { portrait: { url, engine }, landscape: { url, engine } }
+                // Map del backend: { portrait, instagram, landscape } → cada uno
+                // con su url + engine. Frontend selecciona automáticamente la
+                // variante correcta según el tab activo (PLATFORM_TO_FORMAT).
                 const imgMap: Partial<Record<TargetFormat, string>> = {};
                 if (data.generatedImages?.portrait?.url) imgMap.portrait = data.generatedImages.portrait.url;
+                if (data.generatedImages?.instagram?.url) imgMap.instagram = data.generatedImages.instagram.url;
                 if (data.generatedImages?.landscape?.url) imgMap.landscape = data.generatedImages.landscape.url;
                 // Fallback al campo legacy si el backend solo devolvió uno
-                if (!imgMap.portrait && !imgMap.landscape && data.generatedImageUrl) {
+                if (!imgMap.portrait && !imgMap.instagram && !imgMap.landscape && data.generatedImageUrl) {
                     const fmt = (data.metadata?.format || 'portrait') as TargetFormat;
                     imgMap[fmt] = data.generatedImageUrl;
                 }
@@ -383,7 +386,7 @@ const PostGenerator: React.FC = () => {
     // guarda con status='scheduled' y un cron worker (Vercel Cron cada 5min)
     // la levanta cuando llega la hora.
     const schedulePublication = async () => {
-        const publishImageUrl = generatedImages.portrait || generatedImages.landscape || null;
+        const publishImageUrl = generatedImages.portrait || generatedImages.instagram || generatedImages.landscape || null;
         if (!publishImageUrl || !generatedContent) {
             toast.error('Generá la publicación antes de programar');
             return;
@@ -437,6 +440,11 @@ const PostGenerator: React.FC = () => {
                 body: JSON.stringify({
                     accountIds: Array.from(selectedAccountIds),
                     imageUrl: publishImageUrl,
+                    imagesByPlatform: {
+                        ...(generatedImages.portrait  ? { facebook: generatedImages.portrait, linkedin: generatedImages.portrait } : {}),
+                        ...(generatedImages.instagram ? { instagram: generatedImages.instagram } : {}),
+                        ...(generatedImages.landscape ? { x: generatedImages.landscape } : {})
+                    },
                     copies: generatedContent,
                     scheduledFor: scheduledIso,
                     timezone: scheduleTimezone,
@@ -462,11 +470,13 @@ const PostGenerator: React.FC = () => {
     };
 
     const publishNow = async () => {
-        // Phase 2 currently supports FB Pages + IG Business — both want the
-        // portrait 4:5 image, not the landscape one. We prefer portrait, fall
-        // back to whatever is available if portrait somehow didn't generate.
-        const publishImageUrl = generatedImages.portrait || generatedImages.landscape || null;
-        if (!publishImageUrl || !generatedContent) {
+        // v4.381: cada plataforma usa su variante propia.
+        //   facebook / linkedin → portrait 4:5
+        //   instagram           → instagram 2:3 (más vertical)
+        //   x                   → landscape 3:2
+        // Si una variante específica no se generó, fallback al portrait.
+        const fallback = generatedImages.portrait || generatedImages.instagram || generatedImages.landscape || null;
+        if (!fallback || !generatedContent) {
             toast.error('Generá la publicación antes de publicar');
             return;
         }
@@ -474,6 +484,12 @@ const PostGenerator: React.FC = () => {
             toast.error('Seleccioná al menos una cuenta');
             return;
         }
+        const imagesByPlatform: Record<string, string> = {};
+        if (generatedImages.portrait)  imagesByPlatform.facebook  = generatedImages.portrait;
+        if (generatedImages.portrait)  imagesByPlatform.linkedin  = generatedImages.portrait;
+        if (generatedImages.instagram) imagesByPlatform.instagram = generatedImages.instagram;
+        if (generatedImages.landscape) imagesByPlatform.x         = generatedImages.landscape;
+
         setIsPublishing(true);
         const toastId = toast.loading(`Publicando en ${selectedAccountIds.size} cuenta(s)…`);
         try {
@@ -487,7 +503,8 @@ const PostGenerator: React.FC = () => {
                 },
                 body: JSON.stringify({
                     accountIds: Array.from(selectedAccountIds),
-                    imageUrl: publishImageUrl,
+                    imageUrl: fallback,
+                    imagesByPlatform,
                     copies: generatedContent,
                     publicationId,
                     generatedBy: metadata?.engine ? `ai-${metadata.engine.split('+')[0]}` : 'ai'
@@ -753,8 +770,15 @@ const PostGenerator: React.FC = () => {
                             </div>
                         ) : (
                             <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 flex flex-col gap-6 h-full">
-                                {/* Preview Container — aspect matches the format that was actually generated (4:5 portrait or 3:2 landscape) */}
-                                <div className={`relative group mx-auto bg-gray-50 rounded-3xl overflow-hidden shadow-2xl border-[8px] border-white transition-all duration-500 ${generatedFormat === 'landscape' ? 'max-w-full aspect-[3/2]' : 'max-w-[380px] aspect-[4/5]'}`}>
+                                {/* Preview Container — aspect matches the format actually generated.
+                                    landscape (X)         → 3:2
+                                    instagram (IG feed)   → 2:3 (más vertical, v4.381)
+                                    portrait (FB/LinkedIn)→ 4:5 */}
+                                <div className={`relative group mx-auto bg-gray-50 rounded-3xl overflow-hidden shadow-2xl border-[8px] border-white transition-all duration-500 ${
+                                    generatedFormat === 'landscape' ? 'max-w-full aspect-[3/2]' :
+                                    generatedFormat === 'instagram' ? 'max-w-[340px] aspect-[2/3]' :
+                                    'max-w-[380px] aspect-[4/5]'
+                                }`}>
                                     {generatedImageUrl ? (
                                         <img src={generatedImageUrl} alt="AI Created" className="w-full h-full object-cover" />
                                     ) : null}
@@ -772,7 +796,11 @@ const PostGenerator: React.FC = () => {
                                     <div className="absolute bottom-4 left-4 flex flex-col gap-2">
                                         <span className="bg-blue-600/90 backdrop-blur-md text-white text-[10px] font-black px-4 py-2 rounded-xl shadow-2xl flex items-center gap-2">
                                             <BarChart3 className="w-4 h-4" />
-                                            {generatedFormat === 'landscape' ? 'X / TWITTER · 3:2' : 'FB · IG · LINKEDIN · 4:5'}
+                                            {generatedFormat === 'landscape'
+                                                ? 'X / TWITTER · 3:2'
+                                                : generatedFormat === 'instagram'
+                                                    ? 'INSTAGRAM · 2:3'
+                                                    : 'FB · LINKEDIN · 4:5'}
                                         </span>
                                         {metadata?.engine && (
                                             <span className="bg-black/60 backdrop-blur-md text-white/90 text-[9px] font-black px-3 py-1.5 rounded-lg tracking-wider">
@@ -792,7 +820,9 @@ const PostGenerator: React.FC = () => {
                                             <p className="text-[11px] text-amber-800 mb-3 font-bold">
                                                 {activePlatform === 'x'
                                                     ? 'X usa landscape 3:2. La generación no completó esa versión.'
-                                                    : 'Esta red usa portrait 4:5. La generación no completó esa versión.'}
+                                                    : activePlatform === 'instagram'
+                                                        ? 'Instagram usa portrait 2:3. La generación no completó esa versión.'
+                                                        : 'Esta red usa portrait 4:5. La generación no completó esa versión.'}
                                             </p>
                                             <button
                                                 onClick={runGeneration}
