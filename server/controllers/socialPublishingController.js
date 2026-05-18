@@ -703,6 +703,11 @@ export const publishPost = async (req, res) => {
                     return { accountId: acc.id, platform: acc.platform, ok: false, error: `Sin imagen para plataforma ${acc.platform}` };
                 }
                 const result = await publishToAccount({ account: acc, decryptedToken: token, imageUrl: platformImageUrl, copies });
+                if (!result.ok) {
+                    console.error(`[social] publish to ${acc.id} (${acc.platform}, @${acc.accountName || 'unknown'}) FAILED:`, result.error);
+                } else {
+                    console.log(`[social] publish to ${acc.id} (${acc.platform}, @${acc.accountName || 'unknown'}) OK, externalId=${result.externalId}`);
+                }
                 return {
                     accountId: acc.id,
                     platform: acc.platform,

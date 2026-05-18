@@ -24,9 +24,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// SOCIAL V4.401 | 2026-05-19 (SOCIAL — publish IG directo via graph.instagram.com 📤)
-// Cache bust: 2026-05-19 17:00 (SOCIAL — publish IG directo v4.401 📤)
+// SOCIAL V4.402 | 2026-05-19 (SOCIAL — error específico visible en toast + log explícito por outcome 🔍)
+// Cache bust: 2026-05-19 18:00 (SOCIAL — error específico v4.402 🔍)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.402',
+        date: '2026-05-19',
+        title: 'Social — Error específico visible en toast + log explícito por outcome 🔍',
+        description: 'v4.401 deployó OK pero al publicar todavía aparecía "Falló en 1 cuenta(s)" genérico — sin info sobre QUÉ falló. Ahora el toast del frontend incluye el mensaje exacto del error del primer outcome fallido (ej "instagram/@user: Token inválido"). Backend también loguea por cada outcome para diagnóstico fino en Vercel logs.',
+        type: 'improved',
+        author: 'Claude',
+        details: [
+            'Frontend (PostGenerator + PublicationLibrary): el toast de error/warning ahora muestra "Falló en N cuenta(s). instagram/@user: <error específico>" en vez de solo el conteo. Duración del toast bumpeada a 25-30s para que dé tiempo a leer el mensaje.',
+            'Backend: por cada outcome, log explícito "[social] publish to <id> (<platform>, @<name>) OK, externalId=..." o "FAILED: <error>". Antes solo se loggeaba el throw, no los outcomes ok:false que devuelve el helper.',
+            'Esto permite identificar el error real (ej. permisos IG, image_url inaccesible, token expirado) sin tener que clickear cada log en Vercel para ver el detalle.'
+        ]
+    },
     {
         version: 'v4.401',
         date: '2026-05-19',

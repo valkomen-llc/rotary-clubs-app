@@ -532,12 +532,17 @@ const PostGenerator: React.FC = () => {
             setPublishOutcomes(data.outcomes || []);
             const okCount = (data.outcomes || []).filter((o: PublishOutcome) => o.ok).length;
             const failCount = (data.outcomes || []).length - okCount;
+            // v4.402: incluir el error específico del primer outcome fallido en el toast
+            const failedOutcomes = (data.outcomes || []).filter((o: PublishOutcome) => !o.ok);
+            const errorDetail = failedOutcomes.map((o: PublishOutcome) =>
+                `${o.platform}${o.accountName ? `/@${o.accountName}` : ''}: ${o.error || 'sin error'}`
+            ).join(' | ').slice(0, 300);
             if (data.status === 'published') {
                 toast.success(`Publicado en ${okCount} cuenta(s) ✓`, { id: toastId });
             } else if (data.status === 'partial') {
-                toast.warning(`Publicado en ${okCount}, falló en ${failCount}. Revisá el detalle.`, { id: toastId, duration: 15000 });
+                toast.warning(`Publicado en ${okCount}, falló en ${failCount}. ${errorDetail}`, { id: toastId, duration: 25000 });
             } else {
-                toast.error(`Falló en las ${failCount} cuenta(s). Revisá el detalle.`, { id: toastId, duration: 15000 });
+                toast.error(`Falló en ${failCount} cuenta(s). ${errorDetail}`, { id: toastId, duration: 30000 });
             }
         } catch (e: any) {
             toast.error(`Error de red: ${e.message || 'desconocido'}`, { id: toastId });

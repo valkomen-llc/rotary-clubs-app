@@ -282,9 +282,16 @@ const PublicationLibrary: React.FC = () => {
             } else {
                 const ok = (data.outcomes || []).filter((o: any) => o.ok).length;
                 const fail = (data.outcomes || []).length - ok;
+                // v4.402: tomar el primer error específico de los outcomes que fallaron
+                // para mostrarlo en el toast — antes solo decía "Falló en 1 cuenta(s)"
+                // sin info accionable.
+                const failedOutcomes = (data.outcomes || []).filter((o: any) => !o.ok);
+                const errorDetail = failedOutcomes.map((o: any) =>
+                    `${o.platform}${o.accountName ? `/@${o.accountName}` : ''}: ${o.error || 'sin error'}`
+                ).join(' | ').slice(0, 300);
                 if (data.status === 'published') toast.success(`Publicado en ${ok} cuenta(s) ✓`, { id: toastId });
-                else if (data.status === 'partial') toast.warning(`Publicado en ${ok}, falló en ${fail}`, { id: toastId, duration: 12000 });
-                else toast.error(`Falló en ${fail} cuenta(s)`, { id: toastId, duration: 12000 });
+                else if (data.status === 'partial') toast.warning(`Publicado en ${ok}, falló en ${fail}. ${errorDetail}`, { id: toastId, duration: 20000 });
+                else toast.error(`Falló en ${fail} cuenta(s). ${errorDetail}`, { id: toastId, duration: 25000 });
             }
             await fetchItems();
             closeDetail();
