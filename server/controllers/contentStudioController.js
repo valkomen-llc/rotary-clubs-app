@@ -236,7 +236,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.386 — Copy IA con reglas institucionales: nombre específico + normalización Rotary→Club Rotario + tiempo verbal según fecha) ---');
+        console.log('--- START GENERATE POST (v4.387 — Anti-fechas-inventadas + autosave robusto con status=error en fallas) ---');
         const { imageUrl, config = {} } = req.body;
         const clubId = req.user.role === 'administrator' ? (req.body.clubId || req.user.clubId) : req.user.clubId;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
@@ -285,11 +285,23 @@ export const generatePost = async (req, res) => {
         const hasSpecificClubName = !!clubName;
         if (!clubName) clubName = 'Club Rotario';
 
-        // Fecha actual en español, para que el modelo decida tiempo verbal correcto
-        // cuando el contenido menciona eventos. Formato: "lunes 18 de mayo de 2026".
-        const TODAY_ES = new Date().toLocaleDateString('es-ES', {
-            weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-        });
+        // Fecha real del evento (opcional). Solo se inyecta al prompt si el caller
+        // la suministra explícitamente — NUNCA se autogenera ni se infiere de "hoy".
+        // El equipo cliente reportó que inyectar "fecha de hoy" hacía que el modelo
+        // inventara fechas relativas ("el próximo sábado 24 de mayo"), lo cual es
+        // institucionalmente inaceptable (v4.387).
+        const eventDateRaw = typeof config.eventDate === 'string' && config.eventDate.trim()
+            ? config.eventDate.trim()
+            : null;
+        let eventDateHuman = null;
+        if (eventDateRaw) {
+            const d = new Date(eventDateRaw);
+            if (!isNaN(d.getTime())) {
+                eventDateHuman = d.toLocaleDateString('es-ES', {
+                    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+                });
+            }
+        }
 
         // 1) Fetch + enhance the original (no AI in this step — preserves identity 100%).
         const originalBuffer = await fetchImageBuffer(imageUrl);
@@ -323,15 +335,15 @@ Reglas institucionales obligatorias (NO opcionales):
 
 2. NORMALIZACIÓN "ROTARY" → "CLUB ROTARIO" EN CLUBES. Cuando la entidad es un club (te lo indicamos en el prompt), si el nombre llega como "Rotary X" lo escribís en español como "Club Rotario X". Ej: "Rotary Bogotá Usaquén" → "Club Rotario Bogotá Usaquén". Esto NO aplica a asociaciones, fundaciones, programas de intercambio, eventos ni conferencias: esas entidades conservan su nombre original.
 
-3. TIEMPO VERBAL SEGÚN FECHA. Te indicamos la fecha de hoy. Si el evento/contenido se refiere a una fecha pasada, usás tiempo verbal pasado y tono de agradecimiento / resumen ("Compartimos con orgullo lo vivido…", "Gracias a quienes participaron…"). Si la fecha es futura, usás lenguaje de invitación ("Te invitamos…", "Sumate…"). NUNCA invitás a un evento que ya ocurrió.
+3. PROHIBIDO INVENTAR FECHAS Y DATOS. NO menciones fechas específicas (día, mes, año), nombres de días de la semana ("sábado", "lunes", "el próximo viernes"), ni horarios concretos ("a las 10 am", "este fin de semana") a menos que el contexto te los provea EXPLÍCITAMENTE en este prompt. Tampoco inventes lugares específicos, direcciones, montos en dinero, cantidades de personas, ni nombres de personas. Si no tenés el dato, no lo escribís. Si necesitás referirte al tiempo de un evento sin tener fecha, usá frases neutrales: "próximamente", "en esta jornada", "durante la actividad", "en el marco del proyecto", "en breve", "muy pronto".
 
-4. CONTEXTUALIZACIÓN AUTOMÁTICA. Inferís el sentido de la publicación combinando: nombre de la entidad + categoría + fecha actual + imagen + área de enfoque Rotary. El copy debe sentirse coherente con ese contexto real, no como texto genérico aplicable a cualquier club.
+4. CONTEXTUALIZACIÓN AUTOMÁTICA SIN INVENTAR. Inferís el sentido de la publicación combinando los datos REALES disponibles: nombre de la entidad + categoría + ciudad + imagen + área de enfoque Rotary. Cuando el contexto provea fecha, podés usarla; si no, no la mencionás. El copy debe sentirse coherente con ese contexto real, no como texto genérico aplicable a cualquier club.
 
-5. PRIORIDAD DE IDENTIDAD INSTITUCIONAL (en este orden): nombre oficial completo → contexto real (categoría, ciudad, área) → temporalidad correcta → lenguaje rotario auténtico → naturalidad humana. Si cualquiera de estos elementos entra en conflicto con un tono más "publicitario", priorizás la identidad institucional.`;
+5. PRIORIDAD DE IDENTIDAD INSTITUCIONAL (en este orden): nombre oficial completo → contexto real (categoría, ciudad, área) → precisión informativa (NO inventar) → lenguaje rotario auténtico → naturalidad humana. Si cualquiera de estos elementos entra en conflicto con un tono más "publicitario" o con una frase más "vendedora", priorizás la identidad institucional y la precisión.`;
 
             const userPrompt = `Entidad: "${clubName}"${clubCategory ? ` (categoría: ${clubCategory})` : ''}${clubCity ? ` — ciudad: ${clubCity}` : ''}.
 ${hasSpecificClubName ? `Usá EXACTAMENTE este nombre cuando te refieras a la entidad. No uses "El Club Rotario" genérico.` : `No hay nombre específico — evitá nombrar al club; hablá en primera persona plural ("compartimos", "celebramos") sin inventar nombres.`}
-Fecha de hoy: ${TODAY_ES}. Usala para decidir tiempo verbal (pasado vs futuro) si el contenido alude a un evento con fecha.
+${eventDateHuman ? `Fecha real del evento (provista por el sistema): ${eventDateHuman}. Podés mencionarla con naturalidad.` : `NO hay fecha provista en este contexto. PROHIBIDO inventar fechas, días de la semana u horarios. Usá frases neutrales: "próximamente", "en esta jornada", "durante la actividad", "en el marco del proyecto", "en breve".`}
 Tipo de publicación: ${config.type || 'standard'} — tono ${typeMeta.tone}, foco ${typeMeta.focus}.
 Área de enfoque Rotary: ${areaMeta}.
 
@@ -347,7 +359,7 @@ Devuelve este JSON exacto:
 Reglas de copy:
 - facebook hasta ~600 caracteres, instagram hasta ~2200, x máx 260 (deja aire para hashtags), linkedin hasta ~1300.
 - Hashtags: 5-8 relevantes y específicos al área Rotary + club + temática (sin #rotaryclub genérico repetido en todas).
-- CTA: una sola frase concreta y accionable (ej: "Sumate este sábado", "Doná en el link de la bio"). Si el evento ya pasó, el CTA debe ser de cierre/agradecimiento, NO de invitación.
+- CTA: una sola frase concreta y accionable (ej: "Sumate a esta iniciativa", "Conocé más en nuestras redes", "Doná en el link de la bio"). NO menciones días específicos en el CTA si no te fueron provistos.
 - No describas la imagen literalmente; conecta con el propósito y la comunidad.
 - Sin emojis si es linkedin; máx 2 emojis sutiles en las otras.
 
@@ -500,7 +512,12 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
             }
         }
 
-        if (finalUrl && resolvedClubId) {
+        // Estado para la biblioteca: 'draft' cuando todo OK, 'error' si la
+        // generación de imagen falló total o parcialmente. Así toda intención
+        // de generar queda capturada en el historial (v4.387).
+        const hasAnyImage = !!finalUrl;
+        const autoStatus = hasAnyImage ? 'draft' : 'error';
+        if (resolvedClubId) {
             // Helper defensivo: si la columna imageUrlInstagram todavía no existe
             // en la DB (migración v4.381 pendiente), reintentamos sin ese campo
             // para no romper el autosave. La columna se agrega corriendo:
@@ -518,7 +535,7 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
                     linkedin: parsed.linkedin
                 },
                 targetAccounts: [], // se completa cuando el user publica/programa
-                status: 'draft',
+                status: autoStatus,
                 sourceImageId: req.body.imageId && req.body.imageId !== 'uploaded' ? req.body.imageId : null,
                 generatedBy: usedEngine ? `ai-${usedEngine.split('+')[0]}` : 'ai',
                 aiModelImage: usedEngine,
@@ -537,12 +554,12 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
                     }
                 }
                 draftId = draft.id;
-                console.log(`[STUDIO] Draft guardado en biblioteca: ${draftId} (club ${resolvedClubId})`);
+                console.log(`[STUDIO] Publicación guardada en biblioteca: ${draftId} (club ${resolvedClubId}, status=${autoStatus})`);
             } catch (e) {
-                console.warn('[STUDIO] No se pudo autoguardar el draft:', e.message);
+                console.warn('[STUDIO] No se pudo autoguardar la publicación:', e.message);
             }
-        } else if (finalUrl) {
-            console.warn(`[STUDIO] Autosave skippeado: no se pudo resolver clubId para la imagen ${imageUrl}`);
+        } else {
+            console.warn(`[STUDIO] Autosave skippeado: no se pudo resolver clubId (imageUrl=${imageUrl || 'null'}, status hubiera sido=${autoStatus})`);
         }
 
         res.json({
