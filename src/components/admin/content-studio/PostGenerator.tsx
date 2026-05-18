@@ -89,6 +89,7 @@ interface GenerationMetadata {
 interface ConnectedAccount {
     id: string;
     platform: 'facebook' | 'instagram' | 'linkedin' | 'x';
+    platformId?: string;
     accountName: string | null;
     avatar: string | null;
     status: string;
@@ -924,31 +925,46 @@ const PostGenerator: React.FC = () => {
                                             </div>
                                         ) : (
                                             <div className="space-y-2">
-                                                {connectedAccounts.map(acc => {
-                                                    const checked = selectedAccountIds.has(acc.id);
-                                                    const disabled = acc.needsReconnect || acc.status !== 'active';
-                                                    const outcome = publishOutcomes?.find(o => o.accountId === acc.id);
-                                                    const Icon = acc.platform === 'instagram' ? Instagram : Facebook;
-                                                    return (
-                                                        <div key={acc.id} className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
-                                                            checked && !disabled ? 'bg-blue-50 border-blue-200' :
-                                                            disabled ? 'bg-gray-50 border-gray-100 opacity-60' :
-                                                            'bg-white border-gray-100 hover:border-gray-200'
-                                                        }`}>
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={checked}
-                                                                disabled={disabled}
-                                                                onChange={() => toggleAccount(acc.id)}
-                                                                className="w-4 h-4 rounded accent-blue-600 cursor-pointer disabled:cursor-not-allowed"
-                                                            />
-                                                            <Icon className={`w-4 h-4 ${acc.platform === 'instagram' ? 'text-pink-600' : 'text-blue-600'}`} />
-                                                            <div className="flex-1 min-w-0">
-                                                                <p className="text-xs font-black text-gray-800 truncate">{acc.accountName || acc.platform}</p>
-                                                                {disabled && (
-                                                                    <p className="text-[9px] font-bold text-amber-600 mt-0.5">Reconectar para usar</p>
-                                                                )}
-                                                            </div>
+                                                {(() => {
+                                                    // Detect duplicate accountNames: cuando dos rows tienen el
+                                                    // mismo nombre, mostramos el ID corto (últimos 6 chars del
+                                                    // platformId) para que el user pueda distinguir cuál es cuál.
+                                                    const nameCounts = new Map<string, number>();
+                                                    for (const a of connectedAccounts) {
+                                                        const key = `${a.platform}:${a.accountName || ''}`;
+                                                        nameCounts.set(key, (nameCounts.get(key) || 0) + 1);
+                                                    }
+                                                    return connectedAccounts.map(acc => {
+                                                        const checked = selectedAccountIds.has(acc.id);
+                                                        const disabled = acc.needsReconnect || acc.status !== 'active';
+                                                        const Icon = acc.platform === 'instagram' ? Instagram : Facebook;
+                                                        const isDup = (nameCounts.get(`${acc.platform}:${acc.accountName || ''}`) || 0) > 1;
+                                                        const idTail = acc.platformId ? acc.platformId.slice(-6) : '';
+                                                        return (
+                                                            <div key={acc.id} className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
+                                                                checked && !disabled ? 'bg-blue-50 border-blue-200' :
+                                                                disabled ? 'bg-gray-50 border-gray-100 opacity-60' :
+                                                                'bg-white border-gray-100 hover:border-gray-200'
+                                                            }`}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={checked}
+                                                                    disabled={disabled}
+                                                                    onChange={() => toggleAccount(acc.id)}
+                                                                    className="w-4 h-4 rounded accent-blue-600 cursor-pointer disabled:cursor-not-allowed"
+                                                                />
+                                                                <Icon className={`w-4 h-4 ${acc.platform === 'instagram' ? 'text-pink-600' : 'text-blue-600'}`} />
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-xs font-black text-gray-800 truncate">
+                                                                        {acc.accountName || acc.platform}
+                                                                        {isDup && idTail && (
+                                                                            <span className="ml-2 text-[9px] font-mono font-bold text-gray-400">#{idTail}</span>
+                                                                        )}
+                                                                    </p>
+                                                                    {disabled && (
+                                                                        <p className="text-[9px] font-bold text-amber-600 mt-0.5">Reconectar para usar</p>
+                                                                    )}
+                                                                </div>
                                                             {outcome && (
                                                                 outcome.ok ? (
                                                                     outcome.externalUrl
@@ -964,7 +980,8 @@ const PostGenerator: React.FC = () => {
                                                             )}
                                                         </div>
                                                     );
-                                                })}
+                                                    });
+                                                })()}
                                             </div>
                                         )}
 

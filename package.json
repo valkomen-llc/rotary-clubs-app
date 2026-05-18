@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.382.0",
-  "cache_bust": "2026-05-18 23:30 (COPY FALLBACK CHAIN v4.382 🔁)",
+  "version": "4.383.0",
+  "cache_bust": "2026-05-19 00:00 (PERSIST DEFENSIVE + DEDUP UI v4.383 🛡️)",
   "type": "module",
-  "//": "COPY FALLBACK V4.382 | 2026-05-18 (COPY — fallback chain auto: si Gemini falla, prueba Anthropic y OpenAI antes de rendirse. Toast con error específico cuando ningún provider devuelve copy 🔁)",
+  "//": "PERSIST DEFENSIVE V4.383 | 2026-05-19 (POSTGEN — autosave/publish/schedule reintenta SIN imageUrlInstagram si la migración SQL todavía no se aplicó. UI marca cuentas duplicadas con tail del platformId 🛡️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
