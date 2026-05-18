@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// POSTGEN FIX V4.385 | 2026-05-19 (POSTGEN — fix pantalla blanca por const outcome eliminado accidentalmente en el refactor IIFE de v4.383 🩹)
-// Cache bust: 2026-05-19 01:00 (POSTGEN BLANK SCREEN FIX v4.385 🩹)
+// COPY IA V4.386 | 2026-05-19 (COPY IA — reglas institucionales obligatorias para nombre del club, normalización Rotary→Club Rotario, tiempo verbal según fecha 🏛️)
+// Cache bust: 2026-05-19 02:00 (COPY IA — reglas institucionales v4.386 🏛️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.386',
+        date: '2026-05-19',
+        title: 'Copy IA — Reglas institucionales obligatorias para clubes rotarios 🏛️',
+        description: 'El generador de copy ahora respeta 5 reglas institucionales no opcionales: nombre específico del club (nunca "El Club Rotario" genérico), normalización "Rotary X" → "Club Rotario X" para clubes, tiempo verbal según fecha actual (no invitar a eventos pasados), contextualización automática y prioridad de identidad institucional.',
+        type: 'improved',
+        author: 'Claude',
+        details: [
+            'Regla 1 — Identidad específica: el copy SIEMPRE usa el nombre institucional completo del club asociado a la imagen. Ejemplo correcto: "El Club Rotario Bogotá Usaquén invita…". Eliminado el fallback genérico "Club Rotario" cuando hay nombre real disponible.',
+            'Regla 2 — Normalización Rotary→Club Rotario: cuando la entidad es category=club y su nombre llega como "Rotary X", el sistema lo convierte automáticamente a "Club Rotario X" antes de pasarlo al modelo. NO aplica a asociaciones, fundaciones, programas de intercambio, eventos ni conferencias.',
+            'Regla 3 — Tiempo verbal por fecha: se inyecta la fecha de hoy en el prompt para que el modelo elija entre tono de invitación (futuro) o tono de agradecimiento/cierre (pasado). Nunca invita a un evento que ya ocurrió. El CTA también se ajusta al tiempo verbal.',
+            'Regla 4 — Contextualización automática: el copy se infiere combinando nombre + categoría + ciudad + fecha actual + imagen + área Rotary. Cada copy se siente coherente con el contexto real, no genérico.',
+            'Regla 5 — Prioridad institucional: nombre oficial → contexto real → temporalidad → lenguaje rotario → naturalidad humana. Ese orden manda incluso sobre un tono más publicitario.',
+            'Implementación: contentStudioController.js — Prisma findUnique ahora trae name + category + city. clubName se transforma antes del prompt. Se inyecta TODAY_ES en español ("lunes 18 de mayo de 2026") y los 5 puntos quedaron explícitos en el systemPrompt.'
+        ]
+    },
     {
         version: 'v4.385',
         date: '2026-05-19',
