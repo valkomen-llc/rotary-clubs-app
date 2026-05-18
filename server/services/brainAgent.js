@@ -252,27 +252,35 @@ function toolsToGeminiFunctions() {
     }));
 }
 
-async function callGemini({ systemPrompt, history, userMessage, enableTools = true }) {
+// callGemini acepta `contents` ya formateados (formato exacto de Gemini API).
+// Internamente, también acepta el shape legacy { systemPrompt, history, userMessage }
+// para retro-compatibilidad, pero la API moderna espera `contents` directo.
+async function callGemini({ systemPrompt, history, userMessage, contents: contentsParam, enableTools = true }) {
     const key = process.env.GEMINI_API_KEY;
     if (!key) {
         return { text: '⚠️ El LLM no está configurado (GEMINI_API_KEY faltante). Solo puedo responder con búsqueda semántica.', toolCalls: [] };
     }
 
-    // Build Gemini contents
-    const contents = [];
-    for (const m of history) {
-        if (m.role === 'user') {
-            contents.push({ role: 'user', parts: [{ text: m.content }] });
-        } else if (m.role === 'assistant') {
-            contents.push({ role: 'model', parts: [{ text: m.content }] });
-        } else if (m.role === 'tool' && m.toolName) {
-            contents.push({
-                role: 'user',
-                parts: [{ functionResponse: { name: m.toolName, response: m.toolResult || {} } }],
-            });
+    // Permitir pasar contents directamente; si no, construir desde history+userMessage (legacy).
+    let contents;
+    if (Array.isArray(contentsParam)) {
+        contents = contentsParam;
+    } else {
+        contents = [];
+        for (const m of history || []) {
+            if (m.role === 'user') {
+                contents.push({ role: 'user', parts: [{ text: m.content }] });
+            } else if (m.role === 'assistant') {
+                contents.push({ role: 'model', parts: [{ text: m.content }] });
+            } else if (m.role === 'tool' && m.toolName) {
+                contents.push({
+                    role: 'user',
+                    parts: [{ functionResponse: { name: m.toolName, response: m.toolResult || {} } }],
+                });
+            }
         }
+        if (userMessage) contents.push({ role: 'user', parts: [{ text: userMessage }] });
     }
-    contents.push({ role: 'user', parts: [{ text: userMessage }] });
 
     const body = {
         system_instruction: { parts: [{ text: systemPrompt }] },
@@ -417,6 +425,47 @@ async function callGemini({ systemPrompt, history, userMessage, enableTools = tr
     }
 }
 
+// Si la segunda pasada al LLM falla pero los tools devolvieron datos válidos,
+// generamos un texto fallback legible con los resultados crudos. Mejor que
+// "(sin respuesta del LLM)".
+function generateFallbackTextFromTools(okTools) {
+    const lines = ['📊 **Resultado de las herramientas ejecutadas:**', ''];
+    for (const t of okTools) {
+        lines.push(`**${t.name}**`);
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const r = t.result || {};
+            if (r.count !== undefined && Array.isArray(r.memories)) {
+                lines.push(`${r.count} memorias relevantes encontradas:`);
+                for (const m of r.memories.slice(0, 5)) {
+                    lines.push(`• ${m.title} (${m.kind}) — ${m.relevance}% match`);
+                }
+            } else if (r.totalActivities !== undefined) {
+                lines.push(`${r.totalActivities} actividades en los últimos ${r.periodDays} días.`);
+                if (r.breakdown) {
+                    for (const [k, v] of Object.entries(r.breakdown)) {
+                        lines.push(`  · ${k}: ${v}`);
+                    }
+                }
+            } else if (r.count !== undefined && Array.isArray(r.events)) {
+                lines.push(`${r.count} eventos próximos:`);
+                for (const e of r.events.slice(0, 5)) {
+                    lines.push(`• ${e.title} — ${new Date(e.startDate).toLocaleDateString('es')}`);
+                }
+            } else if (r.ok && r.postId) {
+                lines.push(`✅ Post draft creado: "${r.title}" (id ${r.postId.slice(0, 8)}…)`);
+            } else {
+                lines.push('```json\n' + JSON.stringify(r, null, 2).slice(0, 400) + '\n```');
+            }
+        } catch {
+            lines.push('(resultado no serializable)');
+        }
+        lines.push('');
+    }
+    lines.push('_(El LLM no generó texto descriptivo, pero las acciones se ejecutaron OK.)_');
+    return lines.join('\n');
+}
+
 // Endpoint principal del chat. Maneja:
 //   1. Recibe mensaje del user
 //   2. Hace RAG: busca memorias relevantes
@@ -453,18 +502,28 @@ export async function chatWithBrain({ brainId, brain, sessionId, message, clubId
         ? `${baseSystem}\n\n── Memorias relevantes para esta pregunta ──\n${relevantMemories.join('\n')}`
         : baseSystem;
 
-    // 5. Llamar LLM
+    // 5. Construir contents iniciales (formato Gemini directo)
     const ctx = { brainId, clubId, userId };
+    const initialContents = [];
+    for (const m of history) {
+        if (m.role === 'user') {
+            initialContents.push({ role: 'user', parts: [{ text: m.content }] });
+        } else if (m.role === 'assistant') {
+            initialContents.push({ role: 'model', parts: [{ text: m.content }] });
+        }
+        // Skipeamos role='tool' del history pasado — no es Gemini-friendly como single turn aislado.
+    }
+    initialContents.push({ role: 'user', parts: [{ text: message }] });
+
     const { text, toolCalls } = await callGemini({
         systemPrompt: systemWithRAG,
-        history,
-        userMessage: message,
+        contents: initialContents,
         enableTools: true,
     });
 
     // 6. Si pidió usar tools, ejecutarlos
     const executedTools = [];
-    for (const call of toolCalls.slice(0, 3)) { // max 3 tools por turno
+    for (const call of toolCalls.slice(0, 3)) {
         const tool = TOOLS_BY_NAME[call.name];
         if (!tool) {
             executedTools.push({ name: call.name, ok: false, error: 'Tool no existe' });
@@ -474,7 +533,6 @@ export async function chatWithBrain({ brainId, brain, sessionId, message, clubId
             const result = await tool.execute(call.args || {}, ctx);
             executedTools.push({ name: call.name, ok: true, args: call.args, result });
 
-            // Persistir como mensaje tool
             await prisma.brainChatMessage.create({
                 data: {
                     brainId, sessionId, role: 'tool',
@@ -498,24 +556,45 @@ export async function chatWithBrain({ brainId, brain, sessionId, message, clubId
         }
     }
 
-    // 7. Si hubo tools, segunda pasada al LLM con los resultados
+    // 7. v4.379: segunda pasada con formato Gemini correcto.
+    // Sequence requerida: [history] + user(message) + model(text+functionCalls) + user(functionResponses) → model(texto final)
     let finalText = text;
-    if (executedTools.length > 0 && executedTools.some(t => t.ok)) {
-        const secondHistory = [
-            ...history,
-            { role: 'user', content: message },
-            ...(text ? [{ role: 'assistant', content: text }] : []),
-            ...executedTools.filter(t => t.ok).map(t => ({
-                role: 'tool', toolName: t.name, toolResult: t.result,
-            })),
+    const okTools = executedTools.filter(t => t.ok);
+    if (okTools.length > 0) {
+        // Construir el model turn con el text + functionCalls de la primera pasada
+        const modelTurnParts = [];
+        if (text) modelTurnParts.push({ text });
+        for (const t of okTools) {
+            modelTurnParts.push({ functionCall: { name: t.name, args: t.args || {} } });
+        }
+
+        // Construir el user turn con los functionResponses
+        const functionResponseParts = okTools.map(t => ({
+            functionResponse: {
+                name: t.name,
+                // Gemini espera que response sea un objeto. Si el tool devolvió primitivo, wrappeamos.
+                response: (t.result && typeof t.result === 'object' && !Array.isArray(t.result))
+                    ? t.result
+                    : { value: t.result },
+            },
+        }));
+
+        const secondContents = [
+            ...initialContents,
+            { role: 'model', parts: modelTurnParts },
+            { role: 'user', parts: functionResponseParts },
         ];
+
         const second = await callGemini({
             systemPrompt: systemWithRAG,
-            history: secondHistory,
-            userMessage: '(Continuá con los resultados de los tools.)',
-            enableTools: false,
+            contents: secondContents,
+            enableTools: false, // segunda pasada: solo texto
         });
-        finalText = second.text || text || '(sin respuesta)';
+
+        finalText = second.text || text || generateFallbackTextFromTools(okTools);
+    } else if (!text && executedTools.length > 0) {
+        // Tools fallaron todos y no hay texto → mensaje útil
+        finalText = `❌ Intenté usar herramientas (${executedTools.map(t => t.name).join(', ')}) pero todas fallaron: ${executedTools[0].error || 'unknown'}`;
     }
 
     if (!finalText) finalText = '(sin respuesta del LLM)';
