@@ -177,6 +177,34 @@ const AccountManager: React.FC = () => {
         }
     };
 
+    // v4.394: Instagram Login directo — para cuentas IG Business/Creator que
+    // NO están vinculadas a una Fanpage. Usa el flujo OAuth de api.instagram.com.
+    const connectInstagramDirect = async () => {
+        if (!selectedClubId) {
+            toast.error(isAdmin
+                ? 'Seleccioná primero el club al que querés asignar la cuenta de Instagram'
+                : 'No tenés un club asociado a tu cuenta');
+            return;
+        }
+        setConnecting(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const response = await fetch(`${API}/social/connect/instagram?clubId=${encodeURIComponent(selectedClubId)}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await response.json();
+            if (!response.ok || !data.url) {
+                toast.error(data.error || 'No se pudo iniciar OAuth con Instagram');
+                return;
+            }
+            window.location.href = data.url;
+        } catch (e: any) {
+            toast.error(`Error al iniciar OAuth de Instagram: ${e.message || 'desconocido'}`);
+        } finally {
+            setConnecting(false);
+        }
+    };
+
     const verifyAcc = async (acc: SocialAccount) => {
         setActioningId(acc.id);
         try {
@@ -276,6 +304,34 @@ const AccountManager: React.FC = () => {
                             {connecting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ExternalLink className="w-5 h-5" />}
                             {connecting ? 'INICIANDO...' : 'CONECTAR META'}
                         </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* v4.394: Instagram-direct hero card — para cuentas IG sin Fanpage asociada */}
+            <div className="bg-gradient-to-br from-fuchsia-600 via-pink-600 to-orange-500 p-8 rounded-[32px] text-white shadow-2xl">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center gap-6">
+                    <div className="w-14 h-14 bg-white/15 rounded-2xl flex items-center justify-center backdrop-blur-sm">
+                        <Instagram className="w-7 h-7" />
+                    </div>
+                    <div className="flex-1">
+                        <h3 className="text-xl font-black mb-1">¿Tu Instagram no está vinculado a una Fanpage?</h3>
+                        <p className="text-white/85 text-sm font-medium leading-relaxed max-w-2xl">
+                            Conectá tu cuenta de Instagram <strong>directamente</strong>, sin necesidad de Facebook. Requiere que sea cuenta Business o Creator (no Personal). Se usa el flujo oficial "Instagram Login API for Business".
+                        </p>
+                    </div>
+                    <div className="flex flex-col gap-2 w-full lg:w-auto">
+                        <button
+                            onClick={connectInstagramDirect}
+                            disabled={connecting || !selectedClubId}
+                            className="bg-white text-pink-700 font-black px-6 py-4 rounded-2xl shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:hover:scale-100"
+                        >
+                            {connecting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ExternalLink className="w-5 h-5" />}
+                            {connecting ? 'INICIANDO...' : 'CONECTAR INSTAGRAM DIRECTO'}
+                        </button>
+                        {isAdmin && !selectedClubId && (
+                            <p className="text-[10px] text-white/70 font-bold text-center">Seleccioná un club arriba</p>
+                        )}
                     </div>
                 </div>
             </div>

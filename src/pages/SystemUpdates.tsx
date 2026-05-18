@@ -24,9 +24,32 @@ interface UpdateItem {
     details?: string[];
 }
 
-// CONTENT STUDIO V4.393 | 2026-05-19 (CONTENT STUDIO — nuevos presets Networking + End Polio Now + Crowdfunding 🤝)
-// Cache bust: 2026-05-19 09:00 (CONTENT STUDIO — nuevos presets v4.393 🤝)
+// SOCIAL V4.394 | 2026-05-19 (SOCIAL — Instagram Login API for Business: conexión directa de cuentas IG sin Fanpage 📷)
+// Cache bust: 2026-05-19 10:00 (SOCIAL — Instagram Login directo v4.394 📷)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.394',
+        date: '2026-05-19',
+        title: 'Social — Instagram Login directo (sin Fanpage vinculada) 📷',
+        description: 'Alternativa para conectar cuentas de Instagram Business/Creator que NO están vinculadas a una Fanpage de Facebook. Usa el flujo oficial "Instagram Login API for Business" de Meta (api.instagram.com), separado del OAuth de Facebook que ya existía. Si tu IG no tiene una Page asociada en Business Manager, ahora podés conectarlo igual.',
+        type: 'added',
+        author: 'Claude',
+        details: [
+            'Nuevo flujo OAuth en api.instagram.com con scopes instagram_business_basic + instagram_business_content_publish. Devuelve un IG User Access Token long-lived (~60 días, renovable).',
+            'Nuevo botón en Cuentas Sociales: "Conectar Instagram Directo" (card rosa/naranja). Aparece junto al botón existente "Conectar Meta" — ambos coexisten y podés usar el que te corresponda según tu setup.',
+            'Backend: nuevo módulo server/services/instagramLoginService.js + 2 endpoints en socialPublishingController.js (getInstagramAuthUrl + handleInstagramCallback) registrados en /api/social/connect/instagram y /api/social/callback/instagram.',
+            'Persistencia: las cuentas conectadas por este flujo se guardan como platform=instagram con metadata.directConnect=true para distinguir del flujo vía Fanpage. El resto del sistema (publish, schedule, biblioteca) las trata igual que las demás.',
+            'Publish flow: el endpoint /{ig-user-id}/media + /{ig-user-id}/media_publish acepta tanto el Page Access Token (flujo viejo) como el IG User Access Token (flujo nuevo) — el código de publishToInstagramBusiness no necesitó cambios.',
+            'SETUP REQUERIDO en Meta Developer App (una sola vez):',
+            '  1. App → Products → "Instagram" → Set up (use case: Instagram API con Instagram Login)',
+            '  2. Agregar Redirect URI: https://app.clubplatform.org/api/social/callback/instagram',
+            '  3. La cuenta IG a conectar debe ser Business o Creator (no Personal)',
+            'ENV VARS en Vercel (una sola vez):',
+            '  INSTAGRAM_APP_ID = el Instagram App ID del producto creado',
+            '  INSTAGRAM_APP_SECRET = el Instagram App Secret del mismo producto',
+            'Sin estas dos env vars, el endpoint /api/social/connect/instagram devuelve 500 con un mensaje claro indicando qué falta.'
+        ]
+    },
     {
         version: 'v4.393',
         date: '2026-05-19',

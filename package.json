@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.393.0",
-  "cache_bust": "2026-05-19 09:00 (CONTENT STUDIO — nuevos presets Networking + End Polio Now + Crowdfunding v4.393 🤝)",
+  "version": "4.394.0",
+  "cache_bust": "2026-05-19 10:00 (SOCIAL — Instagram Login directo (alt. cuando no hay Fanpage vinculada) v4.394 📷)",
   "type": "module",
-  "//": "CONTENT STUDIO V4.393 | 2026-05-19 (CONTENT STUDIO — tres nuevos tipos de publicación en el IA Preset: Networking (vínculos inter-clubes/distritos), End Polio Now (campaña global de erradicación) y Crowdfunding (financiamiento colectivo con meta y plazo). Cada uno con su tono y foco específico para guiar al modelo 🤝)",
+  "//": "SOCIAL V4.394 | 2026-05-19 (SOCIAL — Instagram Login API for Business: flujo OAuth directo (api.instagram.com) para conectar cuentas IG Business/Creator que NO están vinculadas a una Fanpage. Nuevo botón 'Conectar Instagram Directo' en Cuentas Sociales. Requiere env vars INSTAGRAM_APP_ID/INSTAGRAM_APP_SECRET y configurar el producto Instagram en Meta Developer App con redirect URI /api/social/callback/instagram 📷)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

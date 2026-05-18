@@ -13,6 +13,8 @@ import { authMiddleware } from '../middleware/auth.js';
 import {
     getMetaAuthUrl,
     handleMetaCallback,
+    getInstagramAuthUrl,
+    handleInstagramCallback,
     listAccounts,
     verifyAccount,
     disconnectAccount,
@@ -23,11 +25,13 @@ import {
 
 const router = express.Router();
 
-// Public — Facebook redirects the user's browser back here.
+// Public — Facebook / Instagram redirect the user's browser back here.
 router.get('/callback/meta', handleMetaCallback);
+router.get('/callback/instagram', handleInstagramCallback);
 
 // Authenticated endpoints.
 router.get('/connect/meta', authMiddleware, getMetaAuthUrl);
+router.get('/connect/instagram', authMiddleware, getInstagramAuthUrl);
 router.get('/accounts', authMiddleware, listAccounts);
 router.post('/accounts/:id/verify', authMiddleware, verifyAccount);
 router.delete('/accounts/:id', authMiddleware, disconnectAccount);

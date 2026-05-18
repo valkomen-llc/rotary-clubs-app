@@ -35,6 +35,14 @@ import {
     verifyToken,
     META_SCOPES
 } from '../services/metaService.js';
+import {
+    buildIgAuthUrl,
+    exchangeCodeForIgToken,
+    exchangeForLongLivedIgToken,
+    getIgUserProfile,
+    hasIgLoginCredentials,
+    IG_LOGIN_SCOPES
+} from '../services/instagramLoginService.js';
 import { publishToAccount } from '../services/socialPublishService.js';
 
 const TOKEN_VERSION_CURRENT = 1;
@@ -75,13 +83,13 @@ const verifyState = (state) => {
     }
 };
 
-const getRedirectUri = (req) => {
-    const baseUrl = process.env.APP_URL
-        || (process.env.NODE_ENV === 'production'
-            ? 'https://app.clubplatform.org'
-            : `${req.protocol}://${req.get('host')}`);
-    return `${baseUrl}/api/social/callback/meta`;
-};
+const getBaseUrl = (req) => process.env.APP_URL
+    || (process.env.NODE_ENV === 'production'
+        ? 'https://app.clubplatform.org'
+        : `${req.protocol}://${req.get('host')}`);
+
+const getRedirectUri = (req) => `${getBaseUrl(req)}/api/social/callback/meta`;
+const getIgRedirectUri = (req) => `${getBaseUrl(req)}/api/social/callback/instagram`;
 
 const getCallerClubId = (req) => {
     if (!req.user) return null;
@@ -306,6 +314,130 @@ export const handleMetaCallback = async (req, res) => {
         return res.redirect(`${redirectBase}&social=connected&fb=${connectedFb}&ig=${connectedIg}`);
     } catch (e) {
         console.error('[social] handleMetaCallback error:', e.message, e.stack);
+        return res.redirect(`${redirectBase}&social=error&message=${encodeURIComponent(e.message.slice(0, 200))}`);
+    }
+};
+
+// ============================================================================
+// GET /api/social/connect/instagram
+// Alternative connection flow for IG Business/Creator accounts that are NOT
+// linked to a Facebook Page. Uses the Instagram Login API (api.instagram.com)
+// instead of the FB OAuth dialog. Returns a URL the frontend redirects to.
+// ============================================================================
+export const getInstagramAuthUrl = async (req, res) => {
+    try {
+        const clubId = getCallerClubId(req);
+        if (!clubId) {
+            return res.status(400).json({
+                error: req.user?.role === 'administrator'
+                    ? 'Seleccioná a qué club asignar la cuenta de Instagram (clubId requerido)'
+                    : 'No tenés un club asociado a tu cuenta'
+            });
+        }
+        if (!hasIgLoginCredentials()) {
+            return res.status(500).json({
+                error: 'INSTAGRAM_APP_ID o INSTAGRAM_APP_SECRET no están configuradas en Vercel. Settings → Environment Variables → agregalas desde la Meta Developer App, producto "Instagram".'
+            });
+        }
+        const state = signState({ clubId, userId: req.user.id });
+        const url = buildIgAuthUrl({ state, redirectUri: getIgRedirectUri(req) });
+        res.json({ url, scopes: IG_LOGIN_SCOPES });
+    } catch (e) {
+        console.error('[social] getInstagramAuthUrl error:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// ============================================================================
+// GET /api/social/callback/instagram
+// Public endpoint hit by Instagram after the user grants permissions.
+// Mirrors handleMetaCallback but persists a single IG account directly,
+// without enumerating FB Pages.
+// ============================================================================
+export const handleInstagramCallback = async (req, res) => {
+    const { code, state, error: igError, error_description } = req.query;
+    const redirectBase = `${getBaseUrl(req)}/admin/content-studio?tab=accounts`;
+
+    if (igError) {
+        return res.redirect(`${redirectBase}&social=error&message=${encodeURIComponent(error_description || igError)}`);
+    }
+    if (!code || !state) {
+        return res.redirect(`${redirectBase}&social=error&message=missing_params`);
+    }
+    const verified = verifyState(state);
+    if (!verified) {
+        return res.redirect(`${redirectBase}&social=error&message=invalid_state`);
+    }
+    const { clubId } = verified;
+    console.log('[social] IG-direct state verified, clubId:', clubId);
+
+    try {
+        const redirectUri = getIgRedirectUri(req);
+        // 1) Code → short-lived IG user token.
+        const { token: shortToken } = await exchangeCodeForIgToken({ code, redirectUri });
+        // 2) Short-lived → long-lived (~60d, renewable).
+        const { token: longToken, expiresAt } = await exchangeForLongLivedIgToken(shortToken);
+        // 3) Identify the IG account.
+        const profile = await getIgUserProfile(longToken);
+        if (!profile.id) {
+            return res.redirect(`${redirectBase}&social=error&message=${encodeURIComponent('No se pudo identificar la cuenta de Instagram')}`);
+        }
+
+        // 4) Persist as a SocialAccount with platform='instagram' and a
+        //    metadata.directConnect flag so we can distinguish from the
+        //    FB-Page-linked flow when needed (e.g. for verify/disconnect logic).
+        await prisma.socialAccount.upsert({
+            where: {
+                clubId_platform_platformId: {
+                    clubId,
+                    platform: 'instagram',
+                    platformId: profile.id
+                }
+            },
+            update: {
+                pageId: null,
+                accountName: profile.username || profile.id,
+                accessToken: encryptToken(longToken),
+                avatar: profile.avatar,
+                status: 'active',
+                permissions: IG_LOGIN_SCOPES,
+                metadata: {
+                    directConnect: true,
+                    igUsername: profile.username,
+                    accountType: profile.accountType,
+                    connectedBy: { id: req.user?.id || null }
+                },
+                lastVerifiedAt: new Date(),
+                tokenVersion: TOKEN_VERSION_CURRENT,
+                expiresAt,
+                updatedAt: new Date()
+            },
+            create: {
+                clubId,
+                platform: 'instagram',
+                platformId: profile.id,
+                pageId: null,
+                accountName: profile.username || profile.id,
+                accessToken: encryptToken(longToken),
+                avatar: profile.avatar,
+                status: 'active',
+                permissions: IG_LOGIN_SCOPES,
+                metadata: {
+                    directConnect: true,
+                    igUsername: profile.username,
+                    accountType: profile.accountType,
+                    connectedBy: { id: req.user?.id || null }
+                },
+                lastVerifiedAt: new Date(),
+                tokenVersion: TOKEN_VERSION_CURRENT,
+                expiresAt
+            }
+        });
+
+        console.log(`[social] IG-direct OAuth completed: @${profile.username} (${profile.accountType || 'unknown'})`);
+        return res.redirect(`${redirectBase}&social=connected&ig=1&direct=1`);
+    } catch (e) {
+        console.error('[social] handleInstagramCallback error:', e.message, e.stack);
         return res.redirect(`${redirectBase}&social=error&message=${encodeURIComponent(e.message.slice(0, 200))}`);
     }
 };
