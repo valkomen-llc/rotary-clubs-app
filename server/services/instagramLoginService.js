@@ -37,7 +37,11 @@
 
 const GRAPH_VERSION = 'v18.0';
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
-const IG_AUTH_HOST = 'https://api.instagram.com';
+// v4.395: el host de authorize es www.instagram.com (UI de Meta lo confirma).
+// El intercambio de código y los endpoints graph siguen estando en api.instagram.com
+// y graph.instagram.com respectivamente.
+const IG_AUTHORIZE_HOST = 'https://www.instagram.com';
+const IG_TOKEN_HOST = 'https://api.instagram.com';
 const IG_GRAPH_HOST = 'https://graph.instagram.com';
 
 const getIgAppId = () => process.env.INSTAGRAM_APP_ID || '';
@@ -60,7 +64,7 @@ export const buildIgAuthUrl = ({ state, redirectUri }) => {
         response_type: 'code',
         state
     });
-    return `${IG_AUTH_HOST}/oauth/authorize?${params.toString()}`;
+    return `${IG_AUTHORIZE_HOST}/oauth/authorize?${params.toString()}`;
 };
 
 // Step 1: exchange the OAuth code for a short-lived IG user access token.
@@ -73,7 +77,7 @@ export const exchangeCodeForIgToken = async ({ code, redirectUri }) => {
         redirect_uri: redirectUri,
         code
     });
-    const resp = await fetch(`${IG_AUTH_HOST}/oauth/access_token`, {
+    const resp = await fetch(`${IG_TOKEN_HOST}/oauth/access_token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: form

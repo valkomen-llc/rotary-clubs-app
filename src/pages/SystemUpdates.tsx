@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// SOCIAL V4.394 | 2026-05-19 (SOCIAL — Instagram Login API for Business: conexión directa de cuentas IG sin Fanpage 📷)
-// Cache bust: 2026-05-19 10:00 (SOCIAL — Instagram Login directo v4.394 📷)
+// SOCIAL V4.395 | 2026-05-19 (SOCIAL — fix host autorización IG: www.instagram.com 🩹)
+// Cache bust: 2026-05-19 11:00 (SOCIAL — fix host autorización IG v4.395 🩹)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.395',
+        date: '2026-05-19',
+        title: 'Social — Fix host de autorización Instagram Login 🩹',
+        description: 'En v4.394 el servicio usaba api.instagram.com/oauth/authorize como host de autorización, pero la UI de Meta Developer indica que el host correcto para "Instagram API with Instagram Login" es www.instagram.com/oauth/authorize. El token exchange sí va a api.instagram.com (sin cambio) y los graph calls a graph.instagram.com.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'instagramLoginService.js: buildIgAuthUrl ahora apunta a https://www.instagram.com/oauth/authorize (antes api.instagram.com/oauth/authorize). Coincide con la URL de inserción que muestra la UI de Meta Developer al configurar el producto Instagram.',
+            'exchangeCodeForIgToken sigue usando api.instagram.com/oauth/access_token (correcto, no se toca).',
+            'Long-lived token y getIgUserProfile siguen usando graph.instagram.com (correcto, no se tocan).',
+            'NOTA aparte: la sección "2. Configurar webhooks" en el setup de Meta es OPCIONAL para nuestro caso de uso (publicar). Sirve para recibir notificaciones de comentarios/mensajes desde IG. Si no la configurás no afecta el flujo de OAuth ni el publish. Saltala.'
+        ]
+    },
     {
         version: 'v4.394',
         date: '2026-05-19',
