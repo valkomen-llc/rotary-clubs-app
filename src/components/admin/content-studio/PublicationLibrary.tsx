@@ -130,6 +130,9 @@ const PublicationLibrary: React.FC = () => {
     const [isPublishing, setIsPublishing] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [showSchedule, setShowSchedule] = useState(false);
+    // v4.400: tab activo en la sección "Formatos Generados" del modal de detalle.
+    // Cada plataforma muestra su variante de imagen + copy + hashtags + CTA específicos.
+    const [activePlatformTab, setActivePlatformTab] = useState<'facebook' | 'instagram' | 'x' | 'linkedin'>('facebook');
     const [scheduleDate, setScheduleDate] = useState('');
     const [scheduleTime, setScheduleTime] = useState('');
     const [scheduleTimezone, setScheduleTimezone] = useState(
@@ -188,6 +191,7 @@ const PublicationLibrary: React.FC = () => {
     // club destino vía el clubId de las cuentas seleccionadas.
     const openDetail = async (pub: Publication) => {
         setSelected(pub);
+        setActivePlatformTab('facebook'); // v4.400: reset al abrir nuevo modal
         setShowSchedule(false);
         setSelectedAccountIds(new Set());
         try {
@@ -548,41 +552,98 @@ const PublicationLibrary: React.FC = () => {
                             </button>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-3">
-                                {selected.imageUrl && (
-                                    <div className="aspect-[4/5] rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
-                                        <img src={selected.imageUrl} alt="" className="w-full h-full object-cover" />
+                        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                            {/* v4.400: Formatos Generados — selector de plataforma con preview por variante */}
+                            {(() => {
+                                const PLATFORM_META: Record<typeof activePlatformTab, {
+                                    label: string; Icon: typeof Facebook; iconCls: string; imageUrl: string | null; aspectCls: string; dimensions: string; charLimit: number;
+                                }> = {
+                                    facebook:  { label: 'Facebook',  Icon: Facebook,  iconCls: 'text-blue-600',
+                                                 imageUrl: selected.imageUrl, aspectCls: 'aspect-[4/5]', dimensions: '1080 × 1350 (4:5)', charLimit: 600 },
+                                    instagram: { label: 'Instagram', Icon: Instagram, iconCls: 'text-pink-600',
+                                                 imageUrl: selected.imageUrlInstagram || selected.imageUrl, aspectCls: 'aspect-[2/3]', dimensions: '1080 × 1620 (2:3)', charLimit: 2200 },
+                                    x:         { label: 'X / Twitter', Icon: Twitter, iconCls: 'text-sky-500',
+                                                 imageUrl: selected.imageUrlLandscape || selected.imageUrl, aspectCls: 'aspect-[3/2]', dimensions: '1536 × 1024 (3:2)', charLimit: 260 },
+                                    linkedin:  { label: 'LinkedIn',  Icon: Linkedin,  iconCls: 'text-blue-700',
+                                                 imageUrl: selected.imageUrl, aspectCls: 'aspect-[4/5]', dimensions: '1080 × 1350 (4:5)', charLimit: 1300 }
+                                };
+                                const meta = PLATFORM_META[activePlatformTab];
+                                const block = selected.platformCopies?.[activePlatformTab];
+                                const copyLen = (block?.copy || '').length;
+                                const overLimit = copyLen > meta.charLimit;
+                                return (
+                                    <div>
+                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Formatos Generados</p>
+                                        {/* Tabs por plataforma */}
+                                        <div className="flex flex-wrap gap-1.5 mb-4">
+                                            {(['facebook', 'instagram', 'x', 'linkedin'] as const).map(pk => {
+                                                const m = PLATFORM_META[pk];
+                                                const active = activePlatformTab === pk;
+                                                const hasImg = !!m.imageUrl;
+                                                return (
+                                                    <button key={pk}
+                                                        onClick={() => setActivePlatformTab(pk)}
+                                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${
+                                                            active ? 'bg-gray-900 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        }`}>
+                                                        <m.Icon className={`w-3.5 h-3.5 ${active ? 'text-white' : m.iconCls}`} />
+                                                        {m.label}
+                                                        {!hasImg && <span className="text-[9px] font-bold opacity-60">— sin variante</span>}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {/* Preview: imagen del formato + copy del formato */}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                            <div className="space-y-2">
+                                                {meta.imageUrl ? (
+                                                    <div className={`${meta.aspectCls} rounded-2xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50`}>
+                                                        <img src={meta.imageUrl} alt="" className="w-full h-full object-cover" />
+                                                    </div>
+                                                ) : (
+                                                    <div className={`${meta.aspectCls} rounded-2xl bg-gray-50 border border-dashed border-gray-200 flex items-center justify-center`}>
+                                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Sin variante para esta plataforma</span>
+                                                    </div>
+                                                )}
+                                                <div className="flex flex-wrap items-center gap-1.5">
+                                                    <span className="text-[9px] font-bold px-2 py-1 rounded-md bg-slate-100 text-slate-700">{meta.dimensions}</span>
+                                                    {selected.aiModelImage && (
+                                                        <span className="text-[9px] font-bold px-2 py-1 rounded-md bg-purple-50 text-purple-700" title={selected.aiModelImage}>
+                                                            🎨 {selected.aiModelImage.split('+')[0]}
+                                                        </span>
+                                                    )}
+                                                    {selected.aiModelCopy && (
+                                                        <span className="text-[9px] font-bold px-2 py-1 rounded-md bg-indigo-50 text-indigo-700" title={selected.aiModelCopy}>
+                                                            ✍ {selected.aiModelCopy.split('/')[0]}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 max-h-80 overflow-y-auto">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Copy {meta.label}</p>
+                                                        <span className={`text-[9px] font-bold ${overLimit ? 'text-red-600' : 'text-gray-400'}`}>{copyLen} / {meta.charLimit} ch</span>
+                                                    </div>
+                                                    <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">
+                                                        {block?.copy || '(sin copy para esta plataforma)'}
+                                                    </p>
+                                                    {block?.hashtags && (
+                                                        <p className="text-[11px] text-indigo-600 font-bold mt-2">{block.hashtags}</p>
+                                                    )}
+                                                    {block?.cta && (
+                                                        <p className="text-xs text-gray-800 font-bold mt-2">→ {block.cta}</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
-                                )}
-                                <div className="flex flex-wrap gap-1">
-                                    {selected.aiModelImage && (
-                                        <span className="text-[9px] font-bold px-2 py-1 rounded-md bg-purple-50 text-purple-700" title={selected.aiModelImage}>
-                                            🎨 {selected.aiModelImage.split('+')[0]}
-                                        </span>
-                                    )}
-                                    {selected.aiModelCopy && (
-                                        <span className="text-[9px] font-bold px-2 py-1 rounded-md bg-indigo-50 text-indigo-700" title={selected.aiModelCopy}>
-                                            ✍ {selected.aiModelCopy.split('/')[0]}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
+                                );
+                            })()}
 
-                            <div className="space-y-3">
-                                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 max-h-72 overflow-y-auto">
-                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Copy Facebook</p>
-                                    <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">
-                                        {selected.platformCopies?.facebook?.copy || '(sin copy)'}
-                                    </p>
-                                    {selected.platformCopies?.facebook?.hashtags && (
-                                        <p className="text-[11px] text-indigo-600 font-bold mt-2">{selected.platformCopies.facebook.hashtags}</p>
-                                    )}
-                                    {selected.platformCopies?.facebook?.cta && (
-                                        <p className="text-xs text-gray-800 font-bold mt-2">{selected.platformCopies.facebook.cta}</p>
-                                    )}
-                                </div>
-
+                            <div>
                                 {(selected.status === 'draft' || selected.status === 'scheduled' || selected.status === 'error') && (
                                     <div>
                                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Publicar en</p>
