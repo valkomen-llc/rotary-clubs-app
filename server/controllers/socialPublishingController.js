@@ -477,10 +477,12 @@ export const publishPost = async (req, res) => {
                 publishedAt: null,
                 pending: true
             }));
-            const upsertData = {
+            const buildScheduledData = (includeInstagram) => ({
                 clubId,
                 userId: req.user.id || null,
-                imageUrl,
+                imageUrl: imagesByPlatform?.facebook || imageUrl,
+                ...(includeInstagram && imagesByPlatform?.instagram ? { imageUrlInstagram: imagesByPlatform.instagram } : {}),
+                ...(imagesByPlatform?.x ? { imageUrlLandscape: imagesByPlatform.x } : {}),
                 platformCopies: copies,
                 targetAccounts: pendingOutcomes,
                 status: 'scheduled',
@@ -489,10 +491,22 @@ export const publishPost = async (req, res) => {
                 sourceImageId: sourceImageId || null,
                 generatedBy: generatedBy || null,
                 accounts: { set: accounts.map(a => ({ id: a.id })) }
-            };
-            const pub = publicationId
-                ? await prisma.socialPublication.update({ where: { id: publicationId }, data: upsertData })
-                : await prisma.socialPublication.create({ data: upsertData });
+            });
+            let pub;
+            try {
+                pub = publicationId
+                    ? await prisma.socialPublication.update({ where: { id: publicationId }, data: buildScheduledData(true) })
+                    : await prisma.socialPublication.create({ data: buildScheduledData(true) });
+            } catch (scheduledErr) {
+                if (/imageUrlInstagram|column .* does not exist|Unknown arg/i.test(scheduledErr.message)) {
+                    console.warn('[social] Reintentando schedule SIN imageUrlInstagram — migración SQL v4.381 pendiente.');
+                    pub = publicationId
+                        ? await prisma.socialPublication.update({ where: { id: publicationId }, data: buildScheduledData(false) })
+                        : await prisma.socialPublication.create({ data: buildScheduledData(false) });
+                } else {
+                    throw scheduledErr;
+                }
+            }
             return res.json({
                 ok: true,
                 status: 'scheduled',
@@ -543,11 +557,15 @@ export const publishPost = async (req, res) => {
         // create new otherwise). Guardamos las tres variantes de imagen si las
         // recibimos en imagesByPlatform, así la biblioteca histórica preserva
         // la versión correcta por plataforma.
-        const persistData = {
+        // Helper defensivo: si la columna imageUrlInstagram todavía no existe
+        // en la DB (migración v4.381 pendiente), reintentamos sin ese campo
+        // para no bloquear el publish. Aplicar SQL en Neon resuelve definitivo:
+        //   ALTER TABLE "SocialPublication" ADD COLUMN IF NOT EXISTS "imageUrlInstagram" TEXT;
+        const buildPersistData = (includeInstagram) => ({
             clubId,
             userId: req.user.id || null,
             imageUrl: imagesByPlatform?.facebook || imageUrl,
-            ...(imagesByPlatform?.instagram ? { imageUrlInstagram: imagesByPlatform.instagram } : {}),
+            ...(includeInstagram && imagesByPlatform?.instagram ? { imageUrlInstagram: imagesByPlatform.instagram } : {}),
             ...(imagesByPlatform?.x ? { imageUrlLandscape: imagesByPlatform.x } : {}),
             platformCopies: copies,
             targetAccounts: outcomes,
@@ -556,10 +574,22 @@ export const publishPost = async (req, res) => {
             sourceImageId: sourceImageId || null,
             generatedBy: generatedBy || null,
             accounts: { set: accounts.map(a => ({ id: a.id })) }
-        };
-        const publication = publicationId
-            ? await prisma.socialPublication.update({ where: { id: publicationId }, data: persistData })
-            : await prisma.socialPublication.create({ data: persistData });
+        });
+        let publication;
+        try {
+            publication = publicationId
+                ? await prisma.socialPublication.update({ where: { id: publicationId }, data: buildPersistData(true) })
+                : await prisma.socialPublication.create({ data: buildPersistData(true) });
+        } catch (persistErr) {
+            if (/imageUrlInstagram|column .* does not exist|Unknown arg/i.test(persistErr.message)) {
+                console.warn('[social] Reintentando persist SIN imageUrlInstagram — migración SQL v4.381 pendiente.');
+                publication = publicationId
+                    ? await prisma.socialPublication.update({ where: { id: publicationId }, data: buildPersistData(false) })
+                    : await prisma.socialPublication.create({ data: buildPersistData(false) });
+            } else {
+                throw persistErr;
+            }
+        }
 
         // Update each account's lastVerifiedAt opportunistically — a successful
         // publish proves the token works right now.

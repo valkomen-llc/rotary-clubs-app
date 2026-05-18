@@ -455,28 +455,41 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
         }
 
         if (finalUrl && resolvedClubId) {
+            // Helper defensivo: si la columna imageUrlInstagram todavía no existe
+            // en la DB (migración v4.381 pendiente), reintentamos sin ese campo
+            // para no romper el autosave. La columna se agrega corriendo:
+            //   ALTER TABLE "SocialPublication" ADD COLUMN IF NOT EXISTS "imageUrlInstagram" TEXT;
+            const buildBaseDraftData = (includeInstagram) => ({
+                clubId: resolvedClubId,
+                userId: req.user.id || null,
+                imageUrl: finalUrl,
+                ...(includeInstagram ? { imageUrlInstagram: generatedImages.instagram?.url || null } : {}),
+                imageUrlLandscape: generatedImages.landscape?.url || null,
+                platformCopies: {
+                    facebook: parsed.facebook,
+                    instagram: parsed.instagram,
+                    x: parsed.x,
+                    linkedin: parsed.linkedin
+                },
+                targetAccounts: [], // se completa cuando el user publica/programa
+                status: 'draft',
+                sourceImageId: req.body.imageId && req.body.imageId !== 'uploaded' ? req.body.imageId : null,
+                generatedBy: usedEngine ? `ai-${usedEngine.split('+')[0]}` : 'ai',
+                aiModelImage: usedEngine,
+                aiModelCopy: copyProvider && copyModel ? `${copyProvider}/${copyModel}` : null
+            });
             try {
-                const draft = await prisma.socialPublication.create({
-                    data: {
-                        clubId: resolvedClubId,
-                        userId: req.user.id || null,
-                        imageUrl: finalUrl,
-                        imageUrlInstagram: generatedImages.instagram?.url || null,
-                        imageUrlLandscape: generatedImages.landscape?.url || null,
-                        platformCopies: {
-                            facebook: parsed.facebook,
-                            instagram: parsed.instagram,
-                            x: parsed.x,
-                            linkedin: parsed.linkedin
-                        },
-                        targetAccounts: [], // se completa cuando el user publica/programa
-                        status: 'draft',
-                        sourceImageId: req.body.imageId && req.body.imageId !== 'uploaded' ? req.body.imageId : null,
-                        generatedBy: usedEngine ? `ai-${usedEngine.split('+')[0]}` : 'ai',
-                        aiModelImage: usedEngine,
-                        aiModelCopy: copyProvider && copyModel ? `${copyProvider}/${copyModel}` : null
+                let draft;
+                try {
+                    draft = await prisma.socialPublication.create({ data: buildBaseDraftData(true) });
+                } catch (innerErr) {
+                    if (/imageUrlInstagram|column .* does not exist|Unknown arg/i.test(innerErr.message)) {
+                        console.warn('[STUDIO] Reintentando autosave SIN imageUrlInstagram — la migración SQL v4.381 está pendiente en la DB.');
+                        draft = await prisma.socialPublication.create({ data: buildBaseDraftData(false) });
+                    } else {
+                        throw innerErr;
                     }
-                });
+                }
                 draftId = draft.id;
                 console.log(`[STUDIO] Draft guardado en biblioteca: ${draftId} (club ${resolvedClubId})`);
             } catch (e) {

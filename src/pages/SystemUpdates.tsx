@@ -24,9 +24,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// COPY FALLBACK V4.382 | 2026-05-18 (COPY — fallback automático entre los 3 motores cuando uno falla; toast con error específico si el copy queda vacío 🔁)
-// Cache bust: 2026-05-18 23:30 (COPY FALLBACK CHAIN v4.382 🔁)
+// PERSIST DEFENSIVE V4.383 | 2026-05-19 (POSTGEN — autosave/publish/schedule retry SIN imageUrlInstagram si la migración SQL todavía no se aplicó; UI marca cuentas duplicadas con tail del platformId 🛡️)
+// Cache bust: 2026-05-19 00:00 (PERSIST DEFENSIVE + DEDUP UI v4.383 🛡️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.383',
+        date: '2026-05-19',
+        title: 'Publish defensivo + UI distingue cuentas duplicadas 🛡️',
+        description: 'El usuario reportó "Invalid prisma.socialPublication.create()" porque la migración v4.381 (imageUrlInstagram) no se aplicó en Neon. Ahora el sistema reintenta sin ese campo. También se marcan visualmente cuentas con nombre repetido.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Defensive persist: autosave de draft, publish inmediato, y schedule reintentan AUTOMÁTICAMENTE sin imageUrlInstagram cuando Prisma tira "column does not exist" o "Unknown arg". El flujo no se rompe aunque la migración SQL esté pendiente.',
+            'Console log claro: cuando se usa el retry, se imprime "[STUDIO] Reintentando autosave SIN imageUrlInstagram — la migración SQL v4.381 está pendiente en la DB."',
+            'Migración recomendada (idempotente): ALTER TABLE "SocialPublication" ADD COLUMN IF NOT EXISTS "imageUrlInstagram" TEXT; → al correrla, todos los flows usan la columna y guardan la variante IG correctamente.',
+            'UI dedup: en el panel "Publicar en" del PostGenerator, cuando hay cuentas con el mismo nombre (ej. dos Facebook Pages "Distrito 4281 de RI"), cada una muestra los últimos 6 chars del platformId como #abc123 para que el user pueda distinguir cuál es cuál sin perder ninguna.',
+            'No se elimina ningún row de SocialAccount automáticamente — si las dos cuentas son válidas, ambas siguen disponibles. Si son duplicadas reales, el user las puede desconectar desde la tab "Cuentas Sociales".'
+        ]
+    },
     {
         version: 'v4.382',
         date: '2026-05-18',
