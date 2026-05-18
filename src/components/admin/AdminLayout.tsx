@@ -364,6 +364,19 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             badge: 'ia',
         });
 
+        // Content Studio AI — visible para todos los roles. Cada sitio ve sólo
+        // sus propias publicaciones de la biblioteca (filtrado por clubId en
+        // backend). Super admin ve todas las publicaciones de todos los clubs.
+        // v4.406: agregado al menú General para clubs/distritos/asociaciones.
+        items.push({
+            icon: Video,
+            label: 'Content Studio',
+            path: '/admin/content-studio',
+            category: isSuperAdmin ? 'Management' : 'General',
+            keywords: ['content', 'studio', 'video', 'reels', 'publicacion', 'ia', 'shorts', 'imagen', 'social', 'instagram', 'facebook'],
+            badge: 'ia',
+        });
+
         if (isSuperAdmin) {
             items.push(
                 { icon: Network, label: 'Distritos', path: '/admin/distritos', category: 'Management', keywords: ['distrito', '4271', '4281'] },
@@ -378,7 +391,6 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: Bell, label: 'CRM y Envíos Centrales', path: '/admin/crm', category: 'Management', keywords: ['crm', 'email', 'campana', 'whatsapp'] },
                 { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: 'Management', keywords: ['contacto', 'lead', 'formulario'] },
                 { icon: Mail, label: 'Bandeja de Entrada', path: '/admin/email', category: 'Management', keywords: ['email', 'correo', 'buzon', 'entrada', 'mensajes'] },
-                { icon: Video, label: 'Content Studio', path: '/admin/content-studio', category: 'Management', keywords: ['video', 'reels', 'tiktok', 'ia', 'shorts'], badge: 'ia' },
                 { icon: Share2, label: 'Hub Social', path: '/admin/social-hub', category: 'Management', keywords: ['facebook', 'linkedin', 'twitter', 'x', 'oauth', 'conexiones'], badge: 'premium' },
             );
         } else {
