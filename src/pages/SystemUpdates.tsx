@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// BIBLIOTECA V4.400 | 2026-05-19 (BIBLIOTECA — Sección Formatos Generados con preview por plataforma 🎨)
-// Cache bust: 2026-05-19 16:00 (BIBLIOTECA — Formatos Generados v4.400 🎨)
+// SOCIAL V4.401 | 2026-05-19 (SOCIAL — publish IG directo via graph.instagram.com 📤)
+// Cache bust: 2026-05-19 17:00 (SOCIAL — publish IG directo v4.401 📤)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.401',
+        date: '2026-05-19',
+        title: 'Social — Publish IG directo via graph.instagram.com 📤',
+        description: 'Después de conectar IG por el flujo directo (Instagram Login API for Business), al intentar publicar aparecía "Falló en 1 cuenta(s)". Causa: el publish flow usaba graph.facebook.com/v18.0 (que requiere Page Access Token) para todas las cuentas IG. Las cuentas IG directas tienen un IG User Token que sólo funciona en graph.instagram.com. Fix: detectar el flujo (metadata.directConnect) y usar el host correcto.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'socialPublishService.js: nuevo constante IG_GRAPH_BASE = "https://graph.instagram.com/v23.0".',
+            'publishToInstagramBusiness ahora acepta param useInstagramGraph. Si true, usa graph.instagram.com/v23.0/{ig-user-id}/media y media_publish. Si false, sigue usando graph.facebook.com/v18.0 (cuentas IG vinculadas a Page).',
+            'publishToAccount dispatcher detecta automáticamente account.metadata.directConnect=true y pasa el flag correcto.',
+            'Log mejorado: "[publish] IG → host=graph.instagram.com, igUserId=…" para distinguir en logs.'
+        ]
+    },
     {
         version: 'v4.400',
         date: '2026-05-19',
