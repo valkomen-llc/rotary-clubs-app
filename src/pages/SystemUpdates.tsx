@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// SOCIAL V4.396 | 2026-05-19 (SOCIAL — IG OAuth: force_reauth + strip #_ + logging 🔬)
-// Cache bust: 2026-05-19 12:00 (SOCIAL — IG OAuth robusto v4.396 🔬)
+// SOCIAL V4.397 | 2026-05-19 (SOCIAL — IG long-lived token: POST en vez de GET 🩹)
+// Cache bust: 2026-05-19 13:00 (SOCIAL — IG long-lived token: POST v4.397 🩹)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.397',
+        date: '2026-05-19',
+        title: 'Social — Fix Instagram long-lived token: POST en vez de GET 🩹',
+        description: 'Los logs diagnósticos de v4.396 expusieron el bug que rompía la conexión de Instagram directo: el endpoint graph.instagram.com/access_token (para convertir el token short-lived a long-lived) rechazaba mi GET con error "Unsupported request - method type: get". Meta actualizó este endpoint y ahora exige POST con form body. Fix aplicado.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Causa: exchangeForLongLivedIgToken hacía GET con query string a graph.instagram.com/access_token, pero Meta actualizó el endpoint y ahora rechaza GET. El error venía con texto "Unsupported request - method type: get".',
+            'Fix: ahora hace POST con Content-Type application/x-www-form-urlencoded y body con los params (grant_type=ig_exchange_token, client_secret, access_token).',
+            'Esto era el último blocker — el callback ejecutaba bien, OAuth completaba en IG, code se intercambiaba OK por short-lived, pero al pasar a long-lived fallaba y descartaba toda la conexión.',
+            'Logs diagnósticos de v4.396 fueron clave para identificar exactamente dónde fallaba ([social] handleInstagramCallback error: Instagram long-lived token falló: Unsupported request - method type: get).'
+        ]
+    },
     {
         version: 'v4.396',
         date: '2026-05-19',
