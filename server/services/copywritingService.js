@@ -150,9 +150,11 @@ const generateWithAnthropic = async ({ system, userText, imageUrl, temperature, 
 // (Gemini's Files API would need pre-upload — simpler to encode here).
 //
 // Note on maxOutputTokens: Gemini cuts the response hard at the limit and
-// produces unterminated JSON. We default to a generous cap (4000) because
-// Gemini Flash has 8K output capacity and our copy responses can run 1500-2500
-// tokens (4 platforms × full copies + hashtags + visual_prompt).
+// produces unterminated JSON. v4.392: bump del default a 8000 porque con
+// las reglas institucionales largas (v4.387) los copies generados también
+// se alargaron (4 plataformas × ~2200 chars máx + hashtags + cta +
+// visual_prompt + thinking del modelo) y 4000 tokens se quedaba corto
+// — Gemini 2.5 Flash soporta hasta ~65K en output.
 const generateWithGemini = async ({ system, userText, imageUrl, temperature, maxTokens, jsonMode, model }) => {
     const parts = [{ text: userText }];
     if (imageUrl) {
@@ -169,9 +171,10 @@ const generateWithGemini = async ({ system, userText, imageUrl, temperature, max
         contents: [{ role: 'user', parts }],
         generationConfig: {
             temperature: temperature ?? 0.6,
-            // Bump default for Gemini specifically: truncated output produces
-            // unterminated JSON. 4000 fits within Flash's 8K output ceiling.
-            maxOutputTokens: maxTokens ? Math.max(maxTokens, 4000) : 4000,
+            // v4.392: default 8000 (antes 4000). Truncated output produce
+            // unterminated JSON y rompe el parser. Gemini 2.5 Flash soporta
+            // mucho más output, así que dejamos margen amplio.
+            maxOutputTokens: maxTokens ? Math.max(maxTokens, 8000) : 8000,
             ...(jsonMode ? { responseMimeType: 'application/json' } : {})
         }
     };

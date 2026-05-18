@@ -236,7 +236,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.391 — fix RETURNING en retry: select explícito evita leer imageUrlInstagram cuando no existe) ---');
+        console.log('--- START GENERATE POST (v4.392 — Gemini maxOutputTokens bumped a 8000; controller pide 4000 a la API; evita truncación con prompt institucional largo) ---');
         const { imageUrl, config = {} } = req.body;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
 
@@ -417,9 +417,11 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
                 userText: userPrompt,
                 imageUrl,
                 temperature: typeof config.temperature === 'number' ? config.temperature : 0.6,
-                // Generoso: 4 plataformas con copy + hashtags + cta + visual_prompt.
-                // Gemini hardcaps a 4000 internamente; OpenAI y Anthropic usan este valor.
-                maxTokens: 2400,
+                // v4.392: bump a 4000 (antes 2400). El prompt institucional v4.387 + 4
+                // plataformas con copy completo (~2200 chars IG) + hashtags + cta +
+                // visual_prompt rebasaba el límite anterior. Gemini ahora arranca en
+                // 8000 internamente; OpenAI/Anthropic usan este valor.
+                maxTokens: 4000,
                 jsonMode: true
                 // Sin fallbackChain custom — usamos el default del service que prueba
                 // requested → DEFAULT → todos los otros configurados como safety net.

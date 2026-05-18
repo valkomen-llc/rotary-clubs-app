@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.391.0",
-  "cache_bust": "2026-05-19 07:00 (BIBLIOTECA — fix retry RETURNING para columna faltante v4.391 🩹)",
+  "version": "4.392.0",
+  "cache_bust": "2026-05-19 08:00 (COPY IA — Gemini maxOutputTokens bumped a 8000 v4.392 📏)",
   "type": "module",
-  "//": "BIBLIOTECA V4.391 | 2026-05-19 (BIBLIOTECA — el retry defensivo cuando falta imageUrlInstagram ahora usa select explícito para evitar el RETURNING * que tropezaba con la columna faltante; aplicado en autosave, schedule y publish. Igual recomendamos correr la migración SQL: ALTER TABLE \"SocialPublication\" ADD COLUMN IF NOT EXISTS \"imageUrlInstagram\" TEXT; 🩹)",
+  "//": "COPY IA V4.392 | 2026-05-19 (COPY IA — Gemini maxOutputTokens default 8000 (antes 4000) y controller pide 4000 (antes 2400). Resuelve la truncación por MAX_TOKENS cuando el prompt institucional v4.387 + 4 plataformas + visual_prompt rebasaba el límite, dejando JSON inválido 📏)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

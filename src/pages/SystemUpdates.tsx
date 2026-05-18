@@ -24,9 +24,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// BIBLIOTECA V4.391 | 2026-05-19 (BIBLIOTECA — fix retry RETURNING para columna imageUrlInstagram faltante 🩹)
-// Cache bust: 2026-05-19 07:00 (BIBLIOTECA — fix retry RETURNING para columna faltante v4.391 🩹)
+// COPY IA V4.392 | 2026-05-19 (COPY IA — Gemini maxOutputTokens 8000 evita truncación con prompts institucionales largos 📏)
+// Cache bust: 2026-05-19 08:00 (COPY IA — Gemini maxOutputTokens bumped a 8000 v4.392 📏)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.392',
+        date: '2026-05-19',
+        title: 'Copy IA — Gemini ya no se trunca: maxOutputTokens bumped a 8000 📏',
+        description: 'El equipo reportó: "Copy NO generado. Gemini gemini-2.5-flash truncado por MAX_TOKENS (output incompleto, no JSON válido). Bump maxOutputTokens en la llamada". Causa: el prompt institucional v4.387 (5 reglas largas) + 4 plataformas con copy + hashtags + CTA + visual_prompt + thinking interno del modelo rebasaba los 4000 tokens que teníamos. Ahora arranca en 8000 (Gemini 2.5 Flash soporta hasta ~65K).',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Gemini default subió de 4000 a 8000 tokens (copywritingService.js). Gemini 2.5 Flash tiene capacidad mucho mayor — el límite anterior era conservador.',
+            'Controller pide 4000 (antes 2400) al service para que cualquier proveedor reciba ese floor. Gemini lo eleva internamente a 8000 vía Math.max.',
+            'NOTA aparte sobre OpenAI: el otro proveedor del fallback chain (gpt-4o) está devolviendo "You exceeded your current quota". Esto es billing de la cuenta OpenAI, NO es código. Cuando sumes saldo en platform.openai.com vuelve a estar disponible como safety net.'
+        ]
+    },
     {
         version: 'v4.391',
         date: '2026-05-19',
