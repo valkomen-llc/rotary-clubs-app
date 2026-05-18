@@ -937,6 +937,7 @@ const PostGenerator: React.FC = () => {
                                                     return connectedAccounts.map(acc => {
                                                         const checked = selectedAccountIds.has(acc.id);
                                                         const disabled = acc.needsReconnect || acc.status !== 'active';
+                                                        const outcome = publishOutcomes?.find(o => o.accountId === acc.id);
                                                         const Icon = acc.platform === 'instagram' ? Instagram : Facebook;
                                                         const isDup = (nameCounts.get(`${acc.platform}:${acc.accountName || ''}`) || 0) > 1;
                                                         const idTail = acc.platformId ? acc.platformId.slice(-6) : '';
