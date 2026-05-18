@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.398.0",
-  "cache_bust": "2026-05-19 14:00 (SOCIAL — IG long-lived exchange opcional: persiste short-lived si falla v4.398 🤝)",
+  "version": "4.399.0",
+  "cache_bust": "2026-05-19 15:00 (SOCIAL — IG /me con triple fallback + user_id del exchange v4.399 🛡️)",
   "type": "module",
-  "//": "SOCIAL V4.398 | 2026-05-19 (SOCIAL — el long-lived exchange de IG ahora es OPCIONAL: si Meta rechaza el endpoint (cambió y no aceptamos ni GET ni POST), seguimos con el short-lived token (~1h de validez) y marcamos expiresAt corto para que el usuario reconnecte cuando expire. Mejor tener una conexión de 1h que ninguna 🤝)",
+  "//": "SOCIAL V4.399 | 2026-05-19 (SOCIAL — getIgUserProfile prueba 3 endpoints (graph.instagram.com/me, /v23.0/me, graph.facebook.com/v23.0/me) y si todos fallan, el callback cae al user_id del exchange de paso 1 con un nombre placeholder. Conexión completa GARANTIZADA aunque Meta cambie endpoints 🛡️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
