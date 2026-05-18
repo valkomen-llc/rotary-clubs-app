@@ -641,7 +641,13 @@ export const listPublications = async (req, res) => {
         }
         const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
 
-        const publications = await prisma.socialPublication.findMany({
+        // findMany hace SELECT de TODOS los campos del schema. Si la columna
+        // imageUrlInstagram (v4.381) todavía no existe en la DB, Prisma tira
+        // "column does not exist" para todo el listado. Defensa: reintentar
+        // con select explícito sin ese campo. Para fixearlo definitivo:
+        //   ALTER TABLE "SocialPublication"
+        //     ADD COLUMN IF NOT EXISTS "imageUrlInstagram" TEXT;
+        const queryOpts = {
             where,
             orderBy: { createdAt: 'desc' },
             take: limit,
@@ -649,7 +655,35 @@ export const listPublications = async (req, res) => {
                 club: { select: { id: true, name: true } },
                 accounts: { select: { id: true, platform: true, accountName: true, avatar: true } }
             }
-        });
+        };
+        const SAFE_SELECT = {
+            id: true, clubId: true, userId: true, caption: true, platformCopies: true,
+            imageUrl: true, imageUrlLandscape: true, mediaType: true, videoProjectId: true,
+            targetAccounts: true, status: true, scheduledFor: true, publishedAt: true,
+            timezone: true, sourceImageId: true, generatedBy: true,
+            aiModelImage: true, aiModelCopy: true,
+            createdAt: true, updatedAt: true,
+            club: { select: { id: true, name: true } },
+            accounts: { select: { id: true, platform: true, accountName: true, avatar: true } }
+        };
+        let publications;
+        try {
+            publications = await prisma.socialPublication.findMany(queryOpts);
+        } catch (readErr) {
+            if (/imageUrlInstagram|column .* does not exist|Unknown field/i.test(readErr.message)) {
+                console.warn('[social] Reintentando listPublications SIN imageUrlInstagram — migración SQL v4.381 pendiente en DB.');
+                publications = await prisma.socialPublication.findMany({
+                    where: queryOpts.where,
+                    orderBy: queryOpts.orderBy,
+                    take: queryOpts.take,
+                    select: SAFE_SELECT
+                });
+                // Inyectamos campo null para que el frontend no rompa
+                publications = publications.map(p => ({ ...p, imageUrlInstagram: null }));
+            } else {
+                throw readErr;
+            }
+        }
 
         // Defensive: filter by search on the server (cheap; we already capped at 200)
         let result = publications;
@@ -704,7 +738,19 @@ export const deletePublication = async (req, res) => {
             if (!req.user.clubId) return res.status(403).json({ error: 'No tenés club asociado' });
             where.clubId = req.user.clubId;
         }
-        const pub = await prisma.socialPublication.findFirst({ where });
+        // Defensive read: si la columna imageUrlInstagram no existe en DB,
+        // la lectura completa rompe. Usamos select explícito con campos seguros.
+        let pub;
+        try {
+            pub = await prisma.socialPublication.findFirst({ where });
+        } catch (readErr) {
+            if (/imageUrlInstagram|column .* does not exist/i.test(readErr.message)) {
+                pub = await prisma.socialPublication.findFirst({
+                    where,
+                    select: { id: true, status: true, clubId: true }
+                });
+            } else { throw readErr; }
+        }
         if (!pub) return res.status(404).json({ error: 'Publicación no encontrada' });
         if (pub.status === 'published' || pub.status === 'partial') {
             return res.status(400).json({ error: 'No se puede eliminar una publicación que ya fue posteada. Para ocultarla en futuras vistas, contactá soporte.' });
@@ -723,12 +769,32 @@ export const deletePublication = async (req, res) => {
 // Returns a summary suitable for the cron response body.
 // ============================================================================
 export const runScheduledPublicationsDue = async ({ now = new Date() } = {}) => {
-    // Pick up scheduled ones whose time has come.
-    const due = await prisma.socialPublication.findMany({
+    // Pick up scheduled ones whose time has come. Defensive read si la
+    // columna imageUrlInstagram todavía no existe en DB.
+    let due;
+    const queryOpts = {
         where: { status: 'scheduled', scheduledFor: { lte: now } },
         take: 20,  // batch cap per cron run to stay inside function timeouts
         include: { accounts: true }
-    });
+    };
+    try {
+        due = await prisma.socialPublication.findMany(queryOpts);
+    } catch (e) {
+        if (/imageUrlInstagram|column .* does not exist/i.test(e.message)) {
+            console.warn('[social/cron] Reintentando sin imageUrlInstagram — migración SQL pendiente.');
+            due = await prisma.socialPublication.findMany({
+                where: queryOpts.where,
+                take: queryOpts.take,
+                select: {
+                    id: true, status: true, scheduledFor: true,
+                    imageUrl: true, imageUrlLandscape: true,
+                    platformCopies: true,
+                    accounts: true
+                }
+            });
+            due = due.map(p => ({ ...p, imageUrlInstagram: null }));
+        } else { throw e; }
+    }
     if (due.length === 0) return { processed: 0, results: [] };
 
     const results = [];
