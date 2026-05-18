@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.405.0",
-  "cache_bust": "2026-05-19 21:00 (SOCIAL — IG publish: chain expandida con /me y sin versión v4.405 🔁)",
+  "version": "4.406.0",
+  "cache_bust": "2026-05-19 22:00 (NAV — Content Studio en sidebar General para todos los sitios v4.406 🧭)",
   "type": "module",
-  "//": "SOCIAL V4.405 | 2026-05-19 (SOCIAL — IG-direct publish ahora prueba 5 configs: graph.instagram.com/v23.0 con user_id, graph.instagram.com/v23.0 con /me, graph.instagram.com sin versión, graph.facebook.com/v23.0, graph.facebook.com/v18.0. Si todos fallan con 'Invalid OAuth access token', probable que sea limitación de Meta en development mode 🔁)",
+  "//": "NAV V4.406 | 2026-05-19 (NAV — Content Studio AI movido al menú lateral General debajo de 'Centro de Inteligencia', visible para clubs/distritos/asociaciones. Cada sitio ve sólo sus propias publicaciones de la biblioteca (filtrado por clubId en backend). Super admin sigue viéndolo en Management 🧭)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

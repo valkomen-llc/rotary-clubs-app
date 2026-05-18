@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// SOCIAL V4.405 | 2026-05-19 (SOCIAL — IG publish: chain expandida con /me y sin versión 🔁)
-// Cache bust: 2026-05-19 21:00 (SOCIAL — IG publish chain expandida v4.405 🔁)
+// NAV V4.406 | 2026-05-19 (NAV — Content Studio en sidebar General para todos los sitios 🧭)
+// Cache bust: 2026-05-19 22:00 (NAV — Content Studio en General v4.406 🧭)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.406',
+        date: '2026-05-19',
+        title: 'Nav — Content Studio AI en menú lateral General para todos los sitios 🧭',
+        description: 'Content Studio AI ahora aparece en el menú lateral izquierdo, categoría General, debajo de "Centro de Inteligencia". Visible para clubs, distritos, asociaciones y programas de intercambio. Cada sitio ve sólo sus propias publicaciones de la biblioteca (filtrado por clubId en backend desde v4.345+). Super admin lo sigue viendo en Management para distinguir del flujo de sitios individuales.',
+        type: 'added',
+        author: 'Claude',
+        details: [
+            'AdminLayout.tsx: nuevo push para Content Studio justo después de Centro de Inteligencia, con category condicional General/Management según role.',
+            'Sin cambios en routes ni en permisos backend — la página ya estaba accesible para todos los authenticated users vía PrivateRoute.',
+            'Sin cambios en la biblioteca de publicaciones — el filtro por clubId en listPublications ya garantiza que cada sitio sólo ve su propio contenido. Super admin sin clubId query param ve todo.',
+            'Removido el duplicado del super-admin-only block para mantener una sola fuente de verdad.'
+        ]
+    },
     {
         version: 'v4.405',
         date: '2026-05-19',
