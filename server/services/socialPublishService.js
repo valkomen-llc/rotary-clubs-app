@@ -16,9 +16,12 @@
 
 const GRAPH_VERSION = 'v18.0';
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
-// v4.401: para cuentas IG conectadas por Instagram Login directo, los endpoints
-// de content publishing están en graph.instagram.com (versión más reciente).
-const IG_GRAPH_BASE = 'https://graph.instagram.com/v23.0';
+// v4.403: para cuentas IG conectadas por Instagram Login directo, probamos
+// graph.facebook.com/v23.0 primero (el host clásico para IG Business publishing,
+// que acepta IG User Tokens con el scope correcto). graph.instagram.com/v23.0
+// (v4.401) rechazaba el endpoint con "Unsupported request - method type: post"
+// — Meta no expone publishing en ese host bajo esa versión.
+const IG_GRAPH_BASE = 'https://graph.facebook.com/v23.0';
 
 // Compose the final caption from the AI-generated breakdown. Same shape we get
 // from gpt-4o: { copy, hashtags, cta }. Empty pieces are skipped so we don't
@@ -61,7 +64,7 @@ const publishToFacebookPage = async ({ pageId, pageAccessToken, imageUrl, captio
 //             donde el accessToken es un Page Access Token).
 const publishToInstagramBusiness = async ({ igUserId, pageAccessToken, imageUrl, caption, useInstagramGraph = false }) => {
     const base = useInstagramGraph ? IG_GRAPH_BASE : GRAPH_BASE;
-    console.log(`[publish] IG → host=${useInstagramGraph ? 'graph.instagram.com' : 'graph.facebook.com'}, igUserId=${igUserId}`);
+    console.log(`[publish] IG → base=${base}, igUserId=${igUserId} (directConnect=${useInstagramGraph})`);
     // Step 1: create the container.
     const createParams = new URLSearchParams({
         image_url: imageUrl,

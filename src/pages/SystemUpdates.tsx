@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// SOCIAL V4.402 | 2026-05-19 (SOCIAL — error específico visible en toast + log explícito por outcome 🔍)
-// Cache bust: 2026-05-19 18:00 (SOCIAL — error específico v4.402 🔍)
+// SOCIAL V4.403 | 2026-05-19 (SOCIAL — publish IG directo via graph.facebook.com/v23.0 📤)
+// Cache bust: 2026-05-19 19:00 (SOCIAL — publish IG via FB Graph v4.403 📤)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.403',
+        date: '2026-05-19',
+        title: 'Social — Publish IG directo via graph.facebook.com/v23.0 📤',
+        description: 'v4.402 reveló el error específico: "instagram/@instagram_410440: Unsupported request - method type: post". Significa que graph.instagram.com/v23.0/{user-id}/media NO EXISTE — Meta no expone publishing en ese host bajo esa versión. Fix: usamos graph.facebook.com/v23.0 (el host clásico para IG Business publishing, que acepta IG User Tokens cuando tienen el scope correcto).',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'IG_GRAPH_BASE cambia de "https://graph.instagram.com/v23.0" → "https://graph.facebook.com/v23.0".',
+            'El endpoint sigue siendo /{ig-user-id}/media + /{ig-user-id}/media_publish con POST.',
+            'La diferencia: graph.facebook.com SÍ tiene este endpoint y acepta IG User Tokens directamente (no hace falta Page Access Token si el IG account tiene scope instagram_business_content_publish).',
+            'Log mejorado: "[publish] IG → base=https://graph.facebook.com/v23.0, igUserId=..." muestra exactamente qué endpoint estamos hitteando.'
+        ]
+    },
     {
         version: 'v4.402',
         date: '2026-05-19',
