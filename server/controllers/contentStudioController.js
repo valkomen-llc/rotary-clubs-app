@@ -236,7 +236,7 @@ const uploadGeneratedImage = async ({ buffer, clubId, variant }) => {
 
 export const generatePost = async (req, res) => {
     try {
-        console.log('--- START GENERATE POST (v4.390 — autosave outcome visible en response + toast en frontend cuando falla) ---');
+        console.log('--- START GENERATE POST (v4.391 — fix RETURNING en retry: select explícito evita leer imageUrlInstagram cuando no existe) ---');
         const { imageUrl, config = {} } = req.body;
         if (!imageUrl) return res.status(400).json({ error: 'Falta la URL de la imagen.' });
 
@@ -565,7 +565,13 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
             } catch (innerErr) {
                 if (/imageUrlInstagram|column .* does not exist|Unknown arg/i.test(innerErr.message)) {
                     console.warn('[STUDIO] Reintentando autosave SIN imageUrlInstagram — la migración SQL v4.381 está pendiente en la DB.');
-                    draft = await prisma.socialPublication.create({ data: buildBaseDraftData(false) });
+                    // v4.391: usamos `select` para que Prisma NO haga RETURNING * (que
+                    // intentaría leer imageUrlInstagram y fallar). Con select explícito
+                    // sólo se devuelve el id, evitando el bug de "column does not exist".
+                    draft = await prisma.socialPublication.create({
+                        data: buildBaseDraftData(false),
+                        select: { id: true, clubId: true, status: true }
+                    });
                 } else {
                     throw innerErr;
                 }
@@ -573,10 +579,13 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
             draftId = draft.id;
             console.log(`[STUDIO] Publicación guardada en biblioteca: ${draftId} (club ${clubId || 'NULL'}, status=${autoStatus})`);
         } catch (e) {
-            // Si clubId es null y el constraint NOT NULL todavía no se removió,
-            // este error es esperado hasta correr la migración SQL v4.389.
+            // Pattern matching para casos conocidos de migración pendiente:
+            //   - clubId null & schema todavía NOT NULL → migración v4.389
+            //   - imageUrlInstagram missing → migración v4.381
             if (!clubId && /null value in column "clubId"|violates not-null|NOT NULL constraint failed/i.test(e.message)) {
                 autosaveError = 'La migración SQL v4.389 está pendiente en la DB. Ejecutá: ALTER TABLE "SocialPublication" ALTER COLUMN "clubId" DROP NOT NULL;';
+            } else if (/imageUrlInstagram|column .* does not exist/i.test(e.message)) {
+                autosaveError = 'La migración SQL v4.381 está pendiente en la DB. Ejecutá: ALTER TABLE "SocialPublication" ADD COLUMN IF NOT EXISTS "imageUrlInstagram" TEXT;';
             } else {
                 autosaveError = e.message;
             }
