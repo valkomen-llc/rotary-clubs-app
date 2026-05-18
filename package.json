@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.403.0",
-  "cache_bust": "2026-05-19 19:00 (SOCIAL — publish IG directo via graph.facebook.com/v23.0 v4.403 📤)",
+  "version": "4.404.0",
+  "cache_bust": "2026-05-19 20:00 (SOCIAL — IG publish: chain de 3 hosts + appsecret_proof v4.404 🔄)",
   "type": "module",
-  "//": "SOCIAL V4.403 | 2026-05-19 (SOCIAL — IG_GRAPH_BASE cambiado de graph.instagram.com/v23.0 a graph.facebook.com/v23.0. graph.instagram.com rechazaba el endpoint /{user-id}/media con 'Unsupported request - method type: post' — Meta NO expone publishing en ese host. El host clásico graph.facebook.com con versión nueva (v23.0) acepta el IG User Token cuando tiene el scope instagram_business_content_publish 📤)",
+  "//": "SOCIAL V4.404 | 2026-05-19 (SOCIAL — IG-direct publish ahora prueba 3 endpoints (graph.instagram.com/v23.0, graph.facebook.com/v23.0, graph.facebook.com/v18.0) hasta que uno acepte la request. Cada intento incluye appsecret_proof (HMAC-SHA256 del token con app_secret), un param de seguridad que algunos endpoints Meta exigen. Logs muestran cuál host funcionó 🔄)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
