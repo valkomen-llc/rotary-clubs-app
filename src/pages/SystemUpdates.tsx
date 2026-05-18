@@ -24,9 +24,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// READ DEFENSIVE V4.384 | 2026-05-19 (LIBRARY — listPublications/delete/cron también reintentan con SELECT seguro cuando imageUrlInstagram no existe en DB. Biblioteca abre sin error 📖)
-// Cache bust: 2026-05-19 00:30 (READ DEFENSIVE LIBRARY v4.384 📖)
+// POSTGEN FIX V4.385 | 2026-05-19 (POSTGEN — fix pantalla blanca por const outcome eliminado accidentalmente en el refactor IIFE de v4.383 🩹)
+// Cache bust: 2026-05-19 01:00 (POSTGEN BLANK SCREEN FIX v4.385 🩹)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.385',
+        date: '2026-05-19',
+        title: 'PostGenerator — Fix Pantalla Blanca tras Generar 🩹',
+        description: 'En v4.383 cuando wrappee el map de cuentas en un IIFE para dedup, removí accidentalmente la línea const outcome = publishOutcomes?.find(...). La JSX seguía referenciando outcome → React crash → pantalla blanca tras generar.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'TypeScript no lo detectó porque outcome estaba referenciado solo en JSX y TS dejó pasar como variable global indefinida.',
+            'Restaurado const outcome = publishOutcomes?.find(o => o.accountId === acc.id) dentro del map callback del IIFE.',
+            'Resultado: la página vuelve a renderizar normal post-generación. Los ✓/✗ indicadores por cuenta tras publicar siguen funcionando.'
+        ]
+    },
     {
         version: 'v4.384',
         date: '2026-05-19',

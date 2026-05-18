@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.384.0",
-  "cache_bust": "2026-05-19 00:30 (READ DEFENSIVE LIBRARY v4.384 📖)",
+  "version": "4.385.0",
+  "cache_bust": "2026-05-19 01:00 (POSTGEN BLANK SCREEN FIX v4.385 🩹)",
   "type": "module",
-  "//": "READ DEFENSIVE V4.384 | 2026-05-19 (LIBRARY — listPublications/delete/cron también reintentan con SELECT seguro cuando imageUrlInstagram no existe en DB. Biblioteca abre sin error 📖)",
+  "//": "POSTGEN FIX V4.385 | 2026-05-19 (POSTGEN — fix pantalla blanca por const outcome eliminado accidentalmente en el refactor IIFE de v4.383 🩹)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
