@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.401.0",
-  "cache_bust": "2026-05-19 17:00 (SOCIAL — publish IG directo via graph.instagram.com v4.401 📤)",
+  "version": "4.402.0",
+  "cache_bust": "2026-05-19 18:00 (SOCIAL — error específico visible en toast + log explícito por outcome v4.402 🔍)",
   "type": "module",
-  "//": "SOCIAL V4.401 | 2026-05-19 (SOCIAL — el publish flow ahora detecta si la cuenta IG fue conectada por Instagram Login directo (metadata.directConnect=true) y usa graph.instagram.com/v23.0 en vez de graph.facebook.com/v18.0. Resuelve 'Falló en 1 cuenta(s)' al publicar en IG después de conectar por el flujo directo 📤)",
+  "//": "SOCIAL V4.402 | 2026-05-19 (SOCIAL — los toasts de publish ahora incluyen el mensaje de error específico del primer outcome fallido (ej 'instagram/@user: Token inválido') en vez del genérico 'Falló en 1 cuenta(s)'. Backend loguea por cada outcome '[social] publish to <id> (<platform>) OK/FAILED' para diagnóstico fino en Vercel 🔍)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
