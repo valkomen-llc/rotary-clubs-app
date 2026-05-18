@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// SOCIAL V4.404 | 2026-05-19 (SOCIAL — IG publish: chain de 3 hosts + appsecret_proof 🔄)
-// Cache bust: 2026-05-19 20:00 (SOCIAL — IG publish chain v4.404 🔄)
+// SOCIAL V4.405 | 2026-05-19 (SOCIAL — IG publish: chain expandida con /me y sin versión 🔁)
+// Cache bust: 2026-05-19 21:00 (SOCIAL — IG publish chain expandida v4.405 🔁)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.405',
+        date: '2026-05-19',
+        title: 'Social — IG publish chain expandida con /me y sin versión 🔁',
+        description: 'Tras reconexión + v4.404 (chain de 3 hosts), aún falla con "Invalid OAuth access token - Cannot parse access token" en TODOS los hosts. Expandimos la chain a 5 configs incluyendo /me/media (sin user_id) y graph.instagram.com sin versión. Si todos fallan, es muy probable que sea limitación de Meta — la Instagram Login API for Business en development mode no permite publishing hasta App Review.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Chain de 5 intentos: graph.instagram.com/v23.0 con user_id, graph.instagram.com/v23.0 con /me, graph.instagram.com sin versión, graph.facebook.com/v23.0, graph.facebook.com/v18.0.',
+            'Si todos fallan con "Cannot parse access token" reconfirma que el problema NO es el endpoint sino el token mismo — Meta lo rechaza categóricamente.',
+            'Conclusión probable: Meta requiere App Review aprobada para que el scope instagram_business_content_publish funcione en producción. En development mode sólo Test Users de la app pueden usarlo.',
+            'WORKAROUND mientras tanto: vincular el IG a una Fanpage de Facebook en Business Manager y usar el flujo "Conectar Meta" (que sí funciona, ya estás publicando a Fanpages).'
+        ]
+    },
     {
         version: 'v4.404',
         date: '2026-05-19',

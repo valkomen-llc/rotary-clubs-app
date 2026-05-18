@@ -18,16 +18,18 @@ import crypto from 'crypto';
 
 const GRAPH_VERSION = 'v18.0';
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
-// v4.404: chain de endpoints a intentar para IG-direct publishing.
-// Meta cambió bastantes cosas y los docs están desactualizados. Probamos en orden:
-//   1. graph.instagram.com (oficial nuevo) — falló con "Unsupported request" en v4.401
-//   2. graph.facebook.com/v23.0 — falló con "Invalid OAuth access token" en v4.403
-//   3. graph.facebook.com/v18.0 (clásico, IG vinculado a Page)
-// Cada intento incluye appsecret_proof para autenticación reforzada.
-const IG_PUBLISH_BASES_DIRECT = [
-    'https://graph.instagram.com/v23.0',
-    'https://graph.facebook.com/v23.0',
-    'https://graph.facebook.com/v18.0'
+// v4.405: chain de endpoints (cada uno con o sin /me en vez de user-id) a
+// intentar para IG-direct publishing. Meta cambió cosas y los docs no son
+// definitivos. Cada intento incluye appsecret_proof.
+//
+//   useMePath=true → endpoint /me/media (autenticado por token, sin user-id)
+//   useMePath=false → endpoint /{user-id}/media (clásico)
+const IG_PUBLISH_ATTEMPTS_DIRECT = [
+    { base: 'https://graph.instagram.com/v23.0', useMePath: false },
+    { base: 'https://graph.instagram.com/v23.0', useMePath: true },
+    { base: 'https://graph.instagram.com',       useMePath: false }, // sin versión
+    { base: 'https://graph.facebook.com/v23.0',  useMePath: false },
+    { base: 'https://graph.facebook.com/v18.0',  useMePath: false }
 ];
 
 // HMAC-SHA256 del access_token con el app_secret. Algunos endpoints Meta
@@ -71,24 +73,25 @@ const publishToFacebookPage = async ({ pageId, pageAccessToken, imageUrl, captio
     };
 };
 
-// Helper: intenta crear el container en un base URL específico. Devuelve
-// { ok, creationId, error, base }.
-const tryCreateIgContainer = async ({ base, igUserId, accessToken, imageUrl, caption, appsecretProof }) => {
+// Helper: intenta crear el container con una config específica. Devuelve
+// { ok, creationId, error, base, useMePath }.
+const tryCreateIgContainer = async ({ base, useMePath, igUserId, accessToken, imageUrl, caption, appsecretProof }) => {
     const params = new URLSearchParams({
         image_url: imageUrl,
         caption: caption || '',
         access_token: accessToken
     });
     if (appsecretProof) params.set('appsecret_proof', appsecretProof);
-    const resp = await fetch(`${base}/${igUserId}/media`, {
+    const pathId = useMePath ? 'me' : igUserId;
+    const resp = await fetch(`${base}/${pathId}/media`, {
         method: 'POST',
         body: params
     });
     const data = await resp.json();
     if (!resp.ok || data.error || !data.id) {
-        return { ok: false, error: data.error?.message || `HTTP ${resp.status}`, base };
+        return { ok: false, error: data.error?.message || `HTTP ${resp.status}`, base, useMePath };
     }
-    return { ok: true, creationId: data.id, base };
+    return { ok: true, creationId: data.id, base, useMePath };
 };
 
 // Instagram: 2-step container creation then publish, with a short polling loop
@@ -102,25 +105,29 @@ const publishToInstagramBusiness = async ({ igUserId, pageAccessToken, imageUrl,
         console.warn('[publish] IG → no se generó appsecret_proof (faltan env vars de app secret)');
     }
 
-    // Step 1: create container. Para IG-direct, probamos múltiples bases en orden.
-    const basesToTry = useInstagramGraph ? IG_PUBLISH_BASES_DIRECT : [GRAPH_BASE];
+    // Step 1: create container. Para IG-direct, probamos múltiples configs en orden.
+    const attemptsToTry = useInstagramGraph
+        ? IG_PUBLISH_ATTEMPTS_DIRECT
+        : [{ base: GRAPH_BASE, useMePath: false }];
     let lastError = null;
     let successResult = null;
-    for (const base of basesToTry) {
-        console.log(`[publish] IG → intento create container @ ${base}/${igUserId}/media (directConnect=${useInstagramGraph}, proof=${!!proof})`);
-        const r = await tryCreateIgContainer({ base, igUserId, accessToken: pageAccessToken, imageUrl, caption, appsecretProof: proof });
+    for (const attempt of attemptsToTry) {
+        const pathId = attempt.useMePath ? 'me' : igUserId;
+        console.log(`[publish] IG → intento ${attempt.base}/${pathId}/media (proof=${!!proof})`);
+        const r = await tryCreateIgContainer({ ...attempt, igUserId, accessToken: pageAccessToken, imageUrl, caption, appsecretProof: proof });
         if (r.ok) {
-            console.log(`[publish] IG → container creado OK @ ${base}, creationId=${r.creationId}`);
+            console.log(`[publish] IG → container creado OK @ ${r.base}/${r.useMePath ? 'me' : igUserId}, creationId=${r.creationId}`);
             successResult = r;
             break;
         }
-        console.warn(`[publish] IG → falló @ ${base}: ${r.error}`);
+        console.warn(`[publish] IG → falló @ ${attempt.base}/${pathId}: ${r.error}`);
         lastError = r.error;
     }
     if (!successResult) {
-        return { ok: false, error: `Container falló en todos los hosts. Último: ${lastError}` };
+        return { ok: false, error: `Container falló en todos los hosts (${attemptsToTry.length} intentos). Último: ${lastError}` };
     }
-    const { base, creationId } = successResult;
+    const { base, creationId, useMePath: successUseMePath } = successResult;
+    const successPathId = successUseMePath ? 'me' : igUserId;
 
     // Step 2: poll for FINISHED state. Most single-image containers settle in
     // 1-5s; cap at 25s to keep within Vercel's function limits.
@@ -145,7 +152,7 @@ const publishToInstagramBusiness = async ({ igUserId, pageAccessToken, imageUrl,
         access_token: pageAccessToken
     });
     if (proof) publishParams.set('appsecret_proof', proof);
-    const publishResp = await fetch(`${base}/${igUserId}/media_publish`, {
+    const publishResp = await fetch(`${base}/${successPathId}/media_publish`, {
         method: 'POST',
         body: publishParams
     });
