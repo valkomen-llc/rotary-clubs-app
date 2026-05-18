@@ -24,9 +24,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// NAV V4.406 | 2026-05-19 (NAV — Content Studio en sidebar General para todos los sitios 🧭)
-// Cache bust: 2026-05-19 22:00 (NAV — Content Studio en General v4.406 🧭)
+// BIBLIOTECA MULTIMEDIA V4.407 | 2026-05-19 (BIBLIOTECA MULTIMEDIA — filtros sólo para super admins 🔒)
+// Cache bust: 2026-05-19 23:00 (BIBLIOTECA MULTIMEDIA — filtros sólo super admin v4.407 🔒)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.407',
+        date: '2026-05-19',
+        title: 'Biblioteca Multimedia — Filtros sólo para super admins 🔒',
+        description: 'Los chips de categoría (TODAS, CLUBES, ASOCIACIONES, PROGRAMAS, EVENTOS, CONFERENCIAS, FERIAS, FUNDACIONES, DISTRITOS) y el dropdown de sources se ocultan ahora para admins de club/distrito/asociación. Estos usuarios sólo ven la biblioteca de su propio sitio y no necesitan los filtros (el backend ya los limita por clubId desde antes). Sólo super admins en plataforma central siguen viendo los filtros.',
+        type: 'changed',
+        author: 'Claude',
+        details: [
+            'MediaPicker.tsx: agregado useAuth y detección isSuperAdmin (mismo patrón que AdminLayout — admin role + estar en dominio de plataforma).',
+            'Chips de categoría wrapped en {isSuperAdmin && (...)}. Para non-super-admin no se renderizan.',
+            'Dropdown de sources (visible cuando hay categoría seleccionada) también condicional a isSuperAdmin.',
+            'Backend sin cambios: las queries de /api/media ya filtran por role (administrator → todo, district_admin → distrito, club → su clubId, etc).',
+            'Resultado: UI más limpia para admins de sitios. Cero pérdida de seguridad — el filtrado real lo hace el backend.'
+        ]
+    },
     {
         version: 'v4.406',
         date: '2026-05-19',
