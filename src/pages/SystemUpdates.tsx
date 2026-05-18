@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// SOCIAL V4.395 | 2026-05-19 (SOCIAL — fix host autorización IG: www.instagram.com 🩹)
-// Cache bust: 2026-05-19 11:00 (SOCIAL — fix host autorización IG v4.395 🩹)
+// SOCIAL V4.396 | 2026-05-19 (SOCIAL — IG OAuth: force_reauth + strip #_ + logging 🔬)
+// Cache bust: 2026-05-19 12:00 (SOCIAL — IG OAuth robusto v4.396 🔬)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.396',
+        date: '2026-05-19',
+        title: 'Social — Instagram OAuth: force_reauth + strip #_ + logging diagnóstico 🔬',
+        description: 'El equipo reportó que la autorización a Instagram Login completaba en IG pero la cuenta no aparecía conectada en la app. Causa probable: autorizaciones viejas almacenadas en IG (de v4.394 con host equivocado) que cuando IG las reutiliza redirigen al URI antiguo. Fix: forzar consent fresh siempre + stripear sufijo "#_" del code defensivamente + logs extra para diagnóstico.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'buildIgAuthUrl: agrega force_reauth=true al authorize URL. Esto fuerza a IG a pedir consent nuevo cada vez en vez de reutilizar autorizaciones almacenadas previamente (que podrían tener un redirect URI viejo).',
+            'exchangeCodeForIgToken: stripea el sufijo "#_" que Meta a veces adjunta al code antes de hacer el token exchange (defensivo — los docs de Meta lo mencionan explícitamente como cosa que hay que limpiar).',
+            'handleInstagramCallback: logging diagnóstico al inicio (host, path, hasCode, codeLen, hasState, query keys) + warnings explícitos en cada early-return (error de IG, missing params, invalid state). Permite ver en Vercel logs exactamente qué pasó si el callback se ejecutó.',
+            'IMPORTANTE para el equipo: si previamente intentaste conectar antes de v4.396 y aparece como "Active" en https://instagram.com/accounts/manage_access/, eliminala desde ahí ANTES de probar el flujo nuevo — IG cachea la autorización vieja.'
+        ]
+    },
     {
         version: 'v4.395',
         date: '2026-05-19',
