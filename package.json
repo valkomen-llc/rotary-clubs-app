@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.383.0",
-  "cache_bust": "2026-05-19 00:00 (PERSIST DEFENSIVE + DEDUP UI v4.383 🛡️)",
+  "version": "4.384.0",
+  "cache_bust": "2026-05-19 00:30 (READ DEFENSIVE LIBRARY v4.384 📖)",
   "type": "module",
-  "//": "PERSIST DEFENSIVE V4.383 | 2026-05-19 (POSTGEN — autosave/publish/schedule reintenta SIN imageUrlInstagram si la migración SQL todavía no se aplicó. UI marca cuentas duplicadas con tail del platformId 🛡️)",
+  "//": "READ DEFENSIVE V4.384 | 2026-05-19 (LIBRARY — listPublications/delete/cron también reintentan con SELECT seguro cuando imageUrlInstagram no existe en DB. Biblioteca abre sin error 📖)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

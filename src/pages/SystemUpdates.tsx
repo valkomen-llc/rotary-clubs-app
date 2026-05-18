@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// PERSIST DEFENSIVE V4.383 | 2026-05-19 (POSTGEN — autosave/publish/schedule retry SIN imageUrlInstagram si la migración SQL todavía no se aplicó; UI marca cuentas duplicadas con tail del platformId 🛡️)
-// Cache bust: 2026-05-19 00:00 (PERSIST DEFENSIVE + DEDUP UI v4.383 🛡️)
+// READ DEFENSIVE V4.384 | 2026-05-19 (LIBRARY — listPublications/delete/cron también reintentan con SELECT seguro cuando imageUrlInstagram no existe en DB. Biblioteca abre sin error 📖)
+// Cache bust: 2026-05-19 00:30 (READ DEFENSIVE LIBRARY v4.384 📖)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.384',
+        date: '2026-05-19',
+        title: 'Biblioteca defensiva al leer — abre sin error con o sin migración 📖',
+        description: 'v4.383 hacía defensive en escritura pero no en lectura. La tab Biblioteca tiraba "column SocialPublication.imageUrlInstagram does not exist" porque findMany SELECT-ea todos los campos del schema. Ahora también el read tolera la columna faltante.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'listPublications: try/catch alrededor del findMany. Si Prisma tira "column does not exist", reintenta con SELECT explícito que omite imageUrlInstagram. Resultado: la biblioteca abre normal aunque la columna no esté en DB.',
+            'deletePublication: el findFirst inicial también es defensive — usa select minimal { id, status, clubId } en el retry.',
+            'runScheduledPublicationsDue (cron worker): mismo patrón. El cron de "*/5 * * * *" no se rompe aunque la migración esté pendiente.',
+            'En todos los casos, los campos devueltos incluyen imageUrlInstagram: null como placeholder para que el frontend no necesite null-checks adicionales.',
+            'Migración recomendada (resuelve todos los retrys + guarda la variante IG 2:3 real):',
+            '  ALTER TABLE "SocialPublication" ADD COLUMN IF NOT EXISTS "imageUrlInstagram" TEXT;'
+        ]
+    },
     {
         version: 'v4.383',
         date: '2026-05-19',
