@@ -16,6 +16,9 @@
 
 const GRAPH_VERSION = 'v18.0';
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
+// v4.401: para cuentas IG conectadas por Instagram Login directo, los endpoints
+// de content publishing están en graph.instagram.com (versión más reciente).
+const IG_GRAPH_BASE = 'https://graph.instagram.com/v23.0';
 
 // Compose the final caption from the AI-generated breakdown. Same shape we get
 // from gpt-4o: { copy, hashtags, cta }. Empty pieces are skipped so we don't
@@ -51,14 +54,21 @@ const publishToFacebookPage = async ({ pageId, pageAccessToken, imageUrl, captio
 
 // Instagram: 2-step container creation then publish, with a short polling loop
 // in between because the container may need a moment for Meta to fetch the URL.
-const publishToInstagramBusiness = async ({ igUserId, pageAccessToken, imageUrl, caption }) => {
+// v4.401: `useInstagramGraph` selecciona el host:
+//   - true  → graph.instagram.com/v23.0 (para cuentas conectadas por IG Login directo,
+//             donde el accessToken es un IG User Token).
+//   - false → graph.facebook.com/v18.0  (para cuentas IG vinculadas a una FB Page,
+//             donde el accessToken es un Page Access Token).
+const publishToInstagramBusiness = async ({ igUserId, pageAccessToken, imageUrl, caption, useInstagramGraph = false }) => {
+    const base = useInstagramGraph ? IG_GRAPH_BASE : GRAPH_BASE;
+    console.log(`[publish] IG → host=${useInstagramGraph ? 'graph.instagram.com' : 'graph.facebook.com'}, igUserId=${igUserId}`);
     // Step 1: create the container.
     const createParams = new URLSearchParams({
         image_url: imageUrl,
         caption: caption || '',
         access_token: pageAccessToken
     });
-    const createResp = await fetch(`${GRAPH_BASE}/${igUserId}/media`, {
+    const createResp = await fetch(`${base}/${igUserId}/media`, {
         method: 'POST',
         body: createParams
     });
@@ -72,7 +82,7 @@ const publishToInstagramBusiness = async ({ igUserId, pageAccessToken, imageUrl,
     // 1-5s; cap at 25s to keep within Vercel's function limits.
     const deadline = Date.now() + 25_000;
     while (Date.now() < deadline) {
-        const statusResp = await fetch(`${GRAPH_BASE}/${creationId}?fields=status_code,status&access_token=${encodeURIComponent(pageAccessToken)}`);
+        const statusResp = await fetch(`${base}/${creationId}?fields=status_code,status&access_token=${encodeURIComponent(pageAccessToken)}`);
         const statusData = await statusResp.json();
         const code = statusData.status_code;
         if (code === 'FINISHED') break;
@@ -88,7 +98,7 @@ const publishToInstagramBusiness = async ({ igUserId, pageAccessToken, imageUrl,
         creation_id: creationId,
         access_token: pageAccessToken
     });
-    const publishResp = await fetch(`${GRAPH_BASE}/${igUserId}/media_publish`, {
+    const publishResp = await fetch(`${base}/${igUserId}/media_publish`, {
         method: 'POST',
         body: publishParams
     });
@@ -119,11 +129,18 @@ export const publishToAccount = async ({ account, decryptedToken, imageUrl, copi
         });
     }
     if (account.platform === 'instagram') {
+        // v4.401: para cuentas IG conectadas por Instagram Login directo (sin
+        // Fanpage vinculada), el endpoint de publish está en graph.instagram.com
+        // y acepta el IG user token. Para IG vinculado a FB Page, el endpoint
+        // sigue siendo graph.facebook.com con el Page Access Token. Se decide
+        // mirando account.metadata.directConnect (true = flujo IG directo).
+        const isDirectConnect = !!(account.metadata && account.metadata.directConnect);
         return publishToInstagramBusiness({
             igUserId: account.platformId,
             pageAccessToken: decryptedToken,
             imageUrl,
-            caption
+            caption,
+            useInstagramGraph: isDirectConnect
         });
     }
     return { ok: false, error: `Plataforma '${account.platform}' aún no soportada por el publisher` };
