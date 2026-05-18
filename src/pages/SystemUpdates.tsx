@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// BIBLIOTECA V4.390 | 2026-05-19 (BIBLIOTECA — outcome explícito del autosave visible en UI 🔍)
-// Cache bust: 2026-05-19 06:00 (BIBLIOTECA — outcome del autosave visible en UI v4.390 🔍)
+// BIBLIOTECA V4.391 | 2026-05-19 (BIBLIOTECA — fix retry RETURNING para columna imageUrlInstagram faltante 🩹)
+// Cache bust: 2026-05-19 07:00 (BIBLIOTECA — fix retry RETURNING para columna faltante v4.391 🩹)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.391',
+        date: '2026-05-19',
+        title: 'Biblioteca — Fix retry defensivo cuando falta imageUrlInstagram 🩹',
+        description: 'Gracias al toast de v4.390 detectamos el problema real: Prisma create() falla porque la columna imageUrlInstagram NO EXISTE en la DB (migración v4.381 nunca se aplicó). El retry defensivo que removía el campo del INSERT fallaba igual porque Prisma hace RETURNING * y lee TODAS las columnas del schema. Fix: usar select explícito en el retry para limitar el RETURNING.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Causa raíz: cuando Prisma ejecuta create(), genera SQL "INSERT ... RETURNING *". Si una columna del schema no existe en la DB, el RETURNING falla aunque la hayamos omitido del INSERT. El retry no resolvía porque seguía intentando leer todas las columnas.',
+            'Fix v4.391: el retry ahora usa "select: { id, clubId, status }" para que Prisma genere "INSERT ... RETURNING id, clubId, status" — sin tocar imageUrlInstagram. La row se guarda igual, sólo no devolvemos esa columna.',
+            'Aplicado en 3 lugares: autosave (contentStudioController), schedule (socialPublishingController), y publish (socialPublishingController). Todos los retries son ahora verdaderamente defensivos.',
+            'Heurística de detección mejorada: el toast de error ahora muestra la SQL exacta a correr cuando detecta el caso de columna faltante: "ALTER TABLE \\"SocialPublication\\" ADD COLUMN IF NOT EXISTS \\"imageUrlInstagram\\" TEXT;"',
+            'MIGRACIÓN SQL RECOMENDADA en Neon (idempotente, soluciona el caso permanentemente):',
+            '  ALTER TABLE "SocialPublication" ADD COLUMN IF NOT EXISTS "imageUrlInstagram" TEXT;',
+            'Una vez corrida, el flujo principal funciona sin retries — y la columna queda disponible para guardar la variante IG 2:3 real.'
+        ]
+    },
     {
         version: 'v4.390',
         date: '2026-05-19',

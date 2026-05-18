@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.390.0",
-  "cache_bust": "2026-05-19 06:00 (BIBLIOTECA — outcome del autosave visible en UI v4.390 🔍)",
+  "version": "4.391.0",
+  "cache_bust": "2026-05-19 07:00 (BIBLIOTECA — fix retry RETURNING para columna faltante v4.391 🩹)",
   "type": "module",
-  "//": "BIBLIOTECA V4.390 | 2026-05-19 (BIBLIOTECA — outcome explícito del autosave en la response del /generate-post; el frontend muestra toast con el error específico si la publicación no se guardó en la biblioteca, evitando que el usuario tenga que ir a logs de Vercel 🔍)",
+  "//": "BIBLIOTECA V4.391 | 2026-05-19 (BIBLIOTECA — el retry defensivo cuando falta imageUrlInstagram ahora usa select explícito para evitar el RETURNING * que tropezaba con la columna faltante; aplicado en autosave, schedule y publish. Igual recomendamos correr la migración SQL: ALTER TABLE \"SocialPublication\" ADD COLUMN IF NOT EXISTS \"imageUrlInstagram\" TEXT; 🩹)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

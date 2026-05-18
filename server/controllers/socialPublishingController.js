@@ -500,9 +500,11 @@ export const publishPost = async (req, res) => {
             } catch (scheduledErr) {
                 if (/imageUrlInstagram|column .* does not exist|Unknown arg/i.test(scheduledErr.message)) {
                     console.warn('[social] Reintentando schedule SIN imageUrlInstagram — migración SQL v4.381 pendiente.');
+                    // v4.391: select explícito para evitar RETURNING * que tropieza con la columna faltante.
+                    const safeSelect = { id: true, clubId: true, status: true, scheduledFor: true, timezone: true };
                     pub = publicationId
-                        ? await prisma.socialPublication.update({ where: { id: publicationId }, data: buildScheduledData(false) })
-                        : await prisma.socialPublication.create({ data: buildScheduledData(false) });
+                        ? await prisma.socialPublication.update({ where: { id: publicationId }, data: buildScheduledData(false), select: safeSelect })
+                        : await prisma.socialPublication.create({ data: buildScheduledData(false), select: safeSelect });
                 } else {
                     throw scheduledErr;
                 }
@@ -583,9 +585,11 @@ export const publishPost = async (req, res) => {
         } catch (persistErr) {
             if (/imageUrlInstagram|column .* does not exist|Unknown arg/i.test(persistErr.message)) {
                 console.warn('[social] Reintentando persist SIN imageUrlInstagram — migración SQL v4.381 pendiente.');
+                // v4.391: select explícito evita RETURNING * con la columna faltante.
+                const safeSelect = { id: true, clubId: true, status: true, publishedAt: true };
                 publication = publicationId
-                    ? await prisma.socialPublication.update({ where: { id: publicationId }, data: buildPersistData(false) })
-                    : await prisma.socialPublication.create({ data: buildPersistData(false) });
+                    ? await prisma.socialPublication.update({ where: { id: publicationId }, data: buildPersistData(false), select: safeSelect })
+                    : await prisma.socialPublication.create({ data: buildPersistData(false), select: safeSelect });
             } else {
                 throw persistErr;
             }
