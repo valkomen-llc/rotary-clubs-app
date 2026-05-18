@@ -387,10 +387,23 @@ export const handleInstagramCallback = async (req, res) => {
         const redirectUri = getIgRedirectUri(req);
         // 1) Code → short-lived IG user token.
         const { token: shortToken } = await exchangeCodeForIgToken({ code, redirectUri });
-        // 2) Short-lived → long-lived (~60d, renewable).
-        const { token: longToken, expiresAt } = await exchangeForLongLivedIgToken(shortToken);
+        // 2) Short-lived → long-lived (~60d, renewable). v4.398: hacemos este paso
+        // OPCIONAL — si Meta rechaza el endpoint (cambió en algún momento), seguimos
+        // con el short-lived token (válido ~1h) y marcamos expiresAt corto para
+        // que el usuario reconnect cuando expire. Mejor tener una conexión de 1h
+        // que ninguna.
+        let activeToken = shortToken;
+        let expiresAt = new Date(Date.now() + 60 * 60 * 1000); // default 1h
+        try {
+            const longResult = await exchangeForLongLivedIgToken(shortToken);
+            activeToken = longResult.token;
+            expiresAt = longResult.expiresAt || expiresAt;
+            console.log('[social] IG-direct long-lived token obtenido (expira:', expiresAt.toISOString(), ')');
+        } catch (longErr) {
+            console.warn('[social] IG-direct long-lived exchange falló, usamos short-lived:', longErr.message);
+        }
         // 3) Identify the IG account.
-        const profile = await getIgUserProfile(longToken);
+        const profile = await getIgUserProfile(activeToken);
         if (!profile.id) {
             return res.redirect(`${redirectBase}&social=error&message=${encodeURIComponent('No se pudo identificar la cuenta de Instagram')}`);
         }
@@ -409,7 +422,7 @@ export const handleInstagramCallback = async (req, res) => {
             update: {
                 pageId: null,
                 accountName: profile.username || profile.id,
-                accessToken: encryptToken(longToken),
+                accessToken: encryptToken(activeToken),
                 avatar: profile.avatar,
                 status: 'active',
                 permissions: IG_LOGIN_SCOPES,
@@ -430,7 +443,7 @@ export const handleInstagramCallback = async (req, res) => {
                 platformId: profile.id,
                 pageId: null,
                 accountName: profile.username || profile.id,
-                accessToken: encryptToken(longToken),
+                accessToken: encryptToken(activeToken),
                 avatar: profile.avatar,
                 status: 'active',
                 permissions: IG_LOGIN_SCOPES,
