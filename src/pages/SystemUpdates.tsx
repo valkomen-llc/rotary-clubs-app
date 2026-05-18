@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// COPY IA V4.387 | 2026-05-19 (COPY IA — anti fechas inventadas + autosave robusto guarda con status=error en fallas de generación 🎯)
-// Cache bust: 2026-05-19 03:00 (COPY IA — anti fechas inventadas + autosave robusto v4.387 🎯)
+// COPY IA V4.388 | 2026-05-19 (COPY IA — clubId resuelto desde Media ANTES del copy; el copy ahora recibe el club real de la imagen 🎯🔗)
+// Cache bust: 2026-05-19 04:00 (COPY IA — clubId resuelto desde Media ANTES del copy v4.388 🎯🔗)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.388',
+        date: '2026-05-19',
+        title: 'Copy IA — Resolución de club desde la imagen ANTES de generar 🎯🔗',
+        description: 'El usuario reportó que al elegir una imagen de Club Rotario Buga desde la Biblioteca, el copy decía "En el Club Rotario" genérico (sin "Buga") Y la publicación no aparecía en la biblioteca del club. Causa: la resolución de clubId desde Media.clubId corría DESPUÉS de generar el copy. Ahora corre ANTES, así el prompt recibe el nombre real del club.',
+        type: 'fix',
+        author: 'Claude',
+        details: [
+            'Bug crítico: cuando un system admin elegía una imagen de la Biblioteca Multimedia (con su clubId asignado), el backend tomaba req.body.clubId/req.user.clubId (ambos null para system admin) y generaba el copy SIN saber a qué club pertenecía la imagen. El nombre del club sólo se descubría después, en el bloque de autosave — pero ya era tarde.',
+            'Fix: la resolución de clubId desde Media.clubId / Media.sourceId / path del imageUrl se MOVIÓ al inicio del handler. El mismo clubId se usa para (a) traer el nombre del club para el copy, y (b) guardar el draft en la biblioteca del club correcto.',
+            'UUID regex relajado: antes exigía UUID v4 estricto ([4] en posición 13 + variant [89ab] en posición 17). Ahora acepta cualquier formato UUID estándar. Esto resuelve casos donde Media.id tenía variant distinta de v4 y el lookup se skippeaba silenciosamente.',
+            'Logs nuevos: "[STUDIO] ClubId resuelto: <id> (req.user=…, body=…, imageId=…)" muestra exactamente de dónde vino el clubId — facilita debug futuro.',
+            'Efecto colateral: el autosave de la imagen Buga, que antes fallaba silenciosamente cuando la regex v4 estricta no matcheaba, ahora también funciona — la publicación queda guardada en la biblioteca de Club Rotario Buga.',
+            'Cleanup: eliminada la variable resolvedClubId duplicada en el bloque de autosave; ahora usa el clubId resuelto al inicio.'
+        ]
+    },
     {
         version: 'v4.387',
         date: '2026-05-19',
