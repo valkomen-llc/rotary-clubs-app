@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.379.0",
-  "cache_bust": "2026-05-18 21:00 (TOOL FOLLOWUP FIX v4.379 🔧)",
+  "version": "4.380.0",
+  "cache_bust": "2026-05-18 22:00 (CHAT-TO-MEMORY v4.380 🧠)",
   "type": "module",
-  "//": "TOOL FOLLOWUP FIX V4.379 | 2026-05-18 (CEREBROS — segunda pasada del chat tras tool ahora usa formato Gemini correcto (model turn con functionCall + user turn con functionResponse); fallback legible si LLM no texto 🔧)",
+  "//": "CHAT-TO-MEMORY V4.380 | 2026-05-18 (CEREBROS — cada conversación se persiste como BrainMemory kind=CHAT (idempotente por sessionId), buscable semánticamente, aparece en el grafo y se conecta con el resto del conocimiento 🧠)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
