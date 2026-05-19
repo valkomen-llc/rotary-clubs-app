@@ -24,9 +24,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// FINANCIAL V4.412 | 2026-05-20 (FINANCIAL — sección Aportes Recibidos + render robusto en Bóveda 📥)
-// Cache bust: 2026-05-20 15:30 (FINANCIAL v4.412 📥)
+// FINANCIAL HOTFIX V4.413 | 2026-05-20 (HOTFIX — Prisma singleton en payouts + financial routes 🩹)
+// Cache bust: 2026-05-20 16:30 (FINANCIAL HOTFIX v4.413 🩹)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.413',
+        date: '2026-05-20',
+        title: 'Financial Hotfix — Prisma singleton para que la Bóveda cargue datos reales 🩹',
+        description: 'En v4.412 la Bóveda mostraba el banner "No pudimos cargar el balance (Network Error). Mostrando ceros por defecto" aunque el aporte de $1 USD del Club Bogotá Centenario sí estaba en la base de datos (el topbar del admin lo mostraba correctamente). Causa raíz: payoutController.js y server/routes/financial.js instanciaban `new PrismaClient()` cada uno por separado. En Vercel serverless cada cold start abre conexiones nuevas a Postgres, el connection pool se exhausta en pocas requests, y las siguientes timeout antes de responder → el navegador reporta Network Error porque la función nunca devuelve. Fix de 4 líneas: ambos archivos ahora usan el singleton `import prisma from "../lib/prisma.js"`, exactamente como paymentController.js (que funciona bien). La donación ya estaba registrada; sólo los endpoints de Bóveda no podían alcanzarla.',
+        type: 'fixed',
+        author: 'Claude',
+        details: [
+            'server/controllers/payoutController.js: removido `new PrismaClient()`, usa `import prisma from "../lib/prisma.js"` (singleton). Afecta /api/payouts/balance, /history, /request, /admin.',
+            'server/routes/financial.js: mismo cambio. Afecta /api/financial/reports/* (los endpoints /donate*, /donations ya usaban el singleton correcto a través del controller).',
+            'Lección operacional (3ª vez aprendida): cuando un archivo nuevo necesita Prisma en este proyecto, SIEMPRE importar el singleton desde `lib/prisma.js`. Nunca hacer `new PrismaClient()` excepto en scripts standalone (seed, importClubs, check*). El singleton es lo que evita el pool exhaustion en serverless.',
+            'Test plan: recargar /admin/boveda → el banner amber debería desaparecer y los cards mostrar $0.62 USD disponible, $1.00 total recaudado, 1 donación en Aportes Recibidos con monto $1.00 + email del donante + fecha. El header de la Bóveda debería coincidir con el topbar del admin ($0.621).',
+            'Pendiente: auditar el resto de archivos en server/routes/ (cron, seo, youth-exchange, rotex, ngse, sponsored-clubs, documents) y controllers (technicalRequestController, grantsController) que también crean instancias propias. No los toco hoy porque están fuera del flujo crítico de Bóveda, pero son bombas de tiempo si reciben tráfico real.'
+        ]
+    },
     {
         version: 'v4.412',
         date: '2026-05-20',

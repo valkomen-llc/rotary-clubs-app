@@ -1,13 +1,12 @@
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
 import { authMiddleware } from '../middleware/auth.js';
+import prisma from '../lib/prisma.js'; // v4.413 — singleton (evita pool exhaustion en Vercel)
 import {
     createDonationCheckout,
     getDonationSessionStatus,
     listClubDonations
 } from '../controllers/financialController.js';
 
-const prisma = new PrismaClient();
 const router = express.Router();
 
 /**

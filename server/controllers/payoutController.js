@@ -1,6 +1,6 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+// v4.413 — usar singleton de Prisma. En Vercel serverless, `new PrismaClient()`
+// por archivo agota el pool de Postgres en pocas requests → Network Error.
+import prisma from '../lib/prisma.js';
 
 // Get the available balance for a club (only for funds held by Valkomen)
 export const getClubBalance = async (req, res) => {
