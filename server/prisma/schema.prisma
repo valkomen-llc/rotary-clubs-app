@@ -476,8 +476,8 @@ model OrderItem {
 }
 
 model Payment {
-  id                   String   @id @default(uuid())
-  provider             String   @default("stripe")
+  id                   String    @id @default(uuid())
+  provider             String    @default("stripe")
   providerRef          String?
   status               String
   amount               Float
@@ -485,13 +485,22 @@ model Payment {
   rawPayload           String?
   orderId              String?
   clubId               String
-  applicationFee       Float?   @default(0)
+  applicationFee       Float?    @default(0)
   netAmount            Float?
-  isPlatformCollection Boolean  @default(true)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-  club                 Club     @relation(fields: [clubId], references: [id])
-  order                Order?   @relation(fields: [orderId], references: [id])
+  isPlatformCollection Boolean   @default(true)
+  // v4.421 — sync con Stripe Balance Transaction para reflejar estado real
+  // del dinero: pending → available → paid_out (o refunded/failed).
+  // clubAvailableOn = availableOn + 6 días (margen operativo Valkomen) y
+  // marca cuándo el club puede pedir retiro sobre estos fondos.
+  stripeBalanceTxId    String?
+  stripeStatus         String?
+  availableOn          DateTime?
+  clubAvailableOn      DateTime?
+  paymentMethod        String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  club                 Club      @relation(fields: [clubId], references: [id])
+  order                Order?    @relation(fields: [orderId], references: [id])
 }
 
 model PaymentProviderConfig {

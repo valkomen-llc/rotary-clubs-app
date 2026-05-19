@@ -6,7 +6,8 @@ import {
     getDonationSessionStatus,
     listClubDonations,
     getEmailDiagnostics,
-    sendTestEmail
+    sendTestEmail,
+    getClubWallet
 } from '../controllers/financialController.js';
 
 const router = express.Router();
@@ -26,6 +27,10 @@ router.get('/donate/session/:id', getDonationSessionStatus);
 
 // AUTENTICADO — listado de donaciones del club (panel admin)
 router.get('/donations', authMiddleware, listClubDonations);
+
+// AUTENTICADO — mini-wallet sincronizada con Stripe: buckets por estado
+// (en tránsito / disponible próximamente / disponible / transferido)
+router.get('/wallet', authMiddleware, getClubWallet);
 
 // v4.418 — DIAGNÓSTICO de email (super admin) para debuggear que el recibo no llega
 router.get('/email-status', authMiddleware, getEmailDiagnostics);

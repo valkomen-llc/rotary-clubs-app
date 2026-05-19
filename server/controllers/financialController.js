@@ -199,6 +199,126 @@ export const listClubDonations = async (req, res) => {
     }
 };
 
+// v4.421 — Mini-wallet financiera con sync Stripe. Devuelve los Payments del
+// club agrupados en buckets por estado real del dinero, con fechas estimadas
+// de disponibilidad (Stripe) y de retiro (Stripe + 6 días margen Valkomen).
+// GET /api/financial/wallet  (auth, ?clubId opcional para super admin)
+export const getClubWallet = async (req, res) => {
+    try {
+        const clubId = req.user?.role === 'administrator' && req.query.clubId
+            ? req.query.clubId
+            : req.user?.clubId;
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+
+        const now = new Date();
+
+        // pg directo (cold-start safe — ver v4.414)
+        const paymentsResult = await db.query(
+            `SELECT id, "providerRef", status, amount, currency, "applicationFee",
+                    "netAmount", "stripeBalanceTxId", "stripeStatus",
+                    "availableOn", "clubAvailableOn", "paymentMethod",
+                    "createdAt"
+             FROM "Payment"
+             WHERE "clubId" = $1 AND "isPlatformCollection" = true
+             ORDER BY "createdAt" DESC
+             LIMIT 500`,
+            [clubId]
+        );
+
+        const payoutsResult = await db.query(
+            `SELECT id, amount, status, "createdAt"
+             FROM "PayoutRequest"
+             WHERE "clubId" = $1
+             ORDER BY "createdAt" DESC`,
+            [clubId]
+        );
+
+        // Bucketización
+        const buckets = {
+            processing: [],          // status='pending' (Stripe aún no confirma)
+            in_transit: [],          // succeeded + Stripe pending (availableOn > now o stripeStatus='pending')
+            available_soon: [],      // Stripe available pero margen Valkomen no completado
+            available: [],           // Listo para retiro
+            refunded: [],
+            failed: []
+        };
+
+        for (const p of paymentsResult.rows) {
+            const amount = parseFloat(p.netAmount || 0);
+            const item = {
+                id: p.id,
+                providerRef: p.providerRef,
+                amount,
+                grossAmount: parseFloat(p.amount || 0),
+                fee: parseFloat(p.applicationFee || 0) + (parseFloat(p.amount || 0) - parseFloat(p.netAmount || 0) - parseFloat(p.applicationFee || 0)),
+                applicationFee: parseFloat(p.applicationFee || 0),
+                currency: p.currency,
+                status: p.status,
+                stripeStatus: p.stripeStatus,
+                availableOn: p.availableOn,
+                clubAvailableOn: p.clubAvailableOn,
+                paymentMethod: p.paymentMethod || 'card',
+                stripeBalanceTxId: p.stripeBalanceTxId,
+                createdAt: p.createdAt
+            };
+
+            if (p.status === 'refunded') {
+                buckets.refunded.push(item);
+            } else if (p.status === 'failed') {
+                buckets.failed.push(item);
+            } else if (p.status === 'pending') {
+                buckets.processing.push(item);
+            } else if (p.stripeStatus === 'pending' || (p.availableOn && new Date(p.availableOn) > now)) {
+                buckets.in_transit.push(item);
+            } else if (p.clubAvailableOn && new Date(p.clubAvailableOn) > now) {
+                buckets.available_soon.push(item);
+            } else {
+                buckets.available.push(item);
+            }
+        }
+
+        const sum = (arr) => arr.reduce((acc, it) => acc + (it.amount || 0), 0);
+
+        // Total transferido = payouts completados (los fondos ya salieron)
+        const transferredAmount = payoutsResult.rows
+            .filter(p => p.status === 'completed')
+            .reduce((acc, p) => acc + parseFloat(p.amount || 0), 0);
+
+        // Compromisos pendientes (payouts requested/processing)
+        const requestedAmount = payoutsResult.rows
+            .filter(p => ['pending', 'processing'].includes(p.status))
+            .reduce((acc, p) => acc + parseFloat(p.amount || 0), 0);
+
+        const availableForWithdrawal = Math.max(0, sum(buckets.available) - transferredAmount - requestedAmount);
+
+        return res.json({
+            currency: 'USD',
+            buckets: {
+                processing: { total: sum(buckets.processing), count: buckets.processing.length, items: buckets.processing },
+                in_transit: { total: sum(buckets.in_transit), count: buckets.in_transit.length, items: buckets.in_transit },
+                available_soon: { total: sum(buckets.available_soon), count: buckets.available_soon.length, items: buckets.available_soon },
+                available: { total: sum(buckets.available), count: buckets.available.length, items: buckets.available },
+                refunded: { total: sum(buckets.refunded), count: buckets.refunded.length, items: buckets.refunded },
+                failed: { total: sum(buckets.failed), count: buckets.failed.length, items: buckets.failed }
+            },
+            summary: {
+                grossTotal: paymentsResult.rows.reduce((acc, p) => acc + parseFloat(p.amount || 0), 0),
+                netTotal: paymentsResult.rows.reduce((acc, p) => acc + parseFloat(p.netAmount || 0), 0),
+                inTransit: sum(buckets.in_transit) + sum(buckets.processing),
+                availableSoon: sum(buckets.available_soon),
+                availableForWithdrawal,
+                transferred: transferredAmount,
+                requested: requestedAmount,
+                refunded: sum(buckets.refunded)
+            },
+            platformHoldingDays: 6
+        });
+    } catch (error) {
+        console.error('[FINANCIAL] Error en wallet:', error);
+        return res.status(500).json({ error: 'Error consultando wallet', detail: error.message?.slice(0, 200) });
+    }
+};
+
 // v4.418 — Diagnóstico de configuración de email. Sin exponer secretos:
 // solo reporta presencia/ausencia de keys, lista de dominios verificados en
 // Resend (si la API lo permite), y conteo de SMTP fallbacks disponibles.

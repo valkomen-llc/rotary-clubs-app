@@ -11,6 +11,11 @@ const DEFAULT_PLATFORM_FEE_PERCENTAGE = 0.05; // 5% fee when using Valkomen's ma
 // PlatformConfig o un campo en NotificationConfig (out of scope hoy).
 const PLATFORM_DONATION_SENDER = '"Club Platform for Rotary" <noreply@clubplatform.org>';
 
+// v4.421 — Margen operativo de Club Platform: después de que Stripe libere
+// el dinero (available_on), agregamos N días para conciliación + traslado
+// financiero. El club no puede pedir retiro hasta este timestamp.
+const PLATFORM_HOLDING_DAYS = 6;
+
 // Helper to get correct Stripe instance based on Club config
 const getStripeConfig = async (clubId) => {
     const config = await prisma.paymentProviderConfig.findUnique({
@@ -429,11 +434,51 @@ async function handleSuccessfulDonationCheckout(session) {
     const totalAmount = (session.amount_total || 0) / 100;
     const currency = (session.currency || 'usd').toUpperCase();
 
-    // Comisión Valkomen + estimación de fee Stripe (2.9% + 0.30). El net
-    // es lo que el club puede retirar.
+    // Comisión Valkomen (5%). Fee de Stripe lo dejamos como ESTIMACIÓN por
+    // si la llamada a balanceTransactions falla; si llega bien lo sobrescribimos
+    // con el valor real.
     const applicationFee = totalAmount * DEFAULT_PLATFORM_FEE_PERCENTAGE;
-    const estimatedStripeFee = (totalAmount * 0.029) + 0.30;
-    const netAmount = Math.max(0, totalAmount - applicationFee - estimatedStripeFee);
+    let estimatedStripeFee = (totalAmount * 0.029) + 0.30;
+    let netAmount = Math.max(0, totalAmount - applicationFee - estimatedStripeFee);
+
+    // v4.421 — Consultar Stripe balance transaction para datos reales.
+    // available_on = cuándo Stripe libera el dinero (típicamente T+2 a T+7).
+    // clubAvailableOn = available_on + PLATFORM_HOLDING_DAYS (margen Valkomen).
+    let stripeBalanceTxId = null;
+    let stripeStatus = 'pending';
+    let availableOn = null;
+    let clubAvailableOn = null;
+    let paymentMethod = null;
+
+    if (session.payment_intent) {
+        try {
+            const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
+            const pi = await stripe.paymentIntents.retrieve(session.payment_intent, {
+                expand: ['latest_charge.balance_transaction', 'latest_charge.payment_method_details']
+            });
+            const charge = pi.latest_charge;
+            const bt = charge?.balance_transaction;
+
+            if (charge?.payment_method_details?.type) {
+                paymentMethod = charge.payment_method_details.type;
+            }
+            if (bt) {
+                stripeBalanceTxId = bt.id;
+                stripeStatus = bt.status || 'pending'; // 'available', 'pending'
+                availableOn = bt.available_on ? new Date(bt.available_on * 1000) : null;
+                if (availableOn) {
+                    clubAvailableOn = new Date(availableOn.getTime() + PLATFORM_HOLDING_DAYS * 24 * 60 * 60 * 1000);
+                }
+                // Usamos el fee real de Stripe (no la estimación)
+                if (typeof bt.fee === 'number') {
+                    estimatedStripeFee = bt.fee / 100;
+                    netAmount = Math.max(0, totalAmount - applicationFee - estimatedStripeFee);
+                }
+            }
+        } catch (stripeErr) {
+            console.error('[Stripe Webhook] No pude leer balance transaction (se usa estimación):', stripeErr?.message);
+        }
+    }
 
     try {
         await prisma.payment.create({
@@ -447,10 +492,17 @@ async function handleSuccessfulDonationCheckout(session) {
                 netAmount,
                 isPlatformCollection: true,
                 clubId,
+                stripeBalanceTxId,
+                stripeStatus,
+                availableOn,
+                clubAvailableOn,
+                paymentMethod,
                 rawPayload: JSON.stringify({
                     sessionId: session.id,
                     mode: session.mode,
-                    customerDetails: session.customer_details
+                    customerDetails: session.customer_details,
+                    stripeBalanceTxId,
+                    stripeFee: estimatedStripeFee
                 })
             }
         });
