@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// FINANCIAL V4.421 | 2026-05-20 (FINANCIAL — mini-wallet con sync Stripe + buckets por estado 💼🔄)
-// Cache bust: 2026-05-20 23:59 (FINANCIAL v4.421 💼🔄)
+// FINANCIAL V4.422 | 2026-05-21 (FINANCIAL — sync Stripe retroactivo + desglose de fees 🔄💵)
+// Cache bust: 2026-05-21 00:30 (FINANCIAL v4.422 🔄💵)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.422',
+        date: '2026-05-21',
+        title: 'Financial — Sync retroactivo con Stripe + desglose de fees por transacción 🔄💵',
+        description: 'Cliente reportó: las 2 donaciones de $1 USD del Club Bogotá Centenario aparecían como "Disponible para Retiro $1.24" en la Bóveda, pero Stripe las muestra como "Incoming, May 21". La discrepancia es porque esas donaciones se crearon antes de v4.421 (cuando agregamos sync con Stripe), entonces el sistema las clasificaba como "available" por defecto. Solución: nuevo endpoint POST /api/financial/wallet/sync-stripe que recorre los Payments del club sin availableOn, consulta a Stripe (paymentIntents.retrieve con expand[latest_charge.balance_transaction]) y los enriquece con fee real, status, availableOn, clubAvailableOn y paymentMethod. Idempotente — se puede correr cuantas veces se quiera. Botón "Sincronizar con Stripe" en la Bóveda lo dispara. Bonus: cada transacción ahora se puede expandir para ver el desglose completo de fees igual que en Stripe Dashboard: Bruto → −Stripe processing fee → −Club Platform 5% → Neto para el club.',
+        type: 'fixed',
+        author: 'Claude',
+        details: [
+            'Backend: nuevo endpoint POST /api/financial/wallet/sync-stripe acepta { clubId?, force? }. Por defecto sincroniza sólo Payments sin availableOn. Con force=true reprocesa todos. Por cada uno: resuelve providerRef (cs_... o pi_...) → retrieve PaymentIntent → balance_transaction → actualiza Payment con stripeBalanceTxId, stripeStatus, availableOn, clubAvailableOn (= availableOn + 6 días), paymentMethod, applicationFee recalculado, netAmount recalculado con fee real de Stripe.',
+            'Backend: /api/financial/wallet ahora retorna stripeFee y netStripe explícitos en cada item, separados del applicationFee (Valkomen 5%). Permite a la UI mostrar el desglose tipo Stripe.',
+            'Frontend: botón "Sincronizar con Stripe" en el header del bloque "Estado del dinero" con icono RefreshCw animado. Toast con resultado (synced/total/failed/skipped). Refresca la wallet automáticamente al terminar.',
+            'Frontend: WalletTxRow ahora es clickeable y se expande para mostrar desglose detallado: "Monto pagado por el donante $X.XX − Stripe processing fee $X.XX − Club Platform (5%) $X.XX = Neto para el club $X.XX". Además: método de pago, tx id Stripe, status, fecha de available_on.',
+            'Test plan: ir a /admin/boveda → click "Sincronizar con Stripe". Las 2 donaciones de prueba deben pasar de "Disponible" a "En Tránsito" porque Stripe dice "incoming May 21". Click en una transacción para ver el desglose completo de fees.',
+            'Pendiente para próxima fase: webhook handler para charge.refunded que actualice Payment.status a "refunded" automáticamente; cron job de sync periódico que reconcilie todos los Payments cada día.'
+        ]
+    },
     {
         version: 'v4.421',
         date: '2026-05-20',

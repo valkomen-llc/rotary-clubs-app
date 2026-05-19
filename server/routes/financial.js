@@ -7,7 +7,8 @@ import {
     listClubDonations,
     getEmailDiagnostics,
     sendTestEmail,
-    getClubWallet
+    getClubWallet,
+    syncPaymentsWithStripe
 } from '../controllers/financialController.js';
 
 const router = express.Router();
@@ -31,6 +32,10 @@ router.get('/donations', authMiddleware, listClubDonations);
 // AUTENTICADO — mini-wallet sincronizada con Stripe: buckets por estado
 // (en tránsito / disponible próximamente / disponible / transferido)
 router.get('/wallet', authMiddleware, getClubWallet);
+
+// v4.422 — Sync retroactivo: enriquece Payments existentes con datos de
+// Stripe (fee real, availableOn, status, payment method). Idempotente.
+router.post('/wallet/sync-stripe', authMiddleware, syncPaymentsWithStripe);
 
 // v4.418 — DIAGNÓSTICO de email (super admin) para debuggear que el recibo no llega
 router.get('/email-status', authMiddleware, getEmailDiagnostics);
