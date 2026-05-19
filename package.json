@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.415.0",
-  "cache_bust": "2026-05-20 18:30 (FINANCIAL HOTFIX REAL — fallback de API_URL a '/api' en WalletManagement v4.415 🎯)",
+  "version": "4.416.0",
+  "cache_bust": "2026-05-20 19:30 (FINANCIAL — donaciones desde proyectos cableadas al motor Stripe centralizado v4.416 🎯💰)",
   "type": "module",
-  "//": "FINANCIAL V4.415 | 2026-05-20 (HOTFIX REAL — el Network Error de la Bóveda NO era backend (mi diagnóstico anterior fue incorrecto): WalletManagement.tsx tenía un fallback heredado `import.meta.env.VITE_API_URL || 'http://localhost:5001/api'`. En producción VITE_API_URL no está definida, así que el browser intentaba llamar a `http://localhost:5001/api/payouts/balance` → host inexistente en la máquina del usuario → Network Error. AdminLayout (topbar) tiene el fallback correcto `'/api'` (relativo) por eso funciona. Fix: cambiar el fallback a `'/api'` en WalletManagement.tsx + Shop.tsx + ProductDetail.tsx + OrdersManagement.tsx + StoreManagement.tsx (todos tenían el mismo bug heredado). Las mejoras v4.411-v4.414 (mount, singleton, pg directo) siguen siendo válidas pero NO eran el bug 🎯)",
+  "//": "FINANCIAL V4.416 | 2026-05-20 (FINANCIAL — el modal 'Haz tu Donación' en proyectos de impacto YA NO es un placeholder. Antes 'Continuar con la Donación' sólo cerraba el modal; ahora llama al mismo /api/financial/donate de Maneras de Contribuir pasando `projectId`, redirige a Stripe Checkout, y cuando el pago se confirma el webhook crea Donation con projectId set + incrementa project.recaudado y project.donantes automáticamente. El recibo por email menciona el proyecto destinatario (con imagen + categoría). Cancel URL del checkout vuelve al proyecto. Montos en USD para consistency con Maneras de Contribuir (mezcla USD/COP rompería el cálculo unificado del balance en la Bóveda). Un solo motor financiero para Maneras de Contribuir + proyectos + futuros módulos 🎯💰)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

@@ -23,7 +23,7 @@ const resolveOrigin = (req, returnUrl) => {
 };
 
 // POST /api/financial/donate  (público — cualquier visitante puede donar)
-// Body: { clubId, amount, currency?, frequency?, donorEmail, donorName?, message?, isAnonymous?, returnUrl? }
+// Body: { clubId, amount, currency?, frequency?, donorEmail, donorName?, message?, isAnonymous?, projectId?, returnUrl? }
 export const createDonationCheckout = async (req, res) => {
     try {
         const {
@@ -35,6 +35,7 @@ export const createDonationCheckout = async (req, res) => {
             donorName = '',
             message = '',
             isAnonymous = false,
+            projectId = null, // v4.416 — donación asociada a proyecto (opcional)
             returnUrl
         } = req.body || {};
 
@@ -59,10 +60,27 @@ export const createDonationCheckout = async (req, res) => {
         });
         if (!club) return res.status(404).json({ error: 'Club no encontrado' });
 
+        // v4.416 — Si la donación va a un proyecto, validar que existe y pertenece al club
+        let project = null;
+        if (projectId) {
+            project = await prisma.project.findUnique({
+                where: { id: projectId },
+                select: { id: true, title: true, clubId: true, image: true }
+            });
+            if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' });
+            if (project.clubId !== clubId) {
+                return res.status(400).json({ error: 'El proyecto no pertenece al club indicado' });
+            }
+        }
+
         const stripe = getStripe();
         const amountInCents = Math.round(numericAmount * 100);
         const origin = resolveOrigin(req, returnUrl);
         const normalizedCurrency = String(currency).toLowerCase();
+
+        const productName = project
+            ? `Aporte al proyecto: ${project.title}`
+            : `Donación a ${club.name}`;
 
         const session = await stripe.checkout.sessions.create({
             mode: 'payment',
@@ -72,21 +90,22 @@ export const createDonationCheckout = async (req, res) => {
                 price_data: {
                     currency: normalizedCurrency,
                     product_data: {
-                        name: `Donación a ${club.name}`,
+                        name: productName,
                         description: message
                             ? `Mensaje del donante: ${String(message).slice(0, 180)}`
-                            : 'Aporte voluntario'
+                            : (project ? `${club.name} — proyecto de impacto social` : 'Aporte voluntario')
                     },
                     unit_amount: amountInCents
                 },
                 quantity: 1
             }],
             success_url: `${origin}/donacion/exito?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${origin}/donacion/cancelada`,
+            cancel_url: project ? `${origin}/proyectos/${project.id}` : `${origin}/donacion/cancelada`,
             metadata: {
                 type: 'donation',
                 donationType: 'one-time',
                 clubId,
+                projectId: projectId || '',
                 donorEmail,
                 donorName: String(donorName || '').slice(0, 150),
                 message: String(message || '').slice(0, 500),

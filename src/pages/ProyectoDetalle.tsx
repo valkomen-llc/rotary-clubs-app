@@ -2,7 +2,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Heart, Users, MapPin, Calendar, Target,
   CheckCircle2, Facebook, Twitter, Linkedin, X, Loader2,
-  Tag, FileText, BarChart2
+  Tag, FileText, BarChart2, ShieldCheck
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import Navbar from '../sections/Navbar';
@@ -11,9 +11,6 @@ import { useClub } from '../contexts/ClubContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const API = import.meta.env.VITE_API_URL || '/api';
-
-const formatCurrency = (value: number) =>
-  new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(value);
 
 const formatShort = (value: number) => {
   if (value >= 1_000_000_000) return (value / 1_000_000_000).toFixed(1) + 'B';
@@ -45,8 +42,17 @@ const ProyectoDetalle = () => {
   const [proyecto, setProyecto] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [montoDonacion, setMontoDonacion] = useState(50000);
+  // v4.416 — Donación cableada al motor Stripe centralizado. Montos en USD para
+  // consistency con Maneras de Contribuir (mezcla USD/COP rompería el cálculo
+  // del balance unificado en la Bóveda).
+  const [montoDonacion, setMontoDonacion] = useState<number>(50);
   const [mostrarModal, setMostrarModal] = useState(false);
+  const [donorEmail, setDonorEmail] = useState('');
+  const [donorName, setDonorName] = useState('');
+  const [donorMessage, setDonorMessage] = useState('');
+  const [isAnonymous, setIsAnonymous] = useState(false);
+  const [donateSubmitting, setDonateSubmitting] = useState(false);
+  const [donateError, setDonateError] = useState<string | null>(null);
   const [activeImg, setActiveImg] = useState(0);
 
   useEffect(() => { window.scrollTo(0, 0); }, [id]);
@@ -70,6 +76,51 @@ const ProyectoDetalle = () => {
     };
     load();
   }, [club?.id, id]);
+
+  const handleDonate = async () => {
+    setDonateError(null);
+    if (!montoDonacion || montoDonacion < 1) {
+      setDonateError('Selecciona un monto válido (mínimo $1 USD).');
+      return;
+    }
+    if (!donorEmail || !/^\S+@\S+\.\S+$/.test(donorEmail)) {
+      setDonateError('Tu email es obligatorio para enviarte el recibo.');
+      return;
+    }
+    if (!club?.id || !id) {
+      setDonateError('No pudimos identificar el proyecto o el club.');
+      return;
+    }
+
+    setDonateSubmitting(true);
+    try {
+      const res = await fetch(`${API}/financial/donate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clubId: club.id,
+          projectId: id,
+          amount: montoDonacion,
+          currency: 'USD',
+          frequency: 'one-time',
+          donorEmail,
+          donorName: isAnonymous ? '' : donorName,
+          message: donorMessage,
+          isAnonymous,
+          returnUrl: window.location.origin,
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.url) {
+        throw new Error(data?.error || 'No pudimos iniciar el pago. Intenta de nuevo.');
+      }
+      window.location.href = data.url;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error inesperado iniciando el pago.';
+      setDonateError(message);
+      setDonateSubmitting(false);
+    }
+  };
 
   const SkeletonLoader = () => (
     <div className="animate-in fade-in duration-500">
@@ -369,53 +420,133 @@ const ProyectoDetalle = () => {
               </div>
             </section>
 
-            {/* Modal de Donación */}
+            {/* Modal de Donación — v4.416 cableado a Stripe Checkout */}
             {mostrarModal && (
-              <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                <div className="bg-white rounded-2xl max-w-md w-full p-6 relative shadow-2xl">
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+                <div className="bg-white rounded-2xl max-w-md w-full p-6 relative shadow-2xl my-8">
                   <button
-                    onClick={() => setMostrarModal(false)}
-                    className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+                    onClick={() => !donateSubmitting && setMostrarModal(false)}
+                    disabled={donateSubmitting}
+                    className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 disabled:opacity-50"
                   >
                     <X className="w-6 h-6" />
                   </button>
-                  <div className="text-center mb-6">
+                  <div className="text-center mb-5">
                     <div className="w-16 h-16 bg-rotary-blue/10 rounded-full flex items-center justify-center mx-auto mb-4">
                       <Heart className="w-8 h-8 text-rotary-blue" />
                     </div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">Haz tu Donación</h3>
+                    <h3 className="text-xl font-bold text-gray-900 mb-1">Haz tu Donación</h3>
                     <p className="text-gray-600 text-sm">Apoya el proyecto "{titulo}"</p>
                   </div>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Selecciona un monto</label>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Selecciona el monto (USD)</label>
                       <div className="grid grid-cols-3 gap-2 mb-3">
-                        {[25000, 50000, 100000, 200000, 500000, 1000000].map(monto => (
+                        {[10, 25, 50, 100, 250, 500].map(monto => (
                           <button
                             key={monto}
                             onClick={() => setMontoDonacion(monto)}
-                            className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                              montoDonacion === monto ? 'bg-rotary-blue text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            className={`py-2 px-3 rounded-lg text-sm font-bold transition-colors border-2 ${
+                              montoDonacion === monto
+                                ? 'border-rotary-blue bg-rotary-blue text-white'
+                                : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
                             }`}
                           >
-                            {formatCurrency(monto)}
+                            ${monto}
                           </button>
                         ))}
                       </div>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-600">Monto a donar:</span>
-                        <span className="text-xl font-bold text-rotary-blue">{formatCurrency(montoDonacion)}</span>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">$</span>
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          placeholder="Otro monto"
+                          value={[10, 25, 50, 100, 250, 500].includes(montoDonacion) ? '' : montoDonacion}
+                          onChange={(e) => setMontoDonacion(Number(e.target.value))}
+                          className="w-full pl-7 pr-3 py-2 border-2 border-gray-200 rounded-lg focus:border-rotary-blue outline-none text-sm font-semibold"
+                        />
                       </div>
                     </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Tu email (para el recibo)</label>
+                      <input
+                        type="email"
+                        placeholder="tu@correo.com"
+                        value={donorEmail}
+                        onChange={(e) => setDonorEmail(e.target.value)}
+                        required
+                        className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-rotary-blue outline-none text-sm"
+                      />
+                    </div>
+
+                    {!isAnonymous && (
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Nombre (opcional)</label>
+                        <input
+                          type="text"
+                          placeholder="Tu nombre"
+                          value={donorName}
+                          onChange={(e) => setDonorName(e.target.value)}
+                          className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-rotary-blue outline-none text-sm"
+                        />
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Mensaje al club (opcional)</label>
+                      <textarea
+                        placeholder="¿Quieres dejar un mensaje?"
+                        value={donorMessage}
+                        onChange={(e) => setDonorMessage(e.target.value)}
+                        rows={2}
+                        maxLength={500}
+                        className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-rotary-blue outline-none text-sm resize-none"
+                      />
+                    </div>
+
+                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={isAnonymous}
+                        onChange={(e) => setIsAnonymous(e.target.checked)}
+                        className="w-4 h-4 accent-rotary-blue"
+                      />
+                      Quiero donar como anónimo
+                    </label>
+
+                    <div className="bg-gray-50 p-3 rounded-lg flex justify-between items-center">
+                      <span className="text-gray-600 text-sm">Monto a donar:</span>
+                      <span className="text-xl font-bold text-rotary-blue">${montoDonacion} USD</span>
+                    </div>
+
+                    {donateError && (
+                      <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
+                        {donateError}
+                      </div>
+                    )}
+
                     <button
-                      onClick={() => setMostrarModal(false)}
-                      className="w-full bg-rotary-gold text-white py-3 rounded-full font-semibold hover:bg-[#c9a020] transition-colors"
+                      onClick={handleDonate}
+                      disabled={donateSubmitting}
+                      className="w-full bg-rotary-gold text-white py-3 rounded-full font-semibold hover:bg-[#c9a020] disabled:bg-gray-400 disabled:cursor-wait transition-colors flex items-center justify-center gap-2"
                     >
-                      Continuar con la Donación
+                      {donateSubmitting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Conectando con Stripe…
+                        </>
+                      ) : (
+                        <>Continuar con la Donación</>
+                      )}
                     </button>
-                    <p className="text-center text-xs text-gray-500">Tu donación es segura y encriptada. Recibirás un recibo por email.</p>
+
+                    <div className="flex items-center justify-center gap-1.5 text-[11px] text-gray-400">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      Pago seguro procesado por Stripe
+                    </div>
                   </div>
                 </div>
               </div>
