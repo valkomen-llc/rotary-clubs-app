@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.422.0",
-  "cache_bust": "2026-05-21 00:30 (FINANCIAL — sync Stripe retroactivo + desglose de fees v4.422 🔄💵)",
+  "version": "4.423.0",
+  "cache_bust": "2026-05-21 01:00 (UI — Donar Ahora → Realizar Aporte en proyectos v4.423 🪶)",
   "type": "module",
-  "//": "FINANCIAL V4.422 | 2026-05-21 (FINANCIAL — completa la mini-wallet con (1) sync retroactivo de Payments existentes: endpoint POST /api/financial/wallet/sync-stripe recorre los Payments del club sin availableOn, consulta stripe.paymentIntents.retrieve con expand, actualiza fee real, availableOn, clubAvailableOn, status, paymentMethod. Botón 'Sincronizar con Stripe' en la Bóveda. Idempotente. (2) Desglose explícito de fees: el endpoint /api/financial/wallet ahora separa stripeFee del applicationFee Valkomen. Click en cualquier transacción la expande y muestra: Bruto → −Stripe processing fee → −Club Platform 5% → Neto para el club, igual que Stripe Dashboard. Incluye método de pago, tx id, Stripe status y available_on. Las 2 donaciones de $1 USD del Club Bogotá Centenario quedarán correctamente clasificadas como 'En Tránsito' (no 'Disponible') tras un sync porque Stripe las tiene como 'incoming May 21' 🔄💵)",
+  "//": "UI V4.423 | 2026-05-21 (UI — micro-cambio: el CTA principal del proyecto en /proyectos/<slug> dice ahora 'Realizar Aporte' en lugar de 'Donar Ahora'. Tono más sobrio e institucional para campañas de fundraising rotarias. Modal de donación y Maneras de Contribuir se mantienen sin cambio 🪶)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
