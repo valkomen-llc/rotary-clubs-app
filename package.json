@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.409.0",
-  "cache_bust": "2026-05-20 12:30 (FINANCIAL — donaciones Stripe Checkout v4.409 💳)",
+  "version": "4.410.0",
+  "cache_bust": "2026-05-20 13:30 (FINANCIAL HOTFIX — mount /api/financial en api/index.js v4.410 🩹)",
   "type": "module",
-  "//": "FINANCIAL V4.409 | 2026-05-20 (FINANCIAL — motor de donaciones Stripe Checkout para Maneras de Contribuir. Visitante elige monto + email + datos → backend crea Checkout Session (cuenta master Valkomen) → redirect a Stripe → webhook registra Payment+Donation → balance del club disponible automático en Bóveda/WalletManagement. Páginas /donacion/exito y /donacion/cancelada. Donación mensual queda 'Próximamente'. Aplica a todos los sitios con Maneras de Contribuir 💳)",
+  "//": "FINANCIAL HOTFIX V4.410 | 2026-05-20 (HOTFIX — el feature v4.409 fallaba en producción con \"Unexpected token '<'\" porque /api/financial estaba montado en server/server.js (dev local) pero NO en api/index.js (entry de Vercel). Las requests caían al SPA catch-all y devolvían HTML. Fix: agregar lazy loader getFinancial + app.use('/api/financial', ...) en api/index.js. Ahora POST /api/financial/donate ruteа al financialController correctamente y el modal de donación funciona en producción 🩹)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

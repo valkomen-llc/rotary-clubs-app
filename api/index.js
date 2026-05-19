@@ -158,6 +158,8 @@ const getDomains = async () => _domains || (({ default: _domains } = await impor
 const getCron = async () => _cron || (({ default: _cron } = await import('../server/routes/cron.js')), _cron);
 let _social;
 const getSocial = async () => _social || (({ default: _social } = await import('../server/routes/social.js')), _social);
+let _financial;
+const getFinancial = async () => _financial || (({ default: _financial } = await import('../server/routes/financial.js')), _financial);
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
@@ -226,6 +228,9 @@ app.use('/api/district-analytics', async (req, res, next) => { try { return (awa
 
 // Social Publishing Engine — Phase 1 (Meta OAuth + accounts management)
 app.use('/api/social', async (req, res, next) => { try { return (await getSocial())(req, res, next); } catch (e) { console.error('API Error [social]:', e); res.status(500).json({ error: e.message }); } });
+
+// Donaciones + reportes financieros (v4.410 hotfix — el mount faltaba en api/index.js)
+app.use('/api/financial', async (req, res, next) => { try { return (await getFinancial())(req, res, next); } catch (e) { console.error('API Error [financial]:', e); res.status(500).json({ error: e.message }); } });
 
 // ── Frontend & SEO Injection ──────────────────────────────────────────────────
 app.get('*', async (req, res) => {

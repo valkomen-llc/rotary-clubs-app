@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// FINANCIAL V4.409 | 2026-05-20 (FINANCIAL — donaciones Stripe Checkout en Maneras de Contribuir 💳)
-// Cache bust: 2026-05-20 12:30 (FINANCIAL — Stripe Checkout v4.409 💳)
+// FINANCIAL HOTFIX V4.410 | 2026-05-20 (HOTFIX — mount /api/financial en api/index.js 🩹)
+// Cache bust: 2026-05-20 13:30 (FINANCIAL HOTFIX v4.410 🩹)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.410',
+        date: '2026-05-20',
+        title: 'Financial Hotfix — Mount /api/financial faltante en api/index.js 🩹',
+        description: 'Hotfix crítico para v4.409: en producción el modal de donación tiraba "Unexpected token \'<\', \\"<!DOCTYPE \\"... is not valid JSON" al hacer click en "Donar Ahora". Causa raíz: el router /api/financial estaba registrado en server/server.js (que sólo se usa en desarrollo local con npm run server) pero NO en api/index.js (el entry point real de Vercel en producción). Como Vercel monta rutas una por una en api/index.js, cualquier request a /api/financial/* caía al catch-all app.get("*") y devolvía dist/index.html — el frontend intentaba parsearlo como JSON y explotaba. Fix de una línea: agregamos el lazy loader getFinancial + app.use("/api/financial", ...) en api/index.js siguiendo el patrón de los demás routers. El modal de donación ahora ruteа correctamente al financialController y el flujo end-to-end funciona.',
+        type: 'fixed',
+        author: 'Claude',
+        details: [
+            'api/index.js: nuevo lazy loader getFinancial + mount app.use("/api/financial", ...) — mismo patrón que getSocial, getOrders, getPayments, etc.',
+            'Test de regresión: hacer POST a /api/financial/donate desde el modal en /maneras-de-contribuir debe devolver { url, sessionId } JSON, no HTML del SPA.',
+            'Lección: cuando se agrega un router nuevo en server/routes/, hay que registrarlo en DOS lugares — server/server.js (dev local) Y api/index.js (Vercel). Falta un test que falle al detectar routers huérfanos.',
+            'No hay cambios funcionales adicionales — la lógica de donaciones (financialController, webhook handler, páginas /donacion/exito y /donacion/cancelada) ya estaba bien en v4.409, sólo no llegaba a ejecutarse.'
+        ]
+    },
     {
         version: 'v4.409',
         date: '2026-05-20',
