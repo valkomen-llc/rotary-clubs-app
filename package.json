@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.418.0",
-  "cache_bust": "2026-05-20 21:30 (FINANCIAL — endpoints de diagnóstico de email v4.418 🔬✉️)",
+  "version": "4.419.0",
+  "cache_bust": "2026-05-20 22:30 (PROJECTS — Redactar SEO con IA en proyectos v4.419 ✨🔍)",
   "type": "module",
-  "//": "FINANCIAL V4.418 | 2026-05-20 (FINANCIAL — el cliente reporta que las donaciones se procesan correctamente pero NO llegan los correos de recibo al donante. Para diagnosticar agregamos: (1) GET /api/financial/email-status que verifica si RESEND_API_KEY está configurada, lista dominios verificados en Resend, cuenta SMTP fallbacks disponibles; (2) POST /api/financial/email-test con body {to} dispara un email de prueba y devuelve success/error con detalle; (3) Logging mejorado [DONATION-EMAIL] en handleSuccessfulDonationCheckout que muestra estado de Resend key, success/error del envío, sender, replyTo. La causa más probable: RESEND_API_KEY no está en Vercel o el dominio clubplatform.org no está verificado en Resend (rechaza el envío). El endpoint /email-status responde con la info exacta para decidir el próximo paso 🔬✉️)",
+  "//": "PROJECTS V4.419 | 2026-05-20 (PROJECTS — botón 'Redactar con IA' en el tab SEO de proyectos, igual al que ya existía en Noticias. Cuando el usuario hace click, el sistema analiza título + categoría + ubicación + beneficiarios + impacto + descripción y llama a /api/ai/suggest-seo con kind='project'. El endpoint usa un prompt especializado en fundraising/crowdfunding (urgencia social, beneficiarios, impacto medible) en vez del prompt genérico de noticias. Devuelve seoTitle (≤60), seoDescription (≤155), slug, keywords y tags optimizados para que el proyecto se posicione en Google al buscar términos como 'donar', 'rotary', categoría, ubicación. Vista previa de Google + indicadores de calidad SEO se actualizan en vivo apenas se aplican las sugerencias ✨🔍)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
