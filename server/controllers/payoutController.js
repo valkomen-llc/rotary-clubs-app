@@ -1,5 +1,10 @@
-// v4.413 — usar singleton de Prisma. En Vercel serverless, `new PrismaClient()`
-// por archivo agota el pool de Postgres en pocas requests → Network Error.
+// v4.414 — el flujo de LECTURA usa pg directo (db.js). El query engine de
+// Prisma cold-starts demasiado lento en Vercel serverless: la primera query
+// puede tomar varios segundos hasta que la function timeout y axios reporte
+// "Network Error". /api/admin/stats ya usa este patrón y funciona estable.
+// Para escrituras puntuales (requestPayout, updatePayoutStatus) sigue siendo
+// OK usar Prisma, no son hot path.
+import db from '../lib/db.js';
 import prisma from '../lib/prisma.js';
 
 // Get the available balance for a club (only for funds held by Valkomen)
@@ -11,40 +16,32 @@ export const getClubBalance = async (req, res) => {
             return res.status(400).json({ error: 'clubId is required' });
         }
 
-        // 1. Calculate total funds processed by Valkomen for this club
-        const successfulPlatformPayments = await prisma.payment.findMany({
-            where: {
-                clubId,
-                isPlatformCollection: true,
-                status: 'succeeded'
-            }
-        });
+        const [paymentsResult, payoutsResult] = await Promise.all([
+            db.query(
+                `SELECT COALESCE(SUM("netAmount"), 0) AS total FROM "Payment"
+                 WHERE "clubId" = $1 AND "isPlatformCollection" = true AND status = 'succeeded'`,
+                [clubId]
+            ),
+            db.query(
+                `SELECT COALESCE(SUM(amount), 0) AS total FROM "PayoutRequest"
+                 WHERE "clubId" = $1 AND status IN ('pending', 'processing', 'completed')`,
+                [clubId]
+            )
+        ]);
 
-        const totalCollected = successfulPlatformPayments.reduce((acc, curr) => acc + (curr.netAmount || 0), 0);
-
-        // 2. Calculate sum of existing payout requests (pending, processing, completed)
-        const payoutRequests = await prisma.payoutRequest.findMany({
-            where: {
-                clubId,
-                status: {
-                    in: ['pending', 'processing', 'completed']
-                }
-            }
-        });
-
-        const totalRequested = payoutRequests.reduce((acc, curr) => acc + curr.amount, 0);
-
+        const totalCollected = parseFloat(paymentsResult.rows[0]?.total || 0);
+        const totalRequested = parseFloat(payoutsResult.rows[0]?.total || 0);
         const availableBalance = Math.max(0, totalCollected - totalRequested);
 
         res.json({
             availableBalance,
             totalCollected,
             totalRequested,
-            currency: 'usd' // Defaults to USD, can be dynamic later
+            currency: 'USD'
         });
     } catch (error) {
-        console.error('Error getting club balance:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        console.error('[Payouts] Error getting club balance:', error);
+        res.status(500).json({ error: 'Internal server error', detail: error.message?.slice(0, 200) });
     }
 };
 
@@ -96,16 +93,24 @@ export const getClubPayoutHistory = async (req, res) => {
     try {
         const clubId = req.user.role === 'administrator' && req.query.clubId ? req.query.clubId : req.user.clubId;
 
-        const payouts = await prisma.payoutRequest.findMany({
-            where: { clubId },
-            orderBy: { createdAt: 'desc' },
-            include: { club: { select: { name: true } } }
-        });
+        if (!clubId) {
+            return res.status(400).json({ error: 'clubId is required' });
+        }
 
-        res.json(payouts);
+        // v4.414 — pg directo, mismo motivo que getClubBalance
+        const result = await db.query(
+            `SELECT id, amount, currency, status, "bankDetails", notes, "createdAt", "updatedAt"
+             FROM "PayoutRequest"
+             WHERE "clubId" = $1
+             ORDER BY "createdAt" DESC
+             LIMIT 200`,
+            [clubId]
+        );
+
+        res.json(result.rows);
     } catch (error) {
-        console.error('Error fetching payout history:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        console.error('[Payouts] Error fetching payout history:', error);
+        res.status(500).json({ error: 'Internal server error', detail: error.message?.slice(0, 200) });
     }
 };
 

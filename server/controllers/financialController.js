@@ -6,8 +6,9 @@
 // vía /api/payouts/balance porque Payment.isPlatformCollection = true.
 import Stripe from 'stripe';
 import prisma from '../lib/prisma.js';
+import db from '../lib/db.js'; // v4.414 — pg directo para LECTURAS (cold-start de Prisma es muy lento en Vercel)
 
-console.log('[FINANCIAL v4.409] Controller cargado — donaciones Stripe Checkout (master Valkomen + balance virtual por club)');
+console.log('[FINANCIAL v4.414] Controller cargado — donaciones Stripe Checkout (master Valkomen + balance virtual por club)');
 
 const DEFAULT_PLATFORM_FEE_PERCENTAGE = 0.05; // 5% Valkomen fee
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -135,6 +136,7 @@ export const getDonationSessionStatus = async (req, res) => {
 };
 
 // GET /api/financial/donations  (autenticado — el admin del club ve su historial)
+// v4.414 — pg directo. El query engine de Prisma cold-starts demasiado lento.
 export const listClubDonations = async (req, res) => {
     try {
         const clubId = req.user?.role === 'administrator' && req.query.clubId
@@ -143,11 +145,21 @@ export const listClubDonations = async (req, res) => {
 
         if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
 
-        const donations = await prisma.donation.findMany({
-            where: { clubId, status: 'success' },
-            orderBy: { date: 'desc' },
-            take: 200
-        });
+        const result = await db.query(
+            `SELECT id, amount, currency, "donorName", "donorEmail", status,
+                    "isAnonymous", message, date, "projectId"
+             FROM "Donation"
+             WHERE "clubId" = $1 AND status = 'success'
+             ORDER BY date DESC
+             LIMIT 200`,
+            [clubId]
+        );
+
+        const donations = result.rows.map(row => ({
+            ...row,
+            amount: parseFloat(row.amount),
+            isAnonymous: !!row.isAnonymous
+        }));
 
         const totalAmount = donations.reduce((acc, d) => acc + (d.amount || 0), 0);
 
@@ -159,6 +171,6 @@ export const listClubDonations = async (req, res) => {
         });
     } catch (error) {
         console.error('[FINANCIAL] Error listing donations:', error);
-        return res.status(500).json({ error: 'Error listando donaciones' });
+        return res.status(500).json({ error: 'Error listando donaciones', detail: error.message?.slice(0, 200) });
     }
 };

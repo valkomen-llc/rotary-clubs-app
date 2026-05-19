@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.413.0",
-  "cache_bust": "2026-05-20 16:30 (FINANCIAL HOTFIX — Prisma singleton en payouts + financial routes v4.413 🩹)",
+  "version": "4.414.0",
+  "cache_bust": "2026-05-20 17:30 (FINANCIAL — endpoints de Bóveda con pg directo (sin Prisma cold-start) v4.414 ⚡)",
   "type": "module",
-  "//": "FINANCIAL HOTFIX V4.413 | 2026-05-20 (HOTFIX — la Bóveda mostraba 'Network Error' al cargar balance/donaciones porque payoutController.js y routes/financial.js instanciaban `new PrismaClient()` por archivo. En Vercel serverless, cada cold start abre conexiones nuevas a Postgres, el pool se exhausta en pocas requests, y las siguientes timeout con Network Error. Fix: usar el singleton `import prisma from '../lib/prisma.js'` (mismo que usa paymentController.js correctamente). La donación de $1 USD del Club Bogotá Centenario ya estaba en DB — sólo los endpoints no podían alcanzarla 🩹)",
+  "//": "FINANCIAL V4.414 | 2026-05-20 (HOTFIX REAL — el singleton de Prisma de v4.413 NO resolvió el Network Error. Diagnóstico correcto: el QUERY ENGINE de Prisma cold-starts en 2-8 segundos en Vercel serverless (launches a child process en algunas configs), excediendo el timeout efectivo del request y haciendo que axios reporte Network Error antes de recibir respuesta. /api/admin/stats funciona porque usa `pg` directo (db.js) con Pool max=10 y connectionTimeoutMillis=2s. Fix: reescribir las queries de LECTURA de la Bóveda (getClubBalance, getClubPayoutHistory, listClubDonations) con pg directo, mismo patrón que /api/admin/stats. Las escrituras puntuales (requestPayout, updatePayoutStatus, webhook handler) mantienen Prisma porque no son hot path. La donación de $1 USD ya estaba en DB — sólo los endpoints no podían responder a tiempo ⚡)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
