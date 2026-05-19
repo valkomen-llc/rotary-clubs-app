@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
-import { Wallet, ArrowUpRight, Clock, CheckCircle2, XCircle, Building2, AlertCircle, Heart, Mail, MessageSquare, RefreshCw } from 'lucide-react';
+import { Wallet, ArrowUpRight, Clock, CheckCircle2, XCircle, Building2, AlertCircle, Heart, Mail, MessageSquare, RefreshCw, Plane, Hourglass, Send, Ban } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -35,8 +35,54 @@ interface DonationRecord {
     status: string;
 }
 
+// v4.421 — Wallet sincronizada con Stripe
+interface WalletItem {
+    id: string;
+    providerRef: string | null;
+    amount: number;
+    grossAmount: number;
+    fee: number;
+    applicationFee: number;
+    currency: string;
+    status: string;
+    stripeStatus: string | null;
+    availableOn: string | null;
+    clubAvailableOn: string | null;
+    paymentMethod: string | null;
+    stripeBalanceTxId: string | null;
+    createdAt: string;
+}
+interface WalletBucket { total: number; count: number; items: WalletItem[]; }
+interface WalletData {
+    currency: string;
+    buckets: {
+        processing: WalletBucket;
+        in_transit: WalletBucket;
+        available_soon: WalletBucket;
+        available: WalletBucket;
+        refunded: WalletBucket;
+        failed: WalletBucket;
+    };
+    summary: {
+        grossTotal: number;
+        netTotal: number;
+        inTransit: number;
+        availableSoon: number;
+        availableForWithdrawal: number;
+        transferred: number;
+        requested: number;
+        refunded: number;
+    };
+    platformHoldingDays: number;
+}
+
 const fmtUSD = (n: number | null | undefined) =>
     Number(n ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const fmtDate = (iso: string | null | undefined) => {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
+};
 
 export default function WalletManagement() {
     const { token } = useAuth();
@@ -47,6 +93,7 @@ export default function WalletManagement() {
     const [payouts, setPayouts] = useState<PayoutRequest[]>([]);
     const [donations, setDonations] = useState<DonationRecord[]>([]);
     const [donationsTotal, setDonationsTotal] = useState(0);
+    const [wallet, setWallet] = useState<WalletData | null>(null); // v4.421 — Stripe sync
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isRequesting, setIsRequesting] = useState(false);
@@ -72,10 +119,11 @@ export default function WalletManagement() {
 
         // Defensive: each endpoint resuelve independiente. Si /donations falla
         // (router no montado en algún env), balance + payouts siguen mostrándose.
-        const [balanceRes, payoutsRes, donationsRes] = await Promise.allSettled([
+        const [balanceRes, payoutsRes, donationsRes, walletRes] = await Promise.allSettled([
             axios.get(`${API_URL}/payouts/balance?clubId=${club?.id}`, { headers }),
             axios.get(`${API_URL}/payouts/history?clubId=${club?.id}`, { headers }),
             axios.get(`${API_URL}/financial/donations?clubId=${club?.id}`, { headers }),
+            axios.get(`${API_URL}/financial/wallet?clubId=${club?.id}`, { headers }), // v4.421 — buckets Stripe
         ]);
 
         if (balanceRes.status === 'fulfilled' && typeof balanceRes.value.data?.availableBalance === 'number') {
@@ -101,6 +149,13 @@ export default function WalletManagement() {
             setDonations([]);
             setDonationsTotal(0);
             console.error('[Wallet] donations fetch failed:', donationsRes);
+        }
+
+        if (walletRes.status === 'fulfilled' && walletRes.value.data?.summary) {
+            setWallet(walletRes.value.data);
+        } else {
+            setWallet(null);
+            console.error('[Wallet] wallet sync fetch failed:', walletRes);
         }
 
         setIsLoading(false);
@@ -218,6 +273,70 @@ export default function WalletManagement() {
                         </div>
                     </div>
                 </div>
+
+                {/* v4.421 — Estado financiero sincronizado con Stripe */}
+                {wallet && (
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <WalletBucketCard
+                                color="amber"
+                                icon={<Hourglass className="w-5 h-5" />}
+                                label="En Tránsito"
+                                total={wallet.summary.inTransit}
+                                count={wallet.buckets.in_transit.count + wallet.buckets.processing.count}
+                                hint="Stripe procesando el pago"
+                            />
+                            <WalletBucketCard
+                                color="sky"
+                                icon={<Plane className="w-5 h-5" />}
+                                label="Disponible Próximamente"
+                                total={wallet.summary.availableSoon}
+                                count={wallet.buckets.available_soon.count}
+                                hint={`Liberación en ~${wallet.platformHoldingDays} días`}
+                            />
+                            <WalletBucketCard
+                                color="emerald"
+                                icon={<CheckCircle2 className="w-5 h-5" />}
+                                label="Disponible para Retiro"
+                                total={wallet.summary.availableForWithdrawal}
+                                count={wallet.buckets.available.count}
+                                hint="Lista para solicitar payout"
+                            />
+                            <WalletBucketCard
+                                color="indigo"
+                                icon={<Send className="w-5 h-5" />}
+                                label="Transferido"
+                                total={wallet.summary.transferred}
+                                count={payouts.filter(p => p.status === 'completed').length}
+                                hint="Payouts completados al banco"
+                            />
+                        </div>
+
+                        {/* Transacciones detalladas con badges + timeline */}
+                        {(wallet.buckets.in_transit.items.length + wallet.buckets.available_soon.items.length + wallet.buckets.processing.items.length + wallet.buckets.refunded.items.length + wallet.buckets.failed.items.length) > 0 && (
+                            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+                                <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                    <Clock className="w-4 h-4 text-gray-400" />
+                                    Movimientos en proceso
+                                    <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full ml-1">
+                                        Sincronizado con Stripe
+                                    </span>
+                                </h3>
+                                <div className="space-y-2">
+                                    {[
+                                        ...wallet.buckets.processing.items.map(it => ({ ...it, bucket: 'processing' as const })),
+                                        ...wallet.buckets.in_transit.items.map(it => ({ ...it, bucket: 'in_transit' as const })),
+                                        ...wallet.buckets.available_soon.items.map(it => ({ ...it, bucket: 'available_soon' as const })),
+                                        ...wallet.buckets.refunded.items.map(it => ({ ...it, bucket: 'refunded' as const })),
+                                        ...wallet.buckets.failed.items.map(it => ({ ...it, bucket: 'failed' as const })),
+                                    ].map(item => (
+                                        <WalletTxRow key={item.id} item={item} />
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Aportes Recibidos (v4.412) */}
                 <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
@@ -435,5 +554,83 @@ export default function WalletManagement() {
 
             </div>
         </AdminLayout>
+    );
+}
+
+// v4.421 — Tarjeta de bucket en el header de la Bóveda.
+type BucketColor = 'amber' | 'sky' | 'emerald' | 'indigo' | 'red';
+function WalletBucketCard({ color, icon, label, total, count, hint }: {
+    color: BucketColor;
+    icon: React.ReactNode;
+    label: string;
+    total: number;
+    count: number;
+    hint: string;
+}) {
+    const palette: Record<BucketColor, { bg: string; text: string; accent: string }> = {
+        amber:   { bg: 'bg-amber-50',   text: 'text-amber-900',   accent: 'text-amber-600' },
+        sky:     { bg: 'bg-sky-50',     text: 'text-sky-900',     accent: 'text-sky-600' },
+        emerald: { bg: 'bg-emerald-50', text: 'text-emerald-900', accent: 'text-emerald-600' },
+        indigo:  { bg: 'bg-indigo-50',  text: 'text-indigo-900',  accent: 'text-indigo-600' },
+        red:     { bg: 'bg-red-50',     text: 'text-red-900',     accent: 'text-red-600' },
+    };
+    const p = palette[color];
+    return (
+        <div className={`${p.bg} rounded-2xl p-5 border border-gray-100`}>
+            <div className={`flex items-center gap-2 ${p.accent} mb-3`}>
+                {icon}
+                <span className="text-xs font-bold uppercase tracking-wider">{label}</span>
+            </div>
+            <div className={`text-3xl font-black ${p.text} leading-none mb-1`}>
+                ${fmtUSD(total)}
+            </div>
+            <div className="text-xs text-gray-500 font-medium mt-2">
+                {count} {count === 1 ? 'movimiento' : 'movimientos'} · {hint}
+            </div>
+        </div>
+    );
+}
+
+// v4.421 — Una fila por transacción con badge de estado + fechas estimadas
+function WalletTxRow({ item }: { item: WalletItem & { bucket: 'processing' | 'in_transit' | 'available_soon' | 'refunded' | 'failed' } }) {
+    const BADGES: Record<string, { label: string; bg: string; text: string; icon: React.ReactNode }> = {
+        processing:     { label: 'En procesamiento',      bg: 'bg-gray-100',    text: 'text-gray-700',    icon: <Hourglass className="w-3 h-3" /> },
+        in_transit:     { label: 'En tránsito',           bg: 'bg-amber-100',   text: 'text-amber-800',   icon: <Plane className="w-3 h-3" /> },
+        available_soon: { label: 'Disponible próximamente', bg: 'bg-sky-100',   text: 'text-sky-800',     icon: <Clock className="w-3 h-3" /> },
+        refunded:       { label: 'Reembolsado',           bg: 'bg-red-50',      text: 'text-red-700',     icon: <Ban className="w-3 h-3" /> },
+        failed:         { label: 'Fallido',               bg: 'bg-red-100',     text: 'text-red-800',     icon: <XCircle className="w-3 h-3" /> },
+    };
+    const badge = BADGES[item.bucket];
+    const ref = item.id.slice(-8).toUpperCase();
+    const dateLabel = item.bucket === 'available_soon' && item.clubAvailableOn
+        ? `Liberación: ${fmtDate(item.clubAvailableOn)}`
+        : item.bucket === 'in_transit' && item.availableOn
+            ? `Stripe libera: ${fmtDate(item.availableOn)}`
+            : null;
+
+    return (
+        <div className="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${badge.bg} ${badge.text} flex-shrink-0`}>
+                    {badge.icon}
+                    {badge.label}
+                </div>
+                <div className="min-w-0 flex-1">
+                    <div className="text-xs text-gray-500 font-medium truncate">
+                        {fmtDate(item.createdAt)}
+                        {dateLabel && <span className="ml-2 text-gray-400">· {dateLabel}</span>}
+                        <span className="ml-2 text-gray-300 font-mono">#{ref}</span>
+                    </div>
+                </div>
+            </div>
+            <div className="text-right flex-shrink-0">
+                <div className="font-bold text-sm text-gray-900">
+                    ${fmtUSD(item.amount)} <span className="text-[10px] text-gray-400">{item.currency}</span>
+                </div>
+                <div className="text-[10px] text-gray-400">
+                    bruto ${fmtUSD(item.grossAmount)} − fees ${fmtUSD(item.grossAmount - item.amount)}
+                </div>
+            </div>
+        </div>
     );
 }

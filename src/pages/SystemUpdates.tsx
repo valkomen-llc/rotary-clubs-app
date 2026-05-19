@@ -24,9 +24,27 @@ interface UpdateItem {
     details?: string[];
 }
 
-// PROJECTS V4.420 | 2026-05-20 (PROJECTS — URLs amigables /proyectos/<slug> 🔗)
-// Cache bust: 2026-05-20 23:30 (PROJECTS v4.420 🔗)
+// FINANCIAL V4.421 | 2026-05-20 (FINANCIAL — mini-wallet con sync Stripe + buckets por estado 💼🔄)
+// Cache bust: 2026-05-20 23:59 (FINANCIAL v4.421 💼🔄)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.421',
+        date: '2026-05-20',
+        title: 'Financial — Mini-wallet con sincronización real desde Stripe + buckets por estado 💼🔄',
+        description: 'La Bóveda evoluciona de un balance simple a una mini-wallet administrativa sincronizada en tiempo real con Stripe. Antes mostraba sólo $0.62 sin claridad de en qué estado estaba el dinero; ahora el club ve exactamente qué hay En Tránsito, qué estará Disponible Próximamente, qué está Disponible para Retiro y qué ya fue Transferido. Cada transacción muestra badges visuales con su estado real, la fecha estimada de liberación de Stripe y la fecha real cuando el club puede pedir payout (Stripe + 6 días de margen operativo Valkomen). El webhook ahora consulta el balance transaction de Stripe en el momento del cobro para popular fee real, status, fechas y método de pago. Operación financiera profesional, transparente y escalable.',
+        type: 'added',
+        author: 'Claude',
+        details: [
+            'Schema: Payment gana 5 campos opcionales (stripeBalanceTxId, stripeStatus, availableOn, clubAvailableOn, paymentMethod). Migration auto-aplicada en deploy via prisma db push. Cambios sólo aditivos, zero downtime.',
+            'paymentController.handleSuccessfulDonationCheckout: tras crear Payment llama a stripe.paymentIntents.retrieve con expand[latest_charge.balance_transaction] y popula los campos nuevos. El fee real de Stripe (bt.fee) sobrescribe la estimación de 2.9%+$0.30 que usábamos antes — netAmount queda más preciso. clubAvailableOn = availableOn + 6 días (PLATFORM_HOLDING_DAYS).',
+            'Nuevo endpoint GET /api/financial/wallet (auth, ?clubId opcional para super admin) devuelve buckets agrupados por estado real del dinero: processing (Stripe aún no confirma), in_transit (succeeded pero availableOn en el futuro), available_soon (Stripe libera pero margen Valkomen no cumplido), available (listo para retiro), refunded, failed. Cada bucket tiene total + count + lista de items con bruto/fee/neto/método/tx ID.',
+            'Cálculo de availableForWithdrawal: total del bucket available menos transferidos (payouts completed) menos solicitudes pendientes/processing. Evita que el club pida dos veces los mismos fondos.',
+            'WalletManagement.tsx: nuevo header con 4 tarjetas de colores (amber En Tránsito, sky Disponible Próximamente, emerald Disponible, indigo Transferido) cada una con conteo + hint. Total $ + número de movimientos por bucket.',
+            'Nueva sección "Movimientos en proceso" debajo del header con timeline de cada transacción no-disponible (processing, in_transit, available_soon, refunded, failed). Cada fila muestra badge con icono + fecha del aporte + fecha estimada de liberación (Stripe o Valkomen según bucket) + referencia única + bruto/fee/neto.',
+            'Backwards-compatible: el endpoint /api/payouts/balance existente sigue funcionando sin cambios. La sección "Aportes Recibidos" y "Solicitar Retiro" no se tocaron. Sólo se agregaron las nuevas secciones encima.',
+            'Test plan: hacer una donación de prueba → en /admin/boveda debe aparecer en "En Tránsito" o "Disponible Próximamente" (depende del tiempo de Stripe). Verificar que la transacción muestra badge correcto, fecha de liberación, y fees/neto detallados. Esperar ~7 días o hacer cron de sync para que pase a "Disponible para Retiro".'
+        ]
+    },
     {
         version: 'v4.420',
         date: '2026-05-20',
