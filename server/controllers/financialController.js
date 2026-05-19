@@ -7,8 +7,9 @@
 import Stripe from 'stripe';
 import prisma from '../lib/prisma.js';
 import db from '../lib/db.js'; // v4.414 — pg directo para LECTURAS (cold-start de Prisma es muy lento en Vercel)
+import EmailService from '../services/EmailService.js';
 
-console.log('[FINANCIAL v4.414] Controller cargado — donaciones Stripe Checkout (master Valkomen + balance virtual por club)');
+console.log('[FINANCIAL v4.418] Controller cargado — donaciones Stripe Checkout + email diagnostics');
 
 const DEFAULT_PLATFORM_FEE_PERCENTAGE = 0.05; // 5% Valkomen fee
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -191,5 +192,109 @@ export const listClubDonations = async (req, res) => {
     } catch (error) {
         console.error('[FINANCIAL] Error listing donations:', error);
         return res.status(500).json({ error: 'Error listando donaciones', detail: error.message?.slice(0, 200) });
+    }
+};
+
+// v4.418 — Diagnóstico de configuración de email. Sin exponer secretos:
+// solo reporta presencia/ausencia de keys, lista de dominios verificados en
+// Resend (si la API lo permite), y conteo de SMTP fallbacks disponibles.
+// GET /api/financial/email-status  (auth, super admin)
+export const getEmailDiagnostics = async (req, res) => {
+    if (req.user?.role !== 'administrator') {
+        return res.status(403).json({ error: 'Solo super administradores' });
+    }
+
+    const hasResendKey = !!process.env.RESEND_API_KEY;
+    const result = {
+        resend: { configured: hasResendKey, domains: null, error: null },
+        smtpFallback: { available: false, count: 0 },
+        sender: '"Club Platform for Rotary" <noreply@clubplatform.org>',
+        platformConfig: { emailFrom: null, emailProvider: null }
+    };
+
+    // Verifica si Resend acepta la API key y lista dominios
+    if (hasResendKey) {
+        try {
+            const resp = await fetch('https://api.resend.com/domains', {
+                headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}` }
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                result.resend.error = data.message || `HTTP ${resp.status}`;
+            } else {
+                result.resend.domains = (data.data || []).map(d => ({
+                    name: d.name,
+                    status: d.status,
+                    region: d.region
+                }));
+            }
+        } catch (e) {
+            result.resend.error = e.message?.slice(0, 200);
+        }
+    }
+
+    // Cuenta SMTP fallbacks (super admin SMTP)
+    try {
+        const smtpCount = await prisma.notificationConfig.count({
+            where: { type: 'smtp', enabled: true }
+        });
+        result.smtpFallback.available = smtpCount > 0;
+        result.smtpFallback.count = smtpCount;
+    } catch { /* ignore */ }
+
+    // PlatformConfig overrides
+    try {
+        const configs = await prisma.platformConfig.findMany({
+            where: { key: { in: ['email_from', 'email_provider'] } }
+        });
+        configs.forEach(c => {
+            if (c.key === 'email_from') result.platformConfig.emailFrom = c.value;
+            if (c.key === 'email_provider') result.platformConfig.emailProvider = c.value;
+        });
+    } catch { /* ignore */ }
+
+    return res.json(result);
+};
+
+// v4.418 — Disparar un email de prueba para verificar que la pipeline funciona.
+// POST /api/financial/email-test  (auth, super admin)
+// Body: { to: '...' }
+export const sendTestEmail = async (req, res) => {
+    if (req.user?.role !== 'administrator') {
+        return res.status(403).json({ error: 'Solo super administradores' });
+    }
+
+    const { to } = req.body || {};
+    if (!to || !/^\S+@\S+\.\S+$/.test(to)) {
+        return res.status(400).json({ error: 'Email destinatario inválido' });
+    }
+
+    const html = `
+<div style="font-family: -apple-system, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; background: #f8fafc;">
+    <div style="background: #ffffff; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+        <h2 style="color: #0B223F; margin: 0 0 16px;">✅ Email de prueba — Club Platform</h2>
+        <p style="color: #4b5563; line-height: 1.6;">Este es un correo de prueba enviado desde Club Platform a través de Resend / SMTP fallback.</p>
+        <p style="color: #6b7280; font-size: 14px;">Si recibiste este email, significa que la pipeline de notificaciones transaccionales está funcionando correctamente.</p>
+        <p style="color: #9ca3af; font-size: 12px; margin-top: 24px;">Disparado a las ${new Date().toISOString()}</p>
+    </div>
+</div>`;
+
+    try {
+        const result = await EmailService.sendPlatformEmail({
+            to,
+            subject: '✅ Email de prueba — Club Platform',
+            html,
+            from: '"Club Platform for Rotary" <noreply@clubplatform.org>'
+        });
+        console.log(`[FINANCIAL] Email test enviado a ${to}:`, result);
+        return res.json({
+            success: result.success === true,
+            messageId: result.messageId || null,
+            error: result.error || null,
+            to
+        });
+    } catch (e) {
+        console.error('[FINANCIAL] Email test error:', e);
+        return res.status(500).json({ success: false, error: e.message?.slice(0, 200), to });
     }
 };

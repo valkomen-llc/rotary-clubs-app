@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.417.0",
-  "cache_bust": "2026-05-20 20:30 (PROJECTS — SEO completo en proyectos de impacto v4.417 🔍📈)",
+  "version": "4.418.0",
+  "cache_bust": "2026-05-20 21:30 (FINANCIAL — endpoints de diagnóstico de email v4.418 🔬✉️)",
   "type": "module",
-  "//": "PROJECTS V4.417 | 2026-05-20 (PROJECTS — SEO completo en proyectos de impacto, reutilizando la misma arquitectura del blog. Modelo Project gana 7 campos: seoTitle, seoDescription, seoKeywords, seoImage, slug (unique), socialCopy, indexable. Migration auto-aplicada en deploy via `prisma db push --accept-data-loss --skip-generate` en el build script. Nuevo tab SEO en el modal de Configurar Proyecto con vista previa de Google en vivo, contadores de caracteres, switch de indexación y editor de slug. ProyectoDetalle.tsx inyecta <title>, meta description, OG, Twitter card y canonical URL dinámicos. Sitemap.xml respeta indexable=false y usa slug si está disponible. Endpoint /api/seo/og/project/:id soporta lookup por id O slug y prioriza los campos SEO específicos sobre los genéricos. Próxima fase: rutas /proyectos/:slug en el router 🔍📈)",
+  "//": "FINANCIAL V4.418 | 2026-05-20 (FINANCIAL — el cliente reporta que las donaciones se procesan correctamente pero NO llegan los correos de recibo al donante. Para diagnosticar agregamos: (1) GET /api/financial/email-status que verifica si RESEND_API_KEY está configurada, lista dominios verificados en Resend, cuenta SMTP fallbacks disponibles; (2) POST /api/financial/email-test con body {to} dispara un email de prueba y devuelve success/error con detalle; (3) Logging mejorado [DONATION-EMAIL] en handleSuccessfulDonationCheckout que muestra estado de Resend key, success/error del envío, sender, replyTo. La causa más probable: RESEND_API_KEY no está en Vercel o el dominio clubplatform.org no está verificado en Resend (rechaza el envío). El endpoint /email-status responde con la info exacta para decidir el próximo paso 🔬✉️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
