@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// FINANCIAL HOTFIX V4.413 | 2026-05-20 (HOTFIX — Prisma singleton en payouts + financial routes 🩹)
-// Cache bust: 2026-05-20 16:30 (FINANCIAL HOTFIX v4.413 🩹)
+// FINANCIAL V4.414 | 2026-05-20 (HOTFIX REAL — endpoints de Bóveda con pg directo ⚡)
+// Cache bust: 2026-05-20 17:30 (FINANCIAL v4.414 ⚡)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.414',
+        date: '2026-05-20',
+        title: 'Financial — Hotfix real: endpoints de Bóveda con pg directo (sin cold-start de Prisma) ⚡',
+        description: 'El fix del Prisma singleton de v4.413 NO resolvió el "No pudimos cargar el balance (Network Error)". Diagnóstico correcto: el query engine de Prisma cold-starts en 2-8 segundos en Vercel serverless (lanza un binario auxiliar la primera vez que se hace una query), tiempo durante el cual axios en el browser timeouts y reporta Network Error antes de que la response llegue. /api/admin/stats funciona perfecto porque usa `pg` directo con Pool singleton (db.js) — conecta inmediato, queries en milisegundos. Fix: reescribir las 3 queries de LECTURA de la Bóveda (getClubBalance, getClubPayoutHistory, listClubDonations) usando el mismo patrón pg directo. Las escrituras puntuales (requestPayout, updatePayoutStatus, webhook que registra Payment+Donation) mantienen Prisma porque no son hot path y el cold-start ya se "amortiza" al primer hit. La donación de $1 USD del Club Bogotá Centenario ya estaba en DB desde v4.410 — sólo los endpoints no podían responder a tiempo.',
+        type: 'fixed',
+        author: 'Claude',
+        details: [
+            'payoutController.getClubBalance: ahora hace SELECT SUM("netAmount") FROM "Payment" + SELECT SUM(amount) FROM "PayoutRequest" en paralelo via db.query. Devuelve { availableBalance, totalCollected, totalRequested, currency: "USD" }.',
+            'payoutController.getClubPayoutHistory: SELECT * FROM "PayoutRequest" WHERE clubId ORDER BY createdAt DESC LIMIT 200. Estructura idéntica a la anterior con Prisma.',
+            'financialController.listClubDonations: SELECT * FROM "Donation" WHERE clubId AND status="success" ORDER BY date DESC LIMIT 200. Cast explícito de amount a float y isAnonymous a bool por consistencia (pg devuelve numeric como string).',
+            'Lección actualizada: en Vercel serverless con Prisma, los endpoints de UI que necesitan respuesta <2s deben usar pg directo. Prisma es OK para writes individuales (idempotent webhook handlers, etc) pero introduce latencia notable en reads. Considerar Prisma Accelerate o Neon serverless adapter para resolverlo de raíz en el futuro.',
+            'Test plan: recargar /admin/boveda — el banner amber debe desaparecer, los cards mostrar $0.62 USD disponible, $1.00 total recaudado, 1 donación en Aportes Recibidos con el detalle completo del donante.',
+            'Pendientes (housekeeping, no en este PR): migrar los otros 6 archivos que usan `new PrismaClient()` (cron, seo, youth-exchange, rotex, ngse, sponsored-clubs, documents, technicalRequestController, grantsController) al singleton de lib/prisma.js para evitar pool exhaustion eventual.'
+        ]
+    },
     {
         version: 'v4.413',
         date: '2026-05-20',
