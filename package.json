@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.411.0",
-  "cache_bust": "2026-05-20 14:30 (FINANCIAL — recibo por email + Bóveda visible en Finanzas v4.411 💰✉️)",
+  "version": "4.412.0",
+  "cache_bust": "2026-05-20 15:30 (FINANCIAL — sección Aportes Recibidos + render robusto en Bóveda v4.412 📥)",
   "type": "module",
-  "//": "FINANCIAL V4.411 | 2026-05-20 (FINANCIAL — completa el flujo de donaciones con (1) recibo transaccional al donante vía Resend desde noreply@clubplatform.org (HTML con branding del club, monto, fecha, referencia, mensaje), (2) mount de /api/payouts faltante en api/index.js — mismo bug que v4.410 con /api/financial, ahora la Bóveda muestra correctamente fondo disponible / total recaudado / en tránsito, (3) Bóveda de Fondos movida de E-commerce → Finanzas en el sidebar, visible para todo club admin (no depende de tener tienda activa). Reply-to del recibo apunta al email del club para responder al donante directo 💰✉️)",
+  "//": "FINANCIAL V4.412 | 2026-05-20 (FINANCIAL — la Bóveda ahora muestra la sección 'Aportes Recibidos' con la lista completa de donaciones del club (donante, monto, fecha, email, mensaje, referencia única), consumiendo GET /api/financial/donations. Total acumulado de aportes visible en el header junto a fondo disponible / total recaudado / en tránsito. Render robusto: si la API falla los montos se muestran como $0.00 con banner de error en vez de '$' vacío. Botón refresh manual. Helper fmtUSD centralizado. Promise.allSettled para que el fallo de un endpoint no rompa los otros 📥)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
