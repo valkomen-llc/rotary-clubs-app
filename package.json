@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.421.0",
-  "cache_bust": "2026-05-20 23:59 (FINANCIAL — mini-wallet con sync Stripe + buckets por estado v4.421 💼🔄)",
+  "version": "4.422.0",
+  "cache_bust": "2026-05-21 00:30 (FINANCIAL — sync Stripe retroactivo + desglose de fees v4.422 🔄💵)",
   "type": "module",
-  "//": "FINANCIAL V4.421 | 2026-05-20 (FINANCIAL — la Bóveda evoluciona a una mini-wallet administrativa sincronizada con Stripe. El webhook handleSuccessfulDonationCheckout ahora consulta stripe.paymentIntents.retrieve con expand[latest_charge.balance_transaction] para popular en Payment: stripeBalanceTxId, stripeStatus, availableOn (cuándo Stripe libera) y clubAvailableOn (availableOn + 6 días de margen operativo Valkomen). El fee real de Stripe sobrescribe la estimación previa. Nuevo endpoint /api/financial/wallet devuelve buckets agrupados por estado: processing, in_transit, available_soon, available, refunded, failed con sumas + lista detallada. UI WalletManagement.tsx muestra 4 tarjetas (En Tránsito / Disponible Próximamente / Disponible para Retiro / Transferido) y una sección 'Movimientos en proceso' con badges visuales + fecha estimada de liberación Stripe + fecha real de retiro Valkomen + bruto/fee/neto por transacción. Schema Project.Payment gana 5 columnas opcionales (migration automática vía db push). Backwards-compatible con /api/payouts/balance existente 💼🔄)",
+  "//": "FINANCIAL V4.422 | 2026-05-21 (FINANCIAL — completa la mini-wallet con (1) sync retroactivo de Payments existentes: endpoint POST /api/financial/wallet/sync-stripe recorre los Payments del club sin availableOn, consulta stripe.paymentIntents.retrieve con expand, actualiza fee real, availableOn, clubAvailableOn, status, paymentMethod. Botón 'Sincronizar con Stripe' en la Bóveda. Idempotente. (2) Desglose explícito de fees: el endpoint /api/financial/wallet ahora separa stripeFee del applicationFee Valkomen. Click en cualquier transacción la expande y muestra: Bruto → −Stripe processing fee → −Club Platform 5% → Neto para el club, igual que Stripe Dashboard. Incluye método de pago, tx id, Stripe status y available_on. Las 2 donaciones de $1 USD del Club Bogotá Centenario quedarán correctamente clasificadas como 'En Tránsito' (no 'Disponible') tras un sync porque Stripe las tiene como 'incoming May 21' 🔄💵)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

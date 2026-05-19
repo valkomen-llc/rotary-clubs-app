@@ -9,7 +9,11 @@ import prisma from '../lib/prisma.js';
 import db from '../lib/db.js'; // v4.414 — pg directo para LECTURAS (cold-start de Prisma es muy lento en Vercel)
 import EmailService from '../services/EmailService.js';
 
-console.log('[FINANCIAL v4.418] Controller cargado — donaciones Stripe Checkout + email diagnostics');
+console.log('[FINANCIAL v4.422] Controller cargado — donaciones Stripe Checkout + sync retroactivo');
+
+// v4.422 — Margen Valkomen para retiro (debe coincidir con paymentController)
+const PLATFORM_HOLDING_DAYS = 6;
+const PLATFORM_FEE_PERCENTAGE = 0.05;
 
 const DEFAULT_PLATFORM_FEE_PERCENTAGE = 0.05; // 5% Valkomen fee
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -244,14 +248,21 @@ export const getClubWallet = async (req, res) => {
         };
 
         for (const p of paymentsResult.rows) {
-            const amount = parseFloat(p.netAmount || 0);
+            const grossAmount = parseFloat(p.amount || 0);
+            const netClub = parseFloat(p.netAmount || 0);
+            const valkomenFee = parseFloat(p.applicationFee || 0);
+            // Stripe fee = lo que falta entre el bruto, el net que recibe el club, y el fee Valkomen
+            const stripeFee = Math.max(0, grossAmount - netClub - valkomenFee);
+            const netStripe = grossAmount - stripeFee; // lo que entra a la cuenta master Valkomen
             const item = {
                 id: p.id,
                 providerRef: p.providerRef,
-                amount,
-                grossAmount: parseFloat(p.amount || 0),
-                fee: parseFloat(p.applicationFee || 0) + (parseFloat(p.amount || 0) - parseFloat(p.netAmount || 0) - parseFloat(p.applicationFee || 0)),
-                applicationFee: parseFloat(p.applicationFee || 0),
+                amount: netClub,           // net final para el club (retirable)
+                grossAmount,
+                stripeFee,                 // v4.422 — fee Stripe explícito
+                netStripe,                 // v4.422 — net después de Stripe (antes de Valkomen)
+                applicationFee: valkomenFee, // fee Valkomen
+                fee: stripeFee + valkomenFee, // total fees (compat)
                 currency: p.currency,
                 status: p.status,
                 stripeStatus: p.stripeStatus,
@@ -420,5 +431,116 @@ export const sendTestEmail = async (req, res) => {
     } catch (e) {
         console.error('[FINANCIAL] Email test error:', e);
         return res.status(500).json({ success: false, error: e.message?.slice(0, 200), to });
+    }
+};
+
+// v4.422 — Sync retroactivo de Payments existentes con Stripe.
+// Los Payments creados antes de v4.421 no tienen availableOn, stripeStatus
+// ni fee real. Este endpoint los recorre, consulta Stripe, y los enriquece.
+// POST /api/financial/wallet/sync-stripe  Body: { clubId?, force? }
+//   - clubId opcional (super admin puede targetear un club específico)
+//   - force=true reprocesa Payments que ya tienen availableOn
+export const syncPaymentsWithStripe = async (req, res) => {
+    try {
+        const targetClubId = req.user?.role === 'administrator' && req.body?.clubId
+            ? req.body.clubId
+            : req.user?.clubId;
+        if (!targetClubId) return res.status(400).json({ error: 'clubId requerido' });
+
+        const force = req.body?.force === true;
+
+        // Listamos Payments candidatos: del club, con providerRef, succeeded.
+        // Por defecto sólo los que no tienen availableOn (los nuevos ya vienen sincronizados).
+        const candidates = await prisma.payment.findMany({
+            where: {
+                clubId: targetClubId,
+                provider: 'stripe',
+                status: 'succeeded',
+                providerRef: { not: null },
+                ...(force ? {} : { availableOn: null })
+            },
+            select: {
+                id: true, providerRef: true, amount: true, currency: true,
+                applicationFee: true, availableOn: true, stripeBalanceTxId: true
+            },
+            take: 200
+        });
+
+        if (candidates.length === 0) {
+            return res.json({ synced: 0, failed: 0, skipped: 0, total: 0, details: [] });
+        }
+
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
+        const results = { synced: 0, failed: 0, skipped: 0, total: candidates.length, details: [] };
+
+        for (const payment of candidates) {
+            try {
+                let paymentIntentId = payment.providerRef;
+
+                // El providerRef puede ser cs_... (Checkout Session) o pi_... (PaymentIntent)
+                if (paymentIntentId.startsWith('cs_')) {
+                    const session = await stripe.checkout.sessions.retrieve(paymentIntentId);
+                    paymentIntentId = session.payment_intent;
+                    if (!paymentIntentId) {
+                        results.failed++;
+                        results.details.push({ id: payment.id, error: 'Session sin payment_intent' });
+                        continue;
+                    }
+                }
+
+                const pi = await stripe.paymentIntents.retrieve(paymentIntentId, {
+                    expand: ['latest_charge.balance_transaction', 'latest_charge.payment_method_details']
+                });
+                const charge = pi.latest_charge;
+                const bt = charge?.balance_transaction;
+
+                if (!bt) {
+                    results.skipped++;
+                    results.details.push({ id: payment.id, skipped: 'Charge sin balance transaction aún' });
+                    continue;
+                }
+
+                const realFee = (bt.fee || 0) / 100;
+                const totalAmount = payment.amount;
+                const applicationFee = totalAmount * PLATFORM_FEE_PERCENTAGE;
+                const newNetAmount = Math.max(0, totalAmount - applicationFee - realFee);
+
+                const availableOn = bt.available_on ? new Date(bt.available_on * 1000) : null;
+                const clubAvailableOn = availableOn
+                    ? new Date(availableOn.getTime() + PLATFORM_HOLDING_DAYS * 24 * 60 * 60 * 1000)
+                    : null;
+
+                await prisma.payment.update({
+                    where: { id: payment.id },
+                    data: {
+                        stripeBalanceTxId: bt.id,
+                        stripeStatus: bt.status || 'pending',
+                        availableOn,
+                        clubAvailableOn,
+                        paymentMethod: charge?.payment_method_details?.type || 'card',
+                        applicationFee,
+                        netAmount: newNetAmount
+                    }
+                });
+
+                results.synced++;
+                results.details.push({
+                    id: payment.id,
+                    stripeStatus: bt.status,
+                    availableOn: availableOn?.toISOString(),
+                    realFee,
+                    newNetAmount
+                });
+            } catch (paymentErr) {
+                results.failed++;
+                results.details.push({ id: payment.id, error: paymentErr.message?.slice(0, 200) });
+                console.error(`[Wallet Sync] Payment ${payment.id} failed:`, paymentErr.message);
+            }
+        }
+
+        return res.json(results);
+    } catch (error) {
+        console.error('[FINANCIAL] Error syncing payments with Stripe:', error);
+        return res.status(500).json({ error: 'Error sincronizando con Stripe', detail: error.message?.slice(0, 200) });
     }
 };

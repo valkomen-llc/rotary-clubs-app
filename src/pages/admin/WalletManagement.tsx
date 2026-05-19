@@ -39,10 +39,12 @@ interface DonationRecord {
 interface WalletItem {
     id: string;
     providerRef: string | null;
-    amount: number;
-    grossAmount: number;
-    fee: number;
-    applicationFee: number;
+    amount: number;        // net final para el club
+    grossAmount: number;   // monto pagado por el donante
+    stripeFee?: number;    // v4.422 — fee Stripe explícito
+    netStripe?: number;    // v4.422 — net después de Stripe
+    applicationFee: number; // fee Valkomen (5%)
+    fee: number;           // total fees (stripe + valkomen)
     currency: string;
     status: string;
     stripeStatus: string | null;
@@ -98,6 +100,7 @@ export default function WalletManagement() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isRequesting, setIsRequesting] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
+    const [isSyncing, setIsSyncing] = useState(false); // v4.422 — sync retroactivo
 
     // Form states
     const [amount, setAmount] = useState<number | ''>('');
@@ -160,6 +163,31 @@ export default function WalletManagement() {
 
         setIsLoading(false);
         setIsRefreshing(false);
+    };
+
+    // v4.422 — Sincroniza Payments antiguos con Stripe (fee real, availableOn, etc.)
+    const handleSyncStripe = async (force = false) => {
+        if (!token || !club?.id) return;
+        setIsSyncing(true);
+        try {
+            const res = await axios.post(`${API_URL}/financial/wallet/sync-stripe`,
+                { clubId: club.id, force },
+                { headers: { 'Authorization': `Bearer ${token}` } }
+            );
+            const { synced, failed, skipped, total } = res.data;
+            if (total === 0) {
+                toast.info('Todos los aportes ya están sincronizados con Stripe');
+            } else {
+                toast.success(`Sincronizados ${synced}/${total} aportes${failed ? ` · ${failed} fallaron` : ''}${skipped ? ` · ${skipped} sin balance tx aún` : ''}`);
+            }
+            await fetchWalletData(true);
+        } catch (err) {
+            const message = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+                || 'Error sincronizando con Stripe';
+            toast.error(message);
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const handleRequestPayout = async (e: React.FormEvent) => {
@@ -277,6 +305,19 @@ export default function WalletManagement() {
                 {/* v4.421 — Estado financiero sincronizado con Stripe */}
                 {wallet && (
                     <div className="space-y-4">
+                        <div className="flex items-center justify-between gap-3">
+                            <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Estado del dinero</h3>
+                            {/* v4.422 — Botón sync para enriquecer Payments viejos con datos reales de Stripe */}
+                            <button
+                                onClick={() => handleSyncStripe(false)}
+                                disabled={isSyncing}
+                                title="Consulta Stripe para actualizar fees reales y fechas de disponibilidad de los aportes existentes"
+                                className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-bold rounded-lg border border-purple-100 transition-all disabled:opacity-50 disabled:cursor-wait"
+                            >
+                                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                                {isSyncing ? 'Sincronizando…' : 'Sincronizar con Stripe'}
+                            </button>
+                        </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             <WalletBucketCard
                                 color="amber"
@@ -592,6 +633,7 @@ function WalletBucketCard({ color, icon, label, total, count, hint }: {
 }
 
 // v4.421 — Una fila por transacción con badge de estado + fechas estimadas
+// v4.422 — Desglose completo de fees: Bruto → Stripe fee → Net Stripe → Valkomen 5% → Net Club
 function WalletTxRow({ item }: { item: WalletItem & { bucket: 'processing' | 'in_transit' | 'available_soon' | 'refunded' | 'failed' } }) {
     const BADGES: Record<string, { label: string; bg: string; text: string; icon: React.ReactNode }> = {
         processing:     { label: 'En procesamiento',      bg: 'bg-gray-100',    text: 'text-gray-700',    icon: <Hourglass className="w-3 h-3" /> },
@@ -608,29 +650,68 @@ function WalletTxRow({ item }: { item: WalletItem & { bucket: 'processing' | 'in
             ? `Stripe libera: ${fmtDate(item.availableOn)}`
             : null;
 
+    const stripeFee = item.stripeFee ?? Math.max(0, item.grossAmount - item.amount - item.applicationFee);
+    const [expanded, setExpanded] = useState(false);
+
     return (
-        <div className="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-                <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${badge.bg} ${badge.text} flex-shrink-0`}>
-                    {badge.icon}
-                    {badge.label}
-                </div>
-                <div className="min-w-0 flex-1">
-                    <div className="text-xs text-gray-500 font-medium truncate">
-                        {fmtDate(item.createdAt)}
-                        {dateLabel && <span className="ml-2 text-gray-400">· {dateLabel}</span>}
-                        <span className="ml-2 text-gray-300 font-mono">#{ref}</span>
+        <div className="rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
+            <button
+                type="button"
+                onClick={() => setExpanded(v => !v)}
+                className="w-full flex items-center justify-between gap-3 p-3 text-left"
+            >
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${badge.bg} ${badge.text} flex-shrink-0`}>
+                        {badge.icon}
+                        {badge.label}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                        <div className="text-xs text-gray-500 font-medium truncate">
+                            {fmtDate(item.createdAt)}
+                            {dateLabel && <span className="ml-2 text-gray-400">· {dateLabel}</span>}
+                            <span className="ml-2 text-gray-300 font-mono">#{ref}</span>
+                        </div>
                     </div>
                 </div>
-            </div>
-            <div className="text-right flex-shrink-0">
-                <div className="font-bold text-sm text-gray-900">
-                    ${fmtUSD(item.amount)} <span className="text-[10px] text-gray-400">{item.currency}</span>
+                <div className="text-right flex-shrink-0">
+                    <div className="font-bold text-sm text-gray-900">
+                        ${fmtUSD(item.amount)} <span className="text-[10px] text-gray-400">{item.currency}</span>
+                    </div>
+                    <div className="text-[10px] text-gray-400">
+                        bruto ${fmtUSD(item.grossAmount)} − fees ${fmtUSD(item.grossAmount - item.amount)}
+                    </div>
                 </div>
-                <div className="text-[10px] text-gray-400">
-                    bruto ${fmtUSD(item.grossAmount)} − fees ${fmtUSD(item.grossAmount - item.amount)}
+            </button>
+
+            {/* v4.422 — desglose detallado expandible */}
+            {expanded && (
+                <div className="px-3 pb-3 pt-1 border-t border-gray-100">
+                    <div className="bg-gray-50 rounded-lg p-3 text-xs space-y-1.5">
+                        <div className="flex justify-between text-gray-700">
+                            <span>Monto pagado por el donante</span>
+                            <span className="font-mono font-semibold text-gray-900">${fmtUSD(item.grossAmount)} {item.currency}</span>
+                        </div>
+                        <div className="flex justify-between text-gray-500">
+                            <span>− Stripe processing fee</span>
+                            <span className="font-mono">−${fmtUSD(stripeFee)}</span>
+                        </div>
+                        <div className="flex justify-between text-gray-500">
+                            <span>− Club Platform (5%)</span>
+                            <span className="font-mono">−${fmtUSD(item.applicationFee)}</span>
+                        </div>
+                        <div className="flex justify-between pt-1.5 border-t border-gray-200 font-bold text-gray-900">
+                            <span>Neto para el club</span>
+                            <span className="font-mono">${fmtUSD(item.amount)} {item.currency}</span>
+                        </div>
+                        <div className="pt-2 flex flex-wrap gap-3 text-[10px] text-gray-400">
+                            {item.paymentMethod && <span>Método: {item.paymentMethod}</span>}
+                            {item.stripeBalanceTxId && <span className="font-mono">tx: {item.stripeBalanceTxId.slice(-12)}</span>}
+                            {item.stripeStatus && <span>Stripe status: {item.stripeStatus}</span>}
+                            {item.availableOn && <span>Available on: {fmtDate(item.availableOn)}</span>}
+                        </div>
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 }
