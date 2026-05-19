@@ -791,23 +791,50 @@ router.post('/suggest', authMiddleware, async (req, res) => {
 
 
 router.post('/suggest-seo', authMiddleware, async (req, res) => {
-    const { title, content } = req.body;
-    
+    const { title, content, kind, category, impacto, ubicacion, beneficiarios } = req.body;
+
     try {
-        const systemPrompt = `Eres un experto en SEO para Rotary. Tu tarea es generar metadatos optimizados para una noticia. 
+        // v4.419 — Soporte dual: 'news' (default, comportamiento existente) y
+        // 'project' (proyectos de impacto, optimizado para fundraising/crowdfunding).
+        const isProject = kind === 'project';
+
+        const systemPrompt = isProject
+            ? `Eres un experto en SEO especializado en proyectos de impacto social, fundraising y crowdfunding para Rotary. Tu tarea es generar metadatos que maximicen la visibilidad orgánica del proyecto en Google y motivación a donar.
+        IMPORTANTE: 'seoTitle' MÁXIMO 60 caracteres. 'seoDescription' MÁXIMO 155 caracteres. Es CRÍTICO para evitar truncado en Google.
+        El tono debe transmitir urgencia social, impacto medible (beneficiarios, ubicación) y propósito.
+        Responde EXCLUSIVAMENTE con un objeto JSON con las llaves: seoTitle, seoDescription, slug, keywords, tags.`
+            : `Eres un experto en SEO para Rotary. Tu tarea es generar metadatos optimizados para una noticia.
         IMPORTANTE: El campo 'seoTitle' debe tener máximo 60 caracteres y 'seoDescription' máximo 155 caracteres. Es CRÍTICO para evitar que Google los trunque.
         Responde EXCLUSIVAMENTE con un objeto JSON con las llaves: seoTitle, seoDescription, slug, keywords, tags.`;
-        
-        const userPrompt = `Analiza esta noticia y sugiere SEO:
-        Título: ${title}
-        Contenido resumido: ${content?.substring(0, 1000)}
-        
-        Requerimientos (SÉ MUY ESTRICTO CON LOS LÍMITES):
-        - seoTitle: Atractivo, MÁXIMO 60 caracteres.
-        - seoDescription: Resumen sugerente, MÁXIMO 155 caracteres.
-        - slug: Formato amigable-url-en-minusculas.
-        - keywords: 5 palabras clave separadas por comas.
-        - tags: 3 etiquetas relevantes (solo palabras).`;
+
+        const contextLines = [
+            `Título: ${title}`,
+            category ? `Categoría: ${category}` : null,
+            ubicacion ? `Ubicación: ${ubicacion}` : null,
+            beneficiarios ? `Beneficiarios estimados: ${beneficiarios}` : null,
+            isProject && impacto ? `Impacto esperado: ${String(impacto).substring(0, 400)}` : null,
+            content ? `Contenido/Descripción: ${String(content).substring(0, 1000)}` : null,
+        ].filter(Boolean).join('\n');
+
+        const userPrompt = isProject
+            ? `Analiza este proyecto de impacto y sugiere SEO orientado a fundraising/crowdfunding:
+${contextLines}
+
+Requerimientos (SÉ MUY ESTRICTO CON LOS LÍMITES):
+- seoTitle: Atractivo + acción + impacto. MÁXIMO 60 caracteres. Ej: "Agua potable para 500 familias en Bogotá".
+- seoDescription: Resumen que invite a donar mencionando beneficiarios y meta. MÁXIMO 155 caracteres.
+- slug: Formato amigable-url-en-minusculas, descriptivo.
+- keywords: 5-7 palabras clave separadas por comas (incluir términos como "donar", "fundraising", "crowdfunding", "rotary", ubicación, categoría).
+- tags: 4 etiquetas relevantes para redes sociales (solo palabras, sin #).`
+            : `Analiza esta noticia y sugiere SEO:
+${contextLines}
+
+Requerimientos (SÉ MUY ESTRICTO CON LOS LÍMITES):
+- seoTitle: Atractivo, MÁXIMO 60 caracteres.
+- seoDescription: Resumen sugerente, MÁXIMO 155 caracteres.
+- slug: Formato amigable-url-en-minusculas.
+- keywords: 5 palabras clave separadas por comas.
+- tags: 3 etiquetas relevantes (solo palabras).`;
 
         // Use multi-model router for flexibility and robustness
         const defaultSlug = await getDefaultModel();

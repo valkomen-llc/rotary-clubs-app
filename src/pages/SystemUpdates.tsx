@@ -24,9 +24,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// FINANCIAL V4.418 | 2026-05-20 (FINANCIAL — endpoints de diagnóstico de email 🔬✉️)
-// Cache bust: 2026-05-20 21:30 (FINANCIAL v4.418 🔬✉️)
+// PROJECTS V4.419 | 2026-05-20 (PROJECTS — Redactar SEO con IA en proyectos ✨🔍)
+// Cache bust: 2026-05-20 22:30 (PROJECTS v4.419 ✨🔍)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.419',
+        date: '2026-05-20',
+        title: 'Projects — Botón \"Redactar con IA\" en el tab SEO (mismo motor que Noticias) ✨🔍',
+        description: 'Replica el botón \"Redactar con IA\" que ya existía en Noticias dentro del tab SEO de proyectos. Cuando el usuario hace click, el sistema analiza el título, categoría, ubicación, beneficiarios estimados, impacto esperado y descripción del proyecto, y regenera automáticamente Meta Título SEO (≤60 chars), Meta Descripción (≤155 chars), slug optimizado, keywords y tags. La vista previa de Google y los indicadores de calidad SEO se actualizan en vivo apenas se aplican las sugerencias. El endpoint /api/ai/suggest-seo se extendió con un parámetro `kind` opcional: con kind=\"project\" usa un prompt especializado en fundraising/crowdfunding (urgencia social, impacto medible, ubicación, llamada a la acción) en lugar del prompt genérico de noticias. Resultado: cada proyecto puede tener SEO optimizado para posicionarse orgánicamente al buscar \"donar\", \"rotary\", categoría o ubicación, sin que el usuario tenga que escribir manualmente la estructura SEO completa.',
+        type: 'added',
+        author: 'Claude',
+        details: [
+            'server/routes/ai.js — endpoint /suggest-seo extendido con `kind` opcional. kind=\"project\" cambia el systemPrompt a una variante orientada a fundraising y crowdfunding, y agrega al userPrompt el contexto rico (categoría, ubicación, beneficiarios, impacto). Backwards-compatible: sin kind, comportamiento idéntico al de Noticias.',
+            'Projects.tsx — nuevo state isGeneratingSEO + handler handleAISuggestSEO que arma el payload con todo el contexto del proyecto y aplica las sugerencias al formData (seoTitle, seoDescription, slug, seoKeywords). Toast de confirmación al terminar.',
+            'Botón \"Redactar con IA\" en el header del tab SEO (ícono RefreshCw que gira durante el loading). Disabled si no hay título cargado, con tooltip explicativo. Mismo estilo visual que el botón equivalente de Noticias para consistencia.',
+            'El usuario puede regenerar tantas veces como quiera; cada llamada usa el contenido actual del formulario, así que si va llenando más campos en el tab General/Impacto/Crowdfunding y vuelve al tab SEO, el botón refleja el contexto actualizado.',
+            'Test plan: ir a /admin/proyectos → editar cualquier proyecto → llenar título, categoría e impacto en tabs anteriores → tab SEO → click \"Redactar con IA\" → verificar que los 4 campos (título SEO, meta descripción, slug, keywords) se llenan automáticamente con sugerencias coherentes. La vista previa de Google a la derecha debe actualizar al instante.'
+        ]
+    },
     {
         version: 'v4.418',
         date: '2026-05-20',

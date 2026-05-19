@@ -7,7 +7,7 @@ import {
     MapPin, Target, Info, Users, DollarSign, Image as ImageIcon,
     Video, MessageSquare, CalendarDays, Rocket, CheckCircle, ChevronRight,
     LayoutGrid, Sparkles, RotateCcw, CheckSquare, Square, Trash, Quote, Bot,
-    Facebook, Linkedin, Twitter, Share2, AlertCircle, ExternalLink
+    Facebook, Linkedin, Twitter, Share2, AlertCircle, ExternalLink, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useClub } from '../../contexts/ClubContext';
@@ -139,6 +139,8 @@ const ProjectsManagement: React.FC = () => {
     const [editingTestimonial, setEditingTestimonial] = useState<Testimonial | null>(null);
     const [testimonialForm, setTestimonialForm] = useState({ name: '', role: '', text: '', image: '' });
     const [savingTestimonial, setSavingTestimonial] = useState(false);
+    // v4.419 — Generación SEO con IA en el tab SEO de proyectos
+    const [isGeneratingSEO, setIsGeneratingSEO] = useState(false);
 
     const [formData, setFormData] = useState({
         title: '',
@@ -369,6 +371,55 @@ const ProjectsManagement: React.FC = () => {
         }
         setActiveTab('info');
         setIsModalOpen(true);
+    };
+
+    // v4.419 — Optimización SEO con IA: analiza título + descripción + categoría +
+    // impacto + ubicación + beneficiarios y regenera seoTitle, seoDescription, slug,
+    // keywords y tags orientados a fundraising/crowdfunding.
+    const handleAISuggestSEO = async () => {
+        if (!formData.title) {
+            toast.error('Primero escribe el título del proyecto');
+            return;
+        }
+        setIsGeneratingSEO(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const apiUrl = import.meta.env.VITE_API_URL || '/api';
+            const response = await fetch(`${apiUrl}/ai/suggest-seo`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    kind: 'project',
+                    title: formData.title,
+                    category: formData.category,
+                    ubicacion: formData.ubicacion,
+                    beneficiarios: formData.beneficiarios,
+                    impacto: (formData.impacto || '').replace(/<[^>]*>/g, '').substring(0, 800),
+                    content: (formData.description || '').replace(/<[^>]*>/g, '').substring(0, 1000)
+                })
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${response.status}`);
+            }
+            const data = await response.json();
+            setFormData(prev => ({
+                ...prev,
+                seoTitle: data.seoTitle || prev.seoTitle,
+                seoDescription: data.seoDescription || prev.seoDescription,
+                slug: data.slug || prev.slug,
+                seoKeywords: data.keywords || prev.seoKeywords,
+            }));
+            toast.success('IA: SEO regenerado y aplicado');
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Error de conexión con el motor de IA';
+            toast.error(message);
+        } finally {
+            setIsGeneratingSEO(false);
+        }
     };
 
     // Aplica el JSON generado por ProyectIA al formulario
@@ -1404,10 +1455,21 @@ const ProjectsManagement: React.FC = () => {
                                             <div className="p-3 bg-rotary-blue text-white rounded-xl shadow-lg shadow-rotary-blue/20">
                                                 <Search className="w-6 h-6" />
                                             </div>
-                                            <div>
+                                            <div className="flex-1 min-w-0">
                                                 <h4 className="font-bold text-gray-800">SEO &amp; Posicionamiento</h4>
                                                 <p className="text-xs text-gray-500 font-medium">Optimiza este proyecto para que aparezca en Google y motores de búsqueda. Mismo módulo que usa el blog.</p>
                                             </div>
+                                            {/* v4.419 — Botón IA para regenerar todo el SEO de un click */}
+                                            <button
+                                                type="button"
+                                                onClick={handleAISuggestSEO}
+                                                disabled={isGeneratingSEO || !formData.title}
+                                                title={!formData.title ? 'Llena el título primero' : 'Regenerar SEO con IA basado en el contenido del proyecto'}
+                                                className="flex items-center gap-2 px-4 py-2 bg-rotary-blue text-white rounded-xl text-xs font-bold hover:bg-rotary-blue/90 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                                            >
+                                                <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingSEO ? 'animate-spin' : ''}`} />
+                                                {isGeneratingSEO ? 'Generando…' : 'Redactar con IA'}
+                                            </button>
                                         </div>
 
                                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
