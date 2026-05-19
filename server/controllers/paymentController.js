@@ -138,7 +138,16 @@ export const stripeWebhook = async (req, res) => {
 
 async function handleSuccessfulCheckoutSession(session) {
     console.log(`[Stripe Webhook] Checkout session completed: ${session.id}`);
-    
+
+    // 0. Donación pública (v4.409) — Maneras de Contribuir.
+    //    Registra Payment + Donation directo, sin Order intermedio. El balance
+    //    del club se recalcula automático vía /api/payouts/balance.
+    if (session.metadata && session.metadata.type === 'donation') {
+        await handleSuccessfulDonationCheckout(session);
+        // No hacemos return — un mismo session.id no debería matchear otro flujo,
+        // pero por seguridad seguimos al SaaS reactivation que es idempotente.
+    }
+
     // 1. Pago de "Ecosistema Digital" (Provisión Automática)
     if (session.metadata && session.metadata.type === 'ecosystem_purchase') {
         const { clubId, domainName } = session.metadata;
@@ -384,5 +393,80 @@ async function handleFailedPayment(paymentIntent) {
                 rawPayload: JSON.stringify(paymentIntent)
             }
         });
+    }
+}
+
+// v4.409 — Donación pública vía Checkout Session (metadata.type='donation').
+// Crea Payment (con isPlatformCollection=true para que el balance del club
+// lo cuente) + Donation (para el historial visible en el panel del club).
+// Idempotente: si la session ya fue procesada, no duplica registros.
+async function handleSuccessfulDonationCheckout(session) {
+    const { clubId, donorEmail, donorName, message, isAnonymous } = session.metadata || {};
+
+    if (!clubId) {
+        console.error('[Stripe Webhook] Donación sin clubId en metadata:', session.id);
+        return;
+    }
+
+    const providerRef = session.payment_intent || session.id;
+
+    // Idempotencia: si ya existe un Payment con este providerRef, salimos.
+    const existing = await prisma.payment.findFirst({
+        where: { providerRef, provider: 'stripe' },
+        select: { id: true }
+    });
+    if (existing) {
+        console.log(`[Stripe Webhook] Donación ya registrada para session ${session.id} (skip)`);
+        return;
+    }
+
+    const totalAmount = (session.amount_total || 0) / 100;
+    const currency = (session.currency || 'usd').toUpperCase();
+
+    // Comisión Valkomen + estimación de fee Stripe (2.9% + 0.30). El net
+    // es lo que el club puede retirar.
+    const applicationFee = totalAmount * DEFAULT_PLATFORM_FEE_PERCENTAGE;
+    const estimatedStripeFee = (totalAmount * 0.029) + 0.30;
+    const netAmount = Math.max(0, totalAmount - applicationFee - estimatedStripeFee);
+
+    try {
+        await prisma.payment.create({
+            data: {
+                provider: 'stripe',
+                providerRef,
+                status: 'succeeded',
+                amount: totalAmount,
+                currency,
+                applicationFee,
+                netAmount,
+                isPlatformCollection: true,
+                clubId,
+                rawPayload: JSON.stringify({
+                    sessionId: session.id,
+                    mode: session.mode,
+                    customerDetails: session.customer_details
+                })
+            }
+        });
+
+        const isAnon = isAnonymous === 'true' || isAnonymous === true;
+        await prisma.donation.create({
+            data: {
+                amount: totalAmount,
+                currency,
+                donorName: isAnon
+                    ? 'Anónimo'
+                    : (donorName || session.customer_details?.name || null),
+                donorEmail: donorEmail || session.customer_details?.email || null,
+                status: 'success',
+                clubId,
+                isAnonymous: isAnon,
+                message: message || null
+            }
+        });
+
+        console.log(`[Stripe Webhook] ✅ Donación registrada: ${totalAmount} ${currency} → club ${clubId} (net ${netAmount.toFixed(2)})`);
+    } catch (err) {
+        console.error('[Stripe Webhook] Error registrando donación:', err);
     }
 }

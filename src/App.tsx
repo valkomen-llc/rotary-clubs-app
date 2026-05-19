@@ -45,6 +45,8 @@ import EstadosFinancieros from './pages/EstadosFinancieros';
 import Descargas from './pages/Descargas';
 import NuestrasCausas from './pages/NuestrasCausas';
 import ManerasDeContribuir from './pages/ManerasDeContribuir';
+import DonacionExito from './pages/DonacionExito';
+import DonacionCancelada from './pages/DonacionCancelada';
 import Rotaract from './pages/Rotaract';
 import Interact from './pages/Interact';
 import Rotex from './pages/Rotex';
@@ -382,6 +384,8 @@ function App() {
                 <Route path="/quienes-somos" element={<QuienesSomos />} />
                 <Route path="/nuestras-causas" element={<NuestrasCausas />} />
                 <Route path="/maneras-de-contribuir" element={<ManerasDeContribuir />} />
+                <Route path="/donacion/exito" element={<DonacionExito />} />
+                <Route path="/donacion/cancelada" element={<DonacionCancelada />} />
                 <Route path="/nuestra-historia" element={<NuestraHistoria />} />
                 <Route path="/nuestros-socios" element={<NuestrosSocios />} />
                 <Route path="/nuestra-junta-directiva" element={<NuestraJuntaDirectiva />} />

@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.408.0",
-  "cache_bust": "2026-05-20 00:00 (NAV — bypass setup wizard para RYE 4281 v4.408 🔓)",
+  "version": "4.409.0",
+  "cache_bust": "2026-05-20 12:30 (FINANCIAL — donaciones Stripe Checkout v4.409 💳)",
   "type": "module",
-  "//": "NAV V4.408 | 2026-05-20 (NAV — bypass del setup wizard para sitios en desarrollo: RYE 4281 (Programa de Intercambio). El menú entero del sidebar queda activado aunque el setup % esté incompleto, permitiendo configurar todas las secciones en paralelo. Lista de bypass extensible en useSetupProgress.ts 🔓)",
+  "//": "FINANCIAL V4.409 | 2026-05-20 (FINANCIAL — motor de donaciones Stripe Checkout para Maneras de Contribuir. Visitante elige monto + email + datos → backend crea Checkout Session (cuenta master Valkomen) → redirect a Stripe → webhook registra Payment+Donation → balance del club disponible automático en Bóveda/WalletManagement. Páginas /donacion/exito y /donacion/cancelada. Donación mensual queda 'Próximamente'. Aplica a todos los sitios con Maneras de Contribuir 💳)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",

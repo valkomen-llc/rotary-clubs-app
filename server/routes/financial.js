@@ -1,9 +1,30 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authMiddleware } from '../middleware/auth.js';
+import {
+    createDonationCheckout,
+    getDonationSessionStatus,
+    listClubDonations
+} from '../controllers/financialController.js';
 
 const prisma = new PrismaClient();
 const router = express.Router();
+
+/**
+ * ==========================================
+ * DONACIONES — Stripe Checkout (v4.409)
+ * ==========================================
+ * Endpoints públicos para Maneras de Contribuir.
+ * El webhook (en /api/payments/webhook) registra Payment+Donation
+ * cuando Stripe confirma el cobro.
+ */
+
+// PÚBLICO — cualquier visitante puede iniciar una donación
+router.post('/donate', createDonationCheckout);
+router.get('/donate/session/:id', getDonationSessionStatus);
+
+// AUTENTICADO — listado de donaciones del club (panel admin)
+router.get('/donations', authMiddleware, listClubDonations);
 
 /**
  * ==========================================

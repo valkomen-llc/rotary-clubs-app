@@ -1,23 +1,73 @@
 import { useState } from 'react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
-import { Heart, X, Check } from 'lucide-react';
+import { Heart, X, Check, Loader2, ShieldCheck } from 'lucide-react';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
 import FoundationImpactSection from '../sections/FoundationImpactSection';
+
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 const ManerasDeContribuir = () => {
     const { club } = useClub();
     const { sections } = useCMSContent('contribucion', club.id);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [amount, setAmount] = useState('50');
-    const [frequency, setFrequency] = useState('one-time');
+    const [frequency, setFrequency] = useState<'one-time' | 'monthly'>('one-time');
+    const [donorEmail, setDonorEmail] = useState('');
+    const [donorName, setDonorName] = useState('');
+    const [donorMessage, setDonorMessage] = useState('');
+    const [isAnonymous, setIsAnonymous] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
     const getC = (section: string, field: string, fallback: string) => {
         return sections[section]?.[field] || fallback;
     }
 
     const amounts = ['10', '25', '50', '100'];
+
+    const handleDonate = async () => {
+        setErrorMsg(null);
+        const numericAmount = parseFloat(amount);
+        if (!numericAmount || numericAmount < 1) {
+            setErrorMsg('Ingresa un monto válido (mínimo $1 USD).');
+            return;
+        }
+        if (!donorEmail || !/^\S+@\S+\.\S+$/.test(donorEmail)) {
+            setErrorMsg('Tu email es obligatorio para enviarte el recibo.');
+            return;
+        }
+
+        setSubmitting(true);
+        try {
+            const res = await fetch(`${API_BASE}/financial/donate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    clubId: club.id,
+                    amount: numericAmount,
+                    currency: 'USD',
+                    frequency: 'one-time',
+                    donorEmail,
+                    donorName: isAnonymous ? '' : donorName,
+                    message: donorMessage,
+                    isAnonymous,
+                    returnUrl: window.location.origin,
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || !data?.url) {
+                throw new Error(data?.error || 'No pudimos iniciar el pago. Intenta de nuevo.');
+            }
+            window.location.href = data.url;
+        } catch (err) {
+            console.error('[Donate] Error:', err);
+            const message = err instanceof Error ? err.message : 'Error inesperado iniciando el pago.';
+            setErrorMsg(message);
+            setSubmitting(false);
+        }
+    };
 
     return (
         <div className="min-h-screen bg-white">
@@ -55,7 +105,7 @@ const ManerasDeContribuir = () => {
                             {getC('card', 'description', `Tu contribución fortalece el impacto del club ${club.name} y sostiene iniciativas de servicio que transforman vidas.`)}
                         </p>
                         <button
-                            onClick={() => setIsModalOpen(true)}
+                            onClick={() => { setErrorMsg(null); setIsModalOpen(true); }}
                             className="w-full bg-[#9D2235] hover:bg-[#8B1E2F] text-white font-bold py-[18px] rounded-lg flex items-center justify-center gap-3 transition-colors uppercase tracking-widest text-[13px]"
                         >
                             <Heart className="w-5 h-5 fill-current" />
@@ -67,17 +117,18 @@ const ManerasDeContribuir = () => {
 
             {/* Donation Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden relative">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden relative my-8">
                         <button
-                            onClick={() => setIsModalOpen(false)}
-                            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
+                            onClick={() => !submitting && setIsModalOpen(false)}
+                            disabled={submitting}
+                            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10 disabled:opacity-50"
                         >
                             <X className="w-6 h-6" />
                         </button>
 
                         <div className="p-8">
-                            <div className="text-center mb-8">
+                            <div className="text-center mb-6">
                                 <div className="w-16 h-16 bg-[#9D2235]/10 rounded-full flex items-center justify-center mx-auto mb-4">
                                     <Heart className="w-8 h-8 text-[#9D2235]" />
                                 </div>
@@ -85,7 +136,7 @@ const ManerasDeContribuir = () => {
                                 <p className="text-gray-500 mt-2">Apoya nuestras causas en el club {club.name}</p>
                             </div>
 
-                            <div className="space-y-6">
+                            <div className="space-y-5">
                                 <div className="flex p-1 bg-gray-100 rounded-lg">
                                     <button
                                         onClick={() => setFrequency('one-time')}
@@ -94,16 +145,18 @@ const ManerasDeContribuir = () => {
                                         Donación Única
                                     </button>
                                     <button
-                                        onClick={() => setFrequency('monthly')}
-                                        className={`flex-1 py-2 px-4 rounded-md text-sm font-semibold transition-all ${frequency === 'monthly' ? 'bg-white text-rotary-blue shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                        disabled
+                                        title="Disponible próximamente"
+                                        className="flex-1 py-2 px-4 rounded-md text-sm font-semibold text-gray-400 cursor-not-allowed flex items-center justify-center gap-1.5"
                                     >
                                         Donación Mensual
+                                        <span className="text-[9px] uppercase tracking-wider bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded">Pronto</span>
                                     </button>
                                 </div>
 
                                 <div>
                                     <label className="block text-sm font-semibold text-gray-700 mb-3">Selecciona el monto (USD)</label>
-                                    <div className="grid grid-cols-4 gap-3 mb-4">
+                                    <div className="grid grid-cols-4 gap-3 mb-3">
                                         {amounts.map((amt) => (
                                             <button
                                                 key={amt}
@@ -118,6 +171,8 @@ const ManerasDeContribuir = () => {
                                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
                                         <input
                                             type="number"
+                                            min="1"
+                                            step="1"
                                             placeholder="Otro monto"
                                             value={amounts.includes(amount) ? '' : amount}
                                             onChange={(e) => setAmount(e.target.value)}
@@ -126,16 +181,83 @@ const ManerasDeContribuir = () => {
                                     </div>
                                 </div>
 
+                                <div className="space-y-3 pt-1">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Tu email (para el recibo)</label>
+                                        <input
+                                            type="email"
+                                            placeholder="tu@correo.com"
+                                            value={donorEmail}
+                                            onChange={(e) => setDonorEmail(e.target.value)}
+                                            required
+                                            className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:border-[#9D2235] outline-none transition-all text-sm"
+                                        />
+                                    </div>
+
+                                    {!isAnonymous && (
+                                        <div>
+                                            <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Nombre (opcional)</label>
+                                            <input
+                                                type="text"
+                                                placeholder="Tu nombre"
+                                                value={donorName}
+                                                onChange={(e) => setDonorName(e.target.value)}
+                                                className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:border-[#9D2235] outline-none transition-all text-sm"
+                                            />
+                                        </div>
+                                    )}
+
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Mensaje (opcional)</label>
+                                        <textarea
+                                            placeholder="¿Quieres dejar un mensaje al club?"
+                                            value={donorMessage}
+                                            onChange={(e) => setDonorMessage(e.target.value)}
+                                            rows={2}
+                                            maxLength={500}
+                                            className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:border-[#9D2235] outline-none transition-all text-sm resize-none"
+                                        />
+                                    </div>
+
+                                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                                        <input
+                                            type="checkbox"
+                                            checked={isAnonymous}
+                                            onChange={(e) => setIsAnonymous(e.target.checked)}
+                                            className="w-4 h-4 accent-[#9D2235]"
+                                        />
+                                        Quiero donar como anónimo
+                                    </label>
+                                </div>
+
+                                {errorMsg && (
+                                    <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
+                                        {errorMsg}
+                                    </div>
+                                )}
+
                                 <button
-                                    className="w-full bg-[#9D2235] hover:bg-[#8B1E2F] text-white font-bold py-4 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 mt-4"
-                                    onClick={() => {
-                                        alert('Redirigiendo a pasarela de pago...');
-                                        setIsModalOpen(false);
-                                    }}
+                                    onClick={handleDonate}
+                                    disabled={submitting}
+                                    className="w-full bg-[#9D2235] hover:bg-[#8B1E2F] disabled:bg-gray-400 disabled:cursor-wait text-white font-bold py-4 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 mt-2"
                                 >
-                                    Donar Ahora
-                                    <Check className="w-5 h-5" />
+                                    {submitting ? (
+                                        <>
+                                            <Loader2 className="w-5 h-5 animate-spin" />
+                                            Conectando con Stripe…
+                                        </>
+                                    ) : (
+                                        <>
+                                            Donar Ahora
+                                            <Check className="w-5 h-5" />
+                                        </>
+                                    )}
                                 </button>
+
+                                <div className="flex items-center justify-center gap-1.5 text-[11px] text-gray-400">
+                                    <ShieldCheck className="w-3.5 h-3.5" />
+                                    Pago seguro procesado por Stripe
+                                </div>
                             </div>
                         </div>
                     </div>
