@@ -334,8 +334,27 @@ export const getTrashedProjects = async (req, res) => {
     }
 };
 
+// v4.417 — Normalizador de slug (mismo patrón que usa News). Si el slug
+// llega vacío pero hay título, generamos uno desde el título.
+const normalizeSlug = (raw, fallback = '') => {
+    const source = String(raw || fallback || '').trim();
+    if (!source) return null;
+    return source
+        .toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 80) || null;
+};
+
 export const createProject = async (req, res) => {
-    const { title, description, image, status, clubId, category, meta, recaudado, donantes, beneficiarios, ubicacion, fechaEstimada, videoUrl, images, impacto, actualizaciones } = req.body;
+    const {
+        title, description, image, status, clubId, category, meta, recaudado,
+        donantes, beneficiarios, ubicacion, fechaEstimada, videoUrl, images,
+        impacto, actualizaciones,
+        // v4.417 — SEO
+        seoTitle, seoDescription, seoKeywords, seoImage, slug, socialCopy, indexable
+    } = req.body;
     try {
         const targetClubId = req.user.role === 'administrator' ? (clubId || req.user.clubId) : req.user.clubId;
 
@@ -356,7 +375,14 @@ export const createProject = async (req, res) => {
                 videoUrl,
                 images: images || [],
                 impacto,
-                actualizaciones
+                actualizaciones,
+                seoTitle: seoTitle || null,
+                seoDescription: seoDescription || null,
+                seoKeywords: seoKeywords || null,
+                seoImage: seoImage || null,
+                slug: normalizeSlug(slug, title),
+                socialCopy: socialCopy || null,
+                indexable: indexable === false ? false : true
             }
         });
         if (project?.clubId) {
@@ -380,7 +406,13 @@ export const createProject = async (req, res) => {
 
 export const updateProject = async (req, res) => {
     const { id } = req.params;
-    const { title, description, image, status, category, meta, recaudado, donantes, beneficiarios, ubicacion, fechaEstimada, videoUrl, images, impacto, actualizaciones } = req.body;
+    const {
+        title, description, image, status, category, meta, recaudado,
+        donantes, beneficiarios, ubicacion, fechaEstimada, videoUrl, images,
+        impacto, actualizaciones,
+        // v4.417 — SEO
+        seoTitle, seoDescription, seoKeywords, seoImage, slug, socialCopy, indexable
+    } = req.body;
     try {
         const existing = await prisma.project.findUnique({ where: { id } });
         if (!existing) return res.status(404).json({ error: 'Project not found' });
@@ -406,7 +438,15 @@ export const updateProject = async (req, res) => {
                 videoUrl,
                 images: images || [],
                 impacto,
-                actualizaciones
+                actualizaciones,
+                // v4.417 — SEO (sólo se actualizan si vienen en el body, undefined = no tocar)
+                ...(seoTitle !== undefined && { seoTitle: seoTitle || null }),
+                ...(seoDescription !== undefined && { seoDescription: seoDescription || null }),
+                ...(seoKeywords !== undefined && { seoKeywords: seoKeywords || null }),
+                ...(seoImage !== undefined && { seoImage: seoImage || null }),
+                ...(slug !== undefined && { slug: normalizeSlug(slug, title || existing.title) }),
+                ...(socialCopy !== undefined && { socialCopy: socialCopy || null }),
+                ...(indexable !== undefined && { indexable: indexable === false ? false : true })
             }
         });
         if (project?.clubId) {

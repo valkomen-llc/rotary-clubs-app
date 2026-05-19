@@ -9,15 +9,15 @@ datasource db {
 }
 
 model User {
-  id                 String             @id @default(uuid())
-  email              String             @unique
+  id                 String              @id @default(uuid())
+  email              String              @unique
   password           String
   role               String
   clubId             String?
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
   clubRole           String?
-  emailVerified      Boolean            @default(false)
+  emailVerified      Boolean             @default(false)
   name               String?
   phone              String?
   phoneCountry       String?
@@ -28,43 +28,43 @@ model User {
   communicationLogs  CommunicationLog[]
   orders             Order[]
   socialPublications SocialPublication[]
-  club               Club?              @relation(fields: [clubId], references: [id])
-  district           District?          @relation(fields: [districtId], references: [id])
+  club               Club?               @relation(fields: [clubId], references: [id])
+  district           District?           @relation(fields: [districtId], references: [id])
 }
 
 model District {
-  id            String   @id @default(uuid())
-  number        Int?
-  name          String
-  governor      String?
-  governorEmail String?
-  countries     String[] @default([])
-  website       String?
-  subdomain     String?  @unique
-  domain        String?  @unique
-  description   String?
-  status        String   @default("active")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  logo          String?
-  footerLogo    String?
-  favicon       String?
-  colors        Json?    @default("{\"primary\": \"#013388\", \"secondary\": \"#E29C00\"}")
-  logoHeaderSize Int      @default(200)
-  expirationBannerActive   Boolean                 @default(false)
+  id                       String    @id @default(uuid())
+  number                   Int?
+  name                     String
+  governor                 String?
+  governorEmail            String?
+  countries                String[]  @default([])
+  website                  String?
+  subdomain                String?   @unique
+  domain                   String?   @unique
+  description              String?
+  status                   String    @default("active")
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+  logo                     String?
+  footerLogo               String?
+  favicon                  String?
+  colors                   Json?     @default("{\"primary\": \"#013388\", \"secondary\": \"#E29C00\"}")
+  logoHeaderSize           Int       @default(200)
+  expirationBannerActive   Boolean   @default(false)
   expirationBannerMessage  String?
-  developmentBannerActive  Boolean                 @default(false)
+  developmentBannerActive  Boolean   @default(false)
   developmentBannerMessage String?
-  subscriptionStatus       String                  @default("active")
+  subscriptionStatus       String    @default("active")
   expirationDate           DateTime?
-  stripeCustomerId         String?                 @unique
+  stripeCustomerId         String?   @unique
   billingContactEmail      String?
   billingContactPhone      String?
   lastNotificationSent     DateTime?
-  notificationLevel        Int                     @default(0)
-  clubs         Club[]
-  admins        User[]
-  brain         Brain?
+  notificationLevel        Int       @default(0)
+  clubs                    Club[]
+  admins                   User[]
+  brain                    Brain?
 }
 
 model Club {
@@ -142,18 +142,18 @@ model Club {
   whatsAppLists            WhatsAppContactList[]
   WhatsAppCustomField      WhatsAppCustomField[]
   whatsAppTemplates        WhatsAppTemplate[]
-  technicalRequests         TechnicalRequest[]
-  crowdfundPools            CrowdfundPool[]         @relation("ClubPools")
-  emailAccounts             EmailAccount[]
-  brain                     Brain?
+  technicalRequests        TechnicalRequest[]
+  crowdfundPools           CrowdfundPool[]         @relation("ClubPools")
+  emailAccounts            EmailAccount[]
+  brain                    Brain?
 }
 
 model EmailAccount {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  label     String?
-  password  String?
-  isPrimary Boolean  @default(false)
+  id                 String   @id @default(uuid())
+  email              String   @unique
+  label              String?
+  password           String?
+  isPrimary          Boolean  @default(false)
   provider           String   @default("platform")
   verified           Boolean  @default(false)
   verificationStatus String   @default("pending")
@@ -167,25 +167,25 @@ model EmailAccount {
 }
 
 model CrowdfundPool {
-  id           String   @id @default(uuid())
+  id           String                @id @default(uuid())
   clubId       String
   totalCapital Float
   costPerUnit  Float
   totalUnits   Int
-  currency     String   @default("USD")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  club         Club     @relation("ClubPools", fields: [clubId], references: [id])
+  currency     String                @default("USD")
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  club         Club                  @relation("ClubPools", fields: [clubId], references: [id])
   activations  CrowdfundActivation[]
 }
 
 model CrowdfundActivation {
-  id             String   @id @default(uuid())
+  id             String        @id @default(uuid())
   poolId         String
   targetClubId   String
   domainName     String?
-  status         String   @default("active")
-  activationDate DateTime @default(now())
+  status         String        @default("active")
+  activationDate DateTime      @default(now())
   expirationDate DateTime?
   pool           CrowdfundPool @relation(fields: [poolId], references: [id])
 }
@@ -206,22 +206,22 @@ model ClubDocument {
 }
 
 model Media {
-  id          String   @id @default(uuid())
-  filename    String
-  url         String
-  type        String
-  size        Int
-  bucket      String?
-  region      String?
-  clubId      String?
-  createdAt   DateTime @default(now())
-  s3Key       String?
+  id        String   @id @default(uuid())
+  filename  String
+  url       String
+  type      String
+  size      Int
+  bucket    String?
+  region    String?
+  clubId    String?
+  createdAt DateTime @default(now())
+  s3Key     String?
 
   // Source tagging (v4.339): qué entidad/sitio "owns" esta media.
   // sourceType: "club" | "district" | "project" | "platform" (extensible)
   // sourceId:   id de la entidad (clubId/districtId/projectId) — null si platform
   // sourceLabel: nombre legible cacheado para listing rápido sin joins
-  sourceType  String?  @default("platform")
+  sourceType  String? @default("platform")
   sourceId    String?
   sourceLabel String?
 
@@ -250,6 +250,14 @@ model Project {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
   deletedAt       DateTime?
+  // v4.417 — SEO: mismo set de campos que News/Post (consistencia con el módulo del blog)
+  seoTitle        String?
+  seoDescription  String?
+  seoKeywords     String?
+  seoImage        String?
+  slug            String?    @unique
+  socialCopy      String?
+  indexable       Boolean    @default(true)
   donations       Donation[]
   club            Club       @relation(fields: [clubId], references: [id])
 }
@@ -978,26 +986,26 @@ model FundingOpportunity {
 }
 
 model SocialAccount {
-  id              String              @id @default(uuid())
-  clubId          String?
-  platform        String              // "facebook" | "instagram" | (future) "linkedin" | "x"
-  platformId      String              // FB page id, IG business user id, etc.
-  pageId          String?             // FB page id parent (for IG accounts) — null for FB itself
-  accountName     String?
-  accessToken     String              // encrypted via tokenCrypto (v1+); legacy rows may be plaintext
-  refreshToken    String?
-  expiresAt       DateTime?
-  avatar          String?
-  status          String              @default("active") // active | expired | revoked | error
-  permissions     String[]            @default([])
-  metadata        Json?               // platform-specific extras: category, username, followersCount, tasks[]
-  lastVerifiedAt  DateTime?
-  tokenVersion    Int                 @default(0)        // 0=legacy plaintext, 1+=encrypted
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  scheduledPosts  ScheduledPost[]
-  publications    SocialPublication[]
-  club            Club?               @relation(fields: [clubId], references: [id])
+  id             String              @id @default(uuid())
+  clubId         String?
+  platform       String // "facebook" | "instagram" | (future) "linkedin" | "x"
+  platformId     String // FB page id, IG business user id, etc.
+  pageId         String? // FB page id parent (for IG accounts) — null for FB itself
+  accountName    String?
+  accessToken    String // encrypted via tokenCrypto (v1+); legacy rows may be plaintext
+  refreshToken   String?
+  expiresAt      DateTime?
+  avatar         String?
+  status         String              @default("active") // active | expired | revoked | error
+  permissions    String[]            @default([])
+  metadata       Json? // platform-specific extras: category, username, followersCount, tasks[]
+  lastVerifiedAt DateTime?
+  tokenVersion   Int                 @default(0) // 0=legacy plaintext, 1+=encrypted
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  scheduledPosts ScheduledPost[]
+  publications   SocialPublication[]
+  club           Club?               @relation(fields: [clubId], references: [id])
 
   @@unique([clubId, platform, platformId])
   @@index([clubId, status])
@@ -1007,42 +1015,42 @@ model SocialAccount {
 // schema is in place and we can reference it from accounts; the actual
 // publish flow lands in Phase 2 (immediate publish) and Phase 3 (scheduling).
 model SocialPublication {
-  id                String          @id @default(uuid())
-  clubId            String?         // v4.389: nullable. Permite autosave de generaciones sin contexto de club (ej. system admin subiendo imagen directa).
-  userId            String?
+  id     String  @id @default(uuid())
+  clubId String? // v4.389: nullable. Permite autosave de generaciones sin contexto de club (ej. system admin subiendo imagen directa).
+  userId String?
 
   // Content (AI-generated or manual)
-  caption           String?
-  platformCopies    Json?           // { facebook: {copy, hashtags, cta}, instagram: {...}, ... }
+  caption        String?
+  platformCopies Json? // { facebook: {copy, hashtags, cta}, instagram: {...}, ... }
 
   // Media
-  imageUrl          String?         // portrait 4:5 (FB / LinkedIn feed)
-  imageUrlInstagram String?         // portrait 2:3 (IG feed, más vertical — v4.381)
-  imageUrlLandscape String?         // landscape 3:2 (X / Twitter)
-  mediaType         String          @default("image") // image|video|carousel
+  imageUrl          String? // portrait 4:5 (FB / LinkedIn feed)
+  imageUrlInstagram String? // portrait 2:3 (IG feed, más vertical — v4.381)
+  imageUrlLandscape String? // landscape 3:2 (X / Twitter)
+  mediaType         String  @default("image") // image|video|carousel
   videoProjectId    String?
 
   // Distribution: which accounts and per-account outcome
-  targetAccounts    Json            // [{ socialAccountId, platform, status, externalId, publishedAt, error }]
+  targetAccounts Json // [{ socialAccountId, platform, status, externalId, publishedAt, error }]
 
   // Lifecycle
-  status            String          @default("draft") // draft|scheduled|queued|publishing|published|partial|error
-  scheduledFor      DateTime?
-  publishedAt       DateTime?
-  timezone          String?         // IANA tz (ej "America/Bogota") cuando viene de la UI de scheduling
+  status       String    @default("draft") // draft|scheduled|queued|publishing|published|partial|error
+  scheduledFor DateTime?
+  publishedAt  DateTime?
+  timezone     String? // IANA tz (ej "America/Bogota") cuando viene de la UI de scheduling
 
   // Lineage
-  sourceImageId     String?
-  generatedBy       String?         // "ai-kie" | "ai-openai" | "manual" (legacy, mantengo compat)
-  aiModelImage      String?         // "kie+nano-banana-edit" | "gpt-image-1+i2i-direct" | etc.
-  aiModelCopy       String?         // "openai/gpt-4o" | "anthropic/claude-sonnet-4-6" | etc.
+  sourceImageId String?
+  generatedBy   String? // "ai-kie" | "ai-openai" | "manual" (legacy, mantengo compat)
+  aiModelImage  String? // "kie+nano-banana-edit" | "gpt-image-1+i2i-direct" | etc.
+  aiModelCopy   String? // "openai/gpt-4o" | "anthropic/claude-sonnet-4-6" | etc.
 
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  club              Club?           @relation(fields: [clubId], references: [id])
-  user              User?           @relation(fields: [userId], references: [id])
-  accounts          SocialAccount[]
+  club     Club?           @relation(fields: [clubId], references: [id])
+  user     User?           @relation(fields: [userId], references: [id])
+  accounts SocialAccount[]
 
   @@index([clubId, status])
   @@index([scheduledFor])
@@ -1117,18 +1125,18 @@ model Lead {
 }
 
 model TechnicalRequest {
-  id            String    @id @default(uuid())
+  id            String   @id @default(uuid())
   clubId        String
-  type          String    @default("domain_transfer")
-  status        String    @default("pending")
+  type          String   @default("domain_transfer")
+  status        String   @default("pending")
   subject       String
   description   String?
-  details       Json?     @default("{}")
+  details       Json?    @default("{}")
   amount        Float?
-  paymentStatus String    @default("unpaid")
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  club          Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  paymentStatus String   @default("unpaid")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  club          Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
 }
 
 // Brain = unidad de inteligencia. Hay 1 MASTER (singleton) + N por sitio
@@ -1136,27 +1144,27 @@ model TechnicalRequest {
 // Valores de kind: MASTER | CLUB | DISTRICT | ASSOCIATION | PROGRAM |
 // CONFERENCE | EVENT | PROJECT_FAIR | FOUNDATION.
 model Brain {
-  id              String          @id @default(uuid())
-  kind            String          @default("CLUB")
-  name            String
-  identityPrompt  String?
-  clubId          String?         @unique
-  districtId      String?         @unique
-  isMaster        Boolean         @default(false)
-  memoryCount     Int             @default(0)
-  metadata        Json?           @default("{}")
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id             String   @id @default(uuid())
+  kind           String   @default("CLUB")
+  name           String
+  identityPrompt String?
+  clubId         String?  @unique
+  districtId     String?  @unique
+  isMaster       Boolean  @default(false)
+  memoryCount    Int      @default(0)
+  metadata       Json?    @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  club            Club?           @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  district        District?       @relation(fields: [districtId], references: [id], onDelete: Cascade)
+  club     Club?     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  district District? @relation(fields: [districtId], references: [id], onDelete: Cascade)
 
-  memories        BrainMemory[]
-  documents       BrainDocument[]
-  activities      BrainActivity[]
-  chatMessages    BrainChatMessage[]
-  outgoingRelations BrainRelation[] @relation("FromBrain")
-  incomingRelations BrainRelation[] @relation("ToBrain")
+  memories          BrainMemory[]
+  documents         BrainDocument[]
+  activities        BrainActivity[]
+  chatMessages      BrainChatMessage[]
+  outgoingRelations BrainRelation[]    @relation("FromBrain")
+  incomingRelations BrainRelation[]    @relation("ToBrain")
 
   @@index([kind])
   @@index([isMaster])
@@ -1167,21 +1175,21 @@ model Brain {
 // kind: POST | PROJECT | EVENT | KNOWLEDGE | MEMBER | DOCUMENT |
 // PUBLICATION | NOTE.
 model BrainMemory {
-  id          String    @id @default(uuid())
-  brainId     String
-  kind        String
-  sourceId    String?
-  sourceType  String?
-  title       String
-  content     String
-  embedding   Float[]   @default([])
-  metadata    Json?     @default("{}")
-  clubId      String?
-  districtId  String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id         String   @id @default(uuid())
+  brainId    String
+  kind       String
+  sourceId   String?
+  sourceType String?
+  title      String
+  content    String
+  embedding  Float[]  @default([])
+  metadata   Json?    @default("{}")
+  clubId     String?
+  districtId String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  brain       Brain     @relation(fields: [brainId], references: [id], onDelete: Cascade)
+  brain Brain @relation(fields: [brainId], references: [id], onDelete: Cascade)
 
   @@unique([brainId, sourceType, sourceId])
   @@index([brainId])
@@ -1193,17 +1201,17 @@ model BrainMemory {
 // BrainRelation = arista del grafo entre cerebros. kind: PARENT_OF | MEMBER_OF
 // | COLLABORATES_WITH | SIMILAR_TO | PARTICIPATES_IN. source: auto | manual.
 model BrainRelation {
-  id          String    @id @default(uuid())
+  id          String   @id @default(uuid())
   fromBrainId String
   toBrainId   String
   kind        String
-  weight      Float     @default(1.0)
-  source      String    @default("auto")
-  metadata    Json?     @default("{}")
-  createdAt   DateTime  @default(now())
+  weight      Float    @default(1.0)
+  source      String   @default("auto")
+  metadata    Json?    @default("{}")
+  createdAt   DateTime @default(now())
 
-  fromBrain   Brain     @relation("FromBrain", fields: [fromBrainId], references: [id], onDelete: Cascade)
-  toBrain     Brain     @relation("ToBrain", fields: [toBrainId], references: [id], onDelete: Cascade)
+  fromBrain Brain @relation("FromBrain", fields: [fromBrainId], references: [id], onDelete: Cascade)
+  toBrain   Brain @relation("ToBrain", fields: [toBrainId], references: [id], onDelete: Cascade)
 
   @@unique([fromBrainId, toBrainId, kind])
   @@index([fromBrainId])
@@ -1215,26 +1223,26 @@ model BrainRelation {
 // cada chunk con sourceType='BrainDocument', sourceId=`${docId}:c${idx}`.
 // El archivo original queda en S3 (fileUrl) por si se necesita re-procesar.
 model BrainDocument {
-  id            String    @id @default(uuid())
-  brainId       String
-  filename      String
-  mimeType      String
-  size          Int       @default(0)
-  fileUrl       String?
-  s3Key         String?
-  category      String?   // 'reglamento' | 'estatuto' | 'manual' | 'plan_estrategico' | etc.
-  description   String?
-  status        String    @default("pending") // pending | processing | completed | failed
-  errorMessage  String?
-  chunkCount    Int       @default(0)
-  charCount     Int       @default(0)
-  uploadedBy    String?
-  metadata      Json?     @default("{}")
-  createdAt     DateTime  @default(now())
-  processedAt   DateTime?
-  updatedAt     DateTime  @updatedAt
+  id           String    @id @default(uuid())
+  brainId      String
+  filename     String
+  mimeType     String
+  size         Int       @default(0)
+  fileUrl      String?
+  s3Key        String?
+  category     String? // 'reglamento' | 'estatuto' | 'manual' | 'plan_estrategico' | etc.
+  description  String?
+  status       String    @default("pending") // pending | processing | completed | failed
+  errorMessage String?
+  chunkCount   Int       @default(0)
+  charCount    Int       @default(0)
+  uploadedBy   String?
+  metadata     Json?     @default("{}")
+  createdAt    DateTime  @default(now())
+  processedAt  DateTime?
+  updatedAt    DateTime  @updatedAt
 
-  brain         Brain     @relation(fields: [brainId], references: [id], onDelete: Cascade)
+  brain Brain @relation(fields: [brainId], references: [id], onDelete: Cascade)
 
   @@index([brainId])
   @@index([status])
@@ -1244,16 +1252,16 @@ model BrainDocument {
 // "Actividad reciente" del panel del sitio. Sirve para que el admin vea cómo
 // el cerebro está aprendiendo y actuando.
 model BrainActivity {
-  id          String    @id @default(uuid())
-  brainId     String
-  kind        String    // memory_ingested | document_processed | chat_message | tool_executed | sync_onboarding | embedding_generated | relation_created
-  title       String
-  detail      String?
-  metadata    Json?     @default("{}")
-  userId      String?   // user que disparó la acción (si aplica)
-  createdAt   DateTime  @default(now())
+  id        String   @id @default(uuid())
+  brainId   String
+  kind      String // memory_ingested | document_processed | chat_message | tool_executed | sync_onboarding | embedding_generated | relation_created
+  title     String
+  detail    String?
+  metadata  Json?    @default("{}")
+  userId    String? // user que disparó la acción (si aplica)
+  createdAt DateTime @default(now())
 
-  brain       Brain     @relation(fields: [brainId], references: [id], onDelete: Cascade)
+  brain Brain @relation(fields: [brainId], references: [id], onDelete: Cascade)
 
   @@index([brainId, createdAt])
   @@index([kind])
@@ -1262,19 +1270,19 @@ model BrainActivity {
 // BrainChatMessage = historial de conversaciones con el cerebro. Una sesión
 // puede tener muchos mensajes intercalando user / assistant / tool.
 model BrainChatMessage {
-  id          String    @id @default(uuid())
-  brainId     String
-  sessionId   String    // agrupa mensajes de una misma conversación
-  role        String    // user | assistant | tool
-  content     String
-  toolName    String?   // si role='tool', nombre de la función ejecutada
-  toolArgs    Json?     // args de input
-  toolResult  Json?     // resultado del tool
-  metadata    Json?     @default("{}")
-  userId      String?
-  createdAt   DateTime  @default(now())
+  id         String   @id @default(uuid())
+  brainId    String
+  sessionId  String // agrupa mensajes de una misma conversación
+  role       String // user | assistant | tool
+  content    String
+  toolName   String? // si role='tool', nombre de la función ejecutada
+  toolArgs   Json? // args de input
+  toolResult Json? // resultado del tool
+  metadata   Json?    @default("{}")
+  userId     String?
+  createdAt  DateTime @default(now())
 
-  brain       Brain     @relation(fields: [brainId], references: [id], onDelete: Cascade)
+  brain Brain @relation(fields: [brainId], references: [id], onDelete: Cascade)
 
   @@index([brainId, sessionId, createdAt])
   @@index([brainId, createdAt])
