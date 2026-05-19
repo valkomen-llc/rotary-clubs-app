@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// FINANCIAL HOTFIX V4.410 | 2026-05-20 (HOTFIX — mount /api/financial en api/index.js 🩹)
-// Cache bust: 2026-05-20 13:30 (FINANCIAL HOTFIX v4.410 🩹)
+// FINANCIAL V4.411 | 2026-05-20 (FINANCIAL — recibo por email + Bóveda visible en Finanzas 💰✉️)
+// Cache bust: 2026-05-20 14:30 (FINANCIAL v4.411 💰✉️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.411',
+        date: '2026-05-20',
+        title: 'Financial — Recibo automático al donante + Bóveda funcional desde el admin 💰✉️',
+        description: 'Completa el flujo de donaciones end-to-end con tres mejoras críticas. (1) Recibo transaccional: cuando el donante completa el pago, recibe automáticamente un correo HTML con branding del club, monto, fecha, referencia única, mensaje (si lo dejó) y comprobante. Se envía desde noreply@clubplatform.org vía Resend para garantizar entregabilidad, control y consistencia institucional. El Reply-To apunta al email del club para que el donante pueda responder directo. La arquitectura ya permite que más adelante cada club conecte su propio dominio de correo o sender personalizado. (2) Bóveda de Fondos funcional: en producción los números aparecían vacíos (sólo "$") porque /api/payouts no estaba registrado en api/index.js (mismo bug que v4.410 con /api/financial). Hotfix de una línea: ahora muestra correctamente fondo disponible para retiro, total recaudado bruto y en tránsito/entregado. (3) Bóveda movida de "E-commerce" → "Finanzas" en el sidebar: cada club tiene autonomía financiera para gestionar sus aportes sin necesidad de tener una tienda activa. Cualquier club admin ya ve y administra su Bóveda desde su panel.',
+        type: 'added',
+        author: 'Claude',
+        details: [
+            'paymentController.handleSuccessfulDonationCheckout: tras crear Donation, llama a EmailService.sendPlatformEmail con un HTML responsivo. Branding dinámico: usa club.colors.primary, club.colors.secondary y club.logo si están configurados; fallback a paleta Rotary clásica. Referencia visible para el donante = últimos 8 chars del donation.id (uuid). IDs de Stripe quedan en el pie para trazabilidad operacional.',
+            'Sender por defecto centralizado: \"Club Platform for Rotary\" <noreply@clubplatform.org>. Cada club puede overridear más adelante vía PlatformConfig o un campo en NotificationConfig (siguiente fase). Reply-To = club.email para que el donante responda directo al club, no a Valkomen.',
+            'EmailService.sendPlatformEmail ya tenía soporte Resend + fallback SMTP del super admin — sólo necesitábamos llamarlo. Si Resend falla o no está configurada la API key, el sistema intenta SMTP fallback automáticamente.',
+            'api/index.js: nuevo lazy loader getPayouts + mount app.use("/api/payouts", ...). Vale repetirlo (es la 2ª vez que pasa): cuando se agrega un router nuevo en server/routes/, hay que registrarlo en DOS lugares — server/server.js (dev local) Y api/index.js (Vercel producción). Pendiente: test automático que falle al detectar routers huérfanos.',
+            'AdminLayout.tsx: \"Bóveda de Fondos\" se mueve a categoría \"Finanzas\" (antes estaba escondida en \"E-commerce\"). Ahora se inserta SIN gate por mod.ecommerce — todo club admin la ve. Keywords agregados para que aparezca en el buscador del sidebar al escribir \"donacion\", \"aporte\", \"retiro\", \"wallet\", \"fondos\", \"stripe\".',
+            'Test plan: (a) hacer una donación de prueba con tarjeta 4242 4242 4242 4242, verificar que llega el correo de recibo al inbox del donante; (b) entrar a /admin/boveda, verificar que aparecen los montos correctos (no vacíos); (c) verificar que el ítem \"Bóveda de Fondos\" aparece bajo la categoría \"FINANZAS\" del sidebar.'
+        ]
+    },
     {
         version: 'v4.410',
         date: '2026-05-20',

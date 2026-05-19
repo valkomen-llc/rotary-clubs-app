@@ -5,6 +5,12 @@ import DomainProvisioningService from '../services/DomainProvisioningService.js'
 import prisma from '../lib/prisma.js';
 const DEFAULT_PLATFORM_FEE_PERCENTAGE = 0.05; // 5% fee when using Valkomen's master account
 
+// v4.411 — Remitente por defecto del recibo transaccional. Centralizado en
+// Club Platform para entregabilidad. Reply-to apunta al club si tiene email
+// configurado. Cada club podrá overridear este sender más adelante via
+// PlatformConfig o un campo en NotificationConfig (out of scope hoy).
+const PLATFORM_DONATION_SENDER = '"Club Platform for Rotary" <noreply@clubplatform.org>';
+
 // Helper to get correct Stripe instance based on Club config
 const getStripeConfig = async (clubId) => {
     const config = await prisma.paymentProviderConfig.findUnique({
@@ -450,7 +456,7 @@ async function handleSuccessfulDonationCheckout(session) {
         });
 
         const isAnon = isAnonymous === 'true' || isAnonymous === true;
-        await prisma.donation.create({
+        const donation = await prisma.donation.create({
             data: {
                 amount: totalAmount,
                 currency,
@@ -466,7 +472,122 @@ async function handleSuccessfulDonationCheckout(session) {
         });
 
         console.log(`[Stripe Webhook] ✅ Donación registrada: ${totalAmount} ${currency} → club ${clubId} (net ${netAmount.toFixed(2)})`);
+
+        // v4.411 — Recibo transaccional por correo. Centralizado vía
+        // EmailService.sendPlatformEmail (Resend → noreply@clubplatform.org).
+        // Si falla, log y seguimos: el pago ya está acreditado.
+        const recipientEmail = donorEmail || session.customer_details?.email;
+        if (recipientEmail) {
+            try {
+                const club = await prisma.club.findUnique({
+                    where: { id: clubId },
+                    select: { name: true, logo: true, colors: true, email: true, domain: true }
+                });
+                const recipientName = isAnon
+                    ? 'Donante anónimo'
+                    : (donorName || session.customer_details?.name || 'amigo');
+                const html = buildDonationReceiptHtml({
+                    club,
+                    donation,
+                    donorName: recipientName,
+                    amount: totalAmount,
+                    currency,
+                    sessionId: session.id,
+                    paymentIntentId: session.payment_intent,
+                    message: message || null
+                });
+
+                await EmailService.sendPlatformEmail({
+                    to: recipientEmail,
+                    subject: `Recibo de tu donación a ${club?.name || 'Rotary'}`,
+                    html,
+                    from: PLATFORM_DONATION_SENDER,
+                    replyTo: club?.email || undefined
+                });
+                console.log(`[Stripe Webhook] ✉️  Recibo enviado a ${recipientEmail}`);
+            } catch (emailErr) {
+                console.error('[Stripe Webhook] Error enviando recibo de donación:', emailErr);
+            }
+        }
     } catch (err) {
         console.error('[Stripe Webhook] Error registrando donación:', err);
     }
+}
+
+// v4.411 — Template del recibo. Usa el branding del club (color primario, logo)
+// con fallback a paleta Rotary. La referencia visible es donation.id (uuid
+// corto) para el donante; los IDs internos de Stripe quedan en el pie por
+// trazabilidad operacional.
+function buildDonationReceiptHtml({ club, donation, donorName, amount, currency, sessionId, paymentIntentId, message }) {
+    const primary = club?.colors?.primary || '#0B223F';
+    const accent = club?.colors?.secondary || '#9D2235';
+    const clubName = club?.name || 'Rotary';
+    const fmtDate = new Date(donation.date).toLocaleString('es-CO', {
+        dateStyle: 'long',
+        timeStyle: 'short',
+        timeZone: 'America/Bogota'
+    });
+    const fmtAmount = Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const ref = donation.id.slice(-8).toUpperCase();
+    const safeMessage = message ? String(message).replace(/</g, '&lt;').replace(/>/g, '&gt;') : null;
+
+    return `
+<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; color: #1f2937; max-width: 600px; margin: 0 auto; background: #f8fafc; padding: 24px 0;">
+    <div style="background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.06);">
+        <div style="background: ${primary}; color: #ffffff; padding: 36px 32px; text-align: center;">
+            ${club?.logo ? `<img src="${club.logo}" alt="${clubName}" style="height: 56px; margin-bottom: 18px;" />` : ''}
+            <div style="font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; opacity: 0.75; margin-bottom: 8px;">Recibo de Donación</div>
+            <h1 style="margin: 0; font-size: 28px; font-weight: 700; color: #ffffff;">¡Gracias, ${donorName}!</h1>
+        </div>
+
+        <div style="padding: 32px;">
+            <p style="font-size: 16px; line-height: 1.6; margin: 0 0 24px;">
+                Confirmamos que tu aporte a <strong>${clubName}</strong> fue procesado exitosamente. Tu apoyo sostiene las iniciativas de servicio que transforman vidas.
+            </p>
+
+            <div style="background: linear-gradient(135deg, ${accent}10, ${accent}20); border-radius: 12px; padding: 24px; margin-bottom: 24px; text-align: center;">
+                <div style="font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: #64748b; margin-bottom: 6px;">Monto donado</div>
+                <div style="font-size: 40px; font-weight: 800; color: ${accent}; line-height: 1;">
+                    $${fmtAmount} <span style="font-size: 18px; font-weight: 700;">${currency}</span>
+                </div>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 24px;">
+                <tbody>
+                    <tr>
+                        <td style="padding: 12px 0; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Organización</td>
+                        <td style="padding: 12px 0; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600;">${clubName}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px 0; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Fecha y hora</td>
+                        <td style="padding: 12px 0; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600;">${fmtDate}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px 0; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Referencia</td>
+                        <td style="padding: 12px 0; border-bottom: 1px solid #e5e7eb; text-align: right; font-family: 'SF Mono', Menlo, monospace; font-weight: 600; color: ${primary};">#${ref}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px 0; color: #6b7280;">Método de pago</td>
+                        <td style="padding: 12px 0; text-align: right; font-weight: 600;">Stripe Checkout</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            ${safeMessage ? `
+            <div style="background: #f3f4f6; border-left: 3px solid ${accent}; padding: 14px 18px; border-radius: 6px; margin-bottom: 24px;">
+                <div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #6b7280; margin-bottom: 6px;">Tu mensaje al club</div>
+                <p style="margin: 0; font-style: italic; color: #1f2937; line-height: 1.5;">"${safeMessage}"</p>
+            </div>` : ''}
+
+            <p style="font-size: 14px; color: #6b7280; line-height: 1.6; margin: 24px 0 0;">
+                Este recibo sirve como comprobante de tu donación. Si necesitas un certificado tributario formal o tienes alguna pregunta sobre tu aporte, ponte en contacto directamente con <strong>${clubName}</strong>${club?.email ? ` respondiendo a este correo` : ''}.
+            </p>
+        </div>
+
+        <div style="background: #f8fafc; padding: 20px 32px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #e5e7eb;">
+            Recibo automático emitido por <strong>Club Platform</strong> en nombre de ${clubName}.<br>
+            <span style="font-family: 'SF Mono', Menlo, monospace; font-size: 11px; color: #cbd5e1;">tx: ${(paymentIntentId || sessionId || '').slice(-16)}</span>
+        </div>
+    </div>
+</div>`;
 }

@@ -160,6 +160,8 @@ let _social;
 const getSocial = async () => _social || (({ default: _social } = await import('../server/routes/social.js')), _social);
 let _financial;
 const getFinancial = async () => _financial || (({ default: _financial } = await import('../server/routes/financial.js')), _financial);
+let _payouts;
+const getPayouts = async () => _payouts || (({ default: _payouts } = await import('../server/routes/payouts.js')), _payouts);
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
@@ -231,6 +233,9 @@ app.use('/api/social', async (req, res, next) => { try { return (await getSocial
 
 // Donaciones + reportes financieros (v4.410 hotfix — el mount faltaba en api/index.js)
 app.use('/api/financial', async (req, res, next) => { try { return (await getFinancial())(req, res, next); } catch (e) { console.error('API Error [financial]:', e); res.status(500).json({ error: e.message }); } });
+
+// Bóveda de Fondos: balance + solicitudes de retiro (v4.411 hotfix — mismo bug que financial)
+app.use('/api/payouts', async (req, res, next) => { try { return (await getPayouts())(req, res, next); } catch (e) { console.error('API Error [payouts]:', e); res.status(500).json({ error: e.message }); } });
 
 // ── Frontend & SEO Injection ──────────────────────────────────────────────────
 app.get('*', async (req, res) => {

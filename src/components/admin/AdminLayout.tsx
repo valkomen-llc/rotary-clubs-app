@@ -480,10 +480,19 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         if (isSuperAdmin || mod.ecommerce) {
             items.push(
                 { icon: Store, label: 'Tienda', path: '/admin/tienda', category: 'E-commerce' },
-                { icon: Receipt, label: 'Órdenes y Pagos', path: '/admin/ordenes', category: 'E-commerce' },
-                { icon: Wallet, label: 'Bóveda de Fondos', path: '/admin/boveda', category: 'E-commerce' }
+                { icon: Receipt, label: 'Órdenes y Pagos', path: '/admin/ordenes', category: 'E-commerce' }
             );
         }
+
+        // v4.411 — La Bóveda vive en Finanzas (no E-commerce). Disponible para
+        // todo club admin: las donaciones llegan a clubes sin tienda activa.
+        items.push({
+            icon: Wallet,
+            label: 'Bóveda de Fondos',
+            path: '/admin/boveda',
+            category: 'Finanzas',
+            keywords: ['donacion', 'aporte', 'retiro', 'balance', 'wallet', 'fondos', 'stripe']
+        });
 
         // DIAN — conditionally show
         if (isSuperAdmin || mod.dian) {
