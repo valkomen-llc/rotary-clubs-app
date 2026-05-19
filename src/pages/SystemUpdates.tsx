@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// NAV V4.408 | 2026-05-20 (NAV — bypass setup wizard para RYE 4281 (Programa de Intercambio) 🔓)
-// Cache bust: 2026-05-20 00:00 (NAV — bypass RYE 4281 v4.408 🔓)
+// FINANCIAL V4.409 | 2026-05-20 (FINANCIAL — donaciones Stripe Checkout en Maneras de Contribuir 💳)
+// Cache bust: 2026-05-20 12:30 (FINANCIAL — Stripe Checkout v4.409 💳)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.409',
+        date: '2026-05-20',
+        title: 'Financial — Donaciones reales vía Stripe en Maneras de Contribuir 💳',
+        description: 'Cualquier sitio de Club Platform que tenga la sección "Maneras de Contribuir" ahora puede recibir donaciones reales con tarjeta. El modal "Haz tu Donación" ya no es un placeholder: el visitante elige monto + email + (opcional) nombre/mensaje/anónimo y el sistema crea una Stripe Checkout Session (cuenta master Valkomen), redirige al checkout seguro de Stripe, y cuando el cobro se confirma el webhook registra automáticamente un Payment + Donation contra el clubId del sitio. El balance del club queda disponible al instante en la Bóveda (WalletManagement) — el flujo de "Solicitar Retiro" ya existente lo recoge sin cambios. Arquitectura multi-tenant: cada sitio (clubes, distritos, asociaciones, programas RYE, fundaciones) tiene su propia wallet virtual aislada por clubId. Caso piloto: Club Rotario Bogotá Centenario empieza a recibir aportes hoy.',
+        type: 'added',
+        author: 'Claude',
+        details: [
+            'Backend: nuevo financialController.js con POST /api/financial/donate (público) → crea Stripe Checkout Session con metadata.type="donation"+clubId. GET /api/financial/donate/session/:id verifica estado post-checkout. GET /api/financial/donations (auth) lista historial del club.',
+            'Backend: paymentController.handleSuccessfulCheckoutSession extendido — cuando metadata.type==="donation" se ejecuta handleSuccessfulDonationCheckout: crea Payment (isPlatformCollection=true, netAmount = monto − 5% Valkomen − fee Stripe ~2.9%+$0.30) + Donation (con donorName/Email/message/isAnonymous). Idempotente vía providerRef único, no duplica si el webhook reintenta.',
+            'Frontend: ManerasDeContribuir.tsx ya no muestra alert("Redirigiendo…") — ahora hace fetch al endpoint, redirige a checkout.stripe.com. Agregamos campos email (requerido para recibo), nombre, mensaje, checkbox "donar como anónimo". Loading state + manejo de errores en el modal.',
+            'Frontend: nuevas páginas /donacion/exito (verifica session_id contra el backend, muestra recibo) y /donacion/cancelada (mensaje + retry).',
+            'Toggle "Donación Mensual" queda disabled con badge "Pronto" — las suscripciones recurrentes llegan en v4.410+.',
+            'Variables de entorno reutilizadas (sin config nueva): STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET ya están en producción para el SaaS billing. Donaciones se distinguen en el dashboard de Stripe por metadata.type="donation".',
+            'Compatible con el flujo de Bóveda/Retiros existente — el getClubBalance (payoutController) cuenta automáticamente los nuevos Payment.netAmount sin cambios.'
+        ]
+    },
     {
         version: 'v4.408',
         date: '2026-05-20',
