@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.410.0",
-  "cache_bust": "2026-05-20 13:30 (FINANCIAL HOTFIX — mount /api/financial en api/index.js v4.410 🩹)",
+  "version": "4.411.0",
+  "cache_bust": "2026-05-20 14:30 (FINANCIAL — recibo por email + Bóveda visible en Finanzas v4.411 💰✉️)",
   "type": "module",
-  "//": "FINANCIAL HOTFIX V4.410 | 2026-05-20 (HOTFIX — el feature v4.409 fallaba en producción con \"Unexpected token '<'\" porque /api/financial estaba montado en server/server.js (dev local) pero NO en api/index.js (entry de Vercel). Las requests caían al SPA catch-all y devolvían HTML. Fix: agregar lazy loader getFinancial + app.use('/api/financial', ...) en api/index.js. Ahora POST /api/financial/donate ruteа al financialController correctamente y el modal de donación funciona en producción 🩹)",
+  "//": "FINANCIAL V4.411 | 2026-05-20 (FINANCIAL — completa el flujo de donaciones con (1) recibo transaccional al donante vía Resend desde noreply@clubplatform.org (HTML con branding del club, monto, fecha, referencia, mensaje), (2) mount de /api/payouts faltante en api/index.js — mismo bug que v4.410 con /api/financial, ahora la Bóveda muestra correctamente fondo disponible / total recaudado / en tránsito, (3) Bóveda de Fondos movida de E-commerce → Finanzas en el sidebar, visible para todo club admin (no depende de tener tienda activa). Reply-to del recibo apunta al email del club para responder al donante directo 💰✉️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
