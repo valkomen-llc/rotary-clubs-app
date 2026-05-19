@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.412.0",
-  "cache_bust": "2026-05-20 15:30 (FINANCIAL — sección Aportes Recibidos + render robusto en Bóveda v4.412 📥)",
+  "version": "4.413.0",
+  "cache_bust": "2026-05-20 16:30 (FINANCIAL HOTFIX — Prisma singleton en payouts + financial routes v4.413 🩹)",
   "type": "module",
-  "//": "FINANCIAL V4.412 | 2026-05-20 (FINANCIAL — la Bóveda ahora muestra la sección 'Aportes Recibidos' con la lista completa de donaciones del club (donante, monto, fecha, email, mensaje, referencia única), consumiendo GET /api/financial/donations. Total acumulado de aportes visible en el header junto a fondo disponible / total recaudado / en tránsito. Render robusto: si la API falla los montos se muestran como $0.00 con banner de error en vez de '$' vacío. Botón refresh manual. Helper fmtUSD centralizado. Promise.allSettled para que el fallo de un endpoint no rompa los otros 📥)",
+  "//": "FINANCIAL HOTFIX V4.413 | 2026-05-20 (HOTFIX — la Bóveda mostraba 'Network Error' al cargar balance/donaciones porque payoutController.js y routes/financial.js instanciaban `new PrismaClient()` por archivo. En Vercel serverless, cada cold start abre conexiones nuevas a Postgres, el pool se exhausta en pocas requests, y las siguientes timeout con Network Error. Fix: usar el singleton `import prisma from '../lib/prisma.js'` (mismo que usa paymentController.js correctamente). La donación de $1 USD del Club Bogotá Centenario ya estaba en DB — sólo los endpoints no podían alcanzarla 🩹)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
