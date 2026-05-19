@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// PROJECTS V4.417 | 2026-05-20 (PROJECTS — SEO completo en proyectos de impacto 🔍📈)
-// Cache bust: 2026-05-20 20:30 (PROJECTS v4.417 🔍📈)
+// FINANCIAL V4.418 | 2026-05-20 (FINANCIAL — endpoints de diagnóstico de email 🔬✉️)
+// Cache bust: 2026-05-20 21:30 (FINANCIAL v4.418 🔬✉️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.418',
+        date: '2026-05-20',
+        title: 'Financial — Diagnóstico de email transaccional (los recibos no llegan) 🔬✉️',
+        description: 'El cliente reporta que las donaciones se procesan correctamente (la página de éxito muestra "¡Gracias por tu donación!" con el monto y email) pero NO llegan los correos de recibo al donante. Para diagnosticar la causa raíz agregamos endpoints de diagnóstico que permiten verificar el estado de la pipeline de email sin tener que mirar logs de Vercel. La causa MÁS PROBABLE: o bien RESEND_API_KEY no está configurada en las variables de entorno de Vercel, o bien el dominio clubplatform.org no está verificado en Resend (Resend rechaza envíos desde dominios no verificados con error "domain not verified"). El endpoint /email-status responde con la información exacta para confirmar cuál es el caso.',
+        type: 'added',
+        author: 'Claude',
+        details: [
+            'GET /api/financial/email-status (super admin) — verifica si RESEND_API_KEY está set, hace ping a la Resend API para listar dominios verificados con su estado (verified/pending/failed), cuenta SMTP fallbacks disponibles en NotificationConfig, lee PlatformConfig.email_from y email_provider. Sin exponer la API key.',
+            'POST /api/financial/email-test (super admin) Body: {to} — dispara un email de prueba al destinatario usando EmailService.sendPlatformEmail con el mismo sender que los recibos. Devuelve { success, messageId, error, to } con el detalle exacto del envío. Útil para probar destinatarios diferentes (gmail, outlook, dominio corporativo) y ver si Resend acepta el envío.',
+            'paymentController.handleSuccessfulDonationCheckout: logging mejorado con prefijo [DONATION-EMAIL] que muestra: estado de RESEND_API_KEY (SET/NOT SET), result.success/error/messageId del intento de envío, sender + replyTo + subject usados. Permite encontrar la causa exacta en los logs de Vercel sin tener que hacer otra donación de prueba.',
+            'Diagnóstico esperado: si Resend está bien configurada y el dominio verificado, los emails deberían llegar. Si no, el endpoint /email-status responde con `{ resend: { configured: false } }` (faltan vars) o `{ domains: [{ status: "pending" }] }` (dominio sin verificar). Acción siguiente depende del resultado: configurar la key en Vercel + verificar DNS de clubplatform.org en Resend.',
+            'Fallback automático ya implementado en EmailService: si Resend falla, intenta SMTP del super admin (NotificationConfig.type="smtp", enabled=true). Si tampoco hay SMTP, el envío falla silencioso pero la donación se mantiene en DB. Este PR no cambia el fallback, sólo agrega diagnóstico.',
+            'Pendiente (no en este PR): UI en el panel admin que llame a /email-status y muestre el estado con instrucciones de configuración paso a paso. Por ahora se usa via curl/Postman con el JWT de super admin.'
+        ]
+    },
     {
         version: 'v4.417',
         date: '2026-05-20',

@@ -526,16 +526,26 @@ async function handleSuccessfulDonationCheckout(session) {
                 });
 
                 const subjectTopic = project ? `proyecto "${project.title}"` : (club?.name || 'Rotary');
-                await EmailService.sendPlatformEmail({
+                // v4.418 — Logging detallado para diagnosticar por qué el recibo no llega.
+                // El método devuelve { success, messageId?, error? } incluso cuando "falla"
+                // graceful (sin throw). Necesitamos ver explícitamente el resultado.
+                console.log(`[DONATION-EMAIL] Intentando enviar recibo a ${recipientEmail} (Resend key: ${process.env.RESEND_API_KEY ? 'SET' : 'NOT SET'})`);
+                const emailResult = await EmailService.sendPlatformEmail({
                     to: recipientEmail,
                     subject: `Recibo de tu donación al ${subjectTopic}`,
                     html,
                     from: PLATFORM_DONATION_SENDER,
                     replyTo: club?.email || undefined
                 });
-                console.log(`[Stripe Webhook] ✉️  Recibo enviado a ${recipientEmail}${project ? ` (proyecto ${project.id})` : ''}`);
+                if (emailResult?.success) {
+                    console.log(`[DONATION-EMAIL] ✉️  ✅ Recibo enviado a ${recipientEmail} (messageId: ${emailResult.messageId})${project ? ` proyecto ${project.id}` : ''}`);
+                } else {
+                    console.error(`[DONATION-EMAIL] ❌ Recibo NO enviado a ${recipientEmail}. Error:`, emailResult?.error || 'unknown');
+                    console.error(`[DONATION-EMAIL] Sender: ${PLATFORM_DONATION_SENDER}, replyTo: ${club?.email || 'none'}, subject: ${subjectTopic}`);
+                }
             } catch (emailErr) {
-                console.error('[Stripe Webhook] Error enviando recibo de donación:', emailErr);
+                console.error('[DONATION-EMAIL] 💥 Excepción enviando recibo de donación:', emailErr?.message || emailErr);
+                console.error('[DONATION-EMAIL] Stack:', emailErr?.stack?.split('\n').slice(0, 5).join('\n'));
             }
         }
     } catch (err) {

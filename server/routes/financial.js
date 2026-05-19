@@ -4,7 +4,9 @@ import prisma from '../lib/prisma.js'; // v4.413 — singleton (evita pool exhau
 import {
     createDonationCheckout,
     getDonationSessionStatus,
-    listClubDonations
+    listClubDonations,
+    getEmailDiagnostics,
+    sendTestEmail
 } from '../controllers/financialController.js';
 
 const router = express.Router();
@@ -24,6 +26,10 @@ router.get('/donate/session/:id', getDonationSessionStatus);
 
 // AUTENTICADO — listado de donaciones del club (panel admin)
 router.get('/donations', authMiddleware, listClubDonations);
+
+// v4.418 — DIAGNÓSTICO de email (super admin) para debuggear que el recibo no llega
+router.get('/email-status', authMiddleware, getEmailDiagnostics);
+router.post('/email-test', authMiddleware, sendTestEmail);
 
 /**
  * ==========================================
