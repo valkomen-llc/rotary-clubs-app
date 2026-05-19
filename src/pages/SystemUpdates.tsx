@@ -24,9 +24,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// FINANCIAL V4.422 | 2026-05-21 (FINANCIAL — sync Stripe retroactivo + desglose de fees 🔄💵)
-// Cache bust: 2026-05-21 00:30 (FINANCIAL v4.422 🔄💵)
+// UI V4.423 | 2026-05-21 (UI — Donar Ahora → Realizar Aporte en proyectos 🪶)
+// Cache bust: 2026-05-21 01:00 (UI v4.423 🪶)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.423',
+        date: '2026-05-21',
+        title: 'UI — "Donar Ahora" → "Realizar Aporte" en la página del proyecto 🪶',
+        description: 'Micro-ajuste de copy a pedido del cliente: el CTA principal del proyecto en /proyectos/<slug> ahora dice "Realizar Aporte" en lugar de "Donar Ahora". El nuevo texto es más sobrio e institucional para campañas de fundraising rotarias.',
+        type: 'changed',
+        author: 'Claude',
+        details: [
+            'ProyectoDetalle.tsx: cambio de copy del botón CTA principal en la card de donación lateral.',
+            'Modal de donación y Maneras de Contribuir mantienen sus textos actuales — el cliente sólo pidió este punto.'
+        ]
+    },
     {
         version: 'v4.422',
         date: '2026-05-21',

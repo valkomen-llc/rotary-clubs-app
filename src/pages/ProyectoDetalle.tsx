@@ -447,7 +447,7 @@ const ProyectoDetalle = () => {
                         onClick={() => setMostrarModal(true)}
                         className="w-full bg-rotary-gold text-white py-4 rounded-full font-bold text-lg hover:bg-[#c9a020] transition-colors flex items-center justify-center gap-2 mb-4 shadow-md"
                       >
-                        <Heart className="w-5 h-5" /> Donar Ahora
+                        <Heart className="w-5 h-5" /> Realizar Aporte
                       </button>
 
                       {/* Compartir */}
