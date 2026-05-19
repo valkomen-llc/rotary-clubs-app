@@ -407,7 +407,7 @@ async function handleFailedPayment(paymentIntent) {
 // lo cuente) + Donation (para el historial visible en el panel del club).
 // Idempotente: si la session ya fue procesada, no duplica registros.
 async function handleSuccessfulDonationCheckout(session) {
-    const { clubId, donorEmail, donorName, message, isAnonymous } = session.metadata || {};
+    const { clubId, donorEmail, donorName, message, isAnonymous, projectId } = session.metadata || {};
 
     if (!clubId) {
         console.error('[Stripe Webhook] Donación sin clubId en metadata:', session.id);
@@ -456,6 +456,7 @@ async function handleSuccessfulDonationCheckout(session) {
         });
 
         const isAnon = isAnonymous === 'true' || isAnonymous === true;
+        const cleanProjectId = projectId && projectId !== '' ? projectId : null;
         const donation = await prisma.donation.create({
             data: {
                 amount: totalAmount,
@@ -466,10 +467,28 @@ async function handleSuccessfulDonationCheckout(session) {
                 donorEmail: donorEmail || session.customer_details?.email || null,
                 status: 'success',
                 clubId,
+                projectId: cleanProjectId, // v4.416 — donaciones asociadas a proyecto suman al recaudado del proyecto
                 isAnonymous: isAnon,
                 message: message || null
             }
         });
+
+        // v4.416 — Si la donación va a un proyecto, actualizar contadores agregados
+        // (project.recaudado + project.donantes) para que la UI pública del proyecto
+        // refleje el progreso sin tener que recalcular cada vez.
+        if (cleanProjectId) {
+            try {
+                await prisma.project.update({
+                    where: { id: cleanProjectId },
+                    data: {
+                        recaudado: { increment: totalAmount },
+                        donantes: { increment: 1 }
+                    }
+                });
+            } catch (projErr) {
+                console.error('[Stripe Webhook] No pude actualizar agregados del proyecto:', projErr);
+            }
+        }
 
         console.log(`[Stripe Webhook] ✅ Donación registrada: ${totalAmount} ${currency} → club ${clubId} (net ${netAmount.toFixed(2)})`);
 
@@ -479,15 +498,24 @@ async function handleSuccessfulDonationCheckout(session) {
         const recipientEmail = donorEmail || session.customer_details?.email;
         if (recipientEmail) {
             try {
-                const club = await prisma.club.findUnique({
-                    where: { id: clubId },
-                    select: { name: true, logo: true, colors: true, email: true, domain: true }
-                });
+                const [club, project] = await Promise.all([
+                    prisma.club.findUnique({
+                        where: { id: clubId },
+                        select: { name: true, logo: true, colors: true, email: true, domain: true }
+                    }),
+                    cleanProjectId
+                        ? prisma.project.findUnique({
+                            where: { id: cleanProjectId },
+                            select: { id: true, title: true, image: true, category: true }
+                        })
+                        : Promise.resolve(null)
+                ]);
                 const recipientName = isAnon
                     ? 'Donante anónimo'
                     : (donorName || session.customer_details?.name || 'amigo');
                 const html = buildDonationReceiptHtml({
                     club,
+                    project,
                     donation,
                     donorName: recipientName,
                     amount: totalAmount,
@@ -497,14 +525,15 @@ async function handleSuccessfulDonationCheckout(session) {
                     message: message || null
                 });
 
+                const subjectTopic = project ? `proyecto "${project.title}"` : (club?.name || 'Rotary');
                 await EmailService.sendPlatformEmail({
                     to: recipientEmail,
-                    subject: `Recibo de tu donación a ${club?.name || 'Rotary'}`,
+                    subject: `Recibo de tu donación al ${subjectTopic}`,
                     html,
                     from: PLATFORM_DONATION_SENDER,
                     replyTo: club?.email || undefined
                 });
-                console.log(`[Stripe Webhook] ✉️  Recibo enviado a ${recipientEmail}`);
+                console.log(`[Stripe Webhook] ✉️  Recibo enviado a ${recipientEmail}${project ? ` (proyecto ${project.id})` : ''}`);
             } catch (emailErr) {
                 console.error('[Stripe Webhook] Error enviando recibo de donación:', emailErr);
             }
@@ -518,7 +547,7 @@ async function handleSuccessfulDonationCheckout(session) {
 // con fallback a paleta Rotary. La referencia visible es donation.id (uuid
 // corto) para el donante; los IDs internos de Stripe quedan en el pie por
 // trazabilidad operacional.
-function buildDonationReceiptHtml({ club, donation, donorName, amount, currency, sessionId, paymentIntentId, message }) {
+function buildDonationReceiptHtml({ club, project, donation, donorName, amount, currency, sessionId, paymentIntentId, message }) {
     const primary = club?.colors?.primary || '#0B223F';
     const accent = club?.colors?.secondary || '#9D2235';
     const clubName = club?.name || 'Rotary';
@@ -530,6 +559,7 @@ function buildDonationReceiptHtml({ club, donation, donorName, amount, currency,
     const fmtAmount = Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const ref = donation.id.slice(-8).toUpperCase();
     const safeMessage = message ? String(message).replace(/</g, '&lt;').replace(/>/g, '&gt;') : null;
+    const safeProjectTitle = project?.title ? String(project.title).replace(/</g, '&lt;').replace(/>/g, '&gt;') : null;
 
     return `
 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; color: #1f2937; max-width: 600px; margin: 0 auto; background: #f8fafc; padding: 24px 0;">
@@ -542,8 +572,19 @@ function buildDonationReceiptHtml({ club, donation, donorName, amount, currency,
 
         <div style="padding: 32px;">
             <p style="font-size: 16px; line-height: 1.6; margin: 0 0 24px;">
-                Confirmamos que tu aporte a <strong>${clubName}</strong> fue procesado exitosamente. Tu apoyo sostiene las iniciativas de servicio que transforman vidas.
+                ${project
+                    ? `Confirmamos tu aporte al proyecto <strong>"${safeProjectTitle}"</strong> de <strong>${clubName}</strong>. Tu contribución acerca esta iniciativa de impacto a su meta.`
+                    : `Confirmamos que tu aporte a <strong>${clubName}</strong> fue procesado exitosamente. Tu apoyo sostiene las iniciativas de servicio que transforman vidas.`}
             </p>
+
+            ${project ? `
+            <div style="background: #f9fafb; border-radius: 12px; padding: 16px; margin-bottom: 24px; display: flex; align-items: center; gap: 14px;">
+                ${project.image ? `<img src="${project.image}" alt="${safeProjectTitle}" style="width: 64px; height: 64px; border-radius: 10px; object-fit: cover; flex-shrink: 0;" />` : ''}
+                <div>
+                    ${project.category ? `<div style="font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: ${accent}; font-weight: 700; margin-bottom: 4px;">${project.category}</div>` : ''}
+                    <div style="font-size: 15px; font-weight: 700; color: #1f2937; line-height: 1.3;">${safeProjectTitle}</div>
+                </div>
+            </div>` : ''}
 
             <div style="background: linear-gradient(135deg, ${accent}10, ${accent}20); border-radius: 12px; padding: 24px; margin-bottom: 24px; text-align: center;">
                 <div style="font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: #64748b; margin-bottom: 6px;">Monto donado</div>

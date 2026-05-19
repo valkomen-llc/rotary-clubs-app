@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// FINANCIAL V4.415 | 2026-05-20 (HOTFIX REAL — fallback API_URL en WalletManagement 🎯)
-// Cache bust: 2026-05-20 18:30 (FINANCIAL v4.415 🎯)
+// FINANCIAL V4.416 | 2026-05-20 (FINANCIAL — donaciones desde proyectos vía Stripe centralizado 🎯💰)
+// Cache bust: 2026-05-20 19:30 (FINANCIAL v4.416 🎯💰)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.416',
+        date: '2026-05-20',
+        title: 'Financial — Donaciones desde Proyectos de Impacto cableadas al motor Stripe centralizado 🎯💰',
+        description: 'El modal "Haz tu Donación" en /proyectos/:id ya no es un placeholder. Antes el botón "Continuar con la Donación" sólo cerraba el modal sin hacer nada; ahora llama al mismo endpoint /api/financial/donate que usa Maneras de Contribuir, pasando `projectId`, y redirige al Stripe Checkout centralizado de Valkomen. Cuando el pago se confirma, el webhook crea automáticamente: (1) Payment con isPlatformCollection=true y netAmount = monto − 5% Valkomen − fee Stripe, (2) Donation con projectId set, (3) increment de project.recaudado + project.donantes para que la barra de progreso del proyecto se actualice en tiempo real. El recibo por email destaca el proyecto destinatario (con imagen + categoría) en lugar de mencionar solo al club. La cancel URL del checkout vuelve a la página del proyecto, no a /donacion/cancelada genérica. Un solo motor financiero unifica Maneras de Contribuir + Proyectos + futuros módulos (crowdfunding, membresías, etc.) sin sistemas de pago separados.',
+        type: 'added',
+        author: 'Claude',
+        details: [
+            'financialController.createDonationCheckout: acepta `projectId` opcional en el body. Valida que el proyecto existe y pertenece al clubId indicado (previene aportes cross-club por accidente). Pasa el projectId en session.metadata + ajusta line_items.product_data.name a "Aporte al proyecto: <título>" + cancel_url a /proyectos/:id.',
+            'paymentController.handleSuccessfulDonationCheckout: extrae projectId de metadata, lo setea en Donation.create, y dispara prisma.project.update({ recaudado: { increment }, donantes: { increment } }) para que la UI pública refleje el progreso al instante sin recalcular.',
+            'paymentController.buildDonationReceiptHtml: nuevo parámetro `project`. Cuando se pasa, el recibo muestra una card con el logo del proyecto + categoría + título, y el copy se cambia a "Confirmamos tu aporte al proyecto X de Y". Subject del email cambia a "Recibo de tu donación al proyecto X".',
+            'ProyectoDetalle.tsx: refactor completo del modal. Mantiene los chips de monto pero los cambia a USD (10, 25, 50, 100, 250, 500) para consistency con el resto del sistema — mezcla USD/COP rompería el cálculo unificado del balance en la Bóveda. Agregamos campos email (requerido), nombre, mensaje, anónimo. handleDonate hace fetch al endpoint y redirige a checkout.stripe.com. Loading state + error handling.',
+            'Validación cross-club: si alguien intenta donar a un projectId que no pertenece al clubId del body, el endpoint devuelve 400. Importante para multi-tenant: cada club admin sólo recibe aportes a sus propios proyectos.',
+            'Backwards-compatible: la antigua llamada sin projectId (Maneras de Contribuir) sigue funcionando exactamente igual.',
+            'Test plan: ir a /proyectos/<id>, click "Donar Ahora", llenar email + monto + (opcional) nombre/mensaje, "Continuar con la Donación" → debe redirigir a checkout.stripe.com. Pagar con 4242 4242 4242 4242 → vuelve a /donacion/exito con el recibo. Verificar en /admin/boveda que la nueva donación aparece en "Aportes Recibidos". Verificar que el proyecto en /proyectos/<id> muestra el progreso actualizado.'
+        ]
+    },
     {
         version: 'v4.415',
         date: '2026-05-20',
