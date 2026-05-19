@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.414.0",
-  "cache_bust": "2026-05-20 17:30 (FINANCIAL — endpoints de Bóveda con pg directo (sin Prisma cold-start) v4.414 ⚡)",
+  "version": "4.415.0",
+  "cache_bust": "2026-05-20 18:30 (FINANCIAL HOTFIX REAL — fallback de API_URL a '/api' en WalletManagement v4.415 🎯)",
   "type": "module",
-  "//": "FINANCIAL V4.414 | 2026-05-20 (HOTFIX REAL — el singleton de Prisma de v4.413 NO resolvió el Network Error. Diagnóstico correcto: el QUERY ENGINE de Prisma cold-starts en 2-8 segundos en Vercel serverless (launches a child process en algunas configs), excediendo el timeout efectivo del request y haciendo que axios reporte Network Error antes de recibir respuesta. /api/admin/stats funciona porque usa `pg` directo (db.js) con Pool max=10 y connectionTimeoutMillis=2s. Fix: reescribir las queries de LECTURA de la Bóveda (getClubBalance, getClubPayoutHistory, listClubDonations) con pg directo, mismo patrón que /api/admin/stats. Las escrituras puntuales (requestPayout, updatePayoutStatus, webhook handler) mantienen Prisma porque no son hot path. La donación de $1 USD ya estaba en DB — sólo los endpoints no podían responder a tiempo ⚡)",
+  "//": "FINANCIAL V4.415 | 2026-05-20 (HOTFIX REAL — el Network Error de la Bóveda NO era backend (mi diagnóstico anterior fue incorrecto): WalletManagement.tsx tenía un fallback heredado `import.meta.env.VITE_API_URL || 'http://localhost:5001/api'`. En producción VITE_API_URL no está definida, así que el browser intentaba llamar a `http://localhost:5001/api/payouts/balance` → host inexistente en la máquina del usuario → Network Error. AdminLayout (topbar) tiene el fallback correcto `'/api'` (relativo) por eso funciona. Fix: cambiar el fallback a `'/api'` en WalletManagement.tsx + Shop.tsx + ProductDetail.tsx + OrdersManagement.tsx + StoreManagement.tsx (todos tenían el mismo bug heredado). Las mejoras v4.411-v4.414 (mount, singleton, pg directo) siguen siendo válidas pero NO eran el bug 🎯)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && vite build",
