@@ -41,7 +41,7 @@ const fmtUSD = (n: number | null | undefined) =>
 export default function WalletManagement() {
     const { token } = useAuth();
     const { club } = useClub();
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+    const API_URL = import.meta.env.VITE_API_URL || '/api';
 
     const [balanceData, setBalanceData] = useState<BalanceData | null>(null);
     const [payouts, setPayouts] = useState<PayoutRequest[]>([]);

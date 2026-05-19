@@ -24,9 +24,24 @@ interface UpdateItem {
     details?: string[];
 }
 
-// FINANCIAL V4.414 | 2026-05-20 (HOTFIX REAL — endpoints de Bóveda con pg directo ⚡)
-// Cache bust: 2026-05-20 17:30 (FINANCIAL v4.414 ⚡)
+// FINANCIAL V4.415 | 2026-05-20 (HOTFIX REAL — fallback API_URL en WalletManagement 🎯)
+// Cache bust: 2026-05-20 18:30 (FINANCIAL v4.415 🎯)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.415',
+        date: '2026-05-20',
+        title: 'Financial — Hotfix REAL: fallback de API_URL apuntaba a localhost 🎯',
+        description: 'Después de 4 intentos de fix (v4.411, v4.412, v4.413, v4.414) finalmente identifiqué el bug real, y es vergonzoso. WalletManagement.tsx tenía un fallback heredado: `const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5001/api"`. En producción VITE_API_URL no está definida (porque frontend y API están en el mismo dominio), entonces el browser del usuario intentaba pegarle a `http://localhost:5001/api/payouts/balance` → host inexistente en su máquina → Network Error. AdminLayout (que muestra el topbar correctamente con $0.621) tiene el fallback correcto `"/api"` (URL relativa) por eso funcionaba todo el tiempo. El backend SIEMPRE estuvo bien después de v4.411. Las mejoras de v4.412 (UI defensiva), v4.413 (Prisma singleton) y v4.414 (pg directo en reads) siguen siendo válidas y útiles, pero NO eran el bug. Fix de una línea en 5 archivos heredados con el mismo problema: WalletManagement.tsx, Shop.tsx, ProductDetail.tsx, OrdersManagement.tsx, StoreManagement.tsx — todos ahora fallback a "/api". Lección operacional: cuando una sola página del admin falla con Network Error pero otras funcionan, el problema casi nunca es backend — buscar primero en el fetch del componente que falla.',
+        type: 'fixed',
+        author: 'Claude',
+        details: [
+            'WalletManagement.tsx: fallback de http://localhost:5001/api → /api. Ahora axios llama a app.clubplatform.org/api/payouts/balance correctamente.',
+            'Shop.tsx, ProductDetail.tsx, OrdersManagement.tsx, StoreManagement.tsx: mismo bug heredado, mismo fix. Estos seguramente fallaban en producción para usuarios reales, pero como no estaban en el flujo crítico actual nunca se reportó.',
+            'Mantenidas las mejoras válidas de v4.411-v4.414: el mount de /api/payouts en api/index.js, la sección "Aportes Recibidos" + render robusto en la Bóveda, el singleton de Prisma en payoutController y routes/financial, y las queries de lectura con pg directo. Ninguna de esas se revierte — todas son buenas prácticas.',
+            'Test plan: hard refresh /admin/boveda (Cmd+Shift+R). El banner amber debe desaparecer. Cards muestran $0.62 USD disponible, $1.00 recaudado, 1 aporte. La sección "Aportes Recibidos" lista la donación con todos los detalles.',
+            'Lección de proceso: cuando el primer fix no funciona, NO seguir cambiando el backend asumiendo que la hipótesis es correcta. Mirar primero qué hace el cliente — la diferencia entre componentes que funcionan y los que fallan apunta directo al bug.'
+        ]
+    },
     {
         version: 'v4.414',
         date: '2026-05-20',
