@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// FINANCIAL V4.411 | 2026-05-20 (FINANCIAL — recibo por email + Bóveda visible en Finanzas 💰✉️)
-// Cache bust: 2026-05-20 14:30 (FINANCIAL v4.411 💰✉️)
+// FINANCIAL V4.412 | 2026-05-20 (FINANCIAL — sección Aportes Recibidos + render robusto en Bóveda 📥)
+// Cache bust: 2026-05-20 15:30 (FINANCIAL v4.412 📥)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.412',
+        date: '2026-05-20',
+        title: 'Financial — Sección \"Aportes Recibidos\" + render robusto en la Bóveda 📥',
+        description: 'Cuando un club hizo el primer aporte de prueba ($1 USD), la donación SÍ se registraba correctamente en el backend (el topbar mostraba el balance correcto de $0.621 = $1 − 5% Valkomen − fee Stripe), pero la página /admin/boveda mostraba los cards vacíos con sólo \"$\" porque el render hacía toLocaleString() sobre números potencialmente undefined sin fallback. Más importante: faltaba la sección donde el club ve QUÉ donaciones recibió (donante, fecha, monto, mensaje) — uno de los puntos clave que pidió el cliente para tener autonomía financiera real. v4.412 resuelve ambos.',
+        type: 'added',
+        author: 'Claude',
+        details: [
+            'Nueva sección \"Aportes Recibidos\" en /admin/boveda: lista completa de donaciones del club consumiendo GET /api/financial/donations (ya existía como endpoint, faltaba la UI). Cada aporte muestra: nombre del donante (o \"Donante Anónimo\" si así lo eligió), monto en USD, fecha y hora, email del donante (cuando no es anónimo), referencia única (#A1B2C3D4 — últimos 8 chars del donation.id), estado \"Completado\" y mensaje si lo dejó (resaltado con borde amber).',
+            'Header de la Bóveda ahora incluye un cuarto KPI: \"Aportes Recibidos\" con conteo + total acumulado, junto a fondo disponible / total recaudado / en tránsito.',
+            'Render robusto: helper fmtUSD(n) que defaultea a 0 antes de toLocaleString(). Si la API falla, los cards muestran $0.00 con un banner amber explicando el error, en vez de \"$\" vacío que confunde.',
+            'fetchWalletData usa Promise.allSettled (no Promise.all): si /api/financial/donations falla, /payouts/balance y /payouts/history siguen renderizando. Cada fallo se loggea separado en consola con prefijo [Wallet].',
+            'Botón de refresh manual en el header (icono RefreshCw con animación). Útil cuando el club espera que aparezca un aporte recién hecho.',
+            'Diagnostic note: el problema de los cards vacíos en v4.411 fue que el JSON parseado por axios podría haber tenido fields undefined (network glitch, response sin shape esperada). Ahora el componente es defensivo en lugar de asumir contrato perfecto.'
+        ]
+    },
     {
         version: 'v4.411',
         date: '2026-05-20',
