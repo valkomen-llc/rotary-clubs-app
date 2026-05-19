@@ -119,7 +119,7 @@ const ProjectsManagement: React.FC = () => {
     const [filterStatus, setFilterStatus] = useState('all');
     const [filterCategory, setFilterCategory] = useState('all');
     const [filterSort, setFilterSort] = useState('recent');
-    const [activeTab, setActiveTab] = useState<'info' | 'crowd' | 'impact' | 'gallery' | 'social'>('info');
+    const [activeTab, setActiveTab] = useState<'info' | 'crowd' | 'impact' | 'gallery' | 'social' | 'seo'>('info');
 
     // ── Agentes para el Paso 1 de nuevo proyecto ──
     interface ProjectAgent { id: string; name: string; role: string; category: string; description: string; avatarSeed: string; avatarColor: string; greeting: string; capabilities: string[]; active: boolean; }
@@ -160,6 +160,13 @@ const ProjectsManagement: React.FC = () => {
         publishFacebook: false,
         publishLinkedin: false,
         publishTwitter: false,
+        // v4.417 — SEO
+        seoTitle: '',
+        seoDescription: '',
+        seoKeywords: '',
+        seoImage: '',
+        slug: '',
+        indexable: true,
     });
 
     useEffect(() => {
@@ -308,6 +315,17 @@ const ProjectsManagement: React.FC = () => {
                 images: project.images || [],
                 impacto: project.impacto || '',
                 actualizaciones: project.actualizaciones || '',
+                socialCopy: project.socialCopy || '',
+                publishFacebook: false,
+                publishLinkedin: false,
+                publishTwitter: false,
+                // v4.417 — SEO
+                seoTitle: project.seoTitle || '',
+                seoDescription: project.seoDescription || '',
+                seoKeywords: project.seoKeywords || '',
+                seoImage: project.seoImage || '',
+                slug: project.slug || '',
+                indexable: project.indexable !== false,
             };
 
             if (project.isStatic) {
@@ -336,8 +354,20 @@ const ProjectsManagement: React.FC = () => {
                 images: [],
                 impacto: '',
                 actualizaciones: '',
+                socialCopy: '',
+                publishFacebook: false,
+                publishLinkedin: false,
+                publishTwitter: false,
+                // v4.417 — SEO
+                seoTitle: '',
+                seoDescription: '',
+                seoKeywords: '',
+                seoImage: '',
+                slug: '',
+                indexable: true,
             });
         }
+        setActiveTab('info');
         setIsModalOpen(true);
     };
 
@@ -361,6 +391,17 @@ const ProjectsManagement: React.FC = () => {
             images:        [],
             impacto:       generated.impacto       || '',
             actualizaciones: generated.actualizaciones || '',
+            socialCopy:    generated.socialCopy   || '',
+            publishFacebook: false,
+            publishLinkedin: false,
+            publishTwitter: false,
+            // v4.417 — SEO autogenerado por la IA si está disponible
+            seoTitle:       generated.seoTitle       || generated.title || '',
+            seoDescription: generated.seoDescription || (generated.description ? String(generated.description).slice(0, 160) : ''),
+            seoKeywords:    generated.seoKeywords    || generated.category || '',
+            seoImage:       '',
+            slug:           generated.slug           || '',
+            indexable:      true,
         });
         setIsAIModalOpen(false);
         setIsModalOpen(true);
@@ -975,18 +1016,19 @@ const ProjectsManagement: React.FC = () => {
                         </div>
 
                         {/* Tabs Navigation */}
-                        <div className="flex px-8 border-b border-gray-100 bg-white sticky top-0 z-10">
+                        <div className="flex px-8 border-b border-gray-100 bg-white sticky top-0 z-10 overflow-x-auto">
                             {[
                                 { id: 'info', label: 'General', icon: Info },
                                 { id: 'crowd', label: 'Crowdfunding', icon: DollarSign },
                                 { id: 'impact', label: 'Impacto & Blog', icon: MessageSquare },
                                 { id: 'gallery', label: 'Galería & Media', icon: ImageIcon },
-                                { id: 'social', label: 'Social', icon: Share2 }
+                                { id: 'social', label: 'Social', icon: Share2 },
+                                { id: 'seo', label: 'SEO', icon: Search }
                             ].map(tab => (
                                 <button
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id as any)}
-                                    className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all border-b-2 ${activeTab === tab.id
+                                    className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all border-b-2 whitespace-nowrap ${activeTab === tab.id
                                         ? 'border-rotary-blue text-rotary-blue'
                                         : 'border-transparent text-gray-400 hover:text-gray-600'
                                         }`}
@@ -1355,6 +1397,151 @@ const ProjectsManagement: React.FC = () => {
                                         </div>
                                     </div>
                                 )}
+
+                                {activeTab === 'seo' && (
+                                    <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                                        <div className="p-6 bg-rotary-blue/5 rounded-2xl border border-rotary-blue/10 flex items-center gap-3">
+                                            <div className="p-3 bg-rotary-blue text-white rounded-xl shadow-lg shadow-rotary-blue/20">
+                                                <Search className="w-6 h-6" />
+                                            </div>
+                                            <div>
+                                                <h4 className="font-bold text-gray-800">SEO &amp; Posicionamiento</h4>
+                                                <p className="text-xs text-gray-500 font-medium">Optimiza este proyecto para que aparezca en Google y motores de búsqueda. Mismo módulo que usa el blog.</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                            <div className="space-y-6">
+                                                <div className="p-6 bg-white rounded-3xl border border-gray-100 shadow-sm space-y-4">
+                                                    <div>
+                                                        <label className="block text-sm font-bold text-gray-700 mb-2">Título SEO</label>
+                                                        <input
+                                                            type="text"
+                                                            maxLength={70}
+                                                            value={formData.seoTitle}
+                                                            onChange={(e) => setFormData({ ...formData, seoTitle: e.target.value })}
+                                                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none"
+                                                            placeholder={formData.title || 'Título optimizado para Google (max 60 chars)'}
+                                                        />
+                                                        <p className={`mt-1.5 text-[11px] font-medium ${formData.seoTitle.length > 60 ? 'text-red-500' : 'text-gray-400'}`}>
+                                                            {formData.seoTitle.length}/60 caracteres {formData.seoTitle.length > 60 ? '· demasiado largo' : ''}
+                                                        </p>
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="block text-sm font-bold text-gray-700 mb-2">Meta Descripción</label>
+                                                        <textarea
+                                                            rows={3}
+                                                            maxLength={180}
+                                                            value={formData.seoDescription}
+                                                            onChange={(e) => setFormData({ ...formData, seoDescription: e.target.value })}
+                                                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none text-sm resize-none"
+                                                            placeholder="Resumen de 1-2 frases que aparecerá en los resultados de búsqueda"
+                                                        />
+                                                        <p className={`mt-1.5 text-[11px] font-medium ${formData.seoDescription.length > 160 ? 'text-red-500' : 'text-gray-400'}`}>
+                                                            {formData.seoDescription.length}/160 caracteres {formData.seoDescription.length > 160 ? '· se truncará en Google' : ''}
+                                                        </p>
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="block text-sm font-bold text-gray-700 mb-2">Palabras Clave</label>
+                                                        <input
+                                                            type="text"
+                                                            value={formData.seoKeywords}
+                                                            onChange={(e) => setFormData({ ...formData, seoKeywords: e.target.value })}
+                                                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none"
+                                                            placeholder="rotary, fundraising, agua potable, bogotá"
+                                                        />
+                                                        <p className="mt-1.5 text-[11px] text-gray-400">Separa por comas. Se usa para sitemaps y motores secundarios.</p>
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="block text-sm font-bold text-gray-700 mb-2">URL Amigable (Slug)</label>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs text-gray-400 font-mono">/proyectos/</span>
+                                                            <input
+                                                                type="text"
+                                                                value={formData.slug}
+                                                                onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
+                                                                className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none font-mono text-sm"
+                                                                placeholder="agua-potable-vereda-el-salto"
+                                                            />
+                                                        </div>
+                                                        <p className="mt-1.5 text-[11px] text-gray-400">Se autogenera del título si lo dejas vacío. Sólo minúsculas, números y guiones.</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="p-6 bg-white rounded-3xl border border-gray-100 shadow-sm space-y-4">
+                                                    <div>
+                                                        <label className="block text-sm font-bold text-gray-700 mb-2">Imagen Social / Open Graph</label>
+                                                        <input
+                                                            type="url"
+                                                            value={formData.seoImage}
+                                                            onChange={(e) => setFormData({ ...formData, seoImage: e.target.value })}
+                                                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none text-sm"
+                                                            placeholder="Pega URL (1200x630 ideal) o usa la Imagen Principal"
+                                                        />
+                                                        <p className="mt-1.5 text-[11px] text-gray-400">
+                                                            Si lo dejas vacío, se usa la Imagen Principal del proyecto.
+                                                        </p>
+                                                    </div>
+
+                                                    <label className="flex items-start gap-3 p-4 bg-gray-50 rounded-2xl border border-gray-100 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={formData.indexable}
+                                                            onChange={(e) => setFormData({ ...formData, indexable: e.target.checked })}
+                                                            className="w-5 h-5 mt-0.5 accent-rotary-blue"
+                                                        />
+                                                        <div>
+                                                            <div className="font-bold text-sm text-gray-800">Permitir indexación en buscadores</div>
+                                                            <div className="text-[11px] text-gray-500 mt-0.5">
+                                                                Si lo desactivas, el proyecto se excluye del sitemap.xml y los meta tags incluyen <code className="font-mono bg-gray-200 px-1 rounded">noindex</code>. Útil para borradores.
+                                                            </div>
+                                                        </div>
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-6">
+                                                <div className="p-6 bg-white border border-gray-100 rounded-3xl shadow-sm">
+                                                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Vista Previa en Google</h4>
+                                                    <div className="space-y-1.5">
+                                                        <div className="text-xs text-gray-500 truncate">
+                                                            {(typeof window !== 'undefined' ? window.location.origin : 'https://tuclub.org')}/proyectos/{formData.slug || formData.title?.toLowerCase().replace(/\s+/g, '-').slice(0, 40) || 'tu-proyecto'}
+                                                        </div>
+                                                        <div className="text-xl text-blue-700 leading-tight font-medium hover:underline cursor-pointer line-clamp-1">
+                                                            {formData.seoTitle || formData.title || 'Título del proyecto'}
+                                                        </div>
+                                                        <div className="text-sm text-gray-600 leading-snug line-clamp-2">
+                                                            {formData.seoDescription
+                                                                || (formData.description ? formData.description.replace(/<[^>]*>/g, '').slice(0, 160) : 'Una meta descripción aparecerá aquí cuando la configures.')}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className={`p-4 rounded-2xl border flex items-start gap-3 ${
+                                                    formData.seoTitle && formData.seoDescription && formData.seoTitle.length <= 60 && formData.seoDescription.length <= 160
+                                                        ? 'bg-emerald-50 border-emerald-100'
+                                                        : 'bg-amber-50 border-amber-100'
+                                                }`}>
+                                                    <CheckCircle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                                                        formData.seoTitle && formData.seoDescription && formData.seoTitle.length <= 60 && formData.seoDescription.length <= 160
+                                                            ? 'text-emerald-500'
+                                                            : 'text-amber-500'
+                                                    }`} />
+                                                    <div className="text-[11px] leading-relaxed">
+                                                        {formData.seoTitle && formData.seoDescription && formData.seoTitle.length <= 60 && formData.seoDescription.length <= 160 ? (
+                                                            <span className="text-emerald-800"><b>SEO óptimo.</b> Título y descripción dentro de los límites recomendados de Google.</span>
+                                                        ) : (
+                                                            <span className="text-amber-800"><b>SEO incompleto.</b> Llena título (≤60 chars) y meta descripción (≤160 chars) para posicionar mejor en buscadores.</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </form>
                         </div>
 
@@ -1376,8 +1563,9 @@ const ProjectsManagement: React.FC = () => {
                                     <span className="text-xs font-bold text-rotary-blue">
                                         {activeTab === 'info' ? '1. Información General' :
                                             activeTab === 'crowd' ? '2. Metas de Recaudo' :
-                                                activeTab === 'impact' ? '3. Detalles de Impacto' : 
-                                                    activeTab === 'gallery' ? '4. Multimedia' : '5. Difusión Social'}
+                                                activeTab === 'impact' ? '3. Detalles de Impacto' :
+                                                    activeTab === 'gallery' ? '4. Multimedia' :
+                                                        activeTab === 'social' ? '5. Difusión Social' : '6. SEO & Posicionamiento'}
                                     </span>
                                 </div>
                                 <button

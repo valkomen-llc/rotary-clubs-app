@@ -15,14 +15,15 @@ router.get('/sitemap.xml', async (req, res) => {
         const baseUrl = `${protocol}://${host}`;
 
         // Fetch dynamic data from the database
+        // v4.417 — respetar `indexable: false` para proyectos que no quieren ser rastreados
         const [clubs, projects, news] = await Promise.all([
             prisma.club.findMany({
                 where: { status: 'active' },
                 select: { subdomain: true, updatedAt: true, name: true }
             }),
             prisma.project.findMany({
-                where: { status: 'published' },
-                select: { id: true, updatedAt: true }
+                where: { status: 'published', indexable: true },
+                select: { id: true, slug: true, updatedAt: true }
             }),
             prisma.news.findMany({
                 where: { published: true },
@@ -64,10 +65,11 @@ router.get('/sitemap.xml', async (req, res) => {
 `;
         }
 
-        // Dynamic: Projects
+        // Dynamic: Projects (v4.417 — prefiere slug si está disponible)
         for (const project of projects) {
+            const projectPath = project.slug ? `/proyectos/${project.slug}` : `/proyectos/${project.id}`;
             xml += `  <url>
-    <loc>${baseUrl}/#/proyectos/${project.id}</loc>
+    <loc>${baseUrl}/#${projectPath}</loc>
     <lastmod>${project.updatedAt.toISOString().split('T')[0]}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -166,16 +168,24 @@ router.get('/og/:type/:id', async (req, res) => {
 
         switch (type) {
             case 'project': {
-                const project = await prisma.project.findUnique({
-                    where: { id },
+                // v4.417 — Si el proyecto tiene campos SEO específicos, los usamos;
+                // si no, fallback a los genéricos (title, description, image).
+                const project = await prisma.project.findFirst({
+                    where: { OR: [{ id }, { slug: id }] },
                     include: { club: { select: { name: true, logo: true } } }
                 });
                 if (project) {
-                    ogData.title = `${project.title} | ${project.club?.name || 'Rotary'}`;
-                    ogData.description = project.description?.substring(0, 160) || 'Proyecto de impacto social comunitario de Rotary International.';
-                    ogData.image = project.image || project.club?.logo || '';
-                    ogData.url = `${baseUrl}/#/proyectos/${project.id}`;
+                    ogData.title = project.seoTitle || `${project.title} | ${project.club?.name || 'Rotary'}`;
+                    ogData.description = project.seoDescription
+                        || project.description?.substring(0, 160)
+                        || 'Proyecto de impacto social comunitario de Rotary International.';
+                    ogData.image = project.seoImage || project.image || project.club?.logo || '';
+                    ogData.keywords = project.seoKeywords || project.category || '';
+                    ogData.socialCopy = project.socialCopy || '';
+                    const path = project.slug ? `/proyectos/${project.slug}` : `/proyectos/${project.id}`;
+                    ogData.url = `${baseUrl}/#${path}`;
                     ogData.type = 'article';
+                    ogData.indexable = project.indexable !== false;
                 }
                 break;
             }

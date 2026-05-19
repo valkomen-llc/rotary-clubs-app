@@ -24,9 +24,28 @@ interface UpdateItem {
     details?: string[];
 }
 
-// FINANCIAL V4.416 | 2026-05-20 (FINANCIAL — donaciones desde proyectos vía Stripe centralizado 🎯💰)
-// Cache bust: 2026-05-20 19:30 (FINANCIAL v4.416 🎯💰)
+// PROJECTS V4.417 | 2026-05-20 (PROJECTS — SEO completo en proyectos de impacto 🔍📈)
+// Cache bust: 2026-05-20 20:30 (PROJECTS v4.417 🔍📈)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.417',
+        date: '2026-05-20',
+        title: 'Projects — SEO completo en proyectos de impacto (mismo motor que el blog) 🔍📈',
+        description: 'Los proyectos de impacto ahora tienen el módulo SEO completo, reutilizando la misma arquitectura que ya estaba en el blog. Cada proyecto puede configurar título SEO, meta descripción, palabras clave, imagen Open Graph, URL amigable (slug), copy para redes sociales e indexación on/off. Las páginas /proyectos/:id inyectan dinámicamente <title>, meta description, OG tags, Twitter cards y canonical URL — los buscadores ven contenido optimizado por proyecto. El sitemap.xml respeta indexable=false y prefiere URLs con slug. Objetivo: que cada campaña de fundraising, crowdfunding o impacto social pueda posicionarse orgánicamente en Google y motores de búsqueda. Nuevo tab "SEO" en el modal de Configurar Proyecto con vista previa de Google en vivo (cómo se verá en los resultados), contadores de caracteres con warnings (60 para título, 160 para descripción) y editor de slug.',
+        type: 'added',
+        author: 'Claude',
+        details: [
+            'Schema Prisma — modelo Project gana 7 campos: seoTitle, seoDescription, seoKeywords, seoImage, slug (unique), socialCopy, indexable (default true). Mismo set que ya tiene News para consistencia.',
+            'Migration automática vía `prisma db push --accept-data-loss --skip-generate` agregada al build script de Vercel. Sólo cambios aditivos (columnas opcionales), zero downtime, zero data loss.',
+            'contentController.createProject + updateProject aceptan los nuevos campos. Helper normalizeSlug() genera slug del título si está vacío, normalizando acentos, espacios y caracteres especiales (max 80 chars). En updateProject los campos SEO sólo se tocan si vienen en el body (undefined = sin cambios).',
+            'seo.js — sitemap.xml ahora filtra `where: { indexable: true }` y usa /proyectos/<slug> en lugar de /proyectos/<id> cuando el slug está definido. Mejor para SEO y para que los buscadores no rastreen drafts.',
+            'seo.js — /api/seo/og/project/:id ahora busca por id O slug, prioriza campos SEO específicos sobre los genéricos (title, description, image), incluye keywords, socialCopy e indexable en la response.',
+            'ProyectoDetalle.tsx — nuevo useEffect que inyecta document.title, meta name="description", meta name="keywords", meta name="robots" (noindex si indexable=false), OG (title/description/type/url/image), Twitter card y link rel="canonical". Reactivo al proyecto cargado: cada navegación dentro del SPA actualiza correctamente los meta tags para que crawlers que ejecutan JS los vean.',
+            'Projects.tsx admin — nuevo tab "SEO" con icono Search. Vista previa de Google en vivo a la derecha (URL + título azul + descripción). Contadores de caracteres con color rojo si exceden el límite recomendado. Switch para excluir de sitemap.xml + agregar noindex en meta tags. Footer del modal muestra "6. SEO & Posicionamiento" como paso actual cuando se está en ese tab.',
+            'IA proyectos — handleAIApply ya rellena seoTitle (del título), seoDescription (de la descripción truncada a 160), seoKeywords (de la categoría) cuando la IA genera un proyecto. Llenado inteligente que el usuario puede ajustar después.',
+            'Próxima fase (no en este PR): soporte de rutas /proyectos/<slug> en App.tsx + endpoint que busque por slug además de id + redirect 301 de /proyectos/<id> a /proyectos/<slug>.'
+        ]
+    },
     {
         version: 'v4.416',
         date: '2026-05-20',

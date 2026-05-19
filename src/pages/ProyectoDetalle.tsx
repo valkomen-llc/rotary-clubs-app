@@ -77,6 +77,57 @@ const ProyectoDetalle = () => {
     load();
   }, [club?.id, id]);
 
+  // v4.417 — Inyección de meta tags SEO. Reutiliza los campos seoTitle,
+  // seoDescription, seoKeywords, seoImage del modelo Project. Fallback a los
+  // genéricos (title, description, image) si no hay específicos.
+  useEffect(() => {
+    if (!proyecto) return;
+
+    const seoTitle = proyecto.seoTitle || `${proyecto.title} | ${club?.name || 'Rotary'}`;
+    const seoDescription = proyecto.seoDescription
+      || (proyecto.description ? stripHtml(proyecto.description).slice(0, 160) : '');
+    const seoImage = proyecto.seoImage || proyecto.image || club?.logo || '';
+    const seoKeywords = proyecto.seoKeywords || proyecto.category || '';
+    const canonicalPath = proyecto.slug ? `/proyectos/${proyecto.slug}` : `/proyectos/${proyecto.id}`;
+    const canonicalUrl = `${window.location.origin}${canonicalPath}`;
+    const noIndex = proyecto.indexable === false;
+
+    document.title = seoTitle;
+
+    const upsertMeta = (selector: string, attrs: Record<string, string>) => {
+      let tag = document.querySelector(selector) as HTMLMetaElement | null;
+      if (!tag) {
+        tag = document.createElement('meta');
+        Object.entries(attrs).forEach(([k, v]) => k !== 'content' && tag!.setAttribute(k, v));
+        document.head.appendChild(tag);
+      }
+      if (attrs.content !== undefined) tag.setAttribute('content', attrs.content);
+    };
+
+    upsertMeta('meta[name="description"]', { name: 'description', content: seoDescription });
+    if (seoKeywords) upsertMeta('meta[name="keywords"]', { name: 'keywords', content: seoKeywords });
+    upsertMeta('meta[name="robots"]', { name: 'robots', content: noIndex ? 'noindex, nofollow' : 'index, follow' });
+
+    upsertMeta('meta[property="og:title"]', { property: 'og:title', content: seoTitle });
+    upsertMeta('meta[property="og:description"]', { property: 'og:description', content: seoDescription });
+    upsertMeta('meta[property="og:type"]', { property: 'og:type', content: 'article' });
+    upsertMeta('meta[property="og:url"]', { property: 'og:url', content: canonicalUrl });
+    if (seoImage) upsertMeta('meta[property="og:image"]', { property: 'og:image', content: seoImage });
+
+    upsertMeta('meta[name="twitter:card"]', { name: 'twitter:card', content: 'summary_large_image' });
+    upsertMeta('meta[name="twitter:title"]', { name: 'twitter:title', content: seoTitle });
+    upsertMeta('meta[name="twitter:description"]', { name: 'twitter:description', content: seoDescription });
+    if (seoImage) upsertMeta('meta[name="twitter:image"]', { name: 'twitter:image', content: seoImage });
+
+    let linkCanonical = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    if (!linkCanonical) {
+      linkCanonical = document.createElement('link');
+      linkCanonical.setAttribute('rel', 'canonical');
+      document.head.appendChild(linkCanonical);
+    }
+    linkCanonical.setAttribute('href', canonicalUrl);
+  }, [proyecto, club]);
+
   const handleDonate = async () => {
     setDonateError(null);
     if (!montoDonacion || montoDonacion < 1) {
