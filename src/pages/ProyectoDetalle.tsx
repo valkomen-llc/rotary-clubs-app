@@ -77,6 +77,14 @@ const ProyectoDetalle = () => {
     load();
   }, [club?.id, id]);
 
+  // v4.420 — Redirect a URL amigable: si el proyecto tiene slug pero la URL
+  // actual usa el UUID, navegamos al slug (replace para no romper back button).
+  useEffect(() => {
+    if (proyecto?.slug && id && proyecto.slug !== id && proyecto.id === id) {
+      navigate(`/proyectos/${proyecto.slug}`, { replace: true });
+    }
+  }, [proyecto, id, navigate]);
+
   // v4.417 — Inyección de meta tags SEO. Reutiliza los campos seoTitle,
   // seoDescription, seoKeywords, seoImage del modelo Project. Fallback a los
   // genéricos (title, description, image) si no hay específicos.
@@ -138,7 +146,7 @@ const ProyectoDetalle = () => {
       setDonateError('Tu email es obligatorio para enviarte el recibo.');
       return;
     }
-    if (!club?.id || !id) {
+    if (!club?.id || !proyecto?.id) {
       setDonateError('No pudimos identificar el proyecto o el club.');
       return;
     }
@@ -150,7 +158,8 @@ const ProyectoDetalle = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clubId: club.id,
-          projectId: id,
+          // v4.420 — mandamos el UUID real del proyecto cargado (no el slug del URL)
+          projectId: proyecto.id,
           amount: montoDonacion,
           currency: 'USD',
           frequency: 'one-time',

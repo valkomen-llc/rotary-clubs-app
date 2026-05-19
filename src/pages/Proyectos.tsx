@@ -456,7 +456,7 @@ const Proyectos = () => {
 
                           {/* Botón Donar */}
                           <Link
-                            to={`/proyectos/${proyecto.id}`}
+                            to={`/proyectos/${proyecto.slug || proyecto.id}`}
                             className="w-full bg-rotary-blue text-white py-3 rounded-full font-bold hover:bg-rotary-dark-blue transition-colors flex items-center justify-center gap-2 text-sm"
                           >
                             <Heart className="w-4 h-4" />

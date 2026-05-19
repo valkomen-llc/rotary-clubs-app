@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.419.0",
-  "cache_bust": "2026-05-20 22:30 (PROJECTS — Redactar SEO con IA en proyectos v4.419 ✨🔍)",
+  "version": "4.420.0",
+  "cache_bust": "2026-05-20 23:30 (PROJECTS — URLs amigables /proyectos/<slug> v4.420 🔗)",
   "type": "module",
-  "//": "PROJECTS V4.419 | 2026-05-20 (PROJECTS — botón 'Redactar con IA' en el tab SEO de proyectos, igual al que ya existía en Noticias. Cuando el usuario hace click, el sistema analiza título + categoría + ubicación + beneficiarios + impacto + descripción y llama a /api/ai/suggest-seo con kind='project'. El endpoint usa un prompt especializado en fundraising/crowdfunding (urgencia social, beneficiarios, impacto medible) en vez del prompt genérico de noticias. Devuelve seoTitle (≤60), seoDescription (≤155), slug, keywords y tags optimizados para que el proyecto se posicione en Google al buscar términos como 'donar', 'rotary', categoría, ubicación. Vista previa de Google + indicadores de calidad SEO se actualizan en vivo apenas se aplican las sugerencias ✨🔍)",
+  "//": "PROJECTS V4.420 | 2026-05-20 (PROJECTS — completa el ciclo de SEO de proyectos con URLs amigables funcionales end-to-end. Antes el slug se guardaba en DB pero las URLs internas seguían usando el UUID. Ahora: (1) endpoint /api/clubs/:clubId/projects/:projectIdOrSlug busca por id O slug; (2) /api/financial/donate acepta projectId que puede ser slug; (3) Navbar.tsx y Proyectos.tsx generan los Link con slug si existe (fallback a id); (4) ProyectoDetalle.tsx redirige a /proyectos/<slug> con replace si el proyecto cargado tiene slug pero la URL es por UUID — Google rastrea y el usuario comparte la URL bonita; (5) handleDonate manda el UUID real (proyecto.id) en el payload aunque la URL sea por slug, para que el webhook procese sin ambigüedad. También fix menor: getPublicProjectById ahora cuenta donaciones con status IN ('completed','success') que cubre las donaciones nuevas creadas por el webhook 🔗)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
