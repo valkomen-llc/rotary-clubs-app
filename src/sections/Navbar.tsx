@@ -550,7 +550,7 @@ const Navbar = () => {
                           {searchResults.projects.map((proj: any) => (
                             <Link
                               key={proj.id}
-                              to={`/proyectos/${proj.id}`}
+                              to={`/proyectos/${proj.slug || proj.id}`}
                               onClick={() => setSearchOpen(false)}
                               className="flex items-center gap-3 py-2.5 px-3 -mx-3 rounded-lg hover:bg-gray-50 transition-colors"
                             >

@@ -24,9 +24,26 @@ interface UpdateItem {
     details?: string[];
 }
 
-// PROJECTS V4.419 | 2026-05-20 (PROJECTS — Redactar SEO con IA en proyectos ✨🔍)
-// Cache bust: 2026-05-20 22:30 (PROJECTS v4.419 ✨🔍)
+// PROJECTS V4.420 | 2026-05-20 (PROJECTS — URLs amigables /proyectos/<slug> 🔗)
+// Cache bust: 2026-05-20 23:30 (PROJECTS v4.420 🔗)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.420',
+        date: '2026-05-20',
+        title: 'Projects — URLs amigables funcionando end-to-end (/proyectos/<slug>) 🔗',
+        description: 'El cliente reportó: "al generar o Redactar con IA y después de guardar, no se muestra el slug del proyecto en el URL, sigue apareciendo como estaba establecido por defecto en el sistema". Causa: en v4.417 agregué los campos SEO en DB y el slug se guardaba correctamente, pero las URLs internas (Navbar, lista de proyectos, canonical) seguían usando el UUID. Era el "Próximo PR" que dejé pendiente. Ahora todo el ciclo de SEO de proyectos funciona end-to-end: el slug se genera con IA, se guarda en DB, todas las URLs internas lo usan, y si alguien llega por UUID (link viejo o copiado) se redirige automáticamente a la URL amigable. Mejor para SEO, mejor para compartir y mejor para el cliente que ve la URL "bonita" que esperaba.',
+        type: 'fixed',
+        author: 'Claude',
+        details: [
+            'Backend: getPublicProjectById ahora busca con WHERE (p.id = $1 OR p.slug = $1). El frontend puede mandar UUID o slug y el endpoint responde igual.',
+            'Backend: createDonationCheckout (en financialController) acepta projectId que puede ser UUID o slug. Resuelve a project.id (UUID real) antes de guardarlo en session.metadata para que el webhook procese sin ambigüedad.',
+            'Frontend: Navbar.tsx (búsqueda) y Proyectos.tsx (cards de lista) generan los Link con `proyecto.slug || proyecto.id` — fallback a UUID si el proyecto no tiene slug todavía.',
+            'Frontend: ProyectoDetalle.tsx redirige a /proyectos/<slug> con navigate(..., { replace: true }) si el proyecto cargado tiene slug pero la URL actual es por UUID. El back button del browser no se rompe (replace en lugar de push).',
+            'Frontend: handleDonate manda proyecto.id (UUID real del estado cargado) en lugar de id (del URL params, que puede ser slug). Garantiza que el backend procese sin tener que resolver de nuevo.',
+            'Fix menor: el query del balance del proyecto (realRecaudado, realDonantes en getPublicProjectById) ahora cuenta donaciones con `status IN (\'completed\', \'success\')`. Las donaciones nuevas creadas por el webhook usan status="success"; las legacy podrían tener "completed". Ambas suman.',
+            'Test plan: ir a /admin/proyectos → editar un proyecto → tab SEO → "Redactar con IA" → guardar → click "Ver" o navegar al proyecto → la URL debe mostrar /proyectos/<slug> (no UUID). Compartir el link viejo con UUID debe redirigir automáticamente al slug.'
+        ]
+    },
     {
         version: 'v4.419',
         date: '2026-05-20',

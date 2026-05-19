@@ -62,11 +62,14 @@ export const createDonationCheckout = async (req, res) => {
         if (!club) return res.status(404).json({ error: 'Club no encontrado' });
 
         // v4.416 — Si la donación va a un proyecto, validar que existe y pertenece al club
+        // v4.420 — el frontend puede mandar el slug en vez del UUID si la URL es amigable
         let project = null;
         if (projectId) {
-            project = await prisma.project.findUnique({
-                where: { id: projectId },
-                select: { id: true, title: true, clubId: true, image: true }
+            project = await prisma.project.findFirst({
+                where: {
+                    OR: [{ id: projectId }, { slug: projectId }]
+                },
+                select: { id: true, title: true, clubId: true, image: true, slug: true }
             });
             if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' });
             if (project.clubId !== clubId) {
@@ -101,12 +104,13 @@ export const createDonationCheckout = async (req, res) => {
                 quantity: 1
             }],
             success_url: `${origin}/donacion/exito?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: project ? `${origin}/proyectos/${project.id}` : `${origin}/donacion/cancelada`,
+            cancel_url: project ? `${origin}/proyectos/${project.slug || project.id}` : `${origin}/donacion/cancelada`,
             metadata: {
                 type: 'donation',
                 donationType: 'one-time',
                 clubId,
-                projectId: projectId || '',
+                // v4.420 — guardamos siempre el UUID real, aunque el cliente haya mandado el slug
+                projectId: project?.id || '',
                 donorEmail,
                 donorName: String(donorName || '').slice(0, 150),
                 message: String(message || '').slice(0, 500),

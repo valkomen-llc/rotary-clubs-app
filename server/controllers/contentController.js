@@ -55,18 +55,19 @@ export const getPublicProjects = async (req, res) => {
     }
 };
 
-// Public: Get a single project by ID
+// Public: Get a single project by ID or slug (v4.420 — soporte URL amigable)
 export const getPublicProjectById = async (req, res) => {
     const { clubId, projectId } = req.params;
     try {
         const result = await db.query(
-            `SELECT p.*, 
+            `SELECT p.*,
                     COALESCE(SUM(d.amount), 0) as "realRecaudado",
                     COUNT(DISTINCT d.id) as "realDonantes"
              FROM "Project" p
-             LEFT JOIN "Donation" d ON d."projectId" = p.id AND d.status = 'completed'
-             WHERE p.id = $1 AND p."clubId" = $2 AND p."deletedAt" IS NULL
-             GROUP BY p.id`,
+             LEFT JOIN "Donation" d ON d."projectId" = p.id AND d.status IN ('completed', 'success')
+             WHERE (p.id = $1 OR p.slug = $1) AND p."clubId" = $2 AND p."deletedAt" IS NULL
+             GROUP BY p.id
+             LIMIT 1`,
             [projectId, clubId]
         );
         if (result.rows.length === 0) {
