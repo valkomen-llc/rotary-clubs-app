@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.423.0",
-  "cache_bust": "2026-05-21 01:00 (UI — Donar Ahora → Realizar Aporte en proyectos v4.423 🪶)",
+  "version": "4.424.0",
+  "cache_bust": "2026-05-21 02:00 (UI — Activación de menús bloqueados en sidebar v4.424 🔓)",
   "type": "module",
-  "//": "UI V4.423 | 2026-05-21 (UI — micro-cambio: el CTA principal del proyecto en /proyectos/<slug> dice ahora 'Realizar Aporte' en lugar de 'Donar Ahora'. Tono más sobrio e institucional para campañas de fundraising rotarias. Modal de donación y Maneras de Contribuir se mantienen sin cambio 🪶)",
+  "//": "UI V4.424 | 2026-05-21 (UI — Habilitar menús bloqueados (Analytics, Content Studio, Bandeja de Entrada, Eventos, Configuración/Identidad) en el sidebar del panel de control de clubes, eliminando el bloqueo del wizard de configuración 🔓)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

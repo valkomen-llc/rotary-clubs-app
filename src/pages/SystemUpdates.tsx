@@ -28,6 +28,18 @@ interface UpdateItem {
 // Cache bust: 2026-05-21 01:00 (UI v4.423 🪶)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: 'v4.424',
+        date: '2026-05-21',
+        title: 'UI — Habilitar menús bloqueados del sidebar (Analytics, Content Studio, etc.) 🔓',
+        description: 'Activación y desbloqueo de cinco secciones clave en la barra lateral del panel de control para administradores de clubes, eliminando la restricción de completado del setup wizard para: Analytics, Content Studio, Bandeja de Entrada (Email), Eventos y Configuración/Identidad.',
+        type: 'changed',
+        author: 'Claude',
+        details: [
+            'useSetupProgress.ts: se agregaron /admin/analytics, /admin/content-studio, /admin/email, /admin/eventos y /admin/configuracion a SETUP_ALLOWED_PATHS.',
+            'Las secciones seleccionadas ahora están 100% activas y accesibles sin necesidad de tener el 100% del setup completado, removiendo el candado de bloqueo en el sidebar.'
+        ]
+    },
+    {
         version: 'v4.423',
         date: '2026-05-21',
         title: 'UI — "Donar Ahora" → "Realizar Aporte" en la página del proyecto 🪶',

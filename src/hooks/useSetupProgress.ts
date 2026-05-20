@@ -53,6 +53,12 @@ export const SETUP_ALLOWED_PATHS = [
     // automáticamente mientras se configura el sitio. Bloquearlo durante
     // setup contradice la naturaleza del feature: que aprenda mientras crece.
     '/admin/inteligencia',
+    // v4.424: Menus requested to be unlocked during setup mode
+    '/admin/analytics',
+    '/admin/content-studio',
+    '/admin/email',
+    '/admin/eventos',
+    '/admin/configuracion',
 ];
 
 // v4.408: lista de sitios cuyo setup wizard se bypassea — el menú entero
