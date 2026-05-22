@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.425.1",
-  "cache_bust": "2026-05-22 10:35 (WhatsApp QR Hotfix — Alineación de esquema Prisma y restauración de caché de base de datos v4.425.1 🛠️)",
+  "version": "4.425.2",
+  "cache_bust": "2026-05-22 10:50 (WhatsApp QR Hotfix — Resolución inteligente de nombres y corrección de Webhook v4.425.2 🛠️)",
   "type": "module",
-  "//": "UI V4.425.1 | 2026-05-22 (WhatsApp QR Hotfix — Sincronización de esquema Prisma con Neon DB y restauración de la columna profilePictureUrl v4.425.1 🛠️)",
+  "//": "UI V4.425.2 | 2026-05-22 (WhatsApp QR Hotfix — Resolución inteligente de nombres y corrección de Webhook v4.425.2 🛠️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

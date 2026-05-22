@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.425.1 | 2026-05-22 (WhatsApp QR Hotfix — Alineación de esquema Prisma y restauración de caché de base de datos v4.425.1 🛠️)
-// Cache bust: 2026-05-22 10:35 (WhatsApp QR Hotfix — Alineación de esquema Prisma y restauración de caché de base de datos v4.425.1 🛠️)
+// UI V4.425.2 | 2026-05-22 (WhatsApp QR Hotfix — Resolución inteligente de nombres y corrección de Webhook v4.425.2 🛠️)
+// Cache bust: 2026-05-22 10:50 (WhatsApp QR Hotfix — Resolución inteligente de nombres y corrección de Webhook v4.425.2 🛠️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.425.2',
+        date: '2026-05-22',
+        title: 'WhatsApp QR Hotfix — Resolución inteligente de nombres y corrección de Webhook 🛠️',
+        description: 'Corrección del problema por el cual los contactos directos aparecían únicamente con números en lugar de sus nombres en la bandeja de entrada del módulo WhatsApp QR Gateway, mediante coincidencia de dígitos difusa y actualización reactiva por webhook.',
+        type: 'hotfix',
+        author: 'Claude',
+        details: [
+            'Se implementó la normalización y comparación inteligente de dígitos en resolveAndCacheContacts para cruzar correctamente contactos de CRM con JIDs de WhatsApp.',
+            'Se priorizaron de forma jerárquica los nombres provenientes del CRM (manual/CSV) sobre los nombres de caché de WhatsApp.',
+            'Se corrigió el webhook de Evolution API en messages.upsert para permitir sobreescribir los nombres de fallback (puramente numéricos) con el pushName público real de WhatsApp.',
+            'Se agregaron logs descriptivos para asegurar el correcto seguimiento de la sincronización en el entorno de producción.'
+        ]
+    },
     {
         version: 'v4.425.1',
         date: '2026-05-22',

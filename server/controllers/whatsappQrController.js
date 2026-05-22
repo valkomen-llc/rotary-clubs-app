@@ -137,14 +137,88 @@ async function resolveClubId(req, fromBody = false) {
 const resolveAndCacheContacts = async (clubId, jids, chatsData) => {
     if (!jids || jids.length === 0) return new Map();
 
+    const jidDigits = [];
+    for (const jid of jids) {
+        if (jid.endsWith('@g.us')) continue;
+        const local = jid.split('@')[0];
+        jidDigits.push(local);
+        if (local.startsWith('57') && local.length === 12) jidDigits.push(local.substring(2));
+        if (local.startsWith('52') && local.length === 12) jidDigits.push(local.substring(2));
+        if (local.length > 10) {
+            jidDigits.push(local.substring(local.length - 10));
+        }
+    }
+
+    // Query Postgres using both exact JID OR cleaned digits comparison
     const dbRes = await db.query(
-        `SELECT id, phone, name, "profilePictureUrl", metadata FROM "WhatsAppContact" WHERE "clubId" = $1 AND phone = ANY($2)`,
-        [clubId, jids]
+        `SELECT id, phone, name, "profilePictureUrl", metadata, source 
+         FROM "WhatsAppContact" 
+         WHERE "clubId" = $1 
+           AND (
+             phone = ANY($2) 
+             OR (
+               NOT phone LIKE '%@%'
+               AND regexp_replace(phone, '[^0-9]', '', 'g') = ANY($3)
+             )
+           )`,
+        [clubId, jids, jidDigits]
     );
 
+    const matchesJid = (dbPhone, jid) => {
+        if (dbPhone === jid) return true;
+        if (jid.endsWith('@g.us')) return false;
+
+        const dbCleaned = dbPhone.replace(/[^0-9]/g, '');
+        const jidCleaned = jid.split('@')[0];
+
+        if (!dbCleaned || !jidCleaned) return false;
+        if (dbCleaned === jidCleaned) return true;
+
+        if (dbCleaned.length >= 10 && jidCleaned.length >= 10) {
+            const dbSuffix = dbCleaned.substring(dbCleaned.length - 10);
+            const jidSuffix = jidCleaned.substring(jidCleaned.length - 10);
+            if (dbSuffix === jidSuffix) return true;
+        }
+
+        return false;
+    };
+
     const contactMap = new Map();
-    for (const r of dbRes.rows) {
-        contactMap.set(r.phone, r);
+    
+    // Map existing records to their JID key
+    for (const jid of jids) {
+        const matches = dbRes.rows.filter(r => matchesJid(r.phone, jid));
+        if (matches.length > 0) {
+            // Sort matches: manual/csv_import first
+            matches.sort((a, b) => {
+                const priority = (s) => (s === 'manual' || s === 'csv_import') ? 2 : 1;
+                return priority(b.source) - priority(a.source);
+            });
+
+            const primary = matches[0];
+            let profilePictureUrl = primary.profilePictureUrl;
+            let metadata = primary.metadata;
+
+            if (!profilePictureUrl || !metadata) {
+                for (const m of matches) {
+                    if (!profilePictureUrl && m.profilePictureUrl) {
+                        profilePictureUrl = m.profilePictureUrl;
+                    }
+                    if (!metadata && m.metadata) {
+                        metadata = m.metadata;
+                    }
+                }
+            }
+
+            contactMap.set(jid, {
+                id: primary.id,
+                phone: jid, // Set the JID as the phone key for the frontend lookup
+                name: primary.name,
+                profilePictureUrl,
+                metadata,
+                source: primary.source
+            });
+        }
     }
 
     const missingJids = jids.filter(jid => !contactMap.has(jid));
@@ -623,7 +697,9 @@ export const handleQrWebhook = async (req, res) => {
                         DO UPDATE SET 
                             name = CASE 
                                 WHEN "WhatsAppContact".source = 'manual' THEN "WhatsAppContact".name 
-                                WHEN "WhatsAppContact".name = "WhatsAppContact".phone THEN $2
+                                WHEN "WhatsAppContact".name = "WhatsAppContact".phone 
+                                     OR "WhatsAppContact".name = split_part("WhatsAppContact".phone, '@', 1) 
+                                     OR "WhatsAppContact".name ~ '^[0-9]+$' THEN $2
                                 ELSE "WhatsAppContact".name 
                             END,
                             metadata = "WhatsAppContact".metadata || $5,
