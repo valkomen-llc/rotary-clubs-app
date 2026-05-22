@@ -74,6 +74,61 @@ const normalizePhoneToJid = (phoneStr, defaultCountryCode = '57') => {
     return `${digits}@s.whatsapp.net`;
 };
 
+// Smart name similarity check for mapping CRM contacts to WhatsApp display names
+const checkNameSimilarity = (nameA, nameB) => {
+    if (!nameA || !nameB) return false;
+    const cleanWords = (str) => String(str)
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]/g, ' ')
+        .trim()
+        .split(/\s+/)
+        .filter(w => w.length > 2);
+
+    const wordsA = cleanWords(nameA);
+    const wordsB = cleanWords(nameB);
+    
+    if (wordsA.length === 0 || wordsB.length === 0) return false;
+    
+    const [shortList, longList] = wordsA.length < wordsB.length ? [wordsA, wordsB] : [wordsB, wordsA];
+    let matches = 0;
+    for (const w of shortList) {
+        if (longList.includes(w)) {
+            matches++;
+        }
+    }
+    
+    const ratio = matches / shortList.length;
+    return matches >= 2 && (matches === shortList.length || ratio >= 0.75);
+};
+
+// Robust profile data parser handling nested and flat formats from Evolution API / Baileys
+const extractProfileData = (data) => {
+    if (!data) return {};
+    
+    const profile = data.profile || {};
+    
+    const resolvedName = data.subject || data.pushName || data.name || data.verifiedName || data.notify ||
+                         profile.subject || profile.pushName || profile.name || profile.verifiedName || profile.notify || null;
+                         
+    const resolvedPic = data.profilePictureUrl || data.avatar ||
+                        profile.profilePictureUrl || profile.avatar || null;
+                        
+    let phoneJid = data.phoneJid || data.senderPn || data.jid || data.id || data.number || data.phone ||
+                   profile.phoneJid || profile.senderPn || profile.jid || profile.id || profile.number || profile.phone || null;
+    
+    if (phoneJid && String(phoneJid).endsWith('@lid')) {
+        phoneJid = null;
+    }
+    
+    if (phoneJid && !String(phoneJid).includes('@')) {
+        phoneJid = `${phoneJid}@s.whatsapp.net`;
+    }
+    
+    return { resolvedName, resolvedPic, phoneJid };
+};
+
 const ensureInstance = async () => {
     // Try to find the instance first; create it if missing.
     const list = await evo.get('/instance/fetchInstances', { params: { instanceName: EVO_INSTANCE } });
@@ -136,6 +191,78 @@ async function resolveClubId(req, fromBody = false) {
  */
 const resolveAndCacheContacts = async (clubId, jids, chatsData) => {
     if (!jids || jids.length === 0) return new Map();
+
+    const parseMetadata = (metadataVal) => {
+        if (!metadataVal) return {};
+        if (typeof metadataVal === 'object') return metadataVal;
+        try {
+            return JSON.parse(metadataVal);
+        } catch (_) {
+            return {};
+        }
+    };
+
+    // Load CRM contacts to perform B2B name resolution in memory
+    const crmPhoneMap = new Map();
+    const crmContactsList = [];
+    try {
+        const crmRes = await db.query(
+            `SELECT phone, name FROM "WhatsAppContact" 
+             WHERE "clubId" = $1 
+               AND (source = 'csv_import' OR source = 'manual')`,
+            [clubId]
+        );
+        for (const contact of crmRes.rows) {
+            if (!contact.phone) continue;
+            const phoneStr = contact.phone;
+            const digits = phoneStr.replace(/[^0-9]/g, '');
+            let phoneJid = phoneStr;
+            if (!phoneJid.includes('@') && digits) {
+                phoneJid = `${digits}@s.whatsapp.net`;
+            }
+            crmContactsList.push({
+                name: contact.name,
+                phoneJid,
+                digits
+            });
+
+            if (digits) {
+                crmPhoneMap.set(digits, contact.name);
+                if (digits.length >= 10) {
+                    const last10 = digits.substring(digits.length - 10);
+                    crmPhoneMap.set(last10, contact.name);
+                }
+            }
+        }
+    } catch (err) {
+        console.error('[WA-QR] Error loading CRM contacts for in-memory mapping:', err.message);
+    }
+
+    const findCrmMatch = (digits, name) => {
+        if (digits) {
+            if (crmPhoneMap.has(digits)) {
+                const matchedName = crmPhoneMap.get(digits);
+                const found = crmContactsList.find(c => c.name === matchedName);
+                if (found) return found;
+            }
+            if (digits.length >= 10) {
+                const last10 = digits.substring(digits.length - 10);
+                if (crmPhoneMap.has(last10)) {
+                    const matchedName = crmPhoneMap.get(last10);
+                    const found = crmContactsList.find(c => c.name === matchedName);
+                    if (found) return found;
+                }
+            }
+        }
+        if (name && name.length > 3 && !name.includes('@')) {
+            for (const crmContact of crmContactsList) {
+                if (checkNameSimilarity(name, crmContact.name)) {
+                    return crmContact;
+                }
+            }
+        }
+        return null;
+    };
 
     const jidDigits = [];
     for (const jid of jids) {
@@ -210,10 +337,44 @@ const resolveAndCacheContacts = async (clubId, jids, chatsData) => {
                 }
             }
 
+            // Try to resolve name from CRM mapping
+            let finalName = primary.name;
+            const chatRaw = chatsData.find(c => (c.remoteJid || c.id) === jid) || {};
+            
+            // If the cached name is just the fallback phone number, try to restore from pushName/notify
+            const fallback = jid.split('@')[0];
+            if (finalName === fallback || /^[0-9]+$/.test(finalName)) {
+                const candidate = chatRaw.pushName || chatRaw.name || chatRaw.notify;
+                if (candidate) {
+                    finalName = candidate;
+                }
+            }
+
+            if (!jid.endsWith('@g.us')) {
+                const parsedMeta = parseMetadata(metadata);
+                let targetPhone = parsedMeta.phoneJid || jid;
+                const targetDigits = targetPhone.split('@')[0].replace(/[^0-9]/g, '');
+                
+                const crmMatch = findCrmMatch(targetDigits, finalName);
+                if (crmMatch) {
+                    finalName = crmMatch.name;
+                    if (!parsedMeta.phoneJid) {
+                        parsedMeta.phoneJid = crmMatch.phoneJid;
+                        metadata = JSON.stringify(parsedMeta);
+                        
+                        // Save phoneJid and resolved CRM name in DB in the background
+                        db.query(
+                            `UPDATE "WhatsAppContact" SET metadata = $1, name = $2, "updatedAt" = NOW() WHERE id = $3`,
+                            [metadata, finalName, primary.id]
+                        ).catch(e => console.error('[WA-QR] Error updating metadata with matched phoneJid in bg:', e.message));
+                    }
+                }
+            }
+
             contactMap.set(jid, {
                 id: primary.id,
                 phone: jid, // Set the JID as the phone key for the frontend lookup
-                name: primary.name,
+                name: finalName,
                 profilePictureUrl,
                 metadata,
                 source: primary.source
@@ -221,20 +382,35 @@ const resolveAndCacheContacts = async (clubId, jids, chatsData) => {
         }
     }
 
-    const missingJids = jids.filter(jid => !contactMap.has(jid));
-    
+    // Decide which JIDs need resolution:
+    // 1. Not present in contactMap.
+    // 2. OR ends in '@lid' and does not have phoneJid in metadata.
+    const toResolve = [];
+    for (const jid of jids) {
+        const cached = contactMap.get(jid);
+        if (!cached) {
+            toResolve.push(jid);
+        } else if (jid.endsWith('@lid')) {
+            const meta = parseMetadata(cached.metadata);
+            if (!meta.phoneJid) {
+                toResolve.push(jid);
+            }
+        }
+    }
+
     // Lazy resolve up to 3 missing per request to protect performance
-    const toResolve = missingJids.slice(0, 3);
-    if (toResolve.length > 0) {
-        await Promise.all(toResolve.map(async (jid) => {
+    const activeResolve = toResolve.slice(0, 3);
+    if (activeResolve.length > 0) {
+        await Promise.all(activeResolve.map(async (jid) => {
             const isGroup = jid.endsWith('@g.us');
             const source = isGroup ? 'whatsapp-qr-group' : 'whatsapp-qr';
             
             const chatRaw = chatsData.find(c => (c.remoteJid || c.id) === jid) || {};
             let resolvedName = isGroup ? chatRaw.subject : (chatRaw.pushName || chatRaw.name || chatRaw.notify);
             let resolvedPic = null;
+            let phoneJid = null;
 
-            if (!resolvedName) {
+            if (!resolvedName || !isGroup) {
                 const endpoints = isGroup
                     ? [`/group/findGroupInfos/${EVO_INSTANCE_PATH}`]
                     : [`/chat/fetchProfile/${EVO_INSTANCE_PATH}`, `/chat/whatsappProfile/${EVO_INSTANCE_PATH}`];
@@ -242,14 +418,16 @@ const resolveAndCacheContacts = async (clubId, jids, chatsData) => {
                 for (const ep of endpoints) {
                     try {
                         const r = isGroup
-                            ? await evo.get(ep, { params: { groupJid: jid }, timeout: 1500 })
-                            : await evo.post(ep, { number: jid }, { timeout: 1500 });
-                        const data = r.data || {};
-                        const candidate = data.subject || data.pushName || data.name || data.verifiedName || data.notify;
-                        if (candidate && r.status < 400) {
-                            resolvedName = candidate;
-                            resolvedPic = data.profilePictureUrl || data.avatar || null;
-                            break;
+                            ? await evo.get(ep, { params: { groupJid: jid }, timeout: 2500 })
+                            : await evo.post(ep, { number: jid }, { timeout: 2500 });
+                        if (r.status < 400 && r.data) {
+                            const profile = extractProfileData(r.data);
+                            if (profile.resolvedName) {
+                                resolvedName = profile.resolvedName;
+                                resolvedPic = profile.resolvedPic;
+                                phoneJid = profile.phoneJid;
+                                break;
+                            }
                         }
                     } catch (_) { /* continue */ }
                 }
@@ -258,11 +436,38 @@ const resolveAndCacheContacts = async (clubId, jids, chatsData) => {
             const fallback = jid.split('@')[0];
             const name = resolvedName || fallback;
 
+            // Load existing metadata if any
+            let existingMeta = {};
+            const cached = contactMap.get(jid);
+            if (cached && cached.metadata) {
+                existingMeta = parseMetadata(cached.metadata);
+            }
+
             const metadataObj = {
-                pushName: chatRaw.pushName || null,
-                notify: chatRaw.notify || null,
-                profilePictureUrl: resolvedPic
+                ...existingMeta,
+                pushName: chatRaw.pushName || existingMeta.pushName || null,
+                notify: chatRaw.notify || existingMeta.notify || null,
+                profilePictureUrl: resolvedPic || existingMeta.profilePictureUrl || null
             };
+
+            if (phoneJid) {
+                metadataObj.phoneJid = phoneJid;
+            }
+
+            // Cross-reference CRM in-memory
+            let finalName = name;
+            if (!isGroup) {
+                let targetPhone = phoneJid || jid;
+                const targetDigits = targetPhone.split('@')[0].replace(/[^0-9]/g, '');
+                const crmMatch = findCrmMatch(targetDigits, finalName);
+                if (crmMatch) {
+                    finalName = crmMatch.name;
+                    if (crmMatch.phoneJid) {
+                        phoneJid = crmMatch.phoneJid;
+                        metadataObj.phoneJid = phoneJid;
+                    }
+                }
+            }
 
             try {
                 const insertRes = await db.query(`
@@ -272,13 +477,21 @@ const resolveAndCacheContacts = async (clubId, jids, chatsData) => {
                     DO UPDATE SET 
                         name = CASE WHEN "WhatsAppContact".source = 'manual' THEN "WhatsAppContact".name ELSE $2 END,
                         "profilePictureUrl" = COALESCE($5, "WhatsAppContact"."profilePictureUrl"),
-                        metadata = "WhatsAppContact".metadata || $6,
+                        metadata = $6,
                         "updatedAt" = NOW()
-                    RETURNING id, phone, name, "profilePictureUrl", metadata
-                `, [clubId, name, jid, source, resolvedPic, JSON.stringify(metadataObj)]);
+                    RETURNING id, phone, name, "profilePictureUrl", metadata, source
+                `, [clubId, finalName, jid, source, resolvedPic, JSON.stringify(metadataObj)]);
 
                 if (insertRes.rows.length) {
-                    contactMap.set(jid, insertRes.rows[0]);
+                    const primary = insertRes.rows[0];
+                    contactMap.set(jid, {
+                        id: primary.id,
+                        phone: jid,
+                        name: primary.name,
+                        profilePictureUrl: primary.profilePictureUrl,
+                        metadata: primary.metadata,
+                        source: primary.source
+                    });
                 }
             } catch (e) {
                 console.error('[WA-QR] Error lazy-caching contact JID:', jid, e.message);
@@ -644,6 +857,80 @@ export const handleQrWebhook = async (req, res) => {
             return res.json({ success: false, error: 'No club configured to assign contacts' });
         }
 
+        const parseMetadata = (metadataVal) => {
+            if (!metadataVal) return {};
+            if (typeof metadataVal === 'object') return metadataVal;
+            try {
+                return JSON.parse(metadataVal);
+            } catch (_) {
+                return {};
+            }
+        };
+
+        // Load CRM contacts for B2B mapping
+        const crmPhoneMap = new Map();
+        const crmContactsList = [];
+        if (event === 'contacts.upsert' || event === 'contacts.update' || event === 'messages.upsert') {
+            try {
+                const crmRes = await db.query(
+                    `SELECT phone, name FROM "WhatsAppContact" 
+                     WHERE "clubId" = $1 
+                       AND (source = 'csv_import' OR source = 'manual')`,
+                    [clubId]
+                );
+                for (const contact of crmRes.rows) {
+                    if (!contact.phone) continue;
+                    const phoneStr = contact.phone;
+                    const digits = phoneStr.replace(/[^0-9]/g, '');
+                    let phoneJid = phoneStr;
+                    if (!phoneJid.includes('@') && digits) {
+                        phoneJid = `${digits}@s.whatsapp.net`;
+                    }
+                    crmContactsList.push({
+                        name: contact.name,
+                        phoneJid,
+                        digits
+                    });
+
+                    if (digits) {
+                        crmPhoneMap.set(digits, contact.name);
+                        if (digits.length >= 10) {
+                            const last10 = digits.substring(digits.length - 10);
+                            crmPhoneMap.set(last10, contact.name);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('[WA-QR] Webhook CRM load error:', err.message);
+            }
+        }
+
+        const findCrmMatch = (digits, name) => {
+            if (digits) {
+                if (crmPhoneMap.has(digits)) {
+                    const matchedName = crmPhoneMap.get(digits);
+                    const found = crmContactsList.find(c => c.name === matchedName);
+                    if (found) return found;
+                }
+                if (digits.length >= 10) {
+                    const last10 = digits.substring(digits.length - 10);
+                    if (crmPhoneMap.has(last10)) {
+                        const matchedName = crmPhoneMap.get(last10);
+                        const found = crmContactsList.find(c => c.name === matchedName);
+                        if (found) return found;
+                    }
+                }
+            }
+            if (name && name.length > 3 && !name.includes('@')) {
+                for (const crmContact of crmContactsList) {
+                    if (checkNameSimilarity(name, crmContact.name)) {
+                        return crmContact;
+                    }
+                }
+            }
+            return null;
+        };
+
         if (event === 'contacts.upsert' || event === 'contacts.update') {
             const list = Array.isArray(data) ? data : [data];
             for (const item of list) {
@@ -652,15 +939,49 @@ export const handleQrWebhook = async (req, res) => {
 
                 const isGroup = jid.endsWith('@g.us');
                 const source = isGroup ? 'whatsapp-qr-group' : 'whatsapp-qr';
-                const name = item.name || item.pushName || item.verifiedName || item.notify || jid.split('@')[0];
-                const picUrl = item.profilePictureUrl || item.avatar || null;
+                
+                const profile = extractProfileData(item);
+                const name = profile.resolvedName || item.name || item.pushName || item.verifiedName || item.notify || jid.split('@')[0];
+                const picUrl = profile.resolvedPic || item.profilePictureUrl || item.avatar || null;
+                let phoneJid = profile.phoneJid || null;
+
+                // Load existing metadata to merge safely
+                let existingMeta = {};
+                try {
+                    const existingRes = await db.query(
+                        `SELECT metadata FROM "WhatsAppContact" WHERE phone = $1 AND "clubId" = $2 LIMIT 1`,
+                        [jid, clubId]
+                    );
+                    if (existingRes.rows.length && existingRes.rows[0].metadata) {
+                        existingMeta = parseMetadata(existingRes.rows[0].metadata);
+                    }
+                } catch (_) {}
 
                 const metadataObj = {
-                    pushName: item.pushName || null,
-                    verifiedName: item.verifiedName || null,
-                    notify: item.notify || null,
-                    profilePictureUrl: picUrl
+                    ...existingMeta,
+                    pushName: item.pushName || existingMeta.pushName || null,
+                    verifiedName: item.verifiedName || existingMeta.verifiedName || null,
+                    notify: item.notify || existingMeta.notify || null,
+                    profilePictureUrl: picUrl || existingMeta.profilePictureUrl || null
                 };
+                if (phoneJid) {
+                    metadataObj.phoneJid = phoneJid;
+                }
+
+                // Try to resolve CRM name
+                let finalName = name;
+                if (!isGroup) {
+                    let targetPhone = phoneJid || jid;
+                    const targetDigits = targetPhone.split('@')[0].replace(/[^0-9]/g, '');
+                    const crmMatch = findCrmMatch(targetDigits, finalName);
+                    if (crmMatch) {
+                        finalName = crmMatch.name;
+                        if (crmMatch.phoneJid) {
+                            phoneJid = crmMatch.phoneJid;
+                            metadataObj.phoneJid = phoneJid;
+                        }
+                    }
+                }
 
                 await db.query(`
                     INSERT INTO "WhatsAppContact" (id, "clubId", name, phone, source, "profilePictureUrl", metadata, "createdAt", "updatedAt")
@@ -669,9 +990,9 @@ export const handleQrWebhook = async (req, res) => {
                     DO UPDATE SET 
                         name = CASE WHEN "WhatsAppContact".source = 'manual' THEN "WhatsAppContact".name ELSE $2 END,
                         "profilePictureUrl" = COALESCE($5, "WhatsAppContact"."profilePictureUrl"),
-                        metadata = "WhatsAppContact".metadata || $6,
+                        metadata = $6,
                         "updatedAt" = NOW()
-                `, [clubId, name, jid, source, picUrl, JSON.stringify(metadataObj)]).catch(e => {
+                `, [clubId, finalName, jid, source, picUrl, JSON.stringify(metadataObj)]).catch(e => {
                     console.error('[WA-QR] Webhook contact upsert DB error:', e.message);
                 });
             }
@@ -681,14 +1002,50 @@ export const handleQrWebhook = async (req, res) => {
                 const message = item.message || item;
                 const key = message.key || {};
                 const jid = key.remoteJid;
-                const pushName = item.pushName || message.pushName;
+                
+                const profile = extractProfileData(item);
+                const pushName = profile.resolvedName || item.pushName || message.pushName;
                 
                 if (jid && pushName && !key.fromMe) {
                     const isGroup = jid.endsWith('@g.us');
                     const source = isGroup ? 'whatsapp-qr-group' : 'whatsapp-qr';
-                    const name = pushName;
                     
-                    const metadataObj = { pushName };
+                    let phoneJid = profile.phoneJid || null;
+
+                    // Load existing metadata to merge safely
+                    let existingMeta = {};
+                    try {
+                        const existingRes = await db.query(
+                            `SELECT metadata FROM "WhatsAppContact" WHERE phone = $1 AND "clubId" = $2 LIMIT 1`,
+                            [jid, clubId]
+                        );
+                        if (existingRes.rows.length && existingRes.rows[0].metadata) {
+                            existingMeta = parseMetadata(existingRes.rows[0].metadata);
+                        }
+                    } catch (_) {}
+
+                    const metadataObj = {
+                        ...existingMeta,
+                        pushName: pushName || existingMeta.pushName || null
+                    };
+                    if (phoneJid) {
+                        metadataObj.phoneJid = phoneJid;
+                    }
+
+                    // Try to resolve CRM name
+                    let finalName = pushName;
+                    if (!isGroup) {
+                        let targetPhone = phoneJid || jid;
+                        const targetDigits = targetPhone.split('@')[0].replace(/[^0-9]/g, '');
+                        const crmMatch = findCrmMatch(targetDigits, finalName);
+                        if (crmMatch) {
+                            finalName = crmMatch.name;
+                            if (crmMatch.phoneJid) {
+                                phoneJid = crmMatch.phoneJid;
+                                metadataObj.phoneJid = phoneJid;
+                            }
+                        }
+                    }
 
                     await db.query(`
                         INSERT INTO "WhatsAppContact" (id, "clubId", name, phone, source, metadata, "createdAt", "updatedAt")
@@ -702,9 +1059,9 @@ export const handleQrWebhook = async (req, res) => {
                                      OR "WhatsAppContact".name ~ '^[0-9]+$' THEN $2
                                 ELSE "WhatsAppContact".name 
                             END,
-                            metadata = "WhatsAppContact".metadata || $5,
+                            metadata = $5,
                             "updatedAt" = NOW()
-                    `, [clubId, name, jid, source, JSON.stringify(metadataObj)]).catch(e => {
+                    `, [clubId, finalName, jid, source, JSON.stringify(metadataObj)]).catch(e => {
                         console.error('[WA-QR] Webhook message pushName DB error:', e.message);
                     });
                 }

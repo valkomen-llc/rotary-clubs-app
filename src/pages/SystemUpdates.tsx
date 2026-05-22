@@ -24,9 +24,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.425.2 | 2026-05-22 (WhatsApp QR Hotfix — Resolución inteligente de nombres y corrección de Webhook v4.425.2 🛠️)
-// Cache bust: 2026-05-22 10:50 (WhatsApp QR Hotfix — Resolución inteligente de nombres y corrección de Webhook v4.425.2 🛠️)
+// UI V4.425.3 | 2026-05-22 (WhatsApp QR Hotfix — Corrección final de mapeo y despliegue de LID a nombres de CRM v4.425.3 🛠️)
+// Cache bust: 2026-05-22 11:15 (WhatsApp QR Hotfix — Corrección final de mapeo y despliegue de LID a nombres de CRM v4.425.3 🛠️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.425.3',
+        date: '2026-05-22',
+        title: 'WhatsApp QR Hotfix — Corrección final de mapeo y despliegue de LID a nombres de CRM 🛠️',
+        description: 'Despliegue definitivo en producción del motor de resolución inteligente y vinculación automática para identificadores Linked Device ID (LID) de WhatsApp contra los nombres reales del CRM.',
+        type: 'hotfix',
+        author: 'Claude',
+        details: [
+            'Se desplegaron en producción las modificaciones del controlador whatsappQrController para la resolución jerárquica de LIDs.',
+            'Se validó la vinculación en caliente de chats huérfanos con identificadores numéricos a sus registros CRM correspondientes.',
+            'Se habilitó la persistencia reactiva en segundo plano de metadatos de emparejamiento (LID ↔ JID estándar) para evitar consultas redundantes a la API de WhatsApp.'
+        ]
+    },
     {
         version: 'v4.425.2',
         date: '2026-05-22',
