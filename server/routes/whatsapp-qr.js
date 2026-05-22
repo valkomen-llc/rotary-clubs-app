@@ -29,5 +29,6 @@ router.put('/groups/:groupJid/metadata', authMiddleware, superAdminMiddleware, w
 
 // Contact Bulk Import Endpoint
 router.post('/contacts/import', authMiddleware, superAdminMiddleware, whatsappQrController.importQrContacts);
+router.post('/contacts/link', authMiddleware, superAdminMiddleware, whatsappQrController.linkContactToCrm);
 
 export default router;

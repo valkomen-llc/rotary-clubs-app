@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.425.3 | 2026-05-22 (WhatsApp QR Hotfix — Corrección final de mapeo y despliegue de LID a nombres de CRM v4.425.3 🛠️)
-// Cache bust: 2026-05-22 11:15 (WhatsApp QR Hotfix — Corrección final de mapeo y despliegue de LID a nombres de CRM v4.425.3 🛠️)
+// UI V4.425.4 | 2026-05-22 (WhatsApp QR Hotfix — Vinculación manual de contactos LID/WhatsApp a base centralizada de socios del CRM v4.425.4 🛠️)
+// Cache bust: 2026-05-22 17:05 (WhatsApp QR Hotfix — Vinculación manual de contactos LID/WhatsApp a base centralizada de socios del CRM v4.425.4 🛠️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.425.4',
+        date: '2026-05-22',
+        title: 'WhatsApp QR Hotfix — Vinculación manual de contactos LID/WhatsApp a base centralizada de socios del CRM 🛠️',
+        description: 'Implementación del mecanismo definitivo de Vinculación Manual a CRM Central para emparejar bidireccionalmente identificadores Linked Device ID (LID) de WhatsApp con socios reales importados en el CRM.',
+        type: 'hotfix',
+        author: 'Claude',
+        details: [
+            'Se implementó el modal glassmorphic de búsqueda interactiva y selección de contactos del CRM en WhatsAppQR.tsx.',
+            'Se conectó la vinculación manual al endpoint de backend POST /contacts/link para guardar permanentemente la relación en base de datos PostgreSQL (Neon).',
+            'Se corrigió un bug potencial de extracción de metadatos en extractProfileData para evitar que los IDs de mensajes (como 3EB06B9A) se confundan con JIDs locales.',
+            'Se refrescan los nombres y metadatos de inmediato en la bandeja de entrada y arquetipos tras una vinculación manual exitosa.'
+        ]
+    },
     {
         version: 'v4.425.3',
         date: '2026-05-22',

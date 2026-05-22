@@ -3,6 +3,7 @@ import { QrCode, Smartphone, WifiOff, Loader, RefreshCw, Send, Users, MessageSqu
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
 import { CheckCheck, Sparkles, Paperclip, Smile, Mic, Image as ImageIcon, Copy, Check, MessageSquarePlus, X } from 'lucide-react';
+import { toast } from 'sonner';
 
 
 const VITE_API_URL = import.meta.env.VITE_API_URL || '';
@@ -173,6 +174,12 @@ const WhatsAppQR: React.FC = () => {
     // Modals
     const [showCreateGroup, setShowCreateGroup] = useState(false);
     const [showImportContacts, setShowImportContacts] = useState(false);
+    const [showLinkModal, setShowLinkModal] = useState(false);
+
+    // Link JID to CRM Contact States
+    const [linkSearch, setLinkSearch] = useState('');
+    const [linkingContact, setLinkingContact] = useState(false);
+    const [linkError, setLinkError] = useState('');
 
     // Create Group States
     const [groupName, setGroupName] = useState('');
@@ -215,10 +222,50 @@ const WhatsAppQR: React.FC = () => {
     };
 
     useEffect(() => {
-        if (showCreateGroup && token) {
+        if ((showCreateGroup || showLinkModal) && token) {
             fetchCrmContacts();
         }
-    }, [showCreateGroup, token]);
+    }, [showCreateGroup, showLinkModal, token]);
+
+    const handleLinkContact = async (contact: any) => {
+        if (!selectedChat) return;
+        setLinkError('');
+        setLinkingContact(true);
+        try {
+            const res = await fetch(`${API}/whatsapp-qr/contacts/link`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    jid: selectedChat.id,
+                    crmContactId: contact.id
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                toast.success(data.message || `Vinculado exitosamente a ${contact.name}`);
+                
+                // Update local state immediately
+                setSelectedChat(prev => prev ? { ...prev, name: contact.name } : null);
+                setChats(prev => prev.map(c => c.id === selectedChat.id ? { ...c, name: contact.name } : c));
+                
+                // Refresh chats in background to ensure syncing
+                fetchChats();
+                
+                // Close modal
+                setShowLinkModal(false);
+                setLinkSearch('');
+            } else {
+                setLinkError(data.error || 'Error al vincular el contacto.');
+            }
+        } catch (e: any) {
+            console.error('Error linking contact:', e);
+            setLinkError('Error de red al intentar vincular.');
+        }
+        setLinkingContact(false);
+    };
 
     // Fetch CRM Lists for bulk import
     const fetchContactLists = async () => {
@@ -1249,7 +1296,13 @@ const WhatsAppQR: React.FC = () => {
                                                     <span className="text-xs font-bold text-emerald-600">Calculando...</span>
                                                 </div>
                                             </div>
-                                            <button className="w-full py-2.5 mt-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm">
+                                            <button 
+                                                onClick={() => {
+                                                    fetchCrmContacts();
+                                                    setShowLinkModal(true);
+                                                }}
+                                                className="w-full py-2.5 mt-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-blue-50/50 hover:border-blue-300 hover:text-blue-700 transition-colors shadow-sm"
+                                            >
                                                 Vincular a CRM Central
                                             </button>
                                         </div>
@@ -1582,6 +1635,106 @@ const WhatsAppQR: React.FC = () => {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {showLinkModal && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowLinkModal(false)}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg relative overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                        <button
+                            type="button"
+                            onClick={() => { setShowLinkModal(false); setLinkSearch(''); setLinkError(''); }}
+                            className="absolute top-3 right-3 p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                        
+                        <div className="p-6 border-b border-gray-100 bg-blue-50/50 flex-shrink-0">
+                            <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
+                                <UserPlus className="w-5 h-5 text-blue-600" />
+                                Vincular a CRM Central
+                            </h3>
+                            <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                                Vincula el chat actual <strong>{selectedChat?.name || selectedChat?.id.split('@')[0]}</strong> a un contacto del CRM Central para resolver permanentemente su nombre y arquetipo.
+                            </p>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                            <div>
+                                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block mb-1.5">Buscar Contactos en CRM Central</label>
+                                <div className="relative mb-2">
+                                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                    <input
+                                        type="text"
+                                        placeholder="Buscar por nombre o teléfono del socio..."
+                                        value={linkSearch}
+                                        onChange={e => setLinkSearch(e.target.value)}
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 pl-9 pr-4 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                                    />
+                                </div>
+
+                                {linkError && (
+                                    <div className="text-xs font-bold text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-3">
+                                        {linkError}
+                                    </div>
+                                )}
+
+                                {loadingCrmContacts ? (
+                                    <div className="flex justify-center items-center py-8">
+                                        <Loader className="w-6 h-6 animate-spin text-blue-600" />
+                                    </div>
+                                ) : (
+                                    <div className="max-h-60 overflow-y-auto border border-gray-100 rounded-xl divide-y divide-gray-100 bg-white">
+                                        {crmContacts.filter(c => {
+                                            if (!linkSearch.trim()) return true;
+                                            const search = linkSearch.toLowerCase();
+                                            return (c.name || '').toLowerCase().includes(search) || (c.phone || '').includes(search);
+                                        }).length === 0 ? (
+                                            <div className="text-center py-6 text-xs text-gray-400">No se encontraron contactos en el CRM.</div>
+                                        ) : (
+                                            crmContacts.filter(c => {
+                                                if (!linkSearch.trim()) return true;
+                                                const search = linkSearch.toLowerCase();
+                                                return (c.name || '').toLowerCase().includes(search) || (c.phone || '').includes(search);
+                                            }).map(contact => (
+                                                <div
+                                                    key={contact.id}
+                                                    onClick={() => handleLinkContact(contact)}
+                                                    className="p-3 hover:bg-blue-50/50 cursor-pointer flex items-center justify-between transition-colors group"
+                                                >
+                                                    <div className="min-w-0 flex-1 pr-4">
+                                                        <p className="text-sm font-bold text-gray-800 group-hover:text-blue-700 transition-colors truncate">
+                                                            {contact.name}
+                                                        </p>
+                                                        <p className="text-xs text-gray-400 font-mono mt-0.5 truncate">
+                                                            📞 {contact.phone} {contact.email ? `| ✉️ ${contact.email}` : ''}
+                                                        </p>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        disabled={linkingContact}
+                                                        className="text-xs font-bold text-blue-600 bg-blue-50 group-hover:bg-blue-600 group-hover:text-white px-3 py-1.5 rounded-lg transition-all"
+                                                    >
+                                                        {linkingContact ? 'Vinculando...' : 'Vincular'}
+                                                    </button>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-2 flex-shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => { setShowLinkModal(false); setLinkSearch(''); setLinkError(''); }}
+                                className="border border-gray-200 bg-white rounded-xl px-4 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                            >
+                                Cerrar
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

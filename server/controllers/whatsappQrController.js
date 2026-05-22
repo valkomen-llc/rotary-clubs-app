@@ -118,6 +118,18 @@ const extractProfileData = (data) => {
     let phoneJid = data.phoneJid || data.senderPn || data.jid || data.id || data.number || data.phone ||
                    profile.phoneJid || profile.senderPn || profile.jid || profile.id || profile.number || profile.phone || null;
     
+    if (phoneJid) {
+        const str = String(phoneJid);
+        const parts = str.split('@');
+        const local = parts[0];
+        
+        // Ensure local part consists entirely of digits to avoid message IDs or other non-phone IDs
+        const isOnlyDigits = /^[0-9]+$/.test(local);
+        if (!isOnlyDigits) {
+            phoneJid = null;
+        }
+    }
+
     if (phoneJid && String(phoneJid).endsWith('@lid')) {
         phoneJid = null;
     }
@@ -1277,6 +1289,106 @@ export const importQrContacts = async (req, res) => {
         });
     } catch (e) {
         console.error('[WA-QR] importQrContacts error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+export const linkContactToCrm = async (req, res) => {
+    if (!requireConfig(res)) return;
+    try {
+        const clubId = await resolveClubId(req);
+        if (!clubId) {
+            return res.status(400).json({ error: 'Club no válido' });
+        }
+
+        const { jid, crmContactId } = req.body;
+        if (!jid || !crmContactId) {
+            return res.status(400).json({ error: 'Falta jid o crmContactId' });
+        }
+
+        // 1. Get the CRM contact from DB
+        const crmRes = await db.query(
+            `SELECT id, name, phone, metadata FROM "WhatsAppContact" WHERE id = $1 AND "clubId" = $2 LIMIT 1`,
+            [crmContactId, clubId]
+        );
+
+        if (!crmRes.rows.length) {
+            return res.status(404).json({ error: 'Contacto del CRM no encontrado' });
+        }
+
+        const crmContact = crmRes.rows[0];
+
+        // Normalize phone to JID
+        const phoneJid = normalizeJid(crmContact.phone);
+
+        // 2. Fetch existing WhatsApp contact for the JID (LID or standard) to merge metadata
+        const existingRes = await db.query(
+            `SELECT id, metadata, name FROM "WhatsAppContact" WHERE phone = $1 AND "clubId" = $2 LIMIT 1`,
+            [jid, clubId]
+        );
+
+        let metadataObj = {};
+        let contactId = null;
+
+        if (existingRes.rows.length) {
+            contactId = existingRes.rows[0].id;
+            const metaVal = existingRes.rows[0].metadata;
+            if (metaVal) {
+                if (typeof metaVal === 'object') {
+                    metadataObj = { ...metaVal };
+                } else {
+                    try {
+                        metadataObj = JSON.parse(metaVal);
+                    } catch (_) {}
+                }
+            }
+        }
+
+        metadataObj.phoneJid = phoneJid;
+        metadataObj.crmContactId = crmContact.id;
+
+        if (existingRes.rows.length) {
+            // Update existing row
+            await db.query(
+                `UPDATE "WhatsAppContact" 
+                 SET name = $1, metadata = $2, "updatedAt" = NOW() 
+                 WHERE id = $3`,
+                [crmContact.name, JSON.stringify(metadataObj), contactId]
+            );
+        } else {
+            // Insert new row
+            await db.query(
+                `INSERT INTO "WhatsAppContact" (id, "clubId", name, phone, source, metadata, "createdAt", "updatedAt")
+                 VALUES (gen_random_uuid(), $1, $2, $3, 'whatsapp-qr', $4, NOW(), NOW())`,
+                [clubId, crmContact.name, jid, JSON.stringify(metadataObj)]
+            );
+        }
+
+        // Also add direct links in database for CRM contact so it knows its resolved JID
+        let crmMeta = {};
+        const crmMetaVal = crmContact.metadata;
+        if (crmMetaVal) {
+            if (typeof crmMetaVal === 'object') {
+                crmMeta = { ...crmMetaVal };
+            } else {
+                try {
+                    crmMeta = JSON.parse(crmMetaVal);
+                } catch (_) {}
+            }
+        }
+        crmMeta.phoneJid = phoneJid;
+        crmMeta.resolvedLid = jid;
+
+        await db.query(
+            `UPDATE "WhatsAppContact" 
+             SET metadata = $1, "updatedAt" = NOW() 
+             WHERE id = $2`,
+            [JSON.stringify(crmMeta), crmContact.id]
+        );
+
+        res.json({ success: true, message: `Chat vinculado exitosamente a ${crmContact.name}` });
+    } catch (e) {
+        console.error('[WA-QR] Error linking contact to CRM:', e.message);
         res.status(500).json({ error: e.message });
     }
 };

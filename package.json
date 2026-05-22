@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.425.3",
-  "cache_bust": "2026-05-22 11:15 (WhatsApp QR Hotfix — Corrección final de mapeo y despliegue de LID a nombres de CRM v4.425.3 🛠️)",
+  "version": "4.425.4",
+  "cache_bust": "2026-05-22 17:05 (WhatsApp QR Hotfix — Vinculación manual de contactos LID/WhatsApp a base centralizada de socios del CRM v4.425.4 🛠️)",
   "type": "module",
-  "//": "UI V4.425.3 | 2026-05-22 (WhatsApp QR Hotfix — Corrección final de mapeo y despliegue de LID a nombres de CRM v4.425.3 🛠️)",
+  "//": "UI V4.425.4 | 2026-05-22 (WhatsApp QR Hotfix — Vinculación manual de contactos LID/WhatsApp a base centralizada de socios del CRM v4.425.4 🛠️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
