@@ -24,9 +24,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.425 | 2026-05-22 (WhatsApp QR Gateway — Sincronización optimizada, creación de grupos e importación masiva v4.425.0 🚀)
-// Cache bust: 2026-05-22 10:30 (WhatsApp QR Gateway — Sincronización optimizada, creación de grupos e importación masiva v4.425.0 🚀)
+// UI V4.425.1 | 2026-05-22 (WhatsApp QR Hotfix — Alineación de esquema Prisma y restauración de caché de base de datos v4.425.1 🛠️)
+// Cache bust: 2026-05-22 10:35 (WhatsApp QR Hotfix — Alineación de esquema Prisma y restauración de caché de base de datos v4.425.1 🛠️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.425.1',
+        date: '2026-05-22',
+        title: 'WhatsApp QR Hotfix — Alineación de esquema Prisma y restauración de caché de base de datos 🛠️',
+        description: 'Corrección de error en la carga del módulo WhatsApp QR Gateway al restaurar la columna profilePictureUrl en la base de datos de producción (Neon) y sincronizarla con el esquema declarativo de Prisma para evitar pérdidas de datos en despliegues automáticos.',
+        type: 'hotfix',
+        author: 'Claude',
+        details: [
+            'Se agregó el campo opcional profilePictureUrl al modelo WhatsAppContact en server/prisma/schema.prisma.',
+            'Se re-generó el cliente de Prisma (prisma generate) para reflejar la estructura exacta en tiempo de compilación.',
+            'Se alineó el esquema con la base de datos Neon mediante db push, consolidando la columna de forma permanente contra limpiezas por --accept-data-loss en Vercel.'
+        ]
+    },
     {
         version: 'v4.425',
         date: '2026-05-22',

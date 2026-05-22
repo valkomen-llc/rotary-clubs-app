@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.425.0",
-  "cache_bust": "2026-05-22 10:30 (WhatsApp QR Gateway — Sincronización optimizada, creación de grupos e importación masiva v4.425.0 🚀)",
+  "version": "4.425.1",
+  "cache_bust": "2026-05-22 10:35 (WhatsApp QR Hotfix — Alineación de esquema Prisma y restauración de caché de base de datos v4.425.1 🛠️)",
   "type": "module",
-  "//": "UI V4.425 | 2026-05-22 (WhatsApp QR Gateway — Optimización radical de sincronización con base de datos local, creación y administración de grupos de WhatsApp, e importador masivo con normalización B2B v4.425.0 🚀)",
+  "//": "UI V4.425.1 | 2026-05-22 (WhatsApp QR Hotfix — Sincronización de esquema Prisma con Neon DB y restauración de la columna profilePictureUrl v4.425.1 🛠️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
