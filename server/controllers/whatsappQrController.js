@@ -1,4 +1,5 @@
 import axios from 'axios';
+import db from '../lib/db.js';
 
 // ── Evolution API client (single SuperAdmin instance for Club Platform) ────────
 //
@@ -53,6 +54,26 @@ const normalizeJid = (input) => {
     return `${digits}@s.whatsapp.net`;
 };
 
+// Smart phone number normalizer for importing B2B contacts.
+// Specially tailored for Colombian mobile numbers (starts with 3, 10 digits) if code is 57.
+const normalizePhoneToJid = (phoneStr, defaultCountryCode = '57') => {
+    if (!phoneStr) return null;
+    let digits = String(phoneStr).replace(/[^0-9]/g, '');
+    if (!digits) return null;
+
+    if (digits.startsWith('00')) {
+        digits = digits.substring(2);
+    }
+
+    if (digits.length === 10 && digits.startsWith('3') && defaultCountryCode === '57') {
+        digits = '57' + digits;
+    } else if (digits.length < 10 && defaultCountryCode) {
+        digits = defaultCountryCode + digits;
+    }
+
+    return `${digits}@s.whatsapp.net`;
+};
+
 const ensureInstance = async () => {
     // Try to find the instance first; create it if missing.
     const list = await evo.get('/instance/fetchInstances', { params: { instanceName: EVO_INSTANCE } });
@@ -77,6 +98,121 @@ const fetchConnectionState = async () => {
     const r = await evo.get(`/instance/connectionState/${EVO_INSTANCE_PATH}`);
     if (r.status === 404) return { state: 'close' };
     return r.data?.instance || r.data || { state: 'close' };
+};
+
+/** Resolve clubId — super admins may not have clubId in JWT, fallback to first club with config */
+async function resolveClubId(req, fromBody = false) {
+    const src = fromBody ? req.body : req.query;
+    const isAdmin = req.user?.role === 'administrator' || req.user?.role === 'superadmin';
+
+    if (isAdmin && (src?.clubId || req.headers['x-club-id'])) {
+        return src?.clubId || req.headers['x-club-id'];
+    }
+    
+    if (req.user?.clubId) return req.user.clubId;
+    
+    // Super admin without explicit clubId → Prioritize Platform Club (Origen)
+    const platformClubId = '3c648ce7-3c47-41e2-9461-6e40a8615ae6';
+    const hasPlatformConfig = await db.query(`SELECT 1 FROM "WhatsAppConfig" WHERE "clubId"=$1`, [platformClubId]);
+    if (hasPlatformConfig.rows.length) return platformClubId;
+
+    // Fallback: use most recent club that HAS a config
+    const r = await db.query(`
+        SELECT "clubId" FROM "WhatsAppConfig" 
+        ORDER BY "lastVerifiedAt" DESC NULLS LAST 
+        LIMIT 1
+    `);
+    
+    if (r.rows.length) return r.rows[0].clubId;
+
+    // Last resort: first club in system
+    const first = await db.query(`SELECT id FROM "Club" LIMIT 1`);
+    return first.rows[0]?.id || null;
+}
+
+/** 
+ * Resolve and cache WhatsApp profiles / group names in DB 
+ * Capped background fetches to avoid serverless function timeout.
+ */
+const resolveAndCacheContacts = async (clubId, jids, chatsData) => {
+    if (!jids || jids.length === 0) return new Map();
+
+    const dbRes = await db.query(
+        `SELECT id, phone, name, "profilePictureUrl", metadata FROM "WhatsAppContact" WHERE "clubId" = $1 AND phone = ANY($2)`,
+        [clubId, jids]
+    );
+
+    const contactMap = new Map();
+    for (const r of dbRes.rows) {
+        contactMap.set(r.phone, r);
+    }
+
+    const missingJids = jids.filter(jid => !contactMap.has(jid));
+    
+    // Lazy resolve up to 3 missing per request to protect performance
+    const toResolve = missingJids.slice(0, 3);
+    if (toResolve.length > 0) {
+        await Promise.all(toResolve.map(async (jid) => {
+            const isGroup = jid.endsWith('@g.us');
+            const source = isGroup ? 'whatsapp-qr-group' : 'whatsapp-qr';
+            
+            const chatRaw = chatsData.find(c => (c.remoteJid || c.id) === jid) || {};
+            let resolvedName = isGroup ? chatRaw.subject : (chatRaw.pushName || chatRaw.name || chatRaw.notify);
+            let resolvedPic = null;
+
+            if (!resolvedName) {
+                const endpoints = isGroup
+                    ? [`/group/findGroupInfos/${EVO_INSTANCE_PATH}`]
+                    : [`/chat/fetchProfile/${EVO_INSTANCE_PATH}`, `/chat/whatsappProfile/${EVO_INSTANCE_PATH}`];
+
+                for (const ep of endpoints) {
+                    try {
+                        const r = isGroup
+                            ? await evo.get(ep, { params: { groupJid: jid }, timeout: 1500 })
+                            : await evo.post(ep, { number: jid }, { timeout: 1500 });
+                        const data = r.data || {};
+                        const candidate = data.subject || data.pushName || data.name || data.verifiedName || data.notify;
+                        if (candidate && r.status < 400) {
+                            resolvedName = candidate;
+                            resolvedPic = data.profilePictureUrl || data.avatar || null;
+                            break;
+                        }
+                    } catch (_) { /* continue */ }
+                }
+            }
+
+            const fallback = jid.split('@')[0];
+            const name = resolvedName || fallback;
+
+            const metadataObj = {
+                pushName: chatRaw.pushName || null,
+                notify: chatRaw.notify || null,
+                profilePictureUrl: resolvedPic
+            };
+
+            try {
+                const insertRes = await db.query(`
+                    INSERT INTO "WhatsAppContact" (id, "clubId", name, phone, source, "profilePictureUrl", metadata, "createdAt", "updatedAt")
+                    VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW(), NOW())
+                    ON CONFLICT (phone, "clubId")
+                    DO UPDATE SET 
+                        name = CASE WHEN "WhatsAppContact".source = 'manual' THEN "WhatsAppContact".name ELSE $2 END,
+                        "profilePictureUrl" = COALESCE($5, "WhatsAppContact"."profilePictureUrl"),
+                        metadata = "WhatsAppContact".metadata || $6,
+                        "updatedAt" = NOW()
+                    RETURNING id, phone, name, "profilePictureUrl", metadata
+                `, [clubId, name, jid, source, resolvedPic, JSON.stringify(metadataObj)]);
+
+                if (insertRes.rows.length) {
+                    contactMap.set(jid, insertRes.rows[0]);
+                }
+            } catch (e) {
+                console.error('[WA-QR] Error lazy-caching contact JID:', jid, e.message);
+            }
+        }));
+    }
+
+    return contactMap;
 };
 
 // ── Public endpoints ──────────────────────────────────────────────────────────
@@ -157,94 +293,66 @@ export const markChatRead = async (req, res) => {
 export const getChats = async (req, res) => {
     if (!requireConfig(res)) return;
     try {
+        const clubId = await resolveClubId(req);
+        if (!clubId) return res.status(400).json({ error: 'No se pudo resolver el clubId.' });
+
         const chatsRes = await evo.post(`/chat/findChats/${EVO_INSTANCE_PATH}`, {});
         if (chatsRes.status >= 400) return res.status(400).json({ error: chatsRes.data?.message || 'WhatsApp no está conectado.' });
 
-        // Evolution's findChats often returns pushName=null for individual chats,
-        // so cross-reference findContacts (which tracks pushName from incoming
-        // messages and the device's address book) to fill in real display names.
-        const contactNames = new Map();
-        try {
-            const contactsRes = await evo.post(`/chat/findContacts/${EVO_INSTANCE_PATH}`, {});
-            const contactsRows = Array.isArray(contactsRes.data) ? contactsRes.data : [];
-            for (const ct of contactsRows) {
-                const jid = ct.remoteJid || ct.id;
-                const name = ct.pushName || ct.name || ct.notify;
-                if (jid && name) contactNames.set(jid, name);
-            }
-        } catch (e) {
-            console.warn('[WA-QR] findContacts non-fatal:', e.response?.data || e.message);
-        }
-
-        // Group chats from findChats rarely include `subject`; fetch the group
-        // metadata explicitly so they show their real name in the inbox.
-        const groupSubjects = new Map();
-        try {
-            const groupsRes = await evo.get(`/group/fetchAllGroups/${EVO_INSTANCE_PATH}`, {
-                params: { getParticipants: 'false' }
-            });
-            const groupsRows = Array.isArray(groupsRes.data) ? groupsRes.data : [];
-            for (const g of groupsRows) {
-                const jid = g.id || g.remoteJid;
-                const subject = g.subject || g.name;
-                if (jid && subject) groupSubjects.set(jid, subject);
-            }
-        } catch (e) {
-            console.warn('[WA-QR] fetchAllGroups non-fatal:', e.response?.data || e.message);
-        }
-
         const rows = Array.isArray(chatsRes.data) ? chatsRes.data : [];
+        if (rows.length === 0) {
+            return res.json({ success: true, chats: [] });
+        }
+
+        const jids = rows
+            .map(c => c.remoteJid || c.id || c.chatId)
+            .filter(Boolean);
+
+        // Batch resolve and cache profiles using local DB
+        const cachedContacts = await resolveAndCacheContacts(clubId, jids, rows);
+
         const enriched = rows
             .map(c => {
                 const id = c.remoteJid || c.id || c.chatId;
                 if (!id) return null;
                 const isGroup = id.endsWith('@g.us');
                 const timestampMs = Number(c.updatedAt ? new Date(c.updatedAt).getTime() : (c.messageTimestamp || c.lastMessageTimestamp || 0) * 1000) || 0;
+                
                 const fallback = id.split('@')[0];
-                const name = isGroup
-                    ? (groupSubjects.get(id) || c.subject || c.name || fallback)
-                    : (c.pushName || contactNames.get(id) || c.name || fallback);
+                const dbContact = cachedContacts.get(id);
+
+                // Resolution hierarchy:
+                // 1. Saved name in local DB (dbContact.name) if it's not raw fallback
+                // 2. pushName from Baileys
+                // 3. subject from Group
+                // 4. name / notify from Baileys
+                // 5. Fallback phone
+                let name = fallback;
+                if (dbContact && dbContact.name && dbContact.name !== fallback) {
+                    name = dbContact.name;
+                } else if (c.pushName) {
+                    name = c.pushName;
+                } else if (c.subject) {
+                    name = c.subject;
+                } else if (c.name) {
+                    name = c.name;
+                } else if (dbContact && dbContact.name) {
+                    name = dbContact.name;
+                }
+
                 return {
                     id,
                     name,
                     isGroup,
                     unreadCount: Number(c.unreadCount || c.unreadMessages || 0),
-                    timestamp: Math.floor(timestampMs / 1000),
-                    nameIsFallback: name === fallback
+                    timestamp: Math.floor(timestampMs / 1000)
                 };
             })
             .filter(Boolean)
             .sort((a, b) => b.timestamp - a.timestamp)
             .slice(0, 50);
 
-        // Last-resort: for the top chats that still don't have a real name,
-        // hit Evolution's profile endpoint per JID. Capped to keep latency
-        // bounded (max 10 lookups, 1.5s each, in parallel).
-        const needsProfile = enriched.filter(c => c.nameIsFallback).slice(0, 10);
-        if (needsProfile.length > 0) {
-            await Promise.all(needsProfile.map(async (c) => {
-                const endpoints = c.isGroup
-                    ? [`/group/findGroupInfos/${EVO_INSTANCE_PATH}`]
-                    : [`/chat/fetchProfile/${EVO_INSTANCE_PATH}`, `/chat/whatsappProfile/${EVO_INSTANCE_PATH}`];
-                for (const ep of endpoints) {
-                    try {
-                        const r = c.isGroup
-                            ? await evo.get(ep, { params: { groupJid: c.id }, timeout: 1500 })
-                            : await evo.post(ep, { number: c.id }, { timeout: 1500 });
-                        const data = r.data || {};
-                        const candidate = data.subject || data.pushName || data.name || data.verifiedName || data.notify;
-                        if (candidate && r.status < 400) {
-                            c.name = candidate;
-                            c.nameIsFallback = false;
-                            break;
-                        }
-                    } catch (_) { /* try the next endpoint */ }
-                }
-            }));
-        }
-
-        const mapped = enriched.map(({ nameIsFallback, ...rest }) => rest);
-        res.json({ success: true, chats: mapped });
+        res.json({ success: true, chats: enriched });
     } catch (e) {
         console.error('[WA-QR] getChats error:', e.response?.data || e.message);
         res.status(500).json({ error: e.response?.data?.message || e.message });
@@ -255,8 +363,33 @@ export const getChatImage = async (req, res) => {
     if (!requireConfig(res)) return;
     const { chatId } = req.params;
     try {
-        const r = await evo.post(`/chat/fetchProfilePictureUrl/${EVO_INSTANCE_PATH}`, { number: chatId });
-        const url = r.data?.profilePictureUrl || r.data?.url || null;
+        const clubId = await resolveClubId(req);
+        let url = null;
+
+        // Check local DB cache first
+        if (clubId) {
+            const cached = await db.query(
+                `SELECT "profilePictureUrl" FROM "WhatsAppContact" WHERE "clubId" = $1 AND phone = $2 LIMIT 1`,
+                [clubId, chatId]
+            );
+            if (cached.rows.length && cached.rows[0].profilePictureUrl) {
+                url = cached.rows[0].profilePictureUrl;
+            }
+        }
+
+        if (!url) {
+            const r = await evo.post(`/chat/fetchProfilePictureUrl/${EVO_INSTANCE_PATH}`, { number: chatId });
+            url = r.data?.profilePictureUrl || r.data?.url || null;
+            
+            // Background cache the image URL
+            if (url && clubId) {
+                await db.query(
+                    `UPDATE "WhatsAppContact" SET "profilePictureUrl" = $1, "updatedAt" = NOW() WHERE "clubId" = $2 AND phone = $3`,
+                    [url, clubId, chatId]
+                ).catch(() => {});
+            }
+        }
+
         if (!url) return res.status(404).send('No profile picture');
 
         // Proxy the WhatsApp CDN through our server to dodge CORS and short-lived URLs in the browser.
@@ -411,5 +544,306 @@ export const sendMedia = async (req, res) => {
     } catch (e) {
         console.error('[WA-QR] sendMedia error:', e.response?.data || e.message);
         res.status(500).json({ error: e.response?.data?.message || e.message });
+    }
+};
+
+// ── Webhook Handler ───────────────────────────────────────────────────────────
+
+export const handleQrWebhook = async (req, res) => {
+    try {
+        const payload = req.body;
+        if (!payload || !payload.event) {
+            return res.status(400).json({ error: 'Payload inválido' });
+        }
+
+        // Secure checking: only process events for our District instance
+        if (payload.instance !== EVO_INSTANCE) {
+            return res.json({ success: true, message: 'Instancia ignorada' });
+        }
+
+        const event = payload.event;
+        const data = payload.data;
+
+        // Resolve global district club ID
+        const clubId = await resolveClubId(req);
+        if (!clubId) {
+            return res.json({ success: false, error: 'No club configured to assign contacts' });
+        }
+
+        if (event === 'contacts.upsert' || event === 'contacts.update') {
+            const list = Array.isArray(data) ? data : [data];
+            for (const item of list) {
+                const jid = item.id || item.remoteJid;
+                if (!jid) continue;
+
+                const isGroup = jid.endsWith('@g.us');
+                const source = isGroup ? 'whatsapp-qr-group' : 'whatsapp-qr';
+                const name = item.name || item.pushName || item.verifiedName || item.notify || jid.split('@')[0];
+                const picUrl = item.profilePictureUrl || item.avatar || null;
+
+                const metadataObj = {
+                    pushName: item.pushName || null,
+                    verifiedName: item.verifiedName || null,
+                    notify: item.notify || null,
+                    profilePictureUrl: picUrl
+                };
+
+                await db.query(`
+                    INSERT INTO "WhatsAppContact" (id, "clubId", name, phone, source, "profilePictureUrl", metadata, "createdAt", "updatedAt")
+                    VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW(), NOW())
+                    ON CONFLICT (phone, "clubId")
+                    DO UPDATE SET 
+                        name = CASE WHEN "WhatsAppContact".source = 'manual' THEN "WhatsAppContact".name ELSE $2 END,
+                        "profilePictureUrl" = COALESCE($5, "WhatsAppContact"."profilePictureUrl"),
+                        metadata = "WhatsAppContact".metadata || $6,
+                        "updatedAt" = NOW()
+                `, [clubId, name, jid, source, picUrl, JSON.stringify(metadataObj)]).catch(e => {
+                    console.error('[WA-QR] Webhook contact upsert DB error:', e.message);
+                });
+            }
+        } else if (event === 'messages.upsert') {
+            const list = Array.isArray(data) ? data : [data];
+            for (const item of list) {
+                const message = item.message || item;
+                const key = message.key || {};
+                const jid = key.remoteJid;
+                const pushName = item.pushName || message.pushName;
+                
+                if (jid && pushName && !key.fromMe) {
+                    const isGroup = jid.endsWith('@g.us');
+                    const source = isGroup ? 'whatsapp-qr-group' : 'whatsapp-qr';
+                    const name = pushName;
+                    
+                    const metadataObj = { pushName };
+
+                    await db.query(`
+                        INSERT INTO "WhatsAppContact" (id, "clubId", name, phone, source, metadata, "createdAt", "updatedAt")
+                        VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW(), NOW())
+                        ON CONFLICT (phone, "clubId")
+                        DO UPDATE SET 
+                            name = CASE 
+                                WHEN "WhatsAppContact".source = 'manual' THEN "WhatsAppContact".name 
+                                WHEN "WhatsAppContact".name = "WhatsAppContact".phone THEN $2
+                                ELSE "WhatsAppContact".name 
+                            END,
+                            metadata = "WhatsAppContact".metadata || $5,
+                            "updatedAt" = NOW()
+                    `, [clubId, name, jid, source, JSON.stringify(metadataObj)]).catch(e => {
+                        console.error('[WA-QR] Webhook message pushName DB error:', e.message);
+                    });
+                }
+            }
+        }
+
+        res.json({ success: true });
+    } catch (e) {
+        console.error('[WA-QR] Webhook handler error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// ── Group Action Endpoints ───────────────────────────────────────────────────
+
+export const createGroup = async (req, res) => {
+    if (!requireConfig(res)) return;
+    const { groupName, participants, description } = req.body;
+    if (!groupName || !Array.isArray(participants) || participants.length === 0) {
+        return res.status(400).json({ error: 'groupName y participants (array) son requeridos.' });
+    }
+    try {
+        const clubId = await resolveClubId(req, true);
+        if (!clubId) return res.status(400).json({ error: 'No se pudo resolver el clubId.' });
+
+        const jids = participants.map(p => normalizeJid(p));
+
+        const r = await evo.post(`/group/create/${EVO_INSTANCE_PATH}`, {
+            groupName,
+            participants: jids,
+            description: description || ''
+        });
+
+        if (r.status >= 400) {
+            return res.status(r.status).json({ error: r.data?.message || 'No se pudo crear el grupo en WhatsApp.' });
+        }
+
+        const groupData = r.data || {};
+        const groupJid = groupData.id || groupData.remoteJid || groupData.gid;
+        if (!groupJid) {
+            throw new Error('Evolution API no retornó el JID del nuevo grupo.');
+        }
+
+        // Cache the newly created group in local database
+        const metadataObj = {
+            description: description || '',
+            participantsCount: jids.length,
+            creator: req.user?.id || null
+        };
+
+        await db.query(`
+            INSERT INTO "WhatsAppContact" (id, "clubId", name, phone, source, metadata, "createdAt", "updatedAt")
+            VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW(), NOW())
+            ON CONFLICT (phone, "clubId")
+            DO UPDATE SET name = $2, metadata = "WhatsAppContact".metadata || $5, "updatedAt" = NOW()
+        `, [clubId, groupName, groupJid, 'whatsapp-qr-group', JSON.stringify(metadataObj)]).catch(e => {
+            console.error('[WA-QR] Group cache DB error:', e.message);
+        });
+
+        res.json({ success: true, group: { id: groupJid, name: groupName, participants: jids } });
+    } catch (e) {
+        console.error('[WA-QR] createGroup error:', e.response?.data || e.message);
+        res.status(500).json({ error: e.response?.data?.message || e.message });
+    }
+};
+
+export const updateGroupParticipants = async (req, res) => {
+    if (!requireConfig(res)) return;
+    const { groupJid } = req.params;
+    const { action, participants } = req.body; // action: 'add' | 'remove'
+    if (!groupJid || !action || !Array.isArray(participants) || participants.length === 0) {
+        return res.status(400).json({ error: 'groupJid, action (add/remove) y participants (array) son requeridos.' });
+    }
+    try {
+        const jids = participants.map(p => normalizeJid(p));
+        const r = await evo.post(`/group/updateParticipants/${EVO_INSTANCE_PATH}`, {
+            groupJid,
+            action,
+            participants: jids
+        });
+
+        if (r.status >= 400) {
+            return res.status(r.status).json({ error: r.data?.message || 'No se pudo actualizar los participantes del grupo.' });
+        }
+
+        res.json({ success: true, data: r.data });
+    } catch (e) {
+        console.error('[WA-QR] updateGroupParticipants error:', e.response?.data || e.message);
+        res.status(500).json({ error: e.response?.data?.message || e.message });
+    }
+};
+
+export const updateGroupMetadata = async (req, res) => {
+    if (!requireConfig(res)) return;
+    const { groupJid } = req.params;
+    const { subject, description } = req.body;
+    if (!groupJid) {
+        return res.status(400).json({ error: 'groupJid es requerido.' });
+    }
+    try {
+        const clubId = await resolveClubId(req, true);
+
+        if (subject) {
+            const rSubject = await evo.post(`/group/updateSubject/${EVO_INSTANCE_PATH}`, {
+                groupJid,
+                subject
+            });
+            if (rSubject.status >= 400) {
+                return res.status(rSubject.status).json({ error: rSubject.data?.message || 'No se pudo actualizar el asunto del grupo.' });
+            }
+            // Update name in local DB
+            if (clubId) {
+                await db.query(
+                    `UPDATE "WhatsAppContact" SET name = $1, "updatedAt" = NOW() WHERE phone = $2 AND "clubId" = $3`,
+                    [subject, groupJid, clubId]
+                ).catch(() => {});
+            }
+        }
+
+        if (description !== undefined) {
+            const rDesc = await evo.post(`/group/updateDescription/${EVO_INSTANCE_PATH}`, {
+                groupJid,
+                description: description || ''
+            });
+            if (rDesc.status >= 400) {
+                return res.status(rDesc.status).json({ error: rDesc.data?.message || 'No se pudo actualizar la descripción del grupo.' });
+            }
+            // Update metadata in local DB
+            if (clubId) {
+                const metadataObj = { description: description || '' };
+                await db.query(
+                    `UPDATE "WhatsAppContact" SET metadata = metadata || $1, "updatedAt" = NOW() WHERE phone = $2 AND "clubId" = $3`,
+                    [JSON.stringify(metadataObj), groupJid, clubId]
+                ).catch(() => {});
+            }
+        }
+
+        res.json({ success: true });
+    } catch (e) {
+        console.error('[WA-QR] updateGroupMetadata error:', e.response?.data || e.message);
+        res.status(500).json({ error: e.response?.data?.message || e.message });
+    }
+};
+
+// ── Contact Import Endpoint ──────────────────────────────────────────────────
+
+export const importQrContacts = async (req, res) => {
+    const { contacts, defaultCountryCode, listId, tags } = req.body;
+    if (!Array.isArray(contacts) || contacts.length === 0) {
+        return res.status(400).json({ error: 'contacts (array) es requerido y no puede estar vacío.' });
+    }
+    try {
+        const clubId = await resolveClubId(req, true);
+        if (!clubId) return res.status(400).json({ error: 'No se pudo resolver el clubId.' });
+
+        const countryCode = defaultCountryCode || '57';
+        const imported = [];
+        const errors = [];
+        const tagsArray = Array.isArray(tags) ? tags : [];
+
+        for (const item of contacts) {
+            const { name, phone, email } = item;
+            if (!name) {
+                errors.push({ item, error: 'Falta el nombre.' });
+                continue;
+            }
+            const jid = normalizePhoneToJid(phone, countryCode);
+            if (!jid) {
+                errors.push({ item, error: 'Formato de teléfono inválido.' });
+                continue;
+            }
+
+            try {
+                // Upsert contact in DB
+                const contactRes = await db.query(`
+                    INSERT INTO "WhatsAppContact" (id, "clubId", name, phone, email, tags, source, "createdAt", "updatedAt")
+                    VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW(), NOW())
+                    ON CONFLICT (phone, "clubId")
+                    DO UPDATE SET 
+                        name = COALESCE($2, "WhatsAppContact".name),
+                        email = COALESCE($4, "WhatsAppContact".email),
+                        tags = ARRAY(SELECT DISTINCT unnest(array_cat("WhatsAppContact".tags, $5))),
+                        "updatedAt" = NOW()
+                    RETURNING id, phone, name
+                `, [clubId, name, jid, email || null, tagsArray, 'whatsapp-qr']);
+
+                const contact = contactRes.rows[0];
+
+                // If listId is provided, add contact to WhatsAppContactList membership
+                if (listId && contact) {
+                    await db.query(`
+                        INSERT INTO "ContactListMember" (id, "listId", "contactId", "addedAt")
+                        VALUES (gen_random_uuid(), $1, $2, NOW())
+                        ON CONFLICT ("listId", "contactId") DO NOTHING
+                    `, [listId, contact.id]).catch(e => {
+                        console.error('[WA-QR] Error adding contact to list membership:', e.message);
+                    });
+                }
+
+                imported.push(contact);
+            } catch (e) {
+                errors.push({ item, error: e.message });
+            }
+        }
+
+        res.json({
+            success: true,
+            totalProcessed: contacts.length,
+            importedCount: imported.length,
+            errorCount: errors.length,
+            imported,
+            errors
+        });
+    } catch (e) {
+        console.error('[WA-QR] importQrContacts error:', e.message);
+        res.status(500).json({ error: e.message });
     }
 };

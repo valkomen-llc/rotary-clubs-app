@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { QrCode, Smartphone, WifiOff, Loader, RefreshCw, Send, Users, MessageSquare, Clock, Search } from 'lucide-react';
+import { QrCode, Smartphone, WifiOff, Loader, RefreshCw, Send, Users, MessageSquare, Clock, Search, Upload, UserPlus } from 'lucide-react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
 import { CheckCheck, Sparkles, Paperclip, Smile, Mic, Image as ImageIcon, Copy, Check, MessageSquarePlus, X } from 'lucide-react';
+
 
 const VITE_API_URL = import.meta.env.VITE_API_URL || '';
 const API = VITE_API_URL ? VITE_API_URL : '/api';
@@ -168,6 +169,288 @@ const WhatsAppQR: React.FC = () => {
     const [composeSending, setComposeSending] = useState(false);
     const [composeError, setComposeError] = useState('');
     const composeFileInputRef = useRef<HTMLInputElement>(null);
+
+    // Modals
+    const [showCreateGroup, setShowCreateGroup] = useState(false);
+    const [showImportContacts, setShowImportContacts] = useState(false);
+
+    // Create Group States
+    const [groupName, setGroupName] = useState('');
+    const [groupDescription, setGroupDescription] = useState('');
+    const [groupParticipants, setGroupParticipants] = useState<string[]>([]);
+    const [crmContacts, setCrmContacts] = useState<any[]>([]);
+    const [loadingCrmContacts, setLoadingCrmContacts] = useState(false);
+    const [crmSearch, setCrmSearch] = useState('');
+    const [creatingGroup, setCreatingGroup] = useState(false);
+    const [groupError, setGroupError] = useState('');
+
+    // Import Contacts States
+    const [importMethod, setImportMethod] = useState<'csv' | 'manual'>('csv');
+    const [manualText, setManualText] = useState('');
+    const [csvFile, setCsvFile] = useState<File | null>(null);
+    const [parsedContacts, setParsedContacts] = useState<any[]>([]);
+    const [selectedListId, setSelectedListId] = useState('');
+    const [contactLists, setContactLists] = useState<any[]>([]);
+    const [importTags, setImportTags] = useState('');
+    const [importing, setImporting] = useState(false);
+    const [importError, setImportError] = useState('');
+    const [importResult, setImportResult] = useState<any | null>(null);
+    const [defaultCountryCode, setDefaultCountryCode] = useState('57');
+
+    // Fetch CRM contacts for group creation
+    const fetchCrmContacts = async () => {
+        setLoadingCrmContacts(true);
+        try {
+            const res = await fetch(`${API}/whatsapp-crm/contacts?limit=500`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (data.contacts) {
+                setCrmContacts(data.contacts);
+            }
+        } catch (e) {
+            console.error('Error fetching CRM contacts:', e);
+        }
+        setLoadingCrmContacts(false);
+    };
+
+    useEffect(() => {
+        if (showCreateGroup && token) {
+            fetchCrmContacts();
+        }
+    }, [showCreateGroup, token]);
+
+    // Fetch CRM Lists for bulk import
+    const fetchContactLists = async () => {
+        try {
+            const res = await fetch(`${API}/whatsapp-crm/lists`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (data.lists) {
+                setContactLists(data.lists);
+            }
+        } catch (e) {
+            console.error('Error fetching CRM lists:', e);
+        }
+    };
+
+    useEffect(() => {
+        if (showImportContacts && token) {
+            fetchContactLists();
+        }
+    }, [showImportContacts, token]);
+
+    // Simple and robust CSV parser
+    const parseCsvContent = (text: string) => {
+        const lines = text.split(/\r?\n/);
+        const results = [];
+        let startIdx = 0;
+        let headers = ['nombre', 'telefono', 'email'];
+
+        if (lines.length > 0) {
+            const firstLine = lines[0].toLowerCase();
+            if (firstLine.includes('nombre') || firstLine.includes('name') || firstLine.includes('tel') || firstLine.includes('phone') || firstLine.includes('correo') || firstLine.includes('email')) {
+                headers = lines[0].split(/[,;\t]/).map(h => h.trim().replace(/^["']|["']$/g, '').toLowerCase());
+                startIdx = 1;
+            }
+        }
+
+        const nameColIdx = headers.findIndex(h => h.includes('nombre') || h.includes('name') || h === 'n');
+        const phoneColIdx = headers.findIndex(h => h.includes('tel') || h.includes('phone') || h.includes('cel') || h === 't');
+        const emailColIdx = headers.findIndex(h => h.includes('correo') || h.includes('email') || h.includes('mail') || h === 'e');
+
+        for (let i = startIdx; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+
+            let cells: string[] = [];
+            let currentCell = '';
+            let inQuotes = false;
+
+            for (let charIdx = 0; charIdx < line.length; charIdx++) {
+                const char = line[charIdx];
+                if (char === '"' || char === "'") {
+                    inQuotes = !inQuotes;
+                } else if ((char === ',' || char === ';' || char === '\t') && !inQuotes) {
+                    cells.push(currentCell.trim().replace(/^["']|["']$/g, ''));
+                    currentCell = '';
+                } else {
+                    currentCell += char;
+                }
+            }
+            cells.push(currentCell.trim().replace(/^["']|["']$/g, ''));
+
+            if (cells.length < 2) continue;
+
+            const rawName = nameColIdx !== -1 && cells[nameColIdx] ? cells[nameColIdx] : cells[0];
+            const rawPhone = phoneColIdx !== -1 && cells[phoneColIdx] ? cells[phoneColIdx] : cells[1];
+            const rawEmail = emailColIdx !== -1 && cells[emailColIdx] ? cells[emailColIdx] : (cells[2] || '');
+
+            if (!rawName || !rawPhone) continue;
+
+            const cleanPhone = rawPhone.replace(/[^0-9]/g, '');
+            let isValid = false;
+            let normalized = cleanPhone;
+
+            if (cleanPhone.length >= 7) {
+                if (cleanPhone.length === 10 && cleanPhone.startsWith('3') && defaultCountryCode === '57') {
+                    normalized = '57' + cleanPhone;
+                    isValid = true;
+                } else if (cleanPhone.length >= 10) {
+                    isValid = true;
+                }
+            }
+
+            results.push({
+                name: rawName,
+                phone: rawPhone,
+                email: rawEmail,
+                normalizedPhone: normalized,
+                isValid
+            });
+        }
+        return results;
+    };
+
+    // Parse pasted manual text
+    const parseManualContent = (text: string) => {
+        const lines = text.split(/\r?\n/);
+        const results = [];
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            const parts = line.split(/[,;]/).map(p => p.trim());
+            if (parts.length < 2) continue;
+
+            const rawName = parts[0];
+            const rawPhone = parts[1];
+            const rawEmail = parts[2] || '';
+
+            const cleanPhone = rawPhone.replace(/[^0-9]/g, '');
+            let isValid = false;
+            let normalized = cleanPhone;
+
+            if (cleanPhone.length >= 7) {
+                if (cleanPhone.length === 10 && cleanPhone.startsWith('3') && defaultCountryCode === '57') {
+                    normalized = '57' + cleanPhone;
+                    isValid = true;
+                } else if (cleanPhone.length >= 10) {
+                    isValid = true;
+                }
+            }
+
+            results.push({
+                name: rawName,
+                phone: rawPhone,
+                email: rawEmail,
+                normalizedPhone: normalized,
+                isValid
+            });
+        }
+        return results;
+    };
+
+    const handleCreateGroupSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setGroupError('');
+        if (!groupName.trim()) {
+            setGroupError('El nombre del grupo es obligatorio.');
+            return;
+        }
+        if (groupParticipants.length === 0) {
+            setGroupError('Debes seleccionar al menos un participante.');
+            return;
+        }
+        setCreatingGroup(true);
+        try {
+            const res = await fetch(`${API}/whatsapp-qr/groups/create`, {
+                method: 'POST',
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    groupName,
+                    participants: groupParticipants,
+                    description: groupDescription
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                fetchChats();
+                setShowCreateGroup(false);
+                setGroupName('');
+                setGroupDescription('');
+                setGroupParticipants([]);
+                alert(`Grupo "${groupName}" creado con éxito en WhatsApp.`);
+            } else {
+                setGroupError(data.error || 'Error al crear el grupo.');
+            }
+        } catch (err: any) {
+            console.error('Error creating group:', err);
+            setGroupError('Error de red al intentar crear el grupo.');
+        }
+        setCreatingGroup(false);
+    };
+
+    const handleImportSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setImportError('');
+        setImportResult(null);
+
+        const validContacts = parsedContacts.filter(c => c.isValid);
+        if (validContacts.length === 0) {
+            setImportError('No hay contactos válidos para importar.');
+            return;
+        }
+
+        setImporting(true);
+        try {
+            const tagsArray = importTags
+                .split(',')
+                .map(t => t.trim().toLowerCase())
+                .filter(Boolean);
+
+            const res = await fetch(`${API}/whatsapp-qr/contacts/import`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    contacts: validContacts.map(c => ({
+                        name: c.name,
+                        phone: c.normalizedPhone,
+                        email: c.email || null
+                    })),
+                    defaultCountryCode,
+                    listId: selectedListId || null,
+                    tags: tagsArray
+                })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                setImportResult({
+                    importedCount: data.importedCount,
+                    errorCount: data.errorCount,
+                    errors: data.errors
+                });
+                setManualText('');
+                setCsvFile(null);
+                setParsedContacts([]);
+                setImportTags('');
+                setSelectedListId('');
+                fetchChats();
+            } else {
+                setImportError(data.error || 'Error al importar los contactos.');
+            }
+        } catch (err: any) {
+            console.error('Error importing contacts:', err);
+            setImportError('Error de red al importar contactos.');
+        }
+        setImporting(false);
+    };
 
     const filteredChats = chats.filter(c =>
         c.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -442,7 +725,7 @@ const WhatsAppQR: React.FC = () => {
         setComposeSending(false);
     };
 
-    // Fetch chats every 5 seconds (suppressed log in the UI)
+    // Fetch chats every 15 seconds (suppressed log in the UI, optimized to avoid execution timeouts)
     useEffect(() => {
         checkStatus();
         const interval = setInterval(() => {
@@ -453,7 +736,7 @@ const WhatsAppQR: React.FC = () => {
                     fetchMessages(selectedChat.id, true);
                 }
             }
-        }, 5000);
+        }, 15000);
         return () => clearInterval(interval);
     }, [status, selectedChat]);
 
@@ -654,6 +937,20 @@ const WhatsAppQR: React.FC = () => {
                                         title="Nuevo mensaje (a cualquier número)"
                                     >
                                         <MessageSquarePlus className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                        onClick={() => { setGroupError(''); setGroupName(''); setGroupDescription(''); setGroupParticipants([]); setShowCreateGroup(true); }}
+                                        className="p-2 hover:bg-emerald-50 rounded-xl text-emerald-600 transition-colors"
+                                        title="Crear grupo de WhatsApp"
+                                    >
+                                        <UserPlus className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                        onClick={() => { setImportError(''); setImportResult(null); setParsedContacts([]); setManualText(''); setCsvFile(null); setShowImportContacts(true); }}
+                                        className="p-2 hover:bg-emerald-50 rounded-xl text-emerald-600 transition-colors"
+                                        title="Importación masiva de contactos"
+                                    >
+                                        <Upload className="w-4 h-4" />
                                     </button>
                                     <button onClick={fetchChats} className="p-2 hover:bg-gray-100 rounded-xl text-gray-400 transition-colors" title="Refrescar inbox">
                                         <RefreshCw className={`w-4 h-4 ${loadingChats ? 'animate-spin' : ''}`} />
@@ -1079,6 +1376,465 @@ const WhatsAppQR: React.FC = () => {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {showCreateGroup && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowCreateGroup(false)}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg relative overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                        <button
+                            type="button"
+                            onClick={() => { setShowCreateGroup(false); setGroupError(''); }}
+                            className="absolute top-3 right-3 p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                        
+                        <div className="p-6 border-b border-gray-100 bg-emerald-50/50 flex-shrink-0">
+                            <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
+                                <UserPlus className="w-5 h-5 text-emerald-600" />
+                                Crear Nuevo Grupo
+                            </h3>
+                            <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                                Crea un grupo de WhatsApp directamente desde la plataforma. Asigna participantes, nombre y descripción.
+                            </p>
+                        </div>
+
+                        <form onSubmit={handleCreateGroupSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
+                            <div>
+                                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block mb-1.5">Nombre del Grupo *</label>
+                                <input
+                                    type="text"
+                                    value={groupName}
+                                    onChange={e => setGroupName(e.target.value)}
+                                    placeholder="Ej: Junta Directiva 2026"
+                                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                                    required
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block mb-1.5">Descripción del Grupo (Opcional)</label>
+                                <textarea
+                                    value={groupDescription}
+                                    onChange={e => setGroupDescription(e.target.value)}
+                                    rows={2}
+                                    placeholder="Ej: Grupo oficial para coordinar actividades..."
+                                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none resize-none transition-all"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block mb-1">
+                                    Participantes Seleccionados ({groupParticipants.length})
+                                </label>
+                                {groupParticipants.length === 0 ? (
+                                    <p className="text-xs text-gray-400 italic mb-2">Ningún participante seleccionado. Usa la lista de abajo o agrega uno manual.</p>
+                                ) : (
+                                    <div className="flex flex-wrap gap-1.5 mb-2 max-h-24 overflow-y-auto p-1.5 bg-gray-50 rounded-xl border border-gray-100">
+                                        {groupParticipants.map(phone => {
+                                            const contact = crmContacts.find(c => c.phone === phone);
+                                            const displayName = contact ? contact.name : phone;
+                                            return (
+                                                <span key={phone} className="inline-flex items-center gap-1 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs px-2 py-0.5 rounded-full font-medium">
+                                                    {displayName}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setGroupParticipants(prev => prev.filter(p => p !== phone))}
+                                                        className="text-emerald-600 hover:text-emerald-800 font-bold ml-0.5"
+                                                    >
+                                                        &times;
+                                                    </button>
+                                                </span>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="border-t border-gray-100 pt-3">
+                                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block mb-1.5">Buscar Contactos del CRM</label>
+                                <div className="relative mb-2">
+                                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                    <input
+                                        type="text"
+                                        placeholder="Buscar por nombre o teléfono..."
+                                        value={crmSearch}
+                                        onChange={e => setCrmSearch(e.target.value)}
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2 pl-9 pr-4 text-xs focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                                    />
+                                </div>
+
+                                {loadingCrmContacts ? (
+                                    <div className="flex justify-center items-center py-4">
+                                        <Loader className="w-5 h-5 animate-spin text-emerald-600" />
+                                    </div>
+                                ) : (
+                                    <div className="max-h-36 overflow-y-auto border border-gray-100 rounded-xl divide-y divide-gray-100 bg-white">
+                                        {crmContacts.filter(c => {
+                                            if (!crmSearch.trim()) return true;
+                                            const search = crmSearch.toLowerCase();
+                                            return (c.name || '').toLowerCase().includes(search) || (c.phone || '').includes(search);
+                                        }).length === 0 ? (
+                                            <div className="text-center py-3 text-xs text-gray-400">No se encontraron contactos en el CRM.</div>
+                                        ) : (
+                                            crmContacts.filter(c => {
+                                                if (!crmSearch.trim()) return true;
+                                                const search = crmSearch.toLowerCase();
+                                                return (c.name || '').toLowerCase().includes(search) || (c.phone || '').includes(search);
+                                            }).map(contact => {
+                                                const isSelected = groupParticipants.includes(contact.phone);
+                                                return (
+                                                    <div 
+                                                        key={contact.phone} 
+                                                        onClick={() => {
+                                                            if (isSelected) {
+                                                                setGroupParticipants(prev => prev.filter(p => p !== contact.phone));
+                                                            } else {
+                                                                setGroupParticipants(prev => [...prev, contact.phone]);
+                                                            }
+                                                        }}
+                                                        className={`flex justify-between items-center px-3 py-2 cursor-pointer transition-colors text-xs ${isSelected ? 'bg-emerald-50/55 hover:bg-emerald-50' : 'hover:bg-gray-50'}`}
+                                                    >
+                                                        <div>
+                                                            <p className="font-bold text-gray-900">{contact.name}</p>
+                                                            <p className="text-[10px] text-gray-500">{contact.phone}</p>
+                                                        </div>
+                                                        <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${isSelected ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                                                            {isSelected ? 'Seleccionado' : 'Agregar'}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Manual Number Form Option */}
+                            <div className="border-t border-gray-100 pt-3">
+                                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block mb-1">Agregar Número Manual</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="tel"
+                                        id="manual-phone-add"
+                                        placeholder="Ej: 573114818199"
+                                        className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-emerald-500"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                const val = (e.target as HTMLInputElement).value.trim();
+                                                if (val) {
+                                                    const clean = val.replace(/[^0-9]/g, '');
+                                                    if (clean && !groupParticipants.includes(clean)) {
+                                                        setGroupParticipants(prev => [...prev, clean]);
+                                                        (e.target as HTMLInputElement).value = '';
+                                                    }
+                                                }
+                                            }
+                                        }}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const el = document.getElementById('manual-phone-add') as HTMLInputElement;
+                                            if (el) {
+                                                const val = el.value.trim();
+                                                if (val) {
+                                                    const clean = val.replace(/[^0-9]/g, '');
+                                                    if (clean && !groupParticipants.includes(clean)) {
+                                                        setGroupParticipants(prev => [...prev, clean]);
+                                                        el.value = '';
+                                                    }
+                                                }
+                                            }
+                                        }}
+                                        className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs px-3 py-1.5 rounded-xl font-bold transition-colors"
+                                    >
+                                        Agregar
+                                    </button>
+                                </div>
+                                <p className="text-[9px] text-gray-400 mt-1">Escribe el número con código de país y presiona enter o haz clic en Agregar.</p>
+                            </div>
+
+                            {groupError && (
+                                <div className="text-xs font-bold text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                                    {groupError}
+                                </div>
+                            )}
+
+                            <div className="flex gap-2 pt-2 border-t border-gray-100">
+                                <button
+                                    type="button"
+                                    onClick={() => { setShowCreateGroup(false); setGroupError(''); }}
+                                    className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={creatingGroup}
+                                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl px-3 py-2.5 text-xs font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {creatingGroup ? <Loader className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                                    {creatingGroup ? 'Creando Grupo...' : 'Crear Grupo'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {showImportContacts && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowImportContacts(false)}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl relative overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                        <button
+                            type="button"
+                            onClick={() => { setShowImportContacts(false); setImportError(''); setImportResult(null); }}
+                            className="absolute top-3 right-3 p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                        
+                        <div className="p-6 border-b border-gray-100 bg-emerald-50/50 flex-shrink-0">
+                            <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
+                                <Upload className="w-5 h-5 text-emerald-600" />
+                                Importar Contactos a CRM / WhatsApp
+                            </h3>
+                            <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                                Importa de manera masiva contactos al CRM de tu Club y sincronízalos con tu Gateway de WhatsApp.
+                            </p>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                            {/* Import Method Tabs */}
+                            <div className="flex bg-gray-100 p-1 rounded-xl">
+                                <button
+                                    type="button"
+                                    onClick={() => { setImportMethod('csv'); setParsedContacts([]); setImportError(''); }}
+                                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${importMethod === 'csv' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    Subir Archivo CSV
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setImportMethod('manual'); setParsedContacts([]); setImportError(''); }}
+                                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${importMethod === 'manual' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    Ingresar Manual (Copiar/Pegar)
+                                </button>
+                            </div>
+
+                            {/* Method Content */}
+                            {importMethod === 'csv' ? (
+                                <div className="space-y-3">
+                                    <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block">Seleccionar Archivo CSV</label>
+                                    <div className="border-2 border-dashed border-gray-200 rounded-2xl p-6 flex flex-col items-center justify-center text-center hover:border-emerald-500 transition-colors bg-gray-50/50 cursor-pointer relative"
+                                         onClick={() => document.getElementById('csv-file-selector')?.click()}>
+                                        <input
+                                            type="file"
+                                            id="csv-file-selector"
+                                            className="hidden"
+                                            accept=".csv,text/csv"
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0] || null;
+                                                setCsvFile(file);
+                                                if (file) {
+                                                    const reader = new FileReader();
+                                                    reader.onload = (evt) => {
+                                                        const text = evt.target?.result as string;
+                                                        if (text) {
+                                                            const res = parseCsvContent(text);
+                                                            setParsedContacts(res);
+                                                        }
+                                                    };
+                                                    reader.readAsText(file);
+                                                }
+                                            }}
+                                        />
+                                        <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                                        {csvFile ? (
+                                            <div>
+                                                <p className="text-xs font-bold text-emerald-700">{csvFile.name}</p>
+                                                <p className="text-[10px] text-gray-400 mt-0.5">{(csvFile.size / 1024).toFixed(1)} KB - Clic para cambiar</p>
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <p className="text-xs font-bold text-gray-700">Arrastra tu archivo CSV aquí, o búscalo localmente</p>
+                                                <p className="text-[10px] text-gray-400 mt-1">Debe incluir columnas para: Nombre, Teléfono, y Correo (opcional)</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block">Pegar Lista de Contactos</label>
+                                    <textarea
+                                        value={manualText}
+                                        onChange={(e) => {
+                                            setManualText(e.target.value);
+                                            const res = parseManualContent(e.target.value);
+                                            setParsedContacts(res);
+                                        }}
+                                        rows={4}
+                                        placeholder={`Escribe o pega tus contactos, uno por línea:\nNombre Completo, Teléfono, Correo@dominio.com\nPedro Pérez, 3114818199, pedro@gmail.com\nMaría Gómez, 573124567890`}
+                                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-xs focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none resize-none font-mono transition-all animate-fade-in"
+                                    />
+                                    <p className="text-[10px] text-gray-400">Separa cada campo con una coma ( , ) o punto y coma ( ; ). Un contacto por línea.</p>
+                                </div>
+                            )}
+
+                            {/* Preview Grid */}
+                            {parsedContacts.length > 0 && (
+                                <div className="space-y-2 border-t border-gray-100 pt-3">
+                                    <div className="flex justify-between items-center">
+                                        <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block">
+                                            Previsualización del Lote ({parsedContacts.length} contactos detectados)
+                                        </label>
+                                        <div className="flex gap-2">
+                                            <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-bold">
+                                                {parsedContacts.filter(c => c.isValid).length} Válidos
+                                            </span>
+                                            <span className="text-[10px] bg-red-50 text-red-700 px-2 py-0.5 rounded-full font-bold">
+                                                {parsedContacts.filter(c => !c.isValid).length} Inválidos
+                                            </span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="max-h-36 overflow-y-auto border border-gray-200 rounded-xl bg-gray-50/50">
+                                        <table className="min-w-full divide-y divide-gray-200 text-left">
+                                            <thead className="bg-gray-100">
+                                                <tr>
+                                                    <th className="px-3 py-2 text-[10px] font-bold text-gray-500 uppercase">Nombre</th>
+                                                    <th className="px-3 py-2 text-[10px] font-bold text-gray-500 uppercase">Teléfono</th>
+                                                    <th className="px-3 py-2 text-[10px] font-bold text-gray-500 uppercase">Email</th>
+                                                    <th className="px-3 py-2 text-[10px] font-bold text-gray-500 uppercase">Sincronización QR</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100 bg-white text-[11px]">
+                                                {parsedContacts.map((contact, idx) => (
+                                                    <tr key={idx} className="hover:bg-gray-50">
+                                                        <td className="px-3 py-1.5 font-semibold text-gray-900 truncate max-w-[120px]" title={contact.name}>{contact.name}</td>
+                                                        <td className="px-3 py-1.5 text-gray-600 font-mono">{contact.phone}</td>
+                                                        <td className="px-3 py-1.5 text-gray-500 truncate max-w-[100px]" title={contact.email}>{contact.email || '-'}</td>
+                                                        <td className="px-3 py-1.5 font-bold">
+                                                            {contact.isValid ? (
+                                                                <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded">
+                                                                    Listo: {contact.normalizedPhone}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="inline-flex items-center gap-1 text-[10px] text-red-700 font-bold bg-red-50 px-1.5 py-0.5 rounded" title="Número inválido (muy corto o formato desconocido)">
+                                                                    Número Inválido
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Additional CRM Options */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 border-t border-gray-100 pt-3">
+                                <div>
+                                    <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block mb-1.5">Código de País por Defecto</label>
+                                    <input
+                                        type="text"
+                                        value={defaultCountryCode}
+                                        onChange={e => setDefaultCountryCode(e.target.value)}
+                                        placeholder="Ej: 57"
+                                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-emerald-500 outline-none"
+                                    />
+                                    <p className="text-[9px] text-gray-400 mt-1">Se antepone a números de 10 dígitos (ej. Colombia starts with 3).</p>
+                                </div>
+
+                                <div>
+                                    <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block mb-1.5">Asignar a Lista del CRM</label>
+                                    <select
+                                        value={selectedListId}
+                                        onChange={e => setSelectedListId(e.target.value)}
+                                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-emerald-500 outline-none bg-white"
+                                    >
+                                        <option value="">-- Ninguna (Solo Contactos Sueltos) --</option>
+                                        {contactLists.map(list => (
+                                            <option key={list.id} value={list.id}>{list.name}</option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[9px] text-gray-400 mt-1">Los contactos importados se añadirán a esta lista.</p>
+                                </div>
+
+                                <div>
+                                    <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block mb-1.5">Etiquetas (Separadas por coma)</label>
+                                    <input
+                                        type="text"
+                                        value={importTags}
+                                        onChange={e => setImportTags(e.target.value)}
+                                        placeholder="Ej: socios, asamblea, 2026"
+                                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-emerald-500 outline-none"
+                                    />
+                                    <p className="text-[9px] text-gray-400 mt-1">Ej: "rotarios, distrito, campaña1"</p>
+                                </div>
+                            </div>
+
+                            {/* Error Details */}
+                            {importError && (
+                                <div className="text-xs font-bold text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                                    {importError}
+                                </div>
+                            )}
+
+                            {/* Successful Import Report */}
+                            {importResult && (
+                                <div className="border border-emerald-200 bg-emerald-50/60 rounded-xl p-4 space-y-2 animate-fade-in">
+                                    <p className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+                                        <Check className="w-4 h-4" /> ¡Importación Finalizada Exitosamente!
+                                    </p>
+                                    <div className="grid grid-cols-2 gap-4 text-xs">
+                                        <div className="bg-white rounded-lg p-2.5 border border-emerald-100 shadow-sm text-center">
+                                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Importados con Éxito</p>
+                                            <p className="text-xl font-black text-emerald-700 mt-0.5">{importResult.importedCount}</p>
+                                        </div>
+                                        <div className="bg-white rounded-lg p-2.5 border border-emerald-100 shadow-sm text-center">
+                                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Errores / Duplicados Omitidos</p>
+                                            <p className="text-xl font-black text-gray-700 mt-0.5">{importResult.errorCount}</p>
+                                        </div>
+                                    </div>
+                                    {importResult.errors && importResult.errors.length > 0 && (
+                                        <div className="border-t border-emerald-200/50 pt-2">
+                                            <p className="text-[10px] font-bold text-red-700 uppercase tracking-wider mb-1">Detalles de Advertencias</p>
+                                            <ul className="max-h-20 overflow-y-auto text-[10px] text-red-600 font-mono space-y-1 list-disc pl-4">
+                                                {importResult.errors.map((err: string, i: number) => (
+                                                    <li key={i}>{err}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Action Buttons */}
+                            <div className="flex gap-2 pt-2 border-t border-gray-100 flex-shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => { setShowImportContacts(false); setImportError(''); setImportResult(null); }}
+                                    className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                                >
+                                    {importResult ? 'Cerrar' : 'Cancelar'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleImportSubmit}
+                                    disabled={importing || parsedContacts.filter(c => c.isValid).length === 0}
+                                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl px-3 py-2.5 text-xs font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {importing ? <Loader className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                    {importing ? 'Importando Lote...' : 'Comenzar Importación'}
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}

@@ -5,9 +5,10 @@ import * as whatsappQrController from '../controllers/whatsappQrController.js';
 const router = express.Router();
 const superAdminMiddleware = roleMiddleware(['administrator']);
 
-// All WhatsApp QR routes are protected and require SuperAdmin privileges
-// since this is meant to manage the District's global community groups
+// Public webhook route (called by Evolution API)
+router.post('/webhook', whatsappQrController.handleQrWebhook);
 
+// Protected routes (SuperAdmin only)
 router.get('/status', authMiddleware, superAdminMiddleware, whatsappQrController.getStatus);
 router.post('/start', authMiddleware, superAdminMiddleware, whatsappQrController.startClient);
 router.post('/disconnect', authMiddleware, superAdminMiddleware, whatsappQrController.disconnectClient);
@@ -20,5 +21,13 @@ router.get('/chats/:chatId/messages/:messageId/media', authMiddleware, superAdmi
 router.post('/chats/:chatId/mark-read', authMiddleware, superAdminMiddleware, whatsappQrController.markChatRead);
 router.post('/send-message', authMiddleware, superAdminMiddleware, whatsappQrController.sendMessage);
 router.post('/send-media', authMiddleware, superAdminMiddleware, whatsappQrController.sendMedia);
+
+// Group Management Endpoints
+router.post('/groups/create', authMiddleware, superAdminMiddleware, whatsappQrController.createGroup);
+router.post('/groups/:groupJid/participants', authMiddleware, superAdminMiddleware, whatsappQrController.updateGroupParticipants);
+router.put('/groups/:groupJid/metadata', authMiddleware, superAdminMiddleware, whatsappQrController.updateGroupMetadata);
+
+// Contact Bulk Import Endpoint
+router.post('/contacts/import', authMiddleware, superAdminMiddleware, whatsappQrController.importQrContacts);
 
 export default router;
