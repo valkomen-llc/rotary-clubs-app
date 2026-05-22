@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.423 | 2026-05-21 (UI — Donar Ahora → Realizar Aporte en proyectos 🪶)
-// Cache bust: 2026-05-21 01:00 (UI v4.423 🪶)
+// UI V4.425 | 2026-05-22 (WhatsApp QR Gateway — Sincronización optimizada, creación de grupos e importación masiva v4.425.0 🚀)
+// Cache bust: 2026-05-22 10:30 (WhatsApp QR Gateway — Sincronización optimizada, creación de grupos e importación masiva v4.425.0 🚀)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.425',
+        date: '2026-05-22',
+        title: 'WhatsApp QR Gateway — Sincronización ultrarrápida, gestión de grupos e importador B2B 🚀',
+        description: 'Optimización radical de rendimiento con caché de base de datos e integración reactiva por Webhooks, suite de administración y creación de grupos, y potente importador masivo con normalización colombiana (+57) e inserción optimizada.',
+        type: 'feat',
+        author: 'Claude',
+        details: [
+            'Sincronización híbrida local en PostgreSQL (Neon) resolviendo la bandeja de entrada en menos de 200ms y evitando timeouts en entornos serverless.',
+            'Resolución de nombres en cascada: Nombre CRM -> pushName de WhatsApp -> Verified Name -> Fallback a número limpio formateado.',
+            'Webhook Listener público /api/whatsapp-qr/webhook para recibir actualizaciones y mensajes entrantes de Evolution API en tiempo real de forma reactiva.',
+            'Modal "Crear Nuevo Grupo" con selector multiselección interactivo del CRM, visualización en chips verde esmeralda y campo de entrada manual rápido.',
+            'Modal "Importador Masivo" con pestañas para carga por archivo CSV (con previsualizador de filas válidas/inválidas en tiempo real) e importación manual por texto copiado/pegado.',
+            'Limpieza automática de caracteres especiales, pre-fijado inteligente B2B de código de país por defecto (Colombia +57) e inserción SQL con resolución de conflictos de duplicados.'
+        ]
+    },
     {
         version: 'v4.424',
         date: '2026-05-21',
