@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.425.8",
-  "cache_bust": "2026-05-23 10:11 (WhatsApp QR Hotfix — Corrección de payload 'subject' para creación de grupos en Evolution API v2 🛠️)",
+  "version": "4.425.9",
+  "cache_bust": "2026-05-23 13:05 (Sincronización Inmediata de Grupos de WhatsApp 🛠️)",
   "type": "module",
-  "//": "UI V4.425.6 | 2026-05-23 (WhatsApp QR Hotfix — Corrección de payload 'subject' para creación de grupos en Evolution API v2 🛠️)",
+  "//": "UI V4.425.9 | 2026-05-23 (Sincronización Inmediata de Grupos de WhatsApp 🛠️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

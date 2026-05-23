@@ -24,9 +24,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.425.8 | 2026-05-23 (Importación Masiva Excel y Edición de Grupos WhatsApp 🛠️)
-// Cache bust: 2026-05-23 11:20 (Importación Masiva Excel y Edición de Grupos WhatsApp 🛠️)
+// UI V4.425.9 | 2026-05-23 (Sincronización Inmediata de Grupos de WhatsApp 🛠️)
+// Cache bust: 2026-05-23 13:05 (Sincronización Inmediata de Grupos de WhatsApp 🛠️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.425.9',
+        date: '2026-05-23',
+        title: 'Sincronización Inmediata de Grupos de WhatsApp 🛠️',
+        description: 'Se optimizó el motor de búsqueda y listado del Inbox de WhatsApp para garantizar que todos los grupos aparezcan, incluso si fueron recién creados o no tienen mensajes recientes.',
+        type: 'feature',
+        author: 'Antigravity',
+        details: [
+            'Aumento del límite de sincronización a los últimos 250 chats para que ningún grupo antiguo quede por fuera.',
+            'Cruce de datos en tiempo real con la base de datos del CRM: ahora, cuando crees un grupo desde la plataforma, aparecerá inmediatamente en el listado y buscador sin importar las demoras o caché de la API de WhatsApp.',
+            'Mejora en la resolución de nombres para los grupos creados nativamente en el CRM.'
+        ]
+    },
     {
         version: 'v4.425.8',
         date: '2026-05-23',
