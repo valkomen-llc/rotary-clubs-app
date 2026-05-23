@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
-const WhatsAppLists: React.FC = () => {
+const CrmLists: React.FC = () => {
     const { token } = useAuth();
     const [lists, setLists] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -19,7 +19,7 @@ const WhatsAppLists: React.FC = () => {
     const fetchLists = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${API}/whatsapp/lists`, { headers: { Authorization: `Bearer ${token}` } });
+            const res = await fetch(`${API}/crm/lists`, { headers: { Authorization: `Bearer ${token}` } });
             const data = await res.json();
             const listArr = Array.isArray(data) ? data : (data.lists || []);
             setLists(listArr);
@@ -28,7 +28,7 @@ const WhatsAppLists: React.FC = () => {
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        const url = editId ? `${API}/whatsapp/lists/${editId}` : `${API}/whatsapp/lists`;
+        const url = editId ? `${API}/crm/lists/${editId}` : `${API}/crm/lists`;
         const res = await fetch(url, { method: editId ? 'PUT' : 'POST', headers, body: JSON.stringify(form) });
         if (res.ok) { toast.success(editId ? 'Lista actualizada' : 'Lista creada'); setShowForm(false); resetForm(); fetchLists(); }
         else toast.error((await res.json()).error);
@@ -36,7 +36,7 @@ const WhatsAppLists: React.FC = () => {
 
     const handleDelete = async (id: string) => {
         if (!confirm('¿Eliminar esta lista?')) return;
-        await fetch(`${API}/whatsapp/lists/${id}`, { method: 'DELETE', headers });
+        await fetch(`${API}/crm/lists/${id}`, { method: 'DELETE', headers });
         toast.success('Lista eliminada'); fetchLists();
     };
 
@@ -124,4 +124,4 @@ const WhatsAppLists: React.FC = () => {
     );
 };
 
-export default WhatsAppLists;
+export default CrmLists;

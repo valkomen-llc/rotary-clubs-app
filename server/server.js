@@ -148,7 +148,7 @@ import ngseRoutes from './routes/ngse.js';
 import rotexRoutes from './routes/rotex.js';
 import financialRoutes from './routes/financial.js';
 import seoRoutes from './routes/seo.js';
-import whatsappCrmRoutes from './routes/whatsapp-crm.js';
+import crmRoutes from './routes/crm.js';
 import agentsRoutes from './routes/agents.js';
 import calendarRoutes from './routes/calendar.js';
 import districtsRoutes from './routes/districts.js';
@@ -188,7 +188,8 @@ app.use('/api/seo', seoRoutes);
 
 // REORDER WHATSAPP-QR FIRST TO AVOID PREFIX CONFLICT WITH '/api/whatsapp'
 app.use('/api/whatsapp-qr', whatsappQrRoutes);
-app.use('/api/whatsapp', whatsappCrmRoutes);
+app.use('/api/whatsapp', crmRoutes);
+app.use('/api/crm', crmRoutes);
 
 app.use('/api/agents', agentsRoutes);
 app.use('/api/calendar', calendarRoutes);

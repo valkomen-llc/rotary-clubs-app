@@ -7,7 +7,7 @@ const API = import.meta.env.VITE_API_URL || '/api';
 
 interface ParsedRow { [key: string]: string }
 
-const WhatsAppContacts: React.FC = () => {
+const CrmContacts: React.FC = () => {
     const { token } = useAuth();
     const [contacts, setContacts] = useState<any[]>([]);
     const [total, setTotal] = useState(0);
@@ -51,7 +51,7 @@ const WhatsAppContacts: React.FC = () => {
             const params = new URLSearchParams({ limit: '100', offset: '0' });
             if (search) params.set('search', search);
             if (statusFilter !== 'all') params.set('status', statusFilter);
-            const res = await fetch(`${API}/whatsapp/contacts?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+            const res = await fetch(`${API}/crm/contacts?${params}`, { headers: { Authorization: `Bearer ${token}` } });
             const data = await res.json();
             setContacts(data.contacts || []);
             setTotal(data.total || 0);
@@ -93,7 +93,7 @@ const WhatsAppContacts: React.FC = () => {
 
     const fetchLists = async () => {
         try {
-            const res = await fetch(`${API}/whatsapp/lists`, { headers: { Authorization: `Bearer ${token}` } });
+            const res = await fetch(`${API}/crm/lists`, { headers: { Authorization: `Bearer ${token}` } });
             const data = await res.json();
             const listArr = Array.isArray(data) ? data : (data.lists || []);
             setLists(listArr);
@@ -104,7 +104,7 @@ const WhatsAppContacts: React.FC = () => {
         if (!newListName.trim()) return;
         setCreatingList(true);
         try {
-            const res = await fetch(`${API}/whatsapp/lists`, {
+            const res = await fetch(`${API}/crm/lists`, {
                 method: 'POST', headers, body: JSON.stringify({ name: newListName.trim() }),
             });
             if (res.ok) {
@@ -125,7 +125,7 @@ const WhatsAppContacts: React.FC = () => {
         e.preventDefault();
         const body = { ...form, tags: form.tags ? form.tags.split(',').map(t => t.trim()) : [] };
         try {
-            const url = editId ? `${API}/whatsapp/contacts/${editId}` : `${API}/whatsapp/contacts`;
+            const url = editId ? `${API}/crm/contacts/${editId}` : `${API}/crm/contacts`;
             const res = await fetch(url, { method: editId ? 'PUT' : 'POST', headers, body: JSON.stringify(body) });
             const data = await res.json();
             if (res.ok) { toast.success(editId ? 'Contacto actualizado' : 'Contacto creado'); setShowForm(false); resetForm(); fetchContacts(); }
@@ -135,13 +135,13 @@ const WhatsAppContacts: React.FC = () => {
 
     const handleDelete = async (id: string) => {
         if (!confirm('¿Eliminar este contacto?')) return;
-        await fetch(`${API}/whatsapp/contacts/${id}`, { method: 'DELETE', headers });
+        await fetch(`${API}/crm/contacts/${id}`, { method: 'DELETE', headers });
         toast.success('Contacto eliminado'); fetchContacts();
     };
 
     const addContactToList = async (contactId: string, listId: string) => {
         try {
-            const res = await fetch(`${API}/whatsapp/lists/${listId}/members`, {
+            const res = await fetch(`${API}/crm/lists/${listId}/members`, {
                 method: 'POST', headers, body: JSON.stringify({ contactIds: [contactId] }),
             });
             if (res.ok) {
@@ -156,7 +156,7 @@ const WhatsAppContacts: React.FC = () => {
 
     const removeContactFromList = async (contactId: string, listId: string) => {
         try {
-            const res = await fetch(`${API}/whatsapp/lists/${listId}/members`, {
+            const res = await fetch(`${API}/crm/lists/${listId}/members`, {
                 method: 'DELETE', headers, body: JSON.stringify({ contactIds: [contactId] }),
             });
             if (res.ok) {
@@ -303,7 +303,7 @@ const WhatsAppContacts: React.FC = () => {
             const tags = importTags ? importTags.split(',').map(t => t.trim()).filter(Boolean) : [];
             const body: any = { contacts: mapped.map(c => ({ ...c, tags })), countryCode };
 
-            const res = await fetch(`${API}/whatsapp/contacts/import`, { method: 'POST', headers, body: JSON.stringify(body) });
+            const res = await fetch(`${API}/crm/contacts/import`, { method: 'POST', headers, body: JSON.stringify(body) });
             const data = await res.json();
             if (!res.ok) { toast.error(data.error || 'Error al importar'); return; }
 
@@ -311,11 +311,11 @@ const WhatsAppContacts: React.FC = () => {
             if (selectedListId && data.imported > 0) {
                 try {
                     // Fetch recently imported contacts
-                    const cRes = await fetch(`${API}/whatsapp/contacts?limit=${data.imported}&offset=0`, { headers: { Authorization: `Bearer ${token}` } });
+                    const cRes = await fetch(`${API}/crm/contacts?limit=${data.imported}&offset=0`, { headers: { Authorization: `Bearer ${token}` } });
                     const cData = await cRes.json();
                     const contactIds = (cData.contacts || []).map((c: any) => c.id);
                     if (contactIds.length) {
-                        await fetch(`${API}/whatsapp/lists/${selectedListId}/members`, {
+                        await fetch(`${API}/crm/lists/${selectedListId}/members`, {
                             method: 'POST', headers, body: JSON.stringify({ contactIds }),
                         });
                     }
@@ -336,7 +336,7 @@ const WhatsAppContacts: React.FC = () => {
     const handleImportLeads = async () => {
         setImporting(true);
         try {
-            const res = await fetch(`${API}/whatsapp/contacts/import/leads`, {
+            const res = await fetch(`${API}/crm/contacts/import/leads`, {
                 method: 'POST', headers, body: JSON.stringify({ leadIds: 'all' }),
             });
             const data = await res.json();
@@ -796,4 +796,4 @@ const WhatsAppContacts: React.FC = () => {
     );
 };
 
-export default WhatsAppContacts;
+export default CrmContacts;

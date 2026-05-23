@@ -6,8 +6,8 @@ import { toast } from 'sonner';
 
 // WhatsApp CRM Sub-components
 import WhatsAppConfig from '../../components/admin/whatsapp/WhatsAppConfig';
-import WhatsAppContacts from '../../components/admin/whatsapp/WhatsAppContacts';
-import WhatsAppLists from '../../components/admin/whatsapp/WhatsAppLists';
+import CrmContacts from '../../components/admin/whatsapp/CrmContacts';
+import CrmLists from '../../components/admin/whatsapp/CrmLists';
 import WhatsAppTemplates from '../../components/admin/whatsapp/WhatsAppTemplates';
 import WhatsAppCampaigns from '../../components/admin/whatsapp/WhatsAppCampaigns';
 import WhatsAppChat from '../../components/admin/whatsapp/WhatsAppChat';
@@ -15,7 +15,7 @@ import WhatsAppDashboard from '../../components/admin/whatsapp/WhatsAppDashboard
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
-type TabKey = 'send' | 'templates' | 'logs' | 'wa-config' | 'wa-contacts' | 'wa-lists' | 'wa-templates' | 'wa-campaigns' | 'wa-analytics' | 'wa-chat';
+type TabKey = 'email-send' | 'email-templates' | 'email-logs' | 'wa-config' | 'wa-templates' | 'wa-campaigns' | 'wa-analytics' | 'wa-chat' | 'crm-contacts' | 'crm-lists';
 
 /**
  * CRM Interfaz
@@ -80,45 +80,54 @@ const CRMManagement: React.FC = () => {
     };
 
     // Tab groups
+    const crmTabs: { key: TabKey; label: string; icon: React.ReactNode }[] = [
+        { key: 'crm-contacts', label: 'Contactos', icon: <Users className="w-4 h-4" /> },
+        { key: 'crm-lists', label: 'Listas', icon: <List className="w-4 h-4" /> },
+    ];
+
     const emailTabs: { key: TabKey; label: string; icon: React.ReactNode }[] = [
-        { key: 'send', label: 'Envío Rápido', icon: <Send className="w-4 h-4" /> },
-        { key: 'templates', label: 'Plantillas', icon: <ClipboardList className="w-4 h-4" /> },
-        { key: 'logs', label: 'Historial', icon: <Clock className="w-4 h-4" /> },
+        { key: 'email-send', label: 'Envío Rápido', icon: <Send className="w-4 h-4" /> },
+        { key: 'email-templates', label: 'Plantillas', icon: <ClipboardList className="w-4 h-4" /> },
+        { key: 'email-logs', label: 'Historial', icon: <Clock className="w-4 h-4" /> },
     ];
 
     const whatsappTabs: { key: TabKey; label: string; icon: React.ReactNode }[] = [
-        { key: 'wa-contacts', label: 'Contactos', icon: <Users className="w-4 h-4" /> },
-        { key: 'wa-lists', label: 'Listas', icon: <List className="w-4 h-4" /> },
+        { key: 'wa-config', label: 'Configuración', icon: <Settings className="w-4 h-4" /> },
         { key: 'wa-templates', label: 'Templates', icon: <FileText className="w-4 h-4" /> },
         { key: 'wa-campaigns', label: 'Campañas', icon: <Megaphone className="w-4 h-4" /> },
         { key: 'wa-chat', label: 'Chat', icon: <MessageSquare className="w-4 h-4" /> },
         { key: 'wa-analytics', label: 'Analytics', icon: <BarChart3 className="w-4 h-4" /> },
     ];
 
+    const isCrmTab = activeTab.startsWith('crm-');
     const isWhatsappTab = activeTab.startsWith('wa-');
+    const isEmailTab = activeTab.startsWith('email-');
+
+    const currentTabs = isCrmTab ? crmTabs : (isWhatsappTab ? whatsappTabs : emailTabs);
+    const activeColorClass = isCrmTab ? 'purple' : (isWhatsappTab ? 'green' : 'blue');
 
     return (
         <AdminLayout>
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <h1 className="text-3xl font-black text-gray-900 tracking-tight">Comunicaciones y CRM</h1>
-                    <p className="text-gray-500 mt-1">Envía notificaciones, administra plantillas y gestiona campañas de WhatsApp.</p>
+                    <p className="text-gray-500 mt-1">Directorio unificado, plantillas, campañas de WhatsApp y Email Marketing.</p>
                 </div>
             </div>
 
             {/* Channel Selector */}
-            <div className="flex gap-3 mb-6">
+            <div className="flex flex-wrap gap-3 mb-6">
                 <button
-                    onClick={() => setActiveTab('send')}
-                    className={`flex items-center gap-2.5 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 ${!isWhatsappTab ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm' : 'border-gray-100 text-gray-500 hover:bg-gray-50'}`}
+                    onClick={() => setActiveTab('crm-contacts')}
+                    className={`flex items-center gap-2.5 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 ${isCrmTab ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-sm' : 'border-gray-100 text-gray-500 hover:bg-gray-50'}`}
                 >
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${!isWhatsappTab ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
-                        <Mail className="w-4 h-4" />
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isCrmTab ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                        <Users className="w-4 h-4" />
                     </div>
-                    Email & SMS
+                    Directorio de Contactos
                 </button>
                 <button
-                    onClick={() => setActiveTab('wa-config')}
+                    onClick={() => setActiveTab('wa-chat')}
                     className={`flex items-center gap-2.5 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 ${isWhatsappTab ? 'border-green-500 bg-green-50 text-green-700 shadow-sm' : 'border-gray-100 text-gray-500 hover:bg-gray-50'}`}
                 >
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isWhatsappTab ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
@@ -126,15 +135,24 @@ const CRMManagement: React.FC = () => {
                     </div>
                     WhatsApp CRM
                 </button>
+                <button
+                    onClick={() => setActiveTab('email-send')}
+                    className={`flex items-center gap-2.5 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 ${isEmailTab ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm' : 'border-gray-100 text-gray-500 hover:bg-gray-50'}`}
+                >
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isEmailTab ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                        <Mail className="w-4 h-4" />
+                    </div>
+                    Email & SMS
+                </button>
             </div>
 
             {/* Sub-tabs */}
             <div className="flex gap-1 mb-8 border-b border-gray-200 pb-px overflow-x-auto">
-                {(isWhatsappTab ? whatsappTabs : emailTabs).map(tab => (
+                {currentTabs.map(tab => (
                     <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                         className={`px-4 py-3 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
                             activeTab === tab.key
-                                ? isWhatsappTab ? 'border-green-500 text-green-700' : 'border-blue-500 text-blue-700'
+                                ? `border-${activeColorClass}-500 text-${activeColorClass}-700`
                                 : 'border-transparent text-gray-500 hover:text-gray-700'
                         }`}
                     >
@@ -143,8 +161,12 @@ const CRMManagement: React.FC = () => {
                 ))}
             </div>
 
+            {/* ═══ CRM TABS ═══ */}
+            {activeTab === 'crm-contacts' && <CrmContacts />}
+            {activeTab === 'crm-lists' && <CrmLists />}
+
             {/* ═══ EMAIL TABS ═══ */}
-            {activeTab === 'send' && (
+            {activeTab === 'email-send' && (
                 <div className="max-w-3xl">
                     <form onSubmit={handleSendTest} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 space-y-6">
                         <div className="grid grid-cols-2 gap-4">
@@ -186,7 +208,7 @@ const CRMManagement: React.FC = () => {
                 </div>
             )}
 
-            {activeTab === 'logs' && (
+            {activeTab === 'email-logs' && (
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                     <div className="p-4 border-b border-gray-100 bg-gray-50 flex flex-wrap gap-4 items-center justify-between">
                         <div className="relative">
@@ -226,7 +248,7 @@ const CRMManagement: React.FC = () => {
                 </div>
             )}
 
-            {activeTab === 'templates' && (
+            {activeTab === 'email-templates' && (
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
                     <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4"><ClipboardList className="w-8 h-8" /></div>
                     <h2 className="text-xl font-bold text-gray-900 mb-2">Plantillas y Workflows</h2>
@@ -250,8 +272,6 @@ const CRMManagement: React.FC = () => {
 
             {/* ═══ WHATSAPP TABS ═══ */}
             {activeTab === 'wa-config' && <WhatsAppConfig />}
-            {activeTab === 'wa-contacts' && <WhatsAppContacts />}
-            {activeTab === 'wa-lists' && <WhatsAppLists />}
             {activeTab === 'wa-templates' && <WhatsAppTemplates />}
             {activeTab === 'wa-campaigns' && <WhatsAppCampaigns />}
             {activeTab === 'wa-chat' && <WhatsAppChat />}

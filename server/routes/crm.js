@@ -51,7 +51,7 @@ import {
     getCustomFields,
     createCustomField,
     deleteCustomField,
-} from '../controllers/whatsappCRMController.js';
+} from '../controllers/crmController.js';
 
 const router = express.Router();
 

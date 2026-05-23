@@ -24,9 +24,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.425.15 | 2026-05-23 (Fix crítico: Error 500 en servidor CRM Central 🛠️)
-// Cache bust: 2026-05-23 13:55 (Fix crítico: Error 500 en servidor CRM Central 🛠️)
+// UI V4.426.0 | 2026-05-23 (Feature: Directorio Unificado CRM 👥)
+// Cache bust: 2026-05-23 14:04 (Feature: Directorio Unificado CRM 👥)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.426.0',
+        date: '2026-05-23',
+        title: 'Directorio Unificado CRM 👥',
+        description: 'Reestructuración profunda de la arquitectura del CRM. Se extrajo el módulo de contactos de WhatsApp para convertirlo en un Directorio Central (Single Source of Truth) capaz de alimentar también las herramientas de Email Marketing y SMS.',
+        type: 'feature',
+        details: [
+            'Nueva Pestaña Principal: Directorio de Contactos.',
+            'Refactorización de Base de Datos para soportar Contactos Globales de CRM.',
+            'Endpoints agnósticos listos para conectar Email & SMS.'
+        ]
+    },
     {
         version: '4.425.15',
         date: '2026-05-23',

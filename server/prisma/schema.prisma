@@ -138,8 +138,8 @@ model Club {
   users                    User[]
   whatsAppCampaigns        WhatsAppCampaign[]
   whatsAppConfig           WhatsAppConfig?
-  whatsAppContacts         WhatsAppContact[]
-  whatsAppLists            WhatsAppContactList[]
+  crmContacts         CrmContact[]
+  crmLists            CrmList[]
   WhatsAppCustomField      WhatsAppCustomField[]
   whatsAppTemplates        WhatsAppTemplate[]
   technicalRequests        TechnicalRequest[]
@@ -607,7 +607,8 @@ model WhatsAppConfig {
   club           Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
 }
 
-model WhatsAppContact {
+model CrmContact {
+  @@map("WhatsAppContact")
   id              String               @id @default(uuid())
   clubId          String
   name            String
@@ -637,7 +638,8 @@ model WhatsAppContact {
   @@index([status], map: "idx_wa_contact_status")
 }
 
-model WhatsAppContactList {
+model CrmList {
+  @@map("WhatsAppContactList")
   id          String              @id @default(uuid())
   clubId      String
   name        String
@@ -657,8 +659,8 @@ model ContactListMember {
   listId    String
   contactId String
   addedAt   DateTime            @default(now())
-  contact   WhatsAppContact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  list      WhatsAppContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  contact   CrmContact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  list      CrmList @relation(fields: [listId], references: [id], onDelete: Cascade)
 
   @@unique([listId, contactId])
   @@index([contactId], map: "idx_clmember_contact")
@@ -707,7 +709,7 @@ model WhatsAppCampaign {
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
   club          Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  list          WhatsAppContactList? @relation(fields: [listId], references: [id])
+  list          CrmList? @relation(fields: [listId], references: [id])
   template      WhatsAppTemplate?    @relation(fields: [templateId], references: [id])
   messageLogs   WhatsAppMessageLog[]
 
@@ -735,7 +737,7 @@ model WhatsAppMessageLog {
   updatedAt    DateTime          @updatedAt
   direction    String            @default("outgoing")
   campaign     WhatsAppCampaign? @relation(fields: [campaignId], references: [id])
-  contact      WhatsAppContact?  @relation(fields: [contactId], references: [id])
+  contact      CrmContact?  @relation(fields: [contactId], references: [id])
 
   @@index([messageId])
   @@index([campaignId, status])

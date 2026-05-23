@@ -1,5 +1,5 @@
 /**
- * whatsappCRMController.js
+ * crmController.js
  * Controlador completo del CRM WhatsApp — Meta Cloud API
  * NOTA: Club.id es TEXT en esta BD (no UUID puro), todas las FKs son TEXT
  */
@@ -295,12 +295,12 @@ export const getContacts = async (req, res) => {
         if (listId) { joinClause = `JOIN "ContactListMember" m ON m."contactId"=c.id AND m."listId"=$${idx++}`; params.push(listId); }
 
         const countR = await db.query(
-            `SELECT COUNT(*) FROM "WhatsAppContact" c ${joinClause} WHERE ${where.join(' AND ')}`, params
+            `SELECT COUNT(*) FROM "CrmContact" c ${joinClause} WHERE ${where.join(' AND ')}`, params
         );
         const result = await db.query(
             `SELECT c.*,
                 COALESCE((SELECT json_agg(json_build_object('id',l.id,'name',l.name,'color',l.color))
-                          FROM "ContactListMember" m2 JOIN "WhatsAppContactList" l ON l.id=m2."listId"
+                          FROM "ContactListMember" m2 JOIN "CrmList" l ON l.id=m2."listId"
                           WHERE m2."contactId"=c.id),'[]') as lists,
                 (SELECT json_build_object(
                     'bodyText', lm."bodyText",
@@ -313,7 +313,7 @@ export const getContacts = async (req, res) => {
                 ORDER BY lm."createdAt" DESC LIMIT 1) as "lastMessage",
                 (SELECT COUNT(*)::int FROM "WhatsAppMessageLog" ml 
                 WHERE ml."contactId"=c.id AND ml.direction='incoming' AND ml."readAt" IS NULL) as "unreadCount"
-             FROM "WhatsAppContact" c ${joinClause}
+             FROM "CrmContact" c ${joinClause}
              WHERE ${where.join(' AND ')}
              ORDER BY 
                 COALESCE((SELECT MAX(lm2."createdAt") FROM "WhatsAppMessageLog" lm2 WHERE lm2."contactId"=c.id), c."createdAt") DESC
@@ -335,7 +335,7 @@ export const createContact = async (req, res) => {
         const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`;
         const contactId = crypto.randomUUID();
         const r = await db.query(
-            `INSERT INTO "WhatsAppContact" (id,"clubId",name,phone,email,tags,source,metadata,"profilePictureUrl","createdAt","updatedAt")
+            `INSERT INTO "CrmContact" (id,"clubId",name,phone,email,tags,source,metadata,"profilePictureUrl","createdAt","updatedAt")
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW()) RETURNING *`,
             [contactId, clubId, name, normalizedPhone, email || null, tags, source, JSON.stringify(metadata), profilePictureUrl]
         );
@@ -366,7 +366,7 @@ export const updateContact = async (req, res) => {
         fields.push(`"updatedAt"=NOW()`);
         params.push(id, clubId);
         const r = await db.query(
-            `UPDATE "WhatsAppContact" SET ${fields.join(',')} WHERE id=$${idx++} AND "clubId"=$${idx++} RETURNING *`,
+            `UPDATE "CrmContact" SET ${fields.join(',')} WHERE id=$${idx++} AND "clubId"=$${idx++} RETURNING *`,
             params
         );
         if (!r.rows.length) return res.status(404).json({ error: 'Contacto no encontrado' });
@@ -384,7 +384,7 @@ export const archiveContact = async (req, res) => {
         const { archived } = req.body;
         const archivedAt = archived ? 'NOW()' : 'NULL';
         const r = await db.query(
-            `UPDATE "WhatsAppContact" SET "archivedAt"=${archivedAt},"updatedAt"=NOW() WHERE id=$1 AND "clubId"=$2 RETURNING *`,
+            `UPDATE "CrmContact" SET "archivedAt"=${archivedAt},"updatedAt"=NOW() WHERE id=$1 AND "clubId"=$2 RETURNING *`,
             [id, clubId]
         );
         if (!r.rows.length) return res.status(404).json({ error: 'Contacto no encontrado' });
@@ -413,7 +413,7 @@ export const markMessagesRead = async (req, res) => {
 export const deleteContact = async (req, res) => {
     try {
         const clubId = await resolveClubId(req);
-        await db.query(`DELETE FROM "WhatsAppContact" WHERE id=$1 AND "clubId"=$2`, [req.params.id, clubId]);
+        await db.query(`DELETE FROM "CrmContact" WHERE id=$1 AND "clubId"=$2`, [req.params.id, clubId]);
         res.json({ success: true });
     } catch (err) {
         console.error('WA deleteContact:', err);
@@ -426,7 +426,7 @@ export const getContactMessages = async (req, res) => {
         const clubId = await resolveClubId(req);
         const contactId = req.params.id;
         // Get the contact phone
-        const contactR = await db.query(`SELECT phone FROM "WhatsAppContact" WHERE id=$1 AND "clubId"=$2`, [contactId, clubId]);
+        const contactR = await db.query(`SELECT phone FROM "CrmContact" WHERE id=$1 AND "clubId"=$2`, [contactId, clubId]);
         if (!contactR.rows.length) return res.status(404).json({ error: 'Contacto no encontrado' });
         const phone = contactR.rows[0].phone;
         // Try to get messages from WhatsAppMessageLog
@@ -461,7 +461,7 @@ export const sendMessageToContact = async (req, res) => {
         }
 
         // Get contact
-        const contactR = await db.query(`SELECT * FROM "WhatsAppContact" WHERE id=$1 AND "clubId"=$2`, [contactId, clubId]);
+        const contactR = await db.query(`SELECT * FROM "CrmContact" WHERE id=$1 AND "clubId"=$2`, [contactId, clubId]);
         if (!contactR.rows.length) return res.status(404).json({ error: 'Contacto no encontrado' });
         const contact = contactR.rows[0];
 
@@ -554,7 +554,7 @@ export const sendMessageToContact = async (req, res) => {
              VALUES ($1,$2,$3,$4,$5,$6,$7,'sent','outgoing',NOW(),NOW(),NOW())`,
             [msgLogId, clubId, contact.id, contact.phone, messageId || null, logTemplateName, logBodyText]
         );
-        await db.query(`UPDATE "WhatsAppContact" SET "totalSent"="totalSent"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
+        await db.query(`UPDATE "CrmContact" SET "totalSent"="totalSent"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
 
         res.json({
             success: true,
@@ -574,7 +574,7 @@ export const sendMessageToContact = async (req, res) => {
         // Log failed attempt
         try {
             const clubId = await resolveClubId(req);
-            const contactR = await db.query(`SELECT phone FROM "WhatsAppContact" WHERE id=$1`, [req.params.id]);
+            const contactR = await db.query(`SELECT phone FROM "CrmContact" WHERE id=$1`, [req.params.id]);
             if (contactR.rows.length) {
                 const cfLogId = crypto.randomUUID();
                 await db.query(
@@ -618,9 +618,9 @@ export const importContacts = async (req, res) => {
             const metadata = c.metadata || {};
             const contactId = crypto.randomUUID();
             await db.query(
-                `INSERT INTO "WhatsAppContact" (id,"clubId",name,phone,email,tags,source,metadata,"createdAt","updatedAt")
+                `INSERT INTO "CrmContact" (id,"clubId",name,phone,email,tags,source,metadata,"createdAt","updatedAt")
                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW()) ON CONFLICT (phone,"clubId") DO UPDATE SET
-                 metadata = (COALESCE(NULLIF("WhatsAppContact".metadata, ''), '{}')::jsonb || $8::jsonb)::text, "updatedAt" = NOW()`,
+                 metadata = (COALESCE(NULLIF("CrmContact".metadata, ''), '{}')::jsonb || $8::jsonb)::text, "updatedAt" = NOW()`,
                 [contactId, clubId, c.name, phone, c.email || null, Array.isArray(c.tags) ? c.tags : [], source, JSON.stringify(metadata)]
             ).then(r => r.rowCount ? imported++ : skipped++).catch(err => { console.error(err); skipped++; });
         }
@@ -643,7 +643,7 @@ export const fixPhoneNumbers = async (req, res) => {
         // Colombian mobile numbers start with 3, landlines with other digits
         // Pattern: +3XXXXXXXXX (10 digits after +) should be +573XXXXXXXXX
         const r = await db.query(
-            `UPDATE "WhatsAppContact" 
+            `UPDATE "CrmContact" 
              SET phone = $2 || SUBSTRING(phone FROM 2)
              WHERE "clubId" = $1
              AND phone LIKE '+%'
@@ -677,7 +677,7 @@ export const importFromLeads = async (req, res) => {
             const phone = lead.phone.startsWith('+') ? lead.phone : `+${lead.phone}`;
             const contactId = crypto.randomUUID();
             await db.query(
-                `INSERT INTO "WhatsAppContact" (id,"clubId",name,phone,email,source,"leadId","createdAt","updatedAt")
+                `INSERT INTO "CrmContact" (id,"clubId",name,phone,email,source,"leadId","createdAt","updatedAt")
                  VALUES ($1,$2,$3,$4,$5,'lead_sync',$6,NOW(),NOW()) ON CONFLICT (phone,"clubId") DO NOTHING`,
                 [contactId, clubId, lead.name, phone, lead.email || null, lead.id]
             ).then(r => r.rowCount ? imported++ : skipped++);
@@ -698,7 +698,7 @@ export const getLists = async (req, res) => {
         try {
             r = await db.query(
                 `SELECT l.*, COUNT(m."contactId")::int as "memberCount"
-                 FROM "WhatsAppContactList" l
+                 FROM "CrmList" l
                  LEFT JOIN "ContactListMember" m ON m."listId"=l.id
                  WHERE l."clubId"=$1 GROUP BY l.id ORDER BY l."createdAt" DESC`,
                 [clubId]
@@ -707,7 +707,7 @@ export const getLists = async (req, res) => {
             // Fallback: ContactListMember table may not exist yet
             console.warn('getLists JOIN fallback:', joinErr.message);
             r = await db.query(
-                `SELECT *, 0 as "memberCount" FROM "WhatsAppContactList" WHERE "clubId"=$1 ORDER BY "createdAt" DESC`,
+                `SELECT *, 0 as "memberCount" FROM "CrmList" WHERE "clubId"=$1 ORDER BY "createdAt" DESC`,
                 [clubId]
             );
         }
@@ -725,7 +725,7 @@ export const createList = async (req, res) => {
         const clubId = await resolveClubId(req, true);
         const listId = crypto.randomUUID();
         const r = await db.query(
-            `INSERT INTO "WhatsAppContactList" (id,"clubId",name,description,color,"createdAt","updatedAt")
+            `INSERT INTO "CrmList" (id,"clubId",name,description,color,"createdAt","updatedAt")
              VALUES ($1,$2,$3,$4,$5,NOW(),NOW()) RETURNING *`,
             [listId, clubId, name, description || null, color]
         );
@@ -740,7 +740,7 @@ export const updateList = async (req, res) => {
     try {
         const { name, description, color } = req.body;
         const r = await db.query(
-            `UPDATE "WhatsAppContactList"
+            `UPDATE "CrmList"
              SET name=COALESCE($1,name),description=COALESCE($2,description),color=COALESCE($3,color),"updatedAt"=NOW()
              WHERE id=$4 AND "clubId"=$5 RETURNING *`,
             [name, description, color, req.params.id, await resolveClubId(req)]
@@ -755,7 +755,7 @@ export const updateList = async (req, res) => {
 
 export const deleteList = async (req, res) => {
     try {
-        await db.query(`DELETE FROM "WhatsAppContactList" WHERE id=$1 AND "clubId"=$2`, [req.params.id, await resolveClubId(req)]);
+        await db.query(`DELETE FROM "CrmList" WHERE id=$1 AND "clubId"=$2`, [req.params.id, await resolveClubId(req)]);
         res.json({ success: true });
     } catch (err) {
         console.error('WA deleteList:', err);
@@ -947,7 +947,7 @@ export const getCampaigns = async (req, res) => {
         const r = await db.query(
             `SELECT c.*,l.name as "listName",t.name as "templateName",t."displayName" as "templateDisplayName"
              FROM "WhatsAppCampaign" c
-             LEFT JOIN "WhatsAppContactList" l ON l.id=c."listId"
+             LEFT JOIN "CrmList" l ON l.id=c."listId"
              LEFT JOIN "WhatsAppTemplate" t ON t.id=c."templateId"
              WHERE c."clubId"=$1 ORDER BY c."createdAt" DESC`,
             [clubId]
@@ -1035,7 +1035,7 @@ export const sendCampaign = async (req, res) => {
             return res.status(400).json({ error: 'Solo se pueden enviar templates aprobados por Meta' });
 
         const contactsR = await db.query(
-            `SELECT c.* FROM "WhatsAppContact" c JOIN "ContactListMember" m ON m."contactId"=c.id
+            `SELECT c.* FROM "CrmContact" c JOIN "ContactListMember" m ON m."contactId"=c.id
              WHERE m."listId"=$1 AND c.status='active'`,
             [campaign.listId]
         );
@@ -1094,7 +1094,7 @@ export const sendCampaign = async (req, res) => {
                      VALUES ($1,$2,$3,$4,$5,$6,$7,'sent','outgoing',NOW(),NOW(),NOW())`,
                     [cMsgId, clubId, id, contact.id, contact.phone, messageId || null, template.name]
                 );
-                await db.query(`UPDATE "WhatsAppContact" SET "totalSent"="totalSent"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
+                await db.query(`UPDATE "CrmContact" SET "totalSent"="totalSent"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
                 return { ok: true };
             } catch (err) {
                 const cfLogId = crypto.randomUUID();
@@ -1103,7 +1103,7 @@ export const sendCampaign = async (req, res) => {
                      VALUES ($1,$2,$3,$4,$5,$6,'failed','outgoing',$7,NOW(),NOW(),NOW())`,
                     [cfLogId, clubId, id, contact.id, contact.phone, template.name, err.message]
                 ).catch(() => {});
-                await db.query(`UPDATE "WhatsAppContact" SET "totalFailed"="totalFailed"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]).catch(() => {});
+                await db.query(`UPDATE "CrmContact" SET "totalFailed"="totalFailed"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]).catch(() => {});
                 return { ok: false };
             }
         };
@@ -1144,7 +1144,7 @@ export const getCampaignLogs = async (req, res) => {
         const r = await db.query(
             `SELECT l.*,c.name as "contactName"
              FROM "WhatsAppMessageLog" l
-             LEFT JOIN "WhatsAppContact" c ON c.id=l."contactId"
+             LEFT JOIN "CrmContact" c ON c.id=l."contactId"
              WHERE l."campaignId"=$1 ORDER BY l."createdAt" DESC LIMIT 500`,
             [req.params.id]
         );
@@ -1161,7 +1161,7 @@ export const getAnalytics = async (req, res) => {
     try {
         const clubId = await resolveClubId(req);
         const [contacts, campaigns, messages] = await Promise.all([
-            db.query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status='active') as active, COUNT(*) FILTER (WHERE status='opted_out') as "optedOut" FROM "WhatsAppContact" WHERE "clubId"=$1`, [clubId]),
+            db.query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status='active') as active, COUNT(*) FILTER (WHERE status='opted_out') as "optedOut" FROM "CrmContact" WHERE "clubId"=$1`, [clubId]),
             db.query(`SELECT COUNT(*) as total, SUM(sent)::int as sent, SUM(delivered)::int as delivered, SUM(read)::int as "readCount", SUM(failed)::int as failed FROM "WhatsAppCampaign" WHERE "clubId"=$1 AND status='sent'`, [clubId]),
             db.query(`SELECT COUNT(*) FILTER (WHERE status='sent') as sent, COUNT(*) FILTER (WHERE status='delivered') as delivered, COUNT(*) FILTER (WHERE status='read') as "readCount", COUNT(*) FILTER (WHERE status='failed') as failed FROM "WhatsAppMessageLog" WHERE "clubId"=$1`, [clubId]),
         ]);
@@ -1248,7 +1248,7 @@ export const handleWebhook = async (req, res) => {
                 let contactName = changes.contacts?.[0]?.profile?.name || normalizedPhone;
                 
                 const contactR = await db.query(
-                    `SELECT id, \"profilePictureUrl\", \"name\" FROM \"WhatsAppContact\" WHERE \"clubId\"=$1 AND phone=$2 LIMIT 1`,
+                    `SELECT id, \"profilePictureUrl\", \"name\" FROM \"CrmContact\" WHERE \"clubId\"=$1 AND phone=$2 LIMIT 1`,
                     [clubId, normalizedPhone]
                 );
                 
@@ -1264,7 +1264,7 @@ export const handleWebhook = async (req, res) => {
                     try {
                         const newContactId = crypto.randomUUID();
                         const r = await db.query(
-                            `INSERT INTO \"WhatsAppContact\" (id, \"clubId\", name, phone, source, \"createdAt\", \"updatedAt\") 
+                            `INSERT INTO \"CrmContact\" (id, \"clubId\", name, phone, source, \"createdAt\", \"updatedAt\") 
                              VALUES ($1, $2, $3, $4, 'whatsapp', NOW(), NOW()) RETURNING id`,
                             [newContactId, clubId, contactName, normalizedPhone]
                         );
@@ -1272,7 +1272,7 @@ export const handleWebhook = async (req, res) => {
                         await trySyncContactPhoto(contactId, normalizedPhone, contactName, clubId);
                     } catch(e) { 
                         // Race condition or other error
-                        const retryR = await db.query(`SELECT id FROM \"WhatsAppContact\" WHERE \"clubId\"=$1 AND phone=$2 LIMIT 1`, [clubId, normalizedPhone]);
+                        const retryR = await db.query(`SELECT id FROM \"CrmContact\" WHERE \"clubId\"=$1 AND phone=$2 LIMIT 1`, [clubId, normalizedPhone]);
                         contactId = retryR.rows[0]?.id;
                     }
                 }
@@ -1361,7 +1361,7 @@ export const handleWebhook = async (req, res) => {
                 }
                 if (log.contactId && ['delivered', 'read', 'failed'].includes(status)) {
                     const fm = { delivered: '"totalDelivered"', read: '"totalRead"', failed: '"totalFailed"' };
-                    await db.query(`UPDATE "WhatsAppContact" SET ${fm[status]}=${fm[status]}+1,"updatedAt"=NOW() WHERE id=$1`, [log.contactId]).catch(() => {});
+                    await db.query(`UPDATE "CrmContact" SET ${fm[status]}=${fm[status]}+1,"updatedAt"=NOW() WHERE id=$1`, [log.contactId]).catch(() => {});
                 }
             }
         }
@@ -1380,8 +1380,8 @@ export const ensureWATables = async () => {
             // Ensure indexes and new columns exist (idempotent migrations)
             await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_template_meta_id ON "WhatsAppTemplate" ("metaTemplateId") WHERE "metaTemplateId" IS NOT NULL`).catch(() => {});
             await db.query(`ALTER TABLE "WhatsAppMessageLog" ADD COLUMN IF NOT EXISTS direction VARCHAR(20) DEFAULT 'outgoing'`).catch(() => {});
-            await db.query(`ALTER TABLE "WhatsAppContact" ADD COLUMN IF NOT EXISTS "archivedAt" TIMESTAMPTZ DEFAULT NULL`).catch(() => {});
-            await db.query(`ALTER TABLE "WhatsAppContact" ADD COLUMN IF NOT EXISTS "profilePictureUrl" TEXT`).catch(() => {});
+            await db.query(`ALTER TABLE "CrmContact" ADD COLUMN IF NOT EXISTS "archivedAt" TIMESTAMPTZ DEFAULT NULL`).catch(() => {});
+            await db.query(`ALTER TABLE "CrmContact" ADD COLUMN IF NOT EXISTS "profilePictureUrl" TEXT`).catch(() => {});
             return;
         }
 
@@ -1399,7 +1399,7 @@ export const ensureWATables = async () => {
                 "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
-            CREATE TABLE IF NOT EXISTS "WhatsAppContact" (
+            CREATE TABLE IF NOT EXISTS "CrmContact" (
                 id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
                 "clubId" TEXT NOT NULL REFERENCES "Club"(id) ON DELETE CASCADE,
                 name VARCHAR(255) NOT NULL, phone VARCHAR(30) NOT NULL,
@@ -1415,7 +1415,7 @@ export const ensureWATables = async () => {
                 "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 UNIQUE(phone,"clubId")
             );
-            CREATE TABLE IF NOT EXISTS "WhatsAppContactList" (
+            CREATE TABLE IF NOT EXISTS "CrmList" (
                 id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
                 "clubId" TEXT NOT NULL REFERENCES "Club"(id) ON DELETE CASCADE,
                 name VARCHAR(255) NOT NULL, description TEXT,
@@ -1425,8 +1425,8 @@ export const ensureWATables = async () => {
             );
             CREATE TABLE IF NOT EXISTS "ContactListMember" (
                 id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-                "listId" TEXT NOT NULL REFERENCES "WhatsAppContactList"(id) ON DELETE CASCADE,
-                "contactId" TEXT NOT NULL REFERENCES "WhatsAppContact"(id) ON DELETE CASCADE,
+                "listId" TEXT NOT NULL REFERENCES "CrmList"(id) ON DELETE CASCADE,
+                "contactId" TEXT NOT NULL REFERENCES "CrmContact"(id) ON DELETE CASCADE,
                 "addedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 UNIQUE("listId","contactId")
             );
@@ -1447,7 +1447,7 @@ export const ensureWATables = async () => {
                 id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
                 "clubId" TEXT NOT NULL REFERENCES "Club"(id) ON DELETE CASCADE,
                 name VARCHAR(255) NOT NULL, description TEXT,
-                "listId" TEXT REFERENCES "WhatsAppContactList"(id),
+                "listId" TEXT REFERENCES "CrmList"(id),
                 "templateId" TEXT REFERENCES "WhatsAppTemplate"(id),
                 "templateVars" JSONB DEFAULT '{}',
                 status VARCHAR(30) NOT NULL DEFAULT 'draft',
@@ -1462,7 +1462,7 @@ export const ensureWATables = async () => {
                 id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
                 "clubId" TEXT NOT NULL,
                 "campaignId" TEXT REFERENCES "WhatsAppCampaign"(id) ON DELETE SET NULL,
-                "contactId" TEXT REFERENCES "WhatsAppContact"(id) ON DELETE SET NULL,
+                "contactId" TEXT REFERENCES "CrmContact"(id) ON DELETE SET NULL,
                 phone VARCHAR(30) NOT NULL, "messageId" VARCHAR(255),
                 "templateName" VARCHAR(255), "bodyText" TEXT,
                 status VARCHAR(20) NOT NULL DEFAULT 'pending',
