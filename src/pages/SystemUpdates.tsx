@@ -24,9 +24,16 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.425.14 | 2026-05-23 (Hotfix Importación de Contactos CRM y WhatsApp QR 🛠️)
-// Cache bust: 2026-05-23 13:37 (Hotfix Importación de Contactos CRM y WhatsApp QR 🛠️)
+// UI V4.425.15 | 2026-05-23 (Fix crítico: Error 500 en servidor CRM Central 🛠️)
+// Cache bust: 2026-05-23 13:55 (Fix crítico: Error 500 en servidor CRM Central 🛠️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.425.15',
+        date: '2026-05-23',
+        title: 'Fix crítico: Error 500 en servidor CRM Central 🛠️',
+        description: 'Resolución de error sintáctico en el controlador que bloqueaba la creación de listas y campos personalizados.',
+        type: 'bugfix'
+    },
     {
         version: '4.425.14',
         date: '2026-05-23',

@@ -620,9 +620,9 @@ export const importContacts = async (req, res) => {
             await db.query(
                 `INSERT INTO "WhatsAppContact" (id,"clubId",name,phone,email,tags,source,metadata,"createdAt","updatedAt")
                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW()) ON CONFLICT (phone,"clubId") DO UPDATE SET
-                 metadata = "WhatsAppContact".metadata || $8, "updatedAt" = NOW()`,
+                 metadata = (COALESCE(NULLIF("WhatsAppContact".metadata, ''), '{}')::jsonb || $8::jsonb)::text, "updatedAt" = NOW()`,
                 [contactId, clubId, c.name, phone, c.email || null, Array.isArray(c.tags) ? c.tags : [], source, JSON.stringify(metadata)]
-            ).then(r => r.rowCount ? imported++ : skipped++).catch(() => skipped++);
+            ).then(r => r.rowCount ? imported++ : skipped++).catch(err => { console.error(err); skipped++; });
         }
         res.json({ success: true, imported, skipped });
     } catch (err) {
@@ -1319,53 +1319,7 @@ export const handleWebhook = async (req, res) => {
                     bodyText = `[${msgType}]`;
                 }
 
-                // Find or create contact
-                let contactId = null;
-                const contactR = await db.query(
-                    `SELECT id, "profilePictureUrl" FROM "WhatsAppContact" WHERE "clubId"=$1 AND phone=$2 LIMIT 1`,
-                    [clubId, normalizedPhone]
-                );
-                
-                if (contactR.rows.length) {
-                    contactId = contactR.rows[0].id;
-                    // If contact exists but has no picture, try to sync from system users/members
-                    if (!contactR.rows[0].profilePictureUrl) {
-                        const systemImgR = await db.query(
-                            `SELECT image FROM "User" WHERE phone=$1 OR phone=$2 
-                             UNION 
-                             SELECT image FROM "ClubMember" WHERE phone=$1 OR phone=$2
-                             LIMIT 1`, [normalizedPhone, from]
-                        );
-                        if (systemImgR.rows.length && systemImgR.rows[0].image) {
-                            await db.query(`UPDATE "WhatsAppContact" SET "profilePictureUrl"=$1 WHERE id=$2`, [systemImgR.rows[0].image, contactId]);
-                        }
-                    }
-                } else {
-                    // Auto-create contact from incoming message
-                    const contactName = changes.contacts?.[0]?.profile?.name || normalizedPhone;
-                    let profilePictureUrl = null;
-                    
-                    // Try to find image from system users/members
-                    const systemImgR = await db.query(
-                        `SELECT image FROM "User" WHERE phone=$1 OR phone=$2 
-                         UNION 
-                         SELECT image FROM "ClubMember" WHERE phone=$1 OR phone=$2
-                         LIMIT 1`, [normalizedPhone, from]
-                    );
-                    if (systemImgR.rows.length && systemImgR.rows[0].image) {
-                        profilePictureUrl = systemImgR.rows[0].image;
-                    }
 
-                    try {
-                        const newContactId = crypto.randomUUID();
-                        const newContact = await db.query(
-                            `INSERT INTO "WhatsAppContact" (id,"clubId",name,phone,source,"profilePictureUrl","createdAt","updatedAt") 
-                             VALUES ($1,$2,$3,$4,'whatsapp',$5,NOW(),NOW()) RETURNING id`,
-                            [newContactId, clubId, contactName, normalizedPhone, profilePictureUrl]
-                        );
-                        contactId = newContact.rows[0]?.id || null;
-                    } catch { /* contact might already exist due to race condition */ }
-                }
 
                 // Save incoming message
                 const incLogId = crypto.randomUUID();

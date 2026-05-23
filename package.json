@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.425.14",
-  "cache_bust": "2026-05-23 13:37 (Hotfix Importación de Contactos CRM y WhatsApp QR 🛠️)",
+  "version": "4.425.15",
+  "cache_bust": "2026-05-23 13:55 (Fix crítico: Error 500 en servidor CRM Central 🛠️)",
   "type": "module",
-  "//": "UI V4.425.14 | 2026-05-23 (Hotfix Importación de Contactos CRM y WhatsApp QR 🛠️)",
+  "//": "UI V4.425.15 | 2026-05-23 (Fix crítico: Error 500 en servidor CRM Central 🛠️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
