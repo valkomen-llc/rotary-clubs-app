@@ -221,7 +221,7 @@ const resolveAndCacheContacts = async (clubId, jids, chatsData) => {
         const crmRes = await db.query(
             `SELECT phone, name FROM "WhatsAppContact" 
              WHERE "clubId" = $1 
-               AND (source = 'csv_import' OR source = 'manual' OR source = 'whatsapp_group')`,
+               AND (source = 'csv_import' OR source = 'manual' OR source = 'whatsapp-qr-group')`,
             [clubId]
         );
         for (const contact of crmRes.rows) {
@@ -630,7 +630,7 @@ export const getChats = async (req, res) => {
         let localGroups = [];
         try {
             const localRes = await db.query(
-                `SELECT phone, name, "updatedAt" FROM "WhatsAppContact" WHERE "clubId" = $1 AND source = 'whatsapp_group'`,
+                `SELECT phone, name, "updatedAt" FROM "WhatsAppContact" WHERE "clubId" = $1 AND source = 'whatsapp-qr-group'`,
                 [clubId]
             );
             localGroups = localRes.rows;
