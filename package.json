@@ -1,7 +1,7 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.425.7",
+  "version": "4.425.8",
   "cache_bust": "2026-05-23 10:11 (WhatsApp QR Hotfix — Corrección de payload 'subject' para creación de grupos en Evolution API v2 🛠️)",
   "type": "module",
   "//": "UI V4.425.6 | 2026-05-23 (WhatsApp QR Hotfix — Corrección de payload 'subject' para creación de grupos en Evolution API v2 🛠️)",

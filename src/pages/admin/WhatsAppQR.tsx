@@ -204,6 +204,11 @@ const WhatsAppQR: React.FC = () => {
     const [groupParsedContacts, setGroupParsedContacts] = useState<any[]>([]);
     const [importingGroupExcel, setImportingGroupExcel] = useState(false);
 
+    // Add Participants States
+    const [showAddParticipants, setShowAddParticipants] = useState(false);
+    const [addingParticipants, setAddingParticipants] = useState(false);
+    const [addParticipantsError, setAddParticipantsError] = useState('');
+
     // Import Contacts States
     const [importMethod, setImportMethod] = useState<'csv' | 'manual'>('csv');
     const [manualText, setManualText] = useState('');
@@ -235,10 +240,10 @@ const WhatsAppQR: React.FC = () => {
     };
 
     useEffect(() => {
-        if ((showCreateGroup || showLinkModal) && token) {
+        if ((showCreateGroup || showAddParticipants || showLinkModal) && token) {
             fetchCrmContacts();
         }
-    }, [showCreateGroup, showLinkModal, token]);
+    }, [showCreateGroup, showAddParticipants, showLinkModal, token]);
 
     const handleLinkContact = async (contact: any) => {
         if (!selectedChat) return;
@@ -507,6 +512,44 @@ const WhatsAppQR: React.FC = () => {
             toast.error('Error de conexión al importar');
         } finally {
             setImportingGroupExcel(false);
+        }
+    };
+
+    const handleAddParticipantsSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedChat) return;
+        if (groupParticipants.length === 0) {
+            setAddParticipantsError('Debes seleccionar al menos un participante.');
+            return;
+        }
+
+        setAddingParticipants(true);
+        setAddParticipantsError('');
+
+        try {
+            const res = await fetch(`${API}/whatsapp-qr/groups/${selectedChat.id}/participants`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: 'add',
+                    participants: groupParticipants
+                })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                toast.success('Participantes añadidos exitosamente');
+                setShowAddParticipants(false);
+                setGroupParticipants([]);
+            } else {
+                setAddParticipantsError(data.error || 'Error al añadir participantes');
+            }
+        } catch (error) {
+            setAddParticipantsError('Error de conexión al añadir participantes');
+        } finally {
+            setAddingParticipants(false);
         }
     };
 
@@ -1213,6 +1256,21 @@ const WhatsAppQR: React.FC = () => {
                                                 {selectedChat.isGroup ? 'Grupo de WhatsApp' : 'Cuenta Personal'}
                                             </p>
                                         </div>
+                                        <div className="ml-auto flex items-center gap-2">
+                                            {selectedChat.isGroup && (
+                                                <button
+                                                    onClick={() => {
+                                                        setGroupParticipants([]);
+                                                        setAddParticipantsError('');
+                                                        setShowAddParticipants(true);
+                                                    }}
+                                                    className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs px-3 py-1.5 rounded-xl font-bold transition-colors flex items-center gap-1.5 shadow-sm"
+                                                >
+                                                    <UserPlus className="w-4 h-4" />
+                                                    Añadir Participantes
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
 
                                     <div className="flex-1 overflow-y-auto p-4 space-y-4 relative w-full bg-[#E5DDD5] bg-[url('https://upload.wikimedia.org/wikipedia/commons/8/82/WhatsApp_background.png')] bg-opacity-5">
@@ -1539,6 +1597,227 @@ const WhatsAppQR: React.FC = () => {
                                 >
                                     {composeSending ? <Loader className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                                     {composeSending ? 'Enviando...' : 'Enviar'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {showAddParticipants && selectedChat && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowAddParticipants(false)}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg relative overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                        <button
+                            type="button"
+                            onClick={() => { setShowAddParticipants(false); setAddParticipantsError(''); }}
+                            className="absolute top-3 right-3 p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                        
+                        <div className="p-6 border-b border-gray-100 bg-emerald-50/50 flex-shrink-0">
+                            <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
+                                <UserPlus className="w-5 h-5 text-emerald-600" />
+                                Añadir Participantes
+                            </h3>
+                            <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                                Agrega nuevos miembros al grupo "{selectedChat.name}". Puedes buscar en tu CRM, agregar uno nuevo, o importar desde Excel.
+                            </p>
+                        </div>
+
+                        <form onSubmit={handleAddParticipantsSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
+                            <div>
+                                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block mb-1">
+                                    Participantes Seleccionados ({groupParticipants.length})
+                                </label>
+                                {groupParticipants.length === 0 ? (
+                                    <p className="text-xs text-gray-400 italic mb-2">Ningún participante seleccionado. Usa la lista de abajo o agrega uno manual.</p>
+                                ) : (
+                                    <div className="flex flex-wrap gap-1.5 mb-2 max-h-24 overflow-y-auto p-1.5 bg-gray-50 rounded-xl border border-gray-100">
+                                        {groupParticipants.map(phone => {
+                                            const contact = crmContacts.find(c => c.phone === phone);
+                                            const displayName = contact ? contact.name : phone;
+                                            return (
+                                                <span key={phone} className="inline-flex items-center gap-1 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs px-2 py-0.5 rounded-full font-medium">
+                                                    {displayName}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setGroupParticipants(prev => prev.filter(p => p !== phone))}
+                                                        className="text-emerald-600 hover:text-emerald-800 font-bold ml-0.5"
+                                                    >
+                                                        &times;
+                                                    </button>
+                                                </span>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="border-t border-gray-100 pt-3">
+                                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block mb-2">Buscar Contactos del CRM</label>
+                                <div className="relative">
+                                    <Search className="w-4 h-4 absolute left-3 top-2.5 text-gray-400" />
+                                    <input
+                                        type="text"
+                                        value={crmSearch}
+                                        onChange={e => setCrmSearch(e.target.value)}
+                                        placeholder="Buscar por nombre o teléfono..."
+                                        className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            {loadingCrmContacts ? (
+                                <div className="flex justify-center py-4">
+                                    <Loader className="w-5 h-5 text-emerald-500 animate-spin" />
+                                </div>
+                            ) : (
+                                <div className="max-h-32 overflow-y-auto border border-gray-100 rounded-xl divide-y divide-gray-50">
+                                    {crmContacts
+                                        .filter(c => c.name.toLowerCase().includes(crmSearch.toLowerCase()) || c.phone.includes(crmSearch))
+                                        .map(contact => (
+                                            <div key={contact.id} className="p-2 flex items-center justify-between hover:bg-gray-50">
+                                                <div>
+                                                    <p className="text-sm font-medium text-gray-900 leading-none">{contact.name}</p>
+                                                    <p className="text-xs text-gray-500 mt-1">{contact.phone}</p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (!groupParticipants.includes(contact.phone)) {
+                                                            setGroupParticipants(prev => [...prev, contact.phone]);
+                                                        }
+                                                    }}
+                                                    className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                                >
+                                                    <Plus className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                </div>
+                            )}
+
+                            {/* Manual Contact Add */}
+                            <div className="border border-emerald-100 bg-emerald-50/30 p-3 rounded-xl space-y-3">
+                                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block">Agregar Contacto Manual (Guardar en CRM)</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <input 
+                                        type="text" 
+                                        placeholder="Nombre *" 
+                                        value={manualContactName}
+                                        onChange={e => setManualContactName(e.target.value)}
+                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                                    />
+                                    <input 
+                                        type="text" 
+                                        placeholder="Teléfono (ej: 57311...) *" 
+                                        value={manualContactPhone}
+                                        onChange={e => setManualContactPhone(e.target.value)}
+                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <input 
+                                        type="email" 
+                                        placeholder="Email [opcional]" 
+                                        value={manualContactEmail}
+                                        onChange={e => setManualContactEmail(e.target.value)}
+                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                                    />
+                                    <input 
+                                        type="text" 
+                                        placeholder="Etiquetas separadas por coma" 
+                                        value={manualContactTags}
+                                        onChange={e => setManualContactTags(e.target.value)}
+                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                                    />
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleSaveManualContact}
+                                    disabled={savingManualContact || !manualContactName || !manualContactPhone}
+                                    className="w-full bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                                >
+                                    {savingManualContact ? <Loader className="w-3 h-3 animate-spin" /> : null}
+                                    {savingManualContact ? 'Guardando...' : 'Guardar y Seleccionar'}
+                                </button>
+                            </div>
+
+                            {/* Excel Import Add */}
+                            <div className="border border-indigo-100 bg-indigo-50/30 p-3 rounded-xl space-y-3">
+                                <div className="flex justify-between items-center">
+                                    <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block">Importar desde Excel (Guardar en CRM)</label>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setShowGroupExcelImport(!showGroupExcelImport)}
+                                        className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800"
+                                    >
+                                        {showGroupExcelImport ? 'OCULTAR' : 'MOSTRAR'}
+                                    </button>
+                                </div>
+                                
+                                {showGroupExcelImport && (
+                                    <div className="space-y-3 animate-fade-in mt-2">
+                                        <p className="text-[10px] text-gray-500 leading-tight">
+                                            Copia de tu Excel las columnas: <strong>Nombre, Teléfono, Email</strong> (en ese orden o similar) y pégalas abajo. El sistema intentará detectarlas.
+                                        </p>
+                                        <textarea
+                                            value={groupExcelData}
+                                            onChange={handleParseGroupExcel}
+                                            placeholder="Pega aquí los datos de Excel (Filas y Columnas)..."
+                                            rows={3}
+                                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-indigo-500 outline-none whitespace-pre"
+                                        />
+                                        
+                                        {groupParsedContacts.length > 0 && (
+                                            <div className="bg-white border border-gray-200 rounded-lg p-2 max-h-32 overflow-y-auto">
+                                                <p className="text-[10px] font-bold text-gray-500 mb-1">Vista Previa ({groupParsedContacts.length} válidos)</p>
+                                                {groupParsedContacts.slice(0, 5).map((c, i) => (
+                                                    <div key={i} className="flex justify-between items-center text-[10px] py-0.5 border-b border-gray-50 last:border-0">
+                                                        <span className="font-medium truncate mr-2">{c.name}</span>
+                                                        <span className="text-gray-500 font-mono">{c.phone}</span>
+                                                    </div>
+                                                ))}
+                                                {groupParsedContacts.length > 5 && <p className="text-[10px] text-center text-gray-400 mt-1 italic">...y {groupParsedContacts.length - 5} más</p>}
+                                            </div>
+                                        )}
+                                        
+                                        <button
+                                            type="button"
+                                            onClick={handleImportGroupExcel}
+                                            disabled={importingGroupExcel || groupParsedContacts.length === 0}
+                                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                                        >
+                                            {importingGroupExcel ? <Loader className="w-3 h-3 animate-spin" /> : null}
+                                            {importingGroupExcel ? 'Procesando...' : `Guardar e Incluir (${groupParsedContacts.length})`}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {addParticipantsError && (
+                                <div className="p-3 bg-red-50 text-red-700 rounded-xl text-sm flex items-start gap-2">
+                                    <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                                    <p>{addParticipantsError}</p>
+                                </div>
+                            )}
+
+                            <div className="flex gap-2 pt-2 border-t border-gray-100">
+                                <button
+                                    type="button"
+                                    onClick={() => { setShowAddParticipants(false); setAddParticipantsError(''); }}
+                                    className="flex-1 py-2.5 bg-gray-50 hover:bg-gray-100 text-gray-700 font-bold rounded-xl text-sm transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={addingParticipants || groupParticipants.length === 0}
+                                    className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {addingParticipants ? <Loader className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                                    Añadir al Grupo
                                 </button>
                             </div>
                         </form>
