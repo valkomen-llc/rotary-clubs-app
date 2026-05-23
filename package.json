@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.426.1",
-  "cache_bust": "2026-05-23 14:14 (Fix: Textarea inline para pegar Excel sin bug object Object)",
+  "version": "4.426.2",
+  "cache_bust": "2026-05-23 14:35 (Fix: Corrección 500 Backend CRM Listas)",
   "type": "module",
-  "//": "UI V4.426.1 | 2026-05-23 (Fix: Textarea inline para pegar Excel sin bug object Object)",
+  "//": "UI V4.426.2 | 2026-05-23 (Fix: Corrección 500 Backend CRM Listas)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

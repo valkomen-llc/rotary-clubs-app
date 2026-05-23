@@ -24,9 +24,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.426.1 | 2026-05-23 (Fix: Textarea inline para pegar Excel)
-// Cache bust: 2026-05-23 14:14 (Fix: Textarea inline para pegar Excel)
+// UI V4.426.2 | 2026-05-23 (Fix: Corrección 500 Backend CRM Listas)
+// Cache bust: 2026-05-23 14:35 (Fix: Corrección 500 Backend CRM Listas)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.426.2',
+        date: '2026-05-23',
+        title: 'Estabilidad de Backend: Directorio CRM 🛠️',
+        description: 'Se resolvió el problema de carga infinita (spinners) que impedía visualizar los contactos y las listas. El error se originó por una desconexión entre la interfaz unificada del CRM y las tablas maestras de la base de datos de PostgreSQL al consultar el conteo y listado.',
+        type: 'fix',
+        details: [
+            'Reparación de la creación de listas de contactos (ya guardan correctamente).',
+            'Restauración de la visualización de Etiquetas (Tags) y Listados sin bloqueos.',
+            'Corrección de consultas SQL nativas del sistema (Error Interno 500 resuelto).'
+        ]
+    },
     {
         version: '4.426.1',
         date: '2026-05-23',
