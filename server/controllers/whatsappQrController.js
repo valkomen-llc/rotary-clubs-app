@@ -599,6 +599,34 @@ export const getChats = async (req, res) => {
         if (chatsRes.status >= 400) return res.status(400).json({ error: chatsRes.data?.message || 'WhatsApp no está conectado.' });
 
         const rows = Array.isArray(chatsRes.data) ? chatsRes.data : [];
+
+        // Fetch all groups to ensure we don't miss inactive groups
+        let allGroups = [];
+        try {
+            const groupsRes = await evo.get(`/group/fetchAllGroups/${EVO_INSTANCE_PATH}`);
+            if (Array.isArray(groupsRes.data)) {
+                allGroups = groupsRes.data;
+            }
+        } catch (err) {
+            console.error('[WA-QR] Failed to fetch all groups:', err.message);
+        }
+
+        // Merge groups into rows if not present
+        const existingIds = new Set(rows.map(r => r.remoteJid || r.id || r.chatId).filter(Boolean));
+        for (const g of allGroups) {
+            if (g && g.id && !existingIds.has(g.id)) {
+                rows.push({
+                    id: g.id,
+                    subject: g.subject,
+                    name: g.subject,
+                    unreadCount: 0,
+                    // Use creation date if available, otherwise 0
+                    messageTimestamp: g.creation || 0
+                });
+                existingIds.add(g.id);
+            }
+        }
+
         if (rows.length === 0) {
             return res.json({ success: true, chats: [] });
         }
