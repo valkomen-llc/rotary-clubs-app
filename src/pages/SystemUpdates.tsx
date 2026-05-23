@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.425.4 | 2026-05-22 (WhatsApp QR Hotfix — Vinculación manual de contactos LID/WhatsApp a base centralizada de socios del CRM v4.425.4 🛠️)
-// Cache bust: 2026-05-22 17:05 (WhatsApp QR Hotfix — Vinculación manual de contactos LID/WhatsApp a base centralizada de socios del CRM v4.425.4 🛠️)
+// UI V4.425.8 | 2026-05-23 (Importación Masiva Excel y Edición de Grupos WhatsApp 🛠️)
+// Cache bust: 2026-05-23 11:20 (Importación Masiva Excel y Edición de Grupos WhatsApp 🛠️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.425.8',
+        date: '2026-05-23',
+        title: 'Integración CRM, Carga Masiva Excel y Edición de Grupos en WhatsApp QR 🛠️',
+        description: 'Se ha habilitado la integración directa del CRM con los grupos de WhatsApp y la importación masiva desde Excel. También se permite editar y añadir participantes a grupos existentes.',
+        type: 'feature',
+        author: 'Antigravity',
+        details: [
+            'Permite importar contactos masivos desde Excel copiando y pegando columnas.',
+            'Añade botón de "Añadir Participantes" en grupos ya creados para expandir la comunidad sin salir de la plataforma.',
+            'Integra la base centralizada de socios del CRM al momento de crear grupos o añadir miembros.',
+            'Pre-valida e identifica números de teléfono internacionales antes de subirlos.'
+        ]
+    },
     {
         version: 'v4.425.4',
         date: '2026-05-22',
