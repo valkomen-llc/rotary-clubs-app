@@ -190,6 +190,19 @@ const WhatsAppQR: React.FC = () => {
     const [crmSearch, setCrmSearch] = useState('');
     const [creatingGroup, setCreatingGroup] = useState(false);
     const [groupError, setGroupError] = useState('');
+    
+    // Create Group - Advanced Contact States
+    const [manualContactName, setManualContactName] = useState('');
+    const [manualContactPhone, setManualContactPhone] = useState('');
+    const [manualContactEmail, setManualContactEmail] = useState('');
+    const [manualContactTags, setManualContactTags] = useState('');
+    const [savingManualContact, setSavingManualContact] = useState(false);
+    
+    // Create Group - Excel Import States
+    const [showGroupExcelImport, setShowGroupExcelImport] = useState(false);
+    const [groupExcelData, setGroupExcelData] = useState('');
+    const [groupParsedContacts, setGroupParsedContacts] = useState<any[]>([]);
+    const [importingGroupExcel, setImportingGroupExcel] = useState(false);
 
     // Import Contacts States
     const [importMethod, setImportMethod] = useState<'csv' | 'manual'>('csv');
@@ -395,6 +408,106 @@ const WhatsAppQR: React.FC = () => {
             });
         }
         return results;
+    };
+
+    const handleSaveManualContact = async () => {
+        if (!manualContactName.trim() || !manualContactPhone.trim()) {
+            toast.error('Nombre y teléfono son obligatorios');
+            return;
+        }
+        setSavingManualContact(true);
+        try {
+            const tags = manualContactTags.split(',').map(t => t.trim()).filter(Boolean);
+            const res = await fetch(`${API}/whatsapp-crm/contacts`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: manualContactName,
+                    phone: manualContactPhone,
+                    email: manualContactEmail,
+                    tags,
+                    source: 'manual'
+                })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                toast.success('Contacto guardado en el CRM');
+                setCrmContacts(prev => [data, ...prev]);
+                if (!groupParticipants.includes(data.phone)) {
+                    setGroupParticipants(prev => [...prev, data.phone]);
+                }
+                setManualContactName('');
+                setManualContactPhone('');
+                setManualContactEmail('');
+                setManualContactTags('');
+            } else {
+                toast.error(data.error || 'Error al guardar contacto');
+                if (data.error && data.error.includes('ya existe')) {
+                    const cleanPhone = manualContactPhone.replace(/[^0-9]/g, '');
+                    if (cleanPhone && !groupParticipants.includes(cleanPhone)) {
+                        setGroupParticipants(prev => [...prev, cleanPhone]);
+                        toast.success('Número añadido a los participantes');
+                    }
+                }
+            }
+        } catch (e) {
+            toast.error('Error de conexión');
+        } finally {
+            setSavingManualContact(false);
+        }
+    };
+
+    const handleParseGroupExcel = (text: string) => {
+        setGroupExcelData(text);
+        const parsed = parseTSV(text);
+        setGroupParsedContacts(parsed);
+    };
+
+    const handleImportGroupExcel = async () => {
+        const validContacts = groupParsedContacts.filter(c => c.isValid);
+        if (validContacts.length === 0) {
+            toast.error('No hay contactos válidos para importar');
+            return;
+        }
+        setImportingGroupExcel(true);
+        try {
+            const payload = validContacts.map(c => ({
+                name: c.name,
+                phone: c.normalizedPhone,
+                email: c.email,
+                tags: ['Grupo']
+            }));
+            const res = await fetch(`${API}/whatsapp-crm/import`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ contacts: payload, source: 'csv_import' })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                toast.success(`Importados: ${data.imported}, Omitidos/Existentes: ${data.skipped}`);
+                const phones = validContacts.map(c => c.normalizedPhone);
+                setGroupParticipants(prev => {
+                    const set = new Set([...prev, ...phones]);
+                    return Array.from(set);
+                });
+                setGroupExcelData('');
+                setGroupParsedContacts([]);
+                setShowGroupExcelImport(false);
+                fetchCrmContacts();
+            } else {
+                toast.error(data.error || 'Error en la importación');
+            }
+        } catch (e) {
+            toast.error('Error de conexión al importar');
+        } finally {
+            setImportingGroupExcel(false);
+        }
     };
 
     const handleCreateGroupSubmit = async (e: React.FormEvent) => {
@@ -1567,48 +1680,98 @@ const WhatsAppQR: React.FC = () => {
 
                             {/* Manual Number Form Option */}
                             <div className="border-t border-gray-100 pt-3">
-                                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block mb-1">Agregar Número Manual</label>
-                                <div className="flex gap-2">
+                                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block mb-2">Agregar Contacto Manual (Guardar en CRM)</label>
+                                <div className="grid grid-cols-2 gap-2 mb-2">
+                                    <input
+                                        type="text"
+                                        placeholder="Nombre *"
+                                        value={manualContactName}
+                                        onChange={e => setManualContactName(e.target.value)}
+                                        className="border border-gray-200 rounded-xl px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-emerald-500"
+                                    />
                                     <input
                                         type="tel"
-                                        id="manual-phone-add"
-                                        placeholder="Ej: 573114818199"
-                                        className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-emerald-500"
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                                e.preventDefault();
-                                                const val = (e.target as HTMLInputElement).value.trim();
-                                                if (val) {
-                                                    const clean = val.replace(/[^0-9]/g, '');
-                                                    if (clean && !groupParticipants.includes(clean)) {
-                                                        setGroupParticipants(prev => [...prev, clean]);
-                                                        (e.target as HTMLInputElement).value = '';
-                                                    }
-                                                }
-                                            }
-                                        }}
+                                        placeholder="Teléfono (ej: 57311...) *"
+                                        value={manualContactPhone}
+                                        onChange={e => setManualContactPhone(e.target.value)}
+                                        className="border border-gray-200 rounded-xl px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-emerald-500"
                                     />
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            const el = document.getElementById('manual-phone-add') as HTMLInputElement;
-                                            if (el) {
-                                                const val = el.value.trim();
-                                                if (val) {
-                                                    const clean = val.replace(/[^0-9]/g, '');
-                                                    if (clean && !groupParticipants.includes(clean)) {
-                                                        setGroupParticipants(prev => [...prev, clean]);
-                                                        el.value = '';
-                                                    }
-                                                }
-                                            }
-                                        }}
-                                        className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs px-3 py-1.5 rounded-xl font-bold transition-colors"
-                                    >
-                                        Agregar
-                                    </button>
                                 </div>
-                                <p className="text-[9px] text-gray-400 mt-1">Escribe el número con código de país y presiona enter o haz clic en Agregar.</p>
+                                <div className="grid grid-cols-2 gap-2 mb-2">
+                                    <input
+                                        type="email"
+                                        placeholder="Email (opcional)"
+                                        value={manualContactEmail}
+                                        onChange={e => setManualContactEmail(e.target.value)}
+                                        className="border border-gray-200 rounded-xl px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-emerald-500"
+                                    />
+                                    <input
+                                        type="text"
+                                        placeholder="Etiquetas separadas por coma"
+                                        value={manualContactTags}
+                                        onChange={e => setManualContactTags(e.target.value)}
+                                        className="border border-gray-200 rounded-xl px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-emerald-500"
+                                    />
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleSaveManualContact}
+                                    disabled={savingManualContact || !manualContactName.trim() || !manualContactPhone.trim()}
+                                    className="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs px-3 py-2 rounded-xl font-bold transition-colors disabled:opacity-50"
+                                >
+                                    {savingManualContact ? 'Guardando...' : 'Guardar y Agregar al Grupo'}
+                                </button>
+                            </div>
+
+                            {/* Import from Excel Option */}
+                            <div className="border-t border-gray-100 pt-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowGroupExcelImport(!showGroupExcelImport)}
+                                    className="w-full flex items-center justify-between text-[11px] font-bold text-gray-600 uppercase tracking-wide hover:text-emerald-600 transition-colors"
+                                >
+                                    <span>Importar desde Excel (Guardar en CRM)</span>
+                                    <span>{showGroupExcelImport ? 'Ocultar' : 'Mostrar'}</span>
+                                </button>
+                                
+                                {showGroupExcelImport && (
+                                    <div className="mt-3 space-y-3">
+                                        <textarea
+                                            placeholder="Pega aquí las columnas de Excel (ej: Nombre, Teléfono, Email)"
+                                            value={groupExcelData}
+                                            onChange={e => handleParseGroupExcel(e.target.value)}
+                                            className="w-full h-24 border border-gray-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-emerald-500 font-mono resize-none whitespace-pre"
+                                        />
+                                        
+                                        {groupParsedContacts.length > 0 && (
+                                            <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <h4 className="text-xs font-bold text-gray-700">Vista Previa</h4>
+                                                    <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full">
+                                                        {groupParsedContacts.filter(c => c.isValid).length} válidos / {groupParsedContacts.length} total
+                                                    </span>
+                                                </div>
+                                                <div className="max-h-32 overflow-y-auto space-y-1">
+                                                    {groupParsedContacts.map((c, i) => (
+                                                        <div key={i} className={`text-[10px] px-2 py-1 flex items-center justify-between border-b border-gray-200/50 last:border-0 ${c.isValid ? 'text-gray-600' : 'text-red-500 line-through'}`}>
+                                                            <span className="truncate w-1/3 font-bold">{c.name || '(Sin Nombre)'}</span>
+                                                            <span className="truncate w-1/3 text-center font-mono">{c.phone || '(Sin Tel)'}</span>
+                                                            <span className="truncate w-1/3 text-right">{c.email || ''}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleImportGroupExcel}
+                                                    disabled={importingGroupExcel || groupParsedContacts.filter(c => c.isValid).length === 0}
+                                                    className="w-full mt-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-2 rounded-xl font-bold transition-colors disabled:opacity-50"
+                                                >
+                                                    {importingGroupExcel ? 'Importando...' : 'Guardar e Incluir'}
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                             {groupError && (
