@@ -221,7 +221,7 @@ const resolveAndCacheContacts = async (clubId, jids, chatsData) => {
         const crmRes = await db.query(
             `SELECT phone, name FROM "WhatsAppContact" 
              WHERE "clubId" = $1 
-               AND (source = 'csv_import' OR source = 'manual')`,
+               AND (source = 'csv_import' OR source = 'manual' OR source = 'whatsapp_group')`,
             [clubId]
         );
         for (const contact of crmRes.rows) {
@@ -611,7 +611,7 @@ export const getChats = async (req, res) => {
             console.error('[WA-QR] Failed to fetch all groups:', err.message);
         }
 
-        // Merge groups into rows if not present
+        // Merge Evolution API groups into rows if not present
         const existingIds = new Set(rows.map(r => r.remoteJid || r.id || r.chatId).filter(Boolean));
         for (const g of allGroups) {
             if (g && g.id && !existingIds.has(g.id)) {
@@ -620,10 +620,34 @@ export const getChats = async (req, res) => {
                     subject: g.subject,
                     name: g.subject,
                     unreadCount: 0,
-                    // Use creation date if available, otherwise 0
                     messageTimestamp: g.creation || 0
                 });
                 existingIds.add(g.id);
+            }
+        }
+
+        // Fetch local groups from DB as absolute fallback
+        let localGroups = [];
+        try {
+            const localRes = await db.query(
+                `SELECT phone, name, "updatedAt" FROM "WhatsAppContact" WHERE "clubId" = $1 AND source = 'whatsapp_group'`,
+                [clubId]
+            );
+            localGroups = localRes.rows;
+        } catch (err) {
+            console.error('[WA-QR] Failed to fetch local DB groups:', err.message);
+        }
+
+        for (const lg of localGroups) {
+            if (lg.phone && !existingIds.has(lg.phone)) {
+                rows.push({
+                    id: lg.phone,
+                    subject: lg.name,
+                    name: lg.name,
+                    unreadCount: 0,
+                    messageTimestamp: lg.updatedAt ? Math.floor(new Date(lg.updatedAt).getTime() / 1000) : 0
+                });
+                existingIds.add(lg.phone);
             }
         }
 
