@@ -1102,7 +1102,7 @@ export const createGroup = async (req, res) => {
         const jids = participants.map(p => normalizeJid(p));
 
         const r = await evo.post(`/group/create/${EVO_INSTANCE_PATH}`, {
-            groupName,
+            subject: groupName,
             participants: jids,
             description: description || ''
         });
