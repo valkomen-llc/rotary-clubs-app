@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.426.2",
-  "cache_bust": "2026-05-23 14:35 (Fix: Corrección 500 Backend CRM Listas)",
+  "version": "4.426.3",
+  "cache_bust": "2026-05-23 14:49 (Fix: Resolver deadlocks y timeout de carga infinita en listas y contactos)",
   "type": "module",
-  "//": "UI V4.426.2 | 2026-05-23 (Fix: Corrección 500 Backend CRM Listas)",
+  "//": "UI V4.426.3 | 2026-05-23 (Fix: Resolver deadlocks y timeout de carga infinita en listas y contactos)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

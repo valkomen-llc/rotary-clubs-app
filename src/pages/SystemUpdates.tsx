@@ -24,9 +24,16 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.426.2 | 2026-05-23 (Fix: Corrección 500 Backend CRM Listas)
-// Cache bust: 2026-05-23 14:35 (Fix: Corrección 500 Backend CRM Listas)
+// UI V4.426.3 | 2026-05-23 (Fix: Resolver deadlocks y timeout de carga infinita en listas y contactos)
+// Cache bust: 2026-05-23 14:49 (Fix: Resolver deadlocks y timeout de carga infinita en listas y contactos)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.426.3',
+        date: '2026-05-23',
+        title: 'Fix: Timeout de Listas y Contactos en CRM',
+        description: 'Se resolvió un deadlock en la base de datos que causaba que la vista de Listas y Contactos se quedara cargando de forma infinita (Timeout 500/504). El sistema ahora usa la gestión nativa de tablas Prisma de forma óptima.',
+        type: 'bugfix'
+    },
     {
         version: '4.426.2',
         date: '2026-05-23',
