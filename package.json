@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.425.9",
-  "cache_bust": "2026-05-23 13:05 (Sincronización Inmediata de Grupos de WhatsApp 🛠️)",
+  "version": "4.425.10",
+  "cache_bust": "2026-05-23 13:10 (Hotfix de etiqueta source para lectura local de grupos 🛠️)",
   "type": "module",
-  "//": "UI V4.425.9 | 2026-05-23 (Sincronización Inmediata de Grupos de WhatsApp 🛠️)",
+  "//": "UI V4.425.10 | 2026-05-23 (Hotfix de etiqueta source para lectura local de grupos 🛠️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

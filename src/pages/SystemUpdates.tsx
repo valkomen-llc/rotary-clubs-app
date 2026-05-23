@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.425.9 | 2026-05-23 (Sincronización Inmediata de Grupos de WhatsApp 🛠️)
-// Cache bust: 2026-05-23 13:05 (Sincronización Inmediata de Grupos de WhatsApp 🛠️)
+// UI V4.425.10 | 2026-05-23 (Hotfix de etiqueta source para lectura local de grupos 🛠️)
+// Cache bust: 2026-05-23 13:10 (Hotfix de etiqueta source para lectura local de grupos 🛠️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.425.10',
+        date: '2026-05-23',
+        title: 'Hotfix en Sincronización Local de Grupos 🛠️',
+        description: 'Corrección menor en la lectura de la base de datos local para que coincida exactamente con la etiqueta "whatsapp-qr-group" asignada durante la creación de grupos.',
+        type: 'feature',
+        author: 'Antigravity'
+    },
     {
         version: 'v4.425.9',
         date: '2026-05-23',
