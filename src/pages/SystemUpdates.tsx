@@ -24,9 +24,23 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.425.11 | 2026-05-23 (Hotfix Textarea de Importación Excel en Añadir Participantes 🛠️)
-// Cache bust: 2026-05-23 13:13 (Hotfix Textarea de Importación Excel en Añadir Participantes 🛠️)
+// UI V4.425.12 | 2026-05-23 (Mapeo Dinámico de Columnas en Importación Excel 🛠️)
+// Cache bust: 2026-05-23 13:22 (Mapeo Dinámico de Columnas en Importación Excel 🛠️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.425.12',
+        date: '2026-05-23T13:22:00-05:00',
+        title: 'Mapeo Dinámico de Columnas en Importación Excel 🛠️',
+        description: 'Se rediseñó el sistema de importación desde Excel (Pegar Datos) dentro del Gateway de WhatsApp para soportar columnas dinámicas.',
+        type: 'feature',
+        author: 'AI System',
+        changes: [
+            { type: 'added', text: 'Nueva interfaz visual para mapeo de columnas al pegar tablas de Excel.' },
+            { type: 'added', text: 'Detección automática de columnas comunes (Nombre, Teléfono, Email).' },
+            { type: 'added', text: 'Opción para clasificar columnas sobrantes como "Campo Personalizado" y almacenarlas en el metadato del CRM.' },
+            { type: 'improved', text: 'El backend ahora almacena dinámicamente todo el mapeo de columnas extra dentro de la ficha de contacto en WhatsAppContact.metadata.' }
+        ]
+    },
     {
         version: 'v4.425.11',
         date: '2026-05-23',

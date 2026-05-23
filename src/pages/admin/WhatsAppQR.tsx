@@ -203,6 +203,9 @@ const WhatsAppQR: React.FC = () => {
     const [groupExcelData, setGroupExcelData] = useState('');
     const [groupParsedContacts, setGroupParsedContacts] = useState<any[]>([]);
     const [importingGroupExcel, setImportingGroupExcel] = useState(false);
+    const [groupExcelHeaders, setGroupExcelHeaders] = useState<string[]>([]);
+    const [groupExcelRows, setGroupExcelRows] = useState<string[][]>([]);
+    const [groupExcelMapping, setGroupExcelMapping] = useState<Record<string, string>>({});
 
     // Add Participants States
     const [showAddParticipants, setShowAddParticipants] = useState(false);
@@ -467,8 +470,49 @@ const WhatsAppQR: React.FC = () => {
 
     const handleParseGroupExcel = (text: string) => {
         setGroupExcelData(text);
-        const parsed = parseTSV(text);
-        setGroupParsedContacts(parsed);
+        if (!text.trim()) {
+            setGroupExcelHeaders([]);
+            setGroupExcelRows([]);
+            setGroupExcelMapping({});
+            setGroupParsedContacts([]);
+            return;
+        }
+
+        const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+        if (lines.length === 0) {
+            setGroupExcelHeaders([]);
+            setGroupExcelRows([]);
+            setGroupExcelMapping({});
+            setGroupParsedContacts([]);
+            return;
+        }
+
+        // Detect separator
+        const firstLine = lines[0];
+        const separator = firstLine.includes('\t') ? '\t' : (firstLine.includes(';') ? ';' : ',');
+        
+        const rows = lines.map(line => line.split(separator).map(cell => cell.trim()));
+        const headers = rows[0];
+        const dataRows = rows.slice(1);
+
+        setGroupExcelHeaders(headers);
+        setGroupExcelRows(dataRows);
+
+        // Auto-mapping
+        const newMapping: Record<string, string> = {};
+        headers.forEach(header => {
+            const lower = header.toLowerCase();
+            if (lower.includes('nombre') || lower.includes('name') || lower.includes('nombres')) {
+                newMapping[header] = 'name';
+            } else if (lower.includes('tel') || lower.includes('phone') || lower.includes('celular') || lower.includes('móvil')) {
+                newMapping[header] = 'phone';
+            } else if (lower.includes('email') || lower.includes('correo')) {
+                newMapping[header] = 'email';
+            } else {
+                newMapping[header] = 'metadata'; // Default for custom fields
+            }
+        });
+        setGroupExcelMapping(newMapping);
     };
 
     const handleImportGroupExcel = async () => {
@@ -483,7 +527,8 @@ const WhatsAppQR: React.FC = () => {
                 name: c.name,
                 phone: c.normalizedPhone,
                 email: c.email,
-                tags: ['Grupo']
+                tags: ['Grupo'],
+                metadata: c.metadata || {}
             }));
             const res = await fetch(`${API}/whatsapp-crm/import`, {
                 method: 'POST',
@@ -974,6 +1019,128 @@ const WhatsAppQR: React.FC = () => {
     // Compute CRM Stats
     const totalUnreadChats = chats.filter(c => c.unreadCount > 0).length;
     const resolvedChats = chats.filter(c => c.unreadCount === 0).length;
+
+    // React to excel mappings
+    useEffect(() => {
+        if (!groupExcelHeaders.length || !groupExcelRows.length) {
+            setGroupParsedContacts([]);
+            return;
+        }
+
+        const parsed = groupExcelRows.map(row => {
+            let name = '';
+            let rawPhone = '';
+            let email = '';
+            const metadata: Record<string, string> = {};
+
+            groupExcelHeaders.forEach((header, index) => {
+                const mapTo = groupExcelMapping[header];
+                const value = row[index] || '';
+
+                if (mapTo === 'name') name = value;
+                else if (mapTo === 'phone') rawPhone = value;
+                else if (mapTo === 'email') email = value;
+                else if (mapTo === 'metadata' && value) metadata[header] = value;
+            });
+
+            // Basic validation and normalization for phone
+            let normalizedPhone = rawPhone.replace(/[\s\-\(\)\.]/g, '');
+            if (normalizedPhone && !normalizedPhone.startsWith('+')) {
+                // Prepend country code if missing
+                if (normalizedPhone.startsWith('00')) {
+                    normalizedPhone = '+' + normalizedPhone.slice(2);
+                } else if (!normalizedPhone.startsWith(defaultCountryCode.replace('+', ''))) {
+                    normalizedPhone = (defaultCountryCode.startsWith('+') ? defaultCountryCode : '+' + defaultCountryCode) + normalizedPhone;
+                } else {
+                    normalizedPhone = '+' + normalizedPhone;
+                }
+            }
+
+            return {
+                name,
+                rawPhone,
+                normalizedPhone,
+                email,
+                metadata,
+                isValid: !!name && !!normalizedPhone && normalizedPhone.length > 8
+            };
+        });
+
+        setGroupParsedContacts(parsed);
+    }, [groupExcelHeaders, groupExcelRows, groupExcelMapping, defaultCountryCode]);
+
+    const renderExcelMappingUI = () => (
+        <>
+            <textarea
+                value={groupExcelData}
+                onChange={e => handleParseGroupExcel(e.target.value)}
+                placeholder="Pega aquí los datos de Excel (Filas y Columnas)..."
+                rows={3}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-emerald-500 outline-none whitespace-pre"
+            />
+            
+            {groupExcelHeaders.length > 0 && (
+                <div className="mt-3 border rounded-lg overflow-hidden border-emerald-100 text-[11px] bg-white">
+                    <div className="bg-emerald-50/80 px-3 py-2 font-bold text-emerald-800 flex justify-between items-center border-b border-emerald-100">
+                        <span>Mapeo de Columnas</span>
+                        <span className="text-[9px] font-normal opacity-80 uppercase tracking-wider">Destino en CRM</span>
+                    </div>
+                    <div className="max-h-48 overflow-y-auto">
+                        <table className="w-full text-left">
+                            <thead className="bg-gray-50 text-[9px] uppercase text-gray-500 sticky top-0 shadow-sm z-10">
+                                <tr>
+                                    <th className="px-3 py-1.5 font-semibold">Columna (Excel)</th>
+                                    <th className="px-3 py-1.5 font-semibold">Destino</th>
+                                    <th className="px-3 py-1.5 font-semibold text-gray-400">Ejemplo</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {groupExcelHeaders.map((header, idx) => (
+                                    <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
+                                        <td className="px-3 py-1.5 font-medium text-gray-700 truncate max-w-[100px]" title={header}>{header || `Columna ${idx+1}`}</td>
+                                        <td className="px-3 py-1.5">
+                                            <select 
+                                                className="w-full bg-white border border-gray-200 rounded px-1.5 py-1 text-[11px] focus:ring-emerald-500 focus:border-emerald-500 font-medium text-gray-700 shadow-sm"
+                                                value={groupExcelMapping[header] || 'metadata'}
+                                                onChange={(e) => setGroupExcelMapping(prev => ({ ...prev, [header]: e.target.value }))}
+                                            >
+                                                <option value="skip">Omitir (No importar)</option>
+                                                <option value="name">Nombre</option>
+                                                <option value="phone">Teléfono</option>
+                                                <option value="email">Email</option>
+                                                <option value="metadata">Metadato Custom</option>
+                                            </select>
+                                        </td>
+                                        <td className="px-3 py-1.5 text-gray-500 italic truncate max-w-[100px]" title={groupExcelRows[0]?.[idx]}>
+                                            {groupExcelRows[0]?.[idx] || '-'}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+            
+            {groupParsedContacts.length > 0 && (
+                <div className="bg-white border border-gray-200 rounded-lg p-2 max-h-32 overflow-y-auto mt-3 shadow-sm">
+                    <p className="text-[10px] font-bold text-gray-500 mb-1">Vista Previa ({groupParsedContacts.filter(c => c.isValid).length} válidos / {groupParsedContacts.length} total)</p>
+                    {groupParsedContacts.filter(c => c.isValid).slice(0, 5).map((c, i) => (
+                        <div key={i} className="flex justify-between items-center text-[10px] py-1 border-b border-gray-50 last:border-0">
+                            <div className="flex flex-col min-w-0 mr-2">
+                                <span className="font-medium text-gray-800 truncate">{c.name}</span>
+                                {Object.keys(c.metadata).length > 0 && (
+                                    <span className="text-[9px] text-emerald-500 font-medium truncate">+{Object.keys(c.metadata).length} metadatos</span>
+                                )}
+                            </div>
+                            <span className="text-gray-500 font-mono flex-shrink-0">{c.normalizedPhone || c.rawPhone}</span>
+                        </div>
+                    ))}
+                    {groupParsedContacts.filter(c => c.isValid).length > 5 && <p className="text-[10px] text-center text-gray-400 mt-1 italic">...y {groupParsedContacts.filter(c => c.isValid).length - 5} más</p>}
+                </div>
+            )}
+        </>
+    );
 
     return (
         <AdminLayout>
@@ -1762,26 +1929,7 @@ const WhatsAppQR: React.FC = () => {
                                         <p className="text-[10px] text-gray-500 leading-tight">
                                             Copia de tu Excel las columnas: <strong>Nombre, Teléfono, Email</strong> (en ese orden o similar) y pégalas abajo. El sistema intentará detectarlas.
                                         </p>
-                                        <textarea
-                                            value={groupExcelData}
-                                            onChange={e => handleParseGroupExcel(e.target.value)}
-                                            placeholder="Pega aquí los datos de Excel (Filas y Columnas)..."
-                                            rows={3}
-                                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-indigo-500 outline-none whitespace-pre"
-                                        />
-                                        
-                                        {groupParsedContacts.length > 0 && (
-                                            <div className="bg-white border border-gray-200 rounded-lg p-2 max-h-32 overflow-y-auto">
-                                                <p className="text-[10px] font-bold text-gray-500 mb-1">Vista Previa ({groupParsedContacts.length} válidos)</p>
-                                                {groupParsedContacts.slice(0, 5).map((c, i) => (
-                                                    <div key={i} className="flex justify-between items-center text-[10px] py-0.5 border-b border-gray-50 last:border-0">
-                                                        <span className="font-medium truncate mr-2">{c.name}</span>
-                                                        <span className="text-gray-500 font-mono">{c.phone}</span>
-                                                    </div>
-                                                ))}
-                                                {groupParsedContacts.length > 5 && <p className="text-[10px] text-center text-gray-400 mt-1 italic">...y {groupParsedContacts.length - 5} más</p>}
-                                            </div>
-                                        )}
+                                        {renderExcelMappingUI()}
                                         
                                         <button
                                             type="button"
@@ -2015,40 +2163,16 @@ const WhatsAppQR: React.FC = () => {
                                 
                                 {showGroupExcelImport && (
                                     <div className="mt-3 space-y-3">
-                                        <textarea
-                                            placeholder="Pega aquí las columnas de Excel (ej: Nombre, Teléfono, Email)"
-                                            value={groupExcelData}
-                                            onChange={e => handleParseGroupExcel(e.target.value)}
-                                            className="w-full h-24 border border-gray-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-emerald-500 font-mono resize-none whitespace-pre"
-                                        />
+                                        {renderExcelMappingUI()}
                                         
-                                        {groupParsedContacts.length > 0 && (
-                                            <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
-                                                <div className="flex justify-between items-center mb-2">
-                                                    <h4 className="text-xs font-bold text-gray-700">Vista Previa</h4>
-                                                    <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full">
-                                                        {groupParsedContacts.filter(c => c.isValid).length} válidos / {groupParsedContacts.length} total
-                                                    </span>
-                                                </div>
-                                                <div className="max-h-32 overflow-y-auto space-y-1">
-                                                    {groupParsedContacts.map((c, i) => (
-                                                        <div key={i} className={`text-[10px] px-2 py-1 flex items-center justify-between border-b border-gray-200/50 last:border-0 ${c.isValid ? 'text-gray-600' : 'text-red-500 line-through'}`}>
-                                                            <span className="truncate w-1/3 font-bold">{c.name || '(Sin Nombre)'}</span>
-                                                            <span className="truncate w-1/3 text-center font-mono">{c.phone || '(Sin Tel)'}</span>
-                                                            <span className="truncate w-1/3 text-right">{c.email || ''}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleImportGroupExcel}
-                                                    disabled={importingGroupExcel || groupParsedContacts.filter(c => c.isValid).length === 0}
-                                                    className="w-full mt-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-2 rounded-xl font-bold transition-colors disabled:opacity-50"
-                                                >
-                                                    {importingGroupExcel ? 'Importando...' : 'Guardar e Incluir'}
-                                                </button>
-                                            </div>
-                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={handleImportGroupExcel}
+                                            disabled={importingGroupExcel || groupParsedContacts.filter(c => c.isValid).length === 0}
+                                            className="w-full mt-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-2 rounded-xl font-bold transition-colors disabled:opacity-50"
+                                        >
+                                            {importingGroupExcel ? 'Importando...' : 'Guardar e Incluir'}
+                                        </button>
                                     </div>
                                 )}
                             </div>
