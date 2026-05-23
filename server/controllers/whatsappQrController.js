@@ -649,7 +649,7 @@ export const getChats = async (req, res) => {
             })
             .filter(Boolean)
             .sort((a, b) => b.timestamp - a.timestamp)
-            .slice(0, 50);
+            .slice(0, 250);
 
         res.json({ success: true, chats: enriched });
     } catch (e) {
