@@ -24,9 +24,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.426.0 | 2026-05-23 (Feature: Directorio Unificado CRM 👥)
-// Cache bust: 2026-05-23 14:04 (Feature: Directorio Unificado CRM 👥)
+// UI V4.426.1 | 2026-05-23 (Fix: Textarea inline para pegar Excel)
+// Cache bust: 2026-05-23 14:14 (Fix: Textarea inline para pegar Excel)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.426.1',
+        date: '2026-05-23',
+        title: 'Mejora en Importación: Pegar desde Excel 📋',
+        description: 'Se reemplazó la anticuada alerta emergente por un área de texto integrada en la interfaz para pegar grandes bases de datos. Esto previene el error [object Object] al copiar desde hojas de cálculo complejas y permite visualizar la información antes de procesar el mapeo.',
+        type: 'fix',
+        details: [
+            'Nuevo paso interactivo "Pega aquí tus datos".',
+            'Prevención de crash al evaluar portapapeles complejos.',
+            'Alineado con el flujo de mapeo de metadatos (Campos Personalizados).'
+        ]
+    },
     {
         version: '4.426.0',
         date: '2026-05-23',

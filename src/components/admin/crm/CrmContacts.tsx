@@ -22,7 +22,8 @@ const CrmContacts: React.FC = () => {
     const [listMenuContact, setListMenuContact] = useState<string | null>(null);
 
     // Import wizard state
-    const [importStep, setImportStep] = useState<'select' | 'map' | 'confirm'>('select');
+    const [importStep, setImportStep] = useState<'select' | 'paste' | 'map' | 'confirm'>('select');
+    const [pasteContent, setPasteContent] = useState('');
     const [csvColumns, setCsvColumns] = useState<string[]>([]);
     const [csvRows, setCsvRows] = useState<ParsedRow[]>([]);
     const [colMap, setColMap] = useState<{ name: string; phone: string; email: string }>({ name: '', phone: '', email: '' });
@@ -266,9 +267,8 @@ const CrmContacts: React.FC = () => {
     };
 
     const handlePasteImport = () => {
-        const text = prompt('Pega tus datos CSV aquí (primera línea = encabezados):');
-        if (!text) return;
-        const { columns, rows } = parseCSVData(text);
+        if (!pasteContent.trim()) { toast.error('Pega algún contenido primero'); return; }
+        const { columns, rows } = parseCSVData(pasteContent);
         if (!columns.length || !rows.length) { toast.error('No se encontraron datos'); return; }
         setCsvColumns(columns);
         setCsvRows(rows);
@@ -352,6 +352,7 @@ const CrmContacts: React.FC = () => {
     const resetImport = () => {
         setShowImport(false);
         setImportStep('select');
+        setPasteContent('');
         setCsvColumns([]);
         setCsvRows([]);
         setColMap({ name: '', phone: '', email: '' });
@@ -488,13 +489,13 @@ const CrmContacts: React.FC = () => {
                                     </label>
 
                                     {/* Paste */}
-                                    <button onClick={handlePasteImport}
+                                    <button onClick={() => setImportStep('paste')}
                                         className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-all">
                                         <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-3">
                                             <Edit3 className="w-6 h-6 text-blue-600" />
                                         </div>
                                         <p className="font-bold text-sm text-gray-700">Pegar datos</p>
-                                        <p className="text-xs text-gray-400 mt-1 text-center">Pega contenido CSV directamente</p>
+                                        <p className="text-xs text-gray-400 mt-1 text-center">Pega desde Excel</p>
                                     </button>
 
                                     {/* From Leads */}
@@ -505,6 +506,32 @@ const CrmContacts: React.FC = () => {
                                         </div>
                                         <p className="font-bold text-sm text-gray-700">Desde Leads</p>
                                         <p className="text-xs text-gray-400 mt-1 text-center">Importa leads del sistema</p>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Step 1.5: Paste Data */}
+                        {importStep === 'paste' && (
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-sm font-bold text-gray-700 block mb-2">Pega aquí los datos copiados desde Excel o CSV</label>
+                                    <p className="text-xs text-gray-500 mb-3">Asegúrate de que la primera fila contenga los encabezados (Nombre, Teléfono, Email, Distrito, etc.).</p>
+                                    <textarea
+                                        value={pasteContent}
+                                        onChange={e => setPasteContent(e.target.value)}
+                                        rows={8}
+                                        className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-none font-mono"
+                                        placeholder="Nombre	Teléfono	Distrito	Cargo&#10;Juan Pérez	+573001234567	4281	Presidente&#10;..."
+                                    />
+                                </div>
+                                <div className="flex gap-3">
+                                    <button onClick={() => setImportStep('select')} className="px-4 py-2 rounded-lg border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50">
+                                        ← Atrás
+                                    </button>
+                                    <button onClick={handlePasteImport} disabled={!pasteContent.trim()}
+                                        className="flex items-center gap-2 px-6 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:opacity-40">
+                                        Continuar y Mapear →
                                     </button>
                                 </div>
                             </div>
