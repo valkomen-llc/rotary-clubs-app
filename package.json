@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.425.12",
-  "cache_bust": "2026-05-23 13:22 (Mapeo Dinámico de Columnas en Importación Excel 🛠️)",
+  "version": "4.425.14",
+  "cache_bust": "2026-05-23 13:37 (Hotfix Importación de Contactos CRM y WhatsApp QR 🛠️)",
   "type": "module",
-  "//": "UI V4.425.12 | 2026-05-23 (Mapeo Dinámico de Columnas en Importación Excel 🛠️)",
+  "//": "UI V4.425.14 | 2026-05-23 (Hotfix Importación de Contactos CRM y WhatsApp QR 🛠️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

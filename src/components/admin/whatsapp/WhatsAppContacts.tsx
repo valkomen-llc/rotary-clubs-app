@@ -171,30 +171,61 @@ const WhatsAppContacts: React.FC = () => {
 
     // ── CSV Parsing ──
     const parseCSVData = (text: string): { columns: string[]; rows: ParsedRow[] } => {
-        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-        text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-        const lines = text.split('\n').filter(l => l.trim());
-        if (lines.length < 2) return { columns: [], rows: [] };
+        if (!text.trim()) return { columns: [], rows: [] };
 
-        const headerLine = lines[0];
-        let delimiter = ',';
-        const semiCount = (headerLine.match(/;/g) || []).length;
-        const commaCount = (headerLine.match(/,/g) || []).length;
-        const tabCount = (headerLine.match(/\t/g) || []).length;
-        if (semiCount > commaCount && semiCount > tabCount) delimiter = ';';
-        else if (tabCount > commaCount && tabCount > semiCount) delimiter = '\t';
+        const rows: string[][] = [];
+        let currentRow: string[] = [];
+        let currentCell = '';
+        let inQuotes = false;
+        
+        for (let i = 0; i < text.length; i++) {
+            const char = text[i];
+            
+            if (inQuotes) {
+                if (char === '"') {
+                    if (i + 1 < text.length && text[i + 1] === '"') {
+                        currentCell += '"';
+                        i++;
+                    } else {
+                        inQuotes = false;
+                    }
+                } else {
+                    currentCell += char;
+                }
+            } else {
+                if (char === '"') {
+                    inQuotes = true;
+                } else if (char === '\t') { // Asumimos pegado desde Excel (Tab)
+                    currentRow.push(currentCell.trim());
+                    currentCell = '';
+                } else if (char === '\n') {
+                    currentRow.push(currentCell.trim());
+                    rows.push(currentRow);
+                    currentRow = [];
+                    currentCell = '';
+                } else if (char !== '\r') {
+                    currentCell += char;
+                }
+            }
+        }
+        if (currentCell || currentRow.length > 0) {
+            currentRow.push(currentCell.trim());
+            rows.push(currentRow);
+        }
 
-        const split = (line: string) => line.split(delimiter).map(v => v.trim().replace(/^"|"$/g, '').replace(/^'|'$/g, ''));
+        const validRows = rows.filter(r => r.some(cell => cell.trim() !== ''));
+        if (validRows.length < 2) return { columns: [], rows: [] };
 
-        const columns = split(headerLine);
-        const rows = lines.slice(1).map(line => {
-            const vals = split(line);
-            const row: ParsedRow = {};
-            columns.forEach((col, i) => { row[col] = vals[i] || ''; });
-            return row;
-        }).filter(r => Object.values(r).some(v => v.trim()));
+        const columns = validRows[0];
+        const parsedRows = validRows.slice(1).map(rowVals => {
+            const rowObj: ParsedRow = {};
+            columns.forEach((colName, idx) => {
+                rowObj[colName] = rowVals[idx] || '';
+            });
+            return rowObj;
+        });
 
-        return { columns, rows };
+        return { columns, rows: parsedRows };
     };
 
     const autoDetectMapping = (cols: string[]) => {

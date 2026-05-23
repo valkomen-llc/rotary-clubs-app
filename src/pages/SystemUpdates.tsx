@@ -24,9 +24,16 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.425.12 | 2026-05-23 (Mapeo Dinámico de Columnas en Importación Excel 🛠️)
-// Cache bust: 2026-05-23 13:22 (Mapeo Dinámico de Columnas en Importación Excel 🛠️)
+// UI V4.425.14 | 2026-05-23 (Hotfix Importación de Contactos CRM y WhatsApp QR 🛠️)
+// Cache bust: 2026-05-23 13:37 (Hotfix Importación de Contactos CRM y WhatsApp QR 🛠️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.425.14',
+        date: '2026-05-23',
+        title: 'Hotfix Importación de Contactos CRM y WhatsApp QR 🛠️',
+        description: 'Se soluciona el error en la importación de contactos de excel y se garantiza que se pueda nombrar el Metadato Custom.',
+        type: 'bugfix'
+    },
     {
         version: 'v4.425.12',
         date: '2026-05-23T13:22:00-05:00',
