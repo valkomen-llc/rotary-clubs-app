@@ -206,6 +206,7 @@ const WhatsAppQR: React.FC = () => {
     const [groupExcelHeaders, setGroupExcelHeaders] = useState<string[]>([]);
     const [groupExcelRows, setGroupExcelRows] = useState<string[][]>([]);
     const [groupExcelMapping, setGroupExcelMapping] = useState<Record<string, string>>({});
+    const [groupExcelMetadataNames, setGroupExcelMetadataNames] = useState<Record<string, string>>({});
 
     // Add Participants States
     const [showAddParticipants, setShowAddParticipants] = useState(false);
@@ -474,24 +475,61 @@ const WhatsAppQR: React.FC = () => {
             setGroupExcelHeaders([]);
             setGroupExcelRows([]);
             setGroupExcelMapping({});
+            setGroupExcelMetadataNames({});
             setGroupParsedContacts([]);
             return;
         }
 
-        const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
-        if (lines.length === 0) {
+        // Custom TSV parser to handle quotes and newlines within cells
+        const rows: string[][] = [];
+        let currentRow: string[] = [];
+        let currentCell = '';
+        let inQuotes = false;
+        
+        for (let i = 0; i < text.length; i++) {
+            const char = text[i];
+            
+            if (inQuotes) {
+                if (char === '"') {
+                    if (i + 1 < text.length && text[i + 1] === '"') {
+                        currentCell += '"';
+                        i++;
+                    } else {
+                        inQuotes = false;
+                    }
+                } else {
+                    currentCell += char;
+                }
+            } else {
+                if (char === '"') {
+                    inQuotes = true;
+                } else if (char === '\t') {
+                    currentRow.push(currentCell.trim());
+                    currentCell = '';
+                } else if (char === '\n') {
+                    currentRow.push(currentCell.trim());
+                    rows.push(currentRow);
+                    currentRow = [];
+                    currentCell = '';
+                } else if (char !== '\r') {
+                    currentCell += char;
+                }
+            }
+        }
+        if (currentCell || currentRow.length > 0) {
+            currentRow.push(currentCell.trim());
+            rows.push(currentRow);
+        }
+
+        if (rows.length === 0) {
             setGroupExcelHeaders([]);
             setGroupExcelRows([]);
             setGroupExcelMapping({});
+            setGroupExcelMetadataNames({});
             setGroupParsedContacts([]);
             return;
         }
 
-        // Detect separator
-        const firstLine = lines[0];
-        const separator = firstLine.includes('\t') ? '\t' : (firstLine.includes(';') ? ';' : ',');
-        
-        const rows = lines.map(line => line.split(separator).map(cell => cell.trim()));
         const headers = rows[0];
         const dataRows = rows.slice(1);
 
@@ -500,6 +538,7 @@ const WhatsAppQR: React.FC = () => {
 
         // Auto-mapping
         const newMapping: Record<string, string> = {};
+        const newMetadataNames: Record<string, string> = {};
         headers.forEach(header => {
             const lower = header.toLowerCase();
             if (lower.includes('nombre') || lower.includes('name') || lower.includes('nombres')) {
@@ -510,9 +549,11 @@ const WhatsAppQR: React.FC = () => {
                 newMapping[header] = 'email';
             } else {
                 newMapping[header] = 'metadata'; // Default for custom fields
+                newMetadataNames[header] = header; // Default name is the header itself
             }
         });
         setGroupExcelMapping(newMapping);
+        setGroupExcelMetadataNames(newMetadataNames);
     };
 
     const handleImportGroupExcel = async () => {
@@ -1040,7 +1081,10 @@ const WhatsAppQR: React.FC = () => {
                 if (mapTo === 'name') name = value;
                 else if (mapTo === 'phone') rawPhone = value;
                 else if (mapTo === 'email') email = value;
-                else if (mapTo === 'metadata' && value) metadata[header] = value;
+                else if (mapTo === 'metadata' && value) {
+                    const customName = groupExcelMetadataNames[header] || header;
+                    metadata[customName] = value;
+                }
             });
 
             // Basic validation and normalization for phone
@@ -1055,6 +1099,9 @@ const WhatsAppQR: React.FC = () => {
                     normalizedPhone = '+' + normalizedPhone;
                 }
             }
+            
+            // Enforce that phone only contains numbers after the plus
+            const isValidPhone = /^\+?[0-9]{8,15}$/.test(normalizedPhone);
 
             return {
                 name,
@@ -1062,12 +1109,12 @@ const WhatsAppQR: React.FC = () => {
                 normalizedPhone,
                 email,
                 metadata,
-                isValid: !!name && !!normalizedPhone && normalizedPhone.length > 8
+                isValid: !!name && isValidPhone
             };
         });
 
         setGroupParsedContacts(parsed);
-    }, [groupExcelHeaders, groupExcelRows, groupExcelMapping, defaultCountryCode]);
+    }, [groupExcelHeaders, groupExcelRows, groupExcelMapping, groupExcelMetadataNames, defaultCountryCode]);
 
     const renderExcelMappingUI = () => (
         <>
@@ -1110,6 +1157,17 @@ const WhatsAppQR: React.FC = () => {
                                                 <option value="email">Email</option>
                                                 <option value="metadata">Metadato Custom</option>
                                             </select>
+                                            {groupExcelMapping[header] === 'metadata' && (
+                                                <div className="mt-1">
+                                                    <input 
+                                                        type="text" 
+                                                        placeholder="Nombre del campo"
+                                                        value={groupExcelMetadataNames[header] !== undefined ? groupExcelMetadataNames[header] : header}
+                                                        onChange={(e) => setGroupExcelMetadataNames(prev => ({ ...prev, [header]: e.target.value }))}
+                                                        className="w-full bg-white border border-emerald-200 rounded px-1.5 py-0.5 text-[10px] focus:ring-emerald-500 focus:border-emerald-500 font-medium text-emerald-800"
+                                                    />
+                                                </div>
+                                            )}
                                         </td>
                                         <td className="px-3 py-1.5 text-gray-500 italic truncate max-w-[100px]" title={groupExcelRows[0]?.[idx]}>
                                             {groupExcelRows[0]?.[idx] || '-'}
