@@ -1248,7 +1248,7 @@ export const handleWebhook = async (req, res) => {
                 let contactName = changes.contacts?.[0]?.profile?.name || normalizedPhone;
                 
                 const contactR = await db.query(
-                    `SELECT id, \"profilePictureUrl\", \"name\" FROM \"CrmContact\" WHERE \"clubId\"=$1 AND phone=$2 LIMIT 1`,
+                    `SELECT id, \"profilePictureUrl\", \"name\" FROM \"WhatsAppContact\" WHERE \"clubId\"=$1 AND phone=$2 LIMIT 1`,
                     [clubId, normalizedPhone]
                 );
                 
@@ -1264,7 +1264,7 @@ export const handleWebhook = async (req, res) => {
                     try {
                         const newContactId = crypto.randomUUID();
                         const r = await db.query(
-                            `INSERT INTO \"CrmContact\" (id, \"clubId\", name, phone, source, \"createdAt\", \"updatedAt\") 
+                            `INSERT INTO \"WhatsAppContact\" (id, \"clubId\", name, phone, source, \"createdAt\", \"updatedAt\") 
                              VALUES ($1, $2, $3, $4, 'whatsapp', NOW(), NOW()) RETURNING id`,
                             [newContactId, clubId, contactName, normalizedPhone]
                         );
@@ -1272,7 +1272,7 @@ export const handleWebhook = async (req, res) => {
                         await trySyncContactPhoto(contactId, normalizedPhone, contactName, clubId);
                     } catch(e) { 
                         // Race condition or other error
-                        const retryR = await db.query(`SELECT id FROM \"CrmContact\" WHERE \"clubId\"=$1 AND phone=$2 LIMIT 1`, [clubId, normalizedPhone]);
+                        const retryR = await db.query(`SELECT id FROM \"WhatsAppContact\" WHERE \"clubId\"=$1 AND phone=$2 LIMIT 1`, [clubId, normalizedPhone]);
                         contactId = retryR.rows[0]?.id;
                     }
                 }
@@ -1370,104 +1370,6 @@ export const handleWebhook = async (req, res) => {
     }
 };
 
-// ── AUTO-INIT — crea TODAS las tablas si no existen ──────────────────────────
-
-export const ensureWATables = async () => {
-    try {
-        const r = await db.query(`SELECT to_regclass('"WhatsAppConfig"') as exists`);
-        if (r.rows[0].exists) {
-            console.log('[WA-CRM] Tables already exist');
-            // Ensure indexes and new columns exist (idempotent migrations)
-            await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_template_meta_id ON "WhatsAppTemplate" ("metaTemplateId") WHERE "metaTemplateId" IS NOT NULL`).catch(() => {});
-            await db.query(`ALTER TABLE "WhatsAppMessageLog" ADD COLUMN IF NOT EXISTS direction VARCHAR(20) DEFAULT 'outgoing'`).catch(() => {});
-            await db.query(`ALTER TABLE "WhatsAppContact" ADD COLUMN IF NOT EXISTS "archivedAt" TIMESTAMPTZ DEFAULT NULL`).catch(() => {});
-            await db.query(`ALTER TABLE "WhatsAppContact" ADD COLUMN IF NOT EXISTS "profilePictureUrl" TEXT`).catch(() => {});
-            return;
-        }
-
-        console.log('[WA-CRM] Creating tables...');
-        await db.query(`
-            CREATE TABLE IF NOT EXISTS "WhatsAppConfig" (
-                id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-                "clubId" TEXT NOT NULL UNIQUE REFERENCES "Club"(id) ON DELETE CASCADE,
-                "phoneNumberId" VARCHAR(100) NOT NULL DEFAULT '',
-                "wabaId" VARCHAR(100) NOT NULL DEFAULT '',
-                "accessToken" TEXT NOT NULL DEFAULT '',
-                "verifyToken" VARCHAR(255) NOT NULL DEFAULT '',
-                "appId" VARCHAR(100), enabled BOOLEAN NOT NULL DEFAULT TRUE,
-                "lastVerifiedAt" TIMESTAMPTZ,
-                "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            );
-            CREATE TABLE IF NOT EXISTS "WhatsAppContact" (
-                id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-                "clubId" TEXT NOT NULL REFERENCES "Club"(id) ON DELETE CASCADE,
-                name VARCHAR(255) NOT NULL, phone VARCHAR(30) NOT NULL,
-                email VARCHAR(255), tags TEXT[] DEFAULT '{}',
-                source VARCHAR(50) NOT NULL DEFAULT 'manual',
-                status VARCHAR(30) NOT NULL DEFAULT 'active',
-                metadata JSONB DEFAULT '{}',
-                "totalSent" INT NOT NULL DEFAULT 0, "totalDelivered" INT NOT NULL DEFAULT 0,
-                "totalRead" INT NOT NULL DEFAULT 0, "totalFailed" INT NOT NULL DEFAULT 0,
-                "optedOutAt" TIMESTAMPTZ, "leadId" TEXT,
-                "profilePictureUrl" TEXT,
-                "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                UNIQUE(phone,"clubId")
-            );
-            CREATE TABLE IF NOT EXISTS "WhatsAppContactList" (
-                id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-                "clubId" TEXT NOT NULL REFERENCES "Club"(id) ON DELETE CASCADE,
-                name VARCHAR(255) NOT NULL, description TEXT,
-                color VARCHAR(20) NOT NULL DEFAULT '#3B82F6',
-                "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            );
-            CREATE TABLE IF NOT EXISTS "WhatsAppListMember" (
-                id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-                "listId" TEXT NOT NULL REFERENCES "WhatsAppContactList"(id) ON DELETE CASCADE,
-                "contactId" TEXT NOT NULL REFERENCES "WhatsAppContact"(id) ON DELETE CASCADE,
-                "addedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                UNIQUE("listId","contactId")
-            );
-            CREATE TABLE IF NOT EXISTS "WhatsAppTemplate" (
-                id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-                "clubId" TEXT NOT NULL REFERENCES "Club"(id) ON DELETE CASCADE,
-                name VARCHAR(255) NOT NULL, "displayName" VARCHAR(255) NOT NULL,
-                category VARCHAR(50) NOT NULL DEFAULT 'MARKETING',
-                language VARCHAR(10) NOT NULL DEFAULT 'es',
-                status VARCHAR(30) NOT NULL DEFAULT 'pending',
-                "headerType" VARCHAR(20), "headerContent" TEXT,
-                "bodyText" TEXT NOT NULL, "footerText" VARCHAR(255),
-                buttons JSONB DEFAULT '[]', "metaTemplateId" VARCHAR(100),
-                "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            );
-            CREATE TABLE IF NOT EXISTS "WhatsAppCampaign" (
-                id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-                "clubId" TEXT NOT NULL REFERENCES "Club"(id) ON DELETE CASCADE,
-                name VARCHAR(255) NOT NULL, description TEXT,
-                "listId" TEXT REFERENCES "WhatsAppContactList"(id),
-                "templateId" TEXT REFERENCES "WhatsAppTemplate"(id),
-                "templateVars" JSONB DEFAULT '{}',
-                status VARCHAR(30) NOT NULL DEFAULT 'draft',
-                "scheduledAt" TIMESTAMPTZ, "sentAt" TIMESTAMPTZ,
-                "totalContacts" INT NOT NULL DEFAULT 0,
-                sent INT NOT NULL DEFAULT 0, delivered INT NOT NULL DEFAULT 0,
-                "read" INT NOT NULL DEFAULT 0, failed INT NOT NULL DEFAULT 0,
-                "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            );
-            CREATE TABLE IF NOT EXISTS "WhatsAppMessageLog" (
-                id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-                "clubId" TEXT NOT NULL,
-                "campaignId" TEXT REFERENCES "WhatsAppCampaign"(id) ON DELETE SET NULL,
-                "contactId" TEXT REFERENCES "WhatsAppContact"(id) ON DELETE SET NULL,
-                phone VARCHAR(30) NOT NULL, "messageId" VARCHAR(255),
-                "templateName" VARCHAR(255), "bodyText" TEXT,
-                status VARCHAR(20) NOT NULL DEFAULT 'pending',
-                "errorCode" VARCHAR(50), "errorMessage" TEXT,
-                "sentAt" TIMESTAMPTZ, "deliveredAt" TIMESTAMPTZ,
                 "readAt" TIMESTAMPTZ, "failedAt" TIMESTAMPTZ,
                 "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()

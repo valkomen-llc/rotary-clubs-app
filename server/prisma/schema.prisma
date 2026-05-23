@@ -655,6 +655,7 @@ model CrmList {
 }
 
 model ContactListMember {
+  @@map("WhatsAppListMember")
   id        String              @id @default(uuid())
   listId    String
   contactId String
