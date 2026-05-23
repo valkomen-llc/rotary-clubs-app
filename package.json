@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.425.10",
-  "cache_bust": "2026-05-23 13:10 (Hotfix de etiqueta source para lectura local de grupos 🛠️)",
+  "version": "4.425.11",
+  "cache_bust": "2026-05-23 13:13 (Hotfix Textarea de Importación Excel en Añadir Participantes 🛠️)",
   "type": "module",
-  "//": "UI V4.425.10 | 2026-05-23 (Hotfix de etiqueta source para lectura local de grupos 🛠️)",
+  "//": "UI V4.425.11 | 2026-05-23 (Hotfix Textarea de Importación Excel en Añadir Participantes 🛠️)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

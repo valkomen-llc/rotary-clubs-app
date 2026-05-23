@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.425.10 | 2026-05-23 (Hotfix de etiqueta source para lectura local de grupos 🛠️)
-// Cache bust: 2026-05-23 13:10 (Hotfix de etiqueta source para lectura local de grupos 🛠️)
+// UI V4.425.11 | 2026-05-23 (Hotfix Textarea de Importación Excel en Añadir Participantes 🛠️)
+// Cache bust: 2026-05-23 13:13 (Hotfix Textarea de Importación Excel en Añadir Participantes 🛠️)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: 'v4.425.11',
+        date: '2026-05-23',
+        title: 'Hotfix Importación de Excel 🛠️',
+        description: 'Se solucionó un error visual en el modal de "Añadir Participantes" a un grupo, el cual mostraba "[object Object]" al intentar escribir o pegar datos de Excel en la caja de importación masiva.',
+        type: 'feature',
+        author: 'Antigravity'
+    },
     {
         version: 'v4.425.10',
         date: '2026-05-23',
