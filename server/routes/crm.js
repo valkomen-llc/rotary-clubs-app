@@ -68,6 +68,16 @@ router.post('/config', upsertConfig);
 router.post('/config/verify', verifyConfig);
 
 // ── Contactos ────────────────────────────────────────────────────────────
+router.get('/kill-locks', async (req, res) => {
+    try {
+        const db = (await import('../db.js')).default;
+        const r = await db.query("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state != 'idle' AND pid <> pg_backend_pid();");
+        res.json({ killed: r.rowCount });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 router.get('/contacts', getContacts);
 router.post('/contacts', createContact);
 router.put('/contacts/:id', updateContact);

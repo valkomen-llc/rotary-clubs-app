@@ -645,6 +645,8 @@ model CrmList {
   name        String
   description String?
   color       String              @default("#3B82F6")
+  tags        String[]
+  metadata    String?
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
   members     ContactListMember[]

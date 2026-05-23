@@ -720,14 +720,22 @@ export const getLists = async (req, res) => {
 
 export const createList = async (req, res) => {
     try {
-        const { name, description, color = '#3B82F6' } = req.body;
+        const { name, description, color = '#3B82F6', tags } = req.body;
         if (!name) return res.status(400).json({ error: 'name es requerido' });
         const clubId = await resolveClubId(req, true);
         const listId = crypto.randomUUID();
+        
+        let tagsArr = [];
+        if (typeof tags === 'string' && tags.trim()) {
+            tagsArr = tags.split(',').map(t => t.trim()).filter(Boolean);
+        } else if (Array.isArray(tags)) {
+            tagsArr = tags;
+        }
+
         const r = await db.query(
-            `INSERT INTO "WhatsAppContactList" (id,"clubId",name,description,color,"createdAt","updatedAt")
-             VALUES ($1,$2,$3,$4,$5,NOW(),NOW()) RETURNING *`,
-            [listId, clubId, name, description || null, color]
+            `INSERT INTO "WhatsAppContactList" (id,"clubId",name,description,color,tags,"createdAt","updatedAt")
+             VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW()) RETURNING *`,
+            [listId, clubId, name, description || null, color, tagsArr]
         );
         res.status(201).json(r.rows[0]);
     } catch (err) {
@@ -738,12 +746,20 @@ export const createList = async (req, res) => {
 
 export const updateList = async (req, res) => {
     try {
-        const { name, description, color } = req.body;
+        const { name, description, color, tags } = req.body;
+        
+        let tagsArr;
+        if (typeof tags === 'string') {
+            tagsArr = tags.split(',').map(t => t.trim()).filter(Boolean);
+        } else if (Array.isArray(tags)) {
+            tagsArr = tags;
+        }
+
         const r = await db.query(
             `UPDATE "WhatsAppContactList"
-             SET name=COALESCE($1,name),description=COALESCE($2,description),color=COALESCE($3,color),"updatedAt"=NOW()
-             WHERE id=$4 AND "clubId"=$5 RETURNING *`,
-            [name, description, color, req.params.id, await resolveClubId(req)]
+             SET name=COALESCE($1,name),description=COALESCE($2,description),color=COALESCE($3,color),tags=COALESCE($4,tags),"updatedAt"=NOW()
+             WHERE id=$5 AND "clubId"=$6 RETURNING *`,
+            [name, description, color, tagsArr, req.params.id, await resolveClubId(req)]
         );
         if (!r.rows.length) return res.status(404).json({ error: 'Lista no encontrada' });
         res.json(r.rows[0]);

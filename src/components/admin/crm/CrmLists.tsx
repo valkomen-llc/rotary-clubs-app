@@ -11,7 +11,7 @@ const CrmLists: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [editId, setEditId] = useState<string | null>(null);
-    const [form, setForm] = useState({ name: '', description: '', color: '#3B82F6' });
+    const [form, setForm] = useState({ name: '', description: '', tags: '', color: '#3B82F6' });
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
     useEffect(() => { fetchLists(); }, []);
@@ -42,7 +42,7 @@ const CrmLists: React.FC = () => {
 
     const resetForm = () => { setForm({ name: '', description: '', color: '#3B82F6' }); setEditId(null); };
     const startEdit = (l: any) => {
-        setForm({ name: l.name, description: l.description || '', color: l.color });
+        setForm({ name: l.name, description: l.description || '', tags: (l.tags || []).join(', '), color: l.color });
         setEditId(l.id); setShowForm(true);
     };
 
@@ -66,6 +66,8 @@ const CrmLists: React.FC = () => {
                                 placeholder="Nombre de la lista" className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-green-500" />
                             <input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
                                 placeholder="Descripción (opcional)" className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-green-500" />
+                            <input value={form.tags} onChange={e => setForm({ ...form, tags: e.target.value })}
+                                placeholder="Etiquetas separadas por comas (ej. vip, distrito)" className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-green-500 md:col-span-2" />
                         </div>
                         <div className="flex items-center gap-4">
                             <span className="text-xs font-bold text-gray-500 uppercase">Color:</span>
@@ -105,6 +107,13 @@ const CrmLists: React.FC = () => {
                                     <div>
                                         <h3 className="font-bold text-gray-900">{l.name}</h3>
                                         {l.description && <p className="text-xs text-gray-500 mt-0.5">{l.description}</p>}
+                                        {l.tags && l.tags.length > 0 && (
+                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                {l.tags.map((t: string) => (
+                                                    <span key={t} className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-600">{t}</span>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
