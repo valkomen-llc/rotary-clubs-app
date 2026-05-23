@@ -6,8 +6,8 @@ import { toast } from 'sonner';
 
 // WhatsApp CRM Sub-components
 import WhatsAppConfig from '../../components/admin/whatsapp/WhatsAppConfig';
-import CrmContacts from '../../components/admin/whatsapp/CrmContacts';
-import CrmLists from '../../components/admin/whatsapp/CrmLists';
+import CrmContacts from '../../components/admin/crm/CrmContacts';
+import CrmLists from '../../components/admin/crm/CrmLists';
 import WhatsAppTemplates from '../../components/admin/whatsapp/WhatsAppTemplates';
 import WhatsAppCampaigns from '../../components/admin/whatsapp/WhatsAppCampaigns';
 import WhatsAppChat from '../../components/admin/whatsapp/WhatsAppChat';
