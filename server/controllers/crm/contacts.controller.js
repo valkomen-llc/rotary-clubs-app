@@ -118,29 +118,25 @@ export const createContact = async (req, res) => {
         status: status || 'subscribed',
         source: 'manual',
         // Optional nested creates
-        ...(tags && tags.length > 0 && {
-          contactTags: {
-            create: tags.map(tagId => ({ tagId }))
-          }
-        }),
         ...(lists && lists.length > 0 && {
           listMemberships: {
             create: lists.map(listId => ({ listId }))
           }
         }),
-        ...(customFields && customFields.length > 0 && {
-          customFields: {
-            create: customFields.map(cf => ({ fieldId: cf.fieldId, value: cf.value }))
-          }
-        })
+        tags: tags && tags.length > 0 ? tags : []
       },
       include: {
-        contactTags: { include: { tag: true } },
         listMemberships: { include: { list: true } }
       }
     });
 
-    res.status(201).json(newContact);
+    const mapped = {
+      ...newContact,
+      tags: newContact.tags ? newContact.tags.map(t => ({ id: t, name: t, color: '#3B82F6' })) : [],
+      lists: newContact.listMemberships ? newContact.listMemberships.map(lm => lm.list) : [],
+    };
+
+    res.status(201).json(mapped);
   } catch (error) {
     console.error('Error creating CRM contact:', error);
     res.status(500).json({ error: error.message });
@@ -157,15 +153,9 @@ export const updateContact = async (req, res) => {
     const existing = await db.crmContact.findFirst({ where: { id, clubId } });
     if (!existing) return res.status(404).json({ error: 'Contact not found' });
 
-    // Handle tags update (replace all)
+    // Handle tags update (direct array update)
     if (updates.tags) {
-      await db.crmContactTag.deleteMany({ where: { contactId: id } });
-      if (updates.tags.length > 0) {
-        await db.crmContactTag.createMany({
-          data: updates.tags.map(tagId => ({ contactId: id, tagId }))
-        });
-      }
-      delete updates.tags;
+      updates.tags = Array.isArray(updates.tags) ? updates.tags : updates.tags.split(',');
     }
 
     // Handle lists update (replace all)
@@ -179,17 +169,8 @@ export const updateContact = async (req, res) => {
       delete updates.lists;
     }
 
-    // Handle custom fields update
+    // Removed hallucinated customFields operations
     if (updates.customFields) {
-      // Usar transacciones para no borrar lo que no se envía, o si se envían reemplazar
-      // Dependiendo de la implementación, usualmente se envía un array.
-      for (const cf of updates.customFields) {
-        await db.crmCustomFieldValue.upsert({
-          where: { contactId_fieldId: { contactId: id, fieldId: cf.fieldId } },
-          update: { value: cf.value },
-          create: { contactId: id, fieldId: cf.fieldId, value: cf.value }
-        });
-      }
       delete updates.customFields;
     }
 
@@ -198,12 +179,17 @@ export const updateContact = async (req, res) => {
       where: { id },
       data: updates,
       include: {
-        contactTags: { include: { tag: true } },
         listMemberships: { include: { list: true } }
       }
     });
 
-    res.json(updated);
+    const mapped = {
+      ...updated,
+      tags: updated.tags ? updated.tags.map(t => ({ id: t, name: t, color: '#3B82F6' })) : [],
+      lists: updated.listMemberships ? updated.listMemberships.map(lm => lm.list) : [],
+    };
+
+    res.json(mapped);
   } catch (error) {
     console.error('Error updating CRM contact:', error);
     res.status(500).json({ error: error.message });
