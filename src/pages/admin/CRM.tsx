@@ -14,9 +14,7 @@ import WhatsAppDashboard from '../../components/admin/whatsapp/WhatsAppDashboard
 // FluentCRM Components
 import ContactsManager from '../../components/admin/crm/fluent/ContactsManager';
 import ListsManager from '../../components/admin/crm/fluent/ListsManager';
-
 import TagsManager from '../../components/admin/crm/fluent/TagsManager';
-import CustomFieldsManager from '../../components/admin/crm/fluent/CustomFieldsManager';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -288,8 +286,6 @@ const CRMManagement: React.FC = () => {
                 {activeTab === 'wa-campaigns' && <WhatsAppCampaigns />}
                 {activeTab === 'wa-chat' && <WhatsAppChat />}
                 {activeTab === 'wa-analytics' && <WhatsAppDashboard />}
-                
-                {activeTab === 'crm-settings' && <CustomFieldsManager />}
             </div>
         </AdminLayout>
     );
