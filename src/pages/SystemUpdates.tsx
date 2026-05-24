@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.428.0 | 2026-05-24 (FluentCRM Audience Details)
-// Cache bust: 2026-05-24 14:00 (FluentCRM Audience Details)
+// UI V4.432.0 | 2026-05-24 (CRM Lists and Tags Import in WhatsApp QR)
+// Cache bust: 2026-05-24 17:40
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.432.0',
+        title: 'Fix: Resolución de Endpoint Evolution API (updateParticipant)',
+        date: new Date().toISOString(),
+        description: 'Se ha corregido la ruta del endpoint de la API de Evolution (WhatsApp) para actualizar los participantes de un grupo, cambiando updateParticipants por updateParticipant e incluyendo el groupJid.',
+        tags: ['whatsapp', 'bugfix', 'backend'],
+        type: 'fix'
+    },
+    {
+        version: '4.431.0',
+        title: 'Feature: Importación por Listas y Etiquetas del CRM a Grupos WhatsApp',
+        date: new Date().toISOString(),
+        description: 'Ahora puedes seleccionar una Lista o Etiqueta directamente desde el modal "Añadir Participantes" en el módulo de WhatsApp QR Gateway, lo que permite importar automáticamente todos los contactos asociados que tengan un número de teléfono válido a tus grupos de WhatsApp.',
+        tags: ['crm', 'whatsapp', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.428.4',
         title: 'Fix: Resolución de Bug en Prisma Schema (Contactos Vacíos)',

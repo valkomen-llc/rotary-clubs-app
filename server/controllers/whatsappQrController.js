@@ -1201,8 +1201,7 @@ export const updateGroupParticipants = async (req, res) => {
     }
     try {
         const jids = participants.map(p => normalizeJid(p));
-        const r = await evo.post(`/group/updateParticipants/${EVO_INSTANCE_PATH}`, {
-            groupJid,
+        const r = await evo.put(`/group/updateParticipant/${EVO_INSTANCE_PATH}?groupJid=${groupJid}`, {
             action,
             participants: jids
         });
