@@ -612,9 +612,19 @@ model CrmContact {
   @@map("WhatsAppContact")
   id              String               @id @default(uuid())
   clubId          String
+  prefix          String?
   name            String
-  phone           String
+  lastName        String?
   email           String?
+  phone           String
+  title           String?
+  company         String?
+  website         String?
+  address         String?
+  city            String?
+  district        String?
+  country         String?
+  birthDate       String?
   tags            String[]
   source          String               @default("manual")
   status          String               @default("active")
