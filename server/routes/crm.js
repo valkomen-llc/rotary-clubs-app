@@ -29,9 +29,8 @@ router.post('/webhook', handleWebhook);
 
 router.get('/fix-colombia-phones', async (req, res) => {
     try {
-        const db = (await import('../db.js')).default;
-        const result = await db.query(`SELECT id, phone, name, tags FROM "WhatsAppContact"`);
-        const allContacts = result.rows;
+        const db = (await import('../lib/prisma.js')).default;
+        const allContacts = await db.crmContact.findMany();
         const contacts = allContacts.filter(c => c.tags && c.tags.includes("Presidentes, Rotary 4281 (2026-27)"));
         const exclusions = ['85127173', '7547791907'];
         let updatedCount = 0;
@@ -40,7 +39,7 @@ router.get('/fix-colombia-phones', async (req, res) => {
             let currentPhone = contact.phone.replace(/[\\+\\s\\-]/g, '');
             if (exclusions.includes(currentPhone) || currentPhone.startsWith('57')) continue;
             const newPhone = '57' + currentPhone;
-            await db.query(`UPDATE "WhatsAppContact" SET phone = $1 WHERE id = $2`, [newPhone, contact.id]);
+            await db.crmContact.update({ where: { id: contact.id }, data: { phone: newPhone } });
             updatedCount++;
             logs.push(`Updated ${contact.name}: ${currentPhone} -> ${newPhone}`);
         }
