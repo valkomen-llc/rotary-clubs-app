@@ -24,9 +24,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.426.3 | 2026-05-23 (Fix: Resolver deadlocks y timeout de carga infinita en listas y contactos)
-// Cache bust: 2026-05-23 14:49 (Fix: Resolver deadlocks y timeout de carga infinita en listas y contactos)
+// UI V4.426.5 | 2026-05-23 (Fix: Tags implementation and Vercel routing)
+// Cache bust: 2026-05-23 15:26 (Fix: Tags implementation and Vercel routing)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.426.5',
+        date: '2026-05-23',
+        type: 'feature',
+        title: 'Soporte de Etiquetas (Tags) y Resolución de DB Timeout',
+        description: 'Se implementó el sistema de etiquetas en Listas y se solucionó el bloqueo de conexiones en el pooler de Postgres de Vercel.',
+        changes: [
+            'Etiquetas activadas en la creación y edición de Listas.',
+            'Liberación de procesos Zombie en la base de datos de Neon.',
+            'Nueva purga de la caché del navegador para la UI en la versión 4.426.5.'
+        ]
+    },
     {
         version: '4.426.3',
         date: '2026-05-23',
