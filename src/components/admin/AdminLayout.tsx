@@ -339,8 +339,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             items.push(
                 { icon: Terminal, label: 'Mission Control VIP', path: '/admin/mission-control-vip', category: 'General', keywords: ['agentes', 'mission control', 'gateway', 'vip'] },
                 { icon: Layout, label: 'Sistema Footer', path: '/admin/sistema-footer', category: 'General', keywords: ['footer', 'skin', 'logo', 'pie de pagina'] },
-                { icon: QrCode, label: 'WhatsApp QR Gateway', path: '/admin/whatsapp-qr', category: 'General', keywords: ['whatsapp', 'qr', 'web', 'grupos'] },
-                { icon: MessageSquare, label: 'WhatsApp CRM', path: '/admin/crm?tab=wa-chat', category: 'General', keywords: ['crm', 'whatsapp', 'api', 'mensajes', 'campañas'] },
+                { icon: QrCode, label: 'WhatsApp QR Gateway', path: '/admin/whatsapp-qr', category: 'Comunicaciones y CRM', keywords: ['whatsapp', 'qr', 'web', 'grupos'] },
+                { icon: MessageSquare, label: 'WhatsApp CRM', path: '/admin/crm?tab=wa-chat', category: 'Comunicaciones y CRM', keywords: ['crm', 'whatsapp', 'api', 'mensajes', 'campañas'] },
                 { icon: ShieldCheck, label: 'System Updates', path: '/admin/system-updates', category: 'General', keywords: ['updates', 'versiones', 'changelog', 'sistema'] },
             );
         }
@@ -388,7 +388,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 { icon: Calendar, label: 'Eventos/Convenciones', path: '/admin/eventos-convenciones', category: 'Management', keywords: ['evento', 'convencion'] },
                 { icon: Users, label: 'Super Users', path: '/admin/usuarios', category: 'Management', keywords: ['usuario', 'admin'] },
                 { icon: HeartHandshake, label: 'Donaciones Globales', path: '/admin/donaciones', category: 'Management', keywords: ['donacion', 'aportes'] },
-                { icon: Bell, label: 'CRM y Envíos Centrales', path: '/admin/crm', category: 'Management', keywords: ['crm', 'email', 'campana', 'whatsapp'] },
+                { icon: Bell, label: 'Comunicaciones CRM', path: '/admin/crm', category: 'General', keywords: ['crm', 'email', 'campana', 'whatsapp'] },
                 { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: 'Management', keywords: ['contacto', 'lead', 'formulario'] },
                 { icon: Mail, label: 'Bandeja de Entrada', path: '/admin/email', category: 'Management', keywords: ['email', 'correo', 'buzon', 'entrada', 'mensajes'] },
                 { icon: Share2, label: 'Hub Social', path: '/admin/social-hub', category: 'Management', keywords: ['facebook', 'linkedin', 'twitter', 'x', 'oauth', 'conexiones'], badge: 'premium' },
