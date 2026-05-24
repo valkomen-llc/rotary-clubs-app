@@ -240,16 +240,19 @@ export default function ContactsManager({
                                     className="rounded border-gray-300 text-rotary-blue focus:ring-rotary-blue" 
                                 />
                             </th>
-                            <th className="p-4">Contacto</th>
-                            <th className="p-4">Etiquetas</th>
-                            <th className="p-4">Estado</th>
+                            <th className="p-4 min-w-[200px]">Contacto</th>
+                            <th className="p-4 min-w-[150px]">WhatsApp</th>
+                            <th className="p-4 min-w-[200px]">Correo Electrónico</th>
+                            <th className="p-4 min-w-[150px]">Club</th>
+                            <th className="p-4 min-w-[200px]">Etiquetas</th>
+                            <th className="p-4 min-w-[120px]">Estado</th>
                             <th className="p-4 text-right">Acciones</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-sm">
                         {loading ? (
                             <tr>
-                                <td colSpan={5} className="p-8 text-center text-gray-400">
+                                <td colSpan={8} className="p-8 text-center text-gray-400">
                                     <div className="animate-pulse flex flex-col items-center gap-2">
                                         <div className="h-4 w-32 bg-gray-200 rounded"></div>
                                         <div className="h-4 w-48 bg-gray-100 rounded"></div>
@@ -258,7 +261,7 @@ export default function ContactsManager({
                             </tr>
                         ) : contacts.length === 0 ? (
                             <tr>
-                                <td colSpan={5} className="p-12 text-center">
+                                <td colSpan={8} className="p-12 text-center">
                                     <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
                                         <UserCheck className="w-8 h-8" />
                                     </div>
@@ -283,10 +286,12 @@ export default function ContactsManager({
                                         </div>
                                         <div>
                                             <p className="font-bold text-gray-900">{c.name} {c.lastName}</p>
-                                            <p className="text-xs text-gray-500">{c.email || c.phone || 'Sin correo/teléfono'}</p>
                                         </div>
                                     </div>
                                 </td>
+                                <td className="p-4 text-gray-600">{c.phone || '-'}</td>
+                                <td className="p-4 text-gray-600">{c.email || '-'}</td>
+                                <td className="p-4 text-gray-600 font-medium">{c.club?.name || 'Club Principal'}</td>
                                 <td className="p-4">
                                     <div className="flex flex-wrap gap-1">
                                         {c.tags && c.tags.map((t: any) => (

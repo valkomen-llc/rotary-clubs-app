@@ -42,6 +42,7 @@ export const getContacts = async (req, res) => {
         orderBy: { createdAt: 'desc' },
         include: {
           listMemberships: { include: { list: true } },
+          club: { select: { id: true, name: true } }
         }
       }),
       db.crmContact.count({ where })
