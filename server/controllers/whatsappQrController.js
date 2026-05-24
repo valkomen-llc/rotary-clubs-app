@@ -1207,13 +1207,15 @@ export const updateGroupParticipants = async (req, res) => {
         });
 
         if (r.status >= 400) {
-            return res.status(r.status).json({ error: r.data?.message || 'No se pudo actualizar los participantes del grupo.' });
+            const errMsg = r.data?.message || (r.data ? JSON.stringify(r.data) : 'No se pudo actualizar los participantes del grupo.');
+            return res.status(r.status).json({ error: errMsg });
         }
 
         res.json({ success: true, data: r.data });
     } catch (e) {
         console.error('[WA-QR] updateGroupParticipants error:', e.response?.data || e.message);
-        res.status(500).json({ error: e.response?.data?.message || e.message });
+        const errMsg = e.response?.data?.message || (e.response?.data ? JSON.stringify(e.response.data) : e.message);
+        res.status(500).json({ error: errMsg });
     }
 };
 
