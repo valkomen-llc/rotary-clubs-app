@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
-import { Mail, MessageCircle, Send, ClipboardList, CheckCircle2, XCircle, Search, Clock, Settings, Users, List, Megaphone, FileText, BarChart3, MessageSquare, Tag } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Mail, MessageCircle, Send, ClipboardList, CheckCircle2, XCircle, Search, Clock, Settings, Users, List, Megaphone, FileText, BarChart3, MessageSquare, Tag, QrCode } from 'lucide-react';
 import { toast } from 'sonner';
 
 // WhatsApp CRM Sub-components
@@ -27,6 +28,7 @@ type TabKey = 'email-send' | 'email-templates' | 'email-logs' | 'wa-config' | 'w
  */
 const CRMManagement: React.FC = () => {
     const { token, user } = useAuth();
+    const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
     
     // Default to 'crm-contacts' to show the new Directory by default
@@ -141,6 +143,15 @@ const CRMManagement: React.FC = () => {
                             <MessageCircle className="w-4 h-4" />
                         </div>
                         WhatsApp CRM
+                    </button>
+                    <button
+                        onClick={() => navigate('/admin/whatsapp-qr')}
+                        className={`flex items-center gap-2.5 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 border-gray-100 text-gray-500 hover:bg-gray-50`}
+                    >
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center bg-gray-100 text-gray-400`}>
+                            <QrCode className="w-4 h-4" />
+                        </div>
+                        WhatsApp QR Gateway
                     </button>
                     <button
                         onClick={() => setActiveTab('email-send')}
