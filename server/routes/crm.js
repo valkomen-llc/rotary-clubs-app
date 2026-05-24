@@ -45,6 +45,29 @@ router.get('/kill-locks', async (req, res) => {
     }
 });
 
+router.get('/fix-colombia-phones', async (req, res) => {
+    try {
+        const db = (await import('../db.js')).default;
+        const result = await db.query(`SELECT id, phone, name, tags FROM "WhatsAppContact"`);
+        const allContacts = result.rows;
+        const contacts = allContacts.filter(c => c.tags && c.tags.includes("Presidentes, Rotary 4281 (2026-27)"));
+        const exclusions = ['85127173', '7547791907'];
+        let updatedCount = 0;
+        let logs = [];
+        for (const contact of contacts) {
+            let currentPhone = contact.phone.replace(/[\\+\\s\\-]/g, '');
+            if (exclusions.includes(currentPhone) || currentPhone.startsWith('57')) continue;
+            const newPhone = '57' + currentPhone;
+            await db.query(`UPDATE "WhatsAppContact" SET phone = $1 WHERE id = $2`, [newPhone, contact.id]);
+            updatedCount++;
+            logs.push(`Updated ${contact.name}: ${currentPhone} -> ${newPhone}`);
+        }
+        res.json({ success: true, found: contacts.length, updatedCount, logs });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ── Contactos (NUEVO) ────────────────────────────────────────────────────
 router.get('/contacts', getContacts);
 router.get('/contacts/:id', getContactById);
