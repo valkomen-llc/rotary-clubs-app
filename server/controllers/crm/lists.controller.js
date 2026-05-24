@@ -1,8 +1,9 @@
 import db from '../../lib/prisma.js';
+import { resolveClubId } from '../crmController.js';
 
 export const getLists = async (req, res) => {
   try {
-    const clubId = req.user?.clubId || '3c648ce7-3c47-41e2-9461-6e40a8615ae6';
+    const clubId = await resolveClubId(req);
     const lists = await db.crmList.findMany({
       where: { clubId },
       include: {
@@ -22,7 +23,7 @@ export const getLists = async (req, res) => {
 export const getListById = async (req, res) => {
   try {
     const { id } = req.params;
-    const clubId = req.user?.clubId || '3c648ce7-3c47-41e2-9461-6e40a8615ae6';
+    const clubId = await resolveClubId(req);
 
     const list = await db.crmList.findFirst({
       where: { id, clubId },
@@ -61,7 +62,7 @@ export const getListById = async (req, res) => {
 
 export const createList = async (req, res) => {
   try {
-    const clubId = req.user?.clubId || '3c648ce7-3c47-41e2-9461-6e40a8615ae6';
+    const clubId = await resolveClubId(req, true);
     const { name, color, description, tags } = req.body;
     
     const list = await db.crmList.create({
@@ -76,7 +77,7 @@ export const createList = async (req, res) => {
 export const updateList = async (req, res) => {
   try {
     const { id } = req.params;
-    const clubId = req.user?.clubId || '3c648ce7-3c47-41e2-9461-6e40a8615ae6';
+    const clubId = await resolveClubId(req, true);
     const { name, color, description, tags } = req.body;
     
     const list = await db.crmList.updateMany({
@@ -92,7 +93,7 @@ export const updateList = async (req, res) => {
 export const deleteList = async (req, res) => {
   try {
     const { id } = req.params;
-    const clubId = req.user?.clubId || '3c648ce7-3c47-41e2-9461-6e40a8615ae6';
+    const clubId = await resolveClubId(req);
     
     await db.crmList.deleteMany({
       where: { id, clubId }

@@ -1,0 +1,235 @@
+import db from '../../lib/prisma.js';
+import { resolveClubId } from '../crmController.js';
+
+export const getContacts = async (req, res) => {
+  try {
+    const clubId = await resolveClubId(req);
+    const { search, tags, lists, status, page = 1, limit = 50 } = req.query;
+
+    const where = { clubId };
+    
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    
+    if (status) {
+      where.status = status;
+    }
+
+    if (tags) {
+      const tagIds = tags.split(',');
+      where.contactTags = {
+        some: { tagId: { in: tagIds } }
+      };
+    }
+
+    if (lists) {
+      const listIds = lists.split(',');
+      where.listMemberships = {
+        some: { listId: { in: listIds } }
+      };
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const [contacts, total] = await Promise.all([
+      db.crmContact.findMany({
+        where,
+        skip,
+        take: parseInt(limit),
+        orderBy: { createdAt: 'desc' },
+        include: {
+          contactTags: { include: { tag: true } },
+          listMemberships: { include: { list: true } },
+          customFields: { include: { field: true } },
+        }
+      }),
+      db.crmContact.count({ where })
+    ]);
+
+    // Map to a cleaner structure for the frontend
+    const mappedContacts = contacts.map(c => ({
+      ...c,
+      tags: c.contactTags.map(ct => ct.tag),
+      lists: c.listMemberships.map(lm => lm.list),
+    }));
+
+    res.json({
+      contacts: mappedContacts,
+      total,
+      page: parseInt(page),
+      totalPages: Math.ceil(total / parseInt(limit))
+    });
+  } catch (error) {
+    console.error('Error fetching CRM contacts:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const getContactById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const clubId = await resolveClubId(req);
+
+    const contact = await db.crmContact.findFirst({
+      where: { id, clubId },
+      include: {
+        contactTags: { include: { tag: true } },
+        listMemberships: { include: { list: true } },
+        customFields: { include: { field: true } },
+      }
+    });
+
+    if (!contact) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    const mappedContact = {
+      ...contact,
+      tags: contact.contactTags.map(ct => ct.tag),
+      lists: contact.listMemberships.map(lm => lm.list),
+    };
+
+    res.json(mappedContact);
+  } catch (error) {
+    console.error('Error fetching CRM contact by ID:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const createContact = async (req, res) => {
+  try {
+    const clubId = await resolveClubId(req, true);
+    const { 
+      prefix, name, lastName, email, phone, title, company, 
+      city, country, tags, lists, customFields, status 
+    } = req.body;
+
+    const newContact = await db.crmContact.create({
+      data: {
+        clubId,
+        prefix,
+        name,
+        lastName,
+        email,
+        phone,
+        title,
+        company,
+        city,
+        country,
+        status: status || 'subscribed',
+        source: 'manual',
+        // Optional nested creates
+        ...(tags && tags.length > 0 && {
+          contactTags: {
+            create: tags.map(tagId => ({ tagId }))
+          }
+        }),
+        ...(lists && lists.length > 0 && {
+          listMemberships: {
+            create: lists.map(listId => ({ listId }))
+          }
+        }),
+        ...(customFields && customFields.length > 0 && {
+          customFields: {
+            create: customFields.map(cf => ({ fieldId: cf.fieldId, value: cf.value }))
+          }
+        })
+      },
+      include: {
+        contactTags: { include: { tag: true } },
+        listMemberships: { include: { list: true } }
+      }
+    });
+
+    res.status(201).json(newContact);
+  } catch (error) {
+    console.error('Error creating CRM contact:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const updateContact = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const clubId = await resolveClubId(req, true);
+    const updates = req.body;
+
+    // Verify ownership
+    const existing = await db.crmContact.findFirst({ where: { id, clubId } });
+    if (!existing) return res.status(404).json({ error: 'Contact not found' });
+
+    // Handle tags update (replace all)
+    if (updates.tags) {
+      await db.crmContactTag.deleteMany({ where: { contactId: id } });
+      if (updates.tags.length > 0) {
+        await db.crmContactTag.createMany({
+          data: updates.tags.map(tagId => ({ contactId: id, tagId }))
+        });
+      }
+      delete updates.tags;
+    }
+
+    // Handle lists update (replace all)
+    if (updates.lists) {
+      await db.contactListMember.deleteMany({ where: { contactId: id } });
+      if (updates.lists.length > 0) {
+        await db.contactListMember.createMany({
+          data: updates.lists.map(listId => ({ contactId: id, listId }))
+        });
+      }
+      delete updates.lists;
+    }
+
+    // Handle custom fields update
+    if (updates.customFields) {
+      // Usar transacciones para no borrar lo que no se envía, o si se envían reemplazar
+      // Dependiendo de la implementación, usualmente se envía un array.
+      for (const cf of updates.customFields) {
+        await db.crmCustomFieldValue.upsert({
+          where: { contactId_fieldId: { contactId: id, fieldId: cf.fieldId } },
+          update: { value: cf.value },
+          create: { contactId: id, fieldId: cf.fieldId, value: cf.value }
+        });
+      }
+      delete updates.customFields;
+    }
+
+    // Update basic info
+    const updated = await db.crmContact.update({
+      where: { id },
+      data: updates,
+      include: {
+        contactTags: { include: { tag: true } },
+        listMemberships: { include: { list: true } }
+      }
+    });
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error updating CRM contact:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const deleteContact = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const clubId = await resolveClubId(req);
+    
+    await db.crmContact.delete({
+      where: { id_clubId: { id, clubId } } // Actually standard delete with verification
+    }).catch(async () => {
+       await db.crmContact.deleteMany({ where: { id, clubId }});
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting CRM contact:', error);
+    res.status(500).json({ error: error.message });
+  }
+};

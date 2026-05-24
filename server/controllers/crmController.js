@@ -46,7 +46,7 @@ async function syncMetaMediaToS3(mediaId, token, clubId, fileExtension = 'jpg', 
 }
 
 /** Resolve clubId — super admins may not have clubId in JWT, fallback to first club with config */
-async function resolveClubId(req, fromBody = false) {
+export async function resolveClubId(req, fromBody = false) {
     const src = fromBody ? req.body : req.query;
     const isAdmin = req.user?.role === 'administrator' || req.user?.role === 'superadmin';
 

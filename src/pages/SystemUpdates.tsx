@@ -29,6 +29,14 @@ interface UpdateItem {
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
         version: '4.428.3',
+        title: 'Fix: Resolución de Bug en CRM (Contactos Vacíos)',
+        date: new Date().toISOString(),
+        description: 'Se ha corregido un error crítico donde el CRM de WhatsApp no mostraba los contactos, listas y etiquetas para el rol Superadmin debido a una resolución incorrecta del ID del club.',
+        tags: ['crm', 'bugfix', 'critical'],
+        type: 'fix'
+    },
+    {
+        version: '4.428.2',
         title: 'Fix: Resolución de Bug en CRM (Vercel Build #3)',
         date: new Date().toISOString(),
         description: 'Se han eliminado las referencias restantes a archivos bloqueados temporalmente (ContactModal, ImportWizard, BulkActionsBar, BulkActionModals) en ContactsManager para asegurar el despliegue.',
