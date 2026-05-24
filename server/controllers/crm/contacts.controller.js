@@ -21,12 +21,12 @@ export const getContacts = async (req, res) => {
     }
 
     if (tags) {
-      const tagIds = tags.split(',');
+      const tagIds = Array.isArray(tags) ? tags : tags.split('|||');
       where.tags = { hasSome: tagIds };
     }
 
     if (lists) {
-      const listIds = lists.split(',');
+      const listIds = Array.isArray(lists) ? lists : lists.split('|||');
       where.listMemberships = {
         some: { listId: { in: listIds } }
       };

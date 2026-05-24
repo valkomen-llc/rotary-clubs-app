@@ -21,12 +21,12 @@ const buildWhereClause = (clubId, filterPayload) => {
   }
   
   if (tags && tags.length > 0) {
-    where.tags = { hasSome: Array.isArray(tags) ? tags : tags.split(',') };
+    where.tags = { hasSome: Array.isArray(tags) ? tags : tags.split('|||') };
   }
   
   if (lists && lists.length > 0) {
     where.listMemberships = {
-      some: { listId: { in: Array.isArray(lists) ? lists : lists.split(',') } }
+      some: { listId: { in: Array.isArray(lists) ? lists : lists.split('|||') } }
     };
   }
   
