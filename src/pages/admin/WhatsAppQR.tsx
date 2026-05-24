@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { QrCode, Smartphone, WifiOff, Loader, RefreshCw, Send, Users, MessageSquare, Clock, Search, Upload, UserPlus } from 'lucide-react';
+import { QrCode, Smartphone, WifiOff, Loader, RefreshCw, Send, Users, MessageSquare, Clock, Search, Upload, UserPlus, Tag, List, Plus, CheckCheck, Sparkles, Paperclip, Smile, Mic, Image as ImageIcon, Copy, Check, MessageSquarePlus, X, AlertTriangle } from 'lucide-react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
-import { CheckCheck, Sparkles, Paperclip, Smile, Mic, Image as ImageIcon, Copy, Check, MessageSquarePlus, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 
@@ -208,10 +207,12 @@ const WhatsAppQR: React.FC = () => {
     const [groupExcelMapping, setGroupExcelMapping] = useState<Record<string, string>>({});
     const [groupExcelMetadataNames, setGroupExcelMetadataNames] = useState<Record<string, string>>({});
 
-    // Add Participants States
     const [showAddParticipants, setShowAddParticipants] = useState(false);
     const [addingParticipants, setAddingParticipants] = useState(false);
     const [addParticipantsError, setAddParticipantsError] = useState('');
+    const [selectedImportListId, setSelectedImportListId] = useState('');
+    const [selectedImportTagId, setSelectedImportTagId] = useState('');
+    const [crmTags, setCrmTags] = useState<any[]>([]);
 
     // Import Contacts States
     const [importMethod, setImportMethod] = useState<'csv' | 'manual'>('csv');
@@ -226,26 +227,43 @@ const WhatsAppQR: React.FC = () => {
     const [importResult, setImportResult] = useState<any | null>(null);
     const [defaultCountryCode, setDefaultCountryCode] = useState('57');
 
-    // Fetch CRM contacts for group creation
-    const fetchCrmContacts = async () => {
+    // Fetch CRM contacts, lists, and tags for group creation
+    const fetchCrmData = async () => {
         setLoadingCrmContacts(true);
         try {
-            const res = await fetch(`${API}/whatsapp-crm/contacts?limit=500`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const data = await res.json();
-            if (data.contacts) {
-                setCrmContacts(data.contacts);
+            const [contactsRes, listsRes, tagsRes] = await Promise.all([
+                fetch(`${API}/crm/contacts?limit=500`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch(`${API}/crm/lists`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch(`${API}/crm/tags`, { headers: { 'Authorization': `Bearer ${token}` } })
+            ]);
+            
+            if (contactsRes.ok) {
+                const data = await contactsRes.json();
+                if (data.contacts) setCrmContacts(data.contacts);
+            }
+            if (listsRes.ok) {
+                const listsData = await listsRes.json();
+                if (Array.isArray(listsData)) setContactLists(listsData);
+                else if (listsData.lists) setContactLists(listsData.lists);
+            }
+            if (tagsRes.ok) {
+                const tagsData = await tagsRes.json();
+                if (Array.isArray(tagsData)) setCrmTags(tagsData);
+                else if (tagsData.tags) setCrmTags(tagsData.tags);
             }
         } catch (e) {
-            console.error('Error fetching CRM contacts:', e);
+            console.error('Error fetching CRM data:', e);
         }
         setLoadingCrmContacts(false);
     };
 
+    const fetchCrmContacts = async () => {
+        await fetchCrmData();
+    };
+
     useEffect(() => {
         if ((showCreateGroup || showAddParticipants || showLinkModal) && token) {
-            fetchCrmContacts();
+            fetchCrmData();
         }
     }, [showCreateGroup, showAddParticipants, showLinkModal, token]);
 
@@ -1877,6 +1895,63 @@ const WhatsAppQR: React.FC = () => {
                                         })}
                                     </div>
                                 )}
+                            </div>
+
+                            {/* Import from List or Tag */}
+                            <div className="border border-blue-100 bg-blue-50/30 p-3 rounded-xl space-y-3">
+                                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block">Importar desde CRM (Listas o Etiquetas)</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <select
+                                        value={selectedImportListId}
+                                        onChange={e => { setSelectedImportListId(e.target.value); setSelectedImportTagId(''); }}
+                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                                    >
+                                        <option value="">Seleccionar Lista...</option>
+                                        {contactLists.map(list => (
+                                            <option key={list.id} value={list.id}>{list.name}</option>
+                                        ))}
+                                    </select>
+                                    <select
+                                        value={selectedImportTagId}
+                                        onChange={e => { setSelectedImportTagId(e.target.value); setSelectedImportListId(''); }}
+                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                                    >
+                                        <option value="">Seleccionar Etiqueta...</option>
+                                        {crmTags.map(tag => (
+                                            <option key={tag.id} value={tag.id}>{tag.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        let contactsToAdd: any[] = [];
+                                        if (selectedImportListId) {
+                                            contactsToAdd = crmContacts.filter(c => c.lists?.some((l: any) => l.id === selectedImportListId));
+                                        } else if (selectedImportTagId) {
+                                            contactsToAdd = crmContacts.filter(c => c.tags?.some((t: any) => t.id === selectedImportTagId || t.name === selectedImportTagId));
+                                        }
+                                        
+                                        if (contactsToAdd.length > 0) {
+                                            const newPhones = contactsToAdd.map(c => c.phone).filter(p => p && !groupParticipants.includes(p));
+                                            if (newPhones.length > 0) {
+                                                setGroupParticipants(prev => [...prev, ...newPhones]);
+                                                toast.success(`Se agregaron ${newPhones.length} contactos de la selección.`);
+                                            } else {
+                                                toast.error('Todos los contactos de la selección ya están en la lista.');
+                                            }
+                                        } else {
+                                            toast.error('No se encontraron contactos en esta selección.');
+                                        }
+                                        setSelectedImportListId('');
+                                        setSelectedImportTagId('');
+                                    }}
+                                    disabled={!selectedImportListId && !selectedImportTagId}
+                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                                >
+                                    <Users className="w-3 h-3" />
+                                    Importar a la Lista Actual
+                                </button>
                             </div>
 
                             <div className="border-t border-gray-100 pt-3">
