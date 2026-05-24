@@ -27,7 +27,7 @@ export const getTags = async (req, res) => {
     const mappedTags = Array.from(allTagNames).map(tagName => {
       const explicit = explicitTags.find(t => t.name === tagName);
       return {
-        id: explicit ? explicit.id : tagName,
+        id: tagName, // Always use name as ID for consistency in the DB
         name: tagName,
         color: explicit ? explicit.color : '#3B82F6',
         _count: { contacts: contacts.filter(c => c.tags && c.tags.includes(tagName)).length }

@@ -47,10 +47,22 @@ export const getContacts = async (req, res) => {
       db.crmContact.count({ where })
     ]);
 
+    // Fetch tags settings to map colors correctly
+    const settings = await db.setting.findFirst({
+      where: { clubId, key: 'crm_tags' }
+    });
+    let explicitTags = [];
+    if (settings && settings.value) {
+      try { explicitTags = JSON.parse(settings.value); } catch (e) {}
+    }
+
     // Map to a cleaner structure for the frontend
     const mappedContacts = contacts.map(c => ({
       ...c,
-      tags: c.tags ? c.tags.map(t => ({ id: t, name: t, color: '#3B82F6' })) : [],
+      tags: c.tags ? c.tags.map(t => {
+         const explicit = explicitTags.find(et => et.name === t);
+         return { id: t, name: t, color: explicit ? explicit.color : '#3B82F6' };
+      }) : [],
       lists: c.listMemberships ? c.listMemberships.map(lm => lm.list) : [],
     }));
 
