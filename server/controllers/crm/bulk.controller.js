@@ -21,9 +21,7 @@ const buildWhereClause = (clubId, filterPayload) => {
   }
   
   if (tags && tags.length > 0) {
-    where.contactTags = {
-      some: { tagId: { in: Array.isArray(tags) ? tags : tags.split(',') } }
-    };
+    where.tags = { hasSome: Array.isArray(tags) ? tags : tags.split(',') };
   }
   
   if (lists && lists.length > 0) {
@@ -137,11 +135,11 @@ export const processChunk = async (req, res) => {
       const { tags, lists } = payload; 
       
       if (tags && tags.length > 0) {
-         const dataToInsert = [];
-         targetIds.forEach(contactId => {
-           tags.forEach(tagId => { dataToInsert.push({ contactId, tagId }); });
-         });
-         await db.crmContactTag.createMany({ data: dataToInsert, skipDuplicates: true });
+         const contacts = await db.crmContact.findMany({ where: { id: { in: targetIds } } });
+         for (const c of contacts) {
+           const updatedTags = [...new Set([...(c.tags || []), ...tags])];
+           await db.crmContact.update({ where: { id: c.id }, data: { tags: updatedTags } });
+         }
       }
       
       if (lists && lists.length > 0) {
@@ -156,9 +154,11 @@ export const processChunk = async (req, res) => {
       const { tags, lists } = payload;
       
       if (tags && tags.length > 0) {
-         await db.crmContactTag.deleteMany({
-           where: { contactId: { in: targetIds }, tagId: { in: tags } }
-         });
+         const contacts = await db.crmContact.findMany({ where: { id: { in: targetIds } } });
+         for (const c of contacts) {
+           const updatedTags = (c.tags || []).filter(t => !tags.includes(t));
+           await db.crmContact.update({ where: { id: c.id }, data: { tags: updatedTags } });
+         }
       }
       
       if (lists && lists.length > 0) {

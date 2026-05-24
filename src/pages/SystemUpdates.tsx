@@ -28,6 +28,14 @@ interface UpdateItem {
 // Cache bust: 2026-05-24 14:00 (FluentCRM Audience Details)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: '4.428.4',
+        title: 'Fix: Resolución de Bug en Prisma Schema (Contactos Vacíos)',
+        date: new Date().toISOString(),
+        description: 'Se ha corregido un error del lado del servidor donde las consultas de contactos y etiquetas en el nuevo CRM fallaban silenciosamente. El sistema intentaba relacionar modelos de bases de datos que no existen (como crmTag y crmCustomField) en lugar de usar los arrays nativos de PostgreSQL, provocando un error 500 que impedía la carga de contactos.',
+        tags: ['crm', 'bugfix', 'critical', 'prisma'],
+        type: 'fix'
+    },
+    {
         version: '4.428.3',
         title: 'Fix: Resolución de Bug en CRM (Contactos Vacíos)',
         date: new Date().toISOString(),

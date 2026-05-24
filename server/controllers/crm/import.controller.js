@@ -95,6 +95,8 @@ export const importContacts = async (req, res) => {
              }
            }
            
+           // Custom fields removed because they are not yet in the DB schema
+           /*
            if (contact.customFields && contact.customFields.length > 0) {
              for (const cf of contact.customFields) {
                await db.crmCustomFieldValue.upsert({
@@ -104,6 +106,7 @@ export const importContacts = async (req, res) => {
                });
              }
            }
+           */
         }
 
       } catch (err) {

@@ -22,9 +22,7 @@ export const getContacts = async (req, res) => {
 
     if (tags) {
       const tagIds = tags.split(',');
-      where.contactTags = {
-        some: { tagId: { in: tagIds } }
-      };
+      where.tags = { hasSome: tagIds };
     }
 
     if (lists) {
@@ -43,9 +41,7 @@ export const getContacts = async (req, res) => {
         take: parseInt(limit),
         orderBy: { createdAt: 'desc' },
         include: {
-          contactTags: { include: { tag: true } },
           listMemberships: { include: { list: true } },
-          customFields: { include: { field: true } },
         }
       }),
       db.crmContact.count({ where })
@@ -54,8 +50,8 @@ export const getContacts = async (req, res) => {
     // Map to a cleaner structure for the frontend
     const mappedContacts = contacts.map(c => ({
       ...c,
-      tags: c.contactTags.map(ct => ct.tag),
-      lists: c.listMemberships.map(lm => lm.list),
+      tags: c.tags ? c.tags.map(t => ({ id: t, name: t, color: '#3B82F6' })) : [],
+      lists: c.listMemberships ? c.listMemberships.map(lm => lm.list) : [],
     }));
 
     res.json({
@@ -78,23 +74,21 @@ export const getContactById = async (req, res) => {
     const contact = await db.crmContact.findFirst({
       where: { id, clubId },
       include: {
-        contactTags: { include: { tag: true } },
         listMemberships: { include: { list: true } },
-        customFields: { include: { field: true } },
       }
     });
 
     if (!contact) {
-      return res.status(404).json({ error: 'Contact not found' });
+      return res.status(404).json({ error: 'Contacto no encontrado' });
     }
 
-    const mappedContact = {
+    const mapped = {
       ...contact,
-      tags: contact.contactTags.map(ct => ct.tag),
-      lists: contact.listMemberships.map(lm => lm.list),
+      tags: contact.tags ? contact.tags.map(t => ({ id: t, name: t, color: '#3B82F6' })) : [],
+      lists: contact.listMemberships ? contact.listMemberships.map(lm => lm.list) : [],
     };
 
-    res.json(mappedContact);
+    res.json(mapped);
   } catch (error) {
     console.error('Error fetching CRM contact by ID:', error);
     res.status(500).json({ error: error.message });
