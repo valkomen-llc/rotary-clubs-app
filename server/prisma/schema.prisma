@@ -138,8 +138,9 @@ model Club {
   users                    User[]
   whatsAppCampaigns        WhatsAppCampaign[]
   whatsAppConfig           WhatsAppConfig?
-  crmContacts         CrmContact[]
-  crmLists            CrmList[]
+  crmContacts              CrmContact[]
+  crmBulkJobs              CrmBulkJob[]
+  crmLists                 CrmList[]
   WhatsAppCustomField      WhatsAppCustomField[]
   whatsAppTemplates        WhatsAppTemplate[]
   technicalRequests        TechnicalRequest[]
@@ -636,6 +637,24 @@ model CrmContact {
   @@index([clubId], map: "idx_wa_contact_club")
   @@index([phone], map: "idx_wa_contact_phone")
   @@index([status], map: "idx_wa_contact_status")
+}
+
+model CrmBulkJob {
+  id             String   @id @default(uuid())
+  clubId         String
+  actionType     String
+  status         String   @default("pending")
+  totalItems     Int
+  processedItems Int      @default(0)
+  actionPayload  Json?
+  filterPayload  Json?
+  contactIds     String[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  club           Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([clubId])
+  @@index([status])
 }
 
 model CrmList {
