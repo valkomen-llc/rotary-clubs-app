@@ -11,6 +11,9 @@ import {
 } from "../../../ui/dropdown-menu";
 import BulkActionsBar from './BulkActionsBar';
 import BulkActionModals from './BulkActionModals';
+import { BulkProcessingProvider } from './BulkProcessingProvider';
+import ContactModal from './ContactModal';
+import ImportWizard from './ImportWizard';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -147,7 +150,7 @@ export default function ContactsManager({
     };
 
     return (
-        <>
+        <BulkProcessingProvider>
             {audienceType && audienceLoading && (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 mb-6 flex items-center justify-center">
                     <Loader2 className="w-6 h-6 animate-spin text-rotary-blue" />
@@ -316,8 +319,8 @@ export default function ContactsManager({
                                             <DropdownMenuItem onClick={() => { setEditingContactId(c.id); setShowContactModal(true); }} className="cursor-pointer gap-2">
                                                 <Pencil className="w-4 h-4" /> Editar Contacto
                                             </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => { /* view logic if needed */ }} className="cursor-pointer gap-2">
-                                                <Eye className="w-4 h-4" /> Visualizar
+                                            <DropdownMenuItem onClick={() => { setEditingContactId(c.id); setShowContactModal(true); }} className="cursor-pointer gap-2">
+                                                <Eye className="w-4 h-4" /> Visualizar / Editar
                                             </DropdownMenuItem>
                                             <DropdownMenuSeparator />
                                             <DropdownMenuItem onClick={() => { setSelectedIds([c.id]); handleActionSelect('delete'); }} className="cursor-pointer gap-2 text-red-600 focus:bg-red-50 focus:text-red-700">
@@ -382,6 +385,21 @@ export default function ContactsManager({
                     fetchContacts();
                 }}
             />
-        </>
+
+            {showContactModal && (
+                <ContactModal 
+                    contactId={editingContactId} 
+                    onClose={() => setShowContactModal(false)} 
+                    onSaved={fetchContacts} 
+                />
+            )}
+
+            {showImportWizard && (
+                <ImportWizard 
+                    onClose={() => setShowImportWizard(false)} 
+                    onSuccess={fetchContacts} 
+                />
+            )}
+        </BulkProcessingProvider>
     );
 }
