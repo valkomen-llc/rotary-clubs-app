@@ -1386,43 +1386,6 @@ export const handleWebhook = async (req, res) => {
     }
 };
 
-                "readAt" TIMESTAMPTZ, "failedAt" TIMESTAMPTZ,
-                "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            );
-            CREATE INDEX IF NOT EXISTS idx_wa_msglog_messageid ON "WhatsAppMessageLog" ("messageId");
-            CREATE INDEX IF NOT EXISTS idx_wa_msglog_campaign ON "WhatsAppMessageLog" ("campaignId", status);
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_template_meta_id ON "WhatsAppTemplate" ("metaTemplateId") WHERE "metaTemplateId" IS NOT NULL;
-        `);
-        // Add direction column if it doesn't exist (for existing installations)
-        await db.query(`ALTER TABLE "WhatsAppMessageLog" ADD COLUMN IF NOT EXISTS direction VARCHAR(20) DEFAULT 'outgoing'`).catch(() => {});
-        console.log('[WA-CRM] All tables created');
-    } catch (err) {
-        console.error('[WA-CRM] Table init error:', err.message);
-    }
-    // Custom Fields table — separate query to ensure it gets created even if main batch had issues
-    try {
-        await db.query(`
-            CREATE TABLE IF NOT EXISTS "WhatsAppCustomField" (
-                id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-                "clubId" TEXT NOT NULL REFERENCES "Club"(id) ON DELETE CASCADE,
-                label VARCHAR(100) NOT NULL,
-                key VARCHAR(100) NOT NULL,
-                type VARCHAR(30) NOT NULL DEFAULT 'text',
-                required BOOLEAN NOT NULL DEFAULT FALSE,
-                "sortOrder" INT NOT NULL DEFAULT 0,
-                "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                UNIQUE("clubId", key)
-            );
-        `);
-        console.log('[WA-CRM] CustomField table ensured');
-    } catch (err) {
-        console.error('[WA-CRM] CustomField table error:', err.message);
-    }
-};
-
-ensureWATables();
-
 // ── Custom Fields CRUD ──────────────────────────────────────────────────────
 
 let _cfTableReady = false;

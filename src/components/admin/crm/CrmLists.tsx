@@ -40,7 +40,7 @@ const CrmLists: React.FC = () => {
         toast.success('Lista eliminada'); fetchLists();
     };
 
-    const resetForm = () => { setForm({ name: '', description: '', color: '#3B82F6' }); setEditId(null); };
+    const resetForm = () => { setForm({ name: '', description: '', tags: '', color: '#3B82F6' }); setEditId(null); };
     const startEdit = (l: any) => {
         setForm({ name: l.name, description: l.description || '', tags: (l.tags || []).join(', '), color: l.color });
         setEditId(l.id); setShowForm(true);
@@ -62,12 +62,22 @@ const CrmLists: React.FC = () => {
                 <div className="bg-white border border-gray-200 rounded-2xl p-5 mb-6 shadow-sm">
                     <form onSubmit={handleSave} className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required
-                                placeholder="Nombre de la lista" className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-green-500" />
-                            <input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
-                                placeholder="Descripción (opcional)" className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-green-500" />
-                            <input value={form.tags} onChange={e => setForm({ ...form, tags: e.target.value })}
-                                placeholder="Etiquetas separadas por comas (ej. vip, distrito)" className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-green-500 md:col-span-2" />
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">Nombre de la Lista *</label>
+                                <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required
+                                    placeholder="Ej. Presidentes 2026" className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-green-500" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">Descripción (Opcional)</label>
+                                <input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
+                                    placeholder="Detalles sobre esta lista" className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-green-500" />
+                            </div>
+                            <div className="md:col-span-2">
+                                <label className="block text-xs font-bold text-gray-500 mb-1">Etiquetas (Tags)</label>
+                                <input value={form.tags} onChange={e => setForm({ ...form, tags: e.target.value })}
+                                    placeholder="Separadas por comas. Ej: distrito-4281, presidentes, vip" className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-green-500" />
+                                <p className="text-xs text-gray-400 mt-1">Las etiquetas te permiten filtrar o agrupar fácilmente esta lista más adelante.</p>
+                            </div>
                         </div>
                         <div className="flex items-center gap-4">
                             <span className="text-xs font-bold text-gray-500 uppercase">Color:</span>
