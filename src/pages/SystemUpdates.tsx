@@ -28,6 +28,17 @@ interface UpdateItem {
 // Cache bust: 2026-05-24 14:00 (FluentCRM Audience Details)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: '4.428.1',
+        title: 'Fix: Resolución de Bug en CRM (Vercel Build)',
+        date: new Date().toISOString(),
+        description: 'Se ha corregido el error de resolución de módulos que impedía el despliegue en Vercel, eliminando referencias a archivos bloqueados temporalmente por el sistema.',
+        type: 'feature',
+        impact: 'high',
+        author: 'Antigravity AI',
+        tags: ['CRM', 'Build Fix', 'Hotfix']
+    },
+    {
+        id: 'upd-4-428',
         version: '4.428.0',
         date: '2026-05-24',
         type: 'feature',
