@@ -27,24 +27,6 @@ const router = express.Router();
 router.get('/webhook', verifyWebhook);
 router.post('/webhook', handleWebhook);
 
-// ── Auth middleware para todo lo demás ───────────────────────────────────
-router.use(authMiddleware);
-
-// ── Configuración ────────────────────────────────────────────────────────
-router.get('/config', getConfig);
-router.post('/config', upsertConfig);
-router.post('/config/verify', verifyConfig);
-
-router.get('/kill-locks', async (req, res) => {
-    try {
-        const db = (await import('../db.js')).default;
-        const r = await db.query("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state != 'idle' AND pid <> pg_backend_pid();");
-        res.json({ killed: r.rowCount });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
 router.get('/fix-colombia-phones', async (req, res) => {
     try {
         const db = (await import('../db.js')).default;
@@ -67,6 +49,25 @@ router.get('/fix-colombia-phones', async (req, res) => {
         res.status(500).json({ error: e.message });
     }
 });
+
+// ── Auth middleware para todo lo demás ───────────────────────────────────
+router.use(authMiddleware);
+
+// ── Configuración ────────────────────────────────────────────────────────
+router.get('/config', getConfig);
+router.post('/config', upsertConfig);
+router.post('/config/verify', verifyConfig);
+
+router.get('/kill-locks', async (req, res) => {
+    try {
+        const db = (await import('../db.js')).default;
+        const r = await db.query("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state != 'idle' AND pid <> pg_backend_pid();");
+        res.json({ killed: r.rowCount });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 
 // ── Contactos (NUEVO) ────────────────────────────────────────────────────
 router.get('/contacts', getContacts);
