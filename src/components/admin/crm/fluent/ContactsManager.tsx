@@ -2,10 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../../hooks/useAuth';
 import { Search, Plus, Filter, MoreHorizontal, UserCheck, Tag, X, List as ListIcon, UploadCloud, Pencil, Trash2, Eye, ArrowLeft, Loader2, Users } from 'lucide-react';
 import { toast } from 'sonner';
-import ContactModal from './ContactModal';
-import ImportWizard from './ImportWizard';
-import BulkActionsBar from './BulkActionsBar';
-import BulkActionModals from './BulkActionModals';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -361,50 +357,6 @@ export default function ContactsManager({
             )}
         </div>
             
-            {showContactModal && (
-                <ContactModal 
-                    contactId={editingContactId || undefined}
-                    onClose={() => { setShowContactModal(false); setEditingContactId(null); }} 
-                    onSaved={() => { setShowContactModal(false); setEditingContactId(null); fetchContacts(); }} 
-                />
-            )}
-
-            {showImportWizard && (
-                <ImportWizard 
-                    onClose={() => setShowImportWizard(false)}
-                    onImported={() => {
-                        setShowImportWizard(false);
-                        fetchContacts(1);
-                    }}
-                />
-            )}
-
-            <BulkActionsBar
-                selectedCount={selectedIds.length}
-                totalFilteredCount={totalContacts}
-                isAllFilteredSelected={isAllFilteredSelected}
-                onClearSelection={() => {
-                    setSelectedIds([]);
-                    setIsAllFilteredSelected(false);
-                }}
-                onSelectAllFiltered={() => setIsAllFilteredSelected(true)}
-                onActionSelect={handleActionSelect}
-            />
-
-            <BulkActionModals
-                actionType={bulkActionType}
-                isOpen={showBulkActionModal}
-                onClose={() => setShowBulkActionModal(false)}
-                selectedContactIds={selectedIds}
-                isAllFilteredSelected={isAllFilteredSelected}
-                totalFilteredCount={totalContacts}
-                currentFilterPayload={{ search, status: null, tags: null, lists: null }}
-                onSuccess={() => {
-                    setSelectedIds([]);
-                    setIsAllFilteredSelected(false);
-                    fetchContacts();
-                }}
-            />
         </>
     );
 }

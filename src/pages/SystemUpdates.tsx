@@ -28,6 +28,16 @@ interface UpdateItem {
 // Cache bust: 2026-05-24 14:00 (FluentCRM Audience Details)
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: '4.428.3',
+        title: 'Fix: Resolución de Bug en CRM (Vercel Build #3)',
+        date: new Date().toISOString(),
+        description: 'Se han eliminado las referencias restantes a archivos bloqueados temporalmente (ContactModal, ImportWizard, BulkActionsBar, BulkActionModals) en ContactsManager para asegurar el despliegue.',
+        type: 'feature',
+        impact: 'high',
+        author: 'Antigravity AI',
+        tags: ['CRM', 'Build Fix', 'Hotfix']
+    },
+    {
         version: '4.428.2',
         title: 'Fix: Resolución de Bug en CRM (Vercel Build #2)',
         date: new Date().toISOString(),
