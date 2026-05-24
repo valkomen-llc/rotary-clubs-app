@@ -9,6 +9,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../../ui/dropdown-menu";
+import BulkActionsBar from './BulkActionsBar';
+import BulkActionModals from './BulkActionModals';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -191,70 +193,35 @@ export default function ContactsManager({
             )}
 
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            {/* Toolbar / Bulk Actions */}
-            <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50 min-h-[72px]">
-                {selectedIds.length > 0 ? (
-                    <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center gap-3">
-                            <span className="bg-rotary-blue text-white text-xs font-bold px-2.5 py-1 rounded-full">
-                                {selectedIds.length}
-                            </span>
-                            <span className="text-sm font-bold text-gray-700">Contactos seleccionados</span>
-                            <button onClick={() => setSelectedIds([])} className="text-xs text-gray-400 hover:text-gray-600 underline">
-                                Deseleccionar
-                            </button>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <button onClick={() => handleActionSelect('add_lists')} className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                                <ListIcon className="w-4 h-4" /> Añadir a Lista
-                            </button>
-                            <button onClick={() => handleActionSelect('add_tags')} className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                                <Tag className="w-4 h-4" /> Añadir Etiqueta
-                            </button>
-                            <div className="h-6 w-px bg-gray-200 mx-1"></div>
-                            <button onClick={() => handleActionSelect('remove_lists')} className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                                Remover Lista
-                            </button>
-                            <button onClick={() => handleActionSelect('remove_tags')} className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                                Remover Etiqueta
-                            </button>
-                            <div className="h-6 w-px bg-gray-200 mx-1"></div>
-                            <button onClick={() => handleActionSelect('delete')} className="px-3 py-1.5 bg-red-50 border border-red-100 rounded-lg text-sm font-bold text-red-600 hover:bg-red-100 flex items-center gap-2">
-                                <Trash2 className="w-4 h-4" /> Eliminar
-                            </button>
-                        </div>
+            {/* Toolbar */}
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+                <div className="flex items-center gap-3">
+                    <div className="relative">
+                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="Buscar nombre, correo o teléfono..."
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && fetchContacts()}
+                            className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm w-64 focus:outline-none focus:ring-2 focus:ring-rotary-blue"
+                        />
                     </div>
-                ) : (
-                    <>
-                        <div className="flex items-center gap-3">
-                            <div className="relative">
-                                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                <input
-                                    type="text"
-                                    placeholder="Buscar nombre, correo o teléfono..."
-                                    value={search}
-                                    onChange={e => setSearch(e.target.value)}
-                                    onKeyDown={e => e.key === 'Enter' && fetchContacts()}
-                                    className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm w-64 focus:outline-none focus:ring-2 focus:ring-rotary-blue"
-                                />
-                            </div>
-                            <button className="px-3 py-2 border border-gray-200 bg-white rounded-lg text-sm font-bold text-gray-600 flex items-center gap-2 hover:bg-gray-50">
-                                <Filter className="w-4 h-4" /> Filtros
-                            </button>
-                        </div>
-                        
-                        <div className="flex items-center gap-2">
-                            <button onClick={() => setShowImportWizard(true)} className="px-4 py-2 border border-gray-200 bg-white rounded-lg text-sm font-bold text-gray-700 flex items-center gap-2 hover:bg-gray-50 transition-colors">
-                                <UploadCloud className="w-4 h-4" />
-                                Importar
-                            </button>
-                            <button onClick={() => { setEditingContactId(null); setShowContactModal(true); }} className="bg-rotary-blue hover:bg-sky-800 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors shadow-sm">
-                                <Plus className="w-4 h-4" />
-                                Añadir Contacto
-                            </button>
-                        </div>
-                    </>
-                )}
+                    <button className="px-3 py-2 border border-gray-200 bg-white rounded-lg text-sm font-bold text-gray-600 flex items-center gap-2 hover:bg-gray-50">
+                        <Filter className="w-4 h-4" /> Filtros
+                    </button>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                    <button onClick={() => setShowImportWizard(true)} className="px-4 py-2 border border-gray-200 bg-white rounded-lg text-sm font-bold text-gray-700 flex items-center gap-2 hover:bg-gray-50 transition-colors">
+                        <UploadCloud className="w-4 h-4" />
+                        Importar
+                    </button>
+                    <button onClick={() => { setEditingContactId(null); setShowContactModal(true); }} className="bg-rotary-blue hover:bg-sky-800 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors shadow-sm">
+                        <Plus className="w-4 h-4" />
+                        Añadir Contacto
+                    </button>
+                </div>
             </div>
 
             {/* Table */}
@@ -392,6 +359,29 @@ export default function ContactsManager({
             )}
         </div>
             
+            <BulkActionsBar 
+                selectedCount={selectedIds.length}
+                totalFilteredCount={totalContacts}
+                isAllFilteredSelected={isAllFilteredSelected}
+                onClearSelection={() => setSelectedIds([])}
+                onSelectAllFiltered={() => setIsAllFilteredSelected(true)}
+                onActionSelect={handleActionSelect}
+            />
+
+            <BulkActionModals 
+                actionType={bulkActionType}
+                isOpen={showBulkActionModal}
+                onClose={() => setShowBulkActionModal(false)}
+                selectedContactIds={selectedIds}
+                isAllFilteredSelected={isAllFilteredSelected}
+                totalFilteredCount={totalContacts}
+                currentFilterPayload={{ search, tags: audienceType === 'tag' ? [audienceId] : undefined, lists: audienceType === 'list' ? [audienceId] : undefined }}
+                onSuccess={() => {
+                    setSelectedIds([]);
+                    setIsAllFilteredSelected(false);
+                    fetchContacts();
+                }}
+            />
         </>
     );
 }
