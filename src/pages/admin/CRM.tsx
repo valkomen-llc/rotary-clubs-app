@@ -1,21 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
-import { Mail, MessageCircle, Send, ClipboardList, CheckCircle2, XCircle, Search, Clock, Settings, Users, List, Megaphone, FileText, BarChart3, MessageSquare } from 'lucide-react';
+import { Mail, MessageCircle, Send, ClipboardList, CheckCircle2, XCircle, Search, Clock, Settings, Users, List, Megaphone, FileText, BarChart3, MessageSquare, Tag } from 'lucide-react';
 import { toast } from 'sonner';
 
 // WhatsApp CRM Sub-components
 import WhatsAppConfig from '../../components/admin/whatsapp/WhatsAppConfig';
-import CrmContacts from '../../components/admin/crm/CrmContacts';
-import CrmLists from '../../components/admin/crm/CrmLists';
 import WhatsAppTemplates from '../../components/admin/whatsapp/WhatsAppTemplates';
 import WhatsAppCampaigns from '../../components/admin/whatsapp/WhatsAppCampaigns';
 import WhatsAppChat from '../../components/admin/whatsapp/WhatsAppChat';
 import WhatsAppDashboard from '../../components/admin/whatsapp/WhatsAppDashboard';
 
+// FluentCRM Components
+import ContactsManager from '../../components/admin/crm/fluent/ContactsManager';
+import ListsManager from '../../components/admin/crm/fluent/ListsManager';
+import { BulkProcessingProvider } from '../../components/admin/crm/fluent/BulkProcessingProvider';
+import TagsManager from '../../components/admin/crm/fluent/TagsManager';
+import CustomFieldsManager from '../../components/admin/crm/fluent/CustomFieldsManager';
+
 const API = import.meta.env.VITE_API_URL || '/api';
 
-type TabKey = 'email-send' | 'email-templates' | 'email-logs' | 'wa-config' | 'wa-templates' | 'wa-campaigns' | 'wa-analytics' | 'wa-chat' | 'crm-contacts' | 'crm-lists';
+type TabKey = 'email-send' | 'email-templates' | 'email-logs' | 'wa-config' | 'wa-templates' | 'wa-campaigns' | 'wa-analytics' | 'wa-chat' | 'crm-contacts' | 'crm-lists' | 'crm-tags' | 'list-detail' | 'tag-detail';
 
 /**
  * CRM Interfaz
@@ -26,11 +31,13 @@ const CRMManagement: React.FC = () => {
     const { token, user } = useAuth();
     const [loading, setLoading] = useState(false);
     
-    // Default to 'wa-chat' as per user request for direct access to functional tool
+    // Default to 'crm-contacts' to show the new Directory by default
     const [activeTab, setActiveTab] = useState<TabKey>(() => {
         const params = new URLSearchParams(window.location.search);
-        return (params.get('tab') as TabKey) || 'wa-chat';
+        return (params.get('tab') as TabKey) || 'crm-contacts';
     });
+    
+    const [selectedAudienceId, setSelectedAudienceId] = useState<string | null>(null);
 
     // Mocks / States for basic UI iteration
     const [logs, setLogs] = useState<any[]>([]);
@@ -79,10 +86,11 @@ const CRMManagement: React.FC = () => {
         } catch { toast.error('Error de conexión'); } finally { setLoading(false); }
     };
 
-    // Tab groups
     const crmTabs: { key: TabKey; label: string; icon: React.ReactNode }[] = [
         { key: 'crm-contacts', label: 'Contactos', icon: <Users className="w-4 h-4" /> },
         { key: 'crm-lists', label: 'Listas', icon: <List className="w-4 h-4" /> },
+        { key: 'crm-tags', label: 'Etiquetas', icon: <Tag className="w-4 h-4" /> },
+        { key: 'crm-settings', label: 'Ajustes', icon: <Settings className="w-4 h-4" /> },
     ];
 
     const emailTabs: { key: TabKey; label: string; icon: React.ReactNode }[] = [
@@ -107,8 +115,9 @@ const CRMManagement: React.FC = () => {
     const activeColorClass = isCrmTab ? 'purple' : (isWhatsappTab ? 'green' : 'blue');
 
     return (
-        <AdminLayout>
-            <div className="flex justify-between items-center mb-6">
+        <BulkProcessingProvider>
+            <AdminLayout>
+                <div className="flex justify-between items-center mb-6">
                 <div>
                     <h1 className="text-3xl font-black text-gray-900 tracking-tight">Comunicaciones y CRM</h1>
                     <p className="text-gray-500 mt-1">Directorio unificado, plantillas, campañas de WhatsApp y Email Marketing.</p>
@@ -117,6 +126,15 @@ const CRMManagement: React.FC = () => {
 
             {/* Channel Selector */}
             <div className="flex flex-wrap gap-3 mb-6">
+                <button
+                    onClick={() => setActiveTab('crm-contacts')}
+                    className={`flex items-center gap-2.5 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 ${isCrmTab ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-sm' : 'border-gray-100 text-gray-500 hover:bg-gray-50'}`}
+                >
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isCrmTab ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                        <Users className="w-4 h-4" />
+                    </div>
+                    Directorio CRM
+                </button>
                 <button
                     onClick={() => setActiveTab('wa-chat')}
                     className={`flex items-center gap-2.5 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 ${isWhatsappTab ? 'border-green-500 bg-green-50 text-green-700 shadow-sm' : 'border-gray-100 text-gray-500 hover:bg-gray-50'}`}
@@ -153,8 +171,11 @@ const CRMManagement: React.FC = () => {
             </div>
 
             {/* ═══ CRM TABS ═══ */}
-            {activeTab === 'crm-contacts' && <CrmContacts />}
-            {activeTab === 'crm-lists' && <CrmLists />}
+            {activeTab === 'crm-contacts' && <ContactsManager />}
+            {activeTab === 'crm-lists' && <ListsManager onViewDetails={(id) => { setSelectedAudienceId(id); setActiveTab('list-detail'); }} />}
+            {activeTab === 'crm-tags' && <TagsManager onViewDetails={(id) => { setSelectedAudienceId(id); setActiveTab('tag-detail'); }} />}
+            {activeTab === 'list-detail' && selectedAudienceId && <ContactsManager audienceType="list" audienceId={selectedAudienceId} onBack={() => setActiveTab('crm-lists')} />}
+            {activeTab === 'tag-detail' && selectedAudienceId && <ContactsManager audienceType="tag" audienceId={selectedAudienceId} onBack={() => setActiveTab('crm-tags')} />}
 
             {/* ═══ EMAIL TABS ═══ */}
             {activeTab === 'email-send' && (
@@ -267,7 +288,10 @@ const CRMManagement: React.FC = () => {
             {activeTab === 'wa-campaigns' && <WhatsAppCampaigns />}
             {activeTab === 'wa-chat' && <WhatsAppChat />}
             {activeTab === 'wa-analytics' && <WhatsAppDashboard />}
+            
+            {activeTab === 'crm-settings' && <CustomFieldsManager />}
         </AdminLayout>
+        </BulkProcessingProvider>
     );
 };
 

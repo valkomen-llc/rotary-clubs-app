@@ -24,9 +24,36 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.426.6 | 2026-05-23 (Remove Contact Directory)
-// Cache bust: 2026-05-23 22:20 (Remove Contact Directory)
+// UI V4.428.0 | 2026-05-24 (FluentCRM Audience Details)
+// Cache bust: 2026-05-24 14:00 (FluentCRM Audience Details)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.428.0',
+        date: '2026-05-24',
+        type: 'feature',
+        title: 'Navegación y Vista de Detalle de Audiencias CRM 🚀',
+        description: 'Ahora puedes hacer clic en cualquier Lista o Etiqueta para acceder inmediatamente al directorio de los contactos que pertenecen a ella, de forma similar a plataformas como HubSpot o ActiveCampaign.',
+        changes: [
+            { type: 'added', text: 'Navegación interactiva desde las tarjetas de Listas y Etiquetas hacia el detalle de sus miembros.' },
+            { type: 'added', text: 'Dashboard estadístico superior inyectado automáticamente en el directorio mostrando el total de contactos, suscritos, desuscritos y rebotados de la audiencia seleccionada.' },
+            { type: 'improved', text: 'El grid de contactos ahora filtra y pagina correctamente basándose en el parámetro dinámico de Lista o Etiqueta actual.' },
+            { type: 'fixed', text: 'Los contactos asignados a listas y etiquetas desde la selección múltiple ahora se guardan y visualizan correctamente.' }
+        ]
+    },
+    {
+        version: '4.427.0',
+        date: '2026-05-23',
+        type: 'feature',
+        title: 'Módulo CRM de Contactos Avanzado (Estilo FluentCRM) 🚀',
+        description: 'Se ha reconstruido desde cero el Directorio de Contactos para dotarlo de capacidades reales de CRM, permitiendo segmentar y clasificar contactos con etiquetas dinámicas y campos personalizados, sin depender exclusivamente de las listas de difusión.',
+        changes: [
+            { type: 'added', text: 'Gestor avanzado de Contactos con soporte a etiquetas multicolor y estados.' },
+            { type: 'added', text: 'Módulo de Etiquetas (Tags) totalmente independiente para perfilar socios (VIP, Prospecto, Presidente).' },
+            { type: 'improved', text: 'Gestor de Listas estáticas rediseñado con soporte para colores y descripciones.' },
+            { type: 'major', text: 'Desacoplamiento profundo de la base de datos para no atar los contactos al módulo de WhatsApp y permitir uso generalizado (Email Marketing, SMS, etc.).' },
+            { type: 'fixed', text: 'Corrección de errores de importación y bloqueos en el Backend durante la actualización estructural.' }
+        ]
+    },
     {
         version: '4.426.6',
         date: '2026-05-23',

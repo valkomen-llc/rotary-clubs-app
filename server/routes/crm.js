@@ -5,52 +5,20 @@
 
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
+import { getContacts, getContactById, createContact, updateContact, deleteContact } from '../controllers/crm/contacts.controller.js';
+import { getLists, getListById, createList, updateList, deleteList } from '../controllers/crm/lists.controller.js';
+import { getTags, getTagById, createTag, updateTag, deleteTag } from '../controllers/crm/tags.controller.js';
+import { getCustomFields, createCustomField, updateCustomField, deleteCustomField } from '../controllers/crm/custom-fields.controller.js';
+import { getGroups, createGroup, updateGroup, deleteGroup } from '../controllers/crm/custom-field-groups.controller.js';
+import { importContacts } from '../controllers/crm/import.controller.js';
+import { initBulkAction, processChunk, getActiveJobs } from '../controllers/crm/bulk.controller.js';
 import {
-    // Config
-    getConfig,
-    upsertConfig,
-    verifyConfig,
-    // Contacts
-    getContacts,
-    createContact,
-    updateContact,
-    archiveContact,
-    markMessagesRead,
-    deleteContact,
-    getContactMessages,
-    sendMessageToContact,
-    importContacts,
-    fixPhoneNumbers,
-    importFromLeads,
-    // Lists
-    getLists,
-    createList,
-    updateList,
-    deleteList,
-    addListMembers,
-    removeListMembers,
-    // Templates
-    getTemplates,
-    createTemplate,
-    updateTemplate,
-    deleteTemplate,
-    syncTemplatesFromMeta,
-    // Campaigns
-    getCampaigns,
-    createCampaign,
-    updateCampaign,
-    deleteCampaign,
-    sendCampaign,
-    getCampaignLogs,
-    // Analytics
-    getAnalytics,
-    // Webhook
-    verifyWebhook,
-    handleWebhook,
-    // Custom Fields
-    getCustomFields,
-    createCustomField,
-    deleteCustomField,
+    getConfig, upsertConfig, verifyConfig,
+    archiveContact, markMessagesRead, getContactMessages, sendMessageToContact, importFromLeads, fixPhoneNumbers,
+    addListMembers, removeListMembers,
+    getTemplates, createTemplate, updateTemplate, deleteTemplate, syncTemplatesFromMeta,
+    getCampaigns, createCampaign, updateCampaign, deleteCampaign, sendCampaign, getCampaignLogs,
+    getAnalytics, verifyWebhook, handleWebhook
 } from '../controllers/crmController.js';
 
 const router = express.Router();
@@ -67,7 +35,6 @@ router.get('/config', getConfig);
 router.post('/config', upsertConfig);
 router.post('/config/verify', verifyConfig);
 
-// ── Contactos ────────────────────────────────────────────────────────────
 router.get('/kill-locks', async (req, res) => {
     try {
         const db = (await import('../db.js')).default;
@@ -78,25 +45,51 @@ router.get('/kill-locks', async (req, res) => {
     }
 });
 
+// ── Contactos (NUEVO) ────────────────────────────────────────────────────
 router.get('/contacts', getContacts);
+router.get('/contacts/:id', getContactById);
 router.post('/contacts', createContact);
 router.put('/contacts/:id', updateContact);
+router.delete('/contacts/:id', deleteContact);
+
+// Rutas Legacy WhatsApp
 router.post('/contacts/:id/archive', archiveContact);
 router.post('/contacts/:id/read', markMessagesRead);
-router.delete('/contacts/:id', deleteContact);
 router.get('/contacts/:id/messages', getContactMessages);
 router.post('/contacts/:id/send', sendMessageToContact);
-router.post('/contacts/import', importContacts);           // Importar desde CSV (preprocesado)
-router.post('/contacts/import/leads', importFromLeads);   // Importar desde tabla Lead
-router.post('/fix-phones', fixPhoneNumbers);               // Corregir indicativos
+router.post('/contacts/import', importContacts);           
+router.post('/contacts/import/leads', importFromLeads);
+router.post('/contacts/bulk-action/init', initBulkAction);
+router.post('/contacts/bulk-action/process-chunk', processChunk);
+router.get('/contacts/bulk-action/active', getActiveJobs);
+router.post('/fix-phones', fixPhoneNumbers);               
 
-// ── Listas / Segmentos ───────────────────────────────────────────────────
+// ── Listas (NUEVO) ───────────────────────────────────────────────────────
 router.get('/lists', getLists);
+router.get('/lists/:id', getListById);
 router.post('/lists', createList);
 router.put('/lists/:id', updateList);
 router.delete('/lists/:id', deleteList);
-router.post('/lists/:id/members', addListMembers);
-router.delete('/lists/:id/members', removeListMembers);
+router.post('/lists/:id/members', addListMembers); // Legacy para WhatsApp (opcional)
+router.delete('/lists/:id/members', removeListMembers); // Legacy
+
+// ── Etiquetas (NUEVO) ────────────────────────────────────────────────────
+router.get('/tags', getTags);
+router.get('/tags/:id', getTagById);
+router.post('/tags', createTag);
+router.put('/tags/:id', updateTag);
+router.delete('/tags/:id', deleteTag);
+
+// ── Campos Personalizados (NUEVO) ────────────────────────────────────────
+router.get('/custom-fields', getCustomFields);
+router.post('/custom-fields', createCustomField);
+router.put('/custom-fields/:id', updateCustomField);
+router.delete('/custom-fields/:id', deleteCustomField);
+
+router.get('/custom-field-groups', getGroups);
+router.post('/custom-field-groups', createGroup);
+router.put('/custom-field-groups/:id', updateGroup);
+router.delete('/custom-field-groups/:id', deleteGroup);
 
 // ── Templates ────────────────────────────────────────────────────────────
 router.get('/templates', getTemplates);
@@ -115,11 +108,6 @@ router.get('/campaigns/:id/logs', getCampaignLogs);
 
 // ── Analytics ────────────────────────────────────────────────────────────
 router.get('/analytics', getAnalytics);
-
-// ── Campos Personalizados ────────────────────────────────────────────────
-router.get('/custom-fields', getCustomFields);
-router.post('/custom-fields', createCustomField);
-router.delete('/custom-fields/:id', deleteCustomField);
 
 // ── Media Upload for Chat ────────────────────────────────────────────────
 import { uploadWAMedia } from '../lib/storage.js';

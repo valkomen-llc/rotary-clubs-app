@@ -129,7 +129,7 @@ app.get('/api/health', async (req, res) => {
 });
 
 // ── Route loaders (Legacy Dynamic for less critical routes) ──────────────────
-let _calendar, _ai, _orders, _payments, _products, _communications, _translate, _analytics, _leads, _faqs, _agents, _siteProgress, _districts, _whatsappCRM, _platformConfig, _scoutGrants, _documents, _system, _whatsappQr, _contentStudio, _domains, _cron, _distAnalytics, _brains;
+let _calendar, _ai, _orders, _payments, _products, _communications, _translate, _analytics, _leads, _faqs, _agents, _siteProgress, _districts, _whatsappCRM, _crm, _platformConfig, _scoutGrants, _documents, _system, _whatsappQr, _contentStudio, _domains, _cron, _distAnalytics, _brains;
 const getCalendar = async () => _calendar || (({ default: _calendar } = await import('../server/routes/calendar.js')), _calendar);
 const getAI = async () => _ai || (({ default: _ai } = await import('../server/routes/ai.js')), _ai);
 const getBrains = async () => _brains || (({ default: _brains } = await import('../server/routes/brains.js')), _brains);
@@ -146,6 +146,7 @@ const getAgents = async () => _agents || (({ default: _agents } = await import('
 const getSiteProgress = async () => _siteProgress || (({ default: _siteProgress } = await import('../server/routes/site-progress.js')), _siteProgress);
 const getDistricts = async () => _districts || (({ default: _districts } = await import('../server/routes/districts.js')), _districts);
 const getWhatsAppCRM = async () => _whatsappCRM || (({ default: _whatsappCRM } = await import('../server/routes/whatsapp-crm.js')), _whatsappCRM);
+const getCRM = async () => _crm || (({ default: _crm } = await import('../server/routes/crm.js')), _crm);
 const getPlatformConfig = async () => _platformConfig || (({ default: _platformConfig } = await import('../server/routes/platform-config.js')), _platformConfig);
 
 const getDistAnalytics = async () => _distAnalytics || (({ default: _distAnalytics } = await import('../server/routes/district-analytics.js')), _distAnalytics);
@@ -218,6 +219,7 @@ app.use('/api/agents', async (req, res, next) => { try { return (await getAgents
 app.use('/api/site-progress', async (req, res, next) => { try { return (await getSiteProgress())(req, res, next); } catch (e) { console.error('API Error [site-progress]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/admin/districts', async (req, res, next) => { try { return (await getDistricts())(req, res, next); } catch (e) { console.error('API Error [districts]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/whatsapp', async (req, res, next) => { try { return (await getWhatsAppCRM())(req, res, next); } catch (e) { console.error('API Error [whatsapp]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/crm', async (req, res, next) => { try { return (await getCRM())(req, res, next); } catch (e) { console.error('API Error [crm]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/platform-config', async (req, res, next) => { try { return (await getPlatformConfig())(req, res, next); } catch (e) { console.error('API Error [platform-config]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/documents', async (req, res, next) => { try { return (await getDocuments())(req, res, next); } catch (e) { console.error('API Error [documents]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/system', async (req, res, next) => { try { return (await getSystem())(req, res, next); } catch (e) { console.error('API Error [system]:', e); res.status(500).json({ error: e.message }); } });
