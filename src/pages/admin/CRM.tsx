@@ -14,7 +14,7 @@ import WhatsAppDashboard from '../../components/admin/whatsapp/WhatsAppDashboard
 // FluentCRM Components
 import ContactsManager from '../../components/admin/crm/fluent/ContactsManager';
 import ListsManager from '../../components/admin/crm/fluent/ListsManager';
-import { BulkProcessingProvider } from '../../components/admin/crm/fluent/BulkProcessingProvider';
+
 import TagsManager from '../../components/admin/crm/fluent/TagsManager';
 import CustomFieldsManager from '../../components/admin/crm/fluent/CustomFieldsManager';
 
@@ -115,183 +115,183 @@ const CRMManagement: React.FC = () => {
     const activeColorClass = isCrmTab ? 'purple' : (isWhatsappTab ? 'green' : 'blue');
 
     return (
-        <BulkProcessingProvider>
-            <AdminLayout>
+        <AdminLayout>
+            <div className="max-w-7xl mx-auto space-y-6">
                 <div className="flex justify-between items-center mb-6">
-                <div>
-                    <h1 className="text-3xl font-black text-gray-900 tracking-tight">Comunicaciones y CRM</h1>
-                    <p className="text-gray-500 mt-1">Directorio unificado, plantillas, campañas de WhatsApp y Email Marketing.</p>
+                    <div>
+                        <h1 className="text-3xl font-black text-gray-900 tracking-tight">Comunicaciones y CRM</h1>
+                        <p className="text-gray-500 mt-1">Directorio unificado, plantillas, campañas de WhatsApp y Email Marketing.</p>
+                    </div>
                 </div>
-            </div>
 
-            {/* Channel Selector */}
-            <div className="flex flex-wrap gap-3 mb-6">
-                <button
-                    onClick={() => setActiveTab('crm-contacts')}
-                    className={`flex items-center gap-2.5 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 ${isCrmTab ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-sm' : 'border-gray-100 text-gray-500 hover:bg-gray-50'}`}
-                >
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isCrmTab ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
-                        <Users className="w-4 h-4" />
-                    </div>
-                    Directorio CRM
-                </button>
-                <button
-                    onClick={() => setActiveTab('wa-chat')}
-                    className={`flex items-center gap-2.5 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 ${isWhatsappTab ? 'border-green-500 bg-green-50 text-green-700 shadow-sm' : 'border-gray-100 text-gray-500 hover:bg-gray-50'}`}
-                >
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isWhatsappTab ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
-                        <MessageCircle className="w-4 h-4" />
-                    </div>
-                    WhatsApp CRM
-                </button>
-                <button
-                    onClick={() => setActiveTab('email-send')}
-                    className={`flex items-center gap-2.5 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 ${isEmailTab ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm' : 'border-gray-100 text-gray-500 hover:bg-gray-50'}`}
-                >
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isEmailTab ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
-                        <Mail className="w-4 h-4" />
-                    </div>
-                    Email & SMS
-                </button>
-            </div>
-
-            {/* Sub-tabs */}
-            <div className="flex gap-1 mb-8 border-b border-gray-200 pb-px overflow-x-auto">
-                {currentTabs.map(tab => (
-                    <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                        className={`px-4 py-3 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
-                            activeTab === tab.key
-                                ? `border-${activeColorClass}-500 text-${activeColorClass}-700`
-                                : 'border-transparent text-gray-500 hover:text-gray-700'
-                        }`}
+                {/* Channel Selector */}
+                <div className="flex flex-wrap gap-3 mb-6">
+                    <button
+                        onClick={() => setActiveTab('crm-contacts')}
+                        className={`flex items-center gap-2.5 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 ${isCrmTab ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-sm' : 'border-gray-100 text-gray-500 hover:bg-gray-50'}`}
                     >
-                        {tab.icon} {tab.label}
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isCrmTab ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                            <Users className="w-4 h-4" />
+                        </div>
+                        Directorio CRM
                     </button>
-                ))}
-            </div>
-
-            {/* ═══ CRM TABS ═══ */}
-            {activeTab === 'crm-contacts' && <ContactsManager />}
-            {activeTab === 'crm-lists' && <ListsManager onViewDetails={(id) => { setSelectedAudienceId(id); setActiveTab('list-detail'); }} />}
-            {activeTab === 'crm-tags' && <TagsManager onViewDetails={(id) => { setSelectedAudienceId(id); setActiveTab('tag-detail'); }} />}
-            {activeTab === 'list-detail' && selectedAudienceId && <ContactsManager audienceType="list" audienceId={selectedAudienceId} onBack={() => setActiveTab('crm-lists')} />}
-            {activeTab === 'tag-detail' && selectedAudienceId && <ContactsManager audienceType="tag" audienceId={selectedAudienceId} onBack={() => setActiveTab('crm-tags')} />}
-
-            {/* ═══ EMAIL TABS ═══ */}
-            {activeTab === 'email-send' && (
-                <div className="max-w-3xl">
-                    <form onSubmit={handleSendTest} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 space-y-6">
-                        <div className="grid grid-cols-2 gap-4">
-                            <label className={`cursor-pointer border-2 rounded-xl p-4 flex flex-col items-center gap-3 transition-colors ${sendForm.type === 'email' ? 'border-blue-500 bg-blue-50/50' : 'border-gray-100 hover:bg-gray-50'}`}>
-                                <input type="radio" value="email" checked={sendForm.type === 'email'} onChange={() => setSendForm({ ...sendForm, type: 'email' })} className="sr-only" />
-                                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${sendForm.type === 'email' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'bg-gray-100 text-gray-400'}`}><Mail className="w-6 h-6" /></div>
-                                <span className={`font-bold ${sendForm.type === 'email' ? 'text-blue-900' : 'text-gray-500'}`}>Por Correo</span>
-                            </label>
-                            <label className={`cursor-pointer border-2 rounded-xl p-4 flex flex-col items-center gap-3 transition-colors ${sendForm.type === 'whatsapp' ? 'border-green-500 bg-green-50/50' : 'border-gray-100 hover:bg-gray-50'}`}>
-                                <input type="radio" value="whatsapp" checked={sendForm.type === 'whatsapp'} onChange={() => setSendForm({ ...sendForm, type: 'whatsapp' })} className="sr-only" />
-                                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${sendForm.type === 'whatsapp' ? 'bg-green-600 text-white shadow-md shadow-green-500/30' : 'bg-gray-100 text-gray-400'}`}><MessageCircle className="w-6 h-6" /></div>
-                                <span className={`font-bold ${sendForm.type === 'whatsapp' ? 'text-green-900' : 'text-gray-500'}`}>Por WhatsApp</span>
-                            </label>
+                    <button
+                        onClick={() => setActiveTab('wa-chat')}
+                        className={`flex items-center gap-2.5 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 ${isWhatsappTab ? 'border-green-500 bg-green-50 text-green-700 shadow-sm' : 'border-gray-100 text-gray-500 hover:bg-gray-50'}`}
+                    >
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isWhatsappTab ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                            <MessageCircle className="w-4 h-4" />
                         </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Destinatario ({sendForm.type === 'email' ? 'Correo' : 'Número de Teléfono'})</label>
-                            <input type={sendForm.type === 'email' ? "email" : "text"} value={sendForm.recipient} onChange={(e) => setSendForm({ ...sendForm, recipient: e.target.value })} required
-                                className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-rotary-blue outline-none" placeholder={sendForm.type === 'email' ? 'ejemplo@rotary.org' : '+1234567890'} />
+                        WhatsApp CRM
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('email-send')}
+                        className={`flex items-center gap-2.5 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 ${isEmailTab ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm' : 'border-gray-100 text-gray-500 hover:bg-gray-50'}`}
+                    >
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isEmailTab ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                            <Mail className="w-4 h-4" />
                         </div>
-                        {sendForm.type === 'email' && (
+                        Email & SMS
+                    </button>
+                </div>
+
+                {/* Sub-tabs */}
+                <div className="flex gap-1 mb-8 border-b border-gray-200 pb-px overflow-x-auto">
+                    {currentTabs.map(tab => (
+                        <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                            className={`px-4 py-3 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+                                activeTab === tab.key
+                                    ? `border-${activeColorClass}-500 text-${activeColorClass}-700`
+                                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                            }`}
+                        >
+                            {tab.icon} {tab.label}
+                        </button>
+                    ))}
+                </div>
+
+                {/* ═══ CRM TABS ═══ */}
+                {activeTab === 'crm-contacts' && <ContactsManager />}
+                {activeTab === 'crm-lists' && <ListsManager onViewDetails={(id) => { setSelectedAudienceId(id); setActiveTab('list-detail'); }} />}
+                {activeTab === 'crm-tags' && <TagsManager onViewDetails={(id) => { setSelectedAudienceId(id); setActiveTab('tag-detail'); }} />}
+                {activeTab === 'list-detail' && selectedAudienceId && <ContactsManager audienceType="list" audienceId={selectedAudienceId} onBack={() => setActiveTab('crm-lists')} />}
+                {activeTab === 'tag-detail' && selectedAudienceId && <ContactsManager audienceType="tag" audienceId={selectedAudienceId} onBack={() => setActiveTab('crm-tags')} />}
+
+                {/* ═══ EMAIL TABS ═══ */}
+                {activeTab === 'email-send' && (
+                    <div className="max-w-3xl">
+                        <form onSubmit={handleSendTest} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 space-y-6">
+                            <div className="grid grid-cols-2 gap-4">
+                                <label className={`cursor-pointer border-2 rounded-xl p-4 flex flex-col items-center gap-3 transition-colors ${sendForm.type === 'email' ? 'border-blue-500 bg-blue-50/50' : 'border-gray-100 hover:bg-gray-50'}`}>
+                                    <input type="radio" value="email" checked={sendForm.type === 'email'} onChange={() => setSendForm({ ...sendForm, type: 'email' })} className="sr-only" />
+                                    <div className={`w-12 h-12 rounded-full flex items-center justify-center ${sendForm.type === 'email' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'bg-gray-100 text-gray-400'}`}><Mail className="w-6 h-6" /></div>
+                                    <span className={`font-bold ${sendForm.type === 'email' ? 'text-blue-900' : 'text-gray-500'}`}>Por Correo</span>
+                                </label>
+                                <label className={`cursor-pointer border-2 rounded-xl p-4 flex flex-col items-center gap-3 transition-colors ${sendForm.type === 'whatsapp' ? 'border-green-500 bg-green-50/50' : 'border-gray-100 hover:bg-gray-50'}`}>
+                                    <input type="radio" value="whatsapp" checked={sendForm.type === 'whatsapp'} onChange={() => setSendForm({ ...sendForm, type: 'whatsapp' })} className="sr-only" />
+                                    <div className={`w-12 h-12 rounded-full flex items-center justify-center ${sendForm.type === 'whatsapp' ? 'bg-green-600 text-white shadow-md shadow-green-500/30' : 'bg-gray-100 text-gray-400'}`}><MessageCircle className="w-6 h-6" /></div>
+                                    <span className={`font-bold ${sendForm.type === 'whatsapp' ? 'text-green-900' : 'text-gray-500'}`}>Por WhatsApp</span>
+                                </label>
+                            </div>
                             <div>
-                                <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Asunto (Subject)</label>
-                                <input type="text" value={sendForm.subject} onChange={(e) => setSendForm({ ...sendForm, subject: e.target.value })} required={sendForm.type === 'email'}
-                                    className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-rotary-blue outline-none" placeholder="Comunicado Importante" />
+                                <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Destinatario ({sendForm.type === 'email' ? 'Correo' : 'Número de Teléfono'})</label>
+                                <input type={sendForm.type === 'email' ? "email" : "text"} value={sendForm.recipient} onChange={(e) => setSendForm({ ...sendForm, recipient: e.target.value })} required
+                                    className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-rotary-blue outline-none" placeholder={sendForm.type === 'email' ? 'ejemplo@rotary.org' : '+1234567890'} />
                             </div>
-                        )}
-                        <div>
-                            <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Mensaje</label>
-                            <textarea value={sendForm.content} onChange={(e) => setSendForm({ ...sendForm, content: e.target.value })} required rows={6}
-                                className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-rotary-blue outline-none resize-none" placeholder="Escribe el mensaje aquí..." />
-                        </div>
-                        <div className="flex justify-end pt-4 border-t border-gray-100">
-                            <button type="submit" disabled={loading}
-                                className="flex items-center gap-2 bg-rotary-blue text-white px-8 py-3 rounded-xl font-bold hover:bg-sky-800 transition-all shadow-lg active:scale-95 disabled:opacity-50">
-                                <Send className="w-5 h-5" /> {loading ? 'Enviando...' : `Disparar ${sendForm.type === 'email' ? 'Correo' : 'Mensaje'}`}
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            )}
-
-            {activeTab === 'email-logs' && (
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                    <div className="p-4 border-b border-gray-100 bg-gray-50 flex flex-wrap gap-4 items-center justify-between">
-                        <div className="relative">
-                            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                            <input type="text" placeholder="Buscar destinatario..." className="pl-9 pr-4 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rotary-blue w-64" />
-                        </div>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead><tr className="border-b border-gray-100 text-xs font-bold text-gray-400 uppercase tracking-wider">
-                                <th className="p-4">Tipo</th><th className="p-4">Destino</th><th className="p-4">Asunto / Previsualización</th><th className="p-4">Estado</th><th className="p-4">Fecha</th>
-                            </tr></thead>
-                            <tbody className="divide-y divide-gray-50 text-sm">
-                                {logs.length === 0 ? (
-                                    <tr><td colSpan={5} className="p-8 text-center text-gray-500">No hay registros de envío todavía.</td></tr>
-                                ) : logs.map((log) => (
-                                    <tr key={log.id} className="hover:bg-gray-50/50 transition-colors">
-                                        <td className="p-4">
-                                            {log.type === 'email' ? <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600"><Mail className="w-4 h-4" /></div>
-                                                : <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center text-green-600"><MessageCircle className="w-4 h-4" /></div>}
-                                        </td>
-                                        <td className="p-4 font-medium text-gray-900">{log.recipient}</td>
-                                        <td className="p-4 text-gray-500 truncate max-w-[200px]">{log.subject || log.content?.substring(0, 40) + '...'}</td>
-                                        <td className="p-4">
-                                            {log.status === 'sent' ? (
-                                                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold text-xs w-max"><CheckCircle2 className="w-3.5 h-3.5" /> Exitoso</span>
-                                            ) : (
-                                                <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 font-bold text-xs w-max" title={log.errorMsg}><XCircle className="w-3.5 h-3.5" /> Fallido</span>
-                                            )}
-                                        </td>
-                                        <td className="p-4 text-gray-500 whitespace-nowrap">{new Date(log.createdAt).toLocaleString()}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-
-            {activeTab === 'email-templates' && (
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
-                    <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4"><ClipboardList className="w-8 h-8" /></div>
-                    <h2 className="text-xl font-bold text-gray-900 mb-2">Plantillas y Workflows</h2>
-                    <p className="text-gray-500 max-w-md mx-auto mb-6">Administra los correos de bienvenida de nuevos miembros, los recibos automáticos y recordatorios.</p>
-                    <button className="bg-gray-900 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-sm shadow-gray-900/20 active:scale-95 transition-all">Crear nueva plantilla</button>
-                    <div className="mt-8 text-left grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {emailTemplates.map(tpl => (
-                            <div key={tpl.id} className="border border-gray-100 p-4 rounded-xl flex justify-between items-center group hover:border-blue-200 transition-colors cursor-pointer">
+                            {sendForm.type === 'email' && (
                                 <div>
-                                    <div className="flex items-center gap-2 mb-1">
-                                        {tpl.type === 'email' ? <Mail className="w-4 h-4 text-gray-400" /> : <MessageCircle className="w-4 h-4 text-gray-400" />}
-                                        <p className="font-bold text-gray-900">{tpl.name}</p>
-                                    </div>
-                                    <p className="text-xs text-gray-500 truncate">{tpl.subject || tpl.content?.substring(0, 30)}</p>
+                                    <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Asunto (Subject)</label>
+                                    <input type="text" value={sendForm.subject} onChange={(e) => setSendForm({ ...sendForm, subject: e.target.value })} required={sendForm.type === 'email'}
+                                        className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-rotary-blue outline-none" placeholder="Comunicado Importante" />
                                 </div>
+                            )}
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Mensaje</label>
+                                <textarea value={sendForm.content} onChange={(e) => setSendForm({ ...sendForm, content: e.target.value })} required rows={6}
+                                    className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-rotary-blue outline-none resize-none" placeholder="Escribe el mensaje aquí..." />
                             </div>
-                        ))}
+                            <div className="flex justify-end pt-4 border-t border-gray-100">
+                                <button type="submit" disabled={loading}
+                                    className="flex items-center gap-2 bg-rotary-blue text-white px-8 py-3 rounded-xl font-bold hover:bg-sky-800 transition-all shadow-lg active:scale-95 disabled:opacity-50">
+                                    <Send className="w-5 h-5" /> {loading ? 'Enviando...' : `Disparar ${sendForm.type === 'email' ? 'Correo' : 'Mensaje'}`}
+                                </button>
+                            </div>
+                        </form>
                     </div>
-                </div>
-            )}
+                )}
 
-            {/* ═══ WHATSAPP TABS ═══ */}
-            {activeTab === 'wa-config' && <WhatsAppConfig />}
-            {activeTab === 'wa-templates' && <WhatsAppTemplates />}
-            {activeTab === 'wa-campaigns' && <WhatsAppCampaigns />}
-            {activeTab === 'wa-chat' && <WhatsAppChat />}
-            {activeTab === 'wa-analytics' && <WhatsAppDashboard />}
-            
-            {activeTab === 'crm-settings' && <CustomFieldsManager />}
+                {activeTab === 'email-logs' && (
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                        <div className="p-4 border-b border-gray-100 bg-gray-50 flex flex-wrap gap-4 items-center justify-between">
+                            <div className="relative">
+                                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                <input type="text" placeholder="Buscar destinatario..." className="pl-9 pr-4 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-rotary-blue w-64" />
+                            </div>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead><tr className="border-b border-gray-100 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                                    <th className="p-4">Tipo</th><th className="p-4">Destino</th><th className="p-4">Asunto / Previsualización</th><th className="p-4">Estado</th><th className="p-4">Fecha</th>
+                                </tr></thead>
+                                <tbody className="divide-y divide-gray-50 text-sm">
+                                    {logs.length === 0 ? (
+                                        <tr><td colSpan={5} className="p-8 text-center text-gray-500">No hay registros de envío todavía.</td></tr>
+                                    ) : logs.map((log) => (
+                                        <tr key={log.id} className="hover:bg-gray-50/50 transition-colors">
+                                            <td className="p-4">
+                                                {log.type === 'email' ? <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600"><Mail className="w-4 h-4" /></div>
+                                                    : <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center text-green-600"><MessageCircle className="w-4 h-4" /></div>}
+                                            </td>
+                                            <td className="p-4 font-medium text-gray-900">{log.recipient}</td>
+                                            <td className="p-4 text-gray-500 truncate max-w-[200px]">{log.subject || log.content?.substring(0, 40) + '...'}</td>
+                                            <td className="p-4">
+                                                {log.status === 'sent' ? (
+                                                    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold text-xs w-max"><CheckCircle2 className="w-3.5 h-3.5" /> Exitoso</span>
+                                                ) : (
+                                                    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 font-bold text-xs w-max" title={log.errorMsg}><XCircle className="w-3.5 h-3.5" /> Fallido</span>
+                                                )}
+                                            </td>
+                                            <td className="p-4 text-gray-500 whitespace-nowrap">{new Date(log.createdAt).toLocaleString()}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'email-templates' && (
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
+                        <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4"><ClipboardList className="w-8 h-8" /></div>
+                        <h2 className="text-xl font-bold text-gray-900 mb-2">Plantillas y Workflows</h2>
+                        <p className="text-gray-500 max-w-md mx-auto mb-6">Administra los correos de bienvenida de nuevos miembros, los recibos automáticos y recordatorios.</p>
+                        <button className="bg-gray-900 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-sm shadow-gray-900/20 active:scale-95 transition-all">Crear nueva plantilla</button>
+                        <div className="mt-8 text-left grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {emailTemplates.map(tpl => (
+                                <div key={tpl.id} className="border border-gray-100 p-4 rounded-xl flex justify-between items-center group hover:border-blue-200 transition-colors cursor-pointer">
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            {tpl.type === 'email' ? <Mail className="w-4 h-4 text-gray-400" /> : <MessageCircle className="w-4 h-4 text-gray-400" />}
+                                            <p className="font-bold text-gray-900">{tpl.name}</p>
+                                        </div>
+                                        <p className="text-xs text-gray-500 truncate">{tpl.subject || tpl.content?.substring(0, 30)}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* ═══ WHATSAPP TABS ═══ */}
+                {activeTab === 'wa-config' && <WhatsAppConfig />}
+                {activeTab === 'wa-templates' && <WhatsAppTemplates />}
+                {activeTab === 'wa-campaigns' && <WhatsAppCampaigns />}
+                {activeTab === 'wa-chat' && <WhatsAppChat />}
+                {activeTab === 'wa-analytics' && <WhatsAppDashboard />}
+                
+                {activeTab === 'crm-settings' && <CustomFieldsManager />}
+            </div>
         </AdminLayout>
-        </BulkProcessingProvider>
     );
 };
 
