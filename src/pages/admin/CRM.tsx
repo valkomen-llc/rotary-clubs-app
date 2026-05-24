@@ -118,15 +118,6 @@ const CRMManagement: React.FC = () => {
             {/* Channel Selector */}
             <div className="flex flex-wrap gap-3 mb-6">
                 <button
-                    onClick={() => setActiveTab('crm-contacts')}
-                    className={`flex items-center gap-2.5 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 ${isCrmTab ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-sm' : 'border-gray-100 text-gray-500 hover:bg-gray-50'}`}
-                >
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isCrmTab ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
-                        <Users className="w-4 h-4" />
-                    </div>
-                    Directorio de Contactos
-                </button>
-                <button
                     onClick={() => setActiveTab('wa-chat')}
                     className={`flex items-center gap-2.5 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 ${isWhatsappTab ? 'border-green-500 bg-green-50 text-green-700 shadow-sm' : 'border-gray-100 text-gray-500 hover:bg-gray-50'}`}
                 >

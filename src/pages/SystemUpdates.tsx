@@ -24,9 +24,20 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.426.5 | 2026-05-23 (Fix: Tags implementation and Vercel routing)
-// Cache bust: 2026-05-23 15:26 (Fix: Tags implementation and Vercel routing)
+// UI V4.426.6 | 2026-05-23 (Remove Contact Directory)
+// Cache bust: 2026-05-23 22:20 (Remove Contact Directory)
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.426.6',
+        date: '2026-05-23',
+        type: 'feature',
+        title: 'Módulo Directorio Retirado',
+        description: 'Se ha retirado temporalmente el módulo de Directorio de Contactos para construirlo bajo una nueva perspectiva.',
+        changes: [
+            'Retiro del acceso a la herramienta Directorio de Contactos.',
+            'Limpieza del componente CRM.tsx'
+        ]
+    },
     {
         version: '4.426.5',
         date: '2026-05-23',

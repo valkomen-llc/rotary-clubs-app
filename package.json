@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.426.5",
-  "cache_bust": "2026-05-23 15:26 (Fix: Tags implementation and Vercel routing)",
+  "version": "4.426.6",
+  "cache_bust": "2026-05-23 22:20 (Remove Contact Directory)",
   "type": "module",
-  "//": "UI V4.426.5 | 2026-05-23 (Fix: Tags implementation and Vercel routing)",
+  "//": "UI V4.426.6 | 2026-05-23 (Remove Contact Directory)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
