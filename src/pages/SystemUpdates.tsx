@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.436.9 | 2026-05-25 (WhatsApp CRM Safe Tag Processing Hotfix)
-// Cache bust: 2026-05-25 15:45
+// UI V4.436.10 | 2026-05-25 (WhatsApp CRM Virtual Tag-based Lists Integration)
+// Cache bust: 2026-05-25 16:10
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.436.10',
+        title: 'Feature: Listas Virtuales basadas en Etiquetas (Tags) para Campañas de WhatsApp CRM 🚀',
+        date: new Date().toISOString(),
+        description: 'Se ha implementado una integración premium y transparente que unifica las Listas y las Etiquetas de Fluent CRM en el módulo de WhatsApp. Ahora, todas las etiquetas del Directorio CRM (como la etiqueta de "Presidentes") se auto-mapean dinámicamente como listas virtuales en el selector de campañas de WhatsApp con el prefijo "Etiqueta:". El backend se rediseñó para contar y resolver los contactos correspondientes en tiempo de ejecución de forma nativa a través de consultas seguras de arreglos PostgreSQL ($2 = ANY(tags)), permitiendo enfocar las campañas masivas de WhatsApp de forma granular usando etiquetas o listas de manera indistinta.',
+        tags: ['whatsapp', 'crm', 'campaigns', 'tags', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.436.9',
         title: 'Fix: Procesamiento Robusto y Adaptativo de Etiquetas (Tags) en WhatsApp CRM 🚀',

@@ -292,7 +292,16 @@ export const getContacts = async (req, res) => {
         }
 
         let joinClause = '';
-        if (listId) { joinClause = `JOIN "WhatsAppListMember" m ON m."contactId"=c.id AND m."listId"=$${idx++}`; params.push(listId); }
+        if (listId) {
+            if (listId.startsWith('tag:')) {
+                const tagName = listId.replace('tag:', '');
+                where.push(`$${idx++} = ANY(c.tags)`);
+                params.push(tagName);
+            } else {
+                joinClause = `JOIN "WhatsAppListMember" m ON m."contactId"=c.id AND m."listId"=$${idx++}`;
+                params.push(listId);
+            }
+        }
 
         const countR = await db.query(
             `SELECT COUNT(*) FROM "WhatsAppContact" c ${joinClause} WHERE ${where.join(' AND ')}`, params
@@ -711,7 +720,66 @@ export const getLists = async (req, res) => {
                 [clubId]
             );
         }
-        res.json({ lists: r.rows });
+
+        // Fetch tags from contacts
+        let tags = [];
+        try {
+            const tagsR = await db.query(
+                `SELECT DISTINCT unnest(tags) as tag FROM "WhatsAppContact" WHERE "clubId"=$1`,
+                [clubId]
+            );
+            tags = tagsR.rows.map(row => row.tag).filter(Boolean);
+        } catch (tagErr) {
+            console.warn('getLists tag fetching failed:', tagErr.message);
+        }
+
+        // Fetch explicit tags from settings
+        let explicitTags = [];
+        try {
+            const settingsR = await db.query(
+                `SELECT value FROM "Setting" WHERE "clubId"=$1 AND key='crm_tags' LIMIT 1`,
+                [clubId]
+            );
+            if (settingsR.rows.length && settingsR.rows[0].value) {
+                const parsed = JSON.parse(settingsR.rows[0].value);
+                if (Array.isArray(parsed)) {
+                    explicitTags = parsed.map(t => typeof t === 'string' ? t : (t.name || t.label || String(t))).filter(Boolean);
+                }
+            }
+        } catch (settingsErr) {
+            console.warn('getLists explicit tag fetching failed:', settingsErr.message);
+        }
+
+        const allTagNames = Array.from(new Set([...explicitTags, ...tags]));
+
+        // Generate virtual lists for tags
+        const virtualLists = [];
+        for (const tagName of allTagNames) {
+            let count = 0;
+            try {
+                const countR = await db.query(
+                    `SELECT COUNT(*)::int as cnt FROM "WhatsAppContact" WHERE "clubId"=$1 AND status='active' AND $2 = ANY(tags)`,
+                    [clubId, tagName]
+                );
+                count = countR.rows[0]?.cnt || 0;
+            } catch (cntErr) {
+                console.warn(`Count failed for tag ${tagName}:`, cntErr.message);
+            }
+
+            virtualLists.push({
+                id: `tag:${tagName}`,
+                clubId,
+                name: `Etiqueta: ${tagName}`,
+                description: `Contactos etiquetados con "${tagName}"`,
+                color: '#10B981', // green badge style
+                memberCount: count,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                isTag: true
+            });
+        }
+
+        res.json({ lists: [...r.rows, ...virtualLists] });
     } catch (err) {
         console.error('WA getLists:', err);
         res.status(500).json({ error: err.message });
@@ -968,7 +1036,17 @@ export const getCampaigns = async (req, res) => {
              WHERE c."clubId"=$1 ORDER BY c."createdAt" DESC`,
             [clubId]
         );
-        res.json(r.rows);
+        const mapped = r.rows.map(c => {
+            if (c.listId && c.listId.startsWith('tag:')) {
+                const tagName = c.listId.replace('tag:', '');
+                return {
+                    ...c,
+                    listName: `Etiqueta: ${tagName}`
+                };
+            }
+            return c;
+        });
+        res.json(mapped);
     } catch (err) {
         console.error('WA getCampaigns:', err);
         res.status(500).json({ error: err.message });
@@ -1050,13 +1128,24 @@ export const sendCampaign = async (req, res) => {
         if (template.status !== 'approved')
             return res.status(400).json({ error: 'Solo se pueden enviar templates aprobados por Meta' });
 
-        const contactsR = await db.query(
-            `SELECT c.* FROM "WhatsAppContact" c JOIN "WhatsAppListMember" m ON m."contactId"=c.id
-             WHERE m."listId"=$1 AND c.status='active'`,
-            [campaign.listId]
-        );
-        const contacts = contactsR.rows;
-        if (!contacts.length) return res.status(400).json({ error: 'La lista no tiene contactos activos' });
+        let contacts;
+        if (campaign.listId && campaign.listId.startsWith('tag:')) {
+            const tagName = campaign.listId.replace('tag:', '');
+            const contactsR = await db.query(
+                `SELECT * FROM "WhatsAppContact"
+                 WHERE "clubId"=$1 AND status='active' AND $2 = ANY(tags)`,
+                [clubId, tagName]
+            );
+            contacts = contactsR.rows;
+        } else {
+            const contactsR = await db.query(
+                `SELECT c.* FROM "WhatsAppContact" c JOIN "WhatsAppListMember" m ON m."contactId"=c.id
+                 WHERE m."listId"=$1 AND c.status='active'`,
+                [campaign.listId]
+            );
+            contacts = contactsR.rows;
+        }
+        if (!contacts.length) return res.status(400).json({ error: 'La lista/etiqueta no tiene contactos activos' });
 
         await db.query(
             `UPDATE "WhatsAppCampaign" SET status='sending',"totalContacts"=$1,"sentAt"=NOW(),"updatedAt"=NOW() WHERE id=$2`,
