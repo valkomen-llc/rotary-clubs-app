@@ -29,11 +29,30 @@ interface Message {
     localUrl?: string; // Cache for immediate local preview
 }
 
+interface Community {
+    id: string;
+    subject: string;
+    isCommunity: boolean;
+    isCommunityAnnounce: boolean;
+    subgroups: {
+        id: string;
+        subject: string;
+        creation: number;
+        owner: string;
+        size: number;
+    }[];
+}
+
 const prettySize = (bytes: number) => {
     if (!bytes) return '';
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const normalizeJid = (phone: string) => {
+    const clean = phone.replace(/[^0-9]/g, '');
+    return clean.includes('@') ? clean : `${clean}@s.whatsapp.net`;
 };
 
 const MediaLoader: React.FC<{ chatId: string; messageId: string; token: string | null; localUrl?: string; localType?: string; filename?: string; mimetype?: string }> = ({ chatId, messageId, token, localUrl: initialLocalUrl, localType: initialLocalType, filename, mimetype }) => {
@@ -226,6 +245,21 @@ const WhatsAppQR: React.FC = () => {
     const [importError, setImportError] = useState('');
     const [importResult, setImportResult] = useState<any | null>(null);
     const [defaultCountryCode, setDefaultCountryCode] = useState('57');
+
+    // Communities States
+    const [sidebarTab, setSidebarTab] = useState<'chats' | 'communities'>('chats');
+    const [communities, setCommunities] = useState<Community[]>([]);
+    const [loadingCommunities, setLoadingCommunities] = useState(false);
+    const [expandedCommunities, setExpandedCommunities] = useState<Record<string, boolean>>({});
+    
+    // Group Admin Editing States
+    const [isGroupAdmin, setIsGroupAdmin] = useState(false);
+    const [showEditGroup, setShowEditGroup] = useState(false);
+    const [editingGroupName, setEditingGroupName] = useState('');
+    const [editingGroupDesc, setEditingGroupDesc] = useState('');
+    const [editingGroupParticipants, setEditingGroupParticipants] = useState<string[]>([]);
+    const [updatingGroup, setUpdatingGroup] = useState(false);
+    const [editGroupError, setEditGroupError] = useState('');
 
     // Fetch CRM contacts, lists, and tags for group creation
     const fetchCrmData = async () => {
@@ -865,6 +899,162 @@ const WhatsAppQR: React.FC = () => {
         setLoadingAction(false);
     };
 
+    const fetchCommunities = async () => {
+        if (status !== 'CONNECTED' || !token) return;
+        setLoadingCommunities(true);
+        try {
+            const res = await fetch(`${API}/whatsapp-qr/communities?_t=${Date.now()}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache'
+                }
+            });
+            const data = await res.json();
+            if (data.success && Array.isArray(data.communities)) {
+                setCommunities(data.communities);
+            }
+        } catch (e) {
+            console.error('Error fetching WhatsApp communities:', e);
+        }
+        setLoadingCommunities(false);
+    };
+
+    // Auto-fetch communities when status changes to CONNECTED or sidebarTab switches to communities
+    useEffect(() => {
+        if (status === 'CONNECTED' && sidebarTab === 'communities') {
+            fetchCommunities();
+        }
+    }, [status, sidebarTab, token]);
+
+    // Fetch group admin status when a group is selected
+    useEffect(() => {
+        const checkAdminStatus = async () => {
+            if (!selectedChat || !selectedChat.isGroup || !token) {
+                setIsGroupAdmin(false);
+                return;
+            }
+            try {
+                const res = await fetch(`${API}/whatsapp-qr/groups/${encodeURIComponent(selectedChat.id)}/admin-status`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.success) {
+                        setIsGroupAdmin(data.isAdmin);
+                        setEditingGroupName(data.subject || selectedChat.name);
+                        setEditingGroupDesc(data.description || '');
+                        const pJids = Array.isArray(data.participants) ? data.participants.map((p: any) => p.id || p.jid).filter(Boolean) : [];
+                        setEditingGroupParticipants(pJids);
+                    }
+                }
+            } catch (e) {
+                console.error('Error checking group admin status:', e);
+                setIsGroupAdmin(false);
+            }
+        };
+        
+        checkAdminStatus();
+    }, [selectedChat, token]);
+
+    const handleEditGroupSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedChat) return;
+        setEditGroupError('');
+        setUpdatingGroup(true);
+        try {
+            const metaRes = await fetch(`${API}/whatsapp-qr/groups/${encodeURIComponent(selectedChat.id)}/metadata`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    subject: editingGroupName,
+                    description: editingGroupDesc
+                })
+            });
+            
+            if (!metaRes.ok) {
+                const errData = await metaRes.json().catch(() => ({}));
+                setEditGroupError(errData.error || 'Error al actualizar metadatos del grupo.');
+                setUpdatingGroup(false);
+                return;
+            }
+
+            setSelectedChat(prev => prev ? { ...prev, name: editingGroupName } : null);
+            setChats(prev => prev.map(c => c.id === selectedChat.id ? { ...c, name: editingGroupName } : c));
+            if (sidebarTab === 'communities') {
+                fetchCommunities();
+            } else {
+                fetchChats();
+            }
+
+            toast.success('Grupo actualizado exitosamente');
+            setShowEditGroup(false);
+        } catch (err: any) {
+            console.error('Error updating group:', err);
+            setEditGroupError('Error de red al actualizar el grupo.');
+        }
+        setUpdatingGroup(false);
+    };
+
+    const handleRemoveParticipant = async (participantJid: string) => {
+        if (!selectedChat) return;
+        try {
+            const res = await fetch(`${API}/whatsapp-qr/groups/${encodeURIComponent(selectedChat.id)}/participants`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: 'remove',
+                    participants: [participantJid]
+                })
+            });
+            if (res.ok) {
+                toast.success('Participante eliminado');
+                setEditingGroupParticipants(prev => prev.filter(p => p !== participantJid));
+            } else {
+                const data = await res.json().catch(() => ({}));
+                toast.error(data.error || 'Error al eliminar participante');
+            }
+        } catch (e) {
+            toast.error('Error de red al eliminar participante');
+        }
+    };
+
+    const handleAddSelectedParticipants = async () => {
+        if (!selectedChat || groupParticipants.length === 0) return;
+        try {
+            const res = await fetch(`${API}/whatsapp-qr/groups/${encodeURIComponent(selectedChat.id)}/participants`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: 'add',
+                    participants: groupParticipants
+                })
+            });
+            if (res.ok) {
+                toast.success('Participante(s) añadido(s)');
+                setEditingGroupParticipants(prev => {
+                    const set = new Set([...prev, ...groupParticipants.map(normalizeJid)]);
+                    return Array.from(set);
+                });
+                setGroupParticipants([]);
+            } else {
+                const data = await res.json().catch(() => ({}));
+                toast.error(data.error || 'Error al añadir participante(s)');
+            }
+        } catch (e) {
+            toast.error('Error de red al añadir participante(s)');
+        }
+    };
+
     // CRM Fetchers
     const fetchChats = async () => {
         if (status !== 'CONNECTED') return;
@@ -1404,84 +1594,210 @@ const WhatsAppQR: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* CRM Metrics Grid */}
-                            <div className="px-3 py-3 bg-white grid grid-cols-2 gap-2.5 border-b border-gray-100">
-                                <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-2.5 flex flex-col items-center justify-center text-center">
-                                    <div className="flex items-center gap-1.5 text-emerald-600 mb-0.5">
-                                        <Clock className="w-3.5 h-3.5" />
-                                        <span className="text-[10px] font-bold uppercase tracking-tight">Pendientes</span>
-                                    </div>
-                                    <span className="text-xl font-black text-emerald-700 leading-none">{totalUnreadChats}</span>
-                                </div>
-                                <div className="bg-blue-50 border border-blue-100 rounded-xl p-2.5 flex flex-col items-center justify-center text-center">
-                                    <div className="flex items-center gap-1.5 text-blue-600 mb-0.5">
-                                        <CheckCheck className="w-3.5 h-3.5" />
-                                        <span className="text-[10px] font-bold uppercase tracking-tight">Gestionados</span>
-                                    </div>
-                                    <span className="text-xl font-black text-blue-700 leading-none">{resolvedChats}</span>
-                                </div>
+                            {/* Tab Switcher */}
+                            <div className="px-4 py-2 bg-white flex border-b border-gray-150 gap-2">
+                                <button
+                                    onClick={() => setSidebarTab('chats')}
+                                    className={`flex-1 py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${sidebarTab === 'chats' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}
+                                >
+                                    <MessageSquare className="w-3.5 h-3.5" />
+                                    Mensajes
+                                </button>
+                                <button
+                                    onClick={() => setSidebarTab('communities')}
+                                    className={`flex-1 py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${sidebarTab === 'communities' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}
+                                >
+                                    <Users className="w-3.5 h-3.5" />
+                                    Comunidades
+                                </button>
                             </div>
 
-                            <div className="p-3 border-b border-gray-100 bg-white">
-                                <div className="relative">
-                                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                                    <input
-                                        type="text"
-                                        placeholder="Buscar chat o grupo..."
-                                        value={searchTerm}
-                                        onChange={(e) => setSearchTerm(e.target.value)}
-                                        className="w-full bg-gray-100 border-none rounded-xl py-2 pl-9 pr-4 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-                                    />
-                                </div>
-                            </div>
+                            {sidebarTab === 'chats' ? (
+                                <>
+                                    {/* CRM Metrics Grid */}
+                                    <div className="px-3 py-3 bg-white grid grid-cols-2 gap-2.5 border-b border-gray-100">
+                                        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-2.5 flex flex-col items-center justify-center text-center">
+                                            <div className="flex items-center gap-1.5 text-emerald-600 mb-0.5">
+                                                <Clock className="w-3.5 h-3.5" />
+                                                <span className="text-[10px] font-bold uppercase tracking-tight">Pendientes</span>
+                                            </div>
+                                            <span className="text-xl font-black text-emerald-700 leading-none">{totalUnreadChats}</span>
+                                        </div>
+                                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-2.5 flex flex-col items-center justify-center text-center">
+                                            <div className="flex items-center gap-1.5 text-blue-600 mb-0.5">
+                                                <CheckCheck className="w-3.5 h-3.5" />
+                                                <span className="text-[10px] font-bold uppercase tracking-tight">Gestionados</span>
+                                            </div>
+                                            <span className="text-xl font-black text-blue-700 leading-none">{resolvedChats}</span>
+                                        </div>
+                                    </div>
 
-                            <div className="flex-1 overflow-y-auto">
-                                {loadingChats && chats.length === 0 ? (
-                                    <div className="flex flex-col items-center justify-center h-40 text-gray-400">
-                                        <Loader className="w-6 h-6 animate-spin mb-2" />
-                                        <span className="text-xs">Sincronizando chats...</span>
+                                    <div className="p-3 border-b border-gray-100 bg-white">
+                                        <div className="relative">
+                                            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                            <input
+                                                type="text"
+                                                placeholder="Buscar chat o grupo..."
+                                                value={searchTerm}
+                                                onChange={(e) => setSearchTerm(e.target.value)}
+                                                className="w-full bg-gray-100 border-none rounded-xl py-2 pl-9 pr-4 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                                            />
+                                        </div>
                                     </div>
-                                ) : (
-                                    <div className="divide-y divide-gray-100">
-                                        {filteredChats.map(chat => (
-                                            <button
-                                                key={chat.id}
-                                                onClick={() => { setMessages([]); setSelectedChat(chat); fetchMessages(chat.id); }}
-                                                className={`w-full text-left p-4 hover:bg-gray-50 flex items-center gap-3 transition-colors ${selectedChat?.id === chat.id ? 'bg-emerald-50 hover:bg-emerald-50' : ''}`}
-                                            >
-                                                <div className={`w-12 h-12 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center font-bold text-white shadow-sm ${chat.isGroup ? 'bg-indigo-500' : 'bg-emerald-500'}`}>
-                                                    <img
-                                                        src={`${API}/whatsapp-qr/chats/${encodeURIComponent(chat.id)}/image?token=${token}`}
-                                                        alt={chat.name}
-                                                        className="w-full h-full object-cover"
-                                                        onError={(e) => {
-                                                            const target = e.target as HTMLImageElement;
-                                                            target.style.display = 'none';
-                                                            if (target.parentElement) {
-                                                                target.parentElement.innerHTML = chat.isGroup ? `<div class="w-full h-full flex items-center justify-center">G</div>` : `<div class="w-full h-full flex items-center justify-center">${chat.name.substring(0, 2).toUpperCase()}</div>`;
-                                                            }
-                                                        }}
-                                                    />
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center justify-between mb-1">
-                                                        <span className="font-bold text-gray-900 truncate pr-2 text-sm">{chat.name}</span>
-                                                        <span className="text-[10px] text-gray-400 font-medium">{new Date(chat.timestamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                                                    </div>
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xs text-gray-500 truncate min-h-[16px]">{chat.isGroup ? 'Grupo Distrital' : 'Contacto Directo'}</span>
-                                                        {chat.unreadCount > 0 && (
-                                                            <span className="bg-emerald-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-                                                                {chat.unreadCount}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </button>
-                                        ))}
+
+                                    <div className="flex-1 overflow-y-auto">
+                                        {loadingChats && chats.length === 0 ? (
+                                            <div className="flex flex-col items-center justify-center h-40 text-gray-400">
+                                                <Loader className="w-6 h-6 animate-spin mb-2" />
+                                                <span className="text-xs">Sincronizando chats...</span>
+                                            </div>
+                                        ) : (
+                                            <div className="divide-y divide-gray-100">
+                                                {filteredChats.map(chat => (
+                                                    <button
+                                                        key={chat.id}
+                                                        onClick={() => { setMessages([]); setSelectedChat(chat); fetchMessages(chat.id); }}
+                                                        className={`w-full text-left p-4 hover:bg-gray-50 flex items-center gap-3 transition-colors ${selectedChat?.id === chat.id ? 'bg-emerald-50 hover:bg-emerald-50' : ''}`}
+                                                    >
+                                                        <div className={`w-12 h-12 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center font-bold text-white shadow-sm ${chat.isGroup ? 'bg-indigo-500' : 'bg-emerald-500'}`}>
+                                                            <img
+                                                                src={`${API}/whatsapp-qr/chats/${encodeURIComponent(chat.id)}/image?token=${token}`}
+                                                                alt={chat.name}
+                                                                className="w-full h-full object-cover"
+                                                                onError={(e) => {
+                                                                    const target = e.target as HTMLImageElement;
+                                                                    target.style.display = 'none';
+                                                                    if (target.parentElement) {
+                                                                        target.parentElement.innerHTML = chat.isGroup ? `<div class="w-full h-full flex items-center justify-center">G</div>` : `<div class="w-full h-full flex items-center justify-center">${chat.name.substring(0, 2).toUpperCase()}</div>`;
+                                                                    }
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <span className="font-bold text-gray-900 truncate pr-2 text-sm">{chat.name}</span>
+                                                                <span className="text-[10px] text-gray-400 font-medium">{new Date(chat.timestamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                                            </div>
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-xs text-gray-500 truncate min-h-[16px]">{chat.isGroup ? 'Grupo Distrital' : 'Contacto Directo'}</span>
+                                                                {chat.unreadCount > 0 && (
+                                                                    <span className="bg-emerald-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                                                                        {chat.unreadCount}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
-                                )}
-                            </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="p-3 border-b border-gray-100 bg-white">
+                                        <div className="relative">
+                                            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                            <input
+                                                type="text"
+                                                placeholder="Buscar comunidad o grupo..."
+                                                value={searchTerm}
+                                                onChange={(e) => setSearchTerm(e.target.value)}
+                                                className="w-full bg-gray-100 border-none rounded-xl py-2 pl-9 pr-4 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex-1 overflow-y-auto">
+                                        {loadingCommunities && communities.length === 0 ? (
+                                            <div className="flex flex-col items-center justify-center h-40 text-gray-400">
+                                                <Loader className="w-6 h-6 animate-spin mb-2" />
+                                                <span className="text-xs">Sincronizando comunidades...</span>
+                                            </div>
+                                        ) : communities.length === 0 ? (
+                                            <div className="flex flex-col items-center justify-center h-40 text-gray-450 text-center px-4 gap-2">
+                                                <Users className="w-8 h-8 text-gray-300" />
+                                                <span className="text-xs font-semibold text-gray-500">Sin comunidades</span>
+                                                <p className="text-[10px] text-gray-400">No se encontraron comunidades de WhatsApp en esta cuenta.</p>
+                                            </div>
+                                        ) : (
+                                            <div className="p-3 space-y-2">
+                                                {communities.filter(comm => {
+                                                    if (!searchTerm) return true;
+                                                    const search = searchTerm.toLowerCase();
+                                                    return comm.subject.toLowerCase().includes(search) || 
+                                                           comm.subgroups.some(sg => sg.subject.toLowerCase().includes(search));
+                                                }).map(comm => {
+                                                    const isExpanded = !!expandedCommunities[comm.id];
+                                                    const filteredSubgroups = comm.subgroups.filter(sg => {
+                                                        if (!searchTerm) return true;
+                                                        return sg.subject.toLowerCase().includes(searchTerm.toLowerCase());
+                                                    });
+                                                    
+                                                    return (
+                                                        <div key={comm.id} className="border border-gray-200 rounded-xl bg-white overflow-hidden shadow-sm transition-all duration-200">
+                                                            {/* Community Header */}
+                                                            <button
+                                                                onClick={() => setExpandedCommunities(prev => ({ ...prev, [comm.id]: !isExpanded }))}
+                                                                className={`w-full text-left p-3 flex items-center justify-between transition-colors ${isExpanded ? 'bg-emerald-50/20' : 'hover:bg-gray-50/50'}`}
+                                                            >
+                                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                                    <div className="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0">
+                                                                        <Users className="w-4 h-4" />
+                                                                    </div>
+                                                                    <div className="min-w-0">
+                                                                        <h4 className="font-bold text-gray-950 text-xs truncate" title={comm.subject}>{comm.subject}</h4>
+                                                                        <span className="text-[10px] text-gray-400 font-semibold">{comm.subgroups.length} grupos</span>
+                                                                    </div>
+                                                                </div>
+                                                                <span className="text-gray-400 text-[10px] transition-transform duration-200">
+                                                                    {isExpanded ? '▼' : '▶'}
+                                                                </span>
+                                                            </button>
+                                                            
+                                                            {/* Subgroups List */}
+                                                            {isExpanded && (
+                                                                <div className="border-t border-gray-100 divide-y divide-gray-150 bg-gray-50/40">
+                                                                    {filteredSubgroups.length === 0 ? (
+                                                                        <div className="p-3 text-center text-[10px] text-gray-400 italic">No hay grupos hijos en esta comunidad.</div>
+                                                                    ) : (
+                                                                        filteredSubgroups.map(sg => {
+                                                                            const isSelected = selectedChat?.id === sg.id;
+                                                                            return (
+                                                                                <button
+                                                                                    key={sg.id}
+                                                                                    onClick={() => {
+                                                                                        setMessages([]);
+                                                                                        setSelectedChat({
+                                                                                            id: sg.id,
+                                                                                            name: sg.subject,
+                                                                                            isGroup: true,
+                                                                                            unreadCount: 0,
+                                                                                            timestamp: sg.creation || Math.floor(Date.now() / 1000)
+                                                                                        });
+                                                                                        fetchMessages(sg.id);
+                                                                                    }}
+                                                                                    className={`w-full text-left py-2.5 px-4 pl-8 hover:bg-emerald-50/20 flex items-center gap-2 transition-colors ${isSelected ? 'bg-emerald-50 hover:bg-emerald-50' : ''}`}
+                                                                                >
+                                                                                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 flex-shrink-0" />
+                                                                                    <div className="min-w-0 flex-1">
+                                                                                        <div className="font-bold text-gray-800 text-xs truncate" title={sg.subject}>{sg.subject}</div>
+                                                                                        {sg.size > 0 && <span className="text-[9px] text-gray-400">{sg.size} miembros</span>}
+                                                                                    </div>
+                                                                                </button>
+                                                                            );
+                                                                        })
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            )}
                         </div>
 
                         {/* Main Chat Area */}
@@ -1501,17 +1817,31 @@ const WhatsAppQR: React.FC = () => {
                                         </div>
                                         <div className="ml-auto flex items-center gap-2">
                                             {selectedChat.isGroup && (
-                                                <button
-                                                    onClick={() => {
-                                                        setGroupParticipants([]);
-                                                        setAddParticipantsError('');
-                                                        setShowAddParticipants(true);
-                                                    }}
-                                                    className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs px-3 py-1.5 rounded-xl font-bold transition-colors flex items-center gap-1.5 shadow-sm"
-                                                >
-                                                    <UserPlus className="w-4 h-4" />
-                                                    Añadir Participantes
-                                                </button>
+                                                <>
+                                                    {isGroupAdmin && (
+                                                        <button
+                                                            onClick={() => {
+                                                                setEditGroupError('');
+                                                                setShowEditGroup(true);
+                                                            }}
+                                                            className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs px-3 py-1.5 rounded-xl font-bold transition-colors flex items-center gap-1.5 shadow-sm border border-emerald-200"
+                                                        >
+                                                            <Sparkles className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
+                                                            Editar Grupo (Admin)
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={() => {
+                                                            setGroupParticipants([]);
+                                                            setAddParticipantsError('');
+                                                            setShowAddParticipants(true);
+                                                        }}
+                                                        className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs px-3 py-1.5 rounded-xl font-bold transition-colors flex items-center gap-1.5 shadow-sm"
+                                                    >
+                                                        <UserPlus className="w-4 h-4" />
+                                                        Añadir Participantes
+                                                    </button>
+                                                </>
                                             )}
                                         </div>
                                     </div>
@@ -2331,6 +2661,173 @@ const WhatsAppQR: React.FC = () => {
                                 >
                                     {creatingGroup ? <Loader className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
                                     {creatingGroup ? 'Creando Grupo...' : 'Crear Grupo'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {showEditGroup && selectedChat && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowEditGroup(false)}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl relative overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                        <button
+                            type="button"
+                            onClick={() => { setShowEditGroup(false); setEditGroupError(''); }}
+                            className="absolute top-3 right-3 p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                        
+                        <div className="p-6 border-b border-gray-100 bg-emerald-50/50 flex-shrink-0">
+                            <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
+                                <Sparkles className="w-5 h-5 text-emerald-600 animate-pulse" />
+                                Configuración y Edición de Grupo
+                            </h3>
+                            <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                                Modifica la información del grupo y administra sus miembros. Tienes permisos de administrador oficiales para esta acción.
+                            </p>
+                        </div>
+
+                        <form onSubmit={handleEditGroupSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
+                            <div>
+                                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block mb-1.5">Nombre del Grupo *</label>
+                                <input
+                                    type="text"
+                                    value={editingGroupName}
+                                    onChange={e => setEditingGroupName(e.target.value)}
+                                    placeholder="Nombre del grupo..."
+                                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                                    required
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block mb-1.5">Descripción del Grupo</label>
+                                <textarea
+                                    value={editingGroupDesc}
+                                    onChange={e => setEditingGroupDesc(e.target.value)}
+                                    rows={2}
+                                    placeholder="Descripción oficial..."
+                                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none resize-none transition-all"
+                                />
+                            </div>
+
+                            {/* Participants Management Section */}
+                            <div className="border-t border-gray-100 pt-4">
+                                <h4 className="text-[11px] font-bold text-gray-750 uppercase tracking-wider mb-2">Administrar Miembros ({editingGroupParticipants.length})</h4>
+                                
+                                <div className="max-h-40 overflow-y-auto border border-gray-100 rounded-xl divide-y divide-gray-100 bg-gray-55/30 p-1 mb-4">
+                                    {editingGroupParticipants.length === 0 ? (
+                                        <p className="text-center py-4 text-xs text-gray-400 italic">No se pudieron cargar los participantes o el grupo está vacío.</p>
+                                    ) : (
+                                        editingGroupParticipants.map(participant => {
+                                            const phone = participant.split('@')[0];
+                                            const contact = crmContacts.find(c => c.phone === participant || c.phone.replace(/[^0-9]/g, '') === phone);
+                                            const displayName = contact ? contact.name : phone;
+                                            
+                                            return (
+                                                <div key={participant} className="flex justify-between items-center px-3 py-2 text-xs hover:bg-white rounded-lg transition-colors">
+                                                    <div>
+                                                        <span className="font-bold text-gray-800">{displayName}</span>
+                                                        <span className="text-[10px] text-gray-400 font-mono block">{phone}</span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRemoveParticipant(participant)}
+                                                        className="text-[10px] font-bold text-red-650 hover:text-white hover:bg-red-600 border border-red-200 px-2 py-1 rounded transition-colors"
+                                                    >
+                                                        Eliminar
+                                                    </button>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Add Members Area */}
+                            <div className="border-t border-gray-100 pt-4">
+                                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block mb-1.5">Añadir Nuevos Miembros</label>
+                                <div className="relative mb-2">
+                                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                    <input
+                                        type="text"
+                                        placeholder="Buscar contactos para añadir..."
+                                        value={crmSearch}
+                                        onChange={e => setCrmSearch(e.target.value)}
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2 pl-9 pr-4 text-xs focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                                    />
+                                </div>
+
+                                {crmSearch.trim() && (
+                                    <div className="max-h-32 overflow-y-auto border border-gray-150 rounded-xl divide-y divide-gray-100 bg-white mb-2 shadow-inner">
+                                        {crmContacts.filter(c => {
+                                            const search = crmSearch.toLowerCase();
+                                            return (c.name || '').toLowerCase().includes(search) || (c.phone || '').includes(search);
+                                        }).map(contact => {
+                                            const isSelected = groupParticipants.includes(contact.phone);
+                                            const alreadyInGroup = editingGroupParticipants.some(p => p.split('@')[0] === contact.phone.replace(/[^0-9]/g, ''));
+                                            
+                                            return (
+                                                <div 
+                                                    key={contact.phone} 
+                                                    onClick={() => {
+                                                        if (alreadyInGroup) return;
+                                                        if (isSelected) {
+                                                            setGroupParticipants(prev => prev.filter(p => p !== contact.phone));
+                                                        } else {
+                                                            setGroupParticipants(prev => [...prev, contact.phone]);
+                                                        }
+                                                    }}
+                                                    className={`flex justify-between items-center px-3 py-2 cursor-pointer transition-colors text-xs ${alreadyInGroup ? 'opacity-40 cursor-not-allowed bg-gray-50' : isSelected ? 'bg-emerald-50/55 hover:bg-emerald-50' : 'hover:bg-gray-50'}`}
+                                                >
+                                                    <div>
+                                                        <p className="font-bold text-gray-900">{contact.name}</p>
+                                                        <p className="text-[10px] text-gray-500">{contact.phone}</p>
+                                                    </div>
+                                                    <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${alreadyInGroup ? 'bg-gray-200 text-gray-400' : isSelected ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                                                        {alreadyInGroup ? 'Ya en grupo' : isSelected ? 'Seleccionado' : 'Añadir'}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                                
+                                {groupParticipants.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={handleAddSelectedParticipants}
+                                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-2 rounded-xl font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
+                                    >
+                                        <UserPlus className="w-3.5 h-3.5" />
+                                        Agregar Seleccionado(s) ({groupParticipants.length}) a WhatsApp
+                                    </button>
+                                )}
+                            </div>
+
+                            {editGroupError && (
+                                <div className="text-xs font-bold text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                                    {editGroupError}
+                                </div>
+                            )}
+
+                            <div className="flex gap-2 pt-2 border-t border-gray-100">
+                                <button
+                                    type="button"
+                                    onClick={() => { setShowEditGroup(false); setEditGroupError(''); }}
+                                    className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={updatingGroup || !editingGroupName.trim()}
+                                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl px-3 py-2.5 text-xs font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {updatingGroup ? <Loader className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                                    {updatingGroup ? 'Guardando...' : 'Guardar Cambios'}
                                 </button>
                             </div>
                         </form>

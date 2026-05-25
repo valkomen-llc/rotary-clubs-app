@@ -1446,3 +1446,144 @@ export const linkContactToCrm = async (req, res) => {
         res.status(500).json({ error: e.message });
     }
 };
+
+// Helper robusto para obtener el JID de la cuenta de WhatsApp conectada
+const getConnectedUserJid = async () => {
+    try {
+        const conn = await fetchConnectionState();
+        // Intentar obtener el JID desde diferentes estructuras devueltas por Evolution API
+        const jid = conn.user?.id || conn.instance?.user?.id || conn.owner || conn.instance?.owner || null;
+        if (jid) {
+            if (jid.includes('@')) return jid;
+            return `${jid}@s.whatsapp.net`;
+        }
+        
+        // Fallback: listar instancias y buscar la nuestra
+        const list = await evo.get('/instance/fetchInstances', { params: { instanceName: EVO_INSTANCE } });
+        const found = Array.isArray(list.data)
+            ? list.data.find(i => (i?.instance?.instanceName || i?.name) === EVO_INSTANCE)
+            : null;
+        const owner = found?.owner || found?.instance?.owner || found?.instance?.jid || found?.jid || null;
+        if (owner) {
+            if (owner.includes('@')) return owner;
+            return `${owner}@s.whatsapp.net`;
+        }
+    } catch (e) {
+        console.error('[WA-QR] Error getting connected user JID:', e.message);
+    }
+    return null;
+};
+
+// Endpoint para obtener las comunidades y sus grupos hijos
+export const getCommunities = async (req, res) => {
+    if (!requireConfig(res)) return;
+    try {
+        const clubId = await resolveClubId(req);
+        if (!clubId) return res.status(400).json({ error: 'No se pudo resolver el clubId.' });
+
+        // Obtener todos los grupos desde Evolution API
+        let allGroups = [];
+        try {
+            const groupsRes = await evo.get(`/group/fetchAllGroups/${EVO_INSTANCE_PATH}`);
+            if (Array.isArray(groupsRes.data)) {
+                allGroups = groupsRes.data;
+            }
+        } catch (err) {
+            console.error('[WA-QR] Failed to fetch all groups:', err.message);
+            return res.status(400).json({ error: 'No se pudieron obtener los grupos de WhatsApp.' });
+        }
+
+        // Filtrar comunidades e identificar grupos hijos
+        const communities = allGroups.filter(g => g.isCommunity || g.isCommunityAnnounce);
+        const subgroups = allGroups.filter(g => g.linkedParent && !g.isCommunity && !g.isCommunityAnnounce);
+
+        // De manera defensiva, si un grupo hijo tiene un linkedParent que no está en la lista de comunidades,
+        // creamos una comunidad virtual/temporal para que no se pierdan los grupos.
+        const parentJids = new Set(subgroups.map(sg => sg.linkedParent).filter(Boolean));
+        for (const parentJid of parentJids) {
+            if (!communities.some(c => c.id === parentJid)) {
+                const foundParent = allGroups.find(g => g.id === parentJid);
+                if (foundParent) {
+                    communities.push(foundParent);
+                } else {
+                    communities.push({
+                        id: parentJid,
+                        subject: `Comunidad (${parentJid.split('@')[0]})`,
+                        isCommunity: true
+                    });
+                }
+            }
+        }
+
+        // Construir la jerarquía estructurada
+        const enrichedCommunities = communities.map(c => {
+            const commSubgroups = subgroups
+                .filter(sg => sg.linkedParent === c.id || sg.linkedParent === c.linkedParent)
+                .map(sg => ({
+                    id: sg.id,
+                    subject: sg.subject,
+                    creation: sg.creation || 0,
+                    owner: sg.owner || '',
+                    size: sg.size || 0
+                }));
+
+            return {
+                id: c.id,
+                subject: c.subject,
+                isCommunity: true,
+                isCommunityAnnounce: !!c.isCommunityAnnounce,
+                subgroups: commSubgroups
+            };
+        });
+
+        res.json({ success: true, communities: enrichedCommunities });
+    } catch (e) {
+        console.error('[WA-QR] getCommunities error:', e.response?.data || e.message);
+        res.status(500).json({ error: e.response?.data?.message || e.message });
+    }
+};
+
+// Endpoint para verificar si el usuario conectado es administrador de un grupo específico
+export const getGroupAdminStatus = async (req, res) => {
+    if (!requireConfig(res)) return;
+    const { groupJid } = req.params;
+    if (!groupJid) return res.status(400).json({ error: 'groupJid es requerido.' });
+    try {
+        const myJid = await getConnectedUserJid();
+        if (!myJid) {
+            return res.json({ success: true, isAdmin: false, error: 'No se pudo resolver el JID de la cuenta conectada.' });
+        }
+
+        const r = await evo.get(`/group/findGroupInfos/${EVO_INSTANCE_PATH}`, { params: { groupJid } });
+        if (r.status >= 400 || !r.data) {
+            return res.status(r.status).json({ error: r.data?.message || 'No se pudo obtener la información del grupo.' });
+        }
+
+        const groupData = r.data || {};
+        const participants = Array.isArray(groupData.participants) ? groupData.participants : [];
+        
+        // Buscar nuestro JID en los participantes del grupo
+        const myPhone = myJid.split('@')[0];
+        const selfParticipant = participants.find(p => {
+            const pid = p.id || p.jid || '';
+            return pid === myJid || pid.split('@')[0] === myPhone;
+        });
+
+        const isAdmin = selfParticipant && (selfParticipant.admin === 'admin' || selfParticipant.admin === 'superadmin' || selfParticipant.isAdmin === true);
+        
+        res.json({
+            success: true,
+            isAdmin: !!isAdmin,
+            subject: groupData.subject,
+            description: groupData.description || '',
+            participantsCount: participants.length,
+            participants: participants.map(p => ({
+                id: p.id || p.jid,
+                admin: p.admin || null
+            }))
+        });
+    } catch (e) {
+        console.error('[WA-QR] getGroupAdminStatus error:', e.response?.data || e.message);
+        res.status(500).json({ error: e.response?.data?.message || e.message });
+    }
+};

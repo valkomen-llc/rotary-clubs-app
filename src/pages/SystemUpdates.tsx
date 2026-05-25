@@ -28,6 +28,14 @@ interface UpdateItem {
 // Cache bust: 2026-05-24 17:40
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: '4.433.0',
+        title: 'Feature: Soporte de Comunidades y Gestión de Grupos en WhatsApp QR Gateway 🚀',
+        date: new Date().toISOString(),
+        description: 'Se ha implementado la integración nativa con Comunidades de WhatsApp, permitiendo explorar la jerarquía completa de comunidades vinculadas y sus subgrupos. Asimismo, si la línea vinculada es Administrador del grupo, ahora se habilita un panel interactivo para modificar el asunto, descripción, eliminar participantes o añadir nuevos miembros directamente buscando en el CRM del Club.',
+        tags: ['whatsapp', 'communities', 'groups', 'feature'],
+        type: 'feature'
+    },
+    {
         version: '4.432.0',
         title: 'Fix: Resolución de Endpoint Evolution API (updateParticipant)',
         date: new Date().toISOString(),

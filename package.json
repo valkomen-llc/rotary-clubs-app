@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.428.0",
-  "cache_bust": "2026-05-24 14:00 (FluentCRM Audience Details)",
+  "version": "4.433.0",
+  "cache_bust": "2026-05-25 11:00 (WhatsApp Communities Support)",
   "type": "module",
-  "//": "UI V4.428.0 | 2026-05-24 (FluentCRM Audience Details)",
+  "//": "UI V4.433.0 | 2026-05-25 (WhatsApp Communities Support)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

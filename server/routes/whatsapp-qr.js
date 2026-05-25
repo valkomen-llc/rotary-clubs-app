@@ -26,6 +26,10 @@ router.post('/send-media', authMiddleware, superAdminMiddleware, whatsappQrContr
 router.post('/groups/create', authMiddleware, superAdminMiddleware, whatsappQrController.createGroup);
 router.post('/groups/:groupJid/participants', authMiddleware, superAdminMiddleware, whatsappQrController.updateGroupParticipants);
 router.put('/groups/:groupJid/metadata', authMiddleware, superAdminMiddleware, whatsappQrController.updateGroupMetadata);
+router.get('/groups/:groupJid/admin-status', authMiddleware, superAdminMiddleware, whatsappQrController.getGroupAdminStatus);
+
+// Communities Endpoint
+router.get('/communities', authMiddleware, superAdminMiddleware, whatsappQrController.getCommunities);
 
 // Contact Bulk Import Endpoint
 router.post('/contacts/import', authMiddleware, superAdminMiddleware, whatsappQrController.importQrContacts);
