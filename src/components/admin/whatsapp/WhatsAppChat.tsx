@@ -214,7 +214,7 @@ interface Contact {
     unreadCount?: number;
 }
 interface Message {
-    id: string; bodyText?: string; templateName?: string;
+    id: string; bodyText?: string; templateName?: string; campaignId?: string;
     status: string; sentAt?: string; deliveredAt?: string;
     readAt?: string; createdAt: string; direction?: string;
 }
@@ -514,7 +514,16 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
     };
 
     const renderMessageBody = (text: string | null | undefined, msg: any, isOutgoing: boolean) => {
-        if (!text) return <p className="text-sm leading-relaxed whitespace-pre-wrap">{`[Template: ${msg.templateName}]`}</p>;
+        // If this is a template message, render the template content beautifully
+        if (msg.templateName && text && !text.startsWith('[MEDIA|') && !text.startsWith('[Template:')) {
+            return (
+                <div className="flex flex-col gap-1">
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{text}</p>
+                </div>
+            );
+        }
+
+        if (!text) return <p className="text-sm leading-relaxed whitespace-pre-wrap">{`[Plantilla: ${msg.templateName || 'desconocida'}]`}</p>;
     
         // Check for media encoding: [MEDIA|type|url] caption  (Make it robust with /s just in case)
         const mediaMatch = text.match(/^\[MEDIA\|(image|video|document|audio)\|(https?:\/\/[^\]]+)\]([\s\S]*)$/i);
@@ -797,9 +806,17 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
                                                             ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white rounded-br-md'
                                                             : 'bg-white text-gray-800 rounded-bl-md border border-gray-100'}`}>
                                                             {msg.templateName && !msg.bodyText?.startsWith('[MEDIA|') && (
-                                                                <p className={`text-[10px] font-bold mb-1 ${isOutgoing ? 'text-green-200' : 'text-green-600'}`}>
-                                                                    📋 {msg.templateName}
-                                                                </p>
+                                                                <div className={`flex items-center gap-1.5 mb-1.5 pb-1.5 border-b ${isOutgoing ? 'border-green-400/30' : 'border-gray-200'}`}>
+                                                                    <span className={`text-[10px] ${isOutgoing ? 'text-green-200' : 'text-green-600'}`}>📋</span>
+                                                                    <span className={`text-[10px] font-bold ${isOutgoing ? 'text-green-200' : 'text-green-600'}`}>
+                                                                        {msg.templateName}
+                                                                    </span>
+                                                                    {msg.campaignId && (
+                                                                        <span className={`text-[9px] ml-auto px-1.5 py-0.5 rounded-full font-medium ${isOutgoing ? 'bg-green-400/20 text-green-100' : 'bg-green-100 text-green-600'}`}>
+                                                                            Campaña
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             )}
                                                             {renderMessageBody(msg.bodyText, msg, isOutgoing)}
                                                             <div className={`flex items-center gap-1.5 mt-1 ${isOutgoing ? 'justify-end' : ''}`}>

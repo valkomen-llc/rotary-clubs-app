@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.436.13 | 2026-05-25 (WhatsApp CRM Subscribed Status Campaign Integration)
-// Cache bust: 2026-05-25 16:35
+// UI V4.436.14 | 2026-05-25 (WhatsApp CRM Campaign Template Body Display in Chat)
+// Cache bust: 2026-05-25 17:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.436.14',
+        title: 'Feature: Visualización del Contenido de Plantilla en Chat de WhatsApp CRM 📋',
+        date: new Date().toISOString(),
+        description: 'Se ha implementado la visualización completa del contenido de las plantillas enviadas a través de campañas de WhatsApp CRM directamente en la vista de Chat. Anteriormente, los mensajes de campañas aparecían como "[Template: nombre_plantilla]" sin mostrar el texto real de la plantilla. Ahora, el backend almacena el bodyText completo de la plantilla en cada registro de WhatsAppMessageLog durante el envío de campañas, y el frontend renderiza este contenido como una tarjeta visual enriquecida con el nombre de la plantilla, badge de "Campaña" y el texto completo del mensaje. Los envíos individuales desde el chat ya funcionaban correctamente y se mantienen sin cambios.',
+        tags: ['whatsapp', 'crm', 'campaigns', 'templates', 'chat', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.436.13',
         title: 'Fix: Soporte Unificado de Estados de Suscripción ("Suscrito" / "active") en Campañas de WhatsApp CRM 🚀',

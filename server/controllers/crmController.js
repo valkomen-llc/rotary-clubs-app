@@ -441,7 +441,7 @@ export const getContactMessages = async (req, res) => {
         // Try to get messages from WhatsAppMessageLog
         try {
             const r = await db.query(
-                `SELECT id, "templateName", "bodyText", status, direction, "sentAt", "deliveredAt", "readAt", "failedAt", "createdAt"
+                `SELECT id, "templateName", "bodyText", "campaignId", status, direction, "sentAt", "deliveredAt", "readAt", "failedAt", "createdAt"
                  FROM "WhatsAppMessageLog"
                  WHERE "clubId"=$1 AND phone=$2
                  ORDER BY "createdAt" ASC
@@ -1169,6 +1169,9 @@ export const sendCampaign = async (req, res) => {
         const templatePayload = { name: template.name, language: { code: template.language } };
         if (allComponents.length > 0) templatePayload.components = allComponents;
 
+        // Build body text for message log so the chat view can display the actual template content
+        const logBodyText = template.bodyText || `[Template: ${template.name}]`;
+
         // Check which contacts were already sent (in case of retry after timeout)
         const alreadySentR = await db.query(
             `SELECT "contactId" FROM "WhatsAppMessageLog" WHERE "campaignId"=$1 AND status IN ('sent','delivered','read')`,
@@ -1195,18 +1198,18 @@ export const sendCampaign = async (req, res) => {
                 const messageId = apiRes.messages?.[0]?.id;
                 const cMsgId = crypto.randomUUID();
                 await db.query(
-                    `INSERT INTO "WhatsAppMessageLog" (id,"clubId","campaignId","contactId",phone,"messageId","templateName",status,direction,"sentAt","createdAt","updatedAt")
-                     VALUES ($1,$2,$3,$4,$5,$6,$7,'sent','outgoing',NOW(),NOW(),NOW())`,
-                    [cMsgId, clubId, id, contact.id, contact.phone, messageId || null, template.name]
+                    `INSERT INTO "WhatsAppMessageLog" (id,"clubId","campaignId","contactId",phone,"messageId","templateName","bodyText",status,direction,"sentAt","createdAt","updatedAt")
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'sent','outgoing',NOW(),NOW(),NOW())`,
+                    [cMsgId, clubId, id, contact.id, contact.phone, messageId || null, template.name, logBodyText]
                 );
                 await db.query(`UPDATE "WhatsAppContact" SET "totalSent"="totalSent"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
                 return { ok: true };
             } catch (err) {
                 const cfLogId = crypto.randomUUID();
                 await db.query(
-                    `INSERT INTO "WhatsAppMessageLog" (id,"clubId","campaignId","contactId",phone,"templateName",status,direction,"errorMessage","failedAt","createdAt","updatedAt")
-                     VALUES ($1,$2,$3,$4,$5,$6,'failed','outgoing',$7,NOW(),NOW(),NOW())`,
-                    [cfLogId, clubId, id, contact.id, contact.phone, template.name, err.message]
+                    `INSERT INTO "WhatsAppMessageLog" (id,"clubId","campaignId","contactId",phone,"templateName","bodyText",status,direction,"errorMessage","failedAt","createdAt","updatedAt")
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,'failed','outgoing',$8,NOW(),NOW(),NOW())`,
+                    [cfLogId, clubId, id, contact.id, contact.phone, template.name, logBodyText, err.message]
                 ).catch(() => {});
                 await db.query(`UPDATE "WhatsAppContact" SET "totalFailed"="totalFailed"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]).catch(() => {});
                 return { ok: false };
