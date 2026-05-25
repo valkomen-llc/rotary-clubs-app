@@ -1513,7 +1513,8 @@ export const getCommunities = async (req, res) => {
             console.error('[WA-QR] Failed to fetch active chats for communities:', err.message);
         }
 
-        // Obtener también los grupos guardados en nuestra base de datos local (sincronizados por webhook)
+        // Obtener también los grupos guardados en nuestra base de datos local y leer su cache
+        let localDbGroups = [];
         try {
             const localRes = await db.query(
                 `SELECT phone as id, name, metadata 
@@ -1521,27 +1522,30 @@ export const getCommunities = async (req, res) => {
                  WHERE "clubId" = $1 AND phone LIKE '120363%'`,
                 [clubId]
             );
-            const existingIds = new Set(allGroups.map(g => g.id || g.jid).filter(Boolean));
-            for (const r of localRes.rows) {
-                if (r.id && !existingIds.has(r.id)) {
-                    let subject = r.name;
-                    if ((!subject || /^[0-9]+$/.test(subject) || subject === r.id.split('@')[0]) && r.metadata) {
-                        try {
-                            const parsed = typeof r.metadata === 'object' ? r.metadata : JSON.parse(r.metadata);
-                            if (parsed.pushName) subject = parsed.pushName;
-                            else if (parsed.notify) subject = parsed.notify;
-                        } catch (_) {}
-                    }
-                    allGroups.push({
-                        id: r.id,
-                        subject: subject || '',
-                        creation: 0
-                    });
-                    existingIds.add(r.id);
-                }
-            }
+            localDbGroups = localRes.rows;
         } catch (err) {
             console.error('[WA-QR] Failed to fetch local JID groups for communities:', err.message);
+        }
+
+        // Combinar en allGroups
+        const existingIds = new Set(allGroups.map(g => g.id || g.jid).filter(Boolean));
+        for (const r of localDbGroups) {
+            if (r.id && !existingIds.has(r.id)) {
+                let subject = r.name;
+                if ((!subject || /^[0-9]+$/.test(subject) || subject === r.id.split('@')[0]) && r.metadata) {
+                    try {
+                        const parsed = typeof r.metadata === 'object' ? r.metadata : JSON.parse(r.metadata);
+                        if (parsed.pushName) subject = parsed.pushName;
+                        else if (parsed.notify) subject = parsed.notify;
+                    } catch (_) {}
+                }
+                allGroups.push({
+                    id: r.id,
+                    subject: subject || '',
+                    creation: 0
+                });
+                existingIds.add(r.id);
+            }
         }
 
         // WhatsApp asigna JIDs que empiezan con '120363' exclusivamente a comunidades y subgrupos
@@ -1550,27 +1554,110 @@ export const getCommunities = async (req, res) => {
             return jid && jid.startsWith('120363');
         });
 
-        // Obtener información detallada en lotes paralelos para resolver isCommunity y linkedParent
+        // Analizar el cache local en Postgres para no volver a consultar de forma externa
         const detailedGroups = [];
-        const batchSize = 10;
-        for (let i = 0; i < communityRelatedGroups.length; i += batchSize) {
-            const batch = communityRelatedGroups.slice(i, i + batchSize);
-            const batchResults = await Promise.all(
-                batch.map(async (g) => {
+        const toResolveExternal = [];
+
+        for (const g of communityRelatedGroups) {
+            const jid = g.id || g.jid;
+            const dbMatch = localDbGroups.find(r => r.id === jid);
+            let cachedData = null;
+            if (dbMatch && dbMatch.metadata) {
+                try {
+                    const parsed = typeof dbMatch.metadata === 'object' ? dbMatch.metadata : JSON.parse(dbMatch.metadata);
+                    if (parsed.isCommunityResolved === true || parsed.linkedParent !== undefined || parsed.isCommunity !== undefined) {
+                        cachedData = parsed;
+                    }
+                } catch (_) {}
+            }
+
+            if (cachedData) {
+                // Si es una comunidad parent, forzamos re-sincronización cada 5 minutos para capturar grupos nuevos creados en WhatsApp
+                const isParentComm = cachedData.isCommunity === true || cachedData.isCommunityAnnounce === true || (jid.startsWith('120363') && !cachedData.linkedParent);
+                const isExpired = isParentComm && (!cachedData.resolvedAt || (Date.now() - Number(cachedData.resolvedAt || 0) > 5 * 60 * 1000));
+                
+                if (isExpired) {
+                    cachedData = null;
+                }
+            }
+
+            if (cachedData) {
+                let subject = g.subject || dbMatch.name;
+                if ((!subject || /^[0-9]+$/.test(subject) || subject === jid.split('@')[0]) && cachedData.pushName) {
+                    subject = cachedData.pushName;
+                }
+                detailedGroups.push({
+                    ...g,
+                    subject,
+                    isCommunity: cachedData.isCommunity,
+                    isCommunityAnnounce: cachedData.isCommunityAnnounce,
+                    linkedParent: cachedData.linkedParent,
+                    subgroups: cachedData.subgroups || []
+                });
+            } else {
+                toResolveExternal.push(g);
+            }
+        }
+
+        // Limitamos a un máximo de 6 consultas externas por petición para evitar timeouts en Vercel (Hobby limit: 10s)
+        const batchToResolve = toResolveExternal.slice(0, 6);
+        if (batchToResolve.length > 0) {
+            const resolvedList = await Promise.all(
+                batchToResolve.map(async (g) => {
                     const jid = g.id || g.jid;
                     try {
                         const info = await evo.get(`/group/findGroupInfos/${EVO_INSTANCE_PATH}`, { 
                             params: { groupJid: jid },
-                            timeout: 5000 
+                            timeout: 3500 
                         });
-                        return info.data ? { ...g, ...info.data } : g;
+                        if (info.data) {
+                            const groupData = info.data;
+                            const isCommunity = !!groupData.isCommunity;
+                            const isCommunityAnnounce = !!groupData.isCommunityAnnounce;
+                            const linkedParent = groupData.linkedParent || groupData.linkedParentJid || null;
+                            const subgroupsList = groupData.subgroups || [];
+                            const subject = groupData.subject || g.subject || jid.split('@')[0];
+
+                            const cacheMetadata = {
+                                isCommunityResolved: true,
+                                isCommunity,
+                                isCommunityAnnounce,
+                                linkedParent,
+                                subgroups: subgroupsList,
+                                pushName: subject,
+                                resolvedAt: Date.now()
+                            };
+
+                            // Guardar en base de datos local en segundo plano (upsert)
+                            db.query(`
+                                INSERT INTO "WhatsAppContact" (id, "clubId", name, phone, source, metadata, "createdAt", "updatedAt")
+                                VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW(), NOW())
+                                ON CONFLICT (phone, "clubId")
+                                DO UPDATE SET 
+                                    name = CASE WHEN "WhatsAppContact".source = 'manual' THEN "WhatsAppContact".name ELSE $2 END,
+                                    metadata = "WhatsAppContact".metadata || $5,
+                                    "updatedAt" = NOW()
+                            `, [clubId, subject, jid, 'whatsapp-qr-group', JSON.stringify(cacheMetadata)]).catch(e => {
+                                console.error('[WA-QR] Background cache error:', e.message);
+                            });
+
+                            return {
+                                ...g,
+                                subject,
+                                isCommunity,
+                                isCommunityAnnounce,
+                                linkedParent,
+                                subgroups: subgroupsList
+                            };
+                        }
+                        return g;
                     } catch (e) {
-                        console.error('[WA-QR] Error fetching detailed metadata for community group:', jid, e.message);
+                        console.error('[WA-QR] Error fetching detailed metadata externally:', jid, e.message);
                         return g;
                     }
                 })
             );
-            detailedGroups.push(...batchResults.filter(Boolean));
+            detailedGroups.push(...resolvedList.filter(Boolean));
         }
 
         // Clasificar comunidades y subgrupos de manera ultra-defensiva
@@ -1734,6 +1821,8 @@ export const getGroupAdminStatus = async (req, res) => {
             const communityParentId = groupData.linkedParent || groupData.linkedParentJid || (groupJid.startsWith('120363') ? groupJid : null);
             
             if (communityParentId) {
+                let clubId = null;
+                let localRes = { rows: [] };
                 try {
                     // Obtener todos los grupos para encontrar subgrupos hermanos
                     let allGroupsList = [];
@@ -1756,8 +1845,8 @@ export const getGroupAdminStatus = async (req, res) => {
 
                     // Obtener también los grupos guardados en nuestra base de datos local (sincronizados por webhook)
                     try {
-                        const clubId = await resolveClubId(req);
-                        const localRes = await db.query(
+                        clubId = await resolveClubId(req);
+                        localRes = await db.query(
                             `SELECT phone as id, name, metadata 
                              FROM "WhatsAppContact" 
                              WHERE "clubId" = $1 AND phone LIKE '120363%'`,
@@ -1785,21 +1874,84 @@ export const getGroupAdminStatus = async (req, res) => {
                         console.error('[WA-QR] Failed to fetch local JID groups in admin status query:', err.message);
                     }
 
-                    // Filtrar grupos relacionados a comunidades (excluyendo el parent)
                     const commRelated = allGroupsList.filter(g => {
                         const id = g.id || g.jid || '';
-                        return id && id.startsWith('120363') && id !== communityParentId;
+                        return id && id.startsWith('120363');
                     });
 
-                    // Resolver información detallada en paralelo
+                    // Resolver información detallada en paralelo (con cache DB)
                     const detailedResults = await Promise.all(
                         commRelated.map(async (g) => {
+                            const jid = g.id || g.jid;
+                            const dbMatch = localRes.rows.find(r => r.id === jid);
+                            let cachedData = null;
+                            if (dbMatch && dbMatch.metadata) {
+                                try {
+                                    const parsed = typeof dbMatch.metadata === 'object' ? dbMatch.metadata : JSON.parse(dbMatch.metadata);
+                                    if (parsed.isCommunityResolved === true || parsed.linkedParent !== undefined || parsed.isCommunity !== undefined) {
+                                        cachedData = parsed;
+                                    }
+                                } catch (_) {}
+                            }
+
+                            if (cachedData) {
+                                // Si es una comunidad parent, forzamos re-sincronización cada 5 minutos para capturar grupos nuevos creados en WhatsApp
+                                const isParentComm = cachedData.isCommunity === true || cachedData.isCommunityAnnounce === true || (jid.startsWith('120363') && !cachedData.linkedParent);
+                                const isExpired = isParentComm && (!cachedData.resolvedAt || (Date.now() - Number(cachedData.resolvedAt || 0) > 5 * 60 * 1000));
+                                
+                                if (isExpired) {
+                                    cachedData = null;
+                                }
+                            }
+
+                            if (cachedData) {
+                                let subject = g.subject || dbMatch.name;
+                                if ((!subject || /^[0-9]+$/.test(subject) || subject === jid.split('@')[0]) && cachedData.pushName) {
+                                    subject = cachedData.pushName;
+                                }
+                                return {
+                                    ...g,
+                                    subject,
+                                    isCommunity: cachedData.isCommunity,
+                                    isCommunityAnnounce: cachedData.isCommunityAnnounce,
+                                    linkedParent: cachedData.linkedParent,
+                                    subgroups: cachedData.subgroups || []
+                                };
+                            }
+
                             try {
                                 const info = await evo.get(`/group/findGroupInfos/${EVO_INSTANCE_PATH}`, { 
-                                    params: { groupJid: g.id || g.jid },
+                                    params: { groupJid: jid },
                                     timeout: 3000 
                                 });
-                                return info.data ? { ...g, ...info.data } : g;
+                                if (info.data) {
+                                    const groupData = info.data;
+                                    const subject = groupData.subject || g.subject || jid.split('@')[0];
+                                    
+                                    const cacheMetadata = {
+                                        isCommunityResolved: true,
+                                        isCommunity: !!groupData.isCommunity,
+                                        isCommunityAnnounce: !!groupData.isCommunityAnnounce,
+                                        linkedParent: groupData.linkedParent || groupData.linkedParentJid || null,
+                                        subgroups: groupData.subgroups || [],
+                                        pushName: subject,
+                                        resolvedAt: Date.now()
+                                    };
+
+                                    db.query(`
+                                        INSERT INTO "WhatsAppContact" (id, "clubId", name, phone, source, metadata, "createdAt", "updatedAt")
+                                        VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW(), NOW())
+                                        ON CONFLICT (phone, "clubId")
+                                        DO UPDATE SET name = $2, metadata = "WhatsAppContact".metadata || $5, "updatedAt" = NOW()
+                                    `, [clubId, subject, jid, 'whatsapp-qr-group', JSON.stringify(cacheMetadata)]).catch(() => {});
+
+                                    return {
+                                        ...g,
+                                        ...groupData,
+                                        subject
+                                    };
+                                }
+                                return g;
                             } catch (_) {
                                 return g;
                             }

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.436.2 | 2026-05-25 (WhatsApp Communities Subgroups Direct Native Resolution)
-// Cache bust: 2026-05-25 12:45
+// UI V4.436.4 | 2026-05-25 (WhatsApp Communities Cache Expiration & Scope Correction)
+// Cache bust: 2026-05-25 13:15
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.436.4',
+        title: 'Fix: Sincronización en Tiempo Real de Subgrupos y Corrección de Errores de Referencia Backend 🚀',
+        date: new Date().toISOString(),
+        description: 'Se ha solventado el problema de visibilidad de los nuevos grupos (como los de la gestión 2026-2027) mediante un mecanismo de expiración automática de caché de 5 minutos para las comunidades. Esto permite que el backend re-sincronice de manera ligera con WhatsApp para traer los últimos subgrupos creados sin superar el timeout de 10s de Vercel. Adicionalmente, se corrigieron errores graves de referencia (ReferenceError) y ámbito (ScopeError) en el endpoint de estado de administrador que bloqueaban el despliegue de subgrupos en el modal "Añadir Participantes".',
+        tags: ['whatsapp', 'communities', 'groups', 'bugfix', 'critical'],
+        type: 'fix'
+    },
     {
         version: '4.436.2',
         title: 'Fix: Fusión Directa de Subgrupos Nativos y Limpieza de Canales Vacíos 🚀',
