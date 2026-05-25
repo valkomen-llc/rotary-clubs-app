@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.436.0 | 2026-05-25 (WhatsApp Communities and Subgroups Fix)
-// Cache bust: 2026-05-25 12:20
+// UI V4.436.1 | 2026-05-25 (WhatsApp Communities Newly Created Groups Fallback)
+// Cache bust: 2026-05-25 12:40
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.436.1',
+        title: 'Fix: Sincronización Automática de Nuevos Subgrupos de Comunidades (2026-2027) 🚀',
+        date: new Date().toISOString(),
+        description: 'Se ha optimizado la sincronización de subgrupos de comunidades para capturar los grupos de reciente creación (como Presidentes de Clubes | 2026-2027) que son agregados a la comunidad. Ahora, el backend consulta también la base de datos local de forma defensiva para recuperar cualquier JID registrado vía webhook de upsert/contact. Adicionalmente, se implementó un decodificador inteligente que restaura el nombre real del grupo a partir del pushName del metadato en caso de que esté guardado con su identificador numérico.',
+        tags: ['whatsapp', 'communities', 'groups', 'bugfix', 'critical'],
+        type: 'fix'
+    },
     {
         version: '4.436.0',
         title: 'Fix: Sincronización de Comunidades de WhatsApp y Selector de Subgrupos 🚀',

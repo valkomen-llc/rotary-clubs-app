@@ -1513,6 +1513,37 @@ export const getCommunities = async (req, res) => {
             console.error('[WA-QR] Failed to fetch active chats for communities:', err.message);
         }
 
+        // Obtener también los grupos guardados en nuestra base de datos local (sincronizados por webhook)
+        try {
+            const localRes = await db.query(
+                `SELECT phone as id, name, metadata 
+                 FROM "WhatsAppContact" 
+                 WHERE "clubId" = $1 AND phone LIKE '120363%'`,
+                [clubId]
+            );
+            const existingIds = new Set(allGroups.map(g => g.id || g.jid).filter(Boolean));
+            for (const r of localRes.rows) {
+                if (r.id && !existingIds.has(r.id)) {
+                    let subject = r.name;
+                    if ((!subject || /^[0-9]+$/.test(subject) || subject === r.id.split('@')[0]) && r.metadata) {
+                        try {
+                            const parsed = typeof r.metadata === 'object' ? r.metadata : JSON.parse(r.metadata);
+                            if (parsed.pushName) subject = parsed.pushName;
+                            else if (parsed.notify) subject = parsed.notify;
+                        } catch (_) {}
+                    }
+                    allGroups.push({
+                        id: r.id,
+                        subject: subject || '',
+                        creation: 0
+                    });
+                    existingIds.add(r.id);
+                }
+            }
+        } catch (err) {
+            console.error('[WA-QR] Failed to fetch local JID groups for communities:', err.message);
+        }
+
         // WhatsApp asigna JIDs que empiezan con '120363' exclusivamente a comunidades y subgrupos
         const communityRelatedGroups = allGroups.filter(g => {
             const jid = g.id || g.jid || '';
@@ -1688,6 +1719,37 @@ export const getGroupAdminStatus = async (req, res) => {
                                 existingIds.add(id);
                             }
                         }
+                    }
+
+                    // Obtener también los grupos guardados en nuestra base de datos local (sincronizados por webhook)
+                    try {
+                        const clubId = await resolveClubId(req);
+                        const localRes = await db.query(
+                            `SELECT phone as id, name, metadata 
+                             FROM "WhatsAppContact" 
+                             WHERE "clubId" = $1 AND phone LIKE '120363%'`,
+                            [clubId]
+                        );
+                        const existingIds = new Set(allGroupsList.map(g => g.id || g.jid).filter(Boolean));
+                        for (const r of localRes.rows) {
+                            if (r.id && !existingIds.has(r.id)) {
+                                let subject = r.name;
+                                if ((!subject || /^[0-9]+$/.test(subject) || subject === r.id.split('@')[0]) && r.metadata) {
+                                    try {
+                                        const parsed = typeof r.metadata === 'object' ? r.metadata : JSON.parse(r.metadata);
+                                        if (parsed.pushName) subject = parsed.pushName;
+                                        else if (parsed.notify) subject = parsed.notify;
+                                    } catch (_) {}
+                                }
+                                allGroupsList.push({
+                                    id: r.id,
+                                    subject: subject || ''
+                                });
+                                existingIds.add(r.id);
+                            }
+                        }
+                    } catch (err) {
+                        console.error('[WA-QR] Failed to fetch local JID groups in admin status query:', err.message);
                     }
 
                     // Filtrar grupos relacionados a comunidades (excluyendo el parent)
