@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.436.8 | 2026-05-25 (WhatsApp CRM Null Safety and CRMErrorBoundary Diagnostics Hotfix)
-// Cache bust: 2026-05-25 15:30
+// UI V4.436.9 | 2026-05-25 (WhatsApp CRM Safe Tag Processing Hotfix)
+// Cache bust: 2026-05-25 15:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.436.9',
+        title: 'Fix: Procesamiento Robusto y Adaptativo de Etiquetas (Tags) en WhatsApp CRM 🚀',
+        date: new Date().toISOString(),
+        description: 'Se ha solucionado el error crítico "TypeError: G.toLowerCase is not a function" reportado a través de nuestra pantalla de diagnóstico CRMErrorBoundary. El problema se originaba debido a que la base de datos de contactos contiene colecciones de etiquetas estructuradas como objetos de Fluent CRM ({ id, name, color }) en lugar de cadenas de texto simples. Se rediseñó el formateador para que sea completamente adaptativo y seguro a tipos, resolviendo el nombre y el identificador tanto si viene como cadena o como objeto, asegurando estilos HSL robustos y evitando crasheos de renderizado en React.',
+        tags: ['whatsapp', 'crm', 'tags', 'bugfix', 'critical'],
+        type: 'fix'
+    },
     {
         version: '4.436.8',
         title: 'Fix: Blindaje de Nulidad en Chats de WhatsApp y Diagnóstico React de Seguridad con CRMErrorBoundary 🚀',

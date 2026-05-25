@@ -487,8 +487,16 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
     const toggleTag = async (tag: string) => {
         if (!selectedContact) return;
         const currentTags = selectedContact.tags || [];
-        const isSelected = currentTags.includes(tag);
-        const newTags = isSelected ? currentTags.filter(t => t !== tag) : [...currentTags, tag];
+        const isSelected = currentTags.some((t: any) => {
+            const tStr = typeof t === 'string' ? t : (t.name || t.label || String(t));
+            return tStr.toLowerCase() === tag.toLowerCase();
+        });
+        const newTags = isSelected 
+            ? currentTags.filter((t: any) => {
+                const tStr = typeof t === 'string' ? t : (t.name || t.label || String(t));
+                return tStr.toLowerCase() !== tag.toLowerCase();
+              })
+            : [...currentTags, tag];
         
         try {
             const res = await fetch(`${API}/whatsapp/contacts/${selectedContact.id}`, {
@@ -545,7 +553,11 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
         'rotary': 'bg-purple-100 text-purple-700 border-purple-200',
         'default': 'bg-gray-100 text-gray-600 border-gray-200',
     };
-    const getTagStyle = (tag: string) => tagColors[tag.toLowerCase()] || tagColors.default;
+    const getTagStyle = (tag: any) => {
+        if (!tag) return tagColors.default;
+        const tagStr = typeof tag === 'string' ? tag : (tag.name || tag.label || String(tag));
+        return tagColors[tagStr.toLowerCase()] || tagColors.default;
+    };
 
     const getLastMessagePreview = (contact: Contact): string => {
         if (!contact.lastMessage) return contact.phone;
@@ -672,11 +684,15 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
                                     </div>
                                     {contact.tags && contact.tags.length > 0 && (
                                         <div className="flex gap-1 mt-1.5 flex-wrap">
-                                            {contact.tags.slice(0, 2).map(tag => (
-                                                <span key={tag} className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${getTagStyle(tag)}`}>
-                                                    {tag}
-                                                </span>
-                                            ))}
+                                            {contact.tags.slice(0, 2).map((tag: any) => {
+                                                const tagKey = typeof tag === 'string' ? tag : (tag.id || tag.name || String(tag));
+                                                const tagLabel = typeof tag === 'string' ? tag : (tag.name || tag.label || String(tag));
+                                                return (
+                                                    <span key={tagKey} className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${getTagStyle(tag)}`}>
+                                                        {tagLabel}
+                                                    </span>
+                                                );
+                                            })}
                                             {contact.tags.length > 2 && <span className="text-[9px] text-gray-400">+{contact.tags.length - 2}</span>}
                                         </div>
                                     )}
@@ -991,7 +1007,10 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 {['vip', 'socio', 'rotary', 'prospecto'].map(tag => {
-                                    const isActive = selectedContact.tags?.includes(tag);
+                                    const isActive = selectedContact.tags?.some((t: any) => {
+                                        const tStr = typeof t === 'string' ? t : (t.name || t.label || String(t));
+                                        return tStr.toLowerCase() === tag.toLowerCase();
+                                    });
                                     return (
                                         <button 
                                             key={tag}
