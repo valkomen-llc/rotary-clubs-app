@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.436.1 | 2026-05-25 (WhatsApp Communities Newly Created Groups Fallback)
-// Cache bust: 2026-05-25 12:40
+// UI V4.436.2 | 2026-05-25 (WhatsApp Communities Subgroups Direct Native Resolution)
+// Cache bust: 2026-05-25 12:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.436.2',
+        title: 'Fix: Fusión Directa de Subgrupos Nativos y Limpieza de Canales Vacíos 🚀',
+        date: new Date().toISOString(),
+        description: 'Se ha perfeccionado el rastreo de subgrupos no unidos o de reciente creación en la comunidad. Ahora, el backend recupera y fusiona directamente el array de subgrupos devuelto nativamente por los metadatos del parent de WhatsApp (incluso si la cuenta no se ha unido a ellos todavía). Asimismo, añadimos un filtro de seguridad que depura las comunidades virtuales vacías (con 0 grupos) que no tengan flags explícitos, eliminando carpetas huérfanas o duplicados en el listado del Inbox.',
+        tags: ['whatsapp', 'communities', 'groups', 'bugfix', 'critical'],
+        type: 'fix'
+    },
     {
         version: '4.436.1',
         title: 'Fix: Sincronización Automática de Nuevos Subgrupos de Comunidades (2026-2027) 🚀',

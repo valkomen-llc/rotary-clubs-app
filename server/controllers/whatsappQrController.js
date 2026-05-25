@@ -1646,18 +1646,51 @@ export const getCommunities = async (req, res) => {
                     size: sg.size || 0
                 }));
 
+            // Fusionar con los subgrupos reportados nativamente en los metadatos de la comunidad (c.subgroups)
+            const mergedSgMap = new Map();
+            const nativeSgs = Array.isArray(c.subgroups) ? c.subgroups : [];
+            for (const nsg of nativeSgs) {
+                const id = nsg.id || nsg.jid;
+                if (id) {
+                    mergedSgMap.set(id, {
+                        id,
+                        subject: nsg.subject || nsg.name || id.split('@')[0],
+                        creation: nsg.creation || 0,
+                        owner: nsg.owner || '',
+                        size: nsg.size || 0
+                    });
+                }
+            }
+            for (const sg of commSubgroups) {
+                if (sg.id) {
+                    mergedSgMap.set(sg.id, {
+                        ...mergedSgMap.get(sg.id),
+                        ...sg
+                    });
+                }
+            }
+
             return {
                 id: cid,
                 subject: c.subject,
                 isCommunity: true,
                 isCommunityAnnounce: !!c.isCommunityAnnounce || String(c.isCommunityAnnounce) === 'true',
-                subgroups: commSubgroups
+                subgroups: Array.from(mergedSgMap.values())
             };
         });
 
         res.json({ 
             success: true, 
-            communities: enrichedCommunities
+            communities: enrichedCommunities.filter(ec => {
+                const originalComm = communities.find(c => (c.id || c.jid) === ec.id);
+                const hasExplicitFlags = originalComm && (
+                    originalComm.isCommunity === true || 
+                    String(originalComm.isCommunity) === 'true' || 
+                    originalComm.isCommunityAnnounce === true ||
+                    String(originalComm.isCommunityAnnounce) === 'true'
+                );
+                return ec.subgroups.length > 0 || hasExplicitFlags;
+            })
         });
     } catch (e) {
         console.error('[WA-QR] getCommunities error:', e.response?.data || e.message);
@@ -1789,13 +1822,36 @@ export const getGroupAdminStatus = async (req, res) => {
             }
         }
 
+        // Fusionar los subgrupos reportados nativamente por el parent con los resueltos por nuestro barrido
+        const mergedSubgroupsMap = new Map();
+        const nativeSubgroups = Array.isArray(groupData.subgroups) ? groupData.subgroups : [];
+        for (const sg of nativeSubgroups) {
+            const id = sg.id || sg.jid;
+            if (id) {
+                mergedSubgroupsMap.set(id, {
+                    id,
+                    subject: sg.subject || sg.name || id.split('@')[0]
+                });
+            }
+        }
+        for (const sg of resolvedSubgroups) {
+            const id = sg.id || sg.jid;
+            if (id) {
+                mergedSubgroupsMap.set(id, {
+                    id,
+                    subject: sg.subject || id.split('@')[0]
+                });
+            }
+        }
+        const finalSubgroups = Array.from(mergedSubgroupsMap.values());
+
         res.json({
             success: true,
             isAdmin: !!isAdmin,
             subject: groupData.subject,
             description: groupData.description || '',
             participantsCount: participants.length,
-            subgroups: resolvedSubgroups.length > 0 ? resolvedSubgroups : (groupData.subgroups || []),
+            subgroups: finalSubgroups.length > 0 ? finalSubgroups : (groupData.subgroups || []),
             linkedParent: groupData.linkedParent || groupData.linkedParentJid || null,
             participants: participants.map(p => ({
                 id: p.id || p.jid,
