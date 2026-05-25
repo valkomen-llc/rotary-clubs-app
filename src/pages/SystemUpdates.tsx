@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.436.5 | 2026-05-25 (WhatsApp Communities Subgroups Friendly Error Decoders)
-// Cache bust: 2026-05-25 13:45
+// UI V4.436.6 | 2026-05-25 (WhatsApp CRM Dynamic Import Vercel Hotfix)
+// Cache bust: 2026-05-25 15:15
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.436.6',
+        title: 'Fix: Resolución de Rutas de WhatsApp CRM y Crash de Importación en Producción (Vercel) 🚀',
+        date: new Date().toISOString(),
+        description: 'Se ha solucionado el problema crítico que causaba un crash completo en el módulo de WhatsApp CRM al intentar interactuar con él en entornos Serverless como Vercel. El error radicaba en un nombre de archivo inexistente en el importador de la API (whatsapp-crm.js), que se ha corregido redireccionando adecuadamente a crm.js. Esto reestablece el funcionamiento inmediato del módulo utilizando las credenciales oficiales de la API de Meta.',
+        tags: ['whatsapp', 'crm', 'vercel', 'bugfix', 'critical'],
+        type: 'fix'
+    },
     {
         version: '4.436.5',
         title: 'Fix: Decodificación de Errores y Guiado de Onboarding para Subgrupos Nuevos 🚀',

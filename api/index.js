@@ -145,7 +145,7 @@ const getFaqs = async () => _faqs || (({ default: _faqs } = await import('../ser
 const getAgents = async () => _agents || (({ default: _agents } = await import('../server/routes/agents.js')), _agents);
 const getSiteProgress = async () => _siteProgress || (({ default: _siteProgress } = await import('../server/routes/site-progress.js')), _siteProgress);
 const getDistricts = async () => _districts || (({ default: _districts } = await import('../server/routes/districts.js')), _districts);
-const getWhatsAppCRM = async () => _whatsappCRM || (({ default: _whatsappCRM } = await import('../server/routes/whatsapp-crm.js')), _whatsappCRM);
+const getWhatsAppCRM = async () => _whatsappCRM || (({ default: _whatsappCRM } = await import('../server/routes/crm.js')), _whatsappCRM);
 const getCRM = async () => _crm || (({ default: _crm } = await import('../server/routes/crm.js')), _crm);
 const getPlatformConfig = async () => _platformConfig || (({ default: _platformConfig } = await import('../server/routes/platform-config.js')), _platformConfig);
 
