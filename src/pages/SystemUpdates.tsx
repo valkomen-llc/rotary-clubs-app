@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.432.0 | 2026-05-24 (CRM Lists and Tags Import in WhatsApp QR)
-// Cache bust: 2026-05-24 17:40
+// UI V4.436.0 | 2026-05-25 (WhatsApp Communities and Subgroups Fix)
+// Cache bust: 2026-05-25 12:20
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.436.0',
+        title: 'Fix: Sincronización de Comunidades de WhatsApp y Selector de Subgrupos 🚀',
+        date: new Date().toISOString(),
+        description: 'Se ha optimizado por completo el sistema de Comunidades de WhatsApp. Ahora el backend combina la consulta de grupos con la lista de chats activos para garantizar la detección de cualquier comunidad vinculada. Además, implementamos una clasificación defensiva para agrupar canales de forma lógica y automática si el Evolution API omite los flags de comunidad en las respuestas. Por último, habilitamos la resolución proactiva de subgrupos en la consulta de estado de administrador, pre-seleccionando por defecto el grupo actual en el modal de importación CRM.',
+        tags: ['whatsapp', 'communities', 'groups', 'bugfix', 'critical'],
+        type: 'fix'
+    },
     {
         version: '4.435.0',
         title: 'Feature: Búsqueda Inteligente de Comunidades e Importación CRM Directa 🚀',

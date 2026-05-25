@@ -951,7 +951,13 @@ const WhatsAppQR: React.FC = () => {
                         setEditingGroupDesc(data.description || '');
                         const pJids = Array.isArray(data.participants) ? data.participants.map((p: any) => p.id || p.jid).filter(Boolean) : [];
                         setEditingGroupParticipants(pJids);
-                        setSelectedGroupSubgroups(Array.isArray(data.subgroups) ? data.subgroups : []);
+                        const sgs = Array.isArray(data.subgroups) ? data.subgroups : [];
+                        setSelectedGroupSubgroups(sgs);
+                        if (sgs.some((sg: any) => sg.id === selectedChat.id)) {
+                            setTargetSubgroupId(selectedChat.id);
+                        } else {
+                            setTargetSubgroupId('');
+                        }
                     }
                 }
             } catch (e) {

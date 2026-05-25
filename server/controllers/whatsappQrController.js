@@ -1490,11 +1490,34 @@ export const getCommunities = async (req, res) => {
             }
         } catch (err) {
             console.error('[WA-QR] Failed to fetch all groups:', err.message);
-            return res.status(400).json({ error: 'No se pudieron obtener los grupos de WhatsApp.' });
+        }
+
+        // Obtener también los chats activos para no perder de vista grupos/comunidades activos
+        try {
+            const chatsRes = await evo.post(`/chat/findChats/${EVO_INSTANCE_PATH}`, {});
+            if (Array.isArray(chatsRes.data)) {
+                const existingIds = new Set(allGroups.map(g => g.id || g.jid).filter(Boolean));
+                for (const c of chatsRes.data) {
+                    const id = c.remoteJid || c.id || c.chatId;
+                    if (id && id.endsWith('@g.us') && !existingIds.has(id)) {
+                        allGroups.push({
+                            id,
+                            subject: c.subject || c.name || '',
+                            creation: c.messageTimestamp || 0
+                        });
+                        existingIds.add(id);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('[WA-QR] Failed to fetch active chats for communities:', err.message);
         }
 
         // WhatsApp asigna JIDs que empiezan con '120363' exclusivamente a comunidades y subgrupos
-        const communityRelatedGroups = allGroups.filter(g => g.id && g.id.startsWith('120363'));
+        const communityRelatedGroups = allGroups.filter(g => {
+            const jid = g.id || g.jid || '';
+            return jid && jid.startsWith('120363');
+        });
 
         // Obtener información detallada en lotes paralelos para resolver isCommunity y linkedParent
         const detailedGroups = [];
@@ -1503,14 +1526,15 @@ export const getCommunities = async (req, res) => {
             const batch = communityRelatedGroups.slice(i, i + batchSize);
             const batchResults = await Promise.all(
                 batch.map(async (g) => {
+                    const jid = g.id || g.jid;
                     try {
                         const info = await evo.get(`/group/findGroupInfos/${EVO_INSTANCE_PATH}`, { 
-                            params: { groupJid: g.id },
+                            params: { groupJid: jid },
                             timeout: 5000 
                         });
                         return info.data ? { ...g, ...info.data } : g;
                     } catch (e) {
-                        console.error('[WA-QR] Error fetching detailed metadata for community group:', g.id, e.message);
+                        console.error('[WA-QR] Error fetching detailed metadata for community group:', jid, e.message);
                         return g;
                     }
                 })
@@ -1518,16 +1542,33 @@ export const getCommunities = async (req, res) => {
             detailedGroups.push(...batchResults.filter(Boolean));
         }
 
-        // Filtrar comunidades e identificar grupos hijos
-        const communities = detailedGroups.filter(g => g.isCommunity || g.isCommunityAnnounce);
-        const subgroups = detailedGroups.filter(g => (g.linkedParent || g.linkedParentJid) && !g.isCommunity && !g.isCommunityAnnounce);
+        // Clasificar comunidades y subgrupos de manera ultra-defensiva
+        
+        // 1. Identificar subgrupos (aquellos que tienen un linkedParent válido diferente de su propio JID)
+        const subgroups = detailedGroups.filter(g => {
+            const jid = g.id || g.jid || '';
+            const parent = g.linkedParent || g.linkedParentJid || null;
+            return parent && parent !== jid;
+        });
+
+        // 2. Identificar comunidades parent (aquellas que no son subgrupos y empiezan con 120363, o son referenciadas como parent, o tienen flags de comunidad)
+        const parentJidsFromSubgroups = new Set(subgroups.map(sg => sg.linkedParent || sg.linkedParentJid).filter(Boolean));
+        
+        const communities = detailedGroups.filter(g => {
+            const jid = g.id || g.jid || '';
+            const isSub = subgroups.some(sg => (sg.id || sg.jid) === jid);
+            const isRefParent = parentJidsFromSubgroups.has(jid);
+            const hasCommFlags = g.isCommunity === true || g.isCommunityAnnounce === true || String(g.isCommunity) === 'true' || String(g.isCommunityAnnounce) === 'true';
+            
+            return hasCommFlags || isRefParent || (jid.startsWith('120363') && !isSub);
+        });
 
         // De manera defensiva, si un grupo hijo tiene un linkedParent que no está en la lista de comunidades,
         // creamos una comunidad virtual/temporal para que no se pierdan los grupos.
         const parentJids = new Set(subgroups.map(sg => sg.linkedParent || sg.linkedParentJid).filter(Boolean));
         for (const parentJid of parentJids) {
-            if (!communities.some(c => c.id === parentJid)) {
-                let foundParent = detailedGroups.find(g => g.id === parentJid) || allGroups.find(g => g.id === parentJid);
+            if (!communities.some(c => (c.id || c.jid) === parentJid)) {
+                let foundParent = detailedGroups.find(g => (g.id || g.jid) === parentJid) || allGroups.find(g => (g.id || g.jid) === parentJid);
                 if (!foundParent) {
                     try {
                         const info = await evo.get(`/group/findGroupInfos/${EVO_INSTANCE_PATH}`, { 
@@ -1560,10 +1601,14 @@ export const getCommunities = async (req, res) => {
 
         // Construir la jerarquía estructurada
         const enrichedCommunities = communities.map(c => {
+            const cid = c.id || c.jid;
             const commSubgroups = subgroups
-                .filter(sg => sg.linkedParent === c.id || sg.linkedParentJid === c.id || sg.linkedParent === c.linkedParent || sg.linkedParentJid === c.linkedParent)
+                .filter(sg => {
+                    const parent = sg.linkedParent || sg.linkedParentJid;
+                    return parent === cid || parent === c.linkedParent || parent === c.linkedParentJid;
+                })
                 .map(sg => ({
-                    id: sg.id,
+                    id: sg.id || sg.jid,
                     subject: sg.subject,
                     creation: sg.creation || 0,
                     owner: sg.owner || '',
@@ -1571,10 +1616,10 @@ export const getCommunities = async (req, res) => {
                 }));
 
             return {
-                id: c.id,
+                id: cid,
                 subject: c.subject,
                 isCommunity: true,
-                isCommunityAnnounce: !!c.isCommunityAnnounce,
+                isCommunityAnnounce: !!c.isCommunityAnnounce || String(c.isCommunityAnnounce) === 'true',
                 subgroups: commSubgroups
             };
         });
@@ -1617,14 +1662,79 @@ export const getGroupAdminStatus = async (req, res) => {
 
         const isAdmin = selfParticipant && (selfParticipant.admin === 'admin' || selfParticipant.admin === 'superadmin' || selfParticipant.isAdmin === true);
         
+        // Resolución proactiva de subgrupos de la comunidad en el backend si pertenece a una comunidad
+        let resolvedSubgroups = [];
+        const isCommRelated = groupData.isCommunity || groupData.isCommunityAnnounce || groupJid.startsWith('120363') || (groupData.linkedParent || groupData.linkedParentJid);
+        
+        if (isCommRelated) {
+            const communityParentId = groupData.linkedParent || groupData.linkedParentJid || (groupJid.startsWith('120363') ? groupJid : null);
+            
+            if (communityParentId) {
+                try {
+                    // Obtener todos los grupos para encontrar subgrupos hermanos
+                    let allGroupsList = [];
+                    const groupsRes = await evo.get(`/group/fetchAllGroups/${EVO_INSTANCE_PATH}`).catch(() => ({ data: [] }));
+                    if (Array.isArray(groupsRes.data)) {
+                        allGroupsList = groupsRes.data;
+                    }
+                    
+                    const chatsRes = await evo.post(`/chat/findChats/${EVO_INSTANCE_PATH}`, {}).catch(() => ({ data: [] }));
+                    if (Array.isArray(chatsRes.data)) {
+                        const existingIds = new Set(allGroupsList.map(g => g.id || g.jid).filter(Boolean));
+                        for (const c of chatsRes.data) {
+                            const id = c.remoteJid || c.id || c.chatId;
+                            if (id && id.endsWith('@g.us') && !existingIds.has(id)) {
+                                allGroupsList.push({ id, subject: c.subject || c.name || '' });
+                                existingIds.add(id);
+                            }
+                        }
+                    }
+
+                    // Filtrar grupos relacionados a comunidades (excluyendo el parent)
+                    const commRelated = allGroupsList.filter(g => {
+                        const id = g.id || g.jid || '';
+                        return id && id.startsWith('120363') && id !== communityParentId;
+                    });
+
+                    // Resolver información detallada en paralelo
+                    const detailedResults = await Promise.all(
+                        commRelated.map(async (g) => {
+                            try {
+                                const info = await evo.get(`/group/findGroupInfos/${EVO_INSTANCE_PATH}`, { 
+                                    params: { groupJid: g.id || g.jid },
+                                    timeout: 3000 
+                                });
+                                return info.data ? { ...g, ...info.data } : g;
+                            } catch (_) {
+                                return g;
+                            }
+                        })
+                    );
+
+                    resolvedSubgroups = detailedResults
+                        .filter(g => {
+                            const parent = g.linkedParent || g.linkedParentJid || null;
+                            const id = g.id || g.jid || '';
+                            return parent === communityParentId && id !== communityParentId;
+                        })
+                        .map(sg => ({
+                            id: sg.id || sg.jid,
+                            subject: sg.subject
+                        }));
+                } catch (err) {
+                    console.error('[WA-QR] Error resolving subgroups in admin status:', err.message);
+                }
+            }
+        }
+
         res.json({
             success: true,
             isAdmin: !!isAdmin,
             subject: groupData.subject,
             description: groupData.description || '',
             participantsCount: participants.length,
-            subgroups: groupData.subgroups || [],
-            linkedParent: groupData.linkedParent || null,
+            subgroups: resolvedSubgroups.length > 0 ? resolvedSubgroups : (groupData.subgroups || []),
+            linkedParent: groupData.linkedParent || groupData.linkedParentJid || null,
             participants: participants.map(p => ({
                 id: p.id || p.jid,
                 admin: p.admin || null
