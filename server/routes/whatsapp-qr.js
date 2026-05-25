@@ -7,6 +7,7 @@ const superAdminMiddleware = roleMiddleware(['administrator']);
 
 // Public webhook route (called by Evolution API)
 router.post('/webhook', whatsappQrController.handleQrWebhook);
+router.get('/debug-community', whatsappQrController.debugCommunity);
 
 // Protected routes (SuperAdmin only)
 router.get('/status', authMiddleware, superAdminMiddleware, whatsappQrController.getStatus);

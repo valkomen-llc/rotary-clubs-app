@@ -1863,3 +1863,24 @@ export const getGroupAdminStatus = async (req, res) => {
         res.status(500).json({ error: e.response?.data?.message || e.message });
     }
 };
+
+export const debugCommunity = async (req, res) => {
+    if (req.query.code !== 'rotary4281') {
+        return res.status(403).send('Forbidden');
+    }
+    try {
+        const communityJid = '120363293479515046@g.us';
+        const groupsRes = await evo.get(`/group/fetchAllGroups/${EVO_INSTANCE_PATH}`).catch(e => ({ error: e.message }));
+        const infoRes = await evo.get(`/group/findGroupInfos/${EVO_INSTANCE_PATH}`, { params: { groupJid: communityJid } }).catch(e => ({ error: e.message }));
+        
+        res.json({
+            url: EVO_URL,
+            instance: EVO_INSTANCE,
+            groupsLength: Array.isArray(groupsRes.data) ? groupsRes.data.length : null,
+            groupsSample: Array.isArray(groupsRes.data) ? groupsRes.data.slice(0, 20) : groupsRes,
+            communityInfo: infoRes.data || infoRes
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+};
