@@ -141,6 +141,25 @@ const extractProfileData = (data) => {
     return { resolvedName, resolvedPic, phoneJid };
 };
 
+const getEvolutionErrorMsg = (data, defaultMsg = 'Error en la API de WhatsApp') => {
+    if (!data) return defaultMsg;
+    if (data.response && data.response.message) {
+        if (Array.isArray(data.response.message)) return data.response.message.join(', ');
+        if (typeof data.response.message === 'string') return data.response.message;
+    }
+    if (data.message) {
+        if (Array.isArray(data.message)) return data.message.join(', ');
+        if (typeof data.message === 'string') return data.message;
+    }
+    if (typeof data === 'string') return data;
+    try {
+        return JSON.stringify(data);
+    } catch (_) {
+        return defaultMsg;
+    }
+};
+
+
 const ensureInstance = async () => {
     // Try to find the instance first; create it if missing.
     const list = await evo.get('/instance/fetchInstances', { params: { instanceName: EVO_INSTANCE } });
@@ -1208,15 +1227,23 @@ export const updateGroupParticipants = async (req, res) => {
         });
 
         if (r.status >= 400) {
-            const errMsg = r.data?.message || (r.data ? JSON.stringify(r.data) : 'No se pudo actualizar los participantes del grupo.');
-            return res.status(r.status).json({ error: errMsg });
+            const rawError = getEvolutionErrorMsg(r.data);
+            let errorMsg = rawError;
+            if (rawError.toLowerCase().includes('internal-server-error') || rawError.toLowerCase().includes('updating participants')) {
+                errorMsg = 'No se pudieron añadir participantes a este grupo. Esto suele ocurrir porque la cuenta de WhatsApp conectada no se ha unido al grupo todavía. Por favor, asegúrate de unirte primero a este grupo desde tu teléfono (lo encontrarás en la comunidad, bajo la sección "Grupos a los que puedes unirte") y de tener permisos de Administrador en él.';
+            }
+            return res.status(r.status).json({ error: errorMsg });
         }
 
         res.json({ success: true, data: r.data });
     } catch (e) {
         console.error('[WA-QR] updateGroupParticipants error:', e.response?.data || e.message);
-        const errMsg = e.response?.data?.message || (e.response?.data ? JSON.stringify(e.response.data) : e.message);
-        res.status(500).json({ error: errMsg });
+        const rawError = getEvolutionErrorMsg(e.response?.data || e.message);
+        let errorMsg = rawError;
+        if (rawError.toLowerCase().includes('internal-server-error') || rawError.toLowerCase().includes('updating participants')) {
+            errorMsg = 'No se pudieron añadir participantes a este grupo. Esto suele ocurrir porque la cuenta de WhatsApp conectada no se ha unido al grupo todavía. Por favor, asegúrate de unirte primero a este grupo desde tu teléfono (lo encontrarás en la comunidad, bajo la sección "Grupos a los que puedes unirte") y de tener permisos de Administrador en él.';
+        }
+        res.status(500).json({ error: errorMsg });
     }
 };
 

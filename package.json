@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.436.4",
-  "cache_bust": "2026-05-25 13:15 (WhatsApp Communities Cache Expiration & Scope Correction)",
+  "version": "4.436.5",
+  "cache_bust": "2026-05-25 13:45 (WhatsApp Communities Subgroups Friendly Error Decoders)",
   "type": "module",
-  "//": "UI V4.436.4 | 2026-05-25 (WhatsApp Communities Cache Expiration & Scope Correction)",
+  "//": "UI V4.436.5 | 2026-05-25 (WhatsApp Communities Subgroups Friendly Error Decoders)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

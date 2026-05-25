@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.436.4 | 2026-05-25 (WhatsApp Communities Cache Expiration & Scope Correction)
-// Cache bust: 2026-05-25 13:15
+// UI V4.436.5 | 2026-05-25 (WhatsApp Communities Subgroups Friendly Error Decoders)
+// Cache bust: 2026-05-25 13:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.436.5',
+        title: 'Fix: Decodificación de Errores y Guiado de Onboarding para Subgrupos Nuevos 🚀',
+        date: new Date().toISOString(),
+        description: 'Se ha diseñado un decodificador inteligente en el backend para interceptar los errores de WhatsApp (como el internal-server-error del Evolution API) generados cuando la cuenta intenta añadir miembros a subgrupos en los que aún no participa. Ahora, en lugar de mostrar código crudo críptico en pantalla, el sistema despliega un mensaje amigable y orientativo explicando los pasos exactos (unirse primero desde el teléfono en la sección de "Grupos a los que puedes unirte") para habilitar los permisos administrativos.',
+        tags: ['whatsapp', 'communities', 'groups', 'bugfix', 'critical'],
+        type: 'fix'
+    },
     {
         version: '4.436.4',
         title: 'Fix: Sincronización en Tiempo Real de Subgrupos y Corrección de Errores de Referencia Backend 🚀',
