@@ -260,6 +260,8 @@ const WhatsAppQR: React.FC = () => {
     const [editingGroupParticipants, setEditingGroupParticipants] = useState<string[]>([]);
     const [updatingGroup, setUpdatingGroup] = useState(false);
     const [editGroupError, setEditGroupError] = useState('');
+    const [selectedGroupSubgroups, setSelectedGroupSubgroups] = useState<{ id: string; subject: string; }[]>([]);
+    const [targetSubgroupId, setTargetSubgroupId] = useState('');
 
     // Fetch CRM contacts, lists, and tags for group creation
     const fetchCrmData = async () => {
@@ -665,7 +667,8 @@ const WhatsAppQR: React.FC = () => {
         setAddParticipantsError('');
 
         try {
-            const res = await fetch(`${API}/whatsapp-qr/groups/${selectedChat.id}/participants`, {
+            const targetJid = targetSubgroupId || selectedChat.id;
+            const res = await fetch(`${API}/whatsapp-qr/groups/${encodeURIComponent(targetJid)}/participants`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -920,16 +923,18 @@ const WhatsAppQR: React.FC = () => {
         setLoadingCommunities(false);
     };
 
-    // Auto-fetch communities when status changes to CONNECTED or sidebarTab switches to communities
+    // Auto-fetch communities when status changes to CONNECTED
     useEffect(() => {
-        if (status === 'CONNECTED' && sidebarTab === 'communities') {
+        if (status === 'CONNECTED') {
             fetchCommunities();
         }
-    }, [status, sidebarTab, token]);
+    }, [status, token]);
 
     // Fetch group admin status when a group is selected
     useEffect(() => {
         const checkAdminStatus = async () => {
+            setSelectedGroupSubgroups([]);
+            setTargetSubgroupId('');
             if (!selectedChat || !selectedChat.isGroup || !token) {
                 setIsGroupAdmin(false);
                 return;
@@ -946,6 +951,7 @@ const WhatsAppQR: React.FC = () => {
                         setEditingGroupDesc(data.description || '');
                         const pJids = Array.isArray(data.participants) ? data.participants.map((p: any) => p.id || p.jid).filter(Boolean) : [];
                         setEditingGroupParticipants(pJids);
+                        setSelectedGroupSubgroups(Array.isArray(data.subgroups) ? data.subgroups : []);
                     }
                 }
             } catch (e) {
@@ -2199,6 +2205,36 @@ const WhatsAppQR: React.FC = () => {
                         </div>
 
                         <form onSubmit={handleAddParticipantsSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
+                            {(() => {
+                                const matchedComm = communities.find(c => c.id === selectedChat.id);
+                                const subgroups = (selectedGroupSubgroups && selectedGroupSubgroups.length > 0)
+                                    ? selectedGroupSubgroups
+                                    : (matchedComm ? matchedComm.subgroups : []);
+                                
+                                if (subgroups.length === 0) return null;
+                                
+                                return (
+                                    <div className="bg-emerald-50/30 border border-emerald-100 p-3 rounded-xl space-y-1.5 mb-2">
+                                        <label className="text-[11px] font-bold text-emerald-800 uppercase tracking-wide block">
+                                            ¿A qué Grupo de la Comunidad deseas añadir los miembros? *
+                                        </label>
+                                        <select
+                                            value={targetSubgroupId}
+                                            onChange={e => setTargetSubgroupId(e.target.value)}
+                                            className="w-full border border-emerald-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-bold text-gray-800 shadow-sm"
+                                            required
+                                        >
+                                            <option value="">-- Seleccionar Grupo Destino --</option>
+                                            {subgroups.map(sg => (
+                                                <option key={sg.id} value={sg.id}>
+                                                    {sg.subject}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                );
+                            })()}
+
                             <div>
                                 <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wide block mb-1">
                                     Participantes Seleccionados ({groupParticipants.length})

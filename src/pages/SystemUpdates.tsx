@@ -28,6 +28,14 @@ interface UpdateItem {
 // Cache bust: 2026-05-24 17:40
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: '4.434.0',
+        title: 'Feature: Selector de Subgrupos y Resolución de Comunidades de WhatsApp 🚀',
+        date: new Date().toISOString(),
+        description: 'Se ha optimizado la resolución de metadatos de comunidades para buscar el nombre real a nivel de API si no se encuentra en el caché ligero de grupos. Adicionalmente, al importar o añadir contactos dentro de una Comunidad, ahora se despliega un selector dinámico que permite elegir de forma obligatoria a cuál de los subgrupos (grupos hijos) se agregarán los miembros seleccionados, logrando una segmentación perfecta.',
+        tags: ['whatsapp', 'communities', 'groups', 'feature'],
+        type: 'feature'
+    },
+    {
         version: '4.433.0',
         title: 'Feature: Soporte de Comunidades y Gestión de Grupos en WhatsApp QR Gateway 🚀',
         date: new Date().toISOString(),

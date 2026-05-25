@@ -1495,14 +1495,32 @@ export const getCommunities = async (req, res) => {
 
         // Filtrar comunidades e identificar grupos hijos
         const communities = allGroups.filter(g => g.isCommunity || g.isCommunityAnnounce);
-        const subgroups = allGroups.filter(g => g.linkedParent && !g.isCommunity && !g.isCommunityAnnounce);
+        const subgroups = allGroups.filter(g => (g.linkedParent || g.linkedParentJid) && !g.isCommunity && !g.isCommunityAnnounce);
 
         // De manera defensiva, si un grupo hijo tiene un linkedParent que no está en la lista de comunidades,
         // creamos una comunidad virtual/temporal para que no se pierdan los grupos.
-        const parentJids = new Set(subgroups.map(sg => sg.linkedParent).filter(Boolean));
+        const parentJids = new Set(subgroups.map(sg => sg.linkedParent || sg.linkedParentJid).filter(Boolean));
         for (const parentJid of parentJids) {
             if (!communities.some(c => c.id === parentJid)) {
-                const foundParent = allGroups.find(g => g.id === parentJid);
+                let foundParent = allGroups.find(g => g.id === parentJid);
+                if (!foundParent) {
+                    try {
+                        const info = await evo.get(`/group/findGroupInfos/${EVO_INSTANCE_PATH}`, { 
+                            params: { groupJid: parentJid },
+                            timeout: 4000
+                        });
+                        if (info.data && info.data.subject) {
+                            foundParent = {
+                                id: parentJid,
+                                subject: info.data.subject,
+                                isCommunity: true
+                            };
+                        }
+                    } catch (e) {
+                        console.error('[WA-QR] Error resolving parent community JID:', parentJid, e.message);
+                    }
+                }
+
                 if (foundParent) {
                     communities.push(foundParent);
                 } else {
@@ -1518,7 +1536,7 @@ export const getCommunities = async (req, res) => {
         // Construir la jerarquía estructurada
         const enrichedCommunities = communities.map(c => {
             const commSubgroups = subgroups
-                .filter(sg => sg.linkedParent === c.id || sg.linkedParent === c.linkedParent)
+                .filter(sg => sg.linkedParent === c.id || sg.linkedParentJid === c.id || sg.linkedParent === c.linkedParent || sg.linkedParentJid === c.linkedParent)
                 .map(sg => ({
                     id: sg.id,
                     subject: sg.subject,
@@ -1536,7 +1554,19 @@ export const getCommunities = async (req, res) => {
             };
         });
 
-        res.json({ success: true, communities: enrichedCommunities });
+        res.json({ 
+            success: true, 
+            communities: enrichedCommunities,
+            debug: allGroups.slice(0, 50).map(g => ({
+                id: g.id,
+                subject: g.subject,
+                isCommunity: g.isCommunity,
+                isCommunityAnnounce: g.isCommunityAnnounce,
+                linkedParent: g.linkedParent,
+                linkedParentJid: g.linkedParentJid,
+                keys: Object.keys(g)
+            }))
+        });
     } catch (e) {
         console.error('[WA-QR] getCommunities error:', e.response?.data || e.message);
         res.status(500).json({ error: e.response?.data?.message || e.message });
@@ -1577,6 +1607,8 @@ export const getGroupAdminStatus = async (req, res) => {
             subject: groupData.subject,
             description: groupData.description || '',
             participantsCount: participants.length,
+            subgroups: groupData.subgroups || [],
+            linkedParent: groupData.linkedParent || null,
             participants: participants.map(p => ({
                 id: p.id || p.jid,
                 admin: p.admin || null
