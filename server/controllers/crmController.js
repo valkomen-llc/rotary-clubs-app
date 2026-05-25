@@ -758,7 +758,7 @@ export const getLists = async (req, res) => {
             let count = 0;
             try {
                 const countR = await db.query(
-                    `SELECT COUNT(*)::int as cnt FROM "WhatsAppContact" WHERE "clubId"=$1 AND status='active' AND $2 = ANY(tags)`,
+                    `SELECT COUNT(*)::int as cnt FROM "WhatsAppContact" WHERE "clubId"=$1 AND status IN ('active', 'subscribed') AND $2 = ANY(tags)`,
                     [clubId, tagName]
                 );
                 count = countR.rows[0]?.cnt || 0;
@@ -1133,14 +1133,14 @@ export const sendCampaign = async (req, res) => {
             const tagName = campaign.listId.replace('tag:', '');
             const contactsR = await db.query(
                 `SELECT * FROM "WhatsAppContact"
-                 WHERE "clubId"=$1 AND status='active' AND $2 = ANY(tags)`,
+                 WHERE "clubId"=$1 AND status IN ('active', 'subscribed') AND $2 = ANY(tags)`,
                 [clubId, tagName]
             );
             contacts = contactsR.rows;
         } else {
             const contactsR = await db.query(
                 `SELECT c.* FROM "WhatsAppContact" c JOIN "WhatsAppListMember" m ON m."contactId"=c.id
-                 WHERE m."listId"=$1 AND c.status='active'`,
+                 WHERE m."listId"=$1 AND c.status IN ('active', 'subscribed')`,
                 [campaign.listId]
             );
             contacts = contactsR.rows;
@@ -1266,7 +1266,7 @@ export const getAnalytics = async (req, res) => {
     try {
         const clubId = await resolveClubId(req);
         const [contacts, campaigns, messages] = await Promise.all([
-            db.query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status='active') as active, COUNT(*) FILTER (WHERE status='opted_out') as "optedOut" FROM "WhatsAppContact" WHERE "clubId"=$1`, [clubId]),
+            db.query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status IN ('active', 'subscribed')) as active, COUNT(*) FILTER (WHERE status='opted_out') as "optedOut" FROM "WhatsAppContact" WHERE "clubId"=$1`, [clubId]),
             db.query(`SELECT COUNT(*) as total, SUM(sent)::int as sent, SUM(delivered)::int as delivered, SUM(read)::int as "readCount", SUM(failed)::int as failed FROM "WhatsAppCampaign" WHERE "clubId"=$1 AND status='sent'`, [clubId]),
             db.query(`SELECT COUNT(*) FILTER (WHERE status='sent') as sent, COUNT(*) FILTER (WHERE status='delivered') as delivered, COUNT(*) FILTER (WHERE status='read') as "readCount", COUNT(*) FILTER (WHERE status='failed') as failed FROM "WhatsAppMessageLog" WHERE "clubId"=$1`, [clubId]),
         ]);

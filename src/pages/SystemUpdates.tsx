@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.436.12 | 2026-05-25 (WhatsApp CRM Detailed Campaign Error Log UI)
-// Cache bust: 2026-05-25 16:25
+// UI V4.436.13 | 2026-05-25 (WhatsApp CRM Subscribed Status Campaign Integration)
+// Cache bust: 2026-05-25 16:35
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.436.13',
+        title: 'Fix: Soporte Unificado de Estados de Suscripción ("Suscrito" / "active") en Campañas de WhatsApp CRM 🚀',
+        date: new Date().toISOString(),
+        description: 'Se ha corregido una inconsistencia crítica en el envío de campañas de WhatsApp CRM que causaba que solo se despacharan mensajes a una fracción de los contactos de la lista. El problema se originaba porque el motor de WhatsApp heredado requería contactos con status="active", mientras que el nuevo Directorio Fluent CRM almacena y registra los contactos con status="subscribed" (Suscrito). Rediseñamos todos los filtros de estado en el backend (envíos, conteos y métricas analíticas) para dar soporte transparente y nativo a ambos estados activos de forma simultánea, garantizando que el 100% de los contactos suscritos reciban sus campañas.',
+        tags: ['whatsapp', 'crm', 'campaigns', 'status', 'bugfix', 'critical'],
+        type: 'fix'
+    },
     {
         version: '4.436.12',
         title: 'Feature: Visualización en Tiempo Real de Detalles y Errores de Campaña en WhatsApp CRM 🚀',
