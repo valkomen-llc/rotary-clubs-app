@@ -2290,27 +2290,46 @@ const WhatsAppQR: React.FC = () => {
                                 </div>
                                 <button
                                     type="button"
-                                    onClick={() => {
-                                        let contactsToAdd: any[] = [];
-                                        if (selectedImportListId) {
-                                            contactsToAdd = crmContacts.filter(c => c.lists?.some((l: any) => l.id === selectedImportListId));
-                                        } else if (selectedImportTagId) {
-                                            contactsToAdd = crmContacts.filter(c => c.tags?.some((t: any) => t.id === selectedImportTagId || t.name === selectedImportTagId));
-                                        }
-                                        
-                                        if (contactsToAdd.length > 0) {
-                                            const newPhones = contactsToAdd.map(c => c.phone).filter(p => p && !groupParticipants.includes(p));
-                                            if (newPhones.length > 0) {
-                                                setGroupParticipants(prev => [...prev, ...newPhones]);
-                                                toast.success(`Se agregaron ${newPhones.length} contactos de la selección.`);
-                                            } else {
-                                                toast.error('Todos los contactos de la selección ya están en la lista.');
+                                    onClick={async () => {
+                                        setAddingParticipants(true);
+                                        try {
+                                            let url = '';
+                                            if (selectedImportListId) {
+                                                url = `${API}/crm/contacts?lists=${encodeURIComponent(selectedImportListId)}&limit=1000`;
+                                            } else if (selectedImportTagId) {
+                                                const tagObj = crmTags.find(t => t.id === selectedImportTagId);
+                                                const tagName = tagObj ? tagObj.name : selectedImportTagId;
+                                                url = `${API}/crm/contacts?tags=${encodeURIComponent(tagName)}&limit=1000`;
                                             }
-                                        } else {
-                                            toast.error('No se encontraron contactos en esta selección.');
+                                            
+                                            if (url) {
+                                                const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+                                                if (res.ok) {
+                                                    const data = await res.json();
+                                                    const contactsToAdd = data.contacts || [];
+                                                    if (contactsToAdd.length > 0) {
+                                                        const newPhones = contactsToAdd.map((c: any) => c.phone).filter((p: string) => p && !groupParticipants.includes(p));
+                                                        if (newPhones.length > 0) {
+                                                            setGroupParticipants(prev => [...prev, ...newPhones]);
+                                                            toast.success(`Se agregaron ${newPhones.length} contactos de la selección.`);
+                                                        } else {
+                                                            toast.error('Todos los contactos de la selección ya están en la lista.');
+                                                        }
+                                                    } else {
+                                                        toast.error('No se encontraron contactos en esta selección.');
+                                                    }
+                                                } else {
+                                                    toast.error('Error al obtener contactos del CRM.');
+                                                }
+                                            }
+                                        } catch (err) {
+                                            console.error(err);
+                                            toast.error('Error de conexión.');
+                                        } finally {
+                                            setAddingParticipants(false);
+                                            setSelectedImportListId('');
+                                            setSelectedImportTagId('');
                                         }
-                                        setSelectedImportListId('');
-                                        setSelectedImportTagId('');
                                     }}
                                     disabled={!selectedImportListId && !selectedImportTagId}
                                     className="w-full bg-blue-600 hover:bg-blue-700 text-white py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1"

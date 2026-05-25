@@ -1493,16 +1493,41 @@ export const getCommunities = async (req, res) => {
             return res.status(400).json({ error: 'No se pudieron obtener los grupos de WhatsApp.' });
         }
 
+        // WhatsApp asigna JIDs que empiezan con '120363' exclusivamente a comunidades y subgrupos
+        const communityRelatedGroups = allGroups.filter(g => g.id && g.id.startsWith('120363'));
+
+        // Obtener información detallada en lotes paralelos para resolver isCommunity y linkedParent
+        const detailedGroups = [];
+        const batchSize = 10;
+        for (let i = 0; i < communityRelatedGroups.length; i += batchSize) {
+            const batch = communityRelatedGroups.slice(i, i + batchSize);
+            const batchResults = await Promise.all(
+                batch.map(async (g) => {
+                    try {
+                        const info = await evo.get(`/group/findGroupInfos/${EVO_INSTANCE_PATH}`, { 
+                            params: { groupJid: g.id },
+                            timeout: 5000 
+                        });
+                        return info.data ? { ...g, ...info.data } : g;
+                    } catch (e) {
+                        console.error('[WA-QR] Error fetching detailed metadata for community group:', g.id, e.message);
+                        return g;
+                    }
+                })
+            );
+            detailedGroups.push(...batchResults.filter(Boolean));
+        }
+
         // Filtrar comunidades e identificar grupos hijos
-        const communities = allGroups.filter(g => g.isCommunity || g.isCommunityAnnounce);
-        const subgroups = allGroups.filter(g => (g.linkedParent || g.linkedParentJid) && !g.isCommunity && !g.isCommunityAnnounce);
+        const communities = detailedGroups.filter(g => g.isCommunity || g.isCommunityAnnounce);
+        const subgroups = detailedGroups.filter(g => (g.linkedParent || g.linkedParentJid) && !g.isCommunity && !g.isCommunityAnnounce);
 
         // De manera defensiva, si un grupo hijo tiene un linkedParent que no está en la lista de comunidades,
         // creamos una comunidad virtual/temporal para que no se pierdan los grupos.
         const parentJids = new Set(subgroups.map(sg => sg.linkedParent || sg.linkedParentJid).filter(Boolean));
         for (const parentJid of parentJids) {
             if (!communities.some(c => c.id === parentJid)) {
-                let foundParent = allGroups.find(g => g.id === parentJid);
+                let foundParent = detailedGroups.find(g => g.id === parentJid) || allGroups.find(g => g.id === parentJid);
                 if (!foundParent) {
                     try {
                         const info = await evo.get(`/group/findGroupInfos/${EVO_INSTANCE_PATH}`, { 
@@ -1556,16 +1581,7 @@ export const getCommunities = async (req, res) => {
 
         res.json({ 
             success: true, 
-            communities: enrichedCommunities,
-            debug: allGroups.slice(0, 50).map(g => ({
-                id: g.id,
-                subject: g.subject,
-                isCommunity: g.isCommunity,
-                isCommunityAnnounce: g.isCommunityAnnounce,
-                linkedParent: g.linkedParent,
-                linkedParentJid: g.linkedParentJid,
-                keys: Object.keys(g)
-            }))
+            communities: enrichedCommunities
         });
     } catch (e) {
         console.error('[WA-QR] getCommunities error:', e.response?.data || e.message);

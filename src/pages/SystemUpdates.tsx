@@ -28,6 +28,14 @@ interface UpdateItem {
 // Cache bust: 2026-05-24 17:40
 export const SYSTEM_UPDATES: UpdateItem[] = [
     {
+        version: '4.435.0',
+        title: 'Feature: Búsqueda Inteligente de Comunidades e Importación CRM Directa 🚀',
+        date: new Date().toISOString(),
+        description: 'Se ha rediseñado la sincronización de comunidades para filtrar por identificadores específicos de WhatsApp (JIDs "120363") y resolver su metadata detallada en lotes paralelos ultra-rápidos. Además, se reescribió el importador de Listas y Etiquetas del CRM en el modal de añadir participantes para consultar la API de fondo en tiempo real, permitiendo importar miles de contactos sin límites de paginación.',
+        tags: ['whatsapp', 'communities', 'groups', 'feature'],
+        type: 'feature'
+    },
+    {
         version: '4.434.0',
         title: 'Feature: Selector de Subgrupos y Resolución de Comunidades de WhatsApp 🚀',
         date: new Date().toISOString(),
