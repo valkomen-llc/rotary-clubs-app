@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
-import { Mail, MessageCircle, Send, ClipboardList, CheckCircle2, XCircle, Search, Clock, Settings, Users, List, Megaphone, FileText, BarChart3, MessageSquare, Tag, QrCode } from 'lucide-react';
+import { Mail, MessageCircle, Send, ClipboardList, CheckCircle2, XCircle, Search, Clock, Settings, Users, List, Megaphone, FileText, BarChart3, MessageSquare, Tag, QrCode, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 // WhatsApp CRM Sub-components
@@ -16,10 +16,11 @@ import WhatsAppDashboard from '../../components/admin/whatsapp/WhatsAppDashboard
 import ContactsManager from '../../components/admin/crm/fluent/ContactsManager';
 import ListsManager from '../../components/admin/crm/fluent/ListsManager';
 import TagsManager from '../../components/admin/crm/fluent/TagsManager';
+import CustomFieldsManager from '../../components/admin/crm/fluent/CustomFieldsManager';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
-type TabKey = 'email-send' | 'email-templates' | 'email-logs' | 'wa-config' | 'wa-templates' | 'wa-campaigns' | 'wa-analytics' | 'wa-chat' | 'crm-contacts' | 'crm-lists' | 'crm-tags' | 'list-detail' | 'tag-detail';
+type TabKey = 'email-send' | 'email-templates' | 'email-logs' | 'wa-config' | 'wa-templates' | 'wa-campaigns' | 'wa-analytics' | 'wa-chat' | 'crm-contacts' | 'crm-lists' | 'crm-tags' | 'crm-settings' | 'list-detail' | 'tag-detail';
 
 /**
  * CRM Interfaz
@@ -183,6 +184,7 @@ const CRMManagement: React.FC = () => {
                 {activeTab === 'crm-contacts' && <ContactsManager />}
                 {activeTab === 'crm-lists' && <ListsManager onViewDetails={(id) => { setSelectedAudienceId(id); setActiveTab('list-detail'); }} />}
                 {activeTab === 'crm-tags' && <TagsManager onViewDetails={(id) => { setSelectedAudienceId(id); setActiveTab('tag-detail'); }} />}
+                {activeTab === 'crm-settings' && <CustomFieldsManager />}
                 {activeTab === 'list-detail' && selectedAudienceId && <ContactsManager audienceType="list" audienceId={selectedAudienceId} onBack={() => setActiveTab('crm-lists')} />}
                 {activeTab === 'tag-detail' && selectedAudienceId && <ContactsManager audienceType="tag" audienceId={selectedAudienceId} onBack={() => setActiveTab('crm-tags')} />}
 
@@ -302,4 +304,71 @@ const CRMManagement: React.FC = () => {
     );
 };
 
-export default CRMManagement;
+class CRMErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
+    constructor(props: { children: React.ReactNode }) {
+        super(props);
+        this.state = { hasError: false, error: null };
+    }
+
+    static getDerivedStateFromError(error: Error) {
+        return { hasError: true, error };
+    }
+
+    componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+        console.error("CRM Runtime Error:", error, errorInfo);
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <AdminLayout>
+                    <div className="max-w-xl mx-auto my-20 p-8 bg-white rounded-2xl border border-red-100 shadow-xl space-y-6">
+                        <div className="flex items-center gap-4 text-red-600">
+                            <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0">
+                                <AlertCircle className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-black text-gray-900">Error de Ejecución CRM</h2>
+                                <p className="text-sm text-gray-500">Un componente interno del frontend falló al cargarse en tu navegador.</p>
+                            </div>
+                        </div>
+                        
+                        <div className="bg-red-50/50 rounded-xl p-4 border border-red-100/50 font-mono text-xs text-red-700 whitespace-pre-wrap overflow-x-auto">
+                            <strong>Detalle del Error:</strong><br />
+                            {this.state.error?.toString()}<br /><br />
+                            <strong>Stack Trace:</strong><br />
+                            {this.state.error?.stack?.split('\n').slice(0, 5).join('\n')}
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={() => window.location.reload()} 
+                                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 px-4 rounded-xl text-sm transition-all shadow-md active:scale-95"
+                            >
+                                Recargar Página
+                            </button>
+                            <button 
+                                onClick={() => this.setState({ hasError: false, error: null })} 
+                                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2.5 px-4 rounded-xl text-sm transition-all active:scale-95"
+                            >
+                                Intentar Ignorar
+                            </button>
+                        </div>
+                    </div>
+                </AdminLayout>
+            );
+        }
+
+        return this.props.children;
+    }
+}
+
+const CRMManagementWithBoundary: React.FC = () => {
+    return (
+        <CRMErrorBoundary>
+            <CRMManagement />
+        </CRMErrorBoundary>
+    );
+};
+
+export default CRMManagementWithBoundary;

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.436.7 | 2026-05-25 (WhatsApp CRM React 19 Custom Emoji Picker Hotfix)
-// Cache bust: 2026-05-25 15:25
+// UI V4.436.8 | 2026-05-25 (WhatsApp CRM Null Safety and CRMErrorBoundary Diagnostics Hotfix)
+// Cache bust: 2026-05-25 15:30
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.436.8',
+        title: 'Fix: Blindaje de Nulidad en Chats de WhatsApp y Diagnóstico React de Seguridad con CRMErrorBoundary 🚀',
+        date: new Date().toISOString(),
+        description: 'Se ha implementado un blindaje total contra valores nulos en el procesamiento de contactos del chat de WhatsApp, evitando excepciones de formato al procesar iniciales de nombres incompletos o vacíos. Asimismo, se integró un componente de diagnóstico de seguridad premium (CRMErrorBoundary) que encapsula la página del CRM. Esto garantiza que cualquier error inesperado en el frontend muestre una tarjeta de soporte interactiva con el detalle exacto del error y stack trace en lugar de una pantalla en blanco.',
+        tags: ['whatsapp', 'crm', 'diagnostics', 'bugfix', 'critical'],
+        type: 'fix'
+    },
     {
         version: '4.436.7',
         title: 'Fix: Selector de Emojis Custom de Alto Rendimiento y Solución a Pantalla en Blanco en WhatsApp CRM 🚀',

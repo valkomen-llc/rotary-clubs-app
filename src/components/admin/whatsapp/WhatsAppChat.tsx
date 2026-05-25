@@ -252,9 +252,12 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
     useEffect(() => {
         if (!searchQuery.trim()) { setFilteredContacts(contacts); return; }
         const q = searchQuery.toLowerCase();
-        setFilteredContacts(contacts.filter(c =>
-            c.name.toLowerCase().includes(q) || c.phone.includes(q) || (c.email || '').toLowerCase().includes(q)
-        ));
+        setFilteredContacts(contacts.filter(c => {
+            const name = c.name || '';
+            const phone = c.phone || '';
+            const email = c.email || '';
+            return name.toLowerCase().includes(q) || phone.includes(q) || email.toLowerCase().includes(q);
+        }));
     }, [searchQuery, contacts]);
 
     useEffect(() => {
@@ -364,8 +367,9 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
         }
     };
 
-    const getInitials = (name: string) => {
-        return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+    const getInitials = (name: string | null | undefined) => {
+        if (!name) return 'WA';
+        return name.split(' ').filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
     };
 
     const getStatusColor = (contact: Contact) => {
