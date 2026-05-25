@@ -116,6 +116,17 @@ export const createContact = async (req, res) => {
       city, country, tags, lists, customFields, status 
     } = req.body;
 
+    if (phone) {
+      const duplicate = await db.crmContact.findFirst({
+        where: { clubId, phone }
+      });
+      if (duplicate) {
+        return res.status(400).json({ 
+          error: `Ya existe otro contacto (${duplicate.name} ${duplicate.lastName || ''}) con el número de teléfono ${phone}.` 
+        });
+      }
+    }
+
     const newContact = await db.crmContact.create({
       data: {
         clubId,
@@ -165,6 +176,21 @@ export const updateContact = async (req, res) => {
     // Verify ownership
     const existing = await db.crmContact.findFirst({ where: { id, clubId } });
     if (!existing) return res.status(404).json({ error: 'Contact not found' });
+
+    if (updates.phone) {
+      const duplicate = await db.crmContact.findFirst({
+        where: {
+          clubId,
+          phone: updates.phone,
+          id: { not: id }
+        }
+      });
+      if (duplicate) {
+        return res.status(400).json({ 
+          error: `Ya existe otro contacto (${duplicate.name} ${duplicate.lastName || ''}) con el número de teléfono ${updates.phone}.` 
+        });
+      }
+    }
 
     // Handle tags update (direct array update)
     if (updates.tags) {

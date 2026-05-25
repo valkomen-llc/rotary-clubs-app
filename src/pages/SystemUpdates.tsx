@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.436.10 | 2026-05-25 (WhatsApp CRM Virtual Tag-based Lists Integration)
-// Cache bust: 2026-05-25 16:10
+// UI V4.436.11 | 2026-05-25 (CRM Contact Friendly Duplicate Phone Check)
+// Cache bust: 2026-05-25 16:15
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.436.11',
+        title: 'Fix: Control Amigable y Elegante de Números de Teléfono Duplicados en Directorio CRM 🚀',
+        date: new Date().toISOString(),
+        description: 'Se ha solucionado el error crítico de base de datos "Unique constraint failed on the fields: (phone, clubId)" arrojado al intentar editar o crear un contacto con un número de teléfono que ya existe en el club. Diseñamos un interceptor preventivo en los controladores de creación y actualización para verificar la existencia previa del número. Ahora, en lugar de crasheos crípticos del motor Prisma, el sistema responde con un mensaje 100% amigable en español que le informa al usuario el nombre exacto del contacto duplicado existente.',
+        tags: ['crm', 'contacts', 'duplicates', 'bugfix', 'critical'],
+        type: 'fix'
+    },
     {
         version: '4.436.10',
         title: 'Feature: Listas Virtuales basadas en Etiquetas (Tags) para Campañas de WhatsApp CRM 🚀',
