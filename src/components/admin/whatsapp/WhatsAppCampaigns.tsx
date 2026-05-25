@@ -242,7 +242,7 @@ const WhatsAppCampaigns: React.FC = () => {
                         <div className="overflow-auto max-h-[60vh]">
                             <table className="w-full text-left text-sm">
                                 <thead><tr className="border-b border-gray-100 text-xs text-gray-400 uppercase font-bold">
-                                    <th className="p-3">Contacto</th><th className="p-3">Teléfono</th><th className="p-3">Estado</th><th className="p-3">Fecha</th>
+                                    <th className="p-3">Contacto</th><th className="p-3">Teléfono</th><th className="p-3">Estado</th><th className="p-3">Detalle / Error</th><th className="p-3">Fecha</th>
                                 </tr></thead>
                                 <tbody className="divide-y divide-gray-50">
                                     {logs.map(l => (
@@ -250,6 +250,9 @@ const WhatsAppCampaigns: React.FC = () => {
                                             <td className="p-3 font-medium">{l.contactName || '—'}</td>
                                             <td className="p-3 text-xs font-mono">{l.phone}</td>
                                             <td className="p-3">{statusBadge(l.status)}</td>
+                                            <td className={`p-3 text-xs ${l.status === 'failed' ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
+                                                {l.errorMessage || (l.status === 'failed' ? 'Error de envío de Meta API' : '—')}
+                                            </td>
                                             <td className="p-3 text-xs text-gray-500">{new Date(l.createdAt).toLocaleString()}</td>
                                         </tr>
                                     ))}

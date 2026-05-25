@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.436.11 | 2026-05-25 (CRM Contact Friendly Duplicate Phone Check)
-// Cache bust: 2026-05-25 16:15
+// UI V4.436.12 | 2026-05-25 (WhatsApp CRM Detailed Campaign Error Log UI)
+// Cache bust: 2026-05-25 16:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.436.12',
+        title: 'Feature: Visualización en Tiempo Real de Detalles y Errores de Campaña en WhatsApp CRM 🚀',
+        date: new Date().toISOString(),
+        description: 'Se ha rediseñado la interfaz del Log de Mensajes dentro de las Campañas de WhatsApp CRM. Ahora, la tabla de logs incluye una columna dedicada de "Detalle / Error" que renderiza directamente los mensajes de error retornados en tiempo real por la API de Meta en caso de fallas de envío. Esto evita la necesidad de recurrir a la consola del desarrollador o la base de datos y le proporciona de forma transparente y visual al usuario la razón exacta (como números inválidos, falta de plantilla o problemas de autenticación) de cualquier error de despacho.',
+        tags: ['whatsapp', 'crm', 'campaigns', 'logs', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.436.11',
         title: 'Fix: Control Amigable y Elegante de Números de Teléfono Duplicados en Directorio CRM 🚀',

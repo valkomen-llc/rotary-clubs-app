@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.436.11",
-  "cache_bust": "2026-05-25 16:15 (CRM Contact Friendly Duplicate Phone Check)",
+  "version": "4.436.12",
+  "cache_bust": "2026-05-25 16:25 (WhatsApp CRM Detailed Campaign Error Log UI)",
   "type": "module",
-  "//": "UI V4.436.11 | 2026-05-25 (CRM Contact Friendly Duplicate Phone Check)",
+  "//": "UI V4.436.12 | 2026-05-25 (WhatsApp CRM Detailed Campaign Error Log UI)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
