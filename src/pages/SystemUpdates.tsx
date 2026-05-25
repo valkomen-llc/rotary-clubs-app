@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.436.6 | 2026-05-25 (WhatsApp CRM Dynamic Import Vercel Hotfix)
-// Cache bust: 2026-05-25 15:15
+// UI V4.436.7 | 2026-05-25 (WhatsApp CRM React 19 Custom Emoji Picker Hotfix)
+// Cache bust: 2026-05-25 15:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.436.7',
+        title: 'Fix: Selector de Emojis Custom de Alto Rendimiento y Solución a Pantalla en Blanco en WhatsApp CRM 🚀',
+        date: new Date().toISOString(),
+        description: 'Se ha solucionado un error grave en tiempo de ejecución del frontend que provocaba una pantalla en blanco inmediata al intentar ingresar al módulo de WhatsApp CRM. El error se originaba en la librería externa emoji-picker-react, que presentaba problemas de incompatibilidad de hooks y SSR con React 19. Para resolverlo definitivamente, se ha desarrollado un selector de emojis personalizado ultraligero y con un diseño premium glassmorphic, que carga de manera instantánea, elimina el consumo excesivo de recursos de la red y garantiza una compatibilidad total.',
+        tags: ['whatsapp', 'crm', 'emoji', 'bugfix', 'critical'],
+        type: 'fix'
+    },
     {
         version: '4.436.6',
         title: 'Fix: Resolución de Rutas de WhatsApp CRM y Crash de Importación en Producción (Vercel) 🚀',

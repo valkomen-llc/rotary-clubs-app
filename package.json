@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.436.6",
-  "cache_bust": "2026-05-25 15:15 (WhatsApp CRM Dynamic Import Vercel Hotfix)",
+  "version": "4.436.7",
+  "cache_bust": "2026-05-25 15:25 (WhatsApp CRM React 19 Custom Emoji Picker Hotfix)",
   "type": "module",
-  "//": "UI V4.436.6 | 2026-05-25 (WhatsApp CRM Dynamic Import Vercel Hotfix)",
+  "//": "UI V4.436.7 | 2026-05-25 (WhatsApp CRM React 19 Custom Emoji Picker Hotfix)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

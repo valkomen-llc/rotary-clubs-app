@@ -2,7 +2,206 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
 import { Search, Send, Phone, MoreVertical, User, X, Tag, MessageCircle, ChevronLeft, Loader2, FileText, Archive, ArchiveRestore, Inbox, CheckCheck, Mail, MailOpen, Paperclip, Smile } from 'lucide-react';
 import { toast } from 'sonner';
-import EmojiPicker from 'emoji-picker-react';
+interface EmojiItem {
+    char: string;
+    name: string;
+    keywords: string[];
+    category: string;
+}
+
+const EMOJI_DATABASE: EmojiItem[] = [
+    // Caritas (Smileys)
+    { char: '😀', name: 'sonrisa', keywords: ['feliz', 'alegre', 'bien', 'smile', 'happy'], category: 'smileys' },
+    { char: '😃', name: 'sonrisa abierta', keywords: ['feliz', 'alegre', 'bien', 'happy'], category: 'smileys' },
+    { char: '😄', name: 'sonrisa ojos felices', keywords: ['feliz', 'alegre', 'bien', 'happy'], category: 'smileys' },
+    { char: '😁', name: 'risa mueca', keywords: ['feliz', 'alegre', 'risa', 'gracioso'], category: 'smileys' },
+    { char: '😆', name: 'risa cerrada', keywords: ['feliz', 'alegre', 'risa', 'lol'], category: 'smileys' },
+    { char: '😅', name: 'risa sudor', keywords: ['alivio', 'nervios', 'sudor', 'uf'], category: 'smileys' },
+    { char: '😂', name: 'risa llanto', keywords: ['risa', 'gracioso', 'lol', 'llorar'], category: 'smileys' },
+    { char: '🤣', name: 'risa rodar', keywords: ['risa', 'gracioso', 'lol', 'rodar'], category: 'smileys' },
+    { char: '😊', name: 'ojos felices', keywords: ['feliz', 'tímido', 'sonrojo'], category: 'smileys' },
+    { char: '😇', name: 'ángel', keywords: ['santo', 'bueno', 'inocente'], category: 'smileys' },
+    { char: '🙂', name: 'ligera sonrisa', keywords: ['ok', 'bien', 'neutral'], category: 'smileys' },
+    { char: '🙃', name: 'boca abajo', keywords: ['sarcasmo', 'ironía', 'broma'], category: 'smileys' },
+    { char: '😉', name: 'guiño', keywords: ['guiño', 'broma', 'secreto'], category: 'smileys' },
+    { char: '😌', name: 'aliviado', keywords: ['paz', 'calma', 'bien', 'uf'], category: 'smileys' },
+    { char: '😍', name: 'ojos de corazón', keywords: ['amor', 'encanta', 'bello', 'gustar'], category: 'smileys' },
+    { char: '🥰', name: 'carita corazones', keywords: ['amor', 'encanta', 'afecto', 'tierno'], category: 'smileys' },
+    { char: '😘', name: 'beso corazón', keywords: ['beso', 'amor', 'afecto', 'gracias'], category: 'smileys' },
+    { char: '😋', name: 'delicioso', keywords: ['comida', 'antojo', 'rico'], category: 'smileys' },
+    { char: '😛', name: 'lengua', keywords: ['broma', 'lengua', 'juguetón'], category: 'smileys' },
+    { char: '😜', name: 'lengua guiño', keywords: ['broma', 'lengua', 'guiño', 'loco'], category: 'smileys' },
+    { char: '🤪', name: 'loco', keywords: ['loco', 'divertido', 'gracioso'], category: 'smileys' },
+    { char: '😎', name: 'lentes de sol', keywords: ['cool', 'sol', 'estilo', 'pro'], category: 'smileys' },
+    { char: '🥳', name: 'fiesta', keywords: ['celebración', 'cumpleaños', 'felicitaciones', 'evento'], category: 'smileys' },
+    { char: '😏', name: 'sarcástica', keywords: ['sarcasmo', 'coqueteo', 'smirk'], category: 'smileys' },
+    { char: '😒', name: 'insatisfecho', keywords: ['molesto', 'aburrido', 'mal'], category: 'smileys' },
+    { char: '😔', name: 'pensativo', keywords: ['triste', 'arrepentido', 'deprimido'], category: 'smileys' },
+    { char: '🥺', name: 'súplica', keywords: ['por favor', 'tierno', 'triste', 'rogar'], category: 'smileys' },
+    { char: '😢', name: 'lloro ligero', keywords: ['triste', 'llorar', 'pena'], category: 'smileys' },
+    { char: '😭', name: 'lloro fuerte', keywords: ['triste', 'llorar', 'pena', 'dolor'], category: 'smileys' },
+    { char: '😤', name: 'triunfo enojo', keywords: ['enojo', 'orgullo', 'resoplido'], category: 'smileys' },
+    { char: '😠', name: 'enojado', keywords: ['enojo', 'molesto', 'enfado'], category: 'smileys' },
+    { char: '😡', name: 'furioso', keywords: ['enojo', 'molesto', 'rojo'], category: 'smileys' },
+    { char: '🤯', name: 'cabeza explotando', keywords: ['sorpresa', 'wow', 'impactante'], category: 'smileys' },
+    { char: '😳', name: 'sonrojado', keywords: ['pena', 'sorpresa', 'vergüenza'], category: 'smileys' },
+    { char: '🤔', name: 'pensando', keywords: ['duda', 'pregunta', 'idea'], category: 'smileys' },
+    { char: '😐', name: 'neutral', keywords: ['neutral', 'serio', 'sin comentarios'], category: 'smileys' },
+    { char: '😬', name: 'mueca', keywords: ['nervios', 'tensión', 'incómodo'], category: 'smileys' },
+    { char: '😱', name: 'grito miedo', keywords: ['miedo', 'sorpresa', 'asustado', 'wow'], category: 'smileys' },
+
+    // Gestos (Gestures)
+    { char: '👍', name: 'pulgar arriba', keywords: ['ok', 'bien', 'aprobado', 'me gusta', 'yes', 'super'], category: 'gestures' },
+    { char: '👎', name: 'pulgar abajo', keywords: ['no', 'mal', 'desaprobado'], category: 'gestures' },
+    { char: '👌', name: 'mano ok', keywords: ['perfecto', 'bien', 'ok'], category: 'gestures' },
+    { char: '🤌', name: 'dedos pellizco', keywords: ['italiano', 'que es', 'espera'], category: 'gestures' },
+    { char: '✌️', name: 'mano victoria', keywords: ['paz', 'victoria', 'dos'], category: 'gestures' },
+    { char: '🤞', name: 'dedos cruzados', keywords: ['suerte', 'deseo', 'esperanza'], category: 'gestures' },
+    { char: '🫰', name: 'corazón dedos', keywords: ['amor', 'coreano', 'dinero'], category: 'gestures' },
+    { char: '🤟', name: 'te amo', keywords: ['amor', 'rock', 'seña'], category: 'gestures' },
+    { char: '🤘', name: 'rock', keywords: ['rock', 'metal', 'música', 'fiesta'], category: 'gestures' },
+    { char: '🤙', name: 'llamame', keywords: ['teléfono', 'saludo', 'shaka'], category: 'gestures' },
+    { char: '👈', name: 'apunta izquierda', keywords: ['dirección', 'mirar', 'izquierda'], category: 'gestures' },
+    { char: '👉', name: 'apunta derecha', keywords: ['dirección', 'mirar', 'derecha'], category: 'gestures' },
+    { char: '👆', name: 'apunta arriba', keywords: ['dirección', 'arriba', 'importante'], category: 'gestures' },
+    { char: '👇', name: 'apunta abajo', keywords: ['dirección', 'abajo', 'aquí'], category: 'gestures' },
+    { char: '👋', name: 'mano saludo', keywords: ['hola', 'adiós', 'saludo', 'bienvenida'], category: 'gestures' },
+    { char: '✍️', name: 'escribiendo', keywords: ['escribir', 'nota', 'firma', 'carta'], category: 'gestures' },
+    { char: '👏', name: 'aplauso', keywords: ['felicitaciones', 'bravo', 'muy bien', 'celebrar'], category: 'gestures' },
+    { char: '🙌', name: 'manos arriba', keywords: ['celebrar', 'aleluya', 'gracias'], category: 'gestures' },
+    { char: '👐', name: 'manos abiertas', keywords: ['abrazo', 'bienvenida'], category: 'gestures' },
+    { char: '🤲', name: 'manos juntas', keywords: ['rezo', 'pedir', 'libro', 'ofrenda'], category: 'gestures' },
+    { char: '🙏', name: 'por favor', keywords: ['gracias', 'rezo', 'por favor', 'saludo', 'amen'], category: 'gestures' },
+    { char: '💪', name: 'fuerza', keywords: ['fuerza', 'poder', 'ejercicio', 'salud', 'vamos'], category: 'gestures' },
+    { char: '🤝', name: 'apretón de manos', keywords: ['acuerdo', 'socio', 'alianza', 'bienvenido', 'hola', 'trato'], category: 'gestures' },
+
+    // Corazones (Hearts)
+    { char: '❤️', name: 'corazón rojo', keywords: ['amor', 'encanta', 'afecto'], category: 'hearts' },
+    { char: '🧡', name: 'corazón naranja', keywords: ['amor', 'amistad'], category: 'hearts' },
+    { char: '💛', name: 'corazón amarillo', keywords: ['amor', 'oro', 'rotario', 'amistad'], category: 'hearts' },
+    { char: '💚', name: 'corazón verde', keywords: ['amor', 'esperanza', 'naturaleza'], category: 'hearts' },
+    { char: '💙', name: 'corazón azul', keywords: ['amor', 'azul', 'rotario', 'apoyo'], category: 'hearts' },
+    { char: '💜', name: 'corazón morado', keywords: ['amor', 'púrpura'], category: 'hearts' },
+    { char: '🖤', name: 'corazón negro', keywords: ['amor', 'luto', 'estilo'], category: 'hearts' },
+    { char: '🤍', name: 'corazón blanco', keywords: ['amor', 'paz', 'pureza'], category: 'hearts' },
+    { char: '💔', name: 'corazón roto', keywords: ['triste', 'desamor', 'dolor'], category: 'hearts' },
+    { char: '❣️', name: 'exclamación corazón', keywords: ['atención', 'amor', 'importante'], category: 'hearts' },
+    { char: '💕', name: 'dos corazones', keywords: ['amor', 'enamorado'], category: 'hearts' },
+    { char: '💖', name: 'corazón brillante', keywords: ['amor', 'especial', 'brillo'], category: 'hearts' },
+    { char: '💘', name: 'corazón flechado', keywords: ['amor', 'cupido', 'enamorado'], category: 'hearts' },
+    { char: '💝', name: 'corazón regalo', keywords: ['amor', 'regalo', 'sorpresa'], category: 'hearts' },
+
+    // Símbolos (Objects)
+    { char: '🚀', name: 'cohete', keywords: ['lanzamiento', 'futuro', 'crecimiento', 'rápido', 'adelante'], category: 'objects' },
+    { char: '💡', name: 'idea', keywords: ['luz', 'idea', 'inteligencia', 'pensar', 'solución'], category: 'objects' },
+    { char: '⭐', name: 'estrella', keywords: ['favorito', 'especial', 'brillar', 'calificación'], category: 'objects' },
+    { char: '✨', name: 'chispas', keywords: ['brillo', 'magia', 'nuevo', 'limpio', 'especial'], category: 'objects' },
+    { char: '🌟', name: 'estrella brillante', keywords: ['brillar', 'especial', 'ganador'], category: 'objects' },
+    { char: '📢', name: 'megáfono', keywords: ['anuncio', 'aviso', 'atención', 'difusión', 'comunicado'], category: 'objects' },
+    { char: '🔔', name: 'campana', keywords: ['notificación', 'alerta', 'atención'], category: 'objects' },
+    { char: '📅', name: 'calendario', keywords: ['fecha', 'evento', 'reunión', 'día'], category: 'objects' },
+    { char: '📆', name: 'calendario fecha', keywords: ['fecha', 'evento', 'reunión', 'día'], category: 'objects' },
+    { char: '📝', name: 'nota', keywords: ['escribir', 'nota', 'documento', 'tarea'], category: 'objects' },
+    { char: '📋', name: 'portapapeles', keywords: ['lista', 'tareas', 'verificar', 'documento'], category: 'objects' },
+    { char: '📁', name: 'carpeta', keywords: ['archivo', 'documento', 'organizar'], category: 'objects' },
+    { char: '📂', name: 'carpeta abierta', keywords: ['archivo', 'documento', 'abrir'], category: 'objects' },
+    { char: '📌', name: 'chincheta', keywords: ['fijar', 'importante', 'ubicar', 'lugar'], category: 'objects' },
+    { char: '📍', name: 'chincheta redonda', keywords: ['ubicación', 'mapa', 'lugar', 'aquí'], category: 'objects' },
+    { char: '📎', name: 'clip', keywords: ['adjunto', 'archivo', 'unir'], category: 'objects' },
+    { char: '💻', name: 'laptop', keywords: ['computadora', 'tecnología', 'trabajo', 'internet'], category: 'objects' },
+    { char: '📱', name: 'celular', keywords: ['teléfono', 'móvil', 'whatsapp', 'llamada'], category: 'objects' },
+    { char: '📞', name: 'teléfono', keywords: ['llamada', 'teléfono', 'contacto'], category: 'objects' },
+    { char: '✉️', name: 'sobre', keywords: ['correo', 'mensaje', 'email'], category: 'objects' },
+    { char: '🎁', name: 'regalo', keywords: ['sorpresa', 'cumpleaños', 'fiesta', 'obsequio'], category: 'objects' },
+    { char: '🎉', name: 'con confetti', keywords: ['fiesta', 'celebración', 'felicitaciones', 'evento'], category: 'objects' },
+    { char: '🏆', name: 'trofeo', keywords: ['premio', 'ganador', 'éxito', 'primero'], category: 'objects' },
+    { char: '🏛️', name: 'templo', keywords: ['club', 'institución', 'gobierno', 'sede'], category: 'objects' },
+    { char: '🌍', name: 'mundo', keywords: ['tierra', 'planeta', 'global', 'internacional', 'comunidad'], category: 'objects' },
+];
+
+interface CustomEmojiPickerProps {
+    onSelect: (emoji: string) => void;
+    onClose: () => void;
+}
+
+const CustomEmojiPicker: React.FC<CustomEmojiPickerProps> = ({ onSelect, onClose }) => {
+    const [search, setSearch] = useState('');
+    const [activeCat, setActiveCat] = useState<'all' | 'smileys' | 'gestures' | 'hearts' | 'objects'>('all');
+
+    const categories = [
+        { key: 'all', label: 'Todos' },
+        { key: 'smileys', label: 'Caritas' },
+        { key: 'gestures', label: 'Gestos' },
+        { key: 'hearts', label: 'Corazones' },
+        { key: 'objects', label: 'Objetos' },
+    ] as const;
+
+    const filteredEmojis = EMOJI_DATABASE.filter(emoji => {
+        const matchesCategory = activeCat === 'all' || emoji.category === activeCat;
+        const matchesSearch = !search.trim() || 
+            emoji.name.toLowerCase().includes(search.toLowerCase()) || 
+            emoji.keywords.some(k => k.toLowerCase().includes(search.toLowerCase()));
+        return matchesCategory && matchesSearch;
+    });
+
+    return (
+        <div className="bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden w-[300px] flex flex-col h-[320px]">
+            {/* Header */}
+            <div className="p-2.5 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-700">Selector de Emojis</span>
+                <button onClick={onClose} className="p-1 rounded-md hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors">
+                    <X className="w-3.5 h-3.5" />
+                </button>
+            </div>
+            
+            {/* Search Input */}
+            <div className="p-2 border-b border-gray-100">
+                <input 
+                    type="text" 
+                    value={search} 
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="Buscar emoji..." 
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 text-xs outline-none focus:border-green-500 bg-white"
+                />
+            </div>
+            
+            {/* Category Selector */}
+            <div className="flex gap-1 p-1 bg-gray-50 border-b border-gray-100 overflow-x-auto whitespace-nowrap scrollbar-thin">
+                {categories.map(cat => (
+                    <button
+                        key={cat.key}
+                        onClick={() => setActiveCat(cat.key)}
+                        className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all ${
+                            activeCat === cat.key 
+                                ? 'bg-green-600 text-white shadow-sm' 
+                                : 'text-gray-500 hover:bg-gray-200'
+                        }`}
+                    >
+                        {cat.label}
+                    </button>
+                ))}
+            </div>
+            
+            {/* Emoji Grid */}
+            <div className="flex-1 p-2 overflow-y-auto grid grid-cols-6 gap-1 bg-white">
+                {filteredEmojis.length === 0 ? (
+                    <p className="col-span-6 text-center py-8 text-xs text-gray-400 font-medium">No se encontraron emojis</p>
+                ) : (
+                    filteredEmojis.map(emoji => (
+                        <button
+                            key={emoji.char}
+                            onClick={() => onSelect(emoji.char)}
+                            title={emoji.name}
+                            className="w-9 h-9 text-xl flex items-center justify-center rounded-lg hover:bg-green-50 transition-colors active:scale-90"
+                        >
+                            {emoji.char}
+                        </button>
+                    ))
+                )}
+            </div>
+        </div>
+    );
+};
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -669,10 +868,9 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
                             <div className="border-t border-gray-100 bg-gray-50 px-4 py-3 pb-4 relative">
                                 {showEmojiPicker && (
                                     <div className="absolute bottom-[80px] left-4 z-50 shadow-2xl rounded-xl overflow-hidden border border-gray-100">
-                                        <EmojiPicker 
-                                            onEmojiClick={(e) => setChatMessage(prev => prev + e.emoji)}
-                                            width={320}
-                                            height={400}
+                                        <CustomEmojiPicker 
+                                            onSelect={(emoji) => setChatMessage(prev => prev + emoji)}
+                                            onClose={() => setShowEmojiPicker(false)}
                                         />
                                     </div>
                                 )}
