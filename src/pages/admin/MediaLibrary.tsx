@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
+import { compressImage } from '../../utils/compressImage';
 
 interface MediaItem {
     id: string;
@@ -23,49 +24,6 @@ interface ClubFolder {
     name: string;
     count: number;
 }
-
-const compressImage = async (file: File): Promise<File> => {
-    return new Promise((resolve) => {
-        if (!file.type.startsWith('image/') || file.type.includes('svg') || file.type.includes('gif')) {
-            return resolve(file);
-        }
-        const img = new Image();
-        img.onload = () => {
-            URL.revokeObjectURL(img.src);
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-            const max = 4096; // max width/height for high resolution
-            if (width > height && width > max) {
-                height = Math.round(height * (max / width));
-                width = max;
-            } else if (height > max) {
-                width = Math.round(width * (max / height));
-                height = max;
-            }
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return resolve(file);
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            const isPng = file.type === 'image/png';
-            const outputType = isPng ? 'image/png' : 'image/jpeg';
-            const quality = isPng ? 1.0 : 1.0; // Max quality
-
-            canvas.toBlob((blob) => {
-                if (!blob) return resolve(file);
-                const newName = isPng ? file.name : file.name.replace(/\.(jpe?g|png|webp)$/i, '.jpg');
-                const compressed = new File([blob], newName, { type: outputType });
-                // Solo usar si realmente redujo tamaño considerablemente o si superaba el max
-                const isResizeNeeded = img.width > max || img.height > max;
-                resolve((compressed.size < file.size || isResizeNeeded) ? compressed : file);
-            }, outputType, quality);
-        };
-        img.onerror = () => resolve(file);
-        img.src = URL.createObjectURL(file);
-    });
-};
 
 const MediaLibrary: React.FC = () => {
     const { user } = useAuth();
@@ -146,7 +104,7 @@ const MediaLibrary: React.FC = () => {
                 const file = files[i];
                 toast.loading(`Optimizando y subiendo ${i + 1} de ${files.length}...`, { id: toastId });
 
-                const processedFile = await compressImage(file);
+                const processedFile = await compressImage(file, { maxDimension: 4096, quality: 1.0 });
 
                 const targetClubId = (isSuperAdmin ? selectedClubId : user?.clubId) || '';
                 
