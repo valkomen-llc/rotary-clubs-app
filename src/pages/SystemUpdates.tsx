@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.436.14 | 2026-05-25 (WhatsApp CRM Campaign Template Body Display in Chat)
-// Cache bust: 2026-05-25 17:00
+// UI V4.436.15 | 2026-06-01 (Fecha de Publicación Editable en Noticias)
+// Cache bust: 2026-06-01 12:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.436.15',
+        title: 'Feature: Fecha de Publicación Editable en Noticias 🗓️',
+        date: new Date().toISOString(),
+        description: 'Ahora es posible elegir y modificar la fecha (y hora) de publicación de cualquier artículo de noticias, tanto al crearlo como al editarlo. Anteriormente la fecha se fijaba automáticamente al momento de creación y no podía cambiarse, lo que impedía retro/pre-datar publicaciones o reordenar el blog. Se agregó un selector de fecha y hora en el editor de noticias (con un botón rápido "Ahora") y el backend ahora respeta la fecha elegida por el editor, conservando la fecha original si el campo se deja vacío. Esto controla directamente el orden y el sello de fecha mostrado en el Blog, la sección de Noticias y el detalle del artículo.',
+        tags: ['noticias', 'blog', 'fecha', 'publicacion', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.436.14',
         title: 'Feature: Visualización del Contenido de Plantilla en Chat de WhatsApp CRM 📋',

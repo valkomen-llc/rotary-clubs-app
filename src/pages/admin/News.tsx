@@ -58,6 +58,7 @@ const NewsManagement: React.FC = () => {
         content: '',
         image: '',
         published: true,
+        publishDate: '',
         category: '',
         tags: [] as string[],
         keywords: '',
@@ -76,6 +77,16 @@ const NewsManagement: React.FC = () => {
     const [tagInput, setTagInput] = useState('');
     const [aiContext, setAiContext] = useState('');
     const [isGeneratingArticle, setIsGeneratingArticle] = useState(false);
+
+    // Convierte un createdAt (ISO/Date) al formato que requiere <input type="datetime-local">
+    // (YYYY-MM-DDTHH:mm) ajustado a la zona horaria local del navegador.
+    const toLocalDateTimeInput = (value?: string | null) => {
+        if (!value) return '';
+        const d = new Date(value);
+        if (isNaN(d.getTime())) return '';
+        const tzOffset = d.getTimezoneOffset() * 60000;
+        return new Date(d.getTime() - tzOffset).toISOString().slice(0, 16);
+    };
 
     const generateSlug = (text: string) => {
         return text
@@ -245,6 +256,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 content: post.content || '',
                 image: post.image || '',
                 published: post.isStatic ? true : post.published,
+                publishDate: post.isStatic ? '' : toLocalDateTimeInput(post.createdAt),
                 category: post.category || '',
                 tags: post.tags || [],
                 keywords: post.keywords || '',
@@ -274,6 +286,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 content: '',
                 image: '',
                 published: true,
+                publishDate: '',
                 category: '',
                 tags: [],
                 keywords: '',
@@ -632,13 +645,21 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 ? `${apiUrl}/admin/posts/${editingPost.id}`
                 : `${apiUrl}/admin/posts`;
 
+            // Mapeamos la fecha de publicación elegida por el editor a `createdAt`.
+            // Si se deja vacía, el backend conserva la fecha existente (edición) o usa now() (creación).
+            const { publishDate, ...rest } = formData;
+            const payload = {
+                ...rest,
+                createdAt: publishDate ? new Date(publishDate).toISOString() : undefined
+            };
+
             const response = await fetch(url, {
                 method: editingPost ? 'PUT' : 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify(formData)
+                body: JSON.stringify(payload)
             });
 
             if (response.ok) {
@@ -1036,6 +1057,28 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                         <span className="text-sm font-bold text-gray-700 group-hover:text-rotary-blue transition-colors">Publicado</span>
                                                     </label>
                                                 </div>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-bold text-gray-700 mb-2">Fecha de Publicación</label>
+                                                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                                                    <input
+                                                        type="datetime-local"
+                                                        className="w-full sm:flex-1 px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 outline-none"
+                                                        value={formData.publishDate}
+                                                        onChange={(e) => setFormData(prev => ({ ...prev, publishDate: e.target.value }))}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setFormData(prev => ({ ...prev, publishDate: toLocalDateTimeInput(new Date().toISOString()) }))}
+                                                        className="px-4 py-2.5 text-xs font-bold text-rotary-blue bg-rotary-blue/5 hover:bg-rotary-blue/10 border border-rotary-blue/10 rounded-xl transition-all whitespace-nowrap"
+                                                    >
+                                                        Ahora
+                                                    </button>
+                                                </div>
+                                                <p className="text-[10px] text-gray-400 mt-2 font-medium">
+                                                    Cambia la fecha y hora que se mostrará como publicación. Déjala vacía para usar la fecha de creación automática.
+                                                </p>
                                             </div>
                                         </div>
 

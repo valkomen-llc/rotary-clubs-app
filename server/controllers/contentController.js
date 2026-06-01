@@ -101,11 +101,16 @@ export const getClubPosts = async (req, res) => {
 };
 
 export const createPost = async (req, res) => {
-    const { 
-        title, slug, content, image, published, clubId, category, tags, 
-        keywords, seoTitle, seoDescription, seoImage, socialCopy, ctaCopy, videoUrl, images, videoGallery, isAI 
+    const {
+        title, slug, content, image, published, clubId, category, tags,
+        keywords, seoTitle, seoDescription, seoImage, socialCopy, ctaCopy, videoUrl, images, videoGallery, isAI, createdAt
     } = req.body;
-    
+
+    // Fecha de publicación editable: si el editor manda una fecha válida la respetamos,
+    // de lo contrario Prisma usa @default(now()).
+    const parsedCreatedAt = createdAt ? new Date(createdAt) : null;
+    const validCreatedAt = parsedCreatedAt && !isNaN(parsedCreatedAt.getTime()) ? parsedCreatedAt : null;
+
     const runCreate = async () => {
         let targetClubId = req.user.role === 'administrator' ? (clubId || req.user.clubId) : req.user.clubId;
         if (clubId === 'global' && req.user.role === 'administrator') targetClubId = null;
@@ -129,7 +134,8 @@ export const createPost = async (req, res) => {
                 videoUrl: videoUrl || '',
                 images: Array.isArray(images) ? images : [],
                 videoGallery: Array.isArray(videoGallery) ? videoGallery : [],
-                isAI: isAI || false
+                isAI: isAI || false,
+                ...(validCreatedAt ? { createdAt: validCreatedAt } : {})
             }
         });
     };
@@ -182,11 +188,15 @@ export const createPost = async (req, res) => {
 
 export const updatePost = async (req, res) => {
     const { id } = req.params;
-    const { 
-        title, slug, content, image, published, category, tags, 
-        keywords, seoTitle, seoDescription, seoImage, socialCopy, ctaCopy, videoUrl, images, videoGallery 
+    const {
+        title, slug, content, image, published, category, tags,
+        keywords, seoTitle, seoDescription, seoImage, socialCopy, ctaCopy, videoUrl, images, videoGallery, createdAt
     } = req.body;
-    
+
+    // Fecha de publicación editable: solo se sobreescribe si llega una fecha válida.
+    const parsedCreatedAt = createdAt ? new Date(createdAt) : null;
+    const validCreatedAt = parsedCreatedAt && !isNaN(parsedCreatedAt.getTime()) ? parsedCreatedAt : null;
+
     const runUpdate = async () => {
         const existing = await prisma.post.findUnique({ where: { id } });
         if (!existing) {
@@ -218,6 +228,7 @@ export const updatePost = async (req, res) => {
                 videoUrl: videoUrl || existing.videoUrl,
                 images: Array.isArray(images) ? images : existing.images,
                 videoGallery: Array.isArray(videoGallery) ? videoGallery : existing.videoGallery,
+                ...(validCreatedAt ? { createdAt: validCreatedAt } : {}),
                 updatedAt: new Date()
             }
         });
