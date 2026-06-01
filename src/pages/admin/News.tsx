@@ -10,6 +10,7 @@ import {
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
 import { getCroppedImg } from '../../utils/cropImage';
+import { compressImage } from '../../utils/compressImage';
 import { toast } from 'sonner';
 import { useClub } from '../../contexts/ClubContext';
 import { articulosDestacados, articulos as articulosEstaticos } from '../../data/news';
@@ -301,6 +302,47 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         setIsModalOpen(true);
     };
 
+    // Optimiza la imagen en el navegador (redimensiona + recodifica) y la sube
+    // DIRECTO a S3 vía presigned URL, evitando el límite de ~4.5 MB de Vercel.
+    // Los videos y archivos no-imagen pasan sin optimizar. Devuelve la URL pública
+    // y el tipo ('image' | 'video' | 'document'), o null si la subida falla.
+    const uploadOptimizedToS3 = async (file: File): Promise<{ url: string; type: string } | null> => {
+        const token = localStorage.getItem('rotary_token');
+        const apiUrl = import.meta.env.VITE_API_URL || '/api';
+        const processed = await compressImage(file);
+        const clubParam = club?.id ? `&clubId=${club.id}` : '';
+
+        const presignRes = await fetch(
+            `${apiUrl}/media/presigned-url?fileName=${encodeURIComponent(processed.name)}&fileType=${encodeURIComponent(processed.type)}${clubParam}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!presignRes.ok) return null;
+        const { uploadUrl, fileUrl, key, fileTypeLocal } = await presignRes.json();
+
+        const s3Res = await fetch(uploadUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': processed.type },
+            body: processed
+        });
+        if (!s3Res.ok) return null;
+
+        // Registro en la librería de medios (best-effort: no debe bloquear la subida).
+        await fetch(`${apiUrl}/media/save`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                clubId: club?.id || '',
+                fileName: processed.name,
+                fileUrl,
+                s3Key: key,
+                fileType: processed.type,
+                fileSize: processed.size
+            })
+        }).catch(() => { /* ignore */ });
+
+        return { url: fileUrl, type: fileTypeLocal };
+    };
+
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, isGallery = false, target: 'image' | 'seoImage' = 'image') => {
         const files = e.target.files;
         if (!files || files.length === 0) return;
@@ -319,40 +361,25 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         }
 
         setUploading(true);
-        const token = localStorage.getItem('rotary_token');
-        const apiUrl = import.meta.env.VITE_API_URL || '/api';
 
         let successCount = 0;
         let failCount = 0;
 
         for (let i = 0; i < files.length; i++) {
             try {
-                const uploadData = new FormData();
-                uploadData.append('file', files[i]);
-                uploadData.append('folder', 'news');
-
-                const targetUrl = `${apiUrl}/media/upload?folder=news${club?.id ? `&clubId=${club.id}` : ''}`.replace(/\/+/g, '/').replace(':/', '://');
-                const response = await fetch(targetUrl, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` },
-                    body: uploadData
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.type === 'video') {
-                        setFormData(prev => ({ 
-                            ...prev, 
-                            videoGallery: [...(prev.videoGallery || []), data.url] 
+                const result = await uploadOptimizedToS3(files[i]);
+                if (result) {
+                    if (result.type === 'video') {
+                        setFormData(prev => ({
+                            ...prev,
+                            videoGallery: [...(prev.videoGallery || []), result.url]
                         }));
                     } else {
-                        setFormData(prev => ({ ...prev, images: [...prev.images, data.url] }));
+                        setFormData(prev => ({ ...prev, images: [...prev.images, result.url] }));
                     }
                     successCount++;
                 } else {
                     failCount++;
-                    const err = await response.json();
-                    console.error('Upload failed:', err);
                 }
             } catch (error) {
                 console.error('Upload error:', error);
@@ -369,28 +396,16 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
     const handleCropModalConfirm = async (blob: Blob) => {
         setIsCropModalOpen(false);
         setUploading(true);
-        const token = localStorage.getItem('rotary_token');
-        const apiUrl = import.meta.env.VITE_API_URL || '/api';
 
         try {
-            const uploadData = new FormData();
-            uploadData.append('file', blob, 'cropped_cover.jpg');
-            uploadData.append('folder', 'news');
+            const file = new File([blob], 'cropped_cover.jpg', { type: 'image/jpeg' });
+            const result = await uploadOptimizedToS3(file);
 
-            const targetUrl = `${apiUrl}/media/upload?folder=news${club?.id ? `&clubId=${club.id}` : ''}`.replace(/\/+/g, '/').replace(':/', '://');
-            const response = await fetch(targetUrl, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: uploadData
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                setFormData(prev => ({ ...prev, [cropTarget]: data.url }));
+            if (result) {
+                setFormData(prev => ({ ...prev, [cropTarget]: result.url }));
                 toast.success(cropTarget === 'image' ? 'Imagen de portada actualizada' : 'Imagen SEO actualizada');
             } else {
-                const errData = await response.json().catch(() => ({ error: 'Error desconocido' }));
-                toast.error(`Error al subir imagen: ${errData.error || response.statusText}`);
+                toast.error('Error al subir la imagen. Intenta de nuevo.');
             }
         } catch (error: any) {
             toast.error(`Error de conexión: ${error.message}`);

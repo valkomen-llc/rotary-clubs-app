@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.436.15 | 2026-06-01 (Fecha de Publicación Editable en Noticias)
-// Cache bust: 2026-06-01 12:00
+// UI V4.436.16 | 2026-06-01 (Optimización y Subida Directa de Imágenes Pesadas en Noticias)
+// Cache bust: 2026-06-01 14:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.436.16',
+        title: 'Feature: Optimización Automática y Subida Directa de Imágenes Pesadas en Noticias 🖼️⚡',
+        date: new Date().toISOString(),
+        description: 'Ahora es posible subir fotografías pesadas (5–25 MB, como las de cámaras profesionales) a las noticias sin que la subida falle ni consuma recursos excesivos. Anteriormente, las imágenes de galería se enviaban crudas al servidor y superaban el límite de ~4.5 MB de Vercel, provocando errores de subida. Se implementó una optimización inteligente en el navegador que redimensiona las imágenes a un máximo de 2560px (lado más largo) y las recodifica en alta calidad —reduciendo el peso de forma drástica sin pérdida perceptible en pantalla— y se conectó la subida directa a S3 mediante URLs prefirmadas (presigned), evitando por completo el límite de Vercel. Esto aplica tanto a la imagen de portada (tras recortarla) como a la galería de la noticia. La lógica de optimización se unificó en una utilidad compartida reutilizada también por la Librería de Medios.',
+        tags: ['noticias', 'imagenes', 'optimizacion', 's3', 'rendimiento', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.436.15',
         title: 'Feature: Fecha de Publicación Editable en Noticias 🗓️',
