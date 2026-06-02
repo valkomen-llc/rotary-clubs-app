@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.436.17 | 2026-06-02 (Fix: Palabras Cortadas a Mitad de Línea en Artículos de Noticias)
-// Cache bust: 2026-06-02 09:00
+// UI V4.436.18 | 2026-06-02 (Fix: Palabras Cortadas en Artículos — Entidades HTML Invisibles)
+// Cache bust: 2026-06-02 10:30
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.436.18',
+        title: 'Fix: Palabras Cortadas en Artículos — Limpieza de Entidades HTML Invisibles 🔍✂️',
+        date: new Date().toISOString(),
+        description: 'Refuerzo del arreglo anterior: las palabras seguían cortándose a mitad de línea en el sitio público (aunque en el editor se vieran bien). La causa raíz era que los caracteres invisibles de quiebre no estaban guardados como carácter literal sino como ENTIDAD HTML (ej. "&#8203;", "&#xfeff;"), que el navegador solo decodifica al renderizar la página pública —por eso el editor, que normaliza el HTML, se veía limpio—. La limpieza anterior operaba sobre el texto crudo y no detectaba estas entidades. Ahora, en el sitio público, el contenido se limpia DESPUÉS de que el navegador decodifica las entidades (recorriendo los nodos de texto del HTML ya construido), eliminando cualquier carácter invisible sin importar cómo estuviera codificado. Esto corrige de inmediato todos los artículos existentes, y el backend también limpia las entidades al guardar.',
+        tags: ['noticias', 'blog', 'tipografia', 'texto', 'bugfix', 'critical'],
+        type: 'fix'
+    },
     {
         version: '4.436.17',
         title: 'Fix: Palabras Cortadas a Mitad de Línea en Artículos de Noticias ✂️🚫',
