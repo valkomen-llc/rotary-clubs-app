@@ -80,6 +80,19 @@ async function getClubConfig(clubId) {
     return r.rows[0] || null;
 }
 
+/**
+ * Sincroniza la foto de perfil del contacto.
+ * NOTA: la WhatsApp Cloud API de Meta NO expone la foto de perfil de los
+ * usuarios que escriben (por privacidad); el webhook sólo entrega el nombre.
+ * Por eso es un no-op seguro: existe para no romper las llamadas del webhook
+ * (antes lanzaba ReferenceError y abortaba el procesamiento del mensaje para
+ * contactos existentes sin foto, impidiendo guardar el mensaje y responder).
+ * En el chat se muestran avatares con iniciales como alternativa.
+ */
+async function trySyncContactPhoto(/* contactId, phone, name, clubId */) {
+    return; // Cloud API no provee fotos de perfil de los contactos
+}
+
 async function metaApiCall({ method = 'GET', path, body, token }) {
     const url = `${WA_API_BASE}${path}`;
     const opts = {
@@ -443,6 +456,23 @@ export const archiveContact = async (req, res) => {
         res.json(r.rows[0]);
     } catch (err) {
         console.error('WA archiveContact:', err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
+export const deleteConversation = async (req, res) => {
+    try {
+        const clubId = await resolveClubId(req);
+        const { id } = req.params;
+        const c = await db.query(`SELECT id FROM "WhatsAppContact" WHERE id=$1 AND "clubId"=$2`, [id, clubId]);
+        if (!c.rows.length) return res.status(404).json({ error: 'Conversación no encontrada' });
+        // Borrar el historial de mensajes y luego el contacto (las relaciones con
+        // cascade —listas, valores de campos— se limpian a nivel de BD).
+        await db.query(`DELETE FROM "WhatsAppMessageLog" WHERE "contactId"=$1 AND "clubId"=$2`, [id, clubId]);
+        await db.query(`DELETE FROM "WhatsAppContact" WHERE id=$1 AND "clubId"=$2`, [id, clubId]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('WA deleteConversation:', err);
         res.status(500).json({ error: err.message });
     }
 };

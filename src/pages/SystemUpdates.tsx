@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.437.4 | 2026-06-02 (Fix: el agente dejaba de responder tras el primer mensaje)
-// Cache bust: 2026-06-02 18:20
+// UI V4.437.5 | 2026-06-02 (Fix WhatsApp: webhook, borrar conversación y chequeo API Meta)
+// Cache bust: 2026-06-02 18:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.437.5',
+        title: 'Fix WhatsApp: Bug Crítico del Webhook + Borrar Conversación + Chequeo de la API de Meta 🛠️',
+        date: new Date().toISOString(),
+        description: 'Tres mejoras en el CRM de WhatsApp: (1) Se corrigió un error crítico: el webhook intentaba sincronizar la foto de perfil del contacto con una función inexistente, lo que lanzaba un error y abortaba el procesamiento del mensaje para contactos ya existentes sin foto —impidiendo guardar el mensaje y que el agente respondiera—. Esto afectaba justamente a los contactos con los que ya se había hablado. (2) Ahora se pueden ELIMINAR conversaciones desde el Chat (botón de papelera en cada conversación y en la cabecera), borrando el historial y quitando el contacto del listado. (3) El panel de Diagnóstico ahora hace un chequeo EN VIVO contra la API de Meta y muestra si el token/número funcionan, el nombre verificado, el número visible y la calificación de calidad del número —si Meta rechaza la conexión (token vencido) o la calidad no es GREEN, lo indica como causa del fallo de envío—. Nota: la API de WhatsApp de Meta no permite obtener las fotos de perfil de los usuarios por privacidad, por eso en el chat se usan avatares con las iniciales del contacto.',
+        tags: ['whatsapp', 'webhook', 'meta-api', 'chat', 'bugfix', 'critical'],
+        type: 'fix'
+    },
     {
         version: '4.437.4',
         title: 'Fix: el Agente de WhatsApp Dejaba de Responder Después del Primer Mensaje 🔁',

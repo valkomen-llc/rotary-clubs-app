@@ -19,7 +19,7 @@ import { importContacts } from '../controllers/crm/import.controller.js';
 import { initBulkAction, processChunk, getActiveJobs } from '../controllers/crm/bulk.controller.js';
 import {
     getConfig, upsertConfig, verifyConfig,
-    archiveContact, markMessagesRead, getContactMessages, sendMessageToContact, importFromLeads, fixPhoneNumbers,
+    archiveContact, deleteConversation, markMessagesRead, getContactMessages, sendMessageToContact, importFromLeads, fixPhoneNumbers,
     addListMembers, removeListMembers,
     getTemplates, createTemplate, updateTemplate, deleteTemplate, syncTemplatesFromMeta,
     getCampaigns, createCampaign, updateCampaign, deleteCampaign, sendCampaign, getCampaignLogs,
@@ -82,6 +82,7 @@ router.delete('/contacts/:id', deleteContact);
 
 // Rutas Legacy WhatsApp
 router.post('/contacts/:id/archive', archiveContact);
+router.delete('/contacts/:id/conversation', deleteConversation);
 router.post('/contacts/:id/read', markMessagesRead);
 router.get('/contacts/:id/messages', getContactMessages);
 router.post('/contacts/:id/send', sendMessageToContact);

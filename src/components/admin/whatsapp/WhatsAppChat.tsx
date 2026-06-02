@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
-import { Search, Send, Phone, MoreVertical, User, X, Tag, MessageCircle, ChevronLeft, Loader2, FileText, Archive, ArchiveRestore, Inbox, CheckCheck, Mail, MailOpen, Paperclip, Smile } from 'lucide-react';
+import { Search, Send, Phone, MoreVertical, User, X, Tag, MessageCircle, ChevronLeft, Loader2, FileText, Archive, ArchiveRestore, Inbox, CheckCheck, Mail, MailOpen, Paperclip, Smile, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 interface EmojiItem {
     char: string;
@@ -367,6 +367,22 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
         }
     };
 
+    const handleDeleteConversation = async (contactId: string) => {
+        if (!confirm('¿Eliminar esta conversación? Se borrarán todos los mensajes y el contacto se quitará del chat. Esta acción no se puede deshacer.')) return;
+        try {
+            const res = await fetch(`${API}/whatsapp/contacts/${contactId}/conversation`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) throw new Error();
+            toast.success('Conversación eliminada');
+            if (selectedContact?.id === contactId) setSelectedContact(null);
+            fetchContacts();
+        } catch {
+            toast.error('Error al eliminar la conversación');
+        }
+    };
+
     const getInitials = (name: string | null | undefined) => {
         if (!name) return 'WA';
         return name.split(' ').filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
@@ -706,14 +722,23 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
                                         </div>
                                     )}
                                 </div>
-                                {/* Archive button on hover */}
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); handleArchive(contact.id, !contact.archivedAt); }}
-                                    className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-gray-200 text-gray-400 hover:text-gray-600"
-                                    title={contact.archivedAt ? 'Desarchivar' : 'Archivar'}
-                                >
-                                    {contact.archivedAt ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
-                                </button>
+                                {/* Acciones on hover */}
+                                <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handleArchive(contact.id, !contact.archivedAt); }}
+                                        className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-400 hover:text-gray-600"
+                                        title={contact.archivedAt ? 'Desarchivar' : 'Archivar'}
+                                    >
+                                        {contact.archivedAt ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
+                                    </button>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handleDeleteConversation(contact.id); }}
+                                        className="p-1.5 rounded-lg hover:bg-red-100 text-gray-400 hover:text-red-500"
+                                        title="Eliminar conversación"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -764,12 +789,16 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
                                     >
                                         {selectedContact.archivedAt ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
                                     </button>
-                                    <button className="p-2 rounded-lg hover:bg-gray-100 text-gray-400"><Phone className="w-4 h-4" /></button>
                                     <button onClick={() => setShowContactInfo(!showContactInfo)}
-                                        className={`p-2 rounded-lg transition-colors ${showContactInfo ? 'bg-green-100 text-green-600' : 'hover:bg-gray-100 text-gray-400'}`}>
+                                        className={`p-2 rounded-lg transition-colors ${showContactInfo ? 'bg-green-100 text-green-600' : 'hover:bg-gray-100 text-gray-400'}`}
+                                        title="Información del contacto">
                                         <User className="w-4 h-4" />
                                     </button>
-                                    <button className="p-2 rounded-lg hover:bg-gray-100 text-gray-400"><MoreVertical className="w-4 h-4" /></button>
+                                    <button onClick={() => handleDeleteConversation(selectedContact.id)}
+                                        className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                                        title="Eliminar conversación">
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
                                 </div>
                             </div>
 
