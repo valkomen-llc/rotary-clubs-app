@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
-import { Megaphone, Plus, Trash2, Edit3, Play, Loader2, X, Eye, CheckCircle2, XCircle, Clock, Image, Video, Link2 } from 'lucide-react';
+import { Megaphone, Plus, Trash2, Edit3, Play, Loader2, X, Eye, CheckCircle2, XCircle, Clock, Image, Video, Link2, CheckCheck, Check, MailOpen } from 'lucide-react';
 import { toast } from 'sonner';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -16,6 +16,8 @@ const WhatsAppCampaigns: React.FC = () => {
     const [sending, setSending] = useState<string | null>(null);
     const [viewLogs, setViewLogs] = useState<string | null>(null);
     const [logs, setLogs] = useState<any[]>([]);
+    const [logFilter, setLogFilter] = useState<'all' | 'delivered' | 'read' | 'failed'>('all');
+    const [loadingLogs, setLoadingLogs] = useState(false);
     const [form, setForm] = useState({ name: '', description: '', listId: '', templateId: '', mediaUrl: '' });
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
@@ -72,9 +74,16 @@ const WhatsAppCampaigns: React.FC = () => {
 
     const openLogs = async (id: string) => {
         setViewLogs(id);
-        const res = await fetch(`${API}/whatsapp/campaigns/${id}/logs`, { headers: { Authorization: `Bearer ${token}` } });
-        setLogs(await res.json());
+        setLogFilter('all');
+        setLoadingLogs(true);
+        try {
+            const res = await fetch(`${API}/whatsapp/campaigns/${id}/logs`, { headers: { Authorization: `Bearer ${token}` } });
+            const data = await res.json();
+            setLogs(Array.isArray(data) ? data : []);
+        } catch { setLogs([]); } finally { setLoadingLogs(false); }
     };
+
+    const fmt = (d: string | null | undefined) => d ? new Date(d).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
     const resetForm = () => { setForm({ name: '', description: '', listId: '', templateId: '', mediaUrl: '' }); setEditId(null); };
     const startEdit = (c: any) => {
@@ -87,8 +96,12 @@ const WhatsAppCampaigns: React.FC = () => {
         const map: any = {
             draft: { bg: 'bg-gray-100 text-gray-600', icon: <Edit3 className="w-3 h-3" />, label: 'Borrador' },
             sending: { bg: 'bg-blue-50 text-blue-700', icon: <Loader2 className="w-3 h-3 animate-spin" />, label: 'Enviando' },
-            sent: { bg: 'bg-emerald-50 text-emerald-700', icon: <CheckCircle2 className="w-3 h-3" />, label: 'Enviada' },
-            failed: { bg: 'bg-red-50 text-red-600', icon: <XCircle className="w-3 h-3" />, label: 'Fallida' },
+            sent: { bg: 'bg-emerald-50 text-emerald-700', icon: <Check className="w-3 h-3" />, label: 'Enviado' },
+            delivered: { bg: 'bg-blue-50 text-blue-700', icon: <CheckCheck className="w-3 h-3" />, label: 'Entregado' },
+            read: { bg: 'bg-purple-50 text-purple-700', icon: <MailOpen className="w-3 h-3" />, label: 'Leído' },
+            received: { bg: 'bg-gray-100 text-gray-600', icon: <CheckCircle2 className="w-3 h-3" />, label: 'Recibido' },
+            pending: { bg: 'bg-amber-50 text-amber-700', icon: <Clock className="w-3 h-3" />, label: 'Pendiente' },
+            failed: { bg: 'bg-red-50 text-red-600', icon: <XCircle className="w-3 h-3" />, label: 'Fallido' },
             paused: { bg: 'bg-amber-50 text-amber-700', icon: <Clock className="w-3 h-3" />, label: 'Pausada' },
         };
         const m = map[s] || map.draft;
@@ -231,37 +244,105 @@ const WhatsAppCampaigns: React.FC = () => {
                 </div>
             )}
 
-            {/* Logs Modal */}
-            {viewLogs && (
+            {/* Seguimiento (Tracker) Modal */}
+            {viewLogs && (() => {
+                const total = logs.length;
+                const failed = logs.filter(l => l.status === 'failed').length;
+                const read = logs.filter(l => l.status === 'read').length;
+                const delivered = logs.filter(l => ['delivered', 'read'].includes(l.status)).length;
+                const sent = logs.filter(l => ['sent', 'delivered', 'read'].includes(l.status)).length;
+                const pct = (n: number) => total ? Math.round((n / total) * 100) : 0;
+                const filtered = logs.filter(l => {
+                    if (logFilter === 'all') return true;
+                    if (logFilter === 'delivered') return ['delivered', 'read'].includes(l.status);
+                    if (logFilter === 'read') return l.status === 'read';
+                    if (logFilter === 'failed') return l.status === 'failed';
+                    return true;
+                });
+                const camp = campaigns.find(c => c.id === viewLogs);
+                const funnel = [
+                    { key: 'all', label: 'Total', value: total, color: 'text-gray-900', sub: '100%' },
+                    { key: 'sent', label: 'Enviados', value: sent, color: 'text-emerald-600', sub: `${pct(sent)}%` },
+                    { key: 'delivered', label: 'Entregados', value: delivered, color: 'text-blue-600', sub: `${pct(delivered)}%` },
+                    { key: 'read', label: 'Leídos', value: read, color: 'text-purple-600', sub: `${pct(read)}%` },
+                    { key: 'failed', label: 'Fallidos', value: failed, color: 'text-red-600', sub: `${pct(failed)}%` },
+                ];
+                return (
                 <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setViewLogs(null)}>
-                    <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[80vh] overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
                         <div className="p-5 border-b border-gray-100 flex items-center justify-between">
-                            <h3 className="font-bold text-gray-900">Log de Mensajes</h3>
+                            <div>
+                                <h3 className="font-bold text-gray-900">Seguimiento de la campaña</h3>
+                                {camp && <p className="text-xs text-gray-500 mt-0.5">{camp.name}</p>}
+                            </div>
                             <button onClick={() => setViewLogs(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
                         </div>
-                        <div className="overflow-auto max-h-[60vh]">
+
+                        {/* Embudo */}
+                        <div className="p-5 border-b border-gray-100 grid grid-cols-5 gap-2">
+                            {funnel.map(f => (
+                                <button key={f.key}
+                                    onClick={() => setLogFilter((f.key === 'sent' ? 'all' : f.key) as any)}
+                                    className={`text-center rounded-xl border p-3 transition-colors ${(logFilter === f.key || (f.key === 'sent' && logFilter === 'all')) ? 'border-green-300 bg-green-50/40' : 'border-gray-100 hover:bg-gray-50'}`}>
+                                    <p className={`text-2xl font-black ${f.color}`}>{f.value}</p>
+                                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">{f.label}</p>
+                                    <p className="text-[10px] text-gray-400">{f.sub}</p>
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Filtros */}
+                        <div className="px-5 pt-3 flex gap-2">
+                            {[
+                                { k: 'all', l: 'Todos' }, { k: 'delivered', l: 'Entregados' },
+                                { k: 'read', l: 'Leídos' }, { k: 'failed', l: 'Fallidos' },
+                            ].map(t => (
+                                <button key={t.k} onClick={() => setLogFilter(t.k as any)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${logFilter === t.k ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                                    {t.l}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="overflow-auto flex-1 p-3">
+                            {loadingLogs ? (
+                                <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
+                            ) : filtered.length === 0 ? (
+                                <p className="text-center text-sm text-gray-400 py-12">Sin registros para este filtro.</p>
+                            ) : (
                             <table className="w-full text-left text-sm">
                                 <thead><tr className="border-b border-gray-100 text-xs text-gray-400 uppercase font-bold">
-                                    <th className="p-3">Contacto</th><th className="p-3">Teléfono</th><th className="p-3">Estado</th><th className="p-3">Detalle / Error</th><th className="p-3">Fecha</th>
+                                    <th className="p-3">Contacto</th><th className="p-3">Estado</th>
+                                    <th className="p-3">Enviado</th><th className="p-3">Entregado</th><th className="p-3">Leído</th>
+                                    <th className="p-3">Error</th>
                                 </tr></thead>
                                 <tbody className="divide-y divide-gray-50">
-                                    {logs.map(l => (
+                                    {filtered.map(l => (
                                         <tr key={l.id}>
-                                            <td className="p-3 font-medium">{l.contactName || '—'}</td>
-                                            <td className="p-3 text-xs font-mono">{l.phone}</td>
-                                            <td className="p-3">{statusBadge(l.status)}</td>
-                                            <td className={`p-3 text-xs ${l.status === 'failed' ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
-                                                {l.errorMessage || (l.status === 'failed' ? 'Error de envío de Meta API' : '—')}
+                                            <td className="p-3">
+                                                <div className="font-medium text-gray-900">{l.contactName || '—'}</div>
+                                                <div className="text-[11px] font-mono text-gray-400">{l.phone}</div>
                                             </td>
-                                            <td className="p-3 text-xs text-gray-500">{new Date(l.createdAt).toLocaleString()}</td>
+                                            <td className="p-3">{statusBadge(l.status)}</td>
+                                            <td className="p-3 text-[11px] text-gray-500">{fmt(l.sentAt)}</td>
+                                            <td className="p-3 text-[11px] text-gray-500">{fmt(l.deliveredAt)}</td>
+                                            <td className="p-3 text-[11px] text-gray-500">{fmt(l.readAt)}</td>
+                                            <td className={`p-3 text-[11px] ${l.status === 'failed' ? 'text-red-500 font-medium' : 'text-gray-300'}`}>
+                                                {l.errorMessage || (l.status === 'failed' ? 'Error de envío (Meta API)' : '—')}
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
+                            )}
+                        </div>
+                        <div className="px-5 py-2.5 border-t border-gray-100 bg-gray-50/50 text-[11px] text-gray-400">
+                            Los estados (entregado/leído) se actualizan automáticamente conforme Meta los reporta. "Leído" = interacción del destinatario; las respuestas aparecen en la pestaña Chat.
                         </div>
                     </div>
                 </div>
-            )}
+                );
+            })()}
         </div>
     );
 };
