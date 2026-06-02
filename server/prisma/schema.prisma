@@ -138,6 +138,8 @@ model Club {
   users                    User[]
   whatsAppCampaigns        WhatsAppCampaign[]
   whatsAppConfig           WhatsAppConfig?
+  whatsAppAutoReplyRules   WhatsAppAutoReplyRule[]
+  whatsAppAgentConfig      WhatsAppAgentConfig?
   crmContacts              CrmContact[]
   crmBulkJobs              CrmBulkJob[]
   crmLists                 CrmList[]
@@ -609,6 +611,41 @@ model WhatsAppConfig {
   club           Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
 }
 
+model WhatsAppAutoReplyRule {
+  id           String   @id @default(uuid())
+  clubId       String
+  name         String
+  triggerType  String   @default("keyword") // keyword | exact | welcome | fallback
+  matchMode    String   @default("contains") // contains | exact | starts_with
+  keywords     String[]
+  responseText String
+  active       Boolean  @default(true)
+  priority     Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  club         Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([clubId, active])
+}
+
+model WhatsAppAgentConfig {
+  id                String   @id @default(uuid())
+  clubId            String   @unique
+  enabled           Boolean  @default(false)
+  name              String   @default("Asistente")
+  systemPrompt      String   @default("")
+  modelSlug         String   @default("gemini-2.5-flash")
+  useKnowledge      Boolean  @default(true)
+  temperature       Float    @default(0.6)
+  maxTokens         Int      @default(600)
+  historyLimit      Int      @default(12)
+  humanPauseMinutes Int      @default(120)
+  fallbackMessage   String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  club              Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+}
+
 model CrmContact {
   @@map("WhatsAppContact")
   id              String               @id @default(uuid())
@@ -637,6 +674,8 @@ model CrmContact {
   optedOutAt      DateTime?
   leadId          String?
   profilePictureUrl String?
+  autoReplyDisabled    Boolean         @default(false)
+  autoReplyPausedUntil DateTime?
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
   archivedAt      DateTime?            @db.Timestamptz(6)

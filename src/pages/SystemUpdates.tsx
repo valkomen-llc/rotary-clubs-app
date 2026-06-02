@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.436.20 | 2026-06-02 (Fix: Campos Personalizados del CRM ahora se guardan en la base de datos)
-// Cache bust: 2026-06-02 14:15
+// UI V4.437.0 | 2026-06-02 (Feature: Agente de IA y respuestas automáticas en WhatsApp)
+// Cache bust: 2026-06-02 16:40
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.437.0',
+        title: 'Feature: Agente de IA + Respuestas Automáticas en WhatsApp 🤖💬',
+        date: new Date().toISOString(),
+        description: 'El WhatsApp del club ahora puede responder solo. Se agregó una nueva pestaña "Automatización" dentro de Comunicaciones y CRM → WhatsApp CRM con dos herramientas: (1) Respuestas Automáticas por reglas — creas mensajes que se disparan por palabra clave, coincidencia exacta, bienvenida (primer mensaje) o respaldo, y los activas/desactivas con un switch; y (2) un Agente de IA conversacional que, a partir de una instrucción que tú escribes, mantiene una conversación natural con la persona que escribe (por ejemplo un rotario haciendo preguntas), consultando además la base de conocimiento del club para responder con datos reales y sin inventar. Incluye un probador en vivo para ensayar la instrucción sin enviar nada por WhatsApp, un interruptor general ON/OFF, y control humano: cuando alguien del club responde manualmente desde el panel, el bot se pausa automáticamente esa conversación (tiempo configurable) para no pisar al humano; también se puede silenciar el bot por contacto. Todo funciona por club y reutiliza la integración de WhatsApp Cloud API existente.',
+        tags: ['whatsapp', 'ia', 'agente', 'automatizacion', 'crm', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.436.20',
         title: 'Fix: Campos Personalizados del CRM — Ahora Sí Se Guardan 🗃️✅',
