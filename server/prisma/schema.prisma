@@ -142,6 +142,7 @@ model Club {
   crmBulkJobs              CrmBulkJob[]
   crmLists                 CrmList[]
   WhatsAppCustomField      WhatsAppCustomField[]
+  crmCustomFieldGroups     CrmCustomFieldGroup[]
   whatsAppTemplates        WhatsAppTemplate[]
   technicalRequests        TechnicalRequest[]
   crowdfundPools           CrowdfundPool[]         @relation("ClubPools")
@@ -642,6 +643,7 @@ model CrmContact {
   listMemberships ContactListMember[]
   club            Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
   messageLogs     WhatsAppMessageLog[]
+  customFieldValues CrmCustomFieldValue[]
 
   @@unique([phone, clubId])
   @@index([clubId], map: "idx_wa_contact_club")
@@ -996,17 +998,55 @@ model AgentMessage {
 }
 
 model WhatsAppCustomField {
-  id        String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  id        String                @id @default(dbgenerated("(gen_random_uuid())::text"))
   clubId    String
-  label     String   @db.VarChar(100)
-  key       String   @db.VarChar(100)
-  type      String   @default("text") @db.VarChar(30)
-  required  Boolean  @default(false)
-  sortOrder Int      @default(0)
-  createdAt DateTime @default(now()) @db.Timestamptz(6)
-  Club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  label     String                @db.VarChar(100)
+  key       String                @db.VarChar(100)
+  type      String                @default("text") @db.VarChar(30)
+  required  Boolean               @default(false)
+  status    String                @default("active") @db.VarChar(20)
+  options   Json?
+  groupId   String?
+  sortOrder Int                   @default(0)
+  createdAt DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime              @default(now()) @updatedAt @db.Timestamptz(6)
+  Club      Club                  @relation(fields: [clubId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  group     CrmCustomFieldGroup?  @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  values    CrmCustomFieldValue[]
 
   @@unique([clubId, key])
+  @@index([clubId])
+  @@index([groupId])
+}
+
+model CrmCustomFieldGroup {
+  id          String                @id @default(uuid())
+  clubId      String
+  name        String
+  description String?
+  sortOrder   Int                   @default(0)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  club        Club                  @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  fields      WhatsAppCustomField[]
+
+  @@unique([clubId, name])
+  @@index([clubId])
+}
+
+model CrmCustomFieldValue {
+  id        String              @id @default(uuid())
+  contactId String
+  fieldId   String
+  value     String?
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  contact   CrmContact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  field     WhatsAppCustomField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, fieldId])
+  @@index([contactId])
+  @@index([fieldId])
 }
 
 model FundingOpportunity {

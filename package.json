@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.436.19",
-  "cache_bust": "2026-06-02 11:30 (Fix: Espacios &nbsp; que cortaban palabras en artículos)",
+  "version": "4.436.20",
+  "cache_bust": "2026-06-02 14:15 (Fix: Campos Personalizados del CRM ahora se guardan en la base de datos)",
   "type": "module",
-  "//": "UI V4.436.19 | 2026-06-02 (Fix: Espacios &nbsp; que cortaban palabras en artículos)",
+  "//": "UI V4.436.20 | 2026-06-02 (Fix: Campos Personalizados del CRM ahora se guardan en la base de datos)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

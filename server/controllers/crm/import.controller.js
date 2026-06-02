@@ -75,30 +75,28 @@ export const importContacts = async (req, res) => {
           totalImported++;
         }
 
-        // Si tenemos un contactId válido (creado o actualizado), asociamos listas y etiquetas
+        // Si tenemos un contactId válido (creado o actualizado), asociamos listas, etiquetas y campos personalizados
         if (contactId) {
+           // Etiquetas: se almacenan como String[] en el contacto (el id de la etiqueta === su nombre)
            if (tags && tags.length > 0) {
-             // Ignoramos duplicados insertando sólo los que no existen
-             for (const tagId of tags) {
-                const exists = await db.crmContactTag.findUnique({ where: { contactId_tagId: { contactId, tagId } } });
-                if (!exists) {
-                   await db.crmContactTag.create({ data: { contactId, tagId } });
-                }
-             }
+             const current = await db.crmContact.findUnique({ where: { id: contactId }, select: { tags: true } });
+             const merged = Array.from(new Set([...(current?.tags || []), ...tags]));
+             await db.crmContact.update({ where: { id: contactId }, data: { tags: merged } });
            }
+
            if (lists && lists.length > 0) {
              for (const listId of lists) {
-                const exists = await db.contactListMember.findUnique({ where: { contactId_listId: { contactId, listId } } });
+                const exists = await db.contactListMember.findFirst({ where: { contactId, listId } });
                 if (!exists) {
                    await db.contactListMember.create({ data: { contactId, listId } });
                 }
              }
            }
-           
-           // Custom fields removed because they are not yet in the DB schema
-           /*
+
+           // Campos personalizados mapeados en el asistente de importación
            if (contact.customFields && contact.customFields.length > 0) {
              for (const cf of contact.customFields) {
+               if (!cf.fieldId || cf.value === undefined || cf.value === null || cf.value === '') continue;
                await db.crmCustomFieldValue.upsert({
                  where: { contactId_fieldId: { contactId, fieldId: cf.fieldId } },
                  update: { value: String(cf.value) },
@@ -106,7 +104,6 @@ export const importContacts = async (req, res) => {
                });
              }
            }
-           */
         }
 
       } catch (err) {

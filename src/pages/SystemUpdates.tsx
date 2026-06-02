@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.436.19 | 2026-06-02 (Fix: Espacios &nbsp; que cortaban palabras en artículos)
-// Cache bust: 2026-06-02 11:30
+// UI V4.436.20 | 2026-06-02 (Fix: Campos Personalizados del CRM ahora se guardan en la base de datos)
+// Cache bust: 2026-06-02 14:15
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.436.20',
+        title: 'Fix: Campos Personalizados del CRM — Ahora Sí Se Guardan 🗃️✅',
+        date: new Date().toISOString(),
+        description: 'Se corrigió un problema en Comunicaciones y CRM → Directorio CRM → Ajustes donde al crear un Campo Personalizado aparecía el mensaje "Campo guardado" pero el campo desaparecía y la lista seguía vacía. La causa era que el backend estaba sin implementar (stub): no escribía nada en la base de datos y siempre devolvía una lista vacía. Ahora los campos personalizados y sus grupos se guardan, listan, editan y eliminan de verdad contra la base de datos. Además, el Asistente de Importación ya puede mapear columnas de tu archivo (CSV/Excel) hacia esos campos personalizados y guarda los valores en cada contacto. De paso se corrigió un error que hacía fallar la importación cuando se seleccionaban etiquetas (ahora se asignan correctamente al contacto).',
+        tags: ['crm', 'campos-personalizados', 'importacion', 'directorio', 'bugfix', 'critical'],
+        type: 'fix'
+    },
     {
         version: '4.436.19',
         title: 'Fix: Palabras Cortadas en Artículos — Espacios de No-Quiebre (&nbsp;) 📰✅',
