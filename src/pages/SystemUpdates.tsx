@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.436.16 | 2026-06-01 (Optimización y Subida Directa de Imágenes Pesadas en Noticias)
-// Cache bust: 2026-06-01 14:00
+// UI V4.436.17 | 2026-06-02 (Fix: Palabras Cortadas a Mitad de Línea en Artículos de Noticias)
+// Cache bust: 2026-06-02 09:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.436.17',
+        title: 'Fix: Palabras Cortadas a Mitad de Línea en Artículos de Noticias ✂️🚫',
+        date: new Date().toISOString(),
+        description: 'Se corrigió un problema visual en los artículos de noticias donde las palabras se partían a la mitad al final de cada línea (ej. "en-cuentro", "Interca-mbios", e incluso "u-n"), dejando los textos "mochos". La causa eran caracteres invisibles de quiebre de línea (espacios de ancho cero, guiones suaves y etiquetas <wbr>) que se cuelan en el texto generado por IA o pegado desde otras fuentes como Word, PDF o páginas web, y que ningún ajuste de CSS (word-break, hyphens) puede neutralizar. Ahora el contenido se limpia automáticamente de estos caracteres tanto al mostrarlo en el blog (corrigiendo de inmediato todos los artículos existentes) como al guardarlo en la base de datos (dejando limpio todo el contenido nuevo). La lógica se centralizó en una utilidad reutilizable.',
+        tags: ['noticias', 'blog', 'tipografia', 'texto', 'bugfix'],
+        type: 'fix'
+    },
     {
         version: '4.436.16',
         title: 'Feature: Optimización Automática y Subida Directa de Imágenes Pesadas en Noticias 🖼️⚡',
