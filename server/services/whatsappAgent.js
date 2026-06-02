@@ -18,6 +18,14 @@
 import db from '../lib/prisma.js';
 import { routeToModel } from '../lib/ai-router.js';
 
+/** Corre una promesa con límite de tiempo (evita colgar el webhook si el LLM tarda). */
+function withTimeout(promise, ms, label = 'LLM') {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timeout (${ms}ms)`)), ms)),
+    ]);
+}
+
 /** Normaliza texto para comparar: minúsculas, sin acentos, sin espacios sobrantes. */
 function norm(s) {
     return (s || '')
@@ -101,7 +109,10 @@ async function generateAgentReply({ clubId, contact, messageText, agent }) {
     const systemPrompt = `${agent.systemPrompt}${knowledge}${guardrails}`;
 
     try {
-        const reply = await routeToModel(agent.modelSlug || 'gemini-2.5-flash', systemPrompt, messageText, history);
+        const reply = await withTimeout(
+            routeToModel(agent.modelSlug || 'gemini-2.5-flash', systemPrompt, messageText, history),
+            25000, 'agente'
+        );
         const text = (reply || '').trim();
         if (!text) return agent.fallbackMessage || null;
         return text.slice(0, 3500); // margen seguro bajo el límite de WhatsApp (~4096)

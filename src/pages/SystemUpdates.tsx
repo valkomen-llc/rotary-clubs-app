@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.437.2 | 2026-06-02 (Feature: Diagnóstico de entrega del agente de WhatsApp + logs)
-// Cache bust: 2026-06-02 17:35
+// UI V4.437.3 | 2026-06-02 (Fix: el agente de WhatsApp ahora responde de forma fiable e instantánea)
+// Cache bust: 2026-06-02 17:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.437.3',
+        title: 'Fix: el Agente de WhatsApp ahora Responde Siempre (no de forma intermitente) ⚡',
+        date: new Date().toISOString(),
+        description: 'Se corrigió la causa por la que el agente respondía sólo a veces: el webhook le devolvía el "recibido" a Meta ANTES de generar la respuesta con IA, y en el entorno serverless (Vercel) la función se congelaba después de responder, cortando la generación y el envío a mitad de camino. Ahora el mensaje se procesa por completo (consulta a la IA + envío por WhatsApp) ANTES de confirmar a Meta, de modo que la respuesta se entrega de forma fiable e instantánea. Se agregó idempotencia por ID de mensaje para que, si Meta reintenta el webhook, no se generen respuestas duplicadas, y un límite de tiempo a la IA para que el flujo nunca quede colgado (usa el mensaje de respaldo si el modelo demora demasiado).',
+        tags: ['whatsapp', 'ia', 'agente', 'webhook', 'serverless', 'bugfix', 'critical'],
+        type: 'fix'
+    },
     {
         version: '4.437.2',
         title: 'Feature: Diagnóstico de Entrega del Agente de WhatsApp 🩺',
