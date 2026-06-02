@@ -357,13 +357,19 @@ export default function WhatsAppAutomation() {
 
                         {/* Datos */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                            <DiagStat label="WhatsApp" ok={diag.whatsapp?.configured && diag.whatsapp?.enabled !== false}
-                                value={diag.whatsapp?.configured ? (diag.whatsapp.enabled === false ? 'Deshabilitado' : 'Activo') : 'Sin configurar'} />
+                            <DiagStat label="API Meta" ok={!diag.metaApi || diag.metaApi.ok}
+                                value={!diag.metaApi ? 'Sin token' : (diag.metaApi.ok ? (diag.metaApi.qualityRating || 'OK') : 'Error')} />
                             <DiagStat label="Agente IA" ok={diag.agent?.exists && diag.agent?.enabled && diag.agent?.hasInstruction}
                                 value={!diag.agent?.exists ? 'No creado' : (!diag.agent.enabled ? 'Desactivado' : (diag.agent.hasInstruction ? 'Activo' : 'Sin instrucción'))} />
                             <DiagStat label="Entrantes 24h" ok={diag.traffic24h?.inbound > 0} value={String(diag.traffic24h?.inbound ?? 0)} />
                             <DiagStat label="Enviados bot 24h" ok={diag.traffic24h?.outbound > 0} value={String(diag.traffic24h?.outbound ?? 0)} />
                         </div>
+
+                        {diag.metaApi?.ok && (
+                            <div className="text-xs text-gray-500">
+                                Número verificado en Meta: <b>{diag.metaApi.verifiedName || '—'}</b> ({diag.metaApi.displayPhone || '—'}) · calidad <b>{diag.metaApi.qualityRating || '—'}</b>
+                            </div>
+                        )}
 
                         {diag.lastInbound && (
                             <div className="text-xs text-gray-500">

@@ -205,6 +205,23 @@ export const getAutomationDiagnostics = async (req, res) => {
       : await db.whatsAppConfig.findMany({ where: { clubId }, select: { clubId: true, phoneNumberId: true, enabled: true } });
     const thisClubWa = waConfigs.find(w => w.clubId === clubId) || null;
 
+    // Chequeo EN VIVO de la API de Meta: verifica que el token y el número funcionen.
+    let metaApi = null;
+    try {
+      const fullCfg = await db.whatsAppConfig.findUnique({ where: { clubId }, select: { phoneNumberId: true, accessToken: true } });
+      if (fullCfg?.phoneNumberId && fullCfg?.accessToken) {
+        const ver = process.env.WA_API_VERSION || 'v21.0';
+        const r = await fetch(`https://graph.facebook.com/${ver}/${fullCfg.phoneNumberId}?fields=verified_name,display_phone_number,quality_rating,messaging_limit_tier`, {
+          headers: { Authorization: `Bearer ${fullCfg.accessToken}` },
+        });
+        const d = await r.json();
+        if (d.error) metaApi = { ok: false, error: `${d.error.message} (código ${d.error.code})` };
+        else metaApi = { ok: true, verifiedName: d.verified_name, displayPhone: d.display_phone_number, qualityRating: d.quality_rating, limitTier: d.messaging_limit_tier };
+      }
+    } catch (e) {
+      metaApi = { ok: false, error: e.message };
+    }
+
     const since = new Date(Date.now() - 24 * 3600 * 1000);
     const [inbound24h, outbound24h, lastInbound] = await Promise.all([
       db.whatsAppMessageLog.count({ where: { clubId, direction: 'incoming', createdAt: { gte: since } } }),
@@ -234,6 +251,8 @@ export const getAutomationDiagnostics = async (req, res) => {
     }
     if (lastContact?.autoReplyDisabled) issues.push('El último contacto tiene el bot silenciado (silencio por contacto).');
     if (pausedActive) issues.push(`El bot está EN PAUSA para ${lastContact?.name || lastInbound?.phone} hasta ${new Date(lastContact.autoReplyPausedUntil).toLocaleString()} porque alguien respondió manualmente desde el Chat. Durante la pausa el agente no responde.`);
+    if (metaApi && !metaApi.ok) issues.push(`La API de Meta rechazó la conexión: ${metaApi.error}. Revisa el accessToken (puede estar vencido) y el phoneNumberId en Configuración → WhatsApp.`);
+    else if (metaApi?.ok && metaApi.qualityRating && metaApi.qualityRating !== 'GREEN') issues.push(`La calidad del número en Meta es ${metaApi.qualityRating} (no GREEN): Meta puede estar limitando o bloqueando el envío de mensajes.`);
     if (!process.env.GEMINI_API_KEY) issues.push('Falta GEMINI_API_KEY en el servidor (el agente no podrá generar respuestas).');
     if (inbound24h === 0) issues.push('No hay mensajes entrantes en las últimas 24h para este club: revisa que el webhook de Meta apunte a /api/crm/webhook y esté suscrito al campo "messages".');
     else if (outbound24h === 0 && agent?.enabled && !pausedActive) issues.push('Llegan mensajes pero el bot no ha enviado nada: posible error de envío a Meta (token/ventana de 24h) o el contacto está en pausa/silencio.');
@@ -245,6 +264,7 @@ export const getAutomationDiagnostics = async (req, res) => {
       agent: agent
         ? { exists: true, enabled: agent.enabled, hasInstruction: !!(agent.systemPrompt || '').trim(), model: agent.modelSlug, useKnowledge: agent.useKnowledge, humanPauseMinutes: agent.humanPauseMinutes }
         : { exists: false },
+      metaApi,
       rules: { total: rules.length, active: rules.filter(r => r.active).length },
       lastInbound: lastInbound
         ? { phone: lastInbound.phone, name: lastContact?.name || null, at: lastInbound.createdAt, autoReplyDisabled: !!lastContact?.autoReplyDisabled, pausedUntil: lastContact?.autoReplyPausedUntil || null, pausedActive }

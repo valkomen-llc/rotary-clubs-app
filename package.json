@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.437.4",
-  "cache_bust": "2026-06-02 18:20 (Fix: el agente dejaba de responder tras el primer mensaje (historial Gemini))",
+  "version": "4.437.5",
+  "cache_bust": "2026-06-02 18:45 (Fix WhatsApp: foto de perfil rompía el webhook, borrar conversación y chequeo de la API de Meta)",
   "type": "module",
-  "//": "UI V4.437.4 | 2026-06-02 (Fix: el agente dejaba de responder tras el primer mensaje (historial Gemini))",
+  "//": "UI V4.437.5 | 2026-06-02 (Fix WhatsApp: foto de perfil rompía el webhook, borrar conversación y chequeo de la API de Meta)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
