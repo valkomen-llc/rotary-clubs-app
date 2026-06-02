@@ -12,7 +12,7 @@ import { getCustomFields, createCustomField, updateCustomField, deleteCustomFiel
 import { getGroups, createGroup, updateGroup, deleteGroup } from '../controllers/crm/custom-field-groups.controller.js';
 import {
     getAutoReplies, createAutoReply, updateAutoReply, toggleAutoReply, deleteAutoReply,
-    getAgentConfig, upsertAgentConfig, testAgentConfig,
+    getAgentConfig, upsertAgentConfig, testAgentConfig, generateAgentInstruction,
 } from '../controllers/crm/automation.controller.js';
 import { importContacts } from '../controllers/crm/import.controller.js';
 import { initBulkAction, processChunk, getActiveJobs } from '../controllers/crm/bulk.controller.js';
@@ -128,6 +128,7 @@ router.delete('/auto-replies/:id', deleteAutoReply);
 router.get('/agent-config', getAgentConfig);
 router.put('/agent-config', upsertAgentConfig);
 router.post('/agent-config/test', testAgentConfig);
+router.post('/agent-config/generate-instruction', generateAgentInstruction);
 
 // ── Templates ────────────────────────────────────────────────────────────
 router.get('/templates', getTemplates);
