@@ -203,3 +203,65 @@ export async function previewAgentReply({ clubId, agent, messageText, history = 
     const reply = await routeToModel(cfg.modelSlug || 'gemini-2.5-flash', systemPrompt, messageText, history);
     return (reply || '').trim() || (cfg.fallbackMessage || '');
 }
+
+/**
+ * Redacta automáticamente la instrucción (systemPrompt) del agente usando todo
+ * el conocimiento del club del Centro de Inteligencia (cerebro + memorias).
+ * El contexto se inyecta en el systemPrompt (no en el userPrompt) para evitar
+ * el truncado de entrada del router.
+ * @returns {Promise<string>} texto de la instrucción, listo para pegar.
+ */
+export async function generateAgentInstruction({ clubId }) {
+    let identity = '';
+    let clubName = 'el club';
+    let memText = '';
+
+    try {
+        const { getOrCreateBrainForClub, listRecentMemories, buildIdentityPromptFromClub } = await import('./brainService.js');
+        const brain = await getOrCreateBrainForClub(clubId);
+        if (brain) {
+            clubName = brain.name || clubName;
+            identity = brain.identityPrompt || '';
+            try {
+                const mems = await listRecentMemories({ brainId: brain.id, limit: 60 });
+                memText = mems
+                    .map(m => `- [${m.kind}] ${m.title || 'Nota'}: ${(m.content || '').replace(/\s+/g, ' ').slice(0, 300)}`)
+                    .join('\n')
+                    .slice(0, 6000);
+            } catch (_) { /* sin memorias */ }
+        }
+        // Fallback: datos básicos del club si no hubo cerebro
+        if (!identity) {
+            const club = await db.club.findUnique({ where: { id: clubId } });
+            if (club) {
+                clubName = club.name || clubName;
+                identity = buildIdentityPromptFromClub(club) || '';
+            }
+        }
+    } catch (e) {
+        console.error('[WA-Auto] generateAgentInstruction context error:', e.message);
+    }
+
+    const system = `Eres un experto diseñando asistentes virtuales para clubes Rotary. Tu tarea es REDACTAR la instrucción (system prompt) de un asistente que atenderá por WhatsApp a rotarios y a personas interesadas en "${clubName}".
+
+Devuelve ÚNICAMENTE el texto de la instrucción, listo para pegar: sin comillas, sin markdown, sin encabezados ni explicaciones, sin notas finales.
+
+La instrucción debe estar redactada en segunda persona ("Eres...") y debe:
+- Definir la identidad del asistente (club, ciudad/país y propósito) a partir del contexto.
+- Fijar un tono cordial, cercano, claro y breve, apropiado para WhatsApp.
+- Indicar qué temas puede atender según la información disponible (proyectos, eventos, reuniones, cómo asociarse, donaciones, contacto).
+- Indicar explícitamente que NO debe inventar datos: si no sabe algo, debe ofrecer poner en contacto con una persona del club.
+- Pedir que responda en el mismo idioma del usuario y con mensajes cortos.
+No incluyas datos concretos que no aparezcan en el contexto; cuando falten, usa formulaciones generales.
+
+CONTEXTO DEL CLUB (Centro de Inteligencia):
+${identity || '(sin perfil institucional disponible)'}
+
+CONOCIMIENTO INDEXADO (noticias, proyectos, eventos, documentos):
+${memText || '(sin memorias indexadas todavía)'}`;
+
+    const userPrompt = `Redacta ahora la instrucción del asistente de WhatsApp para "${clubName}". Devuelve solo el texto de la instrucción.`;
+
+    const text = await routeToModel('gemini-2.5-flash', system, userPrompt, []);
+    return (text || '').trim();
+}

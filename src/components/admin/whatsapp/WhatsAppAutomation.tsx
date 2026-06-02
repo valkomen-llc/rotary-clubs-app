@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bot, Plus, Trash2, Edit2, Zap, Send, X, MessageSquare, Sparkles, Power, BookOpen, Clock } from 'lucide-react';
+import { Bot, Plus, Trash2, Edit2, Zap, Send, X, MessageSquare, Sparkles, Power, BookOpen, Clock, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../../hooks/useAuth';
 
@@ -31,6 +31,7 @@ export default function WhatsAppAutomation() {
     const [rules, setRules] = useState<any[]>([]);
     const [agent, setAgent] = useState<any>(null);
     const [savingAgent, setSavingAgent] = useState(false);
+    const [generating, setGenerating] = useState(false);
 
     const [showRuleModal, setShowRuleModal] = useState(false);
     const [editingRule, setEditingRule] = useState<any>(null);
@@ -76,6 +77,22 @@ export default function WhatsAppAutomation() {
             toast.error(e.message);
         } finally {
             setSavingAgent(false);
+        }
+    };
+
+    const generateInstruction = async () => {
+        if ((agent.systemPrompt || '').trim() && !confirm('Esto reemplazará la instrucción actual con una generada por IA. ¿Continuar?')) return;
+        setGenerating(true);
+        try {
+            const res = await fetch(`${API}/crm/agent-config/generate-instruction`, { method: 'POST', headers });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Error');
+            setAgent((a: any) => ({ ...a, systemPrompt: data.instruction }));
+            toast.success('Instrucción generada con el conocimiento del club. Revísala y guarda.');
+        } catch (e: any) {
+            toast.error(e.message);
+        } finally {
+            setGenerating(false);
         }
     };
 
@@ -166,10 +183,22 @@ export default function WhatsAppAutomation() {
                         </div>
 
                         <div>
-                            <label className="block text-xs font-bold text-gray-700 mb-1">
-                                <Sparkles className="w-3.5 h-3.5 inline mr-1 text-emerald-500" />
-                                Instrucción del agente (cómo debe comportarse)
-                            </label>
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="block text-xs font-bold text-gray-700">
+                                    <Sparkles className="w-3.5 h-3.5 inline mr-1 text-emerald-500" />
+                                    Instrucción del agente (cómo debe comportarse)
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={generateInstruction}
+                                    disabled={generating}
+                                    title="Redacta la instrucción usando el conocimiento del Centro de Inteligencia"
+                                    className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg transition-colors disabled:opacity-50"
+                                >
+                                    <Wand2 className="w-3.5 h-3.5" />
+                                    {generating ? 'Generando…' : 'Generar con IA'}
+                                </button>
+                            </div>
                             <textarea
                                 value={agent.systemPrompt || ''}
                                 onChange={e => setAgent({ ...agent, systemPrompt: e.target.value })}

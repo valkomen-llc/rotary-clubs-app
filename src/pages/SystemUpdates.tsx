@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.437.0 | 2026-06-02 (Feature: Agente de IA y respuestas automáticas en WhatsApp)
-// Cache bust: 2026-06-02 16:40
+// UI V4.437.1 | 2026-06-02 (Feature: Generar instrucción del agente de WhatsApp con IA)
+// Cache bust: 2026-06-02 17:05
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.437.1',
+        title: 'Feature: Generar la Instrucción del Agente de WhatsApp con IA 🪄',
+        date: new Date().toISOString(),
+        description: 'Se agregó un botón "Generar con IA" en el formulario del Agente de IA conversacional (pestaña Automatización de WhatsApp CRM), junto al campo de instrucción. Al pulsarlo, el sistema usa todo el conocimiento del club del Centro de Inteligencia (el cerebro: perfil institucional, proyectos, eventos, noticias y documentos indexados) para redactar automáticamente una instrucción completa y lista para usar, con la identidad, el tono y los temas que el asistente debe atender. Así ya no hace falta escribir la instrucción desde cero: se genera, se revisa y se guarda. Esto también resuelve el aviso de "El agente de IA no está configurado" que aparecía al probar la conversación sin haber escrito todavía una instrucción.',
+        tags: ['whatsapp', 'ia', 'agente', 'centro-de-inteligencia', 'automatizacion', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.437.0',
         title: 'Feature: Agente de IA + Respuestas Automáticas en WhatsApp 🤖💬',

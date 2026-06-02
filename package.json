@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.437.0",
-  "cache_bust": "2026-06-02 16:40 (Feature: Agente de IA y respuestas automáticas en WhatsApp)",
+  "version": "4.437.1",
+  "cache_bust": "2026-06-02 17:05 (Feature: Generar instrucción del agente de WhatsApp con IA)",
   "type": "module",
-  "//": "UI V4.437.0 | 2026-06-02 (Feature: Agente de IA y respuestas automáticas en WhatsApp)",
+  "//": "UI V4.437.1 | 2026-06-02 (Feature: Generar instrucción del agente de WhatsApp con IA)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

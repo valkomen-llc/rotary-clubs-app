@@ -187,6 +187,19 @@ export const upsertAgentConfig = async (req, res) => {
   }
 };
 
+/** Genera la instrucción del agente con IA a partir del conocimiento del club. */
+export const generateAgentInstruction = async (req, res) => {
+  try {
+    const clubId = await resolveClubId(req, true);
+    const { generateAgentInstruction: gen } = await import('../../services/whatsappAgent.js');
+    const instruction = await gen({ clubId });
+    if (!instruction) return res.status(502).json({ error: 'No se pudo generar la instrucción. Revisa la API key de IA.' });
+    res.json({ instruction });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 /** Prueba la respuesta del agente sin enviarla por WhatsApp. */
 export const testAgentConfig = async (req, res) => {
   try {
