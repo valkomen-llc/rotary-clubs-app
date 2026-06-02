@@ -1374,7 +1374,9 @@ export const verifyWebhook = async (req, res) => {
 };
 
 export const handleWebhook = async (req, res) => {
-    res.sendStatus(200); // Respond immediately to Meta
+    // Procesamos ANTES de responder 200 para que la automatización (LLM + envío)
+    // se complete de forma fiable en serverless. La idempotencia por messageId
+    // evita respuestas duplicadas si Meta reintenta el webhook.
     try {
         const body = req.body;
         if (body.object !== 'whatsapp_business_account') return;
@@ -1405,6 +1407,19 @@ export const handleWebhook = async (req, res) => {
                 const normalizedPhone = from.startsWith('+') ? from : `+${from}`;
                 const messageId = msg.id;
                 const timestamp = msg.timestamp ? new Date(parseInt(msg.timestamp) * 1000) : new Date();
+
+                // Idempotencia: si ya registramos este mensaje (reintento de Meta), saltar
+                // para no procesar ni responder dos veces.
+                if (messageId) {
+                    const dup = await db.query(
+                        `SELECT 1 FROM "WhatsAppMessageLog" WHERE "messageId"=$1 AND direction='incoming' LIMIT 1`,
+                        [messageId]
+                    );
+                    if (dup.rows.length) {
+                        console.log(`[WA-Auto] Mensaje ${messageId} ya procesado, se omite.`);
+                        continue;
+                    }
+                }
 
                 // Find or create contact
                 let contactId = null;
@@ -1551,6 +1566,9 @@ export const handleWebhook = async (req, res) => {
         }
     } catch (err) {
         console.error('WA webhook error:', err);
+    } finally {
+        // Responder 200 exactamente una vez (Meta sólo necesita el ACK).
+        if (!res.headersSent) res.sendStatus(200);
     }
 };
 
