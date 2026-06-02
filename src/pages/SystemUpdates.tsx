@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.437.5 | 2026-06-02 (Fix WhatsApp: webhook, borrar conversación y chequeo API Meta)
-// Cache bust: 2026-06-02 18:45
+// UI V4.437.6 | 2026-06-02 (Feature: seguimiento (tracker) de campañas de WhatsApp)
+// Cache bust: 2026-06-02 19:10
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.437.6',
+        title: 'Feature: Seguimiento Completo de Campañas de WhatsApp (Tracker) 📊',
+        date: new Date().toISOString(),
+        description: 'Ahora cada campaña de WhatsApp tiene un panel de seguimiento detallado (botón del ojo en la lista de Campañas). Muestra un embudo con Total → Enviados → Entregados → Leídos → Fallidos (con porcentajes), filtros por estado, y una tabla por destinatario con su estado actual, las marcas de tiempo de cuándo se envió / entregó / leyó cada mensaje, y el error exacto de Meta si falló. Los estados se actualizan solos conforme Meta reporta entrega y lectura (el "Leído" equivale a la interacción del destinatario; las respuestas aparecen en la pestaña Chat). Además se corrigió que los estados Entregado y Leído se mostraban mal etiquetados en el log.',
+        tags: ['whatsapp', 'campanas', 'analytics', 'tracker', 'seguimiento', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.437.5',
         title: 'Fix WhatsApp: Bug Crítico del Webhook + Borrar Conversación + Chequeo de la API de Meta 🛠️',
