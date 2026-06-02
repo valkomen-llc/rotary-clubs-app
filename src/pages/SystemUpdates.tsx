@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.437.3 | 2026-06-02 (Fix: el agente de WhatsApp ahora responde de forma fiable e instantánea)
-// Cache bust: 2026-06-02 17:55
+// UI V4.437.4 | 2026-06-02 (Fix: el agente dejaba de responder tras el primer mensaje)
+// Cache bust: 2026-06-02 18:20
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.437.4',
+        title: 'Fix: el Agente de WhatsApp Dejaba de Responder Después del Primer Mensaje 🔁',
+        date: new Date().toISOString(),
+        description: 'Se corrigió un error por el que el agente respondía al primer mensaje de una conversación pero quedaba mudo en los siguientes. La causa: una vez que el bot respondía, el historial de la charla quedaba con varios turnos seguidos del mismo interlocutor (por ejemplo varios "hola" del usuario seguidos de la respuesta del bot), y el modelo de IA (Gemini) rechaza los historiales que no alternan estrictamente usuario/asistente, por lo que fallaba en silencio. Ahora el historial se normaliza automáticamente para alternar siempre (fusionando los turnos consecutivos del mismo interlocutor), de modo que el agente responde a TODOS los mensajes de la conversación, no solo al primero.',
+        tags: ['whatsapp', 'ia', 'agente', 'gemini', 'historial', 'bugfix', 'critical'],
+        type: 'fix'
+    },
     {
         version: '4.437.3',
         title: 'Fix: el Agente de WhatsApp ahora Responde Siempre (no de forma intermitente) ⚡',
