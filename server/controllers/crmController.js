@@ -1500,15 +1500,17 @@ export const handleWebhook = async (req, res) => {
                 if (isNewMessage && contactId && msgType === 'text' && bodyText && bodyText.trim()) {
                     try {
                         const { runWhatsAppAutomation } = await import('../services/whatsappAgent.js');
-                        await runWhatsAppAutomation({
+                        console.log(`[WA-Auto] Procesando entrante club=${clubId} de=${normalizedPhone}: "${bodyText.slice(0, 80)}"`);
+                        const result = await runWhatsAppAutomation({
                             clubId,
                             contactId,
                             phone: normalizedPhone,
                             contactName,
                             messageText: bodyText,
                         });
+                        console.log('[WA-Auto] Resultado:', JSON.stringify(result));
                     } catch (autoErr) {
-                        console.error('[WA-Auto] Error en automatización:', autoErr.message);
+                        console.error('[WA-Auto] Error en automatización:', autoErr.message, autoErr.stack);
                     }
                 }
             }

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.437.1 | 2026-06-02 (Feature: Generar instrucción del agente de WhatsApp con IA)
-// Cache bust: 2026-06-02 17:05
+// UI V4.437.2 | 2026-06-02 (Feature: Diagnóstico de entrega del agente de WhatsApp + logs)
+// Cache bust: 2026-06-02 17:35
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.437.2',
+        title: 'Feature: Diagnóstico de Entrega del Agente de WhatsApp 🩺',
+        date: new Date().toISOString(),
+        description: 'Cuando el agente está activo pero no responde por WhatsApp, ahora hay un panel "Diagnóstico de entrega" (pestaña Automatización) con un botón "Revisar ahora" que detecta y explica la causa probable: integración de WhatsApp deshabilitada, agente desactivado o sin instrucción, el número que recibe los mensajes pertenece a otro club, falta de tráfico entrante (webhook de Meta mal apuntado), o —la causa más común al hacer pruebas— que el bot quedó EN PAUSA para ese contacto porque alguien respondió manualmente desde el Chat. En ese caso aparece un botón "Reanudar el bot ahora" para quitar la pausa al instante. También muestra contadores de mensajes entrantes/enviados en 24h y se agregaron logs detallados del flujo de automatización en el servidor.',
+        tags: ['whatsapp', 'ia', 'agente', 'diagnostico', 'automatizacion', 'soporte'],
+        type: 'added'
+    },
     {
         version: '4.437.1',
         title: 'Feature: Generar la Instrucción del Agente de WhatsApp con IA 🪄',

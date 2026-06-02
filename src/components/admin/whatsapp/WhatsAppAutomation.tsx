@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bot, Plus, Trash2, Edit2, Zap, Send, X, MessageSquare, Sparkles, Power, BookOpen, Clock, Wand2 } from 'lucide-react';
+import { Bot, Plus, Trash2, Edit2, Zap, Send, X, MessageSquare, Sparkles, Power, BookOpen, Clock, Wand2, Activity, CheckCircle2, AlertTriangle, PlayCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../../hooks/useAuth';
 
@@ -32,6 +32,8 @@ export default function WhatsAppAutomation() {
     const [agent, setAgent] = useState<any>(null);
     const [savingAgent, setSavingAgent] = useState(false);
     const [generating, setGenerating] = useState(false);
+    const [diag, setDiag] = useState<any>(null);
+    const [loadingDiag, setLoadingDiag] = useState(false);
 
     const [showRuleModal, setShowRuleModal] = useState(false);
     const [editingRule, setEditingRule] = useState<any>(null);
@@ -77,6 +79,32 @@ export default function WhatsAppAutomation() {
             toast.error(e.message);
         } finally {
             setSavingAgent(false);
+        }
+    };
+
+    const runDiag = async () => {
+        setLoadingDiag(true);
+        try {
+            const res = await fetch(`${API}/crm/agent-config/diagnostics`, { headers });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Error');
+            setDiag(data);
+        } catch (e: any) {
+            toast.error(e.message);
+        } finally {
+            setLoadingDiag(false);
+        }
+    };
+
+    const resumeBot = async () => {
+        try {
+            const res = await fetch(`${API}/crm/agent-config/resume`, { method: 'POST', headers, body: '{}' });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Error');
+            toast.success(`Bot reanudado (${data.resumed} contacto/s)`);
+            runDiag();
+        } catch (e: any) {
+            toast.error(e.message);
         }
     };
 
@@ -284,6 +312,76 @@ export default function WhatsAppAutomation() {
                 </div>
             </div>
 
+            {/* ── DIAGNÓSTICO DE ENTREGA ──────────────────────────────── */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="p-5 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="w-11 h-11 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">
+                            <Activity className="w-6 h-6" />
+                        </div>
+                        <div>
+                            <h2 className="text-lg font-bold text-gray-900">Diagnóstico de entrega</h2>
+                            <p className="text-sm text-gray-500">¿El bot no responde por WhatsApp? Revisa aquí qué puede estar fallando.</p>
+                        </div>
+                    </div>
+                    <button onClick={runDiag} disabled={loadingDiag}
+                        className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 disabled:opacity-50">
+                        <Activity className="w-4 h-4" /> {loadingDiag ? 'Revisando…' : 'Revisar ahora'}
+                    </button>
+                </div>
+
+                {diag && (
+                    <div className="px-5 pb-5 space-y-4">
+                        {/* Problemas detectados */}
+                        {diag.issues?.length > 0 ? (
+                            <div className="space-y-2">
+                                {diag.issues.map((iss: string, i: number) => (
+                                    <div key={i} className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-900">
+                                        <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /> <span>{iss}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-800">
+                                <CheckCircle2 className="w-4 h-4" /> Todo en orden: el agente debería responder. Si aún no lo hace, revisa que el número desde el que escribes no sea el mismo número del negocio.
+                            </div>
+                        )}
+
+                        {/* Pausa activa → reanudar */}
+                        {diag.lastInbound?.pausedActive && (
+                            <button onClick={resumeBot}
+                                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold">
+                                <PlayCircle className="w-4 h-4" /> Reanudar el bot ahora (quitar pausa)
+                            </button>
+                        )}
+
+                        {/* Datos */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                            <DiagStat label="WhatsApp" ok={diag.whatsapp?.configured && diag.whatsapp?.enabled !== false}
+                                value={diag.whatsapp?.configured ? (diag.whatsapp.enabled === false ? 'Deshabilitado' : 'Activo') : 'Sin configurar'} />
+                            <DiagStat label="Agente IA" ok={diag.agent?.exists && diag.agent?.enabled && diag.agent?.hasInstruction}
+                                value={!diag.agent?.exists ? 'No creado' : (!diag.agent.enabled ? 'Desactivado' : (diag.agent.hasInstruction ? 'Activo' : 'Sin instrucción'))} />
+                            <DiagStat label="Entrantes 24h" ok={diag.traffic24h?.inbound > 0} value={String(diag.traffic24h?.inbound ?? 0)} />
+                            <DiagStat label="Enviados bot 24h" ok={diag.traffic24h?.outbound > 0} value={String(diag.traffic24h?.outbound ?? 0)} />
+                        </div>
+
+                        {diag.lastInbound && (
+                            <div className="text-xs text-gray-500">
+                                Último entrante: <b>{diag.lastInbound.name || diag.lastInbound.phone}</b> ({new Date(diag.lastInbound.at).toLocaleString()})
+                                {diag.lastInbound.pausedActive && <span className="text-amber-600"> · en pausa hasta {new Date(diag.lastInbound.pausedUntil).toLocaleString()}</span>}
+                                {diag.lastInbound.autoReplyDisabled && <span className="text-red-500"> · bot silenciado</span>}
+                            </div>
+                        )}
+
+                        {diag.clubsWithWhatsapp && diag.clubsWithWhatsapp.length > 1 && (
+                            <div className="text-xs text-gray-500">
+                                Clubes con WhatsApp: {diag.clubsWithWhatsapp.length}. El bot responde sólo en el club dueño del número que recibe el mensaje (club actual: <b>{diag.clubName}</b>).
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
             {/* ── RESPUESTAS AUTOMÁTICAS ──────────────────────────────── */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="p-5 border-b border-gray-100 flex items-center justify-between">
@@ -452,6 +550,15 @@ function RuleModal({ headers, existing, onClose, onSaved }: any) {
                     </button>
                 </div>
             </div>
+        </div>
+    );
+}
+
+function DiagStat({ label, value, ok }: { label: string; value: string; ok: boolean }) {
+    return (
+        <div className={`rounded-lg border p-3 ${ok ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">{label}</div>
+            <div className={`font-bold ${ok ? 'text-emerald-700' : 'text-amber-700'}`}>{value}</div>
         </div>
     );
 }
