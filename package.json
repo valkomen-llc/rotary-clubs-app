@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.436.18",
-  "cache_bust": "2026-06-02 10:30 (Fix: Palabras Cortadas en Artículos — Entidades HTML Invisibles)",
+  "version": "4.436.19",
+  "cache_bust": "2026-06-02 11:30 (Fix: Espacios &nbsp; que cortaban palabras en artículos)",
   "type": "module",
-  "//": "UI V4.436.18 | 2026-06-02 (Fix: Palabras Cortadas en Artículos — Entidades HTML Invisibles)",
+  "//": "UI V4.436.19 | 2026-06-02 (Fix: Espacios &nbsp; que cortaban palabras en artículos)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

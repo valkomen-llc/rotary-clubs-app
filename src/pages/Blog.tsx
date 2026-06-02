@@ -9,7 +9,7 @@ import { useSEO } from '../hooks/useSEO';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { articulosDestacados, articulos } from '../data/news';
-import { stripInvisibleBreaks } from '../utils/stripInvisibleBreaks';
+import { cleanArticleText } from '../utils/stripInvisibleBreaks';
 
 const Blog = () => {
   const { club } = useClub();
@@ -69,11 +69,13 @@ const Blog = () => {
           const data = await response.json();
           const dbMapped = data.map((p: any) => {
             const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = stripInvisibleBreaks(p.content || '');
+            tempDiv.innerHTML = p.content || '';
             const textContent = tempDiv.textContent || tempDiv.innerText || '';
             return {
               ...p,
-              summary: stripInvisibleBreaks(p.summary || (textContent.substring(0, 150) + '...'))
+              summary: p.summary
+                ? cleanArticleText(p.summary)
+                : cleanArticleText(textContent.substring(0, 150)) + '...'
             };
           });
           setPosts([...dbMapped, ...staticMapped]);

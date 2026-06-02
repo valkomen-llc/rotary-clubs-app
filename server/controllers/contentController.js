@@ -2,12 +2,14 @@ import db from '../lib/db.js';
 import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (ESTABILIDAD TOTAL)
 import { ingestMemorySafe } from '../services/brainService.js';
 
-// Elimina caracteres invisibles que provocan que el texto se "corte" a mitad de
-// palabra al final de cada línea (espacio de ancho cero U+200B, guion suave
-// U+00AD, word joiner U+2060, BOM U+FEFF y la etiqueta <wbr>). Suelen colarse en
-// texto generado por IA o pegado desde otras fuentes, ya sea como carácter
-// literal o como entidad HTML (ej. "&#8203;", "&#xfeff;"), y no se pueden
-// neutralizar con CSS.
+// Normaliza el contenido para que el texto fluya y corte entre palabras (no a
+// mitad de palabra). La causa principal del texto "mocho" es que los espacios
+// entre palabras vienen como `&nbsp;` (espacio de no-quiebre, U+00A0) al pegar
+// desde Word/PDF/Google Docs: al no haber espacios normales donde cortar, el
+// navegador parte las palabras. Convertimos esos espacios a espacios normales y,
+// además, eliminamos caracteres invisibles (literales y entidades) y <wbr>.
+const NO_BREAK_SPACES = new RegExp('[\\u00A0\\u202F]', 'g');
+const NO_BREAK_SPACE_ENTITIES = /&nbsp;|&#x0*a0;|&#0*160;|&#x0*202f;|&#0*8239;/gi;
 const INVISIBLE_BREAK_CHARS = new RegExp('[\\u00AD\\u200B\\u2060\\uFEFF]', 'g');
 const INVISIBLE_BREAK_ENTITIES =
     /&#x0*(?:ad|200b|2060|feff);|&#0*(?:173|8203|8288|65279);|&(?:shy|ZeroWidthSpace|NoBreak);/gi;
@@ -15,7 +17,9 @@ const stripInvisibleBreaks = (html) =>
     typeof html === 'string'
         ? html
             .replace(/<wbr\s*\/?>(?:<\/wbr>)?/gi, '')
+            .replace(NO_BREAK_SPACE_ENTITIES, ' ')
             .replace(INVISIBLE_BREAK_ENTITIES, '')
+            .replace(NO_BREAK_SPACES, ' ')
             .replace(INVISIBLE_BREAK_CHARS, '')
         : html;
 
