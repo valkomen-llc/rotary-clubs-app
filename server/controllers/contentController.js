@@ -4,12 +4,19 @@ import { ingestMemorySafe } from '../services/brainService.js';
 
 // Elimina caracteres invisibles que provocan que el texto se "corte" a mitad de
 // palabra al final de cada línea (espacio de ancho cero U+200B, guion suave
-// U+00AD, BOM U+FEFF y la etiqueta <wbr>). Suelen colarse en texto generado por
-// IA o pegado desde otras fuentes y no se pueden neutralizar con CSS.
-const INVISIBLE_BREAK_CHARS = new RegExp('[\\u00AD\\u200B\\uFEFF]', 'g');
+// U+00AD, word joiner U+2060, BOM U+FEFF y la etiqueta <wbr>). Suelen colarse en
+// texto generado por IA o pegado desde otras fuentes, ya sea como carácter
+// literal o como entidad HTML (ej. "&#8203;", "&#xfeff;"), y no se pueden
+// neutralizar con CSS.
+const INVISIBLE_BREAK_CHARS = new RegExp('[\\u00AD\\u200B\\u2060\\uFEFF]', 'g');
+const INVISIBLE_BREAK_ENTITIES =
+    /&#x0*(?:ad|200b|2060|feff);|&#0*(?:173|8203|8288|65279);|&(?:shy|ZeroWidthSpace|NoBreak);/gi;
 const stripInvisibleBreaks = (html) =>
     typeof html === 'string'
-        ? html.replace(/<wbr\s*\/?>(?:<\/wbr>)?/gi, '').replace(INVISIBLE_BREAK_CHARS, '')
+        ? html
+            .replace(/<wbr\s*\/?>(?:<\/wbr>)?/gi, '')
+            .replace(INVISIBLE_BREAK_ENTITIES, '')
+            .replace(INVISIBLE_BREAK_CHARS, '')
         : html;
 
 // Public: Get posts for a specific club
