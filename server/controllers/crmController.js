@@ -94,6 +94,49 @@ async function metaApiCall({ method = 'GET', path, body, token }) {
 }
 
 /**
+ * Envía un mensaje de texto libre por WhatsApp y lo registra en el log.
+ * Reutilizable desde la automatización (agente IA / respuestas automáticas).
+ * NO marca pausa humana (eso sólo ocurre en envíos manuales del panel).
+ *
+ * @param {object} p
+ * @param {string} p.clubId
+ * @param {{id:string, phone:string}} p.contact
+ * @param {string} p.text
+ * @returns {Promise<{messageId: string|null}>}
+ */
+export async function sendWhatsAppTextMessage({ clubId, contact, text }) {
+    const config = await getClubConfig(clubId);
+    if (!config) throw new Error('WhatsApp no está configurado para este club');
+    if (config.enabled === false) throw new Error('La integración de WhatsApp está deshabilitada');
+
+    const apiBody = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: contact.phone,
+        type: 'text',
+        text: { preview_url: false, body: text },
+    };
+
+    const apiRes = await metaApiCall({
+        method: 'POST',
+        path: `/${config.phoneNumberId}/messages`,
+        body: apiBody,
+        token: config.accessToken,
+    });
+
+    const messageId = apiRes.messages?.[0]?.id || null;
+    const msgLogId = crypto.randomUUID();
+    await db.query(
+        `INSERT INTO "WhatsAppMessageLog" (id, "clubId","contactId",phone,"messageId","bodyText",status,direction,"sentAt","createdAt","updatedAt")
+         VALUES ($1,$2,$3,$4,$5,$6,'sent','outgoing',NOW(),NOW(),NOW())`,
+        [msgLogId, clubId, contact.id, contact.phone, messageId, text]
+    );
+    await db.query(`UPDATE "WhatsAppContact" SET "totalSent"="totalSent"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
+
+    return { messageId };
+}
+
+/**
  * Upload media to Meta via the Media API using native FormData.
  * Downloads the file from the URL, then uploads to Meta.
  * Returns the media_id.
@@ -564,6 +607,18 @@ export const sendMessageToContact = async (req, res) => {
             [msgLogId, clubId, contact.id, contact.phone, messageId || null, logTemplateName, logBodyText]
         );
         await db.query(`UPDATE "WhatsAppContact" SET "totalSent"="totalSent"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
+
+        // Intervención humana: pausar el agente automático para esta conversación.
+        try {
+            const pauseR = await db.query(`SELECT "humanPauseMinutes" FROM "WhatsAppAgentConfig" WHERE "clubId"=$1`, [clubId]);
+            const mins = pauseR.rows[0]?.humanPauseMinutes ?? 120;
+            if (mins > 0) {
+                await db.query(
+                    `UPDATE "WhatsAppContact" SET "autoReplyPausedUntil"=NOW() + make_interval(mins => $1::int),"updatedAt"=NOW() WHERE id=$2`,
+                    [mins, contact.id]
+                );
+            }
+        } catch (_) { /* La tabla puede no existir aún en despliegues previos */ }
 
         res.json({
             success: true,
@@ -1431,12 +1486,31 @@ export const handleWebhook = async (req, res) => {
 
                 // Save incoming message
                 const incLogId = crypto.randomUUID();
-                await db.query(
+                const incRes = await db.query(
                     `INSERT INTO "WhatsAppMessageLog" (id, "clubId","contactId",phone,"messageId","bodyText",direction,status,"sentAt","createdAt","updatedAt")
                      VALUES ($1,$2,$3,$4,$5,$6,'incoming','received',$7,$7,NOW())
-                     ON CONFLICT DO NOTHING`,
+                     ON CONFLICT DO NOTHING
+                     RETURNING id`,
                     [incLogId, clubId, contactId, normalizedPhone, messageId, bodyText, timestamp]
                 );
+
+                // Automatización: respuestas automáticas + agente IA.
+                // Sólo para mensajes de texto NUEVOS (evita re-disparar en reintentos de Meta).
+                const isNewMessage = incRes.rows.length > 0;
+                if (isNewMessage && contactId && msgType === 'text' && bodyText && bodyText.trim()) {
+                    try {
+                        const { runWhatsAppAutomation } = await import('../services/whatsappAgent.js');
+                        await runWhatsAppAutomation({
+                            clubId,
+                            contactId,
+                            phone: normalizedPhone,
+                            contactName,
+                            messageText: bodyText,
+                        });
+                    } catch (autoErr) {
+                        console.error('[WA-Auto] Error en automatización:', autoErr.message);
+                    }
+                }
             }
         }
 

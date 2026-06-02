@@ -10,6 +10,10 @@ import { getLists, getListById, createList, updateList, deleteList } from '../co
 import { getTags, getTagById, createTag, updateTag, deleteTag } from '../controllers/crm/tags.controller.js';
 import { getCustomFields, createCustomField, updateCustomField, deleteCustomField } from '../controllers/crm/custom-fields.controller.js';
 import { getGroups, createGroup, updateGroup, deleteGroup } from '../controllers/crm/custom-field-groups.controller.js';
+import {
+    getAutoReplies, createAutoReply, updateAutoReply, toggleAutoReply, deleteAutoReply,
+    getAgentConfig, upsertAgentConfig, testAgentConfig,
+} from '../controllers/crm/automation.controller.js';
 import { importContacts } from '../controllers/crm/import.controller.js';
 import { initBulkAction, processChunk, getActiveJobs } from '../controllers/crm/bulk.controller.js';
 import {
@@ -113,6 +117,17 @@ router.get('/custom-field-groups', getGroups);
 router.post('/custom-field-groups', createGroup);
 router.put('/custom-field-groups/:id', updateGroup);
 router.delete('/custom-field-groups/:id', deleteGroup);
+
+// ── Automatización: Respuestas automáticas + Agente IA ───────────────────
+router.get('/auto-replies', getAutoReplies);
+router.post('/auto-replies', createAutoReply);
+router.put('/auto-replies/:id', updateAutoReply);
+router.patch('/auto-replies/:id/toggle', toggleAutoReply);
+router.delete('/auto-replies/:id', deleteAutoReply);
+
+router.get('/agent-config', getAgentConfig);
+router.put('/agent-config', upsertAgentConfig);
+router.post('/agent-config/test', testAgentConfig);
 
 // ── Templates ────────────────────────────────────────────────────────────
 router.get('/templates', getTemplates);
