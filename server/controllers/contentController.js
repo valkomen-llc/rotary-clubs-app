@@ -2,6 +2,16 @@ import db from '../lib/db.js';
 import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (ESTABILIDAD TOTAL)
 import { ingestMemorySafe } from '../services/brainService.js';
 
+// Elimina caracteres invisibles que provocan que el texto se "corte" a mitad de
+// palabra al final de cada línea (espacio de ancho cero U+200B, guion suave
+// U+00AD, BOM U+FEFF y la etiqueta <wbr>). Suelen colarse en texto generado por
+// IA o pegado desde otras fuentes y no se pueden neutralizar con CSS.
+const INVISIBLE_BREAK_CHARS = new RegExp('[\\u00AD\\u200B\\uFEFF]', 'g');
+const stripInvisibleBreaks = (html) =>
+    typeof html === 'string'
+        ? html.replace(/<wbr\s*\/?>(?:<\/wbr>)?/gi, '').replace(INVISIBLE_BREAK_CHARS, '')
+        : html;
+
 // Public: Get posts for a specific club
 export const getPublicPosts = async (req, res) => {
     const { clubId } = req.params;
@@ -119,7 +129,7 @@ export const createPost = async (req, res) => {
             data: {
                 title: title || '',
                 slug: slug || undefined,
-                content: content || '',
+                content: stripInvisibleBreaks(content) || '',
                 image: image || null,
                 published: published || false,
                 clubId: targetClubId,
@@ -214,7 +224,7 @@ export const updatePost = async (req, res) => {
             data: {
                 title: title || existing.title,
                 slug: slug || existing.slug,
-                content: content || existing.content,
+                content: content ? stripInvisibleBreaks(content) : existing.content,
                 image: image || existing.image,
                 published: published !== undefined ? published : existing.published,
                 category: category || existing.category,
