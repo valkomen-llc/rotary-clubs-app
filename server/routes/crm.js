@@ -13,6 +13,7 @@ import { getGroups, createGroup, updateGroup, deleteGroup } from '../controllers
 import {
     getAutoReplies, createAutoReply, updateAutoReply, toggleAutoReply, deleteAutoReply,
     getAgentConfig, upsertAgentConfig, testAgentConfig, generateAgentInstruction,
+    getAutomationDiagnostics, resumeAutomation,
 } from '../controllers/crm/automation.controller.js';
 import { importContacts } from '../controllers/crm/import.controller.js';
 import { initBulkAction, processChunk, getActiveJobs } from '../controllers/crm/bulk.controller.js';
@@ -129,6 +130,8 @@ router.get('/agent-config', getAgentConfig);
 router.put('/agent-config', upsertAgentConfig);
 router.post('/agent-config/test', testAgentConfig);
 router.post('/agent-config/generate-instruction', generateAgentInstruction);
+router.get('/agent-config/diagnostics', getAutomationDiagnostics);
+router.post('/agent-config/resume', resumeAutomation);
 
 // ── Templates ────────────────────────────────────────────────────────────
 router.get('/templates', getTemplates);
