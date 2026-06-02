@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.436.18 | 2026-06-02 (Fix: Palabras Cortadas en Artículos — Entidades HTML Invisibles)
-// Cache bust: 2026-06-02 10:30
+// UI V4.436.19 | 2026-06-02 (Fix: Espacios &nbsp; que cortaban palabras en artículos)
+// Cache bust: 2026-06-02 11:30
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.436.19',
+        title: 'Fix: Palabras Cortadas en Artículos — Espacios de No-Quiebre (&nbsp;) 📰✅',
+        date: new Date().toISOString(),
+        description: 'Causa raíz encontrada y corregida del texto "mocho" en las noticias. El problema NO eran caracteres de quiebre, sino lo contrario: el contenido pegado desde Word/PDF/Google Docs traía TODOS los espacios entre palabras como `&nbsp;` (espacio de no-quiebre, U+00A0). Al no existir espacios "normales" donde cortar la línea, el navegador se veía forzado a partir las palabras a la mitad en el margen derecho. Por eso en el editor (que normaliza el HTML) se veía bien, pero en el sitio público se veía cortado. Ahora el contenido de los artículos convierte automáticamente esos espacios de no-quiebre en espacios normales, tanto al mostrarlo (corrigiendo de inmediato todos los artículos existentes en el blog y sus resúmenes) como al guardarlo en la base de datos. También se corrigió un efecto secundario que mostraba el texto literal "&nbsp;" en las tarjetas del blog.',
+        tags: ['noticias', 'blog', 'tipografia', 'nbsp', 'bugfix', 'critical'],
+        type: 'fix'
+    },
     {
         version: '4.436.18',
         title: 'Fix: Palabras Cortadas en Artículos — Limpieza de Entidades HTML Invisibles 🔍✂️',

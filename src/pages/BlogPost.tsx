@@ -9,7 +9,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
-import { stripInvisibleBreaks } from '../utils/stripInvisibleBreaks';
+import { cleanArticleHtml } from '../utils/stripInvisibleBreaks';
 
 interface Comment {
   id: string;
@@ -945,7 +945,7 @@ const BlogPost = () => {
 
                 <div
                   className="prose prose-lg prose-rotary max-w-none mb-12 w-full text-gray-700 leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: stripInvisibleBreaks(articulo.contenido || '') }}
+                  dangerouslySetInnerHTML={{ __html: cleanArticleHtml(articulo.contenido || '') }}
                 />
 
                 {/* Galería Adaptativa */}
