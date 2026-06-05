@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Construction, X, ChevronRight } from 'lucide-react';
 import { useClub } from '../contexts/ClubContext';
-import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 
 const DevelopmentBanner: React.FC = () => {
     const { club, developmentBannerVisible, setDevelopmentBannerVisible } = useClub();
+    const { user } = useAuth();
     const [shouldRender, setShouldRender] = useState(false);
-    const navigate = useNavigate();
+    const [loading, setLoading] = useState(false);
 
     // The audio mentions it should appear 10 to 15 seconds after navigating.
     useEffect(() => {
@@ -21,13 +22,38 @@ const DevelopmentBanner: React.FC = () => {
 
     if (!club || !club.developmentBannerActive || !developmentBannerVisible || !shouldRender) return null;
 
-    const handleSupportClick = () => {
-        const phoneNumber = '573205028376';
-        const currentUrl = window.location.href;
-        const clubName = club?.name || 'mi club rotario';
-        const message = `Activar sitio y ecosistema digital para: ${clubName} ${currentUrl}`;
-        const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
-        window.open(whatsappUrl, '_blank');
+    // Activación directa vía Stripe Checkout (Ecosistema Digital). Reutiliza el
+    // mismo endpoint que el banner de vencimiento: crea la sesión de pago del
+    // plan integrado en la app y redirige al checkout de Stripe.
+    const handleActivateClick = async () => {
+        if (!user) {
+            // Sin sesión: lo mandamos al login y de vuelta a configuración para activar.
+            window.location.href = `/login?redirect=/admin/configuracion`;
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs/${club.id}/billing-portal`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                if (data.url) {
+                    window.location.href = data.url;
+                    return;
+                }
+            }
+            // Si el endpoint falla (rol, config), lo mandamos a Facturación en configuración.
+            window.location.href = '/admin/configuracion';
+        } catch (error) {
+            window.location.href = '/admin/configuracion';
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -45,11 +71,21 @@ const DevelopmentBanner: React.FC = () => {
                     </p>
                 </div>
 
-                <button 
-                    onClick={handleSupportClick}
-                    className="flex items-center gap-1 bg-yellow-900 text-yellow-50 px-3 py-1 text-xs font-bold rounded-md hover:bg-yellow-800 transition-colors ml-4 shadow-sm"
+                <button
+                    onClick={handleActivateClick}
+                    disabled={loading}
+                    className="flex items-center gap-1 bg-yellow-900 text-yellow-50 px-3 py-1 text-xs font-bold rounded-md hover:bg-yellow-800 transition-colors ml-4 shadow-sm disabled:opacity-60"
                 >
-                    Contacta aquí a soporte <ChevronRight className="w-3 h-3" />
+                    {loading ? (
+                        <>
+                            <span className="w-3 h-3 border-2 border-yellow-50/30 border-t-yellow-50 rounded-full animate-spin" />
+                            Redirigiendo…
+                        </>
+                    ) : (
+                        <>
+                            Activar Ahora <ChevronRight className="w-3 h-3" />
+                        </>
+                    )}
                 </button>
 
                 <button 

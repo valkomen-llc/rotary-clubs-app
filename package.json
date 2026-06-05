@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.437.6",
-  "cache_bust": "2026-06-02 19:10 (Feature: seguimiento (tracker) de campañas de WhatsApp con embudo y estados)",
+  "version": "4.437.7",
+  "cache_bust": "2026-06-05 14:00 (Banner de Desarrollo: botón 'Activar Ahora' redirige al checkout de Stripe)",
   "type": "module",
-  "//": "UI V4.437.6 | 2026-06-02 (Feature: seguimiento (tracker) de campañas de WhatsApp con embudo y estados)",
+  "//": "UI V4.437.7 | 2026-06-05 (Banner de Desarrollo: botón 'Activar Ahora' redirige al checkout de Stripe)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
