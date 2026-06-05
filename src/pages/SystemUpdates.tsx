@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.437.6 | 2026-06-02 (Feature: seguimiento (tracker) de campañas de WhatsApp)
-// Cache bust: 2026-06-02 19:10
+// UI V4.437.7 | 2026-06-05 (Banner de Desarrollo: botón "Activar Ahora" → checkout de Stripe)
+// Cache bust: 2026-06-05 14:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.437.7',
+        title: 'Banner de Desarrollo: el Botón Ahora Activa el Plan vía Stripe 💳⚡',
+        date: new Date().toISOString(),
+        description: 'El botón de la barra amarilla de "Desarrollo" (sitio en construcción) ya no abre un chat de soporte por WhatsApp: ahora dice "Activar Ahora" y, al pulsarlo, lleva directo al checkout de Stripe del Ecosistema Digital para activar y publicar el sitio en un solo paso. Reutiliza la misma pasarela de pago integrada que el banner de renovación, respetando la cuenta de Stripe configurada para cada club (o la cuenta maestra de la plataforma como respaldo). Si el usuario no tiene sesión iniciada, primero lo lleva a iniciar sesión y luego a la activación.',
+        tags: ['stripe', 'pagos', 'banner', 'activacion', 'ecosistema-digital', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.437.6',
         title: 'Feature: Seguimiento Completo de Campañas de WhatsApp (Tracker) 📊',
