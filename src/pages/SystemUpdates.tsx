@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.437.7 | 2026-06-05 (Banner de Desarrollo: botón "Activar Ahora" → checkout de Stripe)
-// Cache bust: 2026-06-05 14:00
+// UI V4.437.8 | 2026-06-09 (Fix: imágenes de plantillas de WhatsApp en alta calidad)
+// Cache bust: 2026-06-09 12:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.437.8',
+        title: 'Fix: Imágenes de Plantillas de WhatsApp en Alta Calidad 🖼️✨',
+        date: new Date().toISOString(),
+        description: 'Se corrigió que en las campañas de WhatsApp las imágenes de las plantillas se vieran recortadas y pixeladas. La causa: la imagen del encabezado se enviaba como un enlace que WhatsApp descargaba al momento; cuando esa descarga fallaba o se degradaba, WhatsApp mostraba en su lugar la miniatura del enlace del cuerpo (recortada y de baja resolución). Ahora la imagen se sube primero a los servidores de Meta y se envía por su identificador de medio, lo que garantiza que el encabezado se adjunte siempre y en máxima calidad (con respaldo automático al método anterior si la subida falla). Además, en el formulario de campaña ahora se muestra una vista previa de la imagen antes de enviar y una recomendación de formato (horizontal y de alta resolución, máx. 5 MB) para evitar recortes.',
+        tags: ['whatsapp', 'campanas', 'plantillas', 'imagenes', 'meta-api', 'bugfix'],
+        type: 'fix'
+    },
     {
         version: '4.437.7',
         title: 'Banner de Desarrollo: el Botón Ahora Activa el Plan vía Stripe 💳⚡',
