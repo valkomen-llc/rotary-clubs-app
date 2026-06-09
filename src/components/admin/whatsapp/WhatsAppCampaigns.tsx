@@ -157,19 +157,36 @@ const WhatsAppCampaigns: React.FC = () => {
                                     </p>
                                 </div>
                                 <input value={form.mediaUrl} onChange={e => setForm({ ...form, mediaUrl: e.target.value })}
-                                    placeholder={selectedTemplate.headerType === 'IMAGE' 
-                                        ? 'https://ejemplo.com/imagen.jpg' 
-                                        : selectedTemplate.headerType === 'VIDEO' 
-                                        ? 'https://ejemplo.com/video.mp4' 
+                                    placeholder={selectedTemplate.headerType === 'IMAGE'
+                                        ? 'https://ejemplo.com/imagen.jpg'
+                                        : selectedTemplate.headerType === 'VIDEO'
+                                        ? 'https://ejemplo.com/video.mp4'
                                         : 'https://ejemplo.com/documento.pdf'}
                                     className="w-full px-3 py-2.5 rounded-lg border border-amber-300 text-sm outline-none focus:border-amber-500 bg-white" />
                                 <p className="text-[10px] text-amber-500 mt-1.5">
-                                    {selectedTemplate.headerType === 'IMAGE' 
-                                        ? 'Pega la URL de la imagen (JPG, PNG). Si dejas vacío se usará la imagen registrada en Meta.' 
+                                    {selectedTemplate.headerType === 'IMAGE'
+                                        ? 'Pega la URL de la imagen (JPG, PNG). Si dejas vacío se usará la imagen registrada en Meta.'
                                         : selectedTemplate.headerType === 'VIDEO'
                                         ? 'Pega la URL del video (MP4). Si dejas vacío se usará el video registrado en Meta.'
                                         : 'Pega la URL del documento (PDF). Si dejas vacío se usará el documento registrado en Meta.'}
                                 </p>
+                                {selectedTemplate.headerType === 'IMAGE' && (
+                                    <>
+                                        <div className="text-[10px] text-amber-600 mt-1.5 bg-amber-100/60 rounded-lg px-2.5 py-1.5">
+                                            💡 Para mejor calidad: usa una imagen <b>horizontal (apaisada)</b> y de <b>alta resolución</b> (peso máx. 5 MB). WhatsApp recorta las imágenes muy verticales en el encabezado.
+                                        </div>
+                                        {form.mediaUrl.trim().startsWith('http') && (
+                                            <div className="mt-2">
+                                                <p className="text-[10px] font-bold text-amber-700 uppercase mb-1">Vista previa</p>
+                                                <img src={form.mediaUrl.trim()} alt="Vista previa del encabezado"
+                                                    className="max-h-40 rounded-lg border border-amber-200 object-contain bg-white"
+                                                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                    onLoad={(e) => { (e.target as HTMLImageElement).style.display = 'block'; }}
+                                                />
+                                            </div>
+                                        )}
+                                    </>
+                                )}
                             </div>
                         )}
                         <div className="flex gap-2">

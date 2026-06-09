@@ -187,47 +187,49 @@ async function uploadMediaToMeta({ url, type, phoneNumberId, token }) {
 
 /**
  * Build the header component for a media template.
- * Strategy: use the public URL directly via 'link' to avoid Vercel timeouts from downloading/uploading.
- * Priority: user mediaUrl > saved headerContent > Meta API lookup
+ * Estrategia: SUBIR la imagen a Meta y enviarla por `id` (máxima calidad y
+ * fiabilidad — evita que WhatsApp muestre el preview del enlace recortado y
+ * pixelado cuando la descarga del `link` falla). Fallback a `link` si la
+ * subida falla. El header se arma una sola vez por campaña, así que el costo
+ * de subir es mínimo.
+ * Prioridad de la fuente: mediaUrl del usuario > headerContent guardado > ejemplo de Meta.
  */
 async function buildMediaHeader({ template, mediaUrl, config }) {
     const mediaType = template.headerType === 'IMAGE' ? 'image'
         : template.headerType === 'VIDEO' ? 'video' : 'document';
 
-    // Collect candidate URLs (prioritized)
-    const candidates = [];
-    if (mediaUrl && mediaUrl.startsWith('http')) candidates.push({ src: 'user', url: mediaUrl });
-    if (template.headerContent && template.headerContent.startsWith('http')) {
-        candidates.push({ src: 'saved', url: template.headerContent });
-    }
+    // Elegir la URL fuente (priorizada)
+    let chosenUrl = null;
+    if (mediaUrl && mediaUrl.startsWith('http')) chosenUrl = mediaUrl;
+    else if (template.headerContent && template.headerContent.startsWith('http')) chosenUrl = template.headerContent;
 
-    // Return the first valid URL as a link parameter
-    for (const { src, url } of candidates) {
-        console.log(`[WA] Using ${src} media link: ${url.substring(0, 70)}...`);
-        return [{ type: 'header', parameters: [{ type: mediaType, [mediaType]: { link: url } }] }];
-    }
-
-    // Fallback: fetch header_url from Meta template API
-    try {
-        const metaTmpl = await metaApiCall({
-            path: `/${config.wabaId}/message_templates?name=${template.name}&fields=components`,
-            token: config.accessToken,
-        });
-        const metaTemplate = metaTmpl?.data?.[0];
-        if (metaTemplate) {
-            const headerComp = metaTemplate.components?.find(c => c.type === 'HEADER');
+    // Fallback: obtener header_url de ejemplo desde la API de plantillas de Meta
+    if (!chosenUrl) {
+        try {
+            const metaTmpl = await metaApiCall({
+                path: `/${config.wabaId}/message_templates?name=${template.name}&fields=components`,
+                token: config.accessToken,
+            });
+            const headerComp = metaTmpl?.data?.[0]?.components?.find(c => c.type === 'HEADER');
             const headerUrl = headerComp?.example?.header_url?.[0];
-            if (headerUrl && headerUrl.startsWith('http')) {
-                console.log('[WA] Using Meta API header_url link:', headerUrl.substring(0, 60));
-                return [{ type: 'header', parameters: [{ type: mediaType, [mediaType]: { link: headerUrl } }] }];
-            }
+            if (headerUrl && headerUrl.startsWith('http')) chosenUrl = headerUrl;
+        } catch (err) {
+            console.error('[WA] Fetch template header failed:', err.message);
         }
-    } catch (err) {
-        console.error('[WA] Fetch template header failed:', err.message);
     }
 
-    console.error('[WA] Could not build header component — no media link available');
-    throw new Error(`Se requiere una URL pública para el encabezado de este template (${mediaType}). Por favor incluye un enlace a tu archivo multimedia antes de enviar.`);
+    if (!chosenUrl) {
+        throw new Error(`Se requiere una URL pública para el encabezado de este template (${mediaType}). Por favor incluye un enlace a tu archivo multimedia antes de enviar.`);
+    }
+
+    // Preferir subir a Meta y enviar por id (mejor calidad y fiabilidad)
+    try {
+        const mediaId = await uploadMediaToMeta({ url: chosenUrl, type: mediaType, phoneNumberId: config.phoneNumberId, token: config.accessToken });
+        return [{ type: 'header', parameters: [{ type: mediaType, [mediaType]: { id: mediaId } }] }];
+    } catch (err) {
+        console.error('[WA] Header media upload failed, fallback a link:', err.message);
+        return [{ type: 'header', parameters: [{ type: mediaType, [mediaType]: { link: chosenUrl } }] }];
+    }
 }
 
 function buildTemplateComponents(vars = {}) {
