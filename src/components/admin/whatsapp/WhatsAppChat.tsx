@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
 import { Search, Send, Phone, MoreVertical, User, X, Tag, MessageCircle, ChevronLeft, Loader2, FileText, Archive, ArchiveRestore, Inbox, CheckCheck, Mail, MailOpen, Paperclip, Smile, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatPhoneDisplay } from '../../../lib/utils';
 interface EmojiItem {
     char: string;
     name: string;
@@ -585,14 +586,14 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
     };
 
     const getLastMessagePreview = (contact: Contact): string => {
-        if (!contact.lastMessage) return contact.phone;
+        if (!contact.lastMessage) return formatPhoneDisplay(contact.phone);
         const lm = contact.lastMessage;
         if (lm.bodyText) {
             const txt = lm.bodyText.length > 45 ? lm.bodyText.substring(0, 45) + '…' : lm.bodyText;
             return lm.direction === 'outgoing' ? `Tú: ${txt}` : txt;
         }
         if (lm.templateName) return `📋 ${lm.templateName}`;
-        return contact.phone;
+        return formatPhoneDisplay(contact.phone);
     };
 
     const filterTabs: { key: ChatFilter; label: string; icon: React.ReactNode }[] = [
@@ -778,7 +779,7 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
                                     </div>
                                     <div>
                                         <p className="font-bold text-gray-900 text-sm">{selectedContact.name}</p>
-                                        <p className="text-xs text-gray-500">{selectedContact.phone}</p>
+                                        <p className="text-xs text-gray-500">{formatPhoneDisplay(selectedContact.phone)}</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-1">
@@ -1041,7 +1042,7 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
                                 {getInitials(selectedContact.name)}
                             </div>
                             <p className="font-black text-gray-900 text-lg">{selectedContact.name}</p>
-                            <p className="text-sm text-gray-500 mt-0.5">{selectedContact.phone}</p>
+                            <p className="text-sm text-gray-500 mt-0.5">{formatPhoneDisplay(selectedContact.phone)}</p>
                             {selectedContact.email && <p className="text-xs text-gray-400 mt-0.5">{selectedContact.email}</p>}
                         </div>
 

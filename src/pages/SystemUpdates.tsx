@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.437.11 | 2026-06-12 (Fix: WhatsApp añade el código de país 57 a los números al enviar por la API de Meta)
-// Cache bust: 2026-06-12 19:35
+// UI V4.437.12 | 2026-06-12 (UI: mostrar el código de país +57 en el número de los contactos del CRM)
+// Cache bust: 2026-06-12 19:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.437.12',
+        title: 'CRM: el Número de Contacto Ahora se Muestra con el Código de País (+57) 👁️🇨🇴',
+        date: new Date().toISOString(),
+        description: 'Complementa la mejora anterior: ahora el número de WhatsApp de los contactos se muestra en pantalla con el código de país de Colombia (ej. "+57 3124818114") en el directorio del CRM y en los paneles del chat de WhatsApp. Antes la columna mostraba solo los 10 dígitos (ej. "3124818114"), lo que generaba dudas sobre si la campaña saldría con el formato correcto. Es un cambio solo de visualización (no modifica el dato guardado) y reconoce los números que ya traen el código para no duplicarlo.',
+        tags: ['crm', 'contactos', 'whatsapp', 'telefono', 'colombia', 'ui'],
+        type: 'improvement'
+    },
     {
         version: '4.437.11',
         title: 'WhatsApp: Código de País (57) Automático al Enviar Campañas 🇨🇴📲',
