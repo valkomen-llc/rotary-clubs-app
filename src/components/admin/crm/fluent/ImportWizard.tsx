@@ -7,7 +7,7 @@ import * as XLSX from 'xlsx';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
-export default function ImportWizard({ onClose, onImported }: { onClose: () => void, onImported: () => void }) {
+export default function ImportWizard({ onClose, onSuccess }: { onClose: () => void, onSuccess: () => void }) {
     const { token } = useAuth();
     
     // Steps: 1: Source, 2: Mapping, 3: Preview/Validation, 4: Results
@@ -550,7 +550,7 @@ export default function ImportWizard({ onClose, onImported }: { onClose: () => v
                             </div>
                             
                             <div className="mt-8 pt-8 border-t border-gray-100">
-                                <button onClick={() => { onImported(); onClose(); }} className="px-8 py-3 bg-rotary-blue text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 transition-shadow">
+                                <button onClick={() => { onSuccess(); onClose(); }} className="px-8 py-3 bg-rotary-blue text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 transition-shadow">
                                     Ir al Directorio
                                 </button>
                             </div>

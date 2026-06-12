@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.437.9 | 2026-06-12 (Feature: elegir/crear la lista destino al importar contactos en el CRM)
-// Cache bust: 2026-06-12 19:00
+// UI V4.437.10 | 2026-06-12 (Fix: el botón 'Ir al Directorio' al terminar la importación no respondía)
+// Cache bust: 2026-06-12 19:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.437.10',
+        title: 'Fix: el Botón "Ir al Directorio" al Terminar la Importación no Respondía 🖱️',
+        date: new Date().toISOString(),
+        description: 'Se corrigió que, al finalizar una importación masiva de contactos, el botón "Ir al Directorio" de la pantalla de resultados no hacía nada al pulsarlo (la ventana quedaba abierta). La causa: el componente esperaba un parámetro con un nombre distinto al que recibía, por lo que la acción lanzaba un error interno y nunca cerraba la ventana. Ahora el botón cierra el importador y refresca el directorio correctamente.',
+        tags: ['crm', 'contactos', 'importacion', 'bugfix'],
+        type: 'fix'
+    },
     {
         version: '4.437.9',
         title: 'Importación de Contactos: Elige o Crea la Lista Destino 📥📋',
