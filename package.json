@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.437.10",
-  "cache_bust": "2026-06-12 19:25 (Fix: el botón 'Ir al Directorio' al terminar la importación no respondía)",
+  "version": "4.437.11",
+  "cache_bust": "2026-06-12 19:35 (Fix: WhatsApp añade el código de país 57 a los números al enviar por la API de Meta)",
   "type": "module",
-  "//": "UI V4.437.10 | 2026-06-12 (Fix: el botón 'Ir al Directorio' al terminar la importación no respondía)",
+  "//": "UI V4.437.11 | 2026-06-12 (Fix: WhatsApp añade el código de país 57 a los números al enviar por la API de Meta)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

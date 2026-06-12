@@ -7,6 +7,7 @@
 import db from '../lib/db.js';
 import crypto from 'crypto';
 import { s3 } from '../lib/storage.js';
+import { normalizeForMeta } from '../lib/phone.js';
 import pkg from '@aws-sdk/client-s3';
 const { PutObjectCommand } = pkg;
 
@@ -548,6 +549,8 @@ export const sendMessageToContact = async (req, res) => {
         const contactR = await db.query(`SELECT * FROM "WhatsAppContact" WHERE id=$1 AND "clubId"=$2`, [contactId, clubId]);
         if (!contactR.rows.length) return res.status(404).json({ error: 'Contacto no encontrado' });
         const contact = contactR.rows[0];
+        // Normalizar al formato que exige Meta (código de país, sin '+')
+        const toPhone = normalizeForMeta(contact.phone);
 
         // Get config
         const config = await getClubConfig(clubId);
@@ -581,7 +584,7 @@ export const sendMessageToContact = async (req, res) => {
 
             apiBody = {
                 messaging_product: 'whatsapp',
-                to: contact.phone,
+                to: toPhone,
                 type: 'template',
                 template: templatePayload,
             };
@@ -595,7 +598,7 @@ export const sendMessageToContact = async (req, res) => {
             apiBody = {
                 messaging_product: 'whatsapp',
                 recipient_type: 'individual',
-                to: contact.phone,
+                to: toPhone,
                 type: type,
                 [type]: { link: mediaUrl }
             };
@@ -615,7 +618,7 @@ export const sendMessageToContact = async (req, res) => {
             apiBody = {
                 messaging_product: 'whatsapp',
                 recipient_type: 'individual',
-                to: contact.phone,
+                to: toPhone,
                 type: 'text',
                 text: { preview_url: false, body: text }
             };
@@ -636,7 +639,7 @@ export const sendMessageToContact = async (req, res) => {
         await db.query(
             `INSERT INTO "WhatsAppMessageLog" (id, "clubId","contactId",phone,"messageId","templateName","bodyText",status,direction,"sentAt","createdAt","updatedAt")
              VALUES ($1,$2,$3,$4,$5,$6,$7,'sent','outgoing',NOW(),NOW(),NOW())`,
-            [msgLogId, clubId, contact.id, contact.phone, messageId || null, logTemplateName, logBodyText]
+            [msgLogId, clubId, contact.id, toPhone, messageId || null, logTemplateName, logBodyText]
         );
         await db.query(`UPDATE "WhatsAppContact" SET "totalSent"="totalSent"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
 
@@ -1270,13 +1273,15 @@ export const sendCampaign = async (req, res) => {
         // Send in parallel batches (10 concurrent) to fit within Vercel timeout
         const BATCH_SIZE = 10;
         const sendOne = async (contact) => {
+            // Normalizar al formato que exige Meta (código de país, sin '+')
+            const toPhone = normalizeForMeta(contact.phone);
             try {
                 const apiRes = await metaApiCall({
                     method: 'POST',
                     path: `/${config.phoneNumberId}/messages`,
                     body: {
                         messaging_product: 'whatsapp',
-                        to: contact.phone,
+                        to: toPhone,
                         type: 'template',
                         template: templatePayload,
                     },
@@ -1287,7 +1292,7 @@ export const sendCampaign = async (req, res) => {
                 await db.query(
                     `INSERT INTO "WhatsAppMessageLog" (id,"clubId","campaignId","contactId",phone,"messageId","templateName","bodyText",status,direction,"sentAt","createdAt","updatedAt")
                      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'sent','outgoing',NOW(),NOW(),NOW())`,
-                    [cMsgId, clubId, id, contact.id, contact.phone, messageId || null, template.name, logBodyText]
+                    [cMsgId, clubId, id, contact.id, toPhone, messageId || null, template.name, logBodyText]
                 );
                 await db.query(`UPDATE "WhatsAppContact" SET "totalSent"="totalSent"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
                 return { ok: true };
@@ -1296,7 +1301,7 @@ export const sendCampaign = async (req, res) => {
                 await db.query(
                     `INSERT INTO "WhatsAppMessageLog" (id,"clubId","campaignId","contactId",phone,"templateName","bodyText",status,direction,"errorMessage","failedAt","createdAt","updatedAt")
                      VALUES ($1,$2,$3,$4,$5,$6,$7,'failed','outgoing',$8,NOW(),NOW(),NOW())`,
-                    [cfLogId, clubId, id, contact.id, contact.phone, template.name, logBodyText, err.message]
+                    [cfLogId, clubId, id, contact.id, toPhone, template.name, logBodyText, err.message]
                 ).catch(() => {});
                 await db.query(`UPDATE "WhatsAppContact" SET "totalFailed"="totalFailed"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]).catch(() => {});
                 return { ok: false };

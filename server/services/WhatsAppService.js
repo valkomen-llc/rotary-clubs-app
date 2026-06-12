@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { PrismaClient } from '@prisma/client';
+import { normalizeForMeta } from '../lib/phone.js';
 
 const prisma = new PrismaClient();
 
@@ -31,8 +32,10 @@ export class WhatsAppService {
      * @param {string} phone 
      */
     static normalizePhoneNumber(phone) {
-        if (!phone) return '';
-        return phone.replace(/[^0-9]/g, ''); // Strip all non-numeric characters
+        // Formato que exige Meta: código de país + número, sin '+'.
+        // Antepone el código de país (57) a los celulares colombianos que estén
+        // guardados sin él (ej. "3124818114" -> "573124818114").
+        return normalizeForMeta(phone);
     }
 
     /**
