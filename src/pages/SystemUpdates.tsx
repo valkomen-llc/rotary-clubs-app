@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.437.8 | 2026-06-09 (Fix: imágenes de plantillas de WhatsApp en alta calidad)
-// Cache bust: 2026-06-09 12:00
+// UI V4.437.9 | 2026-06-12 (Feature: elegir/crear la lista destino al importar contactos en el CRM)
+// Cache bust: 2026-06-12 19:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.437.9',
+        title: 'Importación de Contactos: Elige o Crea la Lista Destino 📥📋',
+        date: new Date().toISOString(),
+        description: 'Al importar contactos de forma masiva al CRM, ahora puedes elegir directamente la lista a la que se agregarán y, si todavía no tienes ninguna, crear una nueva sin salir del importador. En el paso de Validación y Configuración, la sección "Asignar a Listas" incluye un campo para escribir el nombre de una lista nueva y crearla al instante (queda seleccionada automáticamente, lista para recibir los contactos). Antes solo se podían marcar listas ya existentes, por lo que en una cuenta nueva —sin listas creadas— no había forma de elegir el destino durante la importación.',
+        tags: ['crm', 'contactos', 'importacion', 'listas', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.437.8',
         title: 'Fix: Imágenes de Plantillas de WhatsApp en Alta Calidad 🖼️✨',

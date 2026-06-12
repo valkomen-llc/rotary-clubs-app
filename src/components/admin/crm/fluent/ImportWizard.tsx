@@ -33,6 +33,8 @@ export default function ImportWizard({ onClose, onImported }: { onClose: () => v
     const [selectedTags, setSelectedTags] = useState<string[]>([]);
     const [availableLists, setAvailableLists] = useState<any[]>([]);
     const [availableTags, setAvailableTags] = useState<any[]>([]);
+    const [newListName, setNewListName] = useState('');
+    const [creatingList, setCreatingList] = useState(false);
     
     // Results state
     const [loading, setLoading] = useState(false);
@@ -193,6 +195,32 @@ export default function ImportWizard({ onClose, onImported }: { onClose: () => v
         
         setValidatedRows(rows);
         setStep(3);
+    };
+
+    const createAndSelectList = async () => {
+        const name = newListName.trim();
+        if (!name) return;
+        setCreatingList(true);
+        try {
+            const res = await fetch(`${API}/crm/lists`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ name })
+            });
+            const list = await res.json();
+            if (res.ok) {
+                setAvailableLists(prev => [...prev, list]);
+                setSelectedLists(prev => [...prev, list.id]);
+                setNewListName('');
+                toast.success(`Lista "${list.name}" creada y seleccionada`);
+            } else {
+                throw new Error(list.error);
+            }
+        } catch (e: any) {
+            toast.error(e.message || 'No se pudo crear la lista');
+        } finally {
+            setCreatingList(false);
+        }
     };
 
     const executeImport = async () => {
@@ -421,21 +449,39 @@ export default function ImportWizard({ onClose, onImported }: { onClose: () => v
                                         <label className="block text-xs font-bold text-gray-700 mb-2">Asignar a Listas</label>
                                         <div className="max-h-32 overflow-y-auto space-y-1 bg-gray-50 p-2 rounded-lg border border-gray-100">
                                             {availableLists.length === 0 ? (
-                                                <p className="text-xs text-gray-400">No hay listas disponibles.</p>
+                                                <p className="text-xs text-gray-400">No hay listas todavía. Crea una abajo para agregar los contactos importados.</p>
                                             ) : availableLists.map((l: any) => (
                                                 <label key={l.id} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer p-1 hover:bg-gray-100 rounded transition-colors">
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={selectedLists.includes(l.id)} 
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedLists.includes(l.id)}
                                                         onChange={(e) => {
                                                             if (e.target.checked) setSelectedLists([...selectedLists, l.id]);
                                                             else setSelectedLists(selectedLists.filter(id => id !== l.id));
                                                         }}
-                                                        className="rounded border-gray-300 text-rotary-blue focus:ring-rotary-blue" 
+                                                        className="rounded border-gray-300 text-rotary-blue focus:ring-rotary-blue"
                                                     />
                                                     {l.name}
                                                 </label>
                                             ))}
+                                        </div>
+                                        <div className="flex gap-2 mt-2">
+                                            <input
+                                                type="text"
+                                                value={newListName}
+                                                onChange={e => setNewListName(e.target.value)}
+                                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); createAndSelectList(); } }}
+                                                placeholder="Crear nueva lista..."
+                                                className="flex-1 min-w-0 p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-rotary-blue outline-none"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={createAndSelectList}
+                                                disabled={creatingList || !newListName.trim()}
+                                                className="px-3 py-2 bg-rotary-blue text-white text-sm font-bold rounded-lg hover:bg-sky-800 disabled:opacity-50 shrink-0"
+                                            >
+                                                {creatingList ? '...' : 'Crear'}
+                                            </button>
                                         </div>
                                     </div>
 

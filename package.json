@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.437.8",
-  "cache_bust": "2026-06-09 12:00 (Fix: imágenes de plantillas de WhatsApp en alta calidad (envío por media ID))",
+  "version": "4.437.9",
+  "cache_bust": "2026-06-12 19:00 (Feature: elegir/crear la lista destino al importar contactos en el CRM)",
   "type": "module",
-  "//": "UI V4.437.8 | 2026-06-09 (Fix: imágenes de plantillas de WhatsApp en alta calidad (envío por media ID))",
+  "//": "UI V4.437.9 | 2026-06-12 (Feature: elegir/crear la lista destino al importar contactos en el CRM)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
