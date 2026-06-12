@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.437.10 | 2026-06-12 (Fix: el botón 'Ir al Directorio' al terminar la importación no respondía)
-// Cache bust: 2026-06-12 19:25
+// UI V4.437.11 | 2026-06-12 (Fix: WhatsApp añade el código de país 57 a los números al enviar por la API de Meta)
+// Cache bust: 2026-06-12 19:35
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.437.11',
+        title: 'WhatsApp: Código de País (57) Automático al Enviar Campañas 🇨🇴📲',
+        date: new Date().toISOString(),
+        description: 'Se corrigió que las campañas y mensajes de WhatsApp fallaran cuando los contactos tenían el número guardado sin código de país (ej. "3124818114", como suelen quedar al importarlos desde Excel). La API de Meta exige el número en formato internacional, así que ahora la plataforma antepone automáticamente el código de país de Colombia (57) al momento de enviar —dejando "573124818114"— sin necesidad de editar contacto por contacto. La normalización se aplica en TODAS las vías de envío (campañas masivas, mensajes individuales desde el chat y respuestas automáticas del agente) y reconoce los números que ya traen el código (con o sin "+"), por lo que no los duplica. No se modifican los datos guardados: la corrección ocurre solo en el envío.',
+        tags: ['whatsapp', 'campanas', 'meta-api', 'telefono', 'colombia', 'bugfix'],
+        type: 'fix'
+    },
     {
         version: '4.437.10',
         title: 'Fix: el Botón "Ir al Directorio" al Terminar la Importación no Respondía 🖱️',
