@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
 import { Users, Plus, Search, Upload, Download, Trash2, Edit3, X, Loader2, ChevronRight, Eye, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatPhoneDisplay } from '../../../lib/utils';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -757,7 +758,7 @@ const CrmContacts: React.FC = () => {
                                 return (
                                 <tr key={c.id} className="hover:bg-gray-50/50 transition-colors">
                                     <td className="p-4 font-medium text-gray-900">{c.name}</td>
-                                    <td className="p-4 text-gray-600 font-mono text-xs">{c.phone}</td>
+                                    <td className="p-4 text-gray-600 font-mono text-xs">{formatPhoneDisplay(c.phone)}</td>
                                     <td className="p-4 text-gray-500 text-xs">{c.email || '—'}</td>
                                     <td className="p-4">{(c.tags || []).map((t: string) => (
                                         <span key={t} className="inline-block bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded-full mr-1">{t}</span>

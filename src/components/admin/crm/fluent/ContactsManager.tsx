@@ -14,6 +14,7 @@ import BulkActionModals from './BulkActionModals';
 import { BulkProcessingProvider } from './BulkProcessingProvider';
 import ContactModal from './ContactModal';
 import ImportWizard from './ImportWizard';
+import { formatPhoneDisplay } from '../../../../lib/utils';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -289,7 +290,7 @@ export default function ContactsManager({
                                         </div>
                                     </div>
                                 </td>
-                                <td className="p-4 text-gray-600">{c.phone || '-'}</td>
+                                <td className="p-4 text-gray-600">{formatPhoneDisplay(c.phone)}</td>
                                 <td className="p-4 text-gray-600">{c.email || '-'}</td>
                                 <td className="p-4 text-gray-600 font-medium">{c.club?.name || 'Club Principal'}</td>
                                 <td className="p-4">
