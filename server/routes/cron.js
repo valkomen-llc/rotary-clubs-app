@@ -4,6 +4,7 @@ import { routeToModel } from '../lib/ai-router.js';
 import WhatsAppService from '../services/WhatsAppService.js';
 import EmailService from '../services/EmailService.js';
 import { runScheduledPublicationsDue } from '../controllers/socialPublishingController.js';
+import { processAllActivations } from '../services/activationService.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -203,6 +204,27 @@ EMAIL: [Mensaje aquí]`;
     } catch (error) {
         console.error('[CRON] Error fatal:', error);
         res.status(500).json({ error: error.message });
+    }
+});
+
+// Vercel Cron endpoint: /api/cron/process-activations
+// Supervisa el pipeline de activación de todos los sitios: detecta fases
+// recién completadas y notifica al representante por WhatsApp + Email.
+router.get('/process-activations', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        console.warn('[CRON process-activations] Unauthorized');
+        return res.status(401).json({ error: 'Unauthorized cron trigger' });
+    }
+    try {
+        const startedAt = Date.now();
+        const summary = await processAllActivations();
+        const elapsedMs = Date.now() - startedAt;
+        console.log(`[CRON process-activations] evaluados=${summary.clubsEvaluated} avanzaron=${summary.clubsAdvanced} notificaciones=${summary.notificationsSent} en ${elapsedMs}ms`);
+        res.json({ ok: true, ...summary, elapsedMs });
+    } catch (e) {
+        console.error('[CRON process-activations] error:', e);
+        res.status(500).json({ error: e.message });
     }
 });
 

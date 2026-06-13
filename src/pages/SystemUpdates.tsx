@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.437.14 | 2026-06-13 (Clubes: asignar manualmente el Pool Registrador del dominio desde la edición del sitio)
-// Cache bust: 2026-06-13 06:50
+// UI V4.437.15 | 2026-06-13 (Activación: pipeline automático por fases que notifica al representante por WhatsApp y correo)
+// Cache bust: 2026-06-13 07:10
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.437.15',
+        title: 'Activación de Sitios: Pipeline Automático que Avisa al Representante en Cada Fase 🚀📲',
+        date: new Date().toISOString(),
+        description: 'La puesta en marcha de cada sitio ahora se supervisa automáticamente por fases (Bienvenida, Información, Identidad de Marca, Redes, Módulos, Imágenes y Sitio Activado). El sistema detecta cuándo se cumple cada fase a partir de la configuración real del sitio y, al completarse, notifica automáticamente al representante (contacto de facturación) por WhatsApp y correo con un mensaje redactado por un agente. Desde la Gestión Global de Clubes hay un nuevo botón 🚀 "Pipeline de Activación" por cada sitio para ver el avance fase por fase y forzar una evaluación con "Evaluar y notificar ahora". El proceso queda documentado como un "Playbook de Activación" en la base de conocimiento para que los agentes lo consulten. Para no enviar avisos atrasados, las fases que un sitio ya tenía cumplidas se registran en silencio: solo se notifican las fases que se completen de aquí en adelante.',
+        tags: ['activacion', 'onboarding', 'automatizacion', 'agentes', 'whatsapp', 'email', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.437.14',
         title: 'Clubes: Asigna Manualmente el Pool Registrador de Cada Dominio 🌐🔗',

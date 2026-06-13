@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.437.14",
-  "cache_bust": "2026-06-13 06:50 (Clubes: asignar manualmente el Pool Registrador del dominio desde la edición del sitio)",
+  "version": "4.437.15",
+  "cache_bust": "2026-06-13 07:10 (Activación: pipeline automático por fases que notifica al representante por WhatsApp y correo)",
   "type": "module",
-  "//": "UI V4.437.14 | 2026-06-13 (Clubes: asignar manualmente el Pool Registrador del dominio desde la edición del sitio)",
+  "//": "UI V4.437.15 | 2026-06-13 (Activación: pipeline automático por fases que notifica al representante por WhatsApp y correo)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
