@@ -82,6 +82,14 @@ export const getClubById = async (req, res) => {
             try { entity.archetype = JSON.parse(settingsMap['club_archetype']); } catch(e) {}
         }
 
+        // Pool Registrador del dominio (si existe una activación para este club)
+        try {
+            const activation = await prisma.crowdfundActivation.findFirst({ where: { targetClubId: id } });
+            entity.registrarPoolId = activation?.poolId || null;
+        } catch (e) {
+            entity.registrarPoolId = null;
+        }
+
         res.json(entity);
     } catch (error) {
         console.error('getClubById Error:', error);
@@ -96,7 +104,8 @@ export const createClub = async (req, res) => {
         subscriptionStatus, expirationDate,
         billingContactEmail, billingContactPhone,
         expirationBannerActive, expirationBannerMessage,
-        developmentBannerActive, developmentBannerMessage
+        developmentBannerActive, developmentBannerMessage,
+        registrarPoolId
     } = req.body;
     try {
         const result = await db.query(
@@ -137,6 +146,17 @@ export const createClub = async (req, res) => {
             );
         }
 
+        // Asigna el Pool Registrador del dominio si se seleccionó al crear el sitio
+        if (registrarPoolId) {
+            try {
+                await prisma.crowdfundActivation.create({
+                    data: { poolId: registrarPoolId, targetClubId: newClub.id, domainName: newClub.domain || null, status: 'active' }
+                });
+            } catch (assignErr) {
+                console.warn('[createClub] no se pudo asignar el pool registrador:', assignErr.message);
+            }
+        }
+
         res.status(201).json(newClub);
     } catch (error) {
         console.error('Error creating club:', error);
@@ -159,7 +179,8 @@ export const updateClub = async (req, res) => {
         expirationBannerActive, expirationBannerMessage,
         developmentBannerActive, developmentBannerMessage,
         subscriptionStatus, expirationDate,
-        billingContactEmail, billingContactPhone
+        billingContactEmail, billingContactPhone,
+        registrarPoolId
     } = req.body;
 
         try {
@@ -249,6 +270,31 @@ export const updateClub = async (req, res) => {
             const existingDomain = entity.domain;
             if (domain && domain !== existingDomain) {
                 await VercelService.addDomain(domain);
+            }
+
+            // Asignación manual del Pool Registrador del dominio (solo Clubs).
+            // Crea/actualiza una activación en la billetera del pool seleccionado,
+            // o la elimina si se deja "Sin asignar". Fire-and-forget defensivo:
+            // un poolId inválido no debe tumbar el guardado del club.
+            if (tableName === 'Club' && registrarPoolId !== undefined) {
+                try {
+                    const finalDomain = result.rows?.[0]?.domain || entity.domain || null;
+                    const existing = await prisma.crowdfundActivation.findFirst({ where: { targetClubId: id } });
+                    if (!registrarPoolId) {
+                        if (existing) await prisma.crowdfundActivation.delete({ where: { id: existing.id } });
+                    } else if (existing) {
+                        await prisma.crowdfundActivation.update({
+                            where: { id: existing.id },
+                            data: { poolId: registrarPoolId, domainName: finalDomain, status: 'active' }
+                        });
+                    } else {
+                        await prisma.crowdfundActivation.create({
+                            data: { poolId: registrarPoolId, targetClubId: id, domainName: finalDomain, status: 'active' }
+                        });
+                    }
+                } catch (assignErr) {
+                    console.warn('[updateClub] no se pudo asignar el pool registrador:', assignErr.message);
+                }
             }
 
             // Build settings map — all key-value pairs that go to the Settings table

@@ -13,7 +13,7 @@ import {
 import {
     getUsers, createUser, updateUser, deleteUser
 } from '../controllers/userController.js';
-import { getWalletStats } from '../controllers/crowdfundController.js';
+import { getWalletStats, getPools } from '../controllers/crowdfundController.js';
 import prisma from '../lib/prisma.js'; // IMPORTACIÓN CRÍTICA PARA EL DASHBOARD
 
 const router = express.Router();
@@ -89,6 +89,7 @@ router.get('/stats', async (req, res) => {
 const superAdminOnly = roleMiddleware(['administrator']);
 
 router.get('/clubs', superAdminOnly, getAllClubs);
+router.get('/crowdfund/pools', superAdminOnly, getPools);
 router.post('/clubs', superAdminOnly, createClub);
 router.delete('/clubs/:id', superAdminOnly, deleteClub);
 router.get('/clubs/:clubId/agent-context', roleMiddleware(['administrator', 'club_admin', 'district_admin']), getClubAgentContext);

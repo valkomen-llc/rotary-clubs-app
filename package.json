@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.437.13",
-  "cache_bust": "2026-06-13 06:30 (Fix: el Estado del Sitio de un club ahora se guarda en la Gestión Global de Clubes)",
+  "version": "4.437.14",
+  "cache_bust": "2026-06-13 06:50 (Clubes: asignar manualmente el Pool Registrador del dominio desde la edición del sitio)",
   "type": "module",
-  "//": "UI V4.437.13 | 2026-06-13 (Fix: el Estado del Sitio de un club ahora se guarda en la Gestión Global de Clubes)",
+  "//": "UI V4.437.14 | 2026-06-13 (Clubes: asignar manualmente el Pool Registrador del dominio desde la edición del sitio)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
