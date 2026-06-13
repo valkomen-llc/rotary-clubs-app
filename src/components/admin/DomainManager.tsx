@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Globe, ShoppingCart, Link2, ArrowRightLeft, Loader2, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { X, Globe, ShoppingCart, Link2, ArrowRightLeft, Loader2, CheckCircle2, AlertCircle, RefreshCw, CreditCard } from 'lucide-react';
 
 type Mode = 'buy' | 'connect' | 'transfer';
 
@@ -79,6 +79,26 @@ const DomainManager: React.FC<DomainManagerProps> = ({ clubId, currentDomain, on
         } catch (e: any) {
             setError(e.message);
         } finally {
+            setLoading(false);
+        }
+    };
+
+    // Cobro independiente del dominio vía Stripe (precio real del .org).
+    const payDomain = async () => {
+        setError(null);
+        setLoading(true);
+        try {
+            const res = await fetch(api('/domains/checkout-domain'), {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({ domain: cleanDomain(domain), clubId }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'No se pudo generar el pago');
+            if (data.url) { window.location.href = data.url; return; }
+            throw new Error('Respuesta inválida del servidor');
+        } catch (e: any) {
+            setError(e.message);
             setLoading(false);
         }
     };
@@ -222,6 +242,18 @@ const DomainManager: React.FC<DomainManagerProps> = ({ clubId, currentDomain, on
                         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                         {mode === 'buy' ? 'Comprar y registrar' : mode === 'connect' ? 'Conectar dominio' : 'Iniciar transferencia'}
                     </button>
+
+                    {/* Cobro independiente del dominio (pago aparte vía Stripe) */}
+                    {mode === 'buy' && (
+                        <button
+                            onClick={payDomain}
+                            disabled={loading || !isOrg || (availability ? !availability.isAvailable : false)}
+                            className="w-full flex items-center justify-center gap-2 border border-rotary-blue text-rotary-blue hover:bg-sky-50 font-bold py-2 rounded-lg text-sm disabled:opacity-50"
+                        >
+                            <CreditCard className="w-4 h-4" />
+                            Cobrar el dominio aparte{price?.registration != null ? ` (${price.currency} $${price.registration})` : ''}
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

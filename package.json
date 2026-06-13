@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.438.0",
-  "cache_bust": "2026-06-13 03:00 (Dominios: registrar/conectar/transferir .org desde Club Platform vía Route53)",
+  "version": "4.438.1",
+  "cache_bust": "2026-06-13 03:25 (Dominios: cobro independiente del .org vía Stripe (precio real ListPrices))",
   "type": "module",
-  "//": "UI V4.438.0 | 2026-06-13 (Dominios: registrar/conectar/transferir .org desde Club Platform vía Route53)",
+  "//": "UI V4.438.1 | 2026-06-13 (Dominios: cobro independiente del .org vía Stripe)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

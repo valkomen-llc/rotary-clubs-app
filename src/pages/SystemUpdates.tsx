@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.438.0 | 2026-06-13 (Dominios: registrar/conectar/transferir .org desde Club Platform vía Route53)
-// Cache bust: 2026-06-13 03:00
+// UI V4.438.1 | 2026-06-13 (Dominios: cobro independiente del .org vía Stripe (precio real ListPrices))
+// Cache bust: 2026-06-13 03:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.438.1',
+        title: 'Dominios: Cobra el .org Aparte por Stripe al Precio Real 💳🌐',
+        date: new Date().toISOString(),
+        description: 'Complemento del registro de dominios desde la plataforma: en el modo "Comprar" del gestor de dominios ahora hay un botón "Cobrar el dominio aparte" que abre un checkout de Stripe por el precio real del .org (consultado en vivo a Route53 vía ListPrices), independiente del plan anual del ecosistema. Sirve para el flujo manual en el que el club paga el valor del dominio por su cuenta desde la plataforma, en lugar de que quede absorbido dentro del plan. El monto se calcula automáticamente según la tarifa vigente del TLD .org.',
+        tags: ['dominios', 'stripe', 'pagos', 'route53', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.438.0',
         title: 'Dominios: Registra, Conecta o Transfiere el .org del Club desde la Plataforma 🌐🛒',
