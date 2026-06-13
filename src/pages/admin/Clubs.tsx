@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
+import DomainManager from '../../components/admin/DomainManager';
 
 interface Club {
     id: string;
@@ -54,6 +55,7 @@ const ClubsManagement: React.FC = () => {
         content: ''
     });
     const [templates, setTemplates] = useState<any[]>([]);
+    const [isDomainManagerOpen, setIsDomainManagerOpen] = useState(false);
 
     const [formData, setFormData] = useState({
         name: '',
@@ -669,7 +671,18 @@ const ClubsManagement: React.FC = () => {
                                 </div>
 
                                 <div className="md:col-span-2">
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Dominio Propio (Opcional)</label>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="block text-sm font-bold text-gray-700">Dominio Propio (Opcional)</label>
+                                        {editingClub && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsDomainManagerOpen(true)}
+                                                className="flex items-center gap-1 text-xs font-bold text-rotary-blue hover:underline"
+                                            >
+                                                <Globe className="w-3.5 h-3.5" /> Registrar / Conectar dominio
+                                            </button>
+                                        )}
+                                    </div>
                                     <input
                                         type="text"
                                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all"
@@ -992,6 +1005,15 @@ const ClubsManagement: React.FC = () => {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {isDomainManagerOpen && editingClub && (
+                <DomainManager
+                    clubId={editingClub.id}
+                    currentDomain={formData.domain}
+                    onAssigned={(d) => setFormData((prev) => ({ ...prev, domain: d }))}
+                    onClose={() => setIsDomainManagerOpen(false)}
+                />
             )}
         </AdminLayout>
     );

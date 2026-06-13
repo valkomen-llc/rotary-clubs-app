@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.437.12",
-  "cache_bust": "2026-06-12 19:45 (UI: mostrar el código de país +57 en el número de los contactos del CRM)",
+  "version": "4.438.0",
+  "cache_bust": "2026-06-13 03:00 (Dominios: registrar/conectar/transferir .org desde Club Platform vía Route53)",
   "type": "module",
-  "//": "UI V4.437.12 | 2026-06-12 (UI: mostrar el código de país +57 en el número de los contactos del CRM)",
+  "//": "UI V4.438.0 | 2026-06-13 (Dominios: registrar/conectar/transferir .org desde Club Platform vía Route53)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
