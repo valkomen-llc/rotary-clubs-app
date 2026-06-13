@@ -203,6 +203,7 @@ export const updateClub = async (req, res) => {
             addField('logo', logo);
             addField('footerLogo', footerLogo);
             addField('favicon', favicon);
+            addField('status', status);
             addField('subscriptionStatus', subscriptionStatus);
             addField('expirationDate', expirationDate ? new Date(expirationDate) : undefined);
             addField('billingContactEmail', billingContactEmail);
