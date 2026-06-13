@@ -14,6 +14,7 @@ import {
     getUsers, createUser, updateUser, deleteUser
 } from '../controllers/userController.js';
 import { getWalletStats, getPools } from '../controllers/crowdfundController.js';
+import { getPhases, evaluateClubActivation } from '../services/activationService.js';
 import prisma from '../lib/prisma.js'; // IMPORTACIÓN CRÍTICA PARA EL DASHBOARD
 
 const router = express.Router();
@@ -90,6 +91,26 @@ const superAdminOnly = roleMiddleware(['administrator']);
 
 router.get('/clubs', superAdminOnly, getAllClubs);
 router.get('/crowdfund/pools', superAdminOnly, getPools);
+
+// Pipeline de activación del sitio (solo super admin desde Gestión Global)
+router.get('/clubs/:id/activation', superAdminOnly, async (req, res) => {
+    try {
+        const phases = await getPhases(req.params.id);
+        res.json({ phases });
+    } catch (e) {
+        console.error('Activation pipeline error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+router.post('/clubs/:id/activation/run', superAdminOnly, async (req, res) => {
+    try {
+        const result = await evaluateClubActivation(req.params.id, { notify: true });
+        res.json(result);
+    } catch (e) {
+        console.error('Activation run error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
 router.post('/clubs', superAdminOnly, createClub);
 router.delete('/clubs/:id', superAdminOnly, deleteClub);
 router.get('/clubs/:clubId/agent-context', roleMiddleware(['administrator', 'club_admin', 'district_admin']), getClubAgentContext);

@@ -150,6 +150,26 @@ model Club {
   crowdfundPools           CrowdfundPool[]         @relation("ClubPools")
   emailAccounts            EmailAccount[]
   brain                    Brain?
+  activationPhases         SiteActivationPhase[]
+}
+
+// Pipeline de activación de un sitio. Una fila por fase y por club.
+// Permite detectar transiciones (pending → completed), evitar
+// notificaciones duplicadas (notifiedAt) y mostrar el avance en el admin.
+model SiteActivationPhase {
+  id          String    @id @default(uuid())
+  clubId      String
+  phaseKey    String // welcome | info | branding | social | modules | images | complete
+  phaseNumber Int
+  label       String
+  status      String    @default("pending") // pending | completed
+  completedAt DateTime?
+  notifiedAt  DateTime? // idempotencia de la notificación al representante
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  club        Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, phaseKey])
 }
 
 model EmailAccount {

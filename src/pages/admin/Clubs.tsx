@@ -4,7 +4,7 @@ import {
     Plus, Edit2, Trash2, Globe, MapPin, X, LogIn, RefreshCw, 
     Shield, DollarSign, Users, TrendingUp, AlertTriangle, Clock,
     Download, FileSpreadsheet,
-    MessageSquare, Mail, Send, Layout
+    MessageSquare, Mail, Send, Layout, Rocket, CheckCircle2, Circle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
@@ -56,6 +56,13 @@ const ClubsManagement: React.FC = () => {
     });
     const [templates, setTemplates] = useState<any[]>([]);
     const [pools, setPools] = useState<any[]>([]);
+
+    // Pipeline de Activación
+    const [activationModalOpen, setActivationModalOpen] = useState(false);
+    const [activationClub, setActivationClub] = useState<Club | null>(null);
+    const [activationPhases, setActivationPhases] = useState<any[]>([]);
+    const [activationLoading, setActivationLoading] = useState(false);
+    const [activationRunning, setActivationRunning] = useState(false);
 
     const [formData, setFormData] = useState({
         name: '',
@@ -211,6 +218,57 @@ const ClubsManagement: React.FC = () => {
                 developmentBannerMessage: '',
                 registrarPoolId: '',
             });
+        }
+    };
+
+    const openActivationModal = async (club: Club) => {
+        setActivationClub(club);
+        setActivationModalOpen(true);
+        setActivationPhases([]);
+        setActivationLoading(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs/${club.id}/activation`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setActivationPhases(data.phases || []);
+            } else {
+                toast.error('No se pudo cargar el pipeline de activación');
+            }
+        } catch {
+            toast.error('Error al cargar el pipeline');
+        } finally {
+            setActivationLoading(false);
+        }
+    };
+
+    const runActivation = async () => {
+        if (!activationClub) return;
+        setActivationRunning(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/clubs/${activationClub.id}/activation/run`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setActivationPhases(data.phases || []);
+                const n = data.notifications?.length || 0;
+                if (data.newlyCompleted?.length) {
+                    toast.success(`Avance: ${data.newlyCompleted.length} fase(s) completada(s)${n ? ` · ${n} notificación(es) enviada(s)` : ''}`);
+                } else {
+                    toast.info('Sin cambios: no hay nuevas fases completadas');
+                }
+            } else {
+                toast.error('No se pudo evaluar la activación');
+            }
+        } catch {
+            toast.error('Error al evaluar la activación');
+        } finally {
+            setActivationRunning(false);
         }
     };
 
@@ -602,6 +660,13 @@ const ClubsManagement: React.FC = () => {
                                             <MessageSquare className="w-4 h-4" />
                                         </button>
                                         <button
+                                            onClick={() => openActivationModal(club)}
+                                            className="p-2 text-gray-400 hover:text-emerald-600 transition-colors"
+                                            title="Pipeline de Activación"
+                                        >
+                                            <Rocket className="w-4 h-4" />
+                                        </button>
+                                        <button
                                             onClick={() => handleOpenModal(club)}
                                             className="p-2 text-gray-400 hover:text-rotary-blue transition-colors"
                                             title="Editar"
@@ -626,6 +691,88 @@ const ClubsManagement: React.FC = () => {
                     </div>
                 )}
             </div>
+
+            {/* Activation Pipeline Modal */}
+            {activationModalOpen && activationClub && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in zoom-in duration-200 flex flex-col max-h-[90vh]">
+                        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 flex-shrink-0">
+                            <div className="flex items-center gap-2">
+                                <Rocket className="w-5 h-5 text-emerald-600" />
+                                <h2 className="text-lg font-bold text-gray-800">Pipeline de Activación</h2>
+                            </div>
+                            <button onClick={() => setActivationModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 overflow-y-auto flex-1">
+                            <p className="text-sm text-gray-500 mb-4">
+                                <span className="font-bold text-gray-800">{activationClub.name}</span> — al completarse cada fase se notifica automáticamente al representante del sitio por WhatsApp y correo.
+                            </p>
+
+                            {(activationClub.billingContactEmail || activationClub.billingContactPhone) ? (
+                                <div className="text-xs text-gray-400 mb-4 flex flex-wrap gap-3">
+                                    {activationClub.billingContactEmail && <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> {activationClub.billingContactEmail}</span>}
+                                    {activationClub.billingContactPhone && <span className="flex items-center gap-1"><MessageSquare className="w-3 h-3" /> {activationClub.billingContactPhone}</span>}
+                                </div>
+                            ) : (
+                                <div className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-4">
+                                    Este sitio no tiene email ni WhatsApp de contacto de facturación. Las fases avanzarán, pero no se podrá notificar al representante hasta configurarlos en "Editar".
+                                </div>
+                            )}
+
+                            {activationLoading ? (
+                                <div className="flex justify-center py-10">
+                                    <div className="w-6 h-6 border-2 border-emerald-500 rounded-full border-t-transparent animate-spin" />
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {activationPhases.map((p) => {
+                                        const done = p.status === 'completed';
+                                        return (
+                                            <div key={p.id} className={`flex items-center gap-3 p-3 rounded-xl border ${done ? 'border-emerald-100 bg-emerald-50/40' : 'border-gray-100 bg-gray-50/50'}`}>
+                                                {done
+                                                    ? <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                                                    : <Circle className="w-5 h-5 text-gray-300 flex-shrink-0" />}
+                                                <div className="flex-1 min-w-0">
+                                                    <p className={`text-sm font-bold ${done ? 'text-emerald-900' : 'text-gray-700'}`}>
+                                                        <span className="text-gray-400 font-mono mr-1">{p.phaseNumber}.</span>{p.label}
+                                                    </p>
+                                                    {done && p.completedAt && (
+                                                        <p className="text-[10px] text-gray-400">
+                                                            Completada: {new Date(p.completedAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                            {p.notifiedAt ? ' · notificada' : ''}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${done ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
+                                                    {done ? 'Completa' : 'Pendiente'}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between flex-shrink-0">
+                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                                {activationPhases.filter(p => p.status === 'completed').length}/{activationPhases.length} fases
+                            </span>
+                            <button
+                                onClick={runActivation}
+                                disabled={activationRunning || activationLoading}
+                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-lg flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-wait"
+                            >
+                                {activationRunning
+                                    ? <><div className="w-4 h-4 border-2 border-white rounded-full border-t-transparent animate-spin" /> Evaluando…</>
+                                    : <><RefreshCw className="w-4 h-4" /> Evaluar y notificar ahora</>}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Club Modal */}
             {isModalOpen && (
