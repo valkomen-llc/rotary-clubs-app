@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.437.12 | 2026-06-12 (UI: mostrar el código de país +57 en el número de los contactos del CRM)
-// Cache bust: 2026-06-12 19:45
+// UI V4.437.13 | 2026-06-13 (Fix: el Estado del Sitio de un club ahora se guarda en la Gestión Global de Clubes)
+// Cache bust: 2026-06-13 06:30
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.437.13',
+        title: 'Fix: el Estado del Sitio de un Club ya se Guarda en la Gestión Global de Clubes 🟢',
+        date: new Date().toISOString(),
+        description: 'Se corrigió que, en la Gestión Global de Clubes (Sistema Central), al cambiar el "Estado del Sitio" de un club de Inactivo a Activo (o viceversa) y guardar, el cambio no se persistía: la plataforma confirmaba "Club actualizado" pero la columna ESTADO seguía mostrando el valor anterior. La causa: al actualizar el club, el servidor leía el nuevo estado pero no lo incluía entre los campos que escribía en la base de datos, por lo que se descartaba silenciosamente. Ahora el Estado del Sitio se guarda correctamente. (El estado de Suscripción SaaS no estaba afectado.)',
+        tags: ['admin', 'clubes', 'gestion-global', 'estado', 'bugfix'],
+        type: 'fix'
+    },
     {
         version: '4.437.12',
         title: 'CRM: el Número de Contacto Ahora se Muestra con el Código de País (+57) 👁️🇨🇴',
