@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.437.12 | 2026-06-12 (UI: mostrar el código de país +57 en el número de los contactos del CRM)
-// Cache bust: 2026-06-12 19:45
+// UI V4.438.0 | 2026-06-13 (Dominios: registrar/conectar/transferir .org desde Club Platform vía Route53)
+// Cache bust: 2026-06-13 03:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.438.0',
+        title: 'Dominios: Registra, Conecta o Transfiere el .org del Club desde la Plataforma 🌐🛒',
+        date: new Date().toISOString(),
+        description: 'Ya no es necesario entrar a la consola de AWS para poner en marcha el dominio de un club. Desde el panel de Clubes (botón "Registrar / Conectar dominio" en la ficha del club) ahora se puede: COMPRAR un dominio .org nuevo —verificando disponibilidad y precio en tiempo real vía Route53—, CONECTAR un dominio que el club ya tenga en otro proveedor (la plataforma lo enlaza a Vercel y entrega las instrucciones DNS) o TRANSFERIR un dominio existente con su código de autorización (EPP). Esto habilita tanto el flujo automático (autoservicio tras pagar el plan anual) como el flujo manual e independiente —útil cuando el club paga por cheque o transferencia y nosotros hacemos el registro a mano—. Todos los dominios quedan forzados a .org y, al completarse el registro, el DNS se apunta automáticamente al sitio.',
+        tags: ['dominios', 'route53', 'vercel', 'aws', 'activacion', 'feature'],
+        type: 'feature'
+    },
     {
         version: '4.437.12',
         title: 'CRM: el Número de Contacto Ahora se Muestra con el Código de País (+57) 👁️🇨🇴',

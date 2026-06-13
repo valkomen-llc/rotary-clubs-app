@@ -1,19 +1,33 @@
 import express from 'express';
 import { Route53DomainsClient, CheckDomainAvailabilityCommand } from '@aws-sdk/client-route-53-domains';
 import Stripe from 'stripe';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
+import DomainProvisioningService from '../services/DomainProvisioningService.js';
 
 const router = express.Router();
+
+// v4.438.0 — Gestión de dominios .org desde la plataforma: comprar / conectar / transferir (Route53 + Vercel).
+console.log('[Domains] Router cargado — v4.438.0 (registrar/conectar/transferir .org)');
 
 // Creamos el cliente de Route 53 Domains
 // NOTA: La API de Route 53 Domains solo opera en la región us-east-1 independientemente de dónde estén tus otros recursos.
 const route53DomainsClient = new Route53DomainsClient({
-    region: 'us-east-1', 
+    region: 'us-east-1',
     credentials: {
         accessKeyId: process.env.ROTARY_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID,
         secretAccessKey: process.env.ROTARY_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY,
     }
 });
+
+// Roles que pueden gestionar dominios (operaciones con costo real).
+const DOMAIN_ROLES = ['administrator', 'club_admin', 'district_admin'];
+
+// Resuelve el clubId objetivo: un administrador puede pasar uno explícito en el
+// body; cualquier otro rol queda atado al club de su propio token.
+const resolveClubId = (req) => {
+    if (req.user?.role === 'administrator' && req.body?.clubId) return req.body.clubId;
+    return req.user?.clubId;
+};
 
 // GET /api/domains/check?domain=ejemplo.org
 router.get('/check', authMiddleware, async (req, res) => {
@@ -26,23 +40,101 @@ router.get('/check', authMiddleware, async (req, res) => {
         // Limpiar el dominio (quitar https:// y www.)
         const cleanDomain = domain.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].trim();
 
+        // Política del equipo: solo .org
+        if (!cleanDomain.endsWith('.org')) {
+            return res.status(400).json({ error: 'Solo se permiten dominios .org', domain: cleanDomain });
+        }
+
         const command = new CheckDomainAvailabilityCommand({
             DomainName: cleanDomain
         });
 
         const response = await route53DomainsClient.send(command);
-        
+
         // AWS devuelve varios estados, los "AVAILABLE" significan que se puede comprar a precio regular
         const isAvailable = response.Availability === 'AVAILABLE';
+
+        // Adjuntamos el precio del .org para que el panel pueda mostrarlo (manual independiente).
+        const price = await DomainProvisioningService.getPrice();
 
         res.json({
             domain: cleanDomain,
             isAvailable,
-            status: response.Availability
+            status: response.Availability,
+            price
         });
     } catch (error) {
         console.error('[Domains] Error checking domain:', error);
         res.status(500).json({ error: 'Error verificando la disponibilidad del dominio', details: error.message });
+    }
+});
+
+// GET /api/domains/price → precio del TLD .org (registro/renovación/transferencia)
+router.get('/price', authMiddleware, async (_req, res) => {
+    const price = await DomainProvisioningService.getPrice();
+    if (!price) return res.status(502).json({ error: 'No se pudo obtener el precio del .org' });
+    res.json(price);
+});
+
+// POST /api/domains/register → compra real del dominio en Route53 (.org)
+router.post('/register', authMiddleware, roleMiddleware(DOMAIN_ROLES), async (req, res) => {
+    try {
+        const { domain } = req.body;
+        const clubId = resolveClubId(req);
+        if (!domain) return res.status(400).json({ error: 'Falta el dominio' });
+        if (!clubId) return res.status(400).json({ error: 'No se pudo determinar el club destino' });
+
+        const result = await DomainProvisioningService.registerDomain(clubId, domain);
+        res.json(result);
+    } catch (error) {
+        console.error('[Domains] Error registrando dominio:', error);
+        const status = error.code === 'TLD_NOT_ALLOWED' ? 400 : 500;
+        res.status(status).json({ error: error.message, code: error.code });
+    }
+});
+
+// POST /api/domains/transfer → transferencia desde otro registrador (requiere AuthCode/EPP)
+router.post('/transfer', authMiddleware, roleMiddleware(DOMAIN_ROLES), async (req, res) => {
+    try {
+        const { domain, authCode } = req.body;
+        const clubId = resolveClubId(req);
+        if (!domain) return res.status(400).json({ error: 'Falta el dominio' });
+        if (!clubId) return res.status(400).json({ error: 'No se pudo determinar el club destino' });
+
+        const result = await DomainProvisioningService.transferDomain(clubId, domain, authCode);
+        res.json(result);
+    } catch (error) {
+        console.error('[Domains] Error transfiriendo dominio:', error);
+        const status = ['TLD_NOT_ALLOWED', 'MISSING_AUTH_CODE'].includes(error.code) ? 400 : 500;
+        res.status(status).json({ error: error.message, code: error.code });
+    }
+});
+
+// POST /api/domains/connect → conectar un dominio que el club ya posee en otro proveedor
+router.post('/connect', authMiddleware, roleMiddleware(DOMAIN_ROLES), async (req, res) => {
+    try {
+        const { domain } = req.body;
+        const clubId = resolveClubId(req);
+        if (!domain) return res.status(400).json({ error: 'Falta el dominio' });
+        if (!clubId) return res.status(400).json({ error: 'No se pudo determinar el club destino' });
+
+        const result = await DomainProvisioningService.connectDomain(clubId, domain);
+        res.json(result);
+    } catch (error) {
+        console.error('[Domains] Error conectando dominio:', error);
+        const status = error.code === 'TLD_NOT_ALLOWED' ? 400 : 500;
+        res.status(status).json({ error: error.message, code: error.code });
+    }
+});
+
+// GET /api/domains/operation/:id?domain=ejemplo.org → estado de registro/transferencia
+router.get('/operation/:id', authMiddleware, roleMiddleware(DOMAIN_ROLES), async (req, res) => {
+    try {
+        const result = await DomainProvisioningService.getOperationStatus(req.params.id, req.query.domain);
+        res.json(result);
+    } catch (error) {
+        console.error('[Domains] Error consultando operación:', error);
+        res.status(500).json({ error: error.message });
     }
 });
 
@@ -52,7 +144,7 @@ router.post('/checkout', authMiddleware, async (req, res) => {
     try {
         const { domain } = req.body;
         const clubId = req.user.clubId;
-        
+
         if (!domain) {
             return res.status(400).json({ error: 'Falta el dominio' });
         }
