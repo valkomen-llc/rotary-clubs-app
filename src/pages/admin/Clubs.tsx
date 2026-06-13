@@ -27,6 +27,7 @@ interface Club {
     expirationDate?: string;
     billingContactEmail?: string;
     billingContactPhone?: string;
+    registrarPoolId?: string | null;
     userCount?: number;
     _count?: {
         users: number;
@@ -54,6 +55,7 @@ const ClubsManagement: React.FC = () => {
         content: ''
     });
     const [templates, setTemplates] = useState<any[]>([]);
+    const [pools, setPools] = useState<any[]>([]);
 
     const [formData, setFormData] = useState({
         name: '',
@@ -82,12 +84,29 @@ const ClubsManagement: React.FC = () => {
         expirationBannerMessage: '',
         developmentBannerActive: false,
         developmentBannerMessage: '',
+        registrarPoolId: '',
     });
     const [isFetchingDetails, setIsFetchingDetails] = useState(false);
 
     useEffect(() => {
         fetchClubs();
+        fetchPools();
     }, []);
+
+    const fetchPools = async () => {
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/crowdfund/pools`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setPools(data.pools || []);
+            }
+        } catch {
+            /* opcional: si no hay pools, el selector queda en "Sin asignar" */
+        }
+    };
 
     const fetchClubs = async () => {
         try {
@@ -138,6 +157,7 @@ const ClubsManagement: React.FC = () => {
                 expirationBannerMessage: club.expirationBannerMessage || '',
                 developmentBannerActive: club.developmentBannerActive || false,
                 developmentBannerMessage: club.developmentBannerMessage || '',
+                registrarPoolId: club.registrarPoolId || '',
             });
             setIsFetchingDetails(true);
             try {
@@ -163,6 +183,7 @@ const ClubsManagement: React.FC = () => {
                         expirationBannerMessage: fullData.expirationBannerMessage || '',
                         developmentBannerActive: fullData.developmentBannerActive || false,
                         developmentBannerMessage: fullData.developmentBannerMessage || '',
+                        registrarPoolId: fullData.registrarPoolId || '',
                     }));
                 }
             } catch (error) {
@@ -188,6 +209,7 @@ const ClubsManagement: React.FC = () => {
                 expirationBannerMessage: '',
                 developmentBannerActive: false,
                 developmentBannerMessage: '',
+                registrarPoolId: '',
             });
         }
     };
@@ -687,6 +709,25 @@ const ClubsManagement: React.FC = () => {
                                             </div>
                                         </div>
                                     )}
+                                </div>
+
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Pool Registrador del Dominio (Opcional)</label>
+                                    <select
+                                        className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all bg-white font-mono text-sm"
+                                        value={formData.registrarPoolId}
+                                        onChange={(e) => setFormData({ ...formData, registrarPoolId: e.target.value })}
+                                    >
+                                        <option value="">— Sin asignar —</option>
+                                        {pools.map((p) => (
+                                            <option key={p.id} value={p.id}>
+                                                POOL #{p.id.slice(0, 8)} · {p.registrarName} ({p.activeUnits}/{p.totalUnits} dominios)
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[10px] text-gray-400 mt-1">
+                                        Asigna a qué pool pertenece el registro de este dominio. Queda como una activación en la billetera del pool (cuenta como dominio activo y genera su comisión recurrente). Dejar en "Sin asignar" elimina la activación.
+                                    </p>
                                 </div>
 
                                 <div className="md:col-span-1">

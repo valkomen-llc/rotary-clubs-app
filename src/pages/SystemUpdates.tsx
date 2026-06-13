@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.437.13 | 2026-06-13 (Fix: el Estado del Sitio de un club ahora se guarda en la Gestión Global de Clubes)
-// Cache bust: 2026-06-13 06:30
+// UI V4.437.14 | 2026-06-13 (Clubes: asignar manualmente el Pool Registrador del dominio desde la edición del sitio)
+// Cache bust: 2026-06-13 06:50
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.437.14',
+        title: 'Clubes: Asigna Manualmente el Pool Registrador de Cada Dominio 🌐🔗',
+        date: new Date().toISOString(),
+        description: 'En la Gestión Global de Clubes, al editar la configuración de un sitio ahora puedes asignar manualmente el "Pool Registrador del Dominio": a qué pool pertenece el registro del dominio que se activa para ese club. Al guardar, el dominio queda registrado como una activación en la billetera del pool seleccionado (cuenta como dominio activo y genera su comisión recurrente). El selector lista los pools disponibles con su capacidad (dominios activos / totales); dejarlo en "Sin asignar" elimina la activación. Aplica tanto al editar un sitio existente como al crear uno nuevo.',
+        tags: ['clubes', 'dominios', 'pool', 'crowdfund', 'admin', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.437.13',
         title: 'Fix: el Estado del Sitio de un Club ya se Guarda en la Gestión Global de Clubes 🟢',

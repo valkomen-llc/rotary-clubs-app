@@ -47,3 +47,36 @@ export const getWalletStats = async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 };
+
+// Lista los pools registradores disponibles para asignar manualmente
+// el registro de un dominio desde la edición del club. Solo admin.
+export const getPools = async (req, res) => {
+    try {
+        const pools = await prisma.crowdfundPool.findMany({
+            include: {
+                club: { select: { name: true } },
+                activations: { select: { id: true, status: true } }
+            },
+            orderBy: { createdAt: 'asc' }
+        });
+
+        const result = pools.map(pool => {
+            const activeUnits = pool.activations.filter(a => a.status === 'active').length;
+            return {
+                id: pool.id,
+                clubId: pool.clubId,
+                registrarName: pool.club?.name || 'Pool sin club',
+                totalUnits: pool.totalUnits,
+                activeUnits,
+                availableUnits: Math.max(0, pool.totalUnits - activeUnits),
+                costPerUnit: pool.costPerUnit,
+                currency: pool.currency
+            };
+        });
+
+        res.json({ pools: result });
+    } catch (error) {
+        console.error('Error fetching crowdfund pools:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
