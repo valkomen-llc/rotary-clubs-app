@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.449.1 | 2026-06-16 (Footer y copyright con la misma textura/tono que las secciones de portada)
-// Cache bust: 2026-06-16 00:10
+// UI V4.449.2 | 2026-06-16 (Fix: colores/textura personalizados solo en sitios Evento/Convención; el resto sin cambios)
+// Cache bust: 2026-06-16 00:40
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.449.2',
+        title: 'Fix: Los Colores Personalizados ya NO Afectan a los Demás Sitios 🛟',
+        description: 'Corrección importante: el color de fondo personalizable y la nueva textura de las secciones (Somos gente de acción, Áreas de Interés, Únete a Rotary, footer y copyright) ahora aplican ÚNICAMENTE a los sitios de tipo "Evento o Convención". El resto de los sitios (clubes, distritos, asociaciones) vuelven a verse exactamente como antes, con su azul y textura originales. La causa era que el nuevo tratamiento visual se aplicaba a todos los sitios por igual.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'fix', 'color', 'regresion', 'eventos', 'convenciones', 'bugfix'],
+        type: 'fix'
+    },
     {
         version: '4.449.1',
         title: 'Footer y Copyright: Mismo Tono que las Secciones de Portada 🎯',
