@@ -8,6 +8,9 @@ import {
     updateCampaign,
     deleteCampaign,
     sendCampaign,
+    getReport,
+    getStats,
+    getTags,
 } from '../controllers/emailMarketingController.js';
 
 const router = express.Router();
@@ -19,7 +22,10 @@ router.use(authMiddleware);
 router.use(roleMiddleware(['administrator', 'club_admin', 'district_admin']));
 
 router.get('/', listCampaigns);
+router.get('/stats', getStats);
+router.get('/tags', getTags);
 router.get('/audience', previewAudience);
+router.get('/:id/report', getReport);
 router.get('/:id', getCampaign);
 router.post('/', createCampaign);
 router.put('/:id', updateCampaign);

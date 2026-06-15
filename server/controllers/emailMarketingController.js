@@ -1,10 +1,12 @@
+import { randomUUID } from 'crypto';
 import prisma from '../lib/prisma.js';
+import db from '../lib/db.js';
 import EmailService from '../services/EmailService.js';
 
 // v4.438 — Sistema de Email Marketing (campañas tipo Mailchimp).
 // Reutiliza la audiencia del CRM (CrmContact/CrmList) y EmailService (Resend/SMTP)
 // para enviar. Cada campaña queda scopeada a un sitio (clubId) y respeta el opt-out.
-console.log('[emailMarketingController] v4.438 — campañas de email marketing habilitadas');
+console.log('[emailMarketingController] v4.439 — campañas + tracking de aperturas/clics, reportes y segmentación por etiqueta');
 
 // El administrador global puede operar en el contexto de un sitio vía ?clubId / body.clubId
 // (por ejemplo al impersonar). El resto de roles siempre opera sobre su propio clubId.
@@ -18,7 +20,7 @@ const resolveClubId = (req) => {
 const isValidEmail = (e) => typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
 
 // Resuelve los destinatarios reales (contactos con email válido, activos y sin baja).
-const resolveRecipients = async (clubId, audience, listId) => {
+const resolveRecipients = async (clubId, audience, listId, tag) => {
     let contacts;
     if (audience === 'list' && listId) {
         const members = await prisma.contactListMember.findMany({
@@ -28,6 +30,10 @@ const resolveRecipients = async (clubId, audience, listId) => {
         contacts = members
             .map((m) => m.contact)
             .filter((c) => c && c.clubId === clubId);
+    } else if (audience === 'tag' && tag) {
+        contacts = await prisma.crmContact.findMany({
+            where: { clubId, status: 'active', archivedAt: null, tags: { has: tag } },
+        });
     } else {
         contacts = await prisma.crmContact.findMany({
             where: { clubId, status: 'active', archivedAt: null },
@@ -66,8 +72,8 @@ export const previewAudience = async (req, res) => {
     try {
         const clubId = resolveClubId(req);
         if (!clubId) return res.json({ count: 0 });
-        const { audience = 'all', listId } = req.query;
-        const recipients = await resolveRecipients(clubId, audience, listId || null);
+        const { audience = 'all', listId, segmentTag } = req.query;
+        const recipients = await resolveRecipients(clubId, audience, listId || null, segmentTag || null);
         res.json({ count: recipients.length });
     } catch (error) {
         console.error('[emailMarketing] previewAudience:', error);
@@ -95,10 +101,11 @@ export const createCampaign = async (req, res) => {
     try {
         const clubId = resolveClubId(req);
         if (!clubId) return res.status(400).json({ error: 'No hay un sitio asociado a esta campaña' });
-        const { name, subject, fromName, preheader, content, audience, listId } = req.body;
+        const { name, subject, fromName, preheader, content, audience, listId, segmentTag } = req.body;
         if (!name || !subject || !content) {
             return res.status(400).json({ error: 'Nombre, asunto y contenido son obligatorios' });
         }
+        const aud = ['list', 'tag'].includes(audience) ? audience : 'all';
         const campaign = await prisma.emailCampaign.create({
             data: {
                 clubId,
@@ -107,8 +114,9 @@ export const createCampaign = async (req, res) => {
                 fromName: fromName || null,
                 preheader: preheader || null,
                 content,
-                audience: audience === 'list' ? 'list' : 'all',
-                listId: audience === 'list' ? (listId || null) : null,
+                audience: aud,
+                listId: aud === 'list' ? (listId || null) : null,
+                segmentTag: aud === 'tag' ? (segmentTag || null) : null,
                 status: 'draft',
                 createdById: req.user?.id || null,
             },
@@ -131,7 +139,8 @@ export const updateCampaign = async (req, res) => {
         if (existing.status !== 'draft') {
             return res.status(400).json({ error: 'Solo se pueden editar campañas en borrador' });
         }
-        const { name, subject, fromName, preheader, content, audience, listId } = req.body;
+        const { name, subject, fromName, preheader, content, audience, listId, segmentTag } = req.body;
+        const aud = audience !== undefined ? (['list', 'tag'].includes(audience) ? audience : 'all') : undefined;
         const campaign = await prisma.emailCampaign.update({
             where: { id: req.params.id },
             data: {
@@ -140,8 +149,9 @@ export const updateCampaign = async (req, res) => {
                 ...(fromName !== undefined && { fromName: fromName || null }),
                 ...(preheader !== undefined && { preheader: preheader || null }),
                 ...(content !== undefined && { content }),
-                ...(audience !== undefined && { audience: audience === 'list' ? 'list' : 'all' }),
-                ...(audience !== undefined && { listId: audience === 'list' ? (listId || null) : null }),
+                ...(aud !== undefined && { audience: aud }),
+                ...(aud !== undefined && { listId: aud === 'list' ? (listId || null) : null }),
+                ...(aud !== undefined && { segmentTag: aud === 'tag' ? (segmentTag || null) : null }),
             },
         });
         res.json(campaign);
@@ -170,7 +180,15 @@ export const deleteCampaign = async (req, res) => {
 // Tope de seguridad para no exceder el límite de tiempo del serverless (Vercel 120s).
 const MAX_RECIPIENTS_PER_SEND = 500;
 
-const buildEmailHtml = (campaign, contact, unsubscribeUrl) => {
+// Reescribe los links del cuerpo para pasar por el endpoint de tracking de clics.
+const wrapLinks = (html, rid, baseUrl) =>
+    html.replace(/href="(https?:\/\/[^"]+)"/gi, (_m, url) =>
+        `href="${baseUrl}/api/public/em/c/${rid}?u=${encodeURIComponent(url)}"`);
+
+const buildEmailHtml = (campaign, rid, contact, baseUrl) => {
+    const unsubscribeUrl = `${baseUrl}/api/public/unsubscribe?cid=${contact.id}`;
+    const trackedContent = wrapLinks(campaign.content, rid, baseUrl);
+    const pixel = `<img src="${baseUrl}/api/public/em/o/${rid}" width="1" height="1" alt="" style="display:none">`;
     const preheader = campaign.preheader
         ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0">${campaign.preheader}</div>`
         : '';
@@ -182,9 +200,10 @@ const buildEmailHtml = (campaign, contact, unsubscribeUrl) => {
     return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f3f4f6">
         ${preheader}
         <div style="max-width:600px;margin:0 auto;padding:24px;background:#ffffff">
-            ${campaign.content}
+            ${trackedContent}
             ${footer}
         </div>
+        ${pixel}
     </body></html>`;
 };
 
@@ -203,7 +222,7 @@ export const sendCampaign = async (req, res) => {
             return res.status(400).json({ error: 'Esta campaña ya fue enviada' });
         }
 
-        const recipients = await resolveRecipients(clubId, campaign.audience, campaign.listId);
+        const recipients = await resolveRecipients(clubId, campaign.audience, campaign.listId, campaign.segmentTag);
         if (recipients.length === 0) {
             return res.status(400).json({ error: 'No hay destinatarios con email válido para esta audiencia' });
         }
@@ -211,16 +230,19 @@ export const sendCampaign = async (req, res) => {
         const batch = recipients.slice(0, MAX_RECIPIENTS_PER_SEND);
         await prisma.emailCampaign.update({
             where: { id: campaign.id },
-            data: { status: 'sending', totalRecipients: batch.length },
+            data: { status: 'sending', totalRecipients: batch.length, openCount: 0, clickCount: 0 },
         });
+        // Reinicia destinatarios de un reenvío anterior (campaña fallida que se reintenta).
+        await prisma.emailCampaignRecipient.deleteMany({ where: { campaignId: campaign.id } });
 
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         let sentCount = 0;
         let failedCount = 0;
+        const recipientRows = [];
 
         for (const contact of batch) {
-            const unsubscribeUrl = `${baseUrl}/api/public/unsubscribe?cid=${contact.id}`;
-            const html = buildEmailHtml(campaign, contact, unsubscribeUrl);
+            const rid = randomUUID();
+            const html = buildEmailHtml(campaign, rid, contact, baseUrl);
             const result = await EmailService.sendEmail({
                 clubId,
                 to: contact.email.trim(),
@@ -228,8 +250,21 @@ export const sendCampaign = async (req, res) => {
                 html,
                 userId: req.user?.id || null,
             });
-            if (result?.success) sentCount += 1;
+            const ok = !!result?.success;
+            if (ok) sentCount += 1;
             else failedCount += 1;
+            recipientRows.push({
+                id: rid,
+                campaignId: campaign.id,
+                clubId,
+                contactId: contact.id,
+                email: contact.email.trim(),
+                status: ok ? 'sent' : 'failed',
+            });
+        }
+
+        if (recipientRows.length) {
+            await prisma.emailCampaignRecipient.createMany({ data: recipientRows, skipDuplicates: true });
         }
 
         const finalStatus = sentCount > 0 ? 'sent' : 'failed';
@@ -256,4 +291,128 @@ export const sendCampaign = async (req, res) => {
         } catch { /* noop */ }
         res.status(500).json({ error: 'Error al enviar la campaña' });
     }
+};
+
+// GET /:id/report — métricas de una campaña enviada (aperturas/clics únicos)
+export const getReport = async (req, res) => {
+    try {
+        const clubId = resolveClubId(req);
+        const campaign = await prisma.emailCampaign.findUnique({ where: { id: req.params.id } });
+        if (!campaign || campaign.clubId !== clubId) {
+            return res.status(404).json({ error: 'Campaña no encontrada' });
+        }
+        const [sent, failed, uniqueOpens, uniqueClicks] = await Promise.all([
+            prisma.emailCampaignRecipient.count({ where: { campaignId: campaign.id, status: 'sent' } }),
+            prisma.emailCampaignRecipient.count({ where: { campaignId: campaign.id, status: 'failed' } }),
+            prisma.emailCampaignRecipient.count({ where: { campaignId: campaign.id, openedAt: { not: null } } }),
+            prisma.emailCampaignRecipient.count({ where: { campaignId: campaign.id, clickedAt: { not: null } } }),
+        ]);
+        const openRate = sent ? Math.round((uniqueOpens / sent) * 1000) / 10 : 0;
+        const clickRate = sent ? Math.round((uniqueClicks / sent) * 1000) / 10 : 0;
+        res.json({
+            campaign: { id: campaign.id, name: campaign.name, subject: campaign.subject, sentAt: campaign.sentAt, status: campaign.status },
+            sent, failed,
+            totalOpens: campaign.openCount,
+            totalClicks: campaign.clickCount,
+            uniqueOpens, uniqueClicks,
+            openRate, clickRate,
+        });
+    } catch (error) {
+        console.error('[emailMarketing] getReport:', error);
+        res.status(500).json({ error: 'Error al cargar el reporte' });
+    }
+};
+
+// GET /stats — métricas para el dashboard del módulo
+export const getStats = async (req, res) => {
+    try {
+        const clubId = resolveClubId(req);
+        if (!clubId) return res.json({ campaigns: 0, emailsSent: 0, opens: 0, clicks: 0, contacts: 0, tags: 0, templates: 0 });
+        const [campaigns, sentAgg, opens, clicks, contacts, templates, tagRows] = await Promise.all([
+            prisma.emailCampaign.count({ where: { clubId } }),
+            prisma.emailCampaign.aggregate({ where: { clubId }, _sum: { sentCount: true } }),
+            prisma.emailCampaignRecipient.count({ where: { clubId, openedAt: { not: null } } }),
+            prisma.emailCampaignRecipient.count({ where: { clubId, clickedAt: { not: null } } }),
+            prisma.crmContact.count({ where: { clubId, status: 'active', archivedAt: null, optedOutAt: null, email: { not: null } } }),
+            prisma.communicationTemplate.count({ where: { clubId, type: 'email' } }),
+            db.query(`SELECT COUNT(DISTINCT t) AS c FROM "WhatsAppContact", unnest(tags) AS t WHERE "clubId" = $1`, [clubId]).catch(() => ({ rows: [{ c: 0 }] })),
+        ]);
+        res.json({
+            campaigns,
+            emailsSent: sentAgg._sum.sentCount || 0,
+            opens,
+            clicks,
+            contacts,
+            templates,
+            tags: parseInt(tagRows.rows?.[0]?.c || 0, 10),
+        });
+    } catch (error) {
+        console.error('[emailMarketing] getStats:', error);
+        res.status(500).json({ error: 'Error al cargar las métricas' });
+    }
+};
+
+// GET /tags — etiquetas distintas del CRM del sitio (para segmentar)
+export const getTags = async (req, res) => {
+    try {
+        const clubId = resolveClubId(req);
+        if (!clubId) return res.json([]);
+        const r = await db.query(
+            `SELECT DISTINCT t AS tag FROM "WhatsAppContact", unnest(tags) AS t WHERE "clubId" = $1 ORDER BY t ASC`,
+            [clubId]
+        );
+        res.json(r.rows.map((row) => row.tag).filter(Boolean));
+    } catch (error) {
+        console.error('[emailMarketing] getTags:', error);
+        res.json([]);
+    }
+};
+
+// Pixel transparente 1x1 (GIF) para el tracking de aperturas.
+const TRACKING_PIXEL = Buffer.from('R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==', 'base64');
+
+// GET /api/public/em/o/:rid — apertura
+export const trackOpen = async (req, res) => {
+    try {
+        const { rid } = req.params;
+        const recipient = await prisma.emailCampaignRecipient.findUnique({ where: { id: rid } });
+        if (recipient) {
+            await prisma.emailCampaignRecipient.update({
+                where: { id: rid },
+                data: { openedAt: recipient.openedAt || new Date(), openCount: { increment: 1 } },
+            });
+            await prisma.emailCampaign.update({ where: { id: recipient.campaignId }, data: { openCount: { increment: 1 } } });
+        }
+    } catch (error) {
+        console.error('[emailMarketing] trackOpen:', error);
+    }
+    res.set('Content-Type', 'image/gif');
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.send(TRACKING_PIXEL);
+};
+
+// GET /api/public/em/c/:rid?u=URL — clic (registra y redirige)
+export const trackClick = async (req, res) => {
+    const { rid } = req.params;
+    const target = typeof req.query.u === 'string' ? req.query.u : '';
+    const safeTarget = /^https?:\/\//i.test(target) ? target : null;
+    try {
+        const recipient = await prisma.emailCampaignRecipient.findUnique({ where: { id: rid } });
+        if (recipient) {
+            await prisma.emailCampaignRecipient.update({
+                where: { id: rid },
+                data: {
+                    clickedAt: recipient.clickedAt || new Date(),
+                    clickCount: { increment: 1 },
+                    // un clic implica apertura
+                    openedAt: recipient.openedAt || new Date(),
+                },
+            });
+            await prisma.emailCampaign.update({ where: { id: recipient.campaignId }, data: { clickCount: { increment: 1 } } });
+        }
+    } catch (error) {
+        console.error('[emailMarketing] trackClick:', error);
+    }
+    if (safeTarget) return res.redirect(safeTarget);
+    res.status(400).send('Enlace inválido');
 };
