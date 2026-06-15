@@ -27,6 +27,7 @@ export interface ClubConfig {
         areasBg?: string;
         footerBg?: string;
         copyrightBg?: string;
+        copyrightText?: string;
     };
     type?: string;
     social: { platform: string; url: string }[];

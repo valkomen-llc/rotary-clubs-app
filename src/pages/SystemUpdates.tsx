@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.450.1 | 2026-06-16 (Se restaura la textura en todas las secciones; solo el copyright queda en color sólido)
-// Cache bust: 2026-06-16 02:00
+// UI V4.451.0 | 2026-06-16 (Color configurable para el texto del copyright)
+// Cache bust: 2026-06-16 02:30
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.451.0',
+        title: 'Footer: Color del Texto del Copyright Configurable ✍️',
+        description: 'Además del fondo, ahora puedes elegir el color del texto de la barra de copyright (el "© ... Todos los derechos reservados" y sus enlaces). En Configuración → Identidad, dentro de "Colores del Footer", hay un nuevo selector "Color del Texto del Copyright" con vista previa. Aplica a sitios Evento/Convención; por defecto es blanco.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'color', 'copyright', 'texto', 'footer', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.450.1',
         title: 'Textura Restaurada: Solo el Copyright Queda en Color Sólido 🎨',

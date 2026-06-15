@@ -117,6 +117,9 @@ const Footer = () => {
     const isEventSite = (club as any)?.type === 'Evento o Convención';
     const footerBg = isEventSite ? ((club as any)?.colors?.footerBg || '#013E7D') : '#013E7D';
     const copyrightBg = isEventSite ? ((club as any)?.colors?.copyrightBg || '#013871') : null;
+    const copyrightText = isEventSite ? ((club as any)?.colors?.copyrightText || '#FFFFFF') : null;
+    // Clases de los enlaces del copyright: en Evento/Convención heredan el color elegido; el resto, como siempre.
+    const cpLinkClass = isEventSite ? 'underline underline-offset-2 hover:opacity-70 transition-opacity' : 'hover:text-white transition-colors';
 
     return (
         <footer className="relative text-white w-full border-t border-white/5" style={{ backgroundColor: footerBg, background: footerBg }}>
@@ -247,13 +250,13 @@ const Footer = () => {
             <div className={`relative overflow-hidden border-t border-white/5 ${isEventSite ? '' : 'bg-black/10'}`} style={isEventSite ? { backgroundColor: copyrightBg as string } : undefined}>
                 <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
                     <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-                        <div className="text-white/50 text-[11px] leading-loose no-uppercase text-center md:text-left">
+                        <div className={`text-[11px] leading-loose no-uppercase text-center md:text-left ${isEventSite ? '' : 'text-white/50'}`} style={isEventSite ? { color: copyrightText as string } : undefined}>
                             © {new Date().getFullYear()} {club.name}. Todos los derechos reservados. <br className="md:hidden" />
-                            Powered by <a href="https://app.clubplatform.org/" target="_blank" rel="noopener noreferrer" className="text-white/80 hover:text-white transition-colors">Club Platform for Rotary</a>
+                            Powered by <a href="https://app.clubplatform.org/" target="_blank" rel="noopener noreferrer" className={isEventSite ? cpLinkClass : 'text-white/80 hover:text-white transition-colors'}>Club Platform for Rotary</a>
                             {' | '}
-                            <a href="https://my.rotary.org/privacy-policy" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Privacidad</a>
+                            <a href="https://my.rotary.org/privacy-policy" target="_blank" rel="noopener noreferrer" className={cpLinkClass}>Privacidad</a>
                             {' · '}
-                            <a href="https://my.rotary.org/terms-of-use" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Términos del Servicio</a>
+                            <a href="https://my.rotary.org/terms-of-use" target="_blank" rel="noopener noreferrer" className={cpLinkClass}>Términos del Servicio</a>
                         </div>
                         <div className="flex items-center gap-6">
                                 {club.settings?.twitter_url && <Twitter className="w-4 h-4 text-white/30 hover:text-white cursor-pointer transition-colors" />}
