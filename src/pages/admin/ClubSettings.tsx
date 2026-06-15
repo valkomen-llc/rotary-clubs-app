@@ -42,6 +42,7 @@ const ClubSettings: React.FC = () => {
         secondaryColor: '#E29C00',
         actionSectionBg: '#0c3c7c',
         joinSectionBg: '#0C3C7C',
+        areasSectionBg: '#0c3c7c',
         logo: '',
         footerLogo: '',
         endPolioLogo: '',
@@ -127,6 +128,7 @@ const ClubSettings: React.FC = () => {
                 secondaryColor: club.colors?.secondary || '#E29C00',
                 actionSectionBg: club.colors?.actionBg || settingsMap['action_section_bg'] || '#0c3c7c',
                 joinSectionBg: club.colors?.joinBg || settingsMap['join_section_bg'] || '#0C3C7C',
+                areasSectionBg: club.colors?.areasBg || settingsMap['areas_section_bg'] || '#0c3c7c',
                 logo: club.logo || '',
                 footerLogo: club.footerLogo || '',
                 endPolioLogo: club.endPolioLogo || '',
@@ -653,6 +655,51 @@ const ClubSettings: React.FC = () => {
                                     >
                                         <p className="text-white text-lg font-light mb-1">Únete a Rotary</p>
                                         <p className="text-white/80 text-xs">Vista previa del color de fondo</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Color de fondo de la sección "Áreas de Interés" — solo Eventos/Convenciones */}
+                        {(isSuperAdmin || club?.type === 'Evento o Convención') && (
+                            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                                <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
+                                    <Palette className="w-5 h-5 text-rotary-blue" /> Color de Sección "Áreas de Interés"
+                                </h3>
+                                <p className="text-xs text-gray-400 mb-6">
+                                    Color de fondo del bloque de la portada con el nombre del sitio y los círculos de las áreas prioritarias. Es independiente de las demás secciones.
+                                </p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                                    <div className="space-y-4">
+                                        <label className="text-xs font-bold text-gray-400 uppercase">Color de Fondo</label>
+                                        <div className="flex items-center gap-4">
+                                            <input
+                                                type="color"
+                                                value={formData.areasSectionBg}
+                                                onChange={e => setFormData({...formData, areasSectionBg: e.target.value})}
+                                                className="w-12 h-12 rounded-xl cursor-pointer border-none"
+                                            />
+                                            <input
+                                                type="text"
+                                                value={formData.areasSectionBg}
+                                                onChange={e => setFormData({...formData, areasSectionBg: e.target.value})}
+                                                className="flex-1 px-4 py-2 bg-gray-50 rounded-lg text-sm font-mono font-bold"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div
+                                        className="rounded-2xl p-6 text-center"
+                                        style={{
+                                            backgroundColor: formData.areasSectionBg,
+                                            backgroundImage: "url('/geo-darkblue.png')",
+                                            backgroundPosition: '50% 0',
+                                            backgroundRepeat: 'repeat',
+                                            backgroundSize: '71px 85px',
+                                            backgroundBlendMode: 'overlay'
+                                        }}
+                                    >
+                                        <p className="text-white text-lg font-light mb-1">Áreas de Interés</p>
+                                        <p className="text-white/80 text-xs">Vista previa (igual que en el sitio)</p>
                                     </div>
                                 </div>
                             </div>
