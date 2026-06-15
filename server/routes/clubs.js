@@ -164,6 +164,7 @@ router.get('/by-domain', async (req, res) => {
                 secondary: settings['color_secondary'] || '#E29C00',
                 actionBg: settings['action_section_bg'] || '#0c3c7c',
                 joinBg: settings['join_section_bg'] || '#0C3C7C',
+                areasBg: settings['areas_section_bg'] || '#0c3c7c',
             },
             logoText: activeClub.name?.split(' ').pop(),
             productsCount: activeClub._count?.products || 0,

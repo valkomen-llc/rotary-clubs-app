@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.447.1",
-  "cache_bust": "2026-06-15 22:30 (Áreas de interés usa el color de Somos gente de acción)",
+  "version": "4.448.0",
+  "cache_bust": "2026-06-15 23:00 (Áreas de interés con color de fondo independiente)",
   "type": "module",
-  "//": "UI V4.447.1 | 2026-06-15 (Áreas de interés usa el color de Somos gente de acción)",
+  "//": "UI V4.448.0 | 2026-06-15 (Áreas de interés con color de fondo independiente)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.447.1 | 2026-06-15 (Áreas de interés usa el color de Somos gente de acción)
-// Cache bust: 2026-06-15 22:30
+// UI V4.448.0 | 2026-06-15 (Áreas de interés con color de fondo independiente)
+// Cache bust: 2026-06-15 23:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.448.0',
+        title: 'Áreas de Interés: Color de Fondo Independiente 🎨',
+        description: 'El contenedor de "Áreas de Interés" de la portada ahora tiene su propio color de fondo configurable, independiente de "Somos gente de acción". En Configuración → Identidad aparece un nuevo selector dedicado con vista previa (con la textura geométrica teñida del color). Así puedes darle a cada sección su propio color. Si no se define, se mantiene el azul por defecto.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'color', 'areas-de-interes', 'portada', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.447.1',
         title: 'Áreas de Interés: Toma el Color de "Somos gente de acción" 🎨',

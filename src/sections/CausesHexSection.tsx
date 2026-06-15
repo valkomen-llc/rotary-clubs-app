@@ -491,7 +491,7 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
         id="nuestras-causas"
         className="areas-rotary"
         aria-labelledby="areas-title"
-        style={{ ['--areas-bg' as string]: club?.colors?.actionBg || '#0c3c7c' } as React.CSSProperties}
+        style={{ ['--areas-bg' as string]: club?.colors?.areasBg || '#0c3c7c' } as React.CSSProperties}
       >
         {/* Header */}
         {showHeader && (

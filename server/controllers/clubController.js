@@ -6,7 +6,7 @@ import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (EVITA ERROR 500 
 // Clubes: el selector ahora incluye 'Evento o Convención', así que un registro mal
 // categorizado (ej. un evento guardado como club) puede moverse a su sección correcta
 // vía updateClub (addField('type', ...)) sin tocar la base de datos directamente.
-console.log('[clubController] v4.447.0 — colores de secciones personalizables (action_section_bg + join_section_bg)');
+console.log('[clubController] v4.448.0 — colores de secciones personalizables (action + join + areas)');
 
 export const getAllClubs = async (req, res) => {
     try {
@@ -176,7 +176,7 @@ export const updateClub = async (req, res) => {
         name, description, city, country, district, domain, subdomain, type, organizationType,
         email, phone, address, state, facebook, instagram, twitter, youtube, linkedin, tiktok, 
         socialLinks, customSocialLinks, siteImages, galleryImages,
-        primaryColor, secondaryColor, actionSectionBg, joinSectionBg, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, status,
+        primaryColor, secondaryColor, actionSectionBg, joinSectionBg, areasSectionBg, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, status,
         stripePublicKey, stripeSecretKey, useStripe,
         usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
         storeActive, logoHeaderSize, autoGenerateCalendar, mapStyle,
@@ -323,6 +323,7 @@ export const updateClub = async (req, res) => {
                 'color_secondary': secondaryColor,
                 'action_section_bg': actionSectionBg,
                 'join_section_bg': joinSectionBg,
+                'areas_section_bg': areasSectionBg,
                 'rotaract_logo': rotaractLogo,
                 'interact_logo': interactLogo,
                 'youth_exchange_logo': youthExchangeLogo,
