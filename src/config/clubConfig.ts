@@ -23,6 +23,7 @@ export interface ClubConfig {
         primary: string;
         secondary: string;
         actionBg?: string;
+        joinBg?: string;
     };
     type?: string;
     social: { platform: string; url: string }[];

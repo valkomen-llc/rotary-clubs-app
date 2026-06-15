@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.446.2 | 2026-06-15 (Somos gente de acción: la textura geométrica se mantiene sobre el color de fondo elegido)
-// Cache bust: 2026-06-15 21:30
+// UI V4.447.0 | 2026-06-15 (Identidad: color personalizable de la sección Únete a Rotary)
+// Cache bust: 2026-06-15 22:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.447.0',
+        title: 'Identidad: Color de la Sección "Únete a Rotary" 🎨',
+        description: 'Además del bloque "Somos gente de acción", ahora puedes personalizar el color de fondo de la sección "Únete a Rotary" (la del texto de invitación, la foto y el botón "Involúcrate en Rotary"). La opción está en Configuración → Identidad, con selector de color y vista previa en vivo. Si no se define, se mantiene el azul institucional por defecto.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'color', 'unete-a-rotary', 'portada', 'eventos', 'convenciones', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.446.2',
         title: 'Somos gente de acción: Color + Textura Geométrica Juntos 🎨🔷',
