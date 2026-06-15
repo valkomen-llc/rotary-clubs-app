@@ -23,7 +23,7 @@ const EventHeroSection = ({ images }: { images: EventHeroImage[] }) => {
   if (slides.length === 0) return null;
 
   return (
-    <section className="relative w-full h-[88vh] min-h-[560px] max-h-[1000px] overflow-hidden bg-rotary-dark">
+    <section className="relative w-full aspect-[1920/800] overflow-hidden bg-rotary-dark">
       <div className="absolute inset-0">
         {slides.map((slide, index) => (
           <div
