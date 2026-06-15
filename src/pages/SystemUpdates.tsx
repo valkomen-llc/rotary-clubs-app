@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.437.15 | 2026-06-13 (Activación: pipeline automático por fases que notifica al representante por WhatsApp y correo)
-// Cache bust: 2026-06-13 07:10
+// UI V4.437.16 | 2026-06-15 (Eventos: el selector de skin ya no corrompe el tipo; los eventos no se fugan a Gestión Global de Clubes)
+// Cache bust: 2026-06-15 16:10
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.437.16',
+        title: 'Fix: los Eventos y Convenciones ya no se "Fugan" a la Gestión Global de Clubes 🗂️✅',
+        date: new Date().toISOString(),
+        description: 'Se corrigió que un sitio creado desde "Gestión de Eventos y Convenciones" pudiera terminar apareciendo en "Gestión Global de Clubes". La causa: dentro del modal de Eventos había un selector "Skin de Arquitectura (Footer)" que, sin querer, reescribía el mismo campo (type) que la plataforma usa para clasificar el registro como Evento. Al elegir un skin (por ejemplo "Rotary Club"), el evento dejaba de ser un evento y pasaba a contarse como club. Se eliminó ese selector del modal de Eventos: ahora los eventos conservan siempre su tipo "Evento o Convención" y permanecen correctamente segmentados en su propia sección. El footer de los eventos usa su configuración por defecto.',
+        tags: ['eventos', 'convenciones', 'clubes', 'segmentacion', 'admin', 'bugfix'],
+        type: 'fix'
+    },
     {
         version: '4.437.15',
         title: 'Activación de Sitios: Pipeline Automático que Avisa al Representante en Cada Fase 🚀📲',

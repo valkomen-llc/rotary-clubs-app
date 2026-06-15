@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.437.15",
-  "cache_bust": "2026-06-13 07:10 (Activación: pipeline automático por fases que notifica al representante por WhatsApp y correo)",
+  "version": "4.437.16",
+  "cache_bust": "2026-06-15 16:10 (Eventos: el selector de skin ya no corrompe el tipo; los eventos no se fugan a Gestión Global de Clubes)",
   "type": "module",
-  "//": "UI V4.437.15 | 2026-06-13 (Activación: pipeline automático por fases que notifica al representante por WhatsApp y correo)",
+  "//": "UI V4.437.16 | 2026-06-15 (Eventos: el selector de skin ya no corrompe el tipo; los eventos no se fugan a Gestión Global de Clubes)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
