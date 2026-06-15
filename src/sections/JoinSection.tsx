@@ -12,9 +12,10 @@ const JoinSection = () => {
 
   const imgUrl = siteImages.join?.url || DEFAULT_JOIN_IMG;
   const imgAlt = siteImages.join?.alt || 'Rotary Members';
+  const bgColor = club?.colors?.joinBg || '#0C3C7C';
 
   return (
-    <section className="py-20" style={{ backgroundColor: '#0C3C7C' }}>
+    <section className="py-20" style={{ backgroundColor: bgColor }}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
           {/* Text Content */}
