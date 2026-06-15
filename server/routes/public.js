@@ -17,6 +17,30 @@ router.get('/seo/robots.txt', getRobotsTxt);
 router.get('/seo/sitemap.xml', getSitemap);
 
 import db from '../lib/db.js';
+import prisma from '../lib/prisma.js';
+
+// Baja de suscripción de Email Marketing (sin autenticación; enlace en el pie del correo).
+router.get('/unsubscribe', async (req, res) => {
+    const { cid } = req.query;
+    const page = (title, message) => `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title></head>
+        <body style="font-family:Arial,sans-serif;background:#f3f4f6;margin:0;padding:48px 16px;text-align:center;color:#374151">
+            <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:40px 24px;box-shadow:0 1px 3px rgba(0,0,0,0.1)">
+                <h1 style="font-size:20px;color:#111827">${title}</h1>
+                <p style="font-size:14px;color:#6b7280">${message}</p>
+            </div>
+        </body></html>`;
+    try {
+        if (!cid) return res.status(400).send(page('Enlace inválido', 'No pudimos identificar tu suscripción.'));
+        await prisma.crmContact.update({
+            where: { id: cid },
+            data: { optedOutAt: new Date() },
+        });
+        res.send(page('Suscripción cancelada', 'Ya no recibirás más correos de esta lista. Gracias.'));
+    } catch (error) {
+        console.error('[public] unsubscribe:', error);
+        res.send(page('Suscripción cancelada', 'Tu solicitud ha sido registrada.'));
+    }
+});
 
 router.get('/documents/:clubIdOrSubdomain', async (req, res) => {
     try {

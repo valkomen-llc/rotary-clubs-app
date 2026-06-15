@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.437.17",
-  "cache_bust": "2026-06-15 16:30 (Clubes: reclasificar tipo de entidad desde el panel, incl. mover un registro a Evento o Convención)",
+  "version": "4.438.0",
+  "cache_bust": "2026-06-15 17:00 (Email Marketing: campañas tipo Mailchimp para admin y sitios de Eventos/Convenciones)",
   "type": "module",
-  "//": "UI V4.437.17 | 2026-06-15 (Clubes: reclasificar tipo de entidad desde el panel, incl. mover un registro a Evento o Convención)",
+  "//": "UI V4.438.0 | 2026-06-15 (Email Marketing: campañas tipo Mailchimp para admin y sitios de Eventos/Convenciones)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

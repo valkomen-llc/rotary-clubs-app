@@ -129,6 +129,7 @@ app.get('/api/health', async (req, res) => {
 });
 
 // ── Route loaders (Legacy Dynamic for less critical routes) ──────────────────
+let _emailMarketing;
 let _calendar, _ai, _orders, _payments, _products, _communications, _translate, _analytics, _leads, _faqs, _agents, _siteProgress, _districts, _whatsappCRM, _crm, _platformConfig, _scoutGrants, _documents, _system, _whatsappQr, _contentStudio, _domains, _cron, _distAnalytics, _brains;
 const getCalendar = async () => _calendar || (({ default: _calendar } = await import('../server/routes/calendar.js')), _calendar);
 const getAI = async () => _ai || (({ default: _ai } = await import('../server/routes/ai.js')), _ai);
@@ -138,6 +139,7 @@ const getOrders = async () => _orders || (({ default: _orders } = await import('
 const getPayments = async () => _payments || (({ default: _payments } = await import('../server/routes/payments.js')), _payments);
 const getProducts = async () => _products || (({ default: _products } = await import('../server/routes/products.js')), _products);
 const getCommunications = async () => _communications || (({ default: _communications } = await import('../server/routes/communications.js')), _communications);
+const getEmailMarketing = async () => _emailMarketing || (({ default: _emailMarketing } = await import('../server/routes/email-marketing.js')), _emailMarketing);
 const getTranslate = async () => _translate || (({ default: _translate } = await import('../server/routes/translate.js')), _translate);
 const getAnalytics = async () => _analytics || (({ default: _analytics } = await import('../server/routes/analytics.js')), _analytics);
 const getLeads = async () => _leads || (({ default: _leads } = await import('../server/routes/leads.js')), _leads);
@@ -211,6 +213,7 @@ app.use('/api/orders', async (req, res, next) => { try { return (await getOrders
 app.use('/api/payments', async (req, res, next) => { try { return (await getPayments())(req, res, next); } catch (e) { console.error('API Error [payments]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/products', async (req, res, next) => { try { return (await getProducts())(req, res, next); } catch (e) { console.error('API Error [products]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/communications', async (req, res, next) => { try { return (await getCommunications())(req, res, next); } catch (e) { console.error('API Error [communications]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/email-marketing', async (req, res, next) => { try { return (await getEmailMarketing())(req, res, next); } catch (e) { console.error('API Error [email-marketing]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/translate', async (req, res, next) => { try { return (await getTranslate())(req, res, next); } catch (e) { console.error('API Error [translate]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/analytics', async (req, res, next) => { try { return (await getAnalytics())(req, res, next); } catch (e) { console.error('API Error [analytics]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/leads', async (req, res, next) => { try { return (await getLeads())(req, res, next); } catch (e) { console.error('API Error [leads]:', e); res.status(500).json({ error: e.message }); } });
