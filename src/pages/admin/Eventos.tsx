@@ -122,7 +122,10 @@ const EventosManagement: React.FC = () => {
                 subdomain: club.subdomain || '',
                 description: club.description || '',
                 status: club.status || 'active',
-                type: club.type || 'association',
+                // El tipo de un Evento/Convención NO debe poder cambiarse desde aquí:
+                // 'type' es el discriminador que mantiene segmentado el registro en
+                // "Gestión de Eventos y Convenciones". Lo dejamos fijo siempre.
+                type: 'Evento o Convención',
                 adminUserId: '',
                 moduleProjects: true, moduleEvents: true, moduleRotaract: false, moduleInteract: false,
                 moduleEcommerce: false, moduleDian: false, moduleYouthExchange: false, moduleNgse: false, moduleRotex: false,
@@ -571,20 +574,14 @@ const EventosManagement: React.FC = () => {
                                     </select>
                                 </div>
 
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Skin de Arquitectura (Footer)</label>
-                                    <select
-                                        className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all bg-sky-50 font-bold text-rotary-blue"
-                                        value={formData.type}
-                                        onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                                        title="Define la estructura de links y labels del footer"
-                                    >
-                                        <option value="association">Skin de Asociación / Agrupación</option>
-                                        <option value="club">Skin de Rotary Club (Socio)</option>
-                                        <option value="district">Skin de Distrito Rotary</option>
-                                        <option value="colrotarios">Skin de Colrotarios (Fundación)</option>
-                                    </select>
-                                </div>
+                                {/*
+                                  NOTA: Aquí existía un selector "Skin de Arquitectura (Footer)" enlazado a
+                                  `formData.type`. Como `type` es además el discriminador que clasifica el
+                                  registro como "Evento o Convención", elegir un skin (ej. "Rotary Club")
+                                  sobreescribía el discriminador y el evento se "fugaba" a Gestión Global de
+                                  Clubes. Se elimina el selector: los eventos conservan siempre
+                                  type='Evento o Convención' y el footer usa su configuración por defecto.
+                                */}
 
                                 <div className="md:col-span-2">
                                     <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wider">Usuario Administrador (Opcional)</label>

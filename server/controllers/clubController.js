@@ -2,6 +2,11 @@ import db from '../lib/db.js';
 import VercelService from '../services/VercelService.js';
 import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (EVITA ERROR 500 POR CONEXIONES)
 
+// v4.437.16 — Eventos/Convenciones conservan su discriminador (type='Evento o Convención');
+// el selector de skin del modal de Eventos ya no reescribe 'type', así que dejan de
+// "fugarse" a la Gestión Global de Clubes (filtrada por type='club').
+console.log('[clubController] v4.437.16 — segmentación por tipo: eventos no se fugan a clubes');
+
 export const getAllClubs = async (req, res) => {
     try {
         const { type } = req.query;
