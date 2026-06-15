@@ -40,8 +40,21 @@ const styles = `
   .areas-rotary {
     position: relative;
     overflow: hidden;
-    background-color: var(--areas-bg, #0c3c7c);
     padding: 4rem 1rem;
+  }
+
+  /* Modo clásico (sitios que NO son Evento/Convención): textura opaca azul, como siempre. */
+  .areas-rotary--classic {
+    background-color: #0c3c7c;
+    background-image: url('/geo-darkblue.png');
+    background-position: 50% 0;
+    background-repeat: repeat;
+    background-size: 71px 85px;
+  }
+
+  /* Modo personalizable (Evento/Convención): color elegido + textura overlay. */
+  .areas-rotary--custom {
+    background-color: var(--areas-bg, #0c3c7c);
   }
 
   /* Textura sobrepuesta al color con la MISMA técnica que "Somos gente de acción"
@@ -504,11 +517,13 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
       <style>{styles}</style>
       <section
         id="nuestras-causas"
-        className="areas-rotary"
+        className={`areas-rotary ${((club as any)?.type === 'Evento o Convención') ? 'areas-rotary--custom' : 'areas-rotary--classic'}`}
         aria-labelledby="areas-title"
-        style={{ ['--areas-bg' as string]: club?.colors?.areasBg || '#0c3c7c' } as React.CSSProperties}
+        style={((club as any)?.type === 'Evento o Convención')
+          ? ({ ['--areas-bg' as string]: club?.colors?.areasBg || '#0c3c7c' } as React.CSSProperties)
+          : undefined}
       >
-        <div className="areas-rotary__bg" aria-hidden="true" />
+        {((club as any)?.type === 'Evento o Convención') && <div className="areas-rotary__bg" aria-hidden="true" />}
         {/* Header */}
         {showHeader && (
           <header className="areas-rotary__header">

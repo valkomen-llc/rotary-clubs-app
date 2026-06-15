@@ -12,7 +12,9 @@ const JoinSection = () => {
 
   const imgUrl = siteImages.join?.url || DEFAULT_JOIN_IMG;
   const imgAlt = siteImages.join?.alt || 'Rotary Members';
-  const bgColor = club?.colors?.joinBg || '#0C3C7C';
+  // Color de fondo personalizable solo para sitios Evento/Convención; el resto usa el azul original.
+  const isEventSite = (club as any)?.type === 'Evento o Convención';
+  const bgColor = isEventSite ? (club?.colors?.joinBg || '#0C3C7C') : '#0C3C7C';
 
   return (
     <section className="py-20" style={{ backgroundColor: bgColor }}>
