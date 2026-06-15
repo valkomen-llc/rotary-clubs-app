@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.453.2 | 2026-06-16 (Hero del evento en proporción 1920x750)
-// Cache bust: 2026-06-16 04:20
+// UI V4.453.3 | 2026-06-16 (Hero del evento: zoom-in suavizado en la imagen)
+// Cache bust: 2026-06-16 04:40
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.453.3',
+        title: 'Hero del Evento: Zoom-in Suavizado 🎞️',
+        description: 'La imagen del hero de los sitios de Evento/Convención ahora tiene un efecto de zoom-in lento y suave (acerca y aleja de forma continua), dándole más dinamismo a la portada. Aplica tanto a una imagen única como a cada imagen del carrusel.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'hero', 'eventos', 'animacion', 'zoom', 'feature'],
+        type: 'improvement'
+    },
     {
         version: '4.453.2',
         title: 'Hero del Evento: Proporción 1920×750 📐',

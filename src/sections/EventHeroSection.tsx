@@ -24,6 +24,10 @@ const EventHeroSection = ({ images }: { images: EventHeroImage[] }) => {
 
   return (
     <section className="relative w-full aspect-[1920/750] overflow-hidden bg-rotary-dark">
+      <style>{`
+        @keyframes evHeroZoom { 0% { transform: scale(1); } 100% { transform: scale(1.1); } }
+        .ev-hero-zoom { animation: evHeroZoom 8s ease-in-out infinite alternate; }
+      `}</style>
       <div className="absolute inset-0">
         {slides.map((slide, index) => (
           <div
@@ -35,7 +39,7 @@ const EventHeroSection = ({ images }: { images: EventHeroImage[] }) => {
             <img
               src={slide.url}
               alt={slide.alt || 'Hero'}
-              className="w-full h-full object-cover"
+              className={`w-full h-full object-cover ${index === current ? 'ev-hero-zoom' : ''}`}
             />
           </div>
         ))}
