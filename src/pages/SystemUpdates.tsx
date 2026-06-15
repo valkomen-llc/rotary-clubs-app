@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.442.0 | 2026-06-15 (Email Marketing F5: automatizaciones — secuencias de correo por etiqueta)
-// Cache bust: 2026-06-15 19:30
+// UI V4.443.0 | 2026-06-15 (Email Marketing F6: rebotes y quejas vía webhook de Resend — bajas automáticas)
+// Cache bust: 2026-06-15 20:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.443.0',
+        title: 'Email Marketing F6: Rebotes y Quejas Automáticos (Webhook de Resend) 🛡️',
+        description: 'Se cierra el roadmap de Email Marketing con la salud de la lista. Un nuevo webhook recibe los eventos del proveedor de correo (Resend): cuando un correo rebota de forma dura o un destinatario marca el mensaje como spam, el contacto se da de baja automáticamente y deja de recibir campañas y secuencias. Esto protege la reputación de envío y evita seguir escribiendo a direcciones inválidas o que no desean recibir. Configuración: en Resend, apuntar el webhook a /api/public/resend-webhook (con el secreto opcional RESEND_WEBHOOK_SECRET para validar el origen).',
+        date: new Date().toISOString(),
+        tags: ['email-marketing', 'rebotes', 'quejas', 'webhook', 'resend', 'entregabilidad', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.442.0',
         title: 'Email Marketing F5: Automatizaciones — Secuencias de Correo por Etiqueta 🔄',

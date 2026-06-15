@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.442.0",
-  "cache_bust": "2026-06-15 19:30 (Email Marketing F5: automatizaciones — secuencias de correo por etiqueta)",
+  "version": "4.443.0",
+  "cache_bust": "2026-06-15 20:00 (Email Marketing F6: rebotes y quejas vía webhook de Resend — bajas automáticas)",
   "type": "module",
-  "//": "UI V4.442.0 | 2026-06-15 (Email Marketing F5: automatizaciones — secuencias de correo por etiqueta)",
+  "//": "UI V4.443.0 | 2026-06-15 (Email Marketing F6: rebotes y quejas vía webhook de Resend — bajas automáticas)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
