@@ -25,6 +25,8 @@ export interface ClubConfig {
         actionBg?: string;
         joinBg?: string;
         areasBg?: string;
+        footerBg?: string;
+        copyrightBg?: string;
     };
     type?: string;
     social: { platform: string; url: string }[];

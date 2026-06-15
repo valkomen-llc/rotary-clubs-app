@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.448.1 | 2026-06-15 (Áreas de Interés: mismo tono que Somos gente de acción a igual color)
-// Cache bust: 2026-06-15 23:30
+// UI V4.449.0 | 2026-06-15 (Identidad: colores configurables del footer y la barra de copyright)
+// Cache bust: 2026-06-15 23:50
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.449.0',
+        title: 'Identidad: Colores del Footer y la Barra de Copyright 🎨',
+        description: 'Ahora puedes personalizar el color de fondo del pie de página (footer) y, por separado, el de la barra inferior de copyright. En Configuración → Identidad aparece la tarjeta "Colores del Footer" con dos selectores y una vista previa combinada. Si no se definen, se mantienen el azul institucional del footer y el tono más oscuro de la barra de copyright por defecto.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'color', 'footer', 'copyright', 'portada', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.448.1',
         title: 'Áreas de Interés: Tono Consistente con "Somos gente de acción" 🎯',

@@ -43,6 +43,8 @@ const ClubSettings: React.FC = () => {
         actionSectionBg: '#0c3c7c',
         joinSectionBg: '#0C3C7C',
         areasSectionBg: '#0c3c7c',
+        footerBg: '#013E7D',
+        copyrightBg: '#013871',
         logo: '',
         footerLogo: '',
         endPolioLogo: '',
@@ -129,6 +131,8 @@ const ClubSettings: React.FC = () => {
                 actionSectionBg: club.colors?.actionBg || settingsMap['action_section_bg'] || '#0c3c7c',
                 joinSectionBg: club.colors?.joinBg || settingsMap['join_section_bg'] || '#0C3C7C',
                 areasSectionBg: club.colors?.areasBg || settingsMap['areas_section_bg'] || '#0c3c7c',
+                footerBg: club.colors?.footerBg || settingsMap['footer_bg'] || '#013E7D',
+                copyrightBg: club.colors?.copyrightBg || settingsMap['copyright_bg'] || '#013871',
                 logo: club.logo || '',
                 footerLogo: club.footerLogo || '',
                 endPolioLogo: club.endPolioLogo || '',
@@ -706,6 +710,45 @@ const ClubSettings: React.FC = () => {
                                         />
                                         <p className="relative text-white text-lg font-light mb-1">Áreas de Interés</p>
                                         <p className="relative text-white/80 text-xs">Vista previa (igual que en el sitio)</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Colores del Footer (pie de página) y barra de copyright */}
+                        {(isSuperAdmin || club?.type === 'Evento o Convención') && (
+                            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                                <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
+                                    <Palette className="w-5 h-5 text-rotary-blue" /> Colores del Footer
+                                </h3>
+                                <p className="text-xs text-gray-400 mb-6">
+                                    Color de fondo del pie de página y de la barra inferior de copyright.
+                                </p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                                    <div className="space-y-5">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-gray-400 uppercase">Fondo del Footer</label>
+                                            <div className="flex items-center gap-4">
+                                                <input type="color" value={formData.footerBg} onChange={e => setFormData({...formData, footerBg: e.target.value})} className="w-12 h-12 rounded-xl cursor-pointer border-none" />
+                                                <input type="text" value={formData.footerBg} onChange={e => setFormData({...formData, footerBg: e.target.value})} className="flex-1 px-4 py-2 bg-gray-50 rounded-lg text-sm font-mono font-bold" />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-gray-400 uppercase">Fondo del Copyright</label>
+                                            <div className="flex items-center gap-4">
+                                                <input type="color" value={formData.copyrightBg} onChange={e => setFormData({...formData, copyrightBg: e.target.value})} className="w-12 h-12 rounded-xl cursor-pointer border-none" />
+                                                <input type="text" value={formData.copyrightBg} onChange={e => setFormData({...formData, copyrightBg: e.target.value})} className="flex-1 px-4 py-2 bg-gray-50 rounded-lg text-sm font-mono font-bold" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="rounded-2xl overflow-hidden border border-gray-100">
+                                        <div className="p-6 text-center" style={{ backgroundColor: formData.footerBg }}>
+                                            <p className="text-white text-sm font-bold mb-1">El Club · Realiza una Acción · Newsletter</p>
+                                            <p className="text-white/70 text-xs">Pie de página</p>
+                                        </div>
+                                        <div className="py-3 text-center" style={{ backgroundColor: formData.copyrightBg }}>
+                                            <p className="text-white/60 text-[11px]">© {new Date().getFullYear()} · Todos los derechos reservados</p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
