@@ -17,8 +17,12 @@ const JoinSection = () => {
   const bgColor = isEventSite ? (club?.colors?.joinBg || '#0C3C7C') : '#0C3C7C';
 
   return (
-    <section className="py-20" style={{ backgroundColor: bgColor }}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section className="relative overflow-hidden py-20" style={{ backgroundColor: bgColor }}>
+      {/* Textura geométrica (overlay 0.85) solo en Evento/Convención, para igualar el tono con las demás secciones. */}
+      {isEventSite && (
+        <div aria-hidden="true" className="absolute inset-0 pointer-events-none" style={{ backgroundImage: "url('/geo-darkblue.png')", backgroundPosition: '50% 0', backgroundRepeat: 'repeat', backgroundSize: '71px 85px', mixBlendMode: 'overlay', opacity: 0.85 }} />
+      )}
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
           {/* Text Content */}
           <div className="text-white space-y-8">
