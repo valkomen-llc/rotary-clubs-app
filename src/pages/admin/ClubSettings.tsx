@@ -688,18 +688,24 @@ const ClubSettings: React.FC = () => {
                                         </div>
                                     </div>
                                     <div
-                                        className="rounded-2xl p-6 text-center"
-                                        style={{
-                                            backgroundColor: formData.areasSectionBg,
-                                            backgroundImage: "url('/geo-darkblue.png')",
-                                            backgroundPosition: '50% 0',
-                                            backgroundRepeat: 'repeat',
-                                            backgroundSize: '71px 85px',
-                                            backgroundBlendMode: 'overlay'
-                                        }}
+                                        className="relative overflow-hidden rounded-2xl p-6 text-center"
+                                        style={{ backgroundColor: formData.areasSectionBg }}
                                     >
-                                        <p className="text-white text-lg font-light mb-1">Áreas de Interés</p>
-                                        <p className="text-white/80 text-xs">Vista previa (igual que en el sitio)</p>
+                                        {/* Misma composición que el sitio y que "Somos gente de acción": color sólido + textura overlay 0.85. */}
+                                        <div
+                                            aria-hidden="true"
+                                            className="absolute inset-0 pointer-events-none"
+                                            style={{
+                                                backgroundImage: "url('/geo-darkblue.png')",
+                                                backgroundPosition: '50% 0',
+                                                backgroundRepeat: 'repeat',
+                                                backgroundSize: '71px 85px',
+                                                mixBlendMode: 'overlay',
+                                                opacity: 0.85
+                                            }}
+                                        />
+                                        <p className="relative text-white text-lg font-light mb-1">Áreas de Interés</p>
+                                        <p className="relative text-white/80 text-xs">Vista previa (igual que en el sitio)</p>
                                     </div>
                                 </div>
                             </div>

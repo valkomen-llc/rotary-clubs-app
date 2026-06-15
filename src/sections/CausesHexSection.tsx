@@ -38,15 +38,30 @@ const styles = `
      CONTENEDOR PRINCIPAL
      ═══════════════════════════════════════════════════════════════════════════ */
   .areas-rotary {
+    position: relative;
+    overflow: hidden;
     background-color: var(--areas-bg, #0c3c7c);
+    padding: 4rem 1rem;
+  }
+
+  /* Textura sobrepuesta al color con la MISMA técnica que "Somos gente de acción"
+     (mix-blend-mode overlay + opacity 0.85) para que, a igual color, el tono sea idéntico. */
+  .areas-rotary__bg {
+    position: absolute;
+    inset: 0;
     background-image: url('/geo-darkblue.png');
     background-position: 50% 0;
     background-repeat: repeat;
     background-size: 71px 85px;
-    /* La textura es un PNG opaco; con blend 'overlay' se tiñe del color elegido
-       (--areas-bg) en lugar de taparlo, sin afectar el contenido de la sección. */
-    background-blend-mode: overlay;
-    padding: 4rem 1rem;
+    mix-blend-mode: overlay;
+    opacity: 0.85;
+    pointer-events: none;
+  }
+
+  /* El contenido va por encima de la capa de textura. */
+  .areas-rotary > *:not(.areas-rotary__bg) {
+    position: relative;
+    z-index: 1;
   }
 
   .areas-rotary__header {
@@ -493,6 +508,7 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
         aria-labelledby="areas-title"
         style={{ ['--areas-bg' as string]: club?.colors?.areasBg || '#0c3c7c' } as React.CSSProperties}
       >
+        <div className="areas-rotary__bg" aria-hidden="true" />
         {/* Header */}
         {showHeader && (
           <header className="areas-rotary__header">

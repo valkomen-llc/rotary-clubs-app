@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.448.0 | 2026-06-15 (Áreas de interés con color de fondo independiente)
-// Cache bust: 2026-06-15 23:00
+// UI V4.448.1 | 2026-06-15 (Áreas de Interés: mismo tono que Somos gente de acción a igual color)
+// Cache bust: 2026-06-15 23:30
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.448.1',
+        title: 'Áreas de Interés: Tono Consistente con "Somos gente de acción" 🎯',
+        description: 'Se igualó la forma en que se aplica la textura en "Áreas de Interés" para que, con el mismo código de color, el tono se vea idéntico al de "Somos gente de acción". Antes la sección de áreas se veía más oscura porque combinaba la textura a fuerza completa; ahora ambas usan la misma técnica (textura superpuesta al 85%), así un mismo hex produce exactamente el mismo color en ambas.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'color', 'areas-de-interes', 'consistencia', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.448.0',
         title: 'Áreas de Interés: Color de Fondo Independiente 🎨',
