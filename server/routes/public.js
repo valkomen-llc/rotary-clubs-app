@@ -19,6 +19,11 @@ router.get('/seo/sitemap.xml', getSitemap);
 import db from '../lib/db.js';
 import prisma from '../lib/prisma.js';
 
+// Tracking de Email Marketing (sin autenticación): pixel de apertura y redirección de clics.
+import { trackOpen, trackClick } from '../controllers/emailMarketingController.js';
+router.get('/em/o/:rid', trackOpen);
+router.get('/em/c/:rid', trackClick);
+
 // Baja de suscripción de Email Marketing (sin autenticación; enlace en el pie del correo).
 router.get('/unsubscribe', async (req, res) => {
     const { cid } = req.query;

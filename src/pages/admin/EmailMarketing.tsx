@@ -2,7 +2,8 @@ import React, { useEffect, useState, useCallback } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Plus, Send, X, Trash2, Edit2, Mail, Users, Eye, EyeOff, Code,
-    RefreshCw, CheckCircle2, Clock, AlertTriangle, Megaphone
+    RefreshCw, CheckCircle2, Clock, AlertTriangle, Megaphone,
+    BarChart3, Tag, MousePointerClick, MailCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -13,12 +14,15 @@ interface Campaign {
     fromName?: string | null;
     preheader?: string | null;
     content: string;
-    audience: 'all' | 'list';
+    audience: 'all' | 'list' | 'tag';
     listId?: string | null;
+    segmentTag?: string | null;
     status: 'draft' | 'sending' | 'sent' | 'failed';
     totalRecipients: number;
     sentCount: number;
     failedCount: number;
+    openCount?: number;
+    clickCount?: number;
     sentAt?: string | null;
     createdAt: string;
 }
@@ -30,6 +34,28 @@ interface CrmList {
     _count?: { members: number };
 }
 
+interface Stats {
+    campaigns: number;
+    emailsSent: number;
+    opens: number;
+    clicks: number;
+    contacts: number;
+    tags: number;
+    templates: number;
+}
+
+interface Report {
+    campaign: { id: string; name: string; subject: string; sentAt?: string | null; status: string };
+    sent: number;
+    failed: number;
+    totalOpens: number;
+    totalClicks: number;
+    uniqueOpens: number;
+    uniqueClicks: number;
+    openRate: number;
+    clickRate: number;
+}
+
 const API = import.meta.env.VITE_API_URL || '/api';
 const authHeaders = () => ({ 'Authorization': `Bearer ${localStorage.getItem('rotary_token')}` });
 
@@ -39,8 +65,9 @@ const emptyForm = {
     fromName: '',
     preheader: '',
     content: '<h2>Hola 👋</h2>\n<p>Escribe aquí el contenido de tu campaña.</p>',
-    audience: 'all' as 'all' | 'list',
+    audience: 'all' as 'all' | 'list' | 'tag',
     listId: '',
+    segmentTag: '',
 };
 
 const STATUS_META: Record<Campaign['status'], { label: string; cls: string; icon: React.ReactNode }> = {
@@ -53,6 +80,8 @@ const STATUS_META: Record<Campaign['status'], { label: string; cls: string; icon
 const EmailMarketing: React.FC = () => {
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [lists, setLists] = useState<CrmList[]>([]);
+    const [tags, setTags] = useState<string[]>([]);
+    const [stats, setStats] = useState<Stats | null>(null);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editing, setEditing] = useState<Campaign | null>(null);
@@ -61,6 +90,8 @@ const EmailMarketing: React.FC = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [sendingId, setSendingId] = useState<string | null>(null);
     const [preview, setPreview] = useState(false);
+    const [report, setReport] = useState<Report | null>(null);
+    const [reportLoading, setReportLoading] = useState(false);
 
     const fetchCampaigns = useCallback(async () => {
         try {
@@ -73,6 +104,13 @@ const EmailMarketing: React.FC = () => {
         }
     }, []);
 
+    const fetchStats = useCallback(async () => {
+        try {
+            const res = await fetch(`${API}/email-marketing/stats`, { headers: authHeaders() });
+            if (res.ok) setStats(await res.json());
+        } catch { /* las métricas son opcionales */ }
+    }, []);
+
     const fetchLists = useCallback(async () => {
         try {
             const res = await fetch(`${API}/crm/lists`, { headers: authHeaders() });
@@ -80,10 +118,33 @@ const EmailMarketing: React.FC = () => {
         } catch { /* las listas son opcionales */ }
     }, []);
 
+    const fetchTags = useCallback(async () => {
+        try {
+            const res = await fetch(`${API}/email-marketing/tags`, { headers: authHeaders() });
+            if (res.ok) setTags(await res.json());
+        } catch { /* las etiquetas son opcionales */ }
+    }, []);
+
     useEffect(() => {
         fetchCampaigns();
+        fetchStats();
         fetchLists();
-    }, [fetchCampaigns, fetchLists]);
+        fetchTags();
+    }, [fetchCampaigns, fetchStats, fetchLists, fetchTags]);
+
+    const openReport = async (c: Campaign) => {
+        setReport(null);
+        setReportLoading(true);
+        try {
+            const res = await fetch(`${API}/email-marketing/${c.id}/report`, { headers: authHeaders() });
+            if (res.ok) setReport(await res.json());
+            else toast.error('No se pudo cargar el reporte');
+        } catch {
+            toast.error('Error al cargar el reporte');
+        } finally {
+            setReportLoading(false);
+        }
+    };
 
     // Preview de audiencia cuando cambia la selección dentro del modal
     useEffect(() => {
@@ -92,12 +153,13 @@ const EmailMarketing: React.FC = () => {
         setAudienceCount(null);
         const params = new URLSearchParams({ audience: form.audience });
         if (form.audience === 'list' && form.listId) params.set('listId', form.listId);
+        if (form.audience === 'tag' && form.segmentTag) params.set('segmentTag', form.segmentTag);
         fetch(`${API}/email-marketing/audience?${params.toString()}`, { headers: authHeaders() })
             .then(r => r.ok ? r.json() : { count: 0 })
             .then(d => { if (!cancelled) setAudienceCount(d.count ?? 0); })
             .catch(() => { if (!cancelled) setAudienceCount(0); });
         return () => { cancelled = true; };
-    }, [isModalOpen, form.audience, form.listId]);
+    }, [isModalOpen, form.audience, form.listId, form.segmentTag]);
 
     const openModal = (c?: Campaign) => {
         setPreview(false);
@@ -111,6 +173,7 @@ const EmailMarketing: React.FC = () => {
                 content: c.content,
                 audience: c.audience,
                 listId: c.listId || '',
+                segmentTag: c.segmentTag || '',
             });
         } else {
             setEditing(null);
@@ -153,6 +216,7 @@ const EmailMarketing: React.FC = () => {
             const skippedTxt = d.skipped ? ` · ${d.skipped} pospuestos (límite por envío)` : '';
             toast.success(`Enviada: ${d.sent} correo(s)${d.failed ? `, ${d.failed} fallido(s)` : ''}${skippedTxt}`);
             fetchCampaigns();
+            fetchStats();
         } catch (err: any) {
             toast.error(err.message);
             fetchCampaigns();
@@ -190,6 +254,26 @@ const EmailMarketing: React.FC = () => {
                 </button>
             </div>
 
+            {/* Dashboard de métricas */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+                {[
+                    { label: 'Campañas', value: stats?.campaigns ?? 0, icon: Megaphone, color: 'text-rotary-blue bg-sky-50' },
+                    { label: 'Enviados', value: stats?.emailsSent ?? 0, icon: MailCheck, color: 'text-emerald-600 bg-emerald-50' },
+                    { label: 'Aperturas', value: stats?.opens ?? 0, icon: Eye, color: 'text-indigo-600 bg-indigo-50' },
+                    { label: 'Clics', value: stats?.clicks ?? 0, icon: MousePointerClick, color: 'text-amber-600 bg-amber-50' },
+                    { label: 'Contactos', value: stats?.contacts ?? 0, icon: Users, color: 'text-purple-600 bg-purple-50' },
+                    { label: 'Etiquetas', value: stats?.tags ?? 0, icon: Tag, color: 'text-rose-600 bg-rose-50' },
+                ].map((m) => (
+                    <div key={m.label} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-2 ${m.color}`}>
+                            <m.icon className="w-4 h-4" />
+                        </div>
+                        <p className="text-2xl font-black text-gray-800">{m.value.toLocaleString()}</p>
+                        <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">{m.label}</p>
+                    </div>
+                ))}
+            </div>
+
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <table className="w-full text-left">
                     <thead className="bg-gray-50 border-b border-gray-100">
@@ -206,7 +290,9 @@ const EmailMarketing: React.FC = () => {
                             const meta = STATUS_META[c.status];
                             const listName = c.audience === 'list'
                                 ? (lists.find(l => l.id === c.listId)?.name || 'Lista')
-                                : 'Todos los contactos';
+                                : c.audience === 'tag'
+                                    ? `Etiqueta: ${c.segmentTag || '—'}`
+                                    : 'Todos los contactos';
                             return (
                                 <tr key={c.id} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-6 py-4">
@@ -238,6 +324,15 @@ const EmailMarketing: React.FC = () => {
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                         <div className="flex justify-end gap-2">
+                                            {(c.status === 'sent' || c.status === 'failed') && (
+                                                <button
+                                                    onClick={() => openReport(c)}
+                                                    className="p-2 text-gray-400 hover:text-indigo-600 transition-colors"
+                                                    title="Ver reporte"
+                                                >
+                                                    <BarChart3 className="w-4 h-4" />
+                                                </button>
+                                            )}
                                             {(c.status === 'draft' || c.status === 'failed') && (
                                                 <button
                                                     onClick={() => handleSend(c)}
@@ -332,10 +427,11 @@ const EmailMarketing: React.FC = () => {
                                     <select
                                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none bg-white"
                                         value={form.audience}
-                                        onChange={(e) => setForm({ ...form, audience: e.target.value as 'all' | 'list' })}
+                                        onChange={(e) => setForm({ ...form, audience: e.target.value as 'all' | 'list' | 'tag' })}
                                     >
                                         <option value="all">Todos los contactos</option>
                                         <option value="list">Una lista específica</option>
+                                        <option value="tag">Por etiqueta</option>
                                     </select>
                                 </div>
                                 {form.audience === 'list' && (
@@ -349,6 +445,21 @@ const EmailMarketing: React.FC = () => {
                                             <option value="">— Seleccionar lista —</option>
                                             {lists.map(l => (
                                                 <option key={l.id} value={l.id}>{l.name} ({l._count?.members ?? 0})</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                                {form.audience === 'tag' && (
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-700 mb-1">Etiqueta</label>
+                                        <select
+                                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none bg-white"
+                                            value={form.segmentTag}
+                                            onChange={(e) => setForm({ ...form, segmentTag: e.target.value })}
+                                        >
+                                            <option value="">— Seleccionar etiqueta —</option>
+                                            {tags.map(t => (
+                                                <option key={t} value={t}>{t}</option>
                                             ))}
                                         </select>
                                     </div>
@@ -392,6 +503,52 @@ const EmailMarketing: React.FC = () => {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Reporte */}
+            {(report || reportLoading) && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
+                        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                            <div className="flex items-center gap-2">
+                                <BarChart3 className="w-5 h-5 text-indigo-600" />
+                                <h2 className="text-lg font-bold text-gray-800">Reporte de Campaña</h2>
+                            </div>
+                            <button onClick={() => setReport(null)} className="text-gray-400 hover:text-gray-600"><X className="w-6 h-6" /></button>
+                        </div>
+                        <div className="p-6">
+                            {reportLoading || !report ? (
+                                <div className="py-10 text-center text-gray-400">Cargando reporte…</div>
+                            ) : (
+                                <>
+                                    <p className="font-bold text-gray-800">{report.campaign.name}</p>
+                                    <p className="text-sm text-gray-400 mb-5">{report.campaign.subject}</p>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="p-4 rounded-xl bg-emerald-50 text-center">
+                                            <p className="text-2xl font-black text-emerald-700">{report.sent}</p>
+                                            <p className="text-[10px] uppercase font-bold text-emerald-600 tracking-wider">Enviados</p>
+                                        </div>
+                                        <div className="p-4 rounded-xl bg-rose-50 text-center">
+                                            <p className="text-2xl font-black text-rose-600">{report.failed}</p>
+                                            <p className="text-[10px] uppercase font-bold text-rose-500 tracking-wider">Fallidos</p>
+                                        </div>
+                                        <div className="p-4 rounded-xl bg-indigo-50 text-center">
+                                            <p className="text-2xl font-black text-indigo-700">{report.uniqueOpens} <span className="text-sm font-bold text-indigo-400">({report.openRate}%)</span></p>
+                                            <p className="text-[10px] uppercase font-bold text-indigo-600 tracking-wider">Aperturas únicas</p>
+                                        </div>
+                                        <div className="p-4 rounded-xl bg-amber-50 text-center">
+                                            <p className="text-2xl font-black text-amber-700">{report.uniqueClicks} <span className="text-sm font-bold text-amber-400">({report.clickRate}%)</span></p>
+                                            <p className="text-[10px] uppercase font-bold text-amber-600 tracking-wider">Clics únicos</p>
+                                        </div>
+                                    </div>
+                                    <p className="text-[11px] text-gray-400 mt-4 text-center">
+                                        Total de aperturas: {report.totalOpens} · Total de clics: {report.totalClicks}
+                                    </p>
+                                </>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}

@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.438.0",
-  "cache_bust": "2026-06-15 17:00 (Email Marketing: campañas tipo Mailchimp para admin y sitios de Eventos/Convenciones)",
+  "version": "4.439.0",
+  "cache_bust": "2026-06-15 18:00 (Email Marketing F2: dashboard de métricas, tracking de aperturas/clics, reportes y segmentación por etiqueta)",
   "type": "module",
-  "//": "UI V4.438.0 | 2026-06-15 (Email Marketing: campañas tipo Mailchimp para admin y sitios de Eventos/Convenciones)",
+  "//": "UI V4.439.0 | 2026-06-15 (Email Marketing F2: dashboard de métricas, tracking de aperturas/clics, reportes y segmentación por etiqueta)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

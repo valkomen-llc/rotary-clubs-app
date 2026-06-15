@@ -599,20 +599,43 @@ model EmailCampaign {
   fromName        String?
   preheader       String?
   content         String    // HTML del cuerpo
-  audience        String    @default("all") // 'all' | 'list'
+  audience        String    @default("all") // 'all' | 'list' | 'tag'
   listId          String?   // id de CrmList cuando audience='list' (sin relación FK: resolución manual)
+  segmentTag      String?   // etiqueta del CRM cuando audience='tag'
   status          String    @default("draft") // draft | sending | sent | failed
   totalRecipients Int       @default(0)
   sentCount       Int       @default(0)
   failedCount     Int       @default(0)
+  openCount       Int       @default(0) // total de aperturas (eventos)
+  clickCount      Int       @default(0) // total de clics (eventos)
   sentAt          DateTime?
   createdById     String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   club            Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  recipients      EmailCampaignRecipient[]
 
   @@index([clubId])
   @@index([status])
+}
+
+// Un registro por destinatario por campaña — habilita tracking de aperturas/clics y reportes.
+model EmailCampaignRecipient {
+  id         String        @id @default(uuid())
+  campaignId String
+  clubId     String
+  contactId  String?
+  email      String
+  status     String        @default("sent") // sent | failed
+  openedAt   DateTime?
+  clickedAt  DateTime?
+  openCount  Int           @default(0)
+  clickCount Int           @default(0)
+  createdAt  DateTime      @default(now())
+  campaign   EmailCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([clubId])
 }
 
 model CommunicationLog {

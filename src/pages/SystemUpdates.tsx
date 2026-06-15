@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.438.0 | 2026-06-15 (Email Marketing: campañas tipo Mailchimp para admin y sitios de Eventos/Convenciones)
-// Cache bust: 2026-06-15 17:00
+// UI V4.439.0 | 2026-06-15 (Email Marketing F2: dashboard de métricas, tracking de aperturas/clics, reportes y segmentación por etiqueta)
+// Cache bust: 2026-06-15 18:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.439.0',
+        title: 'Email Marketing F2: Métricas, Aperturas/Clics, Reportes y Segmentación por Etiqueta 📊',
+        date: new Date().toISOString(),
+        description: 'El módulo de Email Marketing da un salto estilo FluentCRM. Ahora la pantalla muestra un tablero con métricas (campañas, correos enviados, aperturas, clics, contactos y etiquetas). Cada campaña enviada rastrea automáticamente las aperturas (pixel) y los clics (los enlaces del cuerpo se reescriben para medir y redirigir), y un nuevo botón de Reporte muestra enviados, fallidos, aperturas únicas y clics únicos con sus porcentajes. Además puedes segmentar la audiencia por Etiqueta del CRM (además de "todos los contactos" o una lista). Cada envío crea un registro por destinatario para poder calcular las métricas.',
+        tags: ['email-marketing', 'metricas', 'tracking', 'aperturas', 'clics', 'reportes', 'segmentacion', 'etiquetas', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.438.0',
         title: 'Nuevo: Email Marketing — Campañas de Correo tipo Mailchimp 📧🚀',
