@@ -173,6 +173,11 @@ router.get('/by-domain', async (req, res) => {
                 buttonText: settings['button_text_color'] || '#004080',
             },
             logoText: activeClub.name?.split(' ').pop(),
+            // Hero propio para sitios Evento/Convención (1 imagen = estática; varias = carrusel).
+            eventHeroImages: (() => {
+                try { return settings['event_hero_images'] ? JSON.parse(settings['event_hero_images']) : []; }
+                catch { return []; }
+            })(),
             productsCount: activeClub._count?.products || 0,
             eventsCount: activeClub._count?.events || 0,
             // Logo Size Inheritance: Priority 1: Club Setting, Priority 2: Master Club Setting, Priority 3: Default 200

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.452.0 | 2026-06-16 (Colores configurables de los botones del inicio: fondo, hover y texto)
-// Cache bust: 2026-06-16 03:00
+// UI V4.453.0 | 2026-06-16 (Hero propio a pantalla completa para sitios Evento/Convención: 1 o varias imágenes)
+// Cache bust: 2026-06-16 03:40
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.453.0',
+        title: 'Eventos: Hero Propio a Pantalla Completa (1 o varias imágenes) 🖼️',
+        description: 'Los sitios de tipo Evento o Convención ahora pueden tener una portada (hero) distinta a la de los sitios normales. En Configuración → Identidad → "Hero del Evento" puedes subir una sola imagen (queda estática, a pantalla completa) o varias (rotan automáticamente en carrusel). Es independiente del hero por defecto de "Imágenes del Sitio"; si no subes ninguna imagen, se mantiene el hero estándar.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'hero', 'portada', 'eventos', 'convenciones', 'imagenes', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.452.0',
         title: 'Inicio: Colores Configurables de los Botones (fondo, hover y texto) 🔘',

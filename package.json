@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.452.0",
-  "cache_bust": "2026-06-16 03:00 (Colores configurables de los botones del inicio: fondo, hover y texto)",
+  "version": "4.453.0",
+  "cache_bust": "2026-06-16 03:40 (Hero propio a pantalla completa para sitios Evento/Convención: 1 o varias imágenes)",
   "type": "module",
-  "//": "UI V4.452.0 | 2026-06-16 (Colores configurables de los botones del inicio: fondo, hover y texto)",
+  "//": "UI V4.453.0 | 2026-06-16 (Hero propio a pantalla completa para sitios Evento/Convención: 1 o varias imágenes)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

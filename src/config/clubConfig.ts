@@ -32,6 +32,7 @@ export interface ClubConfig {
         buttonHoverBg?: string;
         buttonText?: string;
     };
+    eventHeroImages?: { url: string; alt?: string }[];
     type?: string;
     social: { platform: string; url: string }[];
     contact: {
