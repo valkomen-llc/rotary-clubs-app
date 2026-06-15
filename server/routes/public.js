@@ -20,9 +20,11 @@ import db from '../lib/db.js';
 import prisma from '../lib/prisma.js';
 
 // Tracking de Email Marketing (sin autenticación): pixel de apertura y redirección de clics.
-import { trackOpen, trackClick } from '../controllers/emailMarketingController.js';
+import { trackOpen, trackClick, handleResendWebhook } from '../controllers/emailMarketingController.js';
 router.get('/em/o/:rid', trackOpen);
 router.get('/em/c/:rid', trackClick);
+// Webhook de Resend: rebotes y quejas → baja automática del contacto.
+router.post('/resend-webhook', handleResendWebhook);
 
 // Baja de suscripción de Email Marketing (sin autenticación; enlace en el pie del correo).
 router.get('/unsubscribe', async (req, res) => {

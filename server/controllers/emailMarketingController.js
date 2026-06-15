@@ -6,7 +6,7 @@ import EmailService from '../services/EmailService.js';
 // v4.438 — Sistema de Email Marketing (campañas tipo Mailchimp).
 // Reutiliza la audiencia del CRM (CrmContact/CrmList) y EmailService (Resend/SMTP)
 // para enviar. Cada campaña queda scopeada a un sitio (clubId) y respeta el opt-out.
-console.log('[emailMarketingController] v4.441 — campañas + tracking + reportes + segmentación + programación de envíos (cron)');
+console.log('[emailMarketingController] v4.443 — campañas + tracking + reportes + segmentación + programación + webhook de rebotes/quejas (Resend)');
 
 // El administrador global puede operar en el contexto de un sitio vía ?clubId / body.clubId
 // (por ejemplo al impersonar). El resto de roles siempre opera sobre su propio clubId.
@@ -439,6 +439,46 @@ export const getTags = async (req, res) => {
     } catch (error) {
         console.error('[emailMarketing] getTags:', error);
         res.json([]);
+    }
+};
+
+// POST /api/public/resend-webhook — eventos de Resend (rebotes y quejas).
+// Al recibir un rebote duro o una queja de spam, se da de baja al contacto (optedOutAt)
+// para no volver a enviarle. Protección opcional por secreto compartido en ?secret=.
+export const handleResendWebhook = async (req, res) => {
+    try {
+        if (process.env.RESEND_WEBHOOK_SECRET) {
+            const provided = req.query.secret || req.headers['x-webhook-secret'];
+            if (provided !== process.env.RESEND_WEBHOOK_SECRET) {
+                return res.status(401).json({ error: 'Unauthorized webhook' });
+            }
+        }
+        const event = req.body || {};
+        const type = event.type || event.event;
+        const optOutTypes = ['email.bounced', 'email.complained', 'bounced', 'complained', 'spam'];
+        if (optOutTypes.includes(type)) {
+            const data = event.data || {};
+            const rawTo = data.to || data.email || data.recipient;
+            const emails = (Array.isArray(rawTo) ? rawTo : [rawTo])
+                .filter(Boolean)
+                .map((e) => String(e).trim().toLowerCase());
+            for (const email of emails) {
+                try {
+                    await prisma.crmContact.updateMany({
+                        where: { email: { equals: email, mode: 'insensitive' }, optedOutAt: null },
+                        data: { optedOutAt: new Date(), totalFailed: { increment: 1 } },
+                    });
+                } catch (e) {
+                    console.error('[emailMarketing] webhook opt-out error:', e.message);
+                }
+            }
+            console.log(`[emailMarketing] webhook ${type} → baja de ${emails.length} email(s)`);
+        }
+        // Siempre responder 200 para que Resend no reintente innecesariamente.
+        res.json({ ok: true });
+    } catch (error) {
+        console.error('[emailMarketing] handleResendWebhook:', error);
+        res.json({ ok: true });
     }
 };
 
