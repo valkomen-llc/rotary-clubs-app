@@ -2,38 +2,34 @@ import { T } from '../components/T';
 import { Link } from 'react-router-dom';
 import { useClub } from '../contexts/ClubContext';
 
-// El patrón geográfico (geo-darkblue.png) es una imagen de PALETA OPACA azul (sin canal
-// alfa), así que al pintarse como background-image tapaba por completo el background-color
-// elegido. Por eso el color personalizado no se veía en vivo aunque el dato sí llegaba.
-// Solución: superponer una capa translúcida del color elegido SOBRE el patrón, de modo que
-// el color domine y la textura quede sutil. Para el azul por defecto el resultado es idéntico.
-const hexToRgba = (hex: string, alpha: number): string => {
-  let h = (hex || '').replace('#', '').trim();
-  if (h.length === 3) h = h.split('').map((c) => c + c).join('');
-  if (h.length !== 6 || /[^0-9a-fA-F]/.test(h)) return `rgba(12,60,124,${alpha})`;
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-};
-
+// El patrón (geo-darkblue.png) es un PNG de PALETA OPACA azul (sin canal alfa). Si se pinta
+// como background-image directo tapa el color elegido. Solución: el color va como fondo
+// SÓLIDO y la textura se superpone en una capa semitransparente con mezcla 'overlay', de modo
+// que el color personalizado se vea y la textura geométrica se mantenga visible encima
+// (igual que en el contenedor de "áreas de interés"). Para el azul por defecto se ve idéntico.
 const ActionSection = () => {
   const { club } = useClub();
   const bgColor = club?.colors?.actionBg || '#0c3c7c';
-  const wash = hexToRgba(bgColor, 0.88);
 
   return (
     <section
-      className="py-16 md:py-20"
-      style={{
-        backgroundColor: bgColor,
-        backgroundImage: `linear-gradient(${wash}, ${wash}), url('/geo-darkblue.png')`,
-        backgroundPosition: 'center, 50% 0',
-        backgroundRepeat: 'no-repeat, repeat',
-        backgroundSize: 'cover, 71px 85px'
-      }}
+      className="relative overflow-hidden py-16 md:py-20"
+      style={{ backgroundColor: bgColor }}
     >
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      {/* Textura geométrica sobrepuesta al color de fondo */}
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage: "url('/geo-darkblue.png')",
+          backgroundPosition: '50% 0',
+          backgroundRepeat: 'repeat',
+          backgroundSize: '71px 85px',
+          mixBlendMode: 'overlay',
+          opacity: 0.85
+        }}
+      />
+      <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <h2 className="text-3xl md:text-4xl font-light text-white mb-6">
           <T>Somos gente de acción</T>
         </h2>

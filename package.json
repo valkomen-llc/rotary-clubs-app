@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.446.1",
-  "cache_bust": "2026-06-15 21:00 (Fix real²: el patrón geo-darkblue opaco tapaba el color de 'Somos gente de acción'; ahora se superpone el color)",
+  "version": "4.446.2",
+  "cache_bust": "2026-06-15 21:30 (Somos gente de acción: la textura geométrica se mantiene sobre el color de fondo elegido)",
   "type": "module",
-  "//": "UI V4.446.1 | 2026-06-15 (Fix real²: el patrón geo-darkblue opaco tapaba el color de 'Somos gente de acción'; ahora se superpone el color)",
+  "//": "UI V4.446.2 | 2026-06-15 (Somos gente de acción: la textura geométrica se mantiene sobre el color de fondo elegido)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
