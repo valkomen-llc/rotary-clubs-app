@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSiteImages } from '../hooks/useSiteImages';
+import { useClub } from '../contexts/ClubContext';
+import EventHeroSection from './EventHeroSection';
 
 const defaultSlides = [
   { id: 1, image: '/defaults/hero/1-teamwork.png', alt: 'Rotary - Trabajo en equipo' },
@@ -12,6 +14,13 @@ const defaultSlides = [
 const HeroSection = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const siteImages = useSiteImages();
+  const { club } = useClub();
+
+  // Hero propio para sitios Evento/Convención (pantalla completa), si tiene imágenes configuradas.
+  const eventHero = (club as any)?.eventHeroImages as { url: string; alt?: string }[] | undefined;
+  if ((club as any)?.type === 'Evento o Convención' && eventHero && eventHero.length > 0) {
+    return <EventHeroSection images={eventHero} />;
+  }
 
   // Build slides from siteImages or defaults
   const hasCustomHero = siteImages.hero && siteImages.hero.length > 0 && !siteImages.hero[0].url.includes('unsplash.com');

@@ -49,6 +49,7 @@ const ClubSettings: React.FC = () => {
         buttonBg: '#e0f2fe',
         buttonHoverBg: '#bae6fd',
         buttonTextColor: '#004080',
+        eventHeroImages: [] as { url: string; alt?: string }[],
         logo: '',
         footerLogo: '',
         endPolioLogo: '',
@@ -141,6 +142,7 @@ const ClubSettings: React.FC = () => {
                 buttonBg: club.colors?.buttonBg || settingsMap['button_bg'] || '#e0f2fe',
                 buttonHoverBg: club.colors?.buttonHoverBg || settingsMap['button_hover_bg'] || '#bae6fd',
                 buttonTextColor: club.colors?.buttonText || settingsMap['button_text_color'] || '#004080',
+                eventHeroImages: (club as any).eventHeroImages || (() => { try { return JSON.parse(settingsMap['event_hero_images'] || '[]'); } catch { return []; } })(),
                 logo: club.logo || '',
                 footerLogo: club.footerLogo || '',
                 endPolioLogo: club.endPolioLogo || '',
@@ -223,6 +225,46 @@ const ClubSettings: React.FC = () => {
             setUploading(false);
             if (e.target) e.target.value = '';
         }
+    };
+
+    // Subida de imágenes del Hero del Evento (acepta varias; se agregan al arreglo).
+    const handleEventHeroUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+        setUploading(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const uploaded: { url: string; alt?: string }[] = [];
+            for (const file of files) {
+                const uploadData = new FormData();
+                uploadData.append('file', file);
+                uploadData.append('folder', 'event-hero');
+                const res = await fetch(`${API_URL}/media/upload?folder=event-hero&clubId=${club?.id}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: uploadData
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    uploaded.push({ url: data.url, alt: file.name.replace(/\.[^.]+$/, '') });
+                }
+            }
+            if (uploaded.length) {
+                setFormData(prev => ({ ...prev, eventHeroImages: [...(prev.eventHeroImages || []), ...uploaded] }));
+                toast.success(`${uploaded.length} imagen(es) agregada(s)`);
+            } else {
+                throw new Error('No se pudo subir');
+            }
+        } catch (error: any) {
+            toast.error(`Error al subir: ${error.message}`);
+        } finally {
+            setUploading(false);
+            if (e.target) e.target.value = '';
+        }
+    };
+
+    const removeEventHeroImage = (idx: number) => {
+        setFormData(prev => ({ ...prev, eventHeroImages: (prev.eventHeroImages || []).filter((_, i) => i !== idx) }));
     };
 
     const handleSave = async (e?: React.FormEvent) => {
@@ -790,6 +832,45 @@ const ClubSettings: React.FC = () => {
                                         </button>
                                     </div>
                                 </div>
+                            </div>
+                        )}
+
+                        {/* Hero del Evento — solo Eventos/Convenciones */}
+                        {(isSuperAdmin || club?.type === 'Evento o Convención') && (
+                            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                                <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
+                                    <Palette className="w-5 h-5 text-rotary-blue" /> Hero del Evento (Portada)
+                                </h3>
+                                <p className="text-xs text-gray-400 mb-6">
+                                    Portada a pantalla completa, distinta a la de los sitios normales. Sube <strong>una sola imagen</strong> (queda estática) o <strong>varias</strong> (rotan en carrusel automático). Si no subes ninguna, se usa el hero por defecto. Tamaño ideal: 1920×1080px.
+                                </p>
+
+                                <div className="flex flex-wrap gap-4">
+                                    {(formData.eventHeroImages || []).map((img, idx) => (
+                                        <div key={idx} className="relative w-40 h-24 rounded-xl overflow-hidden border border-gray-200 group">
+                                            <img src={img.url} alt={img.alt || ''} className="w-full h-full object-cover" />
+                                            <button
+                                                type="button"
+                                                onClick={() => removeEventHeroImage(idx)}
+                                                className="absolute top-1 right-1 bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                                                title="Quitar imagen"
+                                            >
+                                                ×
+                                            </button>
+                                            <span className="absolute bottom-1 left-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded">{idx + 1}</span>
+                                        </div>
+                                    ))}
+                                    <label className={`w-40 h-24 rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:border-rotary-blue hover:bg-sky-50 transition-all text-gray-400 ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                                        <span className="text-2xl leading-none">+</span>
+                                        <span className="text-[11px] font-bold mt-1">{uploading ? 'Subiendo…' : 'Agregar imagen(es)'}</span>
+                                        <input type="file" className="hidden" accept="image/*" multiple onChange={handleEventHeroUpload} />
+                                    </label>
+                                </div>
+                                {(formData.eventHeroImages || []).length > 0 && (
+                                    <p className="text-[11px] text-gray-400 mt-3">
+                                        {formData.eventHeroImages.length === 1 ? 'Imagen única (hero estático).' : `${formData.eventHeroImages.length} imágenes (carrusel automático).`}
+                                    </p>
+                                )}
                             </div>
                         )}
                     </div>
