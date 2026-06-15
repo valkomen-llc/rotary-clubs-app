@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.439.0",
-  "cache_bust": "2026-06-15 18:00 (Email Marketing F2: dashboard de métricas, tracking de aperturas/clics, reportes y segmentación por etiqueta)",
+  "version": "4.440.0",
+  "cache_bust": "2026-06-15 18:30 (Email Marketing F3: plantillas reutilizables — cargar y guardar plantillas al redactar campañas)",
   "type": "module",
-  "//": "UI V4.439.0 | 2026-06-15 (Email Marketing F2: dashboard de métricas, tracking de aperturas/clics, reportes y segmentación por etiqueta)",
+  "//": "UI V4.440.0 | 2026-06-15 (Email Marketing F3: plantillas reutilizables — cargar y guardar plantillas al redactar campañas)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

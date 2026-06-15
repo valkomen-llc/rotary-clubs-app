@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.439.0 | 2026-06-15 (Email Marketing F2: dashboard de métricas, tracking de aperturas/clics, reportes y segmentación por etiqueta)
-// Cache bust: 2026-06-15 18:00
+// UI V4.440.0 | 2026-06-15 (Email Marketing F3: plantillas reutilizables — cargar y guardar plantillas al redactar campañas)
+// Cache bust: 2026-06-15 18:30
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.440.0',
+        title: 'Email Marketing F3: Plantillas de Correo Reutilizables 📑',
+        date: new Date().toISOString(),
+        description: 'Al redactar una campaña ahora puedes cargar una plantilla guardada (rellena asunto y contenido al instante) y también guardar el contenido actual como una nueva plantilla reutilizable, todo desde el mismo modal. Las plantillas se comparten con el Centro de Comunicación del sitio, así que sirven para futuras campañas y mensajes. La tarjeta de "Plantillas" del tablero refleja el total disponible.',
+        tags: ['email-marketing', 'plantillas', 'templates', 'productividad', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.439.0',
         title: 'Email Marketing F2: Métricas, Aperturas/Clics, Reportes y Segmentación por Etiqueta 📊',

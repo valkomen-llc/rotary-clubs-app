@@ -3,7 +3,7 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Plus, Send, X, Trash2, Edit2, Mail, Users, Eye, EyeOff, Code,
     RefreshCw, CheckCircle2, Clock, AlertTriangle, Megaphone,
-    BarChart3, Tag, MousePointerClick, MailCheck
+    BarChart3, Tag, MousePointerClick, MailCheck, FileText, Save
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -32,6 +32,14 @@ interface CrmList {
     name: string;
     color?: string;
     _count?: { members: number };
+}
+
+interface EmailTemplate {
+    id: string;
+    name: string;
+    type?: string;
+    subject?: string | null;
+    content: string;
 }
 
 interface Stats {
@@ -81,6 +89,7 @@ const EmailMarketing: React.FC = () => {
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [lists, setLists] = useState<CrmList[]>([]);
     const [tags, setTags] = useState<string[]>([]);
+    const [templates, setTemplates] = useState<EmailTemplate[]>([]);
     const [stats, setStats] = useState<Stats | null>(null);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -125,12 +134,48 @@ const EmailMarketing: React.FC = () => {
         } catch { /* las etiquetas son opcionales */ }
     }, []);
 
+    const fetchTemplates = useCallback(async () => {
+        try {
+            const res = await fetch(`${API}/communications/templates`, { headers: authHeaders() });
+            if (res.ok) {
+                const data: EmailTemplate[] = await res.json();
+                setTemplates(data.filter(t => !t.type || t.type === 'email'));
+            }
+        } catch { /* las plantillas son opcionales */ }
+    }, []);
+
     useEffect(() => {
         fetchCampaigns();
         fetchStats();
         fetchLists();
         fetchTags();
-    }, [fetchCampaigns, fetchStats, fetchLists, fetchTags]);
+        fetchTemplates();
+    }, [fetchCampaigns, fetchStats, fetchLists, fetchTags, fetchTemplates]);
+
+    const loadTemplate = (id: string) => {
+        const t = templates.find(x => x.id === id);
+        if (!t) return;
+        setForm(f => ({ ...f, subject: t.subject || f.subject, content: t.content }));
+        toast.success(`Plantilla "${t.name}" cargada`);
+    };
+
+    const saveAsTemplate = async () => {
+        const name = window.prompt('Nombre de la plantilla:', form.name || 'Plantilla de campaña');
+        if (!name) return;
+        try {
+            const res = await fetch(`${API}/communications/templates`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({ name, type: 'email', subject: form.subject, content: form.content }),
+            });
+            if (!res.ok) throw new Error('No se pudo guardar la plantilla');
+            toast.success('Plantilla guardada');
+            fetchTemplates();
+            fetchStats();
+        } catch (err: any) {
+            toast.error(err.message);
+        }
+    };
 
     const openReport = async (c: Campaign) => {
         setReport(null);
@@ -471,6 +516,32 @@ const EmailMarketing: React.FC = () => {
                                 {audienceCount == null
                                     ? 'Calculando audiencia…'
                                     : <>Se enviará a <strong>{audienceCount}</strong> contacto(s) con email válido (se excluyen bajas).</>}
+                            </div>
+
+                            <div className="flex flex-wrap items-end gap-2 bg-gray-50 border border-gray-100 rounded-lg p-3">
+                                <div className="flex-1 min-w-[180px]">
+                                    <label className="block text-[11px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1">
+                                        <FileText className="w-3 h-3" /> Plantillas
+                                    </label>
+                                    <select
+                                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none bg-white text-sm"
+                                        value=""
+                                        onChange={(e) => { if (e.target.value) loadTemplate(e.target.value); }}
+                                    >
+                                        <option value="">— Cargar plantilla —</option>
+                                        {templates.map(t => (
+                                            <option key={t.id} value={t.id}>{t.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={saveAsTemplate}
+                                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-bold text-rotary-blue bg-white border border-blue-200 rounded-lg hover:bg-sky-50 transition-all"
+                                    title="Guardar el contenido actual como plantilla reutilizable"
+                                >
+                                    <Save className="w-4 h-4" /> Guardar como plantilla
+                                </button>
                             </div>
 
                             <div>
