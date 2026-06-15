@@ -890,18 +890,22 @@ const ClubsManagement: React.FC = () => {
                                 </div>
 
                                 <div className="md:col-span-1">
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Skin de Arquitectura (Footer)</label>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Tipo de Entidad / Clasificación</label>
                                     <select
                                         className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none transition-all bg-sky-50 font-bold text-rotary-blue"
                                         value={formData.type}
                                         onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                                        title="Define la estructura de links y labels del footer"
+                                        title="Determina en qué sección del panel aparece el registro (Clubes, Eventos, Asociaciones…) y el skin del footer"
                                     >
-                                        <option value="club">Skin de Rotary Club (Socio)</option>
-                                        <option value="district">Skin de Distrito Rotary</option>
-                                        <option value="association">Skin de Asociación / Agrupación</option>
-                                        <option value="colrotarios">Skin de Colrotarios (Fundación)</option>
+                                        <option value="club">Rotary Club (Socio)</option>
+                                        <option value="district">Distrito Rotary</option>
+                                        <option value="association">Asociación / Agrupación</option>
+                                        <option value="colrotarios">Colrotarios (Fundación)</option>
+                                        <option value="Evento o Convención">Evento o Convención</option>
                                     </select>
+                                    <p className="text-[10px] text-gray-400 mt-1">
+                                        Reclasifica el registro y define el skin del footer. Al elegir "Evento o Convención" se moverá a la sección Eventos y dejará de listarse aquí.
+                                    </p>
                                 </div>
 
                                  <div className="md:col-span-1">

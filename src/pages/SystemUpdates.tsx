@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.437.16 | 2026-06-15 (Eventos: el selector de skin ya no corrompe el tipo; los eventos no se fugan a Gestión Global de Clubes)
-// Cache bust: 2026-06-15 16:10
+// UI V4.437.17 | 2026-06-15 (Clubes: reclasificar tipo de entidad desde el panel, incl. mover un registro a Evento o Convención)
+// Cache bust: 2026-06-15 16:30
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.437.17',
+        title: 'Clubes: Reclasifica el Tipo de Entidad desde el Panel (mover un registro a Evento, Asociación, etc.) 🔁',
+        date: new Date().toISOString(),
+        description: 'En la Gestión Global de Clubes, al editar un sitio, el antiguo selector "Skin de Arquitectura (Footer)" ahora es "Tipo de Entidad / Clasificación" y suma la opción "Evento o Convención". Esto permite reclasificar un registro que quedó mal categorizado y moverlo a la sección correcta: por ejemplo, un evento que por error figuraba como club se puede devolver a "Gestión de Eventos y Convenciones" con un clic, sin tocar la base de datos. El selector deja claro que determina en qué sección aparece el registro (Clubes, Eventos, Asociaciones…) además del skin del footer.',
+        tags: ['clubes', 'eventos', 'reclasificacion', 'segmentacion', 'admin', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.437.16',
         title: 'Fix: los Eventos y Convenciones ya no se "Fugan" a la Gestión Global de Clubes 🗂️✅',
