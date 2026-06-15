@@ -842,7 +842,7 @@ const ClubSettings: React.FC = () => {
                                     <Palette className="w-5 h-5 text-rotary-blue" /> Hero del Evento (Portada)
                                 </h3>
                                 <p className="text-xs text-gray-400 mb-6">
-                                    Portada a pantalla completa, distinta a la de los sitios normales. Sube <strong>una sola imagen</strong> (queda estática) o <strong>varias</strong> (rotan en carrusel automático). Si no subes ninguna, se usa el hero por defecto. Tamaño ideal: 1920×800px.
+                                    Portada a pantalla completa, distinta a la de los sitios normales. Sube <strong>una sola imagen</strong> (queda estática) o <strong>varias</strong> (rotan en carrusel automático). Si no subes ninguna, se usa el hero por defecto. Tamaño ideal: 1920×750px.
                                 </p>
 
                                 <div className="flex flex-wrap gap-4">
