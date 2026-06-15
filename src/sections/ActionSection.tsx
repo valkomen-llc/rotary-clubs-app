@@ -2,19 +2,35 @@ import { T } from '../components/T';
 import { Link } from 'react-router-dom';
 import { useClub } from '../contexts/ClubContext';
 
+// El patrón geográfico (geo-darkblue.png) es una imagen de PALETA OPACA azul (sin canal
+// alfa), así que al pintarse como background-image tapaba por completo el background-color
+// elegido. Por eso el color personalizado no se veía en vivo aunque el dato sí llegaba.
+// Solución: superponer una capa translúcida del color elegido SOBRE el patrón, de modo que
+// el color domine y la textura quede sutil. Para el azul por defecto el resultado es idéntico.
+const hexToRgba = (hex: string, alpha: number): string => {
+  let h = (hex || '').replace('#', '').trim();
+  if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+  if (h.length !== 6 || /[^0-9a-fA-F]/.test(h)) return `rgba(12,60,124,${alpha})`;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+};
+
 const ActionSection = () => {
   const { club } = useClub();
   const bgColor = club?.colors?.actionBg || '#0c3c7c';
+  const wash = hexToRgba(bgColor, 0.88);
 
   return (
     <section
       className="py-16 md:py-20"
       style={{
         backgroundColor: bgColor,
-        backgroundImage: "url('/geo-darkblue.png')",
-        backgroundPosition: '50% 0',
-        backgroundRepeat: 'repeat',
-        backgroundSize: '71px 85px'
+        backgroundImage: `linear-gradient(${wash}, ${wash}), url('/geo-darkblue.png')`,
+        backgroundPosition: 'center, 50% 0',
+        backgroundRepeat: 'no-repeat, repeat',
+        backgroundSize: 'cover, 71px 85px'
       }}
     >
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
