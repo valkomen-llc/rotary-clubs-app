@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.453.0 | 2026-06-16 (Hero propio a pantalla completa para sitios Evento/Convención: 1 o varias imágenes)
-// Cache bust: 2026-06-16 03:40
+// UI V4.453.1 | 2026-06-16 (Hero del evento en proporción 1920x800)
+// Cache bust: 2026-06-16 04:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.453.1',
+        title: 'Hero del Evento: Proporción 1920×800 📐',
+        description: 'El hero de los sitios de Evento/Convención ahora mantiene la proporción 1920×800 (relación 2.4:1) en todos los anchos de pantalla, en lugar de un alto basado en el tamaño de la ventana. Así se ve consistente con el tamaño de imagen recomendado.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'hero', 'eventos', 'proporcion', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.453.0',
         title: 'Eventos: Hero Propio a Pantalla Completa (1 o varias imágenes) 🖼️',
