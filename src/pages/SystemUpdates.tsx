@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.443.0 | 2026-06-15 (Email Marketing F6: rebotes y quejas vía webhook de Resend — bajas automáticas)
-// Cache bust: 2026-06-15 20:00
+// UI V4.444.0 | 2026-06-15 (Identidad: color de fondo de la sección "Somos gente de acción" para Eventos/Convenciones)
+// Cache bust: 2026-06-15 20:10
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.444.0',
+        title: 'Identidad: Color de la Sección "Somos gente de acción" 🎨',
+        description: 'Los sitios de tipo Evento o Convención ahora pueden personalizar el color de fondo del bloque de llamado a la acción "Somos gente de acción" de su portada. La opción aparece en Configuración → Identidad, con selector de color y vista previa en vivo. Si no se define un color, se mantiene el azul institucional por defecto.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'personalizacion', 'eventos', 'convenciones', 'color', 'branding', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.443.0',
         title: 'Email Marketing F6: Rebotes y Quejas Automáticos (Webhook de Resend) 🛡️',

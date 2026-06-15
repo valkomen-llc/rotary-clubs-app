@@ -1,12 +1,16 @@
 import { T } from '../components/T';
 import { Link } from 'react-router-dom';
+import { useClub } from '../contexts/ClubContext';
 
 const ActionSection = () => {
+  const { club } = useClub();
+  const bgColor = club?.colors?.actionBg || '#0c3c7c';
+
   return (
     <section
       className="py-16 md:py-20"
       style={{
-        backgroundColor: '#0c3c7c',
+        backgroundColor: bgColor,
         backgroundImage: "url('/geo-darkblue.png')",
         backgroundPosition: '50% 0',
         backgroundRepeat: 'repeat',

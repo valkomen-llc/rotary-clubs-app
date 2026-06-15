@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.443.0",
-  "cache_bust": "2026-06-15 20:00 (Email Marketing F6: rebotes y quejas vía webhook de Resend — bajas automáticas)",
+  "version": "4.444.0",
+  "cache_bust": "2026-06-15 20:10 (Identidad: color de fondo de la sección 'Somos gente de acción' para Eventos/Convenciones)",
   "type": "module",
-  "//": "UI V4.443.0 | 2026-06-15 (Email Marketing F6: rebotes y quejas vía webhook de Resend — bajas automáticas)",
+  "//": "UI V4.444.0 | 2026-06-15 (Identidad: color de fondo de la sección 'Somos gente de acción' para Eventos/Convenciones)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

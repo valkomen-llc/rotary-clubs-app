@@ -22,7 +22,9 @@ export interface ClubConfig {
     colors: {
         primary: string;
         secondary: string;
+        actionBg?: string;
     };
+    type?: string;
     social: { platform: string; url: string }[];
     contact: {
         email: string;
