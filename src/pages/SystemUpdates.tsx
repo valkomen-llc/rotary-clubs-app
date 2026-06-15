@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.447.0 | 2026-06-15 (Identidad: color personalizable de la sección Únete a Rotary)
-// Cache bust: 2026-06-15 22:00
+// UI V4.447.1 | 2026-06-15 (Áreas de interés usa el color de Somos gente de acción)
+// Cache bust: 2026-06-15 22:30
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.447.1',
+        title: 'Áreas de Interés: Toma el Color de "Somos gente de acción" 🎨',
+        description: 'El contenedor de áreas de interés de la portada (el bloque con el nombre del sitio y los círculos de las áreas prioritarias) ahora usa el mismo color de fondo configurado en "Somos gente de acción". Así basta con elegir un color en Configuración → Identidad para que ambas secciones queden coordinadas. La textura geométrica se conserva (se tiñe del color elegido) y, si no se define color, se mantiene el azul por defecto.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'color', 'areas-de-interes', 'portada', 'coherencia', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.447.0',
         title: 'Identidad: Color de la Sección "Únete a Rotary" 🎨',
