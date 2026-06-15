@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ArrowRight, ChevronLeft, ChevronRight, Newspaper } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useCtaButton } from '../hooks/useCtaButton';
 import { useClub } from '../contexts/ClubContext';
 import { useTranslated } from '../contexts/LanguageContext';
 import { T } from '../components/T';
@@ -16,6 +17,7 @@ const ArticleTitle = ({ text }: { text: string }) => {
 
 const NewsSection = () => {
   const { club } = useClub();
+  const cta = useCtaButton();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
   const [dbArticles, setDbArticles] = useState<any[]>([]);
@@ -170,7 +172,8 @@ const NewsSection = () => {
         <div className="text-center mt-10">
           <Link
             to="/blog"
-            className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
+            className={`inline-flex items-center gap-2 ${cta.className} font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg`}
+            style={cta.style}
           >
             <Newspaper className="w-5 h-5 text-rotary-gold" />
             <T>Explora más noticias y artículos</T>

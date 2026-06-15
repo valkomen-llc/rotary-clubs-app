@@ -46,6 +46,9 @@ const ClubSettings: React.FC = () => {
         footerBg: '#013E7D',
         copyrightBg: '#013871',
         copyrightTextColor: '#FFFFFF',
+        buttonBg: '#e0f2fe',
+        buttonHoverBg: '#bae6fd',
+        buttonTextColor: '#004080',
         logo: '',
         footerLogo: '',
         endPolioLogo: '',
@@ -135,6 +138,9 @@ const ClubSettings: React.FC = () => {
                 footerBg: club.colors?.footerBg || settingsMap['footer_bg'] || '#013E7D',
                 copyrightBg: club.colors?.copyrightBg || settingsMap['copyright_bg'] || '#013871',
                 copyrightTextColor: club.colors?.copyrightText || settingsMap['copyright_text_color'] || '#FFFFFF',
+                buttonBg: club.colors?.buttonBg || settingsMap['button_bg'] || '#e0f2fe',
+                buttonHoverBg: club.colors?.buttonHoverBg || settingsMap['button_hover_bg'] || '#bae6fd',
+                buttonTextColor: club.colors?.buttonText || settingsMap['button_text_color'] || '#004080',
                 logo: club.logo || '',
                 footerLogo: club.footerLogo || '',
                 endPolioLogo: club.endPolioLogo || '',
@@ -736,6 +742,52 @@ const ClubSettings: React.FC = () => {
                                         <div className="py-3 text-center" style={{ backgroundColor: formData.copyrightBg }}>
                                             <p className="text-[11px]" style={{ color: formData.copyrightTextColor }}>© {new Date().getFullYear()} · Todos los derechos reservados</p>
                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Colores de los botones del inicio — solo Eventos/Convenciones */}
+                        {(isSuperAdmin || club?.type === 'Evento o Convención') && (
+                            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                                <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
+                                    <Palette className="w-5 h-5 text-rotary-blue" /> Colores de los Botones del Inicio
+                                </h3>
+                                <p className="text-xs text-gray-400 mb-6">
+                                    Botones de llamado a la acción de la portada (Toma Acción, Involúcrate, Explora noticias, etc.). Configura el fondo, el fondo al pasar el mouse (hover) y el color del texto.
+                                </p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                                    <div className="space-y-5">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-gray-400 uppercase">Fondo del Botón</label>
+                                            <div className="flex items-center gap-4">
+                                                <input type="color" value={formData.buttonBg} onChange={e => setFormData({...formData, buttonBg: e.target.value})} className="w-12 h-12 rounded-xl cursor-pointer border-none" />
+                                                <input type="text" value={formData.buttonBg} onChange={e => setFormData({...formData, buttonBg: e.target.value})} className="flex-1 px-4 py-2 bg-gray-50 rounded-lg text-sm font-mono font-bold" />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-gray-400 uppercase">Fondo al pasar el mouse (Hover)</label>
+                                            <div className="flex items-center gap-4">
+                                                <input type="color" value={formData.buttonHoverBg} onChange={e => setFormData({...formData, buttonHoverBg: e.target.value})} className="w-12 h-12 rounded-xl cursor-pointer border-none" />
+                                                <input type="text" value={formData.buttonHoverBg} onChange={e => setFormData({...formData, buttonHoverBg: e.target.value})} className="flex-1 px-4 py-2 bg-gray-50 rounded-lg text-sm font-mono font-bold" />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-gray-400 uppercase">Color del Texto</label>
+                                            <div className="flex items-center gap-4">
+                                                <input type="color" value={formData.buttonTextColor} onChange={e => setFormData({...formData, buttonTextColor: e.target.value})} className="w-12 h-12 rounded-xl cursor-pointer border-none" />
+                                                <input type="text" value={formData.buttonTextColor} onChange={e => setFormData({...formData, buttonTextColor: e.target.value})} className="flex-1 px-4 py-2 bg-gray-50 rounded-lg text-sm font-mono font-bold" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="rounded-2xl p-8 flex items-center justify-center bg-gray-50 border border-gray-100">
+                                        <button
+                                            type="button"
+                                            className="cta-btn inline-flex items-center gap-2 font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
+                                            style={{ ['--btn-bg' as string]: formData.buttonBg, ['--btn-hover' as string]: formData.buttonHoverBg, ['--btn-text' as string]: formData.buttonTextColor } as React.CSSProperties}
+                                        >
+                                            ★ Toma Acción con Nosotros
+                                        </button>
                                     </div>
                                 </div>
                             </div>

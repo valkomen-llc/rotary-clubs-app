@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.451.0 | 2026-06-16 (Color configurable para el texto del copyright)
-// Cache bust: 2026-06-16 02:30
+// UI V4.452.0 | 2026-06-16 (Colores configurables de los botones del inicio: fondo, hover y texto)
+// Cache bust: 2026-06-16 03:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.452.0',
+        title: 'Inicio: Colores Configurables de los Botones (fondo, hover y texto) 🔘',
+        description: 'Ahora puedes personalizar los botones de llamado a la acción de la portada (Toma Acción con Nosotros, Involúcrate en Rotary, Explora más noticias, y los CTA de Causas y Fundación). En Configuración → Identidad, la tarjeta "Colores de los Botones del Inicio" permite elegir el color de fondo, el color de fondo al pasar el mouse (hover) y el color del texto, con vista previa interactiva. Aplica a sitios Evento/Convención; por defecto se mantiene el celeste actual.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'color', 'botones', 'cta', 'hover', 'inicio', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.451.0',
         title: 'Footer: Color del Texto del Copyright Configurable ✍️',
