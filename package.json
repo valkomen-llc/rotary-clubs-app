@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.449.3",
-  "cache_bust": "2026-06-16 01:00 (Únete a Rotary con textura para igualar el tono del resto de secciones)",
+  "version": "4.450.0",
+  "cache_bust": "2026-06-16 01:30 (Secciones personalizables con color sólido exacto, sin textura)",
   "type": "module",
-  "//": "UI V4.449.3 | 2026-06-16 (Únete a Rotary con textura para igualar el tono del resto de secciones)",
+  "//": "UI V4.450.0 | 2026-06-16 (Secciones personalizables con color sólido exacto, sin textura)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
