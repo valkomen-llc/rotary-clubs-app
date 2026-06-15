@@ -16,21 +16,7 @@ const ActionSection = () => {
         ? { backgroundColor: bgColor }
         : { backgroundColor: '#0c3c7c', backgroundImage: "url('/geo-darkblue.png')", backgroundPosition: '50% 0', backgroundRepeat: 'repeat', backgroundSize: '71px 85px' }}
     >
-      {/* Textura geométrica sobrepuesta al color de fondo — solo en sitios Evento/Convención */}
-      {isEventSite && (
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            backgroundImage: "url('/geo-darkblue.png')",
-            backgroundPosition: '50% 0',
-            backgroundRepeat: 'repeat',
-            backgroundSize: '71px 85px',
-            mixBlendMode: 'overlay',
-            opacity: 0.85
-          }}
-        />
-      )}
+      {/* Sitios Evento/Convención: color sólido exacto (sin textura). El resto conserva su textura clásica del fondo. */}
       <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <h2 className="text-3xl md:text-4xl font-light text-white mb-6">
           <T>Somos gente de acción</T>

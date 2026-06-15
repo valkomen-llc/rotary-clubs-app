@@ -523,7 +523,6 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
           ? ({ ['--areas-bg' as string]: club?.colors?.areasBg || '#0c3c7c' } as React.CSSProperties)
           : undefined}
       >
-        {((club as any)?.type === 'Evento o Convención') && <div className="areas-rotary__bg" aria-hidden="true" />}
         {/* Header */}
         {showHeader && (
           <header className="areas-rotary__header">

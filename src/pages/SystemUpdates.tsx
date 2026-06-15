@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.449.3 | 2026-06-16 (Únete a Rotary con textura para igualar el tono del resto de secciones)
-// Cache bust: 2026-06-16 01:00
+// UI V4.450.0 | 2026-06-16 (Secciones personalizables con color sólido exacto, sin textura)
+// Cache bust: 2026-06-16 01:30
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.450.0',
+        title: 'Secciones Personalizables: Color Sólido Exacto (sin textura) 🎨',
+        description: 'Las secciones con color configurable (Somos gente de acción, Únete a Rotary, Áreas de Interés, footer y barra de copyright) ahora muestran exactamente el color que eliges, como fondo sólido y sin textura encima. Así cualquier color —incluidos los claros como naranja o amarillo— se ve fiel al código seleccionado, y todas las secciones quedan en el mismo tono al usar el mismo color. (Aplica a sitios de tipo Evento o Convención; los demás sitios no cambian.)',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'color', 'solido', 'footer', 'copyright', 'eventos', 'convenciones', 'feature'],
+        type: 'fix'
+    },
     {
         version: '4.449.3',
         title: 'Únete a Rotary: Mismo Tono que el Resto de Secciones 🎯',
