@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.450.0",
-  "cache_bust": "2026-06-16 01:30 (Secciones personalizables con color sólido exacto, sin textura)",
+  "version": "4.450.1",
+  "cache_bust": "2026-06-16 02:00 (Se restaura la textura en todas las secciones; solo el copyright queda en color sólido)",
   "type": "module",
-  "//": "UI V4.450.0 | 2026-06-16 (Secciones personalizables con color sólido exacto, sin textura)",
+  "//": "UI V4.450.1 | 2026-06-16 (Se restaura la textura en todas las secciones; solo el copyright queda en color sólido)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
