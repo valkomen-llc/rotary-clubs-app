@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.444.0 | 2026-06-15 (Identidad: color de fondo de la sección "Somos gente de acción" para Eventos/Convenciones)
-// Cache bust: 2026-06-15 20:10
+// UI V4.445.0 | 2026-06-15 (Fix: persistencia del color de "Somos gente de acción" + redeploy de función /api)
+// Cache bust: 2026-06-15 21:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.445.0',
+        title: 'Fix: Persistencia del Color de "Somos gente de acción" 🔧',
+        description: 'Se refuerza el guardado del color de fondo de la sección "Somos gente de acción": la carga del panel ahora lee el valor desde el ajuste guardado como respaldo, y se fuerza el redespliegue de la función del API para asegurar que el cambio quede aplicado en producción.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'fix', 'color', 'persistencia', 'eventos', 'convenciones'],
+        type: 'fix'
+    },
     {
         version: '4.444.0',
         title: 'Identidad: Color de la Sección "Somos gente de acción" 🎨',

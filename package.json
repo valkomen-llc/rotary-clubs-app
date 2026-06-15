@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.444.0",
-  "cache_bust": "2026-06-15 20:10 (Identidad: color de fondo de la sección 'Somos gente de acción' para Eventos/Convenciones)",
+  "version": "4.445.0",
+  "cache_bust": "2026-06-15 21:00 (Fix: persistencia del color de 'Somos gente de acción' + redeploy de función /api)",
   "type": "module",
-  "//": "UI V4.444.0 | 2026-06-15 (Identidad: color de fondo de la sección 'Somos gente de acción' para Eventos/Convenciones)",
+  "//": "UI V4.445.0 | 2026-06-15 (Fix: persistencia del color de 'Somos gente de acción' + redeploy de función /api)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

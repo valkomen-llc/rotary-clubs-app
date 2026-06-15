@@ -124,7 +124,7 @@ const ClubSettings: React.FC = () => {
                 socialLinks: Array.isArray(club.social) ? club.social : [],
                 primaryColor: club.colors?.primary || '#013388',
                 secondaryColor: club.colors?.secondary || '#E29C00',
-                actionSectionBg: club.colors?.actionBg || '#0c3c7c',
+                actionSectionBg: club.colors?.actionBg || settingsMap['action_section_bg'] || '#0c3c7c',
                 logo: club.logo || '',
                 footerLogo: club.footerLogo || '',
                 endPolioLogo: club.endPolioLogo || '',
