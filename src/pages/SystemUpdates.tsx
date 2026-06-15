@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.437.17 | 2026-06-15 (Clubes: reclasificar tipo de entidad desde el panel, incl. mover un registro a Evento o Convención)
-// Cache bust: 2026-06-15 16:30
+// UI V4.438.0 | 2026-06-15 (Email Marketing: campañas tipo Mailchimp para admin y sitios de Eventos/Convenciones)
+// Cache bust: 2026-06-15 17:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.438.0',
+        title: 'Nuevo: Email Marketing — Campañas de Correo tipo Mailchimp 📧🚀',
+        date: new Date().toISOString(),
+        description: 'Llega un módulo de Email Marketing al menú General del panel. Permite crear campañas de correo (asunto, remitente, preheader y contenido HTML con vista previa), elegir la audiencia entre "todos los contactos" o una lista del CRM, ver en tiempo real a cuántos contactos con email válido se enviará (excluyendo bajas), y enviar la campaña reutilizando el motor de correo existente (Resend / SMTP del sitio). Cada envío queda registrado y la campaña muestra resultados de enviados y fallidos. Todos los correos incluyen automáticamente un pie con enlace para cancelar suscripción (opt-out), que marca al contacto como dado de baja para futuros envíos. El módulo está disponible para el administrador global y para los administradores de sitios de tipo "Evento o Convención".',
+        tags: ['email-marketing', 'campañas', 'crm', 'eventos', 'convenciones', 'resend', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.437.17',
         title: 'Clubes: Reclasifica el Tipo de Entidad desde el Panel (mover un registro a Evento, Asociación, etc.) 🔁',

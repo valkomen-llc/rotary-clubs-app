@@ -28,6 +28,7 @@ import {
     TrendingUp,
     Eye,
     Mail,
+    Send,
     Bot,
     Network,
     Palette,
@@ -323,6 +324,18 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         items.push(
             { icon: PieChart, label: 'Analytics', path: '/admin/analytics', category: 'General', keywords: ['estadisticas', 'visitas', 'trafico', 'ga4'] }
         );
+
+        // Email Marketing (v4.438) — administrador global + administradores de sitios
+        // tipo "Evento o Convención". Campañas de correo masivo tipo Mailchimp.
+        if (isSuperAdmin || club?.type === 'Evento o Convención') {
+            items.push({
+                icon: Send,
+                label: 'Email Marketing',
+                path: '/admin/email-marketing',
+                category: 'General',
+                keywords: ['email', 'marketing', 'campaña', 'campana', 'newsletter', 'boletin', 'correo', 'mailing', 'difusion', 'mailchimp'],
+            });
+        }
         
         // Overview for non-super-admins moves to Configuration
         if (!isUIAdmin && user?.role !== 'editor') {

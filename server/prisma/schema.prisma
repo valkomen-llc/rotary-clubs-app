@@ -109,6 +109,7 @@ model Club {
   members                  ClubMember[]
   communicationLogs        CommunicationLog[]
   communicationTemplates   CommunicationTemplate[]
+  emailCampaigns           EmailCampaign[]
   content                  ContentSection[]
   donations                Donation[]
   exchangeHostFamilies     ExchangeHostFamily[]
@@ -586,6 +587,32 @@ model CommunicationTemplate {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+}
+
+// Email Marketing (v4.438) — campañas tipo Mailchimp por sitio.
+// Reutiliza CrmContact/CrmList como audiencia y EmailService (Resend/SMTP) para enviar.
+model EmailCampaign {
+  id              String    @id @default(uuid())
+  clubId          String
+  name            String
+  subject         String
+  fromName        String?
+  preheader       String?
+  content         String    // HTML del cuerpo
+  audience        String    @default("all") // 'all' | 'list'
+  listId          String?   // id de CrmList cuando audience='list' (sin relación FK: resolución manual)
+  status          String    @default("draft") // draft | sending | sent | failed
+  totalRecipients Int       @default(0)
+  sentCount       Int       @default(0)
+  failedCount     Int       @default(0)
+  sentAt          DateTime?
+  createdById     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  club            Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([clubId])
+  @@index([status])
 }
 
 model CommunicationLog {
