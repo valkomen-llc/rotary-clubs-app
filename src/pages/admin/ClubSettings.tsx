@@ -595,18 +595,24 @@ const ClubSettings: React.FC = () => {
                                         </div>
                                     </div>
                                     <div
-                                        className="rounded-2xl p-6 text-center"
-                                        style={{
-                                            backgroundColor: formData.actionSectionBg,
-                                            // Misma composición que el sitio: textura + capa translúcida del color (≈0.88).
-                                            backgroundImage: `linear-gradient(${formData.actionSectionBg}E0, ${formData.actionSectionBg}E0), url('/geo-darkblue.png')`,
-                                            backgroundPosition: 'center, 50% 0',
-                                            backgroundRepeat: 'no-repeat, repeat',
-                                            backgroundSize: 'cover, 71px 85px'
-                                        }}
+                                        className="relative overflow-hidden rounded-2xl p-6 text-center"
+                                        style={{ backgroundColor: formData.actionSectionBg }}
                                     >
-                                        <p className="text-white text-lg font-light mb-1">Somos gente de acción</p>
-                                        <p className="text-white/80 text-xs">Vista previa (igual que en el sitio)</p>
+                                        {/* Misma composición que el sitio: color sólido + textura sobrepuesta (overlay). */}
+                                        <div
+                                            aria-hidden="true"
+                                            className="absolute inset-0 pointer-events-none"
+                                            style={{
+                                                backgroundImage: "url('/geo-darkblue.png')",
+                                                backgroundPosition: '50% 0',
+                                                backgroundRepeat: 'repeat',
+                                                backgroundSize: '71px 85px',
+                                                mixBlendMode: 'overlay',
+                                                opacity: 0.85
+                                            }}
+                                        />
+                                        <p className="relative text-white text-lg font-light mb-1">Somos gente de acción</p>
+                                        <p className="relative text-white/80 text-xs">Vista previa (igual que en el sitio)</p>
                                     </div>
                                 </div>
                             </div>

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.446.1 | 2026-06-15 (Fix real²: el patrón geo-darkblue opaco tapaba el color de 'Somos gente de acción'; ahora se superpone el color)
-// Cache bust: 2026-06-15 21:00
+// UI V4.446.2 | 2026-06-15 (Somos gente de acción: la textura geométrica se mantiene sobre el color de fondo elegido)
+// Cache bust: 2026-06-15 21:30
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.446.2',
+        title: 'Somos gente de acción: Color + Textura Geométrica Juntos 🎨🔷',
+        description: 'Ajuste sobre el fix anterior: ahora el color de fondo elegido se ve Y la textura geométrica se mantiene visible encima (la misma del contenedor de "áreas de interés"). Antes la textura quedaba tapada por la capa de color. Se logró pintando el color como fondo sólido y superponiendo la textura con mezcla "overlay", de modo que el patrón se tiñe del color elegido en lugar de ocultarlo. La vista previa del panel refleja exactamente el resultado del sitio.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'color', 'textura', 'gente-de-accion', 'eventos', 'convenciones', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.446.1',
         title: 'Fix Definitivo: El Color de "Somos gente de acción" ya se Ve en el Sitio 🎨✅',
