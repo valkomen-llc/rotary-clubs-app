@@ -1,6 +1,7 @@
 import { Globe } from 'lucide-react';
 import { useClub } from '../contexts/ClubContext';
 import { useSiteImages } from '../hooks/useSiteImages';
+import { useCtaButton } from '../hooks/useCtaButton';
 
 const defaultCauses = [
   {
@@ -43,6 +44,7 @@ const defaultCauses = [
 const CausesSection = () => {
   const { club } = useClub();
   const siteImages = useSiteImages();
+  const cta = useCtaButton();
 
   // Merge dynamic images with defaults
   const causes = defaultCauses.map((cause, i) => {
@@ -179,7 +181,8 @@ const CausesSection = () => {
         {/* CTA Button */}
         <div className="text-center mt-16">
           <button
-            className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
+            className={`inline-flex items-center gap-2 ${cta.className} font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg`}
+            style={cta.style}
           >
             <Globe className="w-5 h-5 text-rotary-gold" />
             Nuestras Áreas de Interés

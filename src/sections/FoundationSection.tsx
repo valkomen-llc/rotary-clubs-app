@@ -1,10 +1,12 @@
 import { Gift } from 'lucide-react';
 import { useSiteImages } from '../hooks/useSiteImages';
+import { useCtaButton } from '../hooks/useCtaButton';
 
 const DEFAULT_FOUNDATION_IMG = 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=1600&h=800&fit=crop';
 
 const FoundationSection = () => {
   const siteImages = useSiteImages();
+  const cta = useCtaButton();
   const imgUrl = siteImages.foundation?.url || DEFAULT_FOUNDATION_IMG;
   const imgAlt = siteImages.foundation?.alt || 'Fundación Rotary - Trabajo comunitario';
   return (
@@ -30,7 +32,8 @@ const FoundationSection = () => {
             Contribuye a La Fundación Rotaria para financiar proyectos de servicio que mejoran las condiciones de vida de las personas tanto en las comunidades locales como en todo el mundo.
           </p>
           <button
-            className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
+            className={`inline-flex items-center gap-2 ${cta.className} font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg`}
+            style={cta.style}
           >
             <Gift className="w-5 h-5 text-rotary-gold" />
             Apoya la Fundación Rotaria

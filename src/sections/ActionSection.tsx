@@ -1,6 +1,7 @@
 import { T } from '../components/T';
 import { Link } from 'react-router-dom';
 import { useClub } from '../contexts/ClubContext';
+import { useCtaButton } from '../hooks/useCtaButton';
 
 // El color de fondo personalizable + textura overlay aplica SOLO a sitios de tipo
 // "Evento o Convención". Los demás sitios conservan el render original (textura opaca azul).
@@ -8,6 +9,7 @@ const ActionSection = () => {
   const { club } = useClub();
   const isEventSite = (club as any)?.type === 'Evento o Convención';
   const bgColor = club?.colors?.actionBg || '#0c3c7c';
+  const cta = useCtaButton();
 
   return (
     <section
@@ -29,7 +31,8 @@ const ActionSection = () => {
         </p>
         <Link
           to="/involucrate"
-          className="inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
+          className={`inline-flex items-center gap-2 ${cta.className} font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg`}
+          style={cta.style}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="#F5A623" />

@@ -101,6 +101,16 @@
     background-color: #D91B5C;
   }
 
+  /* Botones CTA del inicio con colores configurables (sitios Evento/Convención).
+     Usa variables CSS para manejar el hover sin JS. */
+  .cta-btn {
+    background-color: var(--btn-bg, #e0f2fe);
+    color: var(--btn-text, #004080);
+  }
+  .cta-btn:hover {
+    background-color: var(--btn-hover, #bae6fd);
+  }
+
   .text-rotaract {
     color: #D91B5C;
   }

@@ -1,6 +1,7 @@
 import { Star } from 'lucide-react';
 import { useSiteImages } from '../hooks/useSiteImages';
 import { useClub } from '../contexts/ClubContext';
+import { useCtaButton } from '../hooks/useCtaButton';
 
 const DEFAULT_JOIN_IMG = 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=600&h=500&fit=crop';
 
@@ -15,6 +16,7 @@ const JoinSection = () => {
   // Color de fondo personalizable solo para sitios Evento/Convención; el resto usa el azul original.
   const isEventSite = (club as any)?.type === 'Evento o Convención';
   const bgColor = isEventSite ? (club?.colors?.joinBg || '#0C3C7C') : '#0C3C7C';
+  const cta = useCtaButton();
 
   return (
     <section className="relative overflow-hidden py-20" style={{ backgroundColor: bgColor }}>
@@ -51,7 +53,8 @@ const JoinSection = () => {
             )}
             
             <button
-              className="mt-6 inline-flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-rotary-blue font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
+              className={`mt-6 inline-flex items-center gap-2 ${cta.className} font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg`}
+              style={cta.style}
             >
               <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
               Involúcrate en Rotary
