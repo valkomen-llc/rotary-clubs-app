@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.449.0 | 2026-06-15 (Identidad: colores configurables del footer y la barra de copyright)
-// Cache bust: 2026-06-15 23:50
+// UI V4.449.1 | 2026-06-16 (Footer y copyright con la misma textura/tono que las secciones de portada)
+// Cache bust: 2026-06-16 00:10
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.449.1',
+        title: 'Footer y Copyright: Mismo Tono que las Secciones de Portada 🎯',
+        description: 'El footer y la barra de copyright ahora llevan la misma textura geométrica superpuesta (a la misma intensidad) que las secciones "Somos gente de acción" y "Áreas de Interés". Así, al usar el mismo código de color, las cuatro secciones se ven con el mismo tono y el sitio queda coherente. La vista previa del panel también lo refleja.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'color', 'footer', 'copyright', 'textura', 'consistencia', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.449.0',
         title: 'Identidad: Colores del Footer y la Barra de Copyright 🎨',

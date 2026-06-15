@@ -117,8 +117,11 @@ const Footer = () => {
     const copyrightBg = (club as any)?.colors?.copyrightBg || '#013871';
 
     return (
-        <footer className="text-white w-full border-t border-white/5" style={{ backgroundColor: footerBg, background: footerBg }}>
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-[60px]">
+        <footer className="relative text-white w-full border-t border-white/5" style={{ backgroundColor: footerBg, background: footerBg }}>
+            <div className="relative">
+                {/* Textura superpuesta (misma técnica/intensidad que las secciones de la portada) */}
+                <div aria-hidden="true" className="absolute inset-0 pointer-events-none" style={{ backgroundImage: "url('/geo-darkblue.png')", backgroundPosition: '50% 0', backgroundRepeat: 'repeat', backgroundSize: '71px 85px', mixBlendMode: 'overlay', opacity: 0.85 }} />
+            <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-[60px]">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
                     {/* Logo & End Polio */}
                     <div className="space-y-8">
@@ -236,10 +239,12 @@ const Footer = () => {
                     </div>
                 </div>
             </div>
+            </div>
 
             {/* Bottom Bar */}
-            <div className="border-t border-white/5" style={{ backgroundColor: copyrightBg }}>
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
+            <div className="relative overflow-hidden border-t border-white/5" style={{ backgroundColor: copyrightBg }}>
+                <div aria-hidden="true" className="absolute inset-0 pointer-events-none" style={{ backgroundImage: "url('/geo-darkblue.png')", backgroundPosition: '50% 0', backgroundRepeat: 'repeat', backgroundSize: '71px 85px', mixBlendMode: 'overlay', opacity: 0.85 }} />
+                <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
                     <div className="flex flex-col md:flex-row items-center justify-between gap-6">
                         <div className="text-white/50 text-[11px] leading-loose no-uppercase text-center md:text-left">
                             © {new Date().getFullYear()} {club.name}. Todos los derechos reservados. <br className="md:hidden" />
