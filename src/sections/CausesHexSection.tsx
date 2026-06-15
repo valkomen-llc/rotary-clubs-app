@@ -9,7 +9,7 @@
   ╚══════════════════════════════════════════════════════════════════════════════╝
 */
 
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Globe } from 'lucide-react';
 import { useClub } from '../contexts/ClubContext';
@@ -38,11 +38,14 @@ const styles = `
      CONTENEDOR PRINCIPAL
      ═══════════════════════════════════════════════════════════════════════════ */
   .areas-rotary {
-    background-color: #0c3c7c;
+    background-color: var(--areas-bg, #0c3c7c);
     background-image: url('/geo-darkblue.png');
     background-position: 50% 0;
     background-repeat: repeat;
     background-size: 71px 85px;
+    /* La textura es un PNG opaco; con blend 'overlay' se tiñe del color elegido
+       (--areas-bg) en lugar de taparlo, sin afectar el contenido de la sección. */
+    background-blend-mode: overlay;
     padding: 4rem 1rem;
   }
 
@@ -484,7 +487,12 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
   return (
     <>
       <style>{styles}</style>
-      <section id="nuestras-causas" className="areas-rotary" aria-labelledby="areas-title">
+      <section
+        id="nuestras-causas"
+        className="areas-rotary"
+        aria-labelledby="areas-title"
+        style={{ ['--areas-bg' as string]: club?.colors?.actionBg || '#0c3c7c' } as React.CSSProperties}
+      >
         {/* Header */}
         {showHeader && (
           <header className="areas-rotary__header">
