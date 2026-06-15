@@ -45,6 +45,7 @@ const ClubSettings: React.FC = () => {
         areasSectionBg: '#0c3c7c',
         footerBg: '#013E7D',
         copyrightBg: '#013871',
+        copyrightTextColor: '#FFFFFF',
         logo: '',
         footerLogo: '',
         endPolioLogo: '',
@@ -133,6 +134,7 @@ const ClubSettings: React.FC = () => {
                 areasSectionBg: club.colors?.areasBg || settingsMap['areas_section_bg'] || '#0c3c7c',
                 footerBg: club.colors?.footerBg || settingsMap['footer_bg'] || '#013E7D',
                 copyrightBg: club.colors?.copyrightBg || settingsMap['copyright_bg'] || '#013871',
+                copyrightTextColor: club.colors?.copyrightText || settingsMap['copyright_text_color'] || '#FFFFFF',
                 logo: club.logo || '',
                 footerLogo: club.footerLogo || '',
                 endPolioLogo: club.endPolioLogo || '',
@@ -717,6 +719,13 @@ const ClubSettings: React.FC = () => {
                                                 <input type="text" value={formData.copyrightBg} onChange={e => setFormData({...formData, copyrightBg: e.target.value})} className="flex-1 px-4 py-2 bg-gray-50 rounded-lg text-sm font-mono font-bold" />
                                             </div>
                                         </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-gray-400 uppercase">Color del Texto del Copyright</label>
+                                            <div className="flex items-center gap-4">
+                                                <input type="color" value={formData.copyrightTextColor} onChange={e => setFormData({...formData, copyrightTextColor: e.target.value})} className="w-12 h-12 rounded-xl cursor-pointer border-none" />
+                                                <input type="text" value={formData.copyrightTextColor} onChange={e => setFormData({...formData, copyrightTextColor: e.target.value})} className="flex-1 px-4 py-2 bg-gray-50 rounded-lg text-sm font-mono font-bold" />
+                                            </div>
+                                        </div>
                                     </div>
                                     <div className="rounded-2xl overflow-hidden border border-gray-100">
                                         <div className="relative overflow-hidden p-6 text-center" style={{ backgroundColor: formData.footerBg }}>
@@ -725,7 +734,7 @@ const ClubSettings: React.FC = () => {
                                             <p className="relative text-white/70 text-xs">Pie de página</p>
                                         </div>
                                         <div className="py-3 text-center" style={{ backgroundColor: formData.copyrightBg }}>
-                                            <p className="text-white/60 text-[11px]">© {new Date().getFullYear()} · Todos los derechos reservados</p>
+                                            <p className="text-[11px]" style={{ color: formData.copyrightTextColor }}>© {new Date().getFullYear()} · Todos los derechos reservados</p>
                                         </div>
                                     </div>
                                 </div>

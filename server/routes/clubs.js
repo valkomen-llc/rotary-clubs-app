@@ -167,6 +167,7 @@ router.get('/by-domain', async (req, res) => {
                 areasBg: settings['areas_section_bg'] || '#0c3c7c',
                 footerBg: settings['footer_bg'] || '#013E7D',
                 copyrightBg: settings['copyright_bg'] || '#013871',
+                copyrightText: settings['copyright_text_color'] || '#FFFFFF',
             },
             logoText: activeClub.name?.split(' ').pop(),
             productsCount: activeClub._count?.products || 0,
