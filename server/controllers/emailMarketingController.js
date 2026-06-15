@@ -6,7 +6,7 @@ import EmailService from '../services/EmailService.js';
 // v4.438 — Sistema de Email Marketing (campañas tipo Mailchimp).
 // Reutiliza la audiencia del CRM (CrmContact/CrmList) y EmailService (Resend/SMTP)
 // para enviar. Cada campaña queda scopeada a un sitio (clubId) y respeta el opt-out.
-console.log('[emailMarketingController] v4.439 — campañas + tracking de aperturas/clics, reportes y segmentación por etiqueta');
+console.log('[emailMarketingController] v4.441 — campañas + tracking + reportes + segmentación + programación de envíos (cron)');
 
 // El administrador global puede operar en el contexto de un sitio vía ?clubId / body.clubId
 // (por ejemplo al impersonar). El resto de roles siempre opera sobre su propio clubId.
@@ -136,8 +136,8 @@ export const updateCampaign = async (req, res) => {
         if (!existing || existing.clubId !== clubId) {
             return res.status(404).json({ error: 'Campaña no encontrada' });
         }
-        if (existing.status !== 'draft') {
-            return res.status(400).json({ error: 'Solo se pueden editar campañas en borrador' });
+        if (!['draft', 'scheduled', 'failed'].includes(existing.status)) {
+            return res.status(400).json({ error: 'Solo se pueden editar campañas en borrador o programadas' });
         }
         const { name, subject, fromName, preheader, content, audience, listId, segmentTag } = req.body;
         const aud = audience !== undefined ? (['list', 'tag'].includes(audience) ? audience : 'all') : undefined;
@@ -207,7 +207,66 @@ const buildEmailHtml = (campaign, rid, contact, baseUrl) => {
     </body></html>`;
 };
 
-// POST /:id/send — envío de la campaña
+// Despacho real de una campaña (compartido por el envío manual y el cron de programados).
+// Lanza un Error si no hay destinatarios; el llamador decide cómo reportarlo.
+const dispatchCampaign = async ({ campaign, baseUrl, userId }) => {
+    const clubId = campaign.clubId;
+    const recipients = await resolveRecipients(clubId, campaign.audience, campaign.listId, campaign.segmentTag);
+    if (recipients.length === 0) {
+        const err = new Error('No hay destinatarios con email válido para esta audiencia');
+        err.code = 'NO_RECIPIENTS';
+        throw err;
+    }
+
+    const batch = recipients.slice(0, MAX_RECIPIENTS_PER_SEND);
+    await prisma.emailCampaign.update({
+        where: { id: campaign.id },
+        data: { status: 'sending', totalRecipients: batch.length, openCount: 0, clickCount: 0 },
+    });
+    // Reinicia destinatarios de un reenvío anterior (campaña fallida que se reintenta).
+    await prisma.emailCampaignRecipient.deleteMany({ where: { campaignId: campaign.id } });
+
+    let sentCount = 0;
+    let failedCount = 0;
+    const recipientRows = [];
+
+    for (const contact of batch) {
+        const rid = randomUUID();
+        const html = buildEmailHtml(campaign, rid, contact, baseUrl);
+        const result = await EmailService.sendEmail({
+            clubId,
+            to: contact.email.trim(),
+            subject: campaign.subject,
+            html,
+            userId: userId || null,
+        });
+        const ok = !!result?.success;
+        if (ok) sentCount += 1;
+        else failedCount += 1;
+        recipientRows.push({
+            id: rid,
+            campaignId: campaign.id,
+            clubId,
+            contactId: contact.id,
+            email: contact.email.trim(),
+            status: ok ? 'sent' : 'failed',
+        });
+    }
+
+    if (recipientRows.length) {
+        await prisma.emailCampaignRecipient.createMany({ data: recipientRows, skipDuplicates: true });
+    }
+
+    const finalStatus = sentCount > 0 ? 'sent' : 'failed';
+    const updated = await prisma.emailCampaign.update({
+        where: { id: campaign.id },
+        data: { status: finalStatus, sentCount, failedCount, scheduledAt: null, sentAt: new Date() },
+    });
+
+    return { campaign: updated, sent: sentCount, failed: failedCount, skipped: recipients.length - batch.length };
+};
+
+// POST /:id/send — envío inmediato de la campaña
 export const sendCampaign = async (req, res) => {
     try {
         const clubId = resolveClubId(req);
@@ -222,75 +281,90 @@ export const sendCampaign = async (req, res) => {
             return res.status(400).json({ error: 'Esta campaña ya fue enviada' });
         }
 
-        const recipients = await resolveRecipients(clubId, campaign.audience, campaign.listId, campaign.segmentTag);
-        if (recipients.length === 0) {
-            return res.status(400).json({ error: 'No hay destinatarios con email válido para esta audiencia' });
-        }
-
-        const batch = recipients.slice(0, MAX_RECIPIENTS_PER_SEND);
-        await prisma.emailCampaign.update({
-            where: { id: campaign.id },
-            data: { status: 'sending', totalRecipients: batch.length, openCount: 0, clickCount: 0 },
-        });
-        // Reinicia destinatarios de un reenvío anterior (campaña fallida que se reintenta).
-        await prisma.emailCampaignRecipient.deleteMany({ where: { campaignId: campaign.id } });
-
         const baseUrl = `${req.protocol}://${req.get('host')}`;
-        let sentCount = 0;
-        let failedCount = 0;
-        const recipientRows = [];
-
-        for (const contact of batch) {
-            const rid = randomUUID();
-            const html = buildEmailHtml(campaign, rid, contact, baseUrl);
-            const result = await EmailService.sendEmail({
-                clubId,
-                to: contact.email.trim(),
-                subject: campaign.subject,
-                html,
-                userId: req.user?.id || null,
-            });
-            const ok = !!result?.success;
-            if (ok) sentCount += 1;
-            else failedCount += 1;
-            recipientRows.push({
-                id: rid,
-                campaignId: campaign.id,
-                clubId,
-                contactId: contact.id,
-                email: contact.email.trim(),
-                status: ok ? 'sent' : 'failed',
-            });
-        }
-
-        if (recipientRows.length) {
-            await prisma.emailCampaignRecipient.createMany({ data: recipientRows, skipDuplicates: true });
-        }
-
-        const finalStatus = sentCount > 0 ? 'sent' : 'failed';
-        const updated = await prisma.emailCampaign.update({
-            where: { id: campaign.id },
-            data: {
-                status: finalStatus,
-                sentCount,
-                failedCount,
-                sentAt: new Date(),
-            },
-        });
-
-        res.json({
-            campaign: updated,
-            sent: sentCount,
-            failed: failedCount,
-            skipped: recipients.length - batch.length,
-        });
+        const result = await dispatchCampaign({ campaign, baseUrl, userId: req.user?.id });
+        res.json(result);
     } catch (error) {
+        if (error.code === 'NO_RECIPIENTS') {
+            return res.status(400).json({ error: error.message });
+        }
         console.error('[emailMarketing] sendCampaign:', error);
         try {
             await prisma.emailCampaign.update({ where: { id: req.params.id }, data: { status: 'failed' } });
         } catch { /* noop */ }
         res.status(500).json({ error: 'Error al enviar la campaña' });
     }
+};
+
+// POST /:id/schedule — programa el envío para una fecha/hora futura
+export const scheduleCampaign = async (req, res) => {
+    try {
+        const clubId = resolveClubId(req);
+        const campaign = await prisma.emailCampaign.findUnique({ where: { id: req.params.id } });
+        if (!campaign || campaign.clubId !== clubId) {
+            return res.status(404).json({ error: 'Campaña no encontrada' });
+        }
+        if (!['draft', 'scheduled', 'failed'].includes(campaign.status)) {
+            return res.status(400).json({ error: 'Solo se pueden programar campañas en borrador' });
+        }
+        const when = new Date(req.body.scheduledAt);
+        if (isNaN(when.getTime()) || when.getTime() <= Date.now()) {
+            return res.status(400).json({ error: 'La fecha de programación debe ser futura' });
+        }
+        const updated = await prisma.emailCampaign.update({
+            where: { id: campaign.id },
+            data: { status: 'scheduled', scheduledAt: when },
+        });
+        res.json(updated);
+    } catch (error) {
+        console.error('[emailMarketing] scheduleCampaign:', error);
+        res.status(500).json({ error: 'Error al programar la campaña' });
+    }
+};
+
+// POST /:id/unschedule — cancela la programación (vuelve a borrador)
+export const unscheduleCampaign = async (req, res) => {
+    try {
+        const clubId = resolveClubId(req);
+        const campaign = await prisma.emailCampaign.findUnique({ where: { id: req.params.id } });
+        if (!campaign || campaign.clubId !== clubId) {
+            return res.status(404).json({ error: 'Campaña no encontrada' });
+        }
+        if (campaign.status !== 'scheduled') {
+            return res.status(400).json({ error: 'La campaña no está programada' });
+        }
+        const updated = await prisma.emailCampaign.update({
+            where: { id: campaign.id },
+            data: { status: 'draft', scheduledAt: null },
+        });
+        res.json(updated);
+    } catch (error) {
+        console.error('[emailMarketing] unscheduleCampaign:', error);
+        res.status(500).json({ error: 'Error al cancelar la programación' });
+    }
+};
+
+// Procesa las campañas programadas cuya hora ya llegó. Lo invoca el cron.
+export const processScheduledCampaigns = async ({ baseUrl, now = new Date() } = {}) => {
+    const due = await prisma.emailCampaign.findMany({
+        where: { status: 'scheduled', scheduledAt: { not: null, lte: now } },
+        orderBy: { scheduledAt: 'asc' },
+        take: 25, // límite por corrida para respetar el tiempo del serverless
+    });
+    let processed = 0;
+    let failed = 0;
+    for (const campaign of due) {
+        try {
+            await dispatchCampaign({ campaign, baseUrl, userId: campaign.createdById });
+            processed += 1;
+        } catch (error) {
+            failed += 1;
+            const status = error.code === 'NO_RECIPIENTS' ? 'failed' : 'failed';
+            try { await prisma.emailCampaign.update({ where: { id: campaign.id }, data: { status } }); } catch { /* noop */ }
+            console.error(`[emailMarketing] scheduled dispatch failed for ${campaign.id}:`, error.message);
+        }
+    }
+    return { evaluated: due.length, processed, failed };
 };
 
 // GET /:id/report — métricas de una campaña enviada (aperturas/clics únicos)

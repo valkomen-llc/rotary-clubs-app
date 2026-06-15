@@ -8,6 +8,8 @@ import {
     updateCampaign,
     deleteCampaign,
     sendCampaign,
+    scheduleCampaign,
+    unscheduleCampaign,
     getReport,
     getStats,
     getTags,
@@ -31,5 +33,7 @@ router.post('/', createCampaign);
 router.put('/:id', updateCampaign);
 router.delete('/:id', deleteCampaign);
 router.post('/:id/send', sendCampaign);
+router.post('/:id/schedule', scheduleCampaign);
+router.post('/:id/unschedule', unscheduleCampaign);
 
 export default router;
