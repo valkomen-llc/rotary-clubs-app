@@ -121,6 +121,8 @@ const Footer = () => {
     return (
         <footer className="relative text-white w-full border-t border-white/5" style={{ backgroundColor: footerBg, background: footerBg }}>
             <div className="relative">
+                {/* Textura del footer principal (overlay 0.85) — solo Evento/Convención. La barra de copyright NO lleva textura. */}
+                {isEventSite && <div aria-hidden="true" className="absolute inset-0 pointer-events-none" style={{ backgroundImage: "url('/geo-darkblue.png')", backgroundPosition: '50% 0', backgroundRepeat: 'repeat', backgroundSize: '71px 85px', mixBlendMode: 'overlay', opacity: 0.85 }} />}
             <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-[60px]">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
                     {/* Logo & End Polio */}

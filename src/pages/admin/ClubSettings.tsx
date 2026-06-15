@@ -603,11 +603,12 @@ const ClubSettings: React.FC = () => {
                                         </div>
                                     </div>
                                     <div
-                                        className="rounded-2xl p-6 text-center"
+                                        className="relative overflow-hidden rounded-2xl p-6 text-center"
                                         style={{ backgroundColor: formData.actionSectionBg }}
                                     >
-                                        <p className="text-white text-lg font-light mb-1">Somos gente de acción</p>
-                                        <p className="text-white/80 text-xs">Vista previa (igual que en el sitio)</p>
+                                        <div aria-hidden="true" className="absolute inset-0 pointer-events-none" style={{ backgroundImage: "url('/geo-darkblue.png')", backgroundPosition: '50% 0', backgroundRepeat: 'repeat', backgroundSize: '71px 85px', mixBlendMode: 'overlay', opacity: 0.85 }} />
+                                        <p className="relative text-white text-lg font-light mb-1">Somos gente de acción</p>
+                                        <p className="relative text-white/80 text-xs">Vista previa (igual que en el sitio)</p>
                                     </div>
                                 </div>
                             </div>
@@ -641,11 +642,12 @@ const ClubSettings: React.FC = () => {
                                         </div>
                                     </div>
                                     <div
-                                        className="rounded-2xl p-6 text-center"
+                                        className="relative overflow-hidden rounded-2xl p-6 text-center"
                                         style={{ backgroundColor: formData.joinSectionBg }}
                                     >
-                                        <p className="text-white text-lg font-light mb-1">Únete a Rotary</p>
-                                        <p className="text-white/80 text-xs">Vista previa (igual que en el sitio)</p>
+                                        <div aria-hidden="true" className="absolute inset-0 pointer-events-none" style={{ backgroundImage: "url('/geo-darkblue.png')", backgroundPosition: '50% 0', backgroundRepeat: 'repeat', backgroundSize: '71px 85px', mixBlendMode: 'overlay', opacity: 0.85 }} />
+                                        <p className="relative text-white text-lg font-light mb-1">Únete a Rotary</p>
+                                        <p className="relative text-white/80 text-xs">Vista previa (igual que en el sitio)</p>
                                     </div>
                                 </div>
                             </div>
@@ -679,11 +681,12 @@ const ClubSettings: React.FC = () => {
                                         </div>
                                     </div>
                                     <div
-                                        className="rounded-2xl p-6 text-center"
+                                        className="relative overflow-hidden rounded-2xl p-6 text-center"
                                         style={{ backgroundColor: formData.areasSectionBg }}
                                     >
-                                        <p className="text-white text-lg font-light mb-1">Áreas de Interés</p>
-                                        <p className="text-white/80 text-xs">Vista previa (igual que en el sitio)</p>
+                                        <div aria-hidden="true" className="absolute inset-0 pointer-events-none" style={{ backgroundImage: "url('/geo-darkblue.png')", backgroundPosition: '50% 0', backgroundRepeat: 'repeat', backgroundSize: '71px 85px', mixBlendMode: 'overlay', opacity: 0.85 }} />
+                                        <p className="relative text-white text-lg font-light mb-1">Áreas de Interés</p>
+                                        <p className="relative text-white/80 text-xs">Vista previa (igual que en el sitio)</p>
                                     </div>
                                 </div>
                             </div>
@@ -716,9 +719,10 @@ const ClubSettings: React.FC = () => {
                                         </div>
                                     </div>
                                     <div className="rounded-2xl overflow-hidden border border-gray-100">
-                                        <div className="p-6 text-center" style={{ backgroundColor: formData.footerBg }}>
-                                            <p className="text-white text-sm font-bold mb-1">El Club · Realiza una Acción · Newsletter</p>
-                                            <p className="text-white/70 text-xs">Pie de página</p>
+                                        <div className="relative overflow-hidden p-6 text-center" style={{ backgroundColor: formData.footerBg }}>
+                                            <div aria-hidden="true" className="absolute inset-0 pointer-events-none" style={{ backgroundImage: "url('/geo-darkblue.png')", backgroundPosition: '50% 0', backgroundRepeat: 'repeat', backgroundSize: '71px 85px', mixBlendMode: 'overlay', opacity: 0.85 }} />
+                                            <p className="relative text-white text-sm font-bold mb-1">El Club · Realiza una Acción · Newsletter</p>
+                                            <p className="relative text-white/70 text-xs">Pie de página</p>
                                         </div>
                                         <div className="py-3 text-center" style={{ backgroundColor: formData.copyrightBg }}>
                                             <p className="text-white/60 text-[11px]">© {new Date().getFullYear()} · Todos los derechos reservados</p>

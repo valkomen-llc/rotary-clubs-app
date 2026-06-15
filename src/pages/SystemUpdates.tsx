@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.450.0 | 2026-06-16 (Secciones personalizables con color sólido exacto, sin textura)
-// Cache bust: 2026-06-16 01:30
+// UI V4.450.1 | 2026-06-16 (Se restaura la textura en todas las secciones; solo el copyright queda en color sólido)
+// Cache bust: 2026-06-16 02:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.450.1',
+        title: 'Textura Restaurada: Solo el Copyright Queda en Color Sólido 🎨',
+        description: 'Ajuste fino: se restauró la textura geométrica en las secciones "Somos gente de acción", "Únete a Rotary", "Áreas de Interés" y el pie de página (footer), que la habían perdido por error. Únicamente la barra inferior de copyright queda con color sólido exacto (sin textura), que era lo solicitado, para que colores claros como el naranja se vean fieles ahí. Aplica a sitios Evento/Convención.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'color', 'textura', 'copyright', 'footer', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.450.0',
         title: 'Secciones Personalizables: Color Sólido Exacto (sin textura) 🎨',
