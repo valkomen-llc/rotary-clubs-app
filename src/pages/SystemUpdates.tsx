@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.446.0 | 2026-06-15 (Fix real: clave colors duplicada en by-domain ocultaba actionBg)
-// Cache bust: 2026-06-15 21:20
+// UI V4.446.1 | 2026-06-15 (Fix real²: el patrón geo-darkblue opaco tapaba el color de 'Somos gente de acción'; ahora se superpone el color)
+// Cache bust: 2026-06-15 21:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.446.1',
+        title: 'Fix Definitivo: El Color de "Somos gente de acción" ya se Ve en el Sitio 🎨✅',
+        description: 'Cierre del caso: el color sí se guardaba y llegaba al sitio, pero la sección pintaba encima una imagen de textura azul (geo-darkblue.png) que es totalmente opaca, por lo que tapaba el color elegido. Ahora la textura se combina con una capa del color seleccionado, de modo que el color personalizado se ve en el sitio (con la textura sutil de fondo) y la vista previa del panel coincide exactamente con el resultado real. Para el azul por defecto el aspecto no cambia.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'fix', 'color', 'bugfix', 'eventos', 'convenciones', 'gente-de-accion'],
+        type: 'fix'
+    },
     {
         version: '4.446.0',
         title: 'Fix Real: El Color de "Somos gente de acción" ya Guarda ✅',
