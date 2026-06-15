@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.445.0 | 2026-06-15 (Fix: persistencia del color de "Somos gente de acción" + redeploy de función /api)
-// Cache bust: 2026-06-15 21:00
+// UI V4.446.0 | 2026-06-15 (Fix real: clave colors duplicada en by-domain ocultaba actionBg)
+// Cache bust: 2026-06-15 21:20
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.446.0',
+        title: 'Fix Real: El Color de "Somos gente de acción" ya Guarda ✅',
+        description: 'Causa raíz encontrada: la respuesta del API que entrega la configuración del sitio tenía el bloque de colores definido dos veces, y la segunda definición (sin el color de la sección) sobrescribía a la primera. Por eso el color se guardaba pero al recargar volvía al azul por defecto. Se unificó para incluir el color de fondo de "Somos gente de acción". Ahora el cambio persiste correctamente.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'fix', 'color', 'bugfix', 'eventos', 'convenciones'],
+        type: 'fix'
+    },
     {
         version: '4.445.0',
         title: 'Fix: Persistencia del Color de "Somos gente de acción" 🔧',

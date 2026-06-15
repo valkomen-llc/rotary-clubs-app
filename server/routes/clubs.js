@@ -126,7 +126,6 @@ router.get('/by-domain', async (req, res) => {
             colors: {
                 primary: entityColors.primary || settings['color_primary'] || '#013388',
                 secondary: entityColors.secondary || settings['color_secondary'] || '#E29C00',
-                actionBg: entityColors.actionBg || settings['action_section_bg'] || '#0c3c7c',
             },
 
             contact: {
@@ -163,6 +162,7 @@ router.get('/by-domain', async (req, res) => {
             colors: {
                 primary: settings['color_primary'] || '#013388',
                 secondary: settings['color_secondary'] || '#E29C00',
+                actionBg: settings['action_section_bg'] || '#0c3c7c',
             },
             logoText: activeClub.name?.split(' ').pop(),
             productsCount: activeClub._count?.products || 0,
