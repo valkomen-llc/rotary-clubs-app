@@ -17,7 +17,8 @@ interface Campaign {
     audience: 'all' | 'list' | 'tag';
     listId?: string | null;
     segmentTag?: string | null;
-    status: 'draft' | 'sending' | 'sent' | 'failed';
+    status: 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';
+    scheduledAt?: string | null;
     totalRecipients: number;
     sentCount: number;
     failedCount: number;
@@ -76,13 +77,25 @@ const emptyForm = {
     audience: 'all' as 'all' | 'list' | 'tag',
     listId: '',
     segmentTag: '',
+    scheduleEnabled: false,
+    scheduledAt: '',
 };
 
 const STATUS_META: Record<Campaign['status'], { label: string; cls: string; icon: React.ReactNode }> = {
     draft: { label: 'Borrador', cls: 'bg-gray-100 text-gray-600', icon: <Edit2 className="w-3 h-3" /> },
+    scheduled: { label: 'Programada', cls: 'bg-violet-100 text-violet-700', icon: <Clock className="w-3 h-3" /> },
     sending: { label: 'Enviando', cls: 'bg-amber-100 text-amber-700 animate-pulse', icon: <Clock className="w-3 h-3" /> },
     sent: { label: 'Enviada', cls: 'bg-emerald-100 text-emerald-700', icon: <CheckCircle2 className="w-3 h-3" /> },
     failed: { label: 'Fallida', cls: 'bg-rose-100 text-rose-700', icon: <AlertTriangle className="w-3 h-3" /> },
+};
+
+// Convierte una fecha ISO a valor para <input type="datetime-local"> en hora local.
+const toLocalInput = (iso?: string | null) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const off = d.getTimezoneOffset();
+    return new Date(d.getTime() - off * 60000).toISOString().slice(0, 16);
 };
 
 const EmailMarketing: React.FC = () => {
@@ -219,6 +232,8 @@ const EmailMarketing: React.FC = () => {
                 audience: c.audience,
                 listId: c.listId || '',
                 segmentTag: c.segmentTag || '',
+                scheduleEnabled: c.status === 'scheduled',
+                scheduledAt: toLocalInput(c.scheduledAt),
             });
         } else {
             setEditing(null);
@@ -229,6 +244,10 @@ const EmailMarketing: React.FC = () => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (form.scheduleEnabled) {
+            if (!form.scheduledAt) { toast.error('Indica la fecha y hora de programación'); return; }
+            if (new Date(form.scheduledAt).getTime() <= Date.now()) { toast.error('La fecha de programación debe ser futura'); return; }
+        }
         setIsSubmitting(true);
         try {
             const url = editing ? `${API}/email-marketing/${editing.id}` : `${API}/email-marketing`;
@@ -241,9 +260,25 @@ const EmailMarketing: React.FC = () => {
                 const d = await res.json();
                 throw new Error(d.error || 'No se pudo guardar la campaña');
             }
-            toast.success(editing ? 'Campaña actualizada' : 'Campaña creada');
+            const saved = await res.json();
+            // Aplica o cancela la programación según el toggle.
+            if (form.scheduleEnabled && form.scheduledAt) {
+                const r = await fetch(`${API}/email-marketing/${saved.id}/schedule`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                    body: JSON.stringify({ scheduledAt: new Date(form.scheduledAt).toISOString() }),
+                });
+                if (!r.ok) { const d = await r.json(); throw new Error(d.error || 'No se pudo programar'); }
+                toast.success('Campaña programada');
+            } else if (editing && editing.status === 'scheduled' && !form.scheduleEnabled) {
+                await fetch(`${API}/email-marketing/${saved.id}/unschedule`, { method: 'POST', headers: authHeaders() });
+                toast.success('Programación cancelada · campaña en borrador');
+            } else {
+                toast.success(editing ? 'Campaña actualizada' : 'Campaña creada');
+            }
             setIsModalOpen(false);
             fetchCampaigns();
+            fetchStats();
         } catch (err: any) {
             toast.error(err.message);
         } finally {
@@ -353,6 +388,11 @@ const EmailMarketing: React.FC = () => {
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-500">
                                         <div className="flex items-center gap-1"><Users className="w-3 h-3" /> {listName}</div>
+                                        {c.status === 'scheduled' && c.scheduledAt && (
+                                            <div className="flex items-center gap-1 text-[11px] text-violet-600 font-medium mt-1">
+                                                <Clock className="w-3 h-3" /> {new Date(c.scheduledAt).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                            </div>
+                                        )}
                                     </td>
                                     <td className="px-6 py-4 text-sm">
                                         {c.status === 'sent' || c.status === 'failed' ? (
@@ -378,7 +418,7 @@ const EmailMarketing: React.FC = () => {
                                                     <BarChart3 className="w-4 h-4" />
                                                 </button>
                                             )}
-                                            {(c.status === 'draft' || c.status === 'failed') && (
+                                            {(c.status === 'draft' || c.status === 'scheduled' || c.status === 'failed') && (
                                                 <button
                                                     onClick={() => handleSend(c)}
                                                     disabled={sendingId === c.id}
@@ -388,8 +428,8 @@ const EmailMarketing: React.FC = () => {
                                                     {sendingId === c.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                                                 </button>
                                             )}
-                                            {c.status === 'draft' && (
-                                                <button onClick={() => openModal(c)} className="p-2 text-gray-400 hover:text-rotary-blue transition-colors" title="Editar">
+                                            {(c.status === 'draft' || c.status === 'scheduled' || c.status === 'failed') && (
+                                                <button onClick={() => openModal(c)} className="p-2 text-gray-400 hover:text-rotary-blue transition-colors" title="Editar / Programar">
                                                     <Edit2 className="w-4 h-4" />
                                                 </button>
                                             )}
@@ -518,6 +558,31 @@ const EmailMarketing: React.FC = () => {
                                     : <>Se enviará a <strong>{audienceCount}</strong> contacto(s) con email válido (se excluyen bajas).</>}
                             </div>
 
+                            <div className="bg-violet-50/50 border border-violet-100 rounded-lg p-3">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        className="w-4 h-4 text-violet-600 rounded border-gray-300 focus:ring-violet-500"
+                                        checked={form.scheduleEnabled}
+                                        onChange={(e) => setForm({ ...form, scheduleEnabled: e.target.checked })}
+                                    />
+                                    <span className="text-sm font-bold text-violet-800 flex items-center gap-1.5"><Clock className="w-4 h-4" /> Programar envío</span>
+                                </label>
+                                {form.scheduleEnabled && (
+                                    <div className="mt-3">
+                                        <label className="block text-[11px] font-bold text-gray-500 mb-1 uppercase tracking-wider">Fecha y hora</label>
+                                        <input
+                                            type="datetime-local"
+                                            className="w-full px-3 py-2 border border-violet-200 rounded-lg focus:ring-2 focus:ring-violet-500 outline-none bg-white text-sm"
+                                            value={form.scheduledAt}
+                                            min={toLocalInput(new Date(Date.now() + 5 * 60000).toISOString())}
+                                            onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })}
+                                        />
+                                        <p className="text-[10px] text-gray-400 mt-1">El sistema enviará la campaña automáticamente a la hora indicada (revisión cada 5 minutos).</p>
+                                    </div>
+                                )}
+                            </div>
+
                             <div className="flex flex-wrap items-end gap-2 bg-gray-50 border border-gray-100 rounded-lg p-3">
                                 <div className="flex-1 min-w-[180px]">
                                     <label className="block text-[11px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1">
@@ -570,7 +635,7 @@ const EmailMarketing: React.FC = () => {
                             <div className="flex justify-end gap-3 border-t border-gray-100 pt-4">
                                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2 text-gray-500 font-bold hover:text-gray-700">Cancelar</button>
                                 <button type="submit" disabled={isSubmitting} className="bg-rotary-blue text-white px-8 py-2 rounded-full font-bold hover:bg-sky-800 transition-all disabled:opacity-50">
-                                    {isSubmitting ? 'Guardando…' : (editing ? 'Guardar Cambios' : 'Crear Campaña')}
+                                    {isSubmitting ? 'Guardando…' : (form.scheduleEnabled ? 'Programar Envío' : (editing ? 'Guardar Cambios' : 'Crear Campaña'))}
                                 </button>
                             </div>
                         </form>

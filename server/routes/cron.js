@@ -5,6 +5,7 @@ import WhatsAppService from '../services/WhatsAppService.js';
 import EmailService from '../services/EmailService.js';
 import { runScheduledPublicationsDue } from '../controllers/socialPublishingController.js';
 import { processAllActivations } from '../services/activationService.js';
+import { processScheduledCampaigns } from '../controllers/emailMarketingController.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -224,6 +225,28 @@ router.get('/process-activations', async (req, res) => {
         res.json({ ok: true, ...summary, elapsedMs });
     } catch (e) {
         console.error('[CRON process-activations] error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Vercel Cron endpoint: /api/cron/send-scheduled-emails
+// Envía las campañas de Email Marketing programadas cuya hora ya llegó.
+// Configurar en vercel.json con schedule "*/5 * * * *" (cada 5 minutos).
+router.get('/send-scheduled-emails', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        console.warn('[CRON send-scheduled-emails] Unauthorized');
+        return res.status(401).json({ error: 'Unauthorized cron trigger' });
+    }
+    try {
+        const startedAt = Date.now();
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const summary = await processScheduledCampaigns({ baseUrl });
+        const elapsedMs = Date.now() - startedAt;
+        console.log(`[CRON send-scheduled-emails] evaluadas=${summary.evaluated} enviadas=${summary.processed} fallidas=${summary.failed} en ${elapsedMs}ms`);
+        res.json({ ok: true, ...summary, elapsedMs });
+    } catch (e) {
+        console.error('[CRON send-scheduled-emails] error:', e);
         res.status(500).json({ error: e.message });
     }
 });

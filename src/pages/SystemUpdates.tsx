@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.440.0 | 2026-06-15 (Email Marketing F3: plantillas reutilizables — cargar y guardar plantillas al redactar campañas)
-// Cache bust: 2026-06-15 18:30
+// UI V4.441.0 | 2026-06-15 (Email Marketing F4: programación de envíos — agenda campañas y se envían solas vía cron)
+// Cache bust: 2026-06-15 19:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.441.0',
+        title: 'Email Marketing F4: Programación de Envíos ⏰',
+        description: 'Ahora puedes programar una campaña para que se envíe automáticamente en una fecha y hora futura, sin tener que estar presente. En el modal de la campaña activa "Programar envío", elige fecha y hora, y guarda: la campaña queda en estado "Programada" con su fecha visible. Un proceso automático revisa cada 5 minutos las campañas pendientes y las despacha a su hora. Puedes editar la programación o cancelarla (vuelve a borrador) cuando quieras, o enviarla de inmediato con el botón de envío.',
+        date: new Date().toISOString(),
+        tags: ['email-marketing', 'programacion', 'scheduling', 'cron', 'automatizacion', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.440.0',
         title: 'Email Marketing F3: Plantillas de Correo Reutilizables 📑',
