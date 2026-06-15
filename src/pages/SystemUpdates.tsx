@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.449.2 | 2026-06-16 (Fix: colores/textura personalizados solo en sitios Evento/Convención; el resto sin cambios)
-// Cache bust: 2026-06-16 00:40
+// UI V4.449.3 | 2026-06-16 (Únete a Rotary con textura para igualar el tono del resto de secciones)
+// Cache bust: 2026-06-16 01:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.449.3',
+        title: 'Únete a Rotary: Mismo Tono que el Resto de Secciones 🎯',
+        description: 'La sección "Únete a Rotary" era la única sección personalizable sin textura, por lo que con el mismo código de color se veía más brillante que el footer, el copyright y las demás secciones. Ahora también lleva la textura superpuesta (overlay 0.85, solo en sitios Evento/Convención), así un mismo hex produce el mismo tono en todas las secciones del sitio.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'color', 'unete-a-rotary', 'textura', 'consistencia', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.449.2',
         title: 'Fix: Los Colores Personalizados ya NO Afectan a los Demás Sitios 🛟',
