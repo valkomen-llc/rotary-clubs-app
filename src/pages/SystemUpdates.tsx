@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.441.0 | 2026-06-15 (Email Marketing F4: programación de envíos — agenda campañas y se envían solas vía cron)
-// Cache bust: 2026-06-15 19:00
+// UI V4.442.0 | 2026-06-15 (Email Marketing F5: automatizaciones — secuencias de correo por etiqueta)
+// Cache bust: 2026-06-15 19:30
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.442.0',
+        title: 'Email Marketing F5: Automatizaciones — Secuencias de Correo por Etiqueta 🔄',
+        description: 'El módulo de Email Marketing suma una pestaña de "Automatizaciones" estilo FluentCRM. Puedes crear una secuencia de correos disparada por una etiqueta del CRM: cuando un contacto tiene esa etiqueta, queda inscrito y recibe los pasos de la secuencia con las esperas que definas entre cada uno (ej. bienvenida hoy, seguimiento a los 3 días, recordatorio a la semana). Cada paso tiene su propia espera, asunto y contenido. Al activar la automatización se inscriben los contactos que ya tienen la etiqueta, y los nuevos se van inscribiendo automáticamente. El sistema procesa y envía los pasos vencidos cada 5 minutos. Puedes pausar, editar o eliminar la automatización en cualquier momento. Los contactos que cancelan su suscripción salen de la secuencia automáticamente.',
+        date: new Date().toISOString(),
+        tags: ['email-marketing', 'automatizaciones', 'secuencias', 'drip', 'etiquetas', 'cron', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.441.0',
         title: 'Email Marketing F4: Programación de Envíos ⏰',

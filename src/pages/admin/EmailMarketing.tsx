@@ -3,9 +3,10 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import {
     Plus, Send, X, Trash2, Edit2, Mail, Users, Eye, EyeOff, Code,
     RefreshCw, CheckCircle2, Clock, AlertTriangle, Megaphone,
-    BarChart3, Tag, MousePointerClick, MailCheck, FileText, Save
+    BarChart3, Tag, MousePointerClick, MailCheck, FileText, Save, Workflow
 } from 'lucide-react';
 import { toast } from 'sonner';
+import Automations from '../../components/admin/email-marketing/Automations';
 
 interface Campaign {
     id: string;
@@ -114,6 +115,7 @@ const EmailMarketing: React.FC = () => {
     const [preview, setPreview] = useState(false);
     const [report, setReport] = useState<Report | null>(null);
     const [reportLoading, setReportLoading] = useState(false);
+    const [tab, setTab] = useState<'campaigns' | 'automations'>('campaigns');
 
     const fetchCampaigns = useCallback(async () => {
         try {
@@ -326,13 +328,35 @@ const EmailMarketing: React.FC = () => {
                     </h1>
                     <p className="text-gray-500 text-sm">Crea y envía campañas de correo a tus contactos.</p>
                 </div>
+                {tab === 'campaigns' && (
+                    <button
+                        onClick={() => openModal()}
+                        className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2 rounded-lg hover:bg-sky-800 transition-all shadow-lg shadow-sky-100 font-bold"
+                    >
+                        <Plus className="w-4 h-4" /> Nueva Campaña
+                    </button>
+                )}
+            </div>
+
+            {/* Pestañas */}
+            <div className="flex gap-2 mb-6 border-b border-gray-100">
                 <button
-                    onClick={() => openModal()}
-                    className="flex items-center gap-2 bg-rotary-blue text-white px-4 py-2 rounded-lg hover:bg-sky-800 transition-all shadow-lg shadow-sky-100 font-bold"
+                    onClick={() => setTab('campaigns')}
+                    className={`px-4 py-2 text-sm font-bold border-b-2 -mb-px transition-colors flex items-center gap-2 ${tab === 'campaigns' ? 'border-rotary-blue text-rotary-blue' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
                 >
-                    <Plus className="w-4 h-4" /> Nueva Campaña
+                    <Mail className="w-4 h-4" /> Campañas
+                </button>
+                <button
+                    onClick={() => setTab('automations')}
+                    className={`px-4 py-2 text-sm font-bold border-b-2 -mb-px transition-colors flex items-center gap-2 ${tab === 'automations' ? 'border-rotary-blue text-rotary-blue' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+                >
+                    <Workflow className="w-4 h-4" /> Automatizaciones
                 </button>
             </div>
+
+            {tab === 'automations' && <Automations />}
+
+            {tab === 'campaigns' && <>
 
             {/* Dashboard de métricas */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
@@ -450,6 +474,8 @@ const EmailMarketing: React.FC = () => {
                 )}
                 {loading && <div className="p-12 text-center text-gray-400">Cargando…</div>}
             </div>
+
+            </>}
 
             {/* Modal Crear / Editar */}
             {isModalOpen && (

@@ -6,6 +6,7 @@ import EmailService from '../services/EmailService.js';
 import { runScheduledPublicationsDue } from '../controllers/socialPublishingController.js';
 import { processAllActivations } from '../services/activationService.js';
 import { processScheduledCampaigns } from '../controllers/emailMarketingController.js';
+import { processEmailAutomations } from '../controllers/emailAutomationController.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -242,9 +243,18 @@ router.get('/send-scheduled-emails', async (req, res) => {
         const startedAt = Date.now();
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         const summary = await processScheduledCampaigns({ baseUrl });
+        // Procesa también las automatizaciones (secuencias por etiqueta) en la misma corrida.
+        let automations = null;
+        try {
+            automations = await processEmailAutomations({ baseUrl });
+        } catch (autoErr) {
+            console.error('[CRON send-scheduled-emails] automations error:', autoErr.message);
+        }
         const elapsedMs = Date.now() - startedAt;
-        console.log(`[CRON send-scheduled-emails] evaluadas=${summary.evaluated} enviadas=${summary.processed} fallidas=${summary.failed} en ${elapsedMs}ms`);
-        res.json({ ok: true, ...summary, elapsedMs });
+        console.log(`[CRON send-scheduled-emails] campañas: evaluadas=${summary.evaluated} enviadas=${summary.processed} fallidas=${summary.failed}` +
+            (automations ? ` · automatizaciones: activas=${automations.automations} inscritos=${automations.enrolled} pasos=${automations.sent}` : '') +
+            ` en ${elapsedMs}ms`);
+        res.json({ ok: true, ...summary, automations, elapsedMs });
     } catch (e) {
         console.error('[CRON send-scheduled-emails] error:', e);
         res.status(500).json({ error: e.message });
