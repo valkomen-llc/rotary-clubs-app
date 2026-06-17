@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.455.0 | 2026-06-18 (Reporte PDF: correo de la plataforma en cabecera + listado de destinatarios con motivo de fallo)
-// Cache bust: 2026-06-18 01:15
+// UI V4.455.1 | 2026-06-18 (Reporte PDF: logo de Club Platform + explicaciones de error de Meta más claras)
+// Cache bust: 2026-06-18 01:35
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.455.1',
+        title: 'Reporte PDF: Logo de Club Platform y Motivos de Fallo más Claros 🖼️',
+        description: 'El reporte PDF de campañas ahora incluye el logo de Club Platform for Rotary en la cabecera. Además, se mejoraron las explicaciones de los mensajes fallidos: errores de Meta como "healthy ecosystem engagement" (Meta limitó el envío para no saturar al usuario) y "número parte de un experimento" (el destinatario quedó en un grupo de control/holdout de Meta) ahora se explican en español en vez de mostrar el mensaje técnico crudo.',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'campanas', 'reporte', 'pdf', 'logo', 'errores', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.455.0',
         title: 'Reporte PDF de Campañas: Destinatarios y Motivos de Fallo 📋',
