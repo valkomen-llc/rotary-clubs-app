@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.454.0 | 2026-06-18 (Tracker de campañas: botón Descargar PDF con análisis del agente Data Analyst)
-// Cache bust: 2026-06-18 00:40
+// UI V4.454.1 | 2026-06-18 (Reporte PDF: usar iframe para evitar el bloqueo de pop-ups del navegador)
+// Cache bust: 2026-06-18 00:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.454.1',
+        title: 'Reporte PDF de Campañas: Arreglo del Bloqueo de Pop-ups 🛠️',
+        description: 'El botón "Descargar PDF" del tracker de campañas ya no requiere permitir ventanas emergentes. Ahora el reporte se genera mediante un marco interno e imprime directamente el diálogo "Guardar como PDF", evitando el bloqueo de pop-ups del navegador.',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'campanas', 'reporte', 'pdf', 'popup', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.454.0',
         title: 'Campañas WhatsApp: Reporte PDF con Análisis IA 📄🤖',

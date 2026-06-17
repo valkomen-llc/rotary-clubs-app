@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.454.0",
-  "cache_bust": "2026-06-18 00:40 (Tracker de campañas: botón Descargar PDF con análisis del agente Data Analyst)",
+  "version": "4.454.1",
+  "cache_bust": "2026-06-18 00:55 (Reporte PDF: usar iframe para evitar el bloqueo de pop-ups del navegador)",
   "type": "module",
-  "//": "UI V4.454.0 | 2026-06-18 (Tracker de campañas: botón Descargar PDF con análisis del agente Data Analyst)",
+  "//": "UI V4.454.1 | 2026-06-18 (Reporte PDF: usar iframe para evitar el bloqueo de pop-ups del navegador)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

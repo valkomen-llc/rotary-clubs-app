@@ -94,13 +94,33 @@ const WhatsAppCampaigns: React.FC = () => {
             const data = await res.json();
             if (!res.ok) { toast.error(data.error || 'No se pudo generar el reporte'); return; }
             const html = buildReportHtml(data);
-            const win = window.open('', '_blank');
-            if (!win) { toast.error('Permite las ventanas emergentes para descargar el PDF'); return; }
-            win.document.write(html);
-            win.document.close();
-            win.focus();
-            // Esperar al render antes de abrir el diálogo de impresión (Guardar como PDF)
-            setTimeout(() => { try { win.print(); } catch { /* noop */ } }, 400);
+            // Usamos un iframe oculto en vez de window.open para evitar el bloqueo de
+            // pop-ups (la llamada ocurre tras un await, así que el navegador ya no la
+            // considera iniciada por el usuario). Imprimir el iframe abre el diálogo
+            // "Guardar como PDF".
+            const fileTitle = `Reporte - ${data?.campaign?.name || 'campaña'}`;
+            const prevTitle = document.title;
+            const iframe = document.createElement('iframe');
+            iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+            document.body.appendChild(iframe);
+            const idoc = iframe.contentWindow?.document;
+            if (!idoc) { iframe.remove(); toast.error('No se pudo generar el reporte'); return; }
+            idoc.open();
+            idoc.write(html);
+            idoc.close();
+            // El reporte no carga recursos externos, así que un breve delay basta para
+            // que el contenido se renderice antes de abrir el diálogo de impresión.
+            setTimeout(() => {
+                try {
+                    document.title = fileTitle; // el PDF toma el título del documento
+                    iframe.contentWindow?.focus();
+                    iframe.contentWindow?.print();
+                } catch { toast.error('No se pudo abrir el diálogo de impresión'); }
+                finally {
+                    document.title = prevTitle;
+                    setTimeout(() => iframe.remove(), 1000);
+                }
+            }, 350);
             if (data.analysisError) toast.warning('El análisis IA no está disponible ahora; el reporte incluye solo las métricas.');
         } catch {
             toast.error('Error al generar el reporte');
