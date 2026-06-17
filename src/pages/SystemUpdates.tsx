@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.456.2 | 2026-06-18 (Data Analyst: recomendaciones enfocadas en reforzar la difusión — reenvíos y estrategias multicanal)
-// Cache bust: 2026-06-18 02:45
+// UI V4.456.3 | 2026-06-18 (Data Analyst: limpieza de markdown — sin asteriscos en análisis y recomendaciones)
+// Cache bust: 2026-06-18 03:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.456.3',
+        title: 'Informe Analítico: Sin Asteriscos de Markdown ✍️',
+        description: 'Se corrigió que las recomendaciones y el análisis aparecieran con asteriscos (**texto**). Ahora el texto del agente Data Analyst se limpia de markdown antes de mostrarse, tanto en el modal como en el PDF, quedando como texto plano legible.',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'campanas', 'analisis', 'ia', 'markdown', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.456.2',
         title: 'Data Analyst: Recomendaciones para Reforzar la Difusión 🚀',
