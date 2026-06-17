@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.456.0",
-  "cache_bust": "2026-06-18 02:10 (Tracker: informe analítico del agente Data Analyst visible en el modal, antes de los filtros)",
+  "version": "4.456.1",
+  "cache_bust": "2026-06-18 02:25 (Tracker: arreglo de visualización de la caja del informe analítico — no se comprime)",
   "type": "module",
-  "//": "UI V4.456.0 | 2026-06-18 (Tracker: informe analítico del agente Data Analyst visible en el modal, antes de los filtros)",
+  "//": "UI V4.456.1 | 2026-06-18 (Tracker: arreglo de visualización de la caja del informe analítico — no se comprime)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

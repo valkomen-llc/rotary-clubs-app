@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.456.0 | 2026-06-18 (Tracker: informe analítico del agente Data Analyst visible en el modal, antes de los filtros)
-// Cache bust: 2026-06-18 02:10
+// UI V4.456.1 | 2026-06-18 (Tracker: arreglo de visualización de la caja del informe analítico — no se comprime)
+// Cache bust: 2026-06-18 02:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.456.1',
+        title: 'Tracker: Caja del Informe Analítico Bien Visible 🩹',
+        description: 'Se corrigió la visualización del informe analítico en el modal de seguimiento: la caja se comprimía y solo se veía la primera línea del resumen. Ahora mantiene su altura y muestra el resumen completo junto con análisis, conclusiones y recomendaciones (con scroll interno si es necesario).',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'campanas', 'tracker', 'analisis', 'ui', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.456.0',
         title: 'Tracker de Campañas: Informe Analítico IA en Pantalla 📊',
