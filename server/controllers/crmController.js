@@ -1480,8 +1480,15 @@ Responde ÚNICAMENTE con un objeto JSON válido (sin markdown, sin texto extra) 
   "resumen": "2-4 frases con el desempeño general de la campaña",
   "analisis": ["punto de análisis 1", "punto 2", "punto 3"],
   "conclusiones": ["conclusión 1", "conclusión 2"],
-  "recomendaciones": ["recomendación accionable 1", "recomendación 2", "recomendación 3"]
+  "recomendaciones": ["recomendación accionable 1", "recomendación 2", "recomendación 3", "recomendación 4"]
 }
+Las RECOMENDACIONES deben estar enfocadas en REFORZAR Y POTENCIAR LA DIFUSIÓN de esta campaña. Prioriza tácticas concretas como:
+- Reenviar la campaña a quienes NO leyeron el mensaje (entregados sin leer) y a los pendientes, idealmente cambiando el horario de envío y el copy/asunto.
+- Reintentar o depurar los números fallidos (corregir formato, confirmar que tienen WhatsApp, mover a la ventana de plantilla cuando aplique).
+- Estrategias de difusión multicanal complementarias: correo electrónico, llamadas/recordatorios personales, redes sociales del club, grupos/comunidades de WhatsApp, mensaje de seguimiento ("¿pudiste ver la información?").
+- Segmentar y personalizar (por club, ciudad, rol) y probar variantes A/B del mensaje o de la imagen.
+- Definir cadencia de recordatorios (ej. 2do y 3er toque) con tiempos sugeridos según el tiempo medio de lectura.
+Cada recomendación debe ser una acción específica y ejecutable (no genérica), apoyada en los números reales de esta campaña.
 Sé concreto, usa los números reales, no inventes datos que no estén en el contexto.`;
 
             const userPrompt = `Analiza esta campaña de WhatsApp:
@@ -1495,7 +1502,9 @@ Métricas (embudo):
 - Enviados: ${sent} (${pct(sent)}%)
 - Entregados: ${delivered} (${pct(delivered)}%)
 - Leídos: ${read} (${pct(read)}%)
-- Fallidos: ${failed} (${pct(failed)}%)
+- Entregados SIN leer (candidatos a reenvío/recordatorio): ${Math.max(delivered - read, 0)}
+- No enviados / pendientes: ${Math.max(total - sent, 0)}
+- Fallidos (candidatos a depurar y reintentar): ${failed} (${pct(failed)}%)
 - Tiempo medio de lectura: ${avgReadMin != null ? avgReadMin + ' min' : 'N/D'}
 ${topErrors.length ? '- Principales errores:\n' + topErrors.map(e => `  · ${e.msg} (${e.count})`).join('\n') : '- Sin errores registrados'}
 

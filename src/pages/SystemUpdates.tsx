@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.456.1 | 2026-06-18 (Tracker: arreglo de visualización de la caja del informe analítico — no se comprime)
-// Cache bust: 2026-06-18 02:25
+// UI V4.456.2 | 2026-06-18 (Data Analyst: recomendaciones enfocadas en reforzar la difusión — reenvíos y estrategias multicanal)
+// Cache bust: 2026-06-18 02:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.456.2',
+        title: 'Data Analyst: Recomendaciones para Reforzar la Difusión 🚀',
+        description: 'El agente Data Analyst ahora genera recomendaciones orientadas a potenciar la campaña: reenviar a quienes no leyeron el mensaje (cambiando horario y copy), reintentar/depurar los números fallidos, sumar canales complementarios (correo, llamadas, redes del club, grupos de WhatsApp), segmentar y personalizar, y definir cadencias de recordatorio. El informe ahora incluye métricas como "entregados sin leer" y "no enviados" para apuntar mejor los reenvíos.',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'campanas', 'analisis', 'ia', 'recomendaciones', 'difusion', 'improvement'],
+        type: 'improvement'
+    },
     {
         version: '4.456.1',
         title: 'Tracker: Caja del Informe Analítico Bien Visible 🩹',
