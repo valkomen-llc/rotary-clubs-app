@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.455.1 | 2026-06-18 (Reporte PDF: logo de Club Platform + explicaciones de error de Meta más claras)
-// Cache bust: 2026-06-18 01:35
+// UI V4.455.2 | 2026-06-18 (Reporte PDF: fallidos al final del listado + limpieza de cabecera bajo el logo)
+// Cache bust: 2026-06-18 01:50
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.455.2',
+        title: 'Reporte PDF: Orden del Listado y Cabecera más Limpia ✨',
+        description: 'En el reporte PDF de campañas, el listado de destinatarios ahora muestra primero los leídos y entregados, luego los enviados, y deja los fallidos al final. Además se eliminó el texto "Club Platform for Rotary" que aparecía debajo del logo (era redundante), dejando solo el correo de soporte.',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'campanas', 'reporte', 'pdf', 'orden', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.455.1',
         title: 'Reporte PDF: Logo de Club Platform y Motivos de Fallo más Claros 🖼️',

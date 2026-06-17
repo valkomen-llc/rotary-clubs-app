@@ -1451,8 +1451,8 @@ export const getCampaignReport = async (req, res) => {
         };
 
         // Lista de destinatarios (estado + explicación del fallo cuando aplica).
-        // Orden: primero fallidos, luego leídos, entregados, enviados y el resto.
-        const statusRank = { failed: 0, read: 1, delivered: 2, sent: 3 };
+        // Orden: primero leídos y entregados, luego enviados, y los fallidos al final.
+        const statusRank = { read: 0, delivered: 1, sent: 2, received: 3, pending: 4, failed: 9 };
         const recipients = logs
             .map(l => ({
                 name: l.contactName || null,
@@ -1463,7 +1463,7 @@ export const getCampaignReport = async (req, res) => {
                 readAt: l.readAt,
                 errorReason: l.status === 'failed' ? explainWhatsAppError(l.errorMessage) : null,
             }))
-            .sort((a, b) => (statusRank[a.status] ?? 9) - (statusRank[b.status] ?? 9));
+            .sort((a, b) => (statusRank[a.status] ?? 5) - (statusRank[b.status] ?? 5));
 
         // 3. Agente Data Analyst — análisis, conclusiones y recomendaciones
         let analysis = null;
