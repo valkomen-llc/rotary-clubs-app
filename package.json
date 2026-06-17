@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.455.0",
-  "cache_bust": "2026-06-18 01:15 (Reporte PDF: correo de la plataforma en cabecera + listado de destinatarios con motivo de fallo)",
+  "version": "4.455.1",
+  "cache_bust": "2026-06-18 01:35 (Reporte PDF: logo de Club Platform + explicaciones de error de Meta más claras)",
   "type": "module",
-  "//": "UI V4.455.0 | 2026-06-18 (Reporte PDF: correo de la plataforma en cabecera + listado de destinatarios con motivo de fallo)",
+  "//": "UI V4.455.1 | 2026-06-18 (Reporte PDF: logo de Club Platform + explicaciones de error de Meta más claras)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

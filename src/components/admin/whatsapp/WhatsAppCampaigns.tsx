@@ -108,9 +108,11 @@ const WhatsAppCampaigns: React.FC = () => {
             idoc.open();
             idoc.write(html);
             idoc.close();
-            // El reporte no carga recursos externos, así que un breve delay basta para
-            // que el contenido se renderice antes de abrir el diálogo de impresión.
-            setTimeout(() => {
+            // Imprimir solo una vez, tras esperar a que cargue el logo (imagen externa).
+            let printed = false;
+            const doPrint = () => {
+                if (printed) return;
+                printed = true;
                 try {
                     document.title = fileTitle; // el PDF toma el título del documento
                     iframe.contentWindow?.focus();
@@ -120,7 +122,15 @@ const WhatsAppCampaigns: React.FC = () => {
                     document.title = prevTitle;
                     setTimeout(() => iframe.remove(), 1000);
                 }
-            }, 350);
+            };
+            const logoImg = idoc.querySelector('img.logo') as HTMLImageElement | null;
+            if (logoImg && !logoImg.complete) {
+                logoImg.addEventListener('load', doPrint, { once: true });
+                logoImg.addEventListener('error', doPrint, { once: true });
+                setTimeout(doPrint, 2500); // fallback si la imagen tarda o falla
+            } else {
+                setTimeout(doPrint, 400);
+            }
             if (data.analysisError) toast.warning('El análisis IA no está disponible ahora; el reporte incluye solo las métricas.');
         } catch {
             toast.error('Error al generar el reporte');
@@ -131,6 +141,7 @@ const WhatsAppCampaigns: React.FC = () => {
 
     const buildReportHtml = (data: any) => {
         const PLATFORM_EMAIL = 'soporte@clubplatform.org';
+        const PLATFORM_LOGO = 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/platform/logo/1776225800089-Club_Platform_for_Rotary.png';
         const esc = (s: any) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
         const c = data.campaign || {};
         const s = data.stats || {};
@@ -181,8 +192,9 @@ const WhatsAppCampaigns: React.FC = () => {
         <title>Reporte de campaña — ${esc(c.name)}</title>
         <style>
           *{box-sizing:border-box}
-          body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;margin:0;padding:40px;max-width:820px;margin:0 auto;line-height:1.5}
+          body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;margin:0;padding:40px;max-width:820px;margin:0 auto;line-height:1.5;-webkit-print-color-adjust:exact;print-color-adjust:exact}
           .head{border-bottom:3px solid #16a34a;padding-bottom:16px;margin-bottom:24px}
+          .head .logo{height:46px;width:auto;margin-bottom:10px;display:block}
           .head h1{margin:0;font-size:22px;color:#111827}
           .head .meta{font-size:12px;color:#6b7280;margin-top:6px}
           .tag{display:inline-block;background:#dcfce7;color:#15803d;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:6px}
@@ -212,6 +224,7 @@ const WhatsAppCampaigns: React.FC = () => {
           @media print{body{padding:0}.noprint{display:none}@page{margin:16mm}thead{display:table-header-group}}
         </style></head><body>
           <div class="head">
+            <img class="logo" src="${esc(PLATFORM_LOGO)}" alt="Club Platform for Rotary" onerror="this.style.display='none'">
             <div class="brand">Club Platform for Rotary <span class="email">· ${esc(PLATFORM_EMAIL)}</span></div>
             <h1>Reporte de campaña WhatsApp${a ? '<span class="tag">Análisis IA</span>' : ''}</h1>
             <div class="meta">
