@@ -130,18 +130,45 @@ const WhatsAppCampaigns: React.FC = () => {
     };
 
     const buildReportHtml = (data: any) => {
+        const PLATFORM_EMAIL = 'soporte@clubplatform.org';
         const esc = (s: any) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
         const c = data.campaign || {};
         const s = data.stats || {};
         const a = data.analysis || null;
+        const recipients: any[] = Array.isArray(data.recipients) ? data.recipients : [];
         const gen = data.generatedAt ? new Date(data.generatedAt).toLocaleString('es-CO') : '';
         const sentAt = c.sentAt ? new Date(c.sentAt).toLocaleString('es-CO') : '—';
+        const fmtD = (d: any) => d ? new Date(d).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
         const card = (label: string, value: any, sub: any, color: string) =>
             `<div class="card"><div class="num" style="color:${color}">${esc(value)}</div><div class="lbl">${esc(label)}</div><div class="sub">${esc(sub)}</div></div>`;
         const list = (arr: any[]) => (Array.isArray(arr) && arr.length)
             ? `<ul>${arr.map(i => `<li>${esc(i)}</li>`).join('')}</ul>` : '<p class="muted">—</p>';
         const errorsRows = (s.topErrors || []).map((e: any) =>
             `<tr><td>${esc(e.msg)}</td><td style="text-align:right">${esc(e.count)}</td></tr>`).join('');
+
+        // Estado legible + color para la tabla de destinatarios
+        const statusMeta: Record<string, { label: string; color: string; bg: string }> = {
+            read: { label: 'Leído', color: '#6d28d9', bg: '#f5f3ff' },
+            delivered: { label: 'Entregado', color: '#1d4ed8', bg: '#eff6ff' },
+            sent: { label: 'Enviado', color: '#047857', bg: '#ecfdf5' },
+            failed: { label: 'Fallido', color: '#b91c1c', bg: '#fef2f2' },
+            pending: { label: 'Pendiente', color: '#b45309', bg: '#fffbeb' },
+            received: { label: 'Recibido', color: '#374151', bg: '#f3f4f6' },
+        };
+        const badge = (st: string) => {
+            const m = statusMeta[st] || { label: st || '—', color: '#374151', bg: '#f3f4f6' };
+            return `<span class="badge" style="color:${m.color};background:${m.bg}">${esc(m.label)}</span>`;
+        };
+        const recipientsRows = recipients.map(r => `
+            <tr>
+              <td>${esc(r.name || '—')}<div class="phone">${esc(r.phone || '')}</div></td>
+              <td>${badge(r.status)}</td>
+              <td class="ts">${esc(fmtD(r.sentAt))}</td>
+              <td class="ts">${esc(fmtD(r.deliveredAt))}</td>
+              <td class="ts">${esc(fmtD(r.readAt))}</td>
+              <td class="${r.status === 'failed' ? 'reason' : 'muted'}">${esc(r.errorReason || '—')}</td>
+            </tr>`).join('');
+        const failedList = recipients.filter(r => r.status === 'failed');
 
         const aiSection = a ? `
             ${a.resumen ? `<h2>Resumen ejecutivo</h2><p>${esc(a.resumen)}</p>` : ''}
@@ -172,10 +199,20 @@ const WhatsAppCampaigns: React.FC = () => {
           table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
           th,td{border:1px solid #e5e7eb;padding:6px 10px;text-align:left}
           th{background:#f9fafb;font-size:11px;text-transform:uppercase;color:#6b7280}
+          .brand{font-size:13px;font-weight:800;color:#16a34a}
+          .brand .email{font-weight:600;color:#6b7280;font-size:12px}
+          .badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
+          .phone{font-size:10px;color:#9ca3af;font-family:monospace}
+          .ts{font-size:10px;color:#6b7280;white-space:nowrap}
+          .reason{font-size:11px;color:#b91c1c}
+          td.muted{color:#d1d5db}
+          .rtable th,.rtable td{padding:5px 8px}
+          .rtable tr{break-inside:avoid}
           .foot{margin-top:32px;border-top:1px solid #e5e7eb;padding-top:12px;font-size:11px;color:#9ca3af}
-          @media print{body{padding:0}.noprint{display:none}@page{margin:18mm}}
+          @media print{body{padding:0}.noprint{display:none}@page{margin:16mm}thead{display:table-header-group}}
         </style></head><body>
           <div class="head">
+            <div class="brand">Club Platform for Rotary <span class="email">· ${esc(PLATFORM_EMAIL)}</span></div>
             <h1>Reporte de campaña WhatsApp${a ? '<span class="tag">Análisis IA</span>' : ''}</h1>
             <div class="meta">
               <b>${esc(c.name)}</b>${c.description ? ' — ' + esc(c.description) : ''}<br>
@@ -196,8 +233,25 @@ const WhatsAppCampaigns: React.FC = () => {
 
           ${errorsRows ? `<h2>Principales errores</h2><table><thead><tr><th>Error</th><th style="text-align:right">Cantidad</th></tr></thead><tbody>${errorsRows}</tbody></table>` : ''}
 
+          ${recipients.length ? `
+          <h2>Listado de destinatarios (${esc(recipients.length)})</h2>
+          <p class="muted">Estado de cada mensaje. Para los fallidos se indica el motivo por el que no se entregó.</p>
+          <table class="rtable">
+            <thead><tr>
+              <th>Contacto</th><th>Estado</th><th>Enviado</th><th>Entregado</th><th>Leído</th><th>Motivo del fallo</th>
+            </tr></thead>
+            <tbody>${recipientsRows}</tbody>
+          </table>` : ''}
+
+          ${failedList.length ? `
+          <h2>Detalle de fallidos (${esc(failedList.length)})</h2>
+          <table class="rtable">
+            <thead><tr><th>Contacto</th><th>Teléfono</th><th>Motivo por el que no se envió</th></tr></thead>
+            <tbody>${failedList.map(r => `<tr><td>${esc(r.name || '—')}</td><td class="ts">${esc(r.phone || '')}</td><td class="reason">${esc(r.errorReason || '—')}</td></tr>`).join('')}</tbody>
+          </table>` : ''}
+
           <div class="foot">
-            Reporte generado el ${esc(gen)} · Rotary Clubs Platform · Análisis elaborado por el agente Data Analyst.
+            Reporte generado el ${esc(gen)} · Club Platform for Rotary · ${esc(PLATFORM_EMAIL)} · Análisis elaborado por el agente Data Analyst.
           </div>
           <div class="noprint" style="margin-top:24px;text-align:center">
             <button onclick="window.print()" style="background:#16a34a;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:700;cursor:pointer">Imprimir / Guardar como PDF</button>
