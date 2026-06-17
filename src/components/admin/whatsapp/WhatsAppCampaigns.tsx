@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
-import { Megaphone, Plus, Trash2, Edit3, Play, Loader2, X, Eye, CheckCircle2, XCircle, Clock, Image, Video, Link2, CheckCheck, Check, MailOpen, FileDown } from 'lucide-react';
+import { Megaphone, Plus, Trash2, Edit3, Play, Loader2, X, Eye, CheckCircle2, XCircle, Clock, Image, Video, Link2, CheckCheck, Check, MailOpen, FileDown, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -19,6 +19,8 @@ const WhatsAppCampaigns: React.FC = () => {
     const [logFilter, setLogFilter] = useState<'all' | 'delivered' | 'read' | 'failed'>('all');
     const [loadingLogs, setLoadingLogs] = useState(false);
     const [reportLoading, setReportLoading] = useState(false);
+    const [report, setReport] = useState<any>(null);
+    const [reportFetching, setReportFetching] = useState(false);
     const [form, setForm] = useState({ name: '', description: '', listId: '', templateId: '', mediaUrl: '' });
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
@@ -77,22 +79,38 @@ const WhatsAppCampaigns: React.FC = () => {
         setViewLogs(id);
         setLogFilter('all');
         setLoadingLogs(true);
+        setReport(null);
         try {
             const res = await fetch(`${API}/whatsapp/campaigns/${id}/logs`, { headers: { Authorization: `Bearer ${token}` } });
             const data = await res.json();
             setLogs(Array.isArray(data) ? data : []);
         } catch { setLogs([]); } finally { setLoadingLogs(false); }
+        // Cargar el informe analítico (agente Data Analyst) en segundo plano
+        loadReport(id);
     };
 
     const fmt = (d: string | null | undefined) => d ? new Date(d).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+
+    // Carga (y cachea) el informe analítico de la campaña desde el backend.
+    const loadReport = async (id: string): Promise<any | null> => {
+        if (report && report.campaign?.id === id) return report;
+        setReportFetching(true);
+        try {
+            const res = await fetch(`${API}/whatsapp/campaigns/${id}/report`, { headers: { Authorization: `Bearer ${token}` } });
+            const data = await res.json();
+            if (!res.ok) { toast.error(data.error || 'No se pudo generar el informe'); return null; }
+            setReport(data);
+            return data;
+        } catch { toast.error('Error al generar el informe analítico'); return null; }
+        finally { setReportFetching(false); }
+    };
 
     // Genera el reporte PDF del tracker (resumen + análisis del agente Data Analyst)
     const downloadReport = async (id: string) => {
         setReportLoading(true);
         try {
-            const res = await fetch(`${API}/whatsapp/campaigns/${id}/report`, { headers: { Authorization: `Bearer ${token}` } });
-            const data = await res.json();
-            if (!res.ok) { toast.error(data.error || 'No se pudo generar el reporte'); return; }
+            const data = await loadReport(id);
+            if (!data) return;
             const html = buildReportHtml(data);
             // Usamos un iframe oculto en vez de window.open para evitar el bloqueo de
             // pop-ups (la llamada ocurre tras un await, así que el navegador ya no la
@@ -501,6 +519,50 @@ const WhatsAppCampaigns: React.FC = () => {
                                     <p className="text-[10px] text-gray-400">{f.sub}</p>
                                 </button>
                             ))}
+                        </div>
+
+                        {/* Informe analítico (agente Data Analyst) */}
+                        <div className="px-5 py-4 border-b border-gray-100 max-h-72 overflow-auto">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Sparkles className="w-4 h-4 text-green-600" />
+                                <h4 className="text-sm font-bold text-gray-900">Informe analítico</h4>
+                                <span className="text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">Data Analyst IA</span>
+                            </div>
+                            {reportFetching ? (
+                                <div className="flex items-center gap-2 text-xs text-gray-400 py-3">
+                                    <Loader2 className="w-4 h-4 animate-spin" /> Generando análisis con IA…
+                                </div>
+                            ) : report?.analysis ? (
+                                <div className="space-y-3 text-sm text-gray-700">
+                                    {report.analysis.resumen && (
+                                        <p className="bg-gray-50 rounded-lg p-3 text-[13px] leading-relaxed">{report.analysis.resumen}</p>
+                                    )}
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        {[
+                                            { t: 'Análisis', items: report.analysis.analisis, c: 'text-blue-700' },
+                                            { t: 'Conclusiones', items: report.analysis.conclusiones, c: 'text-purple-700' },
+                                            { t: 'Recomendaciones', items: report.analysis.recomendaciones, c: 'text-emerald-700' },
+                                        ].map(sec => (
+                                            <div key={sec.t}>
+                                                <p className={`text-[11px] font-bold uppercase tracking-wide mb-1 ${sec.c}`}>{sec.t}</p>
+                                                {Array.isArray(sec.items) && sec.items.length ? (
+                                                    <ul className="list-disc pl-4 space-y-1 text-[12px] text-gray-600">
+                                                        {sec.items.map((it: string, i: number) => <li key={i}>{it}</li>)}
+                                                    </ul>
+                                                ) : <p className="text-[12px] text-gray-300">—</p>}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex items-center justify-between gap-2 text-xs text-gray-400 py-2">
+                                    <span>{report?.analysisError ? 'El análisis IA no está disponible en este momento.' : 'Análisis no cargado.'}</span>
+                                    <button onClick={() => viewLogs && loadReport(viewLogs)}
+                                        className="px-2.5 py-1 rounded-lg bg-gray-100 text-gray-600 font-bold hover:bg-gray-200">
+                                        Reintentar
+                                    </button>
+                                </div>
+                            )}
                         </div>
 
                         {/* Filtros */}

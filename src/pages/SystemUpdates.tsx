@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.455.2 | 2026-06-18 (Reporte PDF: fallidos al final del listado + limpieza de cabecera bajo el logo)
-// Cache bust: 2026-06-18 01:50
+// UI V4.456.0 | 2026-06-18 (Tracker: informe analítico del agente Data Analyst visible en el modal, antes de los filtros)
+// Cache bust: 2026-06-18 02:10
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.456.0',
+        title: 'Tracker de Campañas: Informe Analítico IA en Pantalla 📊',
+        description: 'El informe analítico del agente Data Analyst (resumen, análisis, conclusiones y recomendaciones) ahora se muestra directamente en el modal "Seguimiento de la campaña", justo antes de los filtros (Todos/Entregados/Leídos/Fallidos), sin necesidad de descargar el PDF. Se genera automáticamente al abrir el seguimiento y se reutiliza para el PDF (sin doble llamada a la IA).',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'campanas', 'tracker', 'analisis', 'ia', 'data-analyst', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.455.2',
         title: 'Reporte PDF: Orden del Listado y Cabecera más Limpia ✨',
