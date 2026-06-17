@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
-import { Megaphone, Plus, Trash2, Edit3, Play, Loader2, X, Eye, CheckCircle2, XCircle, Clock, Image, Video, Link2, CheckCheck, Check, MailOpen } from 'lucide-react';
+import { Megaphone, Plus, Trash2, Edit3, Play, Loader2, X, Eye, CheckCircle2, XCircle, Clock, Image, Video, Link2, CheckCheck, Check, MailOpen, FileDown } from 'lucide-react';
 import { toast } from 'sonner';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -18,6 +18,7 @@ const WhatsAppCampaigns: React.FC = () => {
     const [logs, setLogs] = useState<any[]>([]);
     const [logFilter, setLogFilter] = useState<'all' | 'delivered' | 'read' | 'failed'>('all');
     const [loadingLogs, setLoadingLogs] = useState(false);
+    const [reportLoading, setReportLoading] = useState(false);
     const [form, setForm] = useState({ name: '', description: '', listId: '', templateId: '', mediaUrl: '' });
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
@@ -84,6 +85,105 @@ const WhatsAppCampaigns: React.FC = () => {
     };
 
     const fmt = (d: string | null | undefined) => d ? new Date(d).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+
+    // Genera el reporte PDF del tracker (resumen + análisis del agente Data Analyst)
+    const downloadReport = async (id: string) => {
+        setReportLoading(true);
+        try {
+            const res = await fetch(`${API}/whatsapp/campaigns/${id}/report`, { headers: { Authorization: `Bearer ${token}` } });
+            const data = await res.json();
+            if (!res.ok) { toast.error(data.error || 'No se pudo generar el reporte'); return; }
+            const html = buildReportHtml(data);
+            const win = window.open('', '_blank');
+            if (!win) { toast.error('Permite las ventanas emergentes para descargar el PDF'); return; }
+            win.document.write(html);
+            win.document.close();
+            win.focus();
+            // Esperar al render antes de abrir el diálogo de impresión (Guardar como PDF)
+            setTimeout(() => { try { win.print(); } catch { /* noop */ } }, 400);
+            if (data.analysisError) toast.warning('El análisis IA no está disponible ahora; el reporte incluye solo las métricas.');
+        } catch {
+            toast.error('Error al generar el reporte');
+        } finally {
+            setReportLoading(false);
+        }
+    };
+
+    const buildReportHtml = (data: any) => {
+        const esc = (s: any) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
+        const c = data.campaign || {};
+        const s = data.stats || {};
+        const a = data.analysis || null;
+        const gen = data.generatedAt ? new Date(data.generatedAt).toLocaleString('es-CO') : '';
+        const sentAt = c.sentAt ? new Date(c.sentAt).toLocaleString('es-CO') : '—';
+        const card = (label: string, value: any, sub: any, color: string) =>
+            `<div class="card"><div class="num" style="color:${color}">${esc(value)}</div><div class="lbl">${esc(label)}</div><div class="sub">${esc(sub)}</div></div>`;
+        const list = (arr: any[]) => (Array.isArray(arr) && arr.length)
+            ? `<ul>${arr.map(i => `<li>${esc(i)}</li>`).join('')}</ul>` : '<p class="muted">—</p>';
+        const errorsRows = (s.topErrors || []).map((e: any) =>
+            `<tr><td>${esc(e.msg)}</td><td style="text-align:right">${esc(e.count)}</td></tr>`).join('');
+
+        const aiSection = a ? `
+            ${a.resumen ? `<h2>Resumen ejecutivo</h2><p>${esc(a.resumen)}</p>` : ''}
+            <h2>Análisis</h2>${list(a.analisis)}
+            <h2>Conclusiones</h2>${list(a.conclusiones)}
+            <h2>Recomendaciones</h2>${list(a.recomendaciones)}`
+            : `<h2>Análisis</h2><p class="muted">El análisis del agente Data Analyst no está disponible en este momento. Vuelve a intentarlo más tarde.</p>`;
+
+        return `<!doctype html><html lang="es"><head><meta charset="utf-8">
+        <title>Reporte de campaña — ${esc(c.name)}</title>
+        <style>
+          *{box-sizing:border-box}
+          body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;margin:0;padding:40px;max-width:820px;margin:0 auto;line-height:1.5}
+          .head{border-bottom:3px solid #16a34a;padding-bottom:16px;margin-bottom:24px}
+          .head h1{margin:0;font-size:22px;color:#111827}
+          .head .meta{font-size:12px;color:#6b7280;margin-top:6px}
+          .tag{display:inline-block;background:#dcfce7;color:#15803d;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:6px}
+          .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:18px 0}
+          .card{border:1px solid #e5e7eb;border-radius:10px;padding:12px 8px;text-align:center}
+          .card .num{font-size:24px;font-weight:800}
+          .card .lbl{font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;margin-top:2px}
+          .card .sub{font-size:10px;color:#9ca3af}
+          h2{font-size:15px;color:#111827;margin:22px 0 8px;border-left:4px solid #16a34a;padding-left:10px}
+          ul{margin:6px 0;padding-left:20px}
+          li{margin:4px 0;font-size:13px}
+          p{font-size:13px}
+          .muted{color:#9ca3af}
+          table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+          th,td{border:1px solid #e5e7eb;padding:6px 10px;text-align:left}
+          th{background:#f9fafb;font-size:11px;text-transform:uppercase;color:#6b7280}
+          .foot{margin-top:32px;border-top:1px solid #e5e7eb;padding-top:12px;font-size:11px;color:#9ca3af}
+          @media print{body{padding:0}.noprint{display:none}@page{margin:18mm}}
+        </style></head><body>
+          <div class="head">
+            <h1>Reporte de campaña WhatsApp${a ? '<span class="tag">Análisis IA</span>' : ''}</h1>
+            <div class="meta">
+              <b>${esc(c.name)}</b>${c.description ? ' — ' + esc(c.description) : ''}<br>
+              Lista: ${esc(c.listName || 'N/D')} &nbsp;·&nbsp; Plantilla: ${esc(c.templateName || 'N/D')} &nbsp;·&nbsp; Enviada: ${esc(sentAt)}
+            </div>
+          </div>
+
+          <div class="cards">
+            ${card('Total', s.total, '100%', '#111827')}
+            ${card('Enviados', s.sent, (s.sentPct ?? 0) + '%', '#059669')}
+            ${card('Entregados', s.delivered, (s.deliveredPct ?? 0) + '%', '#2563eb')}
+            ${card('Leídos', s.read, (s.readPct ?? 0) + '%', '#7c3aed')}
+            ${card('Fallidos', s.failed, (s.failedPct ?? 0) + '%', '#dc2626')}
+          </div>
+          ${s.avgReadMin != null ? `<p class="muted">⏱ Tiempo medio de lectura: <b>${esc(s.avgReadMin)} min</b></p>` : ''}
+
+          ${aiSection}
+
+          ${errorsRows ? `<h2>Principales errores</h2><table><thead><tr><th>Error</th><th style="text-align:right">Cantidad</th></tr></thead><tbody>${errorsRows}</tbody></table>` : ''}
+
+          <div class="foot">
+            Reporte generado el ${esc(gen)} · Rotary Clubs Platform · Análisis elaborado por el agente Data Analyst.
+          </div>
+          <div class="noprint" style="margin-top:24px;text-align:center">
+            <button onclick="window.print()" style="background:#16a34a;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:700;cursor:pointer">Imprimir / Guardar como PDF</button>
+          </div>
+        </body></html>`;
+    };
 
     const resetForm = () => { setForm({ name: '', description: '', listId: '', templateId: '', mediaUrl: '' }); setEditId(null); };
     const startEdit = (c: any) => {
@@ -292,7 +392,15 @@ const WhatsAppCampaigns: React.FC = () => {
                                 <h3 className="font-bold text-gray-900">Seguimiento de la campaña</h3>
                                 {camp && <p className="text-xs text-gray-500 mt-0.5">{camp.name}</p>}
                             </div>
-                            <button onClick={() => setViewLogs(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => downloadReport(viewLogs)} disabled={reportLoading}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-700 disabled:opacity-50"
+                                    title="Genera un PDF con el resumen y un análisis del agente Data Analyst">
+                                    {reportLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}
+                                    {reportLoading ? 'Generando…' : 'Descargar PDF'}
+                                </button>
+                                <button onClick={() => setViewLogs(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+                            </div>
                         </div>
 
                         {/* Embudo */}
