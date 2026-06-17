@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.454.1 | 2026-06-18 (Reporte PDF: usar iframe para evitar el bloqueo de pop-ups del navegador)
-// Cache bust: 2026-06-18 00:55
+// UI V4.455.0 | 2026-06-18 (Reporte PDF: correo de la plataforma en cabecera + listado de destinatarios con motivo de fallo)
+// Cache bust: 2026-06-18 01:15
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.455.0',
+        title: 'Reporte PDF de Campañas: Destinatarios y Motivos de Fallo 📋',
+        description: 'El reporte PDF del tracker ahora incluye en la cabecera el correo de la plataforma (Club Platform for Rotary · soporte@clubplatform.org) y un listado completo de destinatarios con el estado de cada mensaje (leído, entregado, enviado, fallido) y sus fechas. Para cada mensaje fallido se explica en español el motivo por el que no se entregó (número fuera de la lista permitida, fuera de la ventana de 24h, número sin WhatsApp, límite de envío, problema de plantilla, etc.).',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'campanas', 'reporte', 'pdf', 'destinatarios', 'errores', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.454.1',
         title: 'Reporte PDF de Campañas: Arreglo del Bloqueo de Pop-ups 🛠️',

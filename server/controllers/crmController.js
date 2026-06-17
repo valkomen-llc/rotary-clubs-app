@@ -1355,6 +1355,33 @@ export const getCampaignLogs = async (req, res) => {
     }
 };
 
+// Traduce el mensaje de error crudo de la Meta Cloud API a una explicación
+// entendible en español de por qué no se entregó el mensaje.
+const explainWhatsAppError = (rawMsg) => {
+    const msg = (rawMsg || '').toString();
+    if (!msg) return 'No se registró el motivo del fallo (error genérico de la API de Meta).';
+    const lower = msg.toLowerCase();
+    const rules = [
+        { re: /131030|not in allowed list|allowed list/, txt: 'El número no está en la lista de destinatarios permitidos (la cuenta de WhatsApp está en modo de prueba o el número no fue aprobado).' },
+        { re: /131026|undeliverable|message undeliverable/, txt: 'Mensaje no entregable: el número no tiene WhatsApp, está inactivo o no puede recibir mensajes de esta cuenta.' },
+        { re: /131047|re-engagement|reengagement|outside.*24|24.?hour|24h window/, txt: 'Fuera de la ventana de 24 horas: se requiere una plantilla aprobada para volver a contactar a este destinatario.' },
+        { re: /131049|health.*notification|per-user marketing|frequency cap/, txt: 'Meta limitó la entrega de mensajes de marketing a este usuario (límite de frecuencia por destinatario).' },
+        { re: /131051|unsupported message type/, txt: 'Tipo de mensaje no soportado por el destinatario.' },
+        { re: /131056|pair rate limit/, txt: 'Se alcanzó el límite de mensajes entre tu cuenta y este destinatario en poco tiempo.' },
+        { re: /130429|rate limit|too many/, txt: 'Límite de velocidad alcanzado: se enviaron demasiados mensajes en poco tiempo. Reintentar más tarde.' },
+        { re: /132000|132001|132005|132007|132012|132015|template/, txt: 'Problema con la plantilla: puede estar pausada, no aprobada, o los parámetros no coinciden con lo aprobado por Meta.' },
+        { re: /133010|133004|account.*restricted|account locked|disabled/, txt: 'La cuenta de WhatsApp Business está restringida o deshabilitada por Meta.' },
+        { re: /100|invalid parameter|invalid phone|wrong number/, txt: 'Número o parámetro inválido: el formato del teléfono es incorrecto o falta un dato requerido.' },
+        { re: /1013|phone number.*not.*registered|not a whatsapp/, txt: 'El número no está registrado en WhatsApp.' },
+        { re: /470|message failed to send.*re-?engagement/, txt: 'No se pudo reenviar: requiere una plantilla por estar fuera de la ventana de 24 horas.' },
+        { re: /80007|throughput/, txt: 'Se superó la capacidad de envío permitida para la cuenta.' },
+        { re: /auth|token|oauth|190|expired/, txt: 'Problema de autenticación con Meta (token expirado o inválido). Revisar la configuración de WhatsApp.' },
+    ];
+    for (const r of rules) if (r.re.test(lower)) return r.txt;
+    // Si no hay coincidencia, devolver el mensaje original más una nota
+    return `Error reportado por Meta: ${msg}`;
+};
+
 // ── REPORTE IA (Agente Data Analyst) ─────────────────────────────────────────
 // Genera un análisis ejecutivo de la campaña con conclusiones y recomendaciones
 // usando el agente Data Analyst (routeToModel del ai-router). Lo consume el botón
@@ -1378,8 +1405,11 @@ export const getCampaignReport = async (req, res) => {
 
         // 2. Logs → embudo (misma lógica que el tracker del frontend)
         const logsR = await db.query(
-            `SELECT status,"sentAt","deliveredAt","readAt","errorMessage"
-             FROM "WhatsAppMessageLog" WHERE "campaignId"=$1`,
+            `SELECT l.status,l.phone,l."sentAt",l."deliveredAt",l."readAt",l."errorMessage",
+                    c.name as "contactName"
+             FROM "WhatsAppMessageLog" l
+             LEFT JOIN "WhatsAppContact" c ON c.id=l."contactId"
+             WHERE l."campaignId"=$1 ORDER BY l."createdAt" DESC`,
             [id]
         );
         const logs = logsR.rows;
@@ -1418,6 +1448,21 @@ export const getCampaignReport = async (req, res) => {
             avgReadMin,
             topErrors,
         };
+
+        // Lista de destinatarios (estado + explicación del fallo cuando aplica).
+        // Orden: primero fallidos, luego leídos, entregados, enviados y el resto.
+        const statusRank = { failed: 0, read: 1, delivered: 2, sent: 3 };
+        const recipients = logs
+            .map(l => ({
+                name: l.contactName || null,
+                phone: l.phone,
+                status: l.status,
+                sentAt: l.sentAt,
+                deliveredAt: l.deliveredAt,
+                readAt: l.readAt,
+                errorReason: l.status === 'failed' ? explainWhatsAppError(l.errorMessage) : null,
+            }))
+            .sort((a, b) => (statusRank[a.status] ?? 9) - (statusRank[b.status] ?? 9));
 
         // 3. Agente Data Analyst — análisis, conclusiones y recomendaciones
         let analysis = null;
@@ -1480,6 +1525,7 @@ Devuelve el JSON del reporte.`;
                 status: camp.status,
             },
             stats,
+            recipients,
             analysis,
             analysisError,
             generatedAt: new Date().toISOString(),
