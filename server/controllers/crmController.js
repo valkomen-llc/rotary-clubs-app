@@ -1355,6 +1355,141 @@ export const getCampaignLogs = async (req, res) => {
     }
 };
 
+// ── REPORTE IA (Agente Data Analyst) ─────────────────────────────────────────
+// Genera un análisis ejecutivo de la campaña con conclusiones y recomendaciones
+// usando el agente Data Analyst (routeToModel del ai-router). Lo consume el botón
+// "Descargar PDF" del tracker de campañas en el frontend.
+export const getCampaignReport = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const clubId = await resolveClubId(req);
+
+        // 1. Campaña + metadata
+        const campR = await db.query(
+            `SELECT c.*,l.name as "listName",t.name as "templateName",t."displayName" as "templateDisplayName"
+             FROM "WhatsAppCampaign" c
+             LEFT JOIN "WhatsAppContactList" l ON l.id=c."listId"
+             LEFT JOIN "WhatsAppTemplate" t ON t.id=c."templateId"
+             WHERE c.id=$1 AND c."clubId"=$2 LIMIT 1`,
+            [id, clubId]
+        );
+        if (!campR.rows.length) return res.status(404).json({ error: 'Campaña no encontrada' });
+        const camp = campR.rows[0];
+
+        // 2. Logs → embudo (misma lógica que el tracker del frontend)
+        const logsR = await db.query(
+            `SELECT status,"sentAt","deliveredAt","readAt","errorMessage"
+             FROM "WhatsAppMessageLog" WHERE "campaignId"=$1`,
+            [id]
+        );
+        const logs = logsR.rows;
+        const total = logs.length;
+        const failed = logs.filter(l => l.status === 'failed').length;
+        const read = logs.filter(l => l.status === 'read').length;
+        const delivered = logs.filter(l => ['delivered', 'read'].includes(l.status)).length;
+        const sent = logs.filter(l => ['sent', 'delivered', 'read'].includes(l.status)).length;
+        const pct = (n) => total ? Math.round((n / total) * 100) : 0;
+
+        // Tiempo medio de lectura (entre enviado y leído) en minutos
+        const readTimes = logs
+            .filter(l => l.status === 'read' && l.sentAt && l.readAt)
+            .map(l => (new Date(l.readAt) - new Date(l.sentAt)) / 60000)
+            .filter(m => m >= 0 && m < 60 * 24 * 7);
+        const avgReadMin = readTimes.length
+            ? Math.round(readTimes.reduce((a, b) => a + b, 0) / readTimes.length)
+            : null;
+
+        // Errores agrupados
+        const errorCounts = {};
+        for (const l of logs.filter(l => l.status === 'failed')) {
+            const key = (l.errorMessage || 'Error de envío (Meta API)').slice(0, 120);
+            errorCounts[key] = (errorCounts[key] || 0) + 1;
+        }
+        const topErrors = Object.entries(errorCounts)
+            .sort((a, b) => b[1] - a[1]).slice(0, 5)
+            .map(([msg, count]) => ({ msg, count }));
+
+        const stats = {
+            total,
+            sent, sentPct: pct(sent),
+            delivered, deliveredPct: pct(delivered),
+            read, readPct: pct(read),
+            failed, failedPct: pct(failed),
+            avgReadMin,
+            topErrors,
+        };
+
+        // 3. Agente Data Analyst — análisis, conclusiones y recomendaciones
+        let analysis = null;
+        let analysisError = null;
+        try {
+            const { routeToModel, getDefaultModel } = await import('../lib/ai-router.js');
+            const slug = await getDefaultModel();
+
+            const systemPrompt = `Eres un Agente Data Analyst especializado en marketing conversacional por WhatsApp para clubes Rotarios.
+Analizas métricas de campañas (embudo enviados → entregados → leídos → fallidos) y produces un reporte ejecutivo claro, en español, accionable y honesto.
+Compara contra benchmarks típicos de WhatsApp Business: entrega ~95-99%, lectura ~45-75%, fallo <5%.
+Responde ÚNICAMENTE con un objeto JSON válido (sin markdown, sin texto extra) con esta forma exacta:
+{
+  "resumen": "2-4 frases con el desempeño general de la campaña",
+  "analisis": ["punto de análisis 1", "punto 2", "punto 3"],
+  "conclusiones": ["conclusión 1", "conclusión 2"],
+  "recomendaciones": ["recomendación accionable 1", "recomendación 2", "recomendación 3"]
+}
+Sé concreto, usa los números reales, no inventes datos que no estén en el contexto.`;
+
+            const userPrompt = `Analiza esta campaña de WhatsApp:
+- Nombre: ${camp.name}
+- Lista/segmento: ${camp.listName || 'N/D'}
+- Plantilla: ${camp.templateDisplayName || camp.templateName || 'N/D'}
+- Fecha de envío: ${camp.sentAt ? new Date(camp.sentAt).toLocaleString('es-CO') : 'N/D'}
+
+Métricas (embudo):
+- Total destinatarios: ${total}
+- Enviados: ${sent} (${pct(sent)}%)
+- Entregados: ${delivered} (${pct(delivered)}%)
+- Leídos: ${read} (${pct(read)}%)
+- Fallidos: ${failed} (${pct(failed)}%)
+- Tiempo medio de lectura: ${avgReadMin != null ? avgReadMin + ' min' : 'N/D'}
+${topErrors.length ? '- Principales errores:\n' + topErrors.map(e => `  · ${e.msg} (${e.count})`).join('\n') : '- Sin errores registrados'}
+
+Devuelve el JSON del reporte.`;
+
+            const raw = await routeToModel(slug, systemPrompt, userPrompt);
+            const cleaned = String(raw).replace(/```json/gi, '').replace(/```/g, '').trim();
+            const start = cleaned.indexOf('{');
+            const end = cleaned.lastIndexOf('}');
+            if (start !== -1 && end !== -1) {
+                analysis = JSON.parse(cleaned.slice(start, end + 1));
+            } else {
+                throw new Error('Respuesta del modelo sin JSON');
+            }
+        } catch (e) {
+            console.error('WA getCampaignReport AI:', e.message);
+            analysisError = e.message;
+        }
+
+        res.json({
+            campaign: {
+                id: camp.id,
+                name: camp.name,
+                description: camp.description,
+                listName: camp.listName,
+                templateName: camp.templateDisplayName || camp.templateName,
+                sentAt: camp.sentAt,
+                status: camp.status,
+            },
+            stats,
+            analysis,
+            analysisError,
+            generatedAt: new Date().toISOString(),
+        });
+    } catch (err) {
+        console.error('WA getCampaignReport:', err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
 // ── ANALYTICS ────────────────────────────────────────────────────────────────
 
 export const getAnalytics = async (req, res) => {

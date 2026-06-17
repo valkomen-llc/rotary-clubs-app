@@ -22,7 +22,7 @@ import {
     archiveContact, deleteConversation, markMessagesRead, getContactMessages, sendMessageToContact, importFromLeads, fixPhoneNumbers,
     addListMembers, removeListMembers,
     getTemplates, createTemplate, updateTemplate, deleteTemplate, syncTemplatesFromMeta,
-    getCampaigns, createCampaign, updateCampaign, deleteCampaign, sendCampaign, getCampaignLogs,
+    getCampaigns, createCampaign, updateCampaign, deleteCampaign, sendCampaign, getCampaignLogs, getCampaignReport,
     getAnalytics, verifyWebhook, handleWebhook
 } from '../controllers/crmController.js';
 
@@ -148,6 +148,7 @@ router.put('/campaigns/:id', updateCampaign);
 router.delete('/campaigns/:id', deleteCampaign);
 router.post('/campaigns/:id/send', sendCampaign);
 router.get('/campaigns/:id/logs', getCampaignLogs);
+router.get('/campaigns/:id/report', getCampaignReport);
 
 // ── Analytics ────────────────────────────────────────────────────────────
 router.get('/analytics', getAnalytics);

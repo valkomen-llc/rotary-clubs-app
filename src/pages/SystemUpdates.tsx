@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.453.3 | 2026-06-16 (Hero del evento: zoom-in suavizado en la imagen)
-// Cache bust: 2026-06-16 04:40
+// UI V4.454.0 | 2026-06-18 (Tracker de campañas: botón Descargar PDF con análisis del agente Data Analyst)
+// Cache bust: 2026-06-18 00:40
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.454.0',
+        title: 'Campañas WhatsApp: Reporte PDF con Análisis IA 📄🤖',
+        description: 'En el tracker "Seguimiento de la campaña" hay un nuevo botón "Descargar PDF" que genera un reporte ejecutivo imprimible: incluye el embudo de métricas (total, enviados, entregados, leídos, fallidos), tiempo medio de lectura, principales errores y un análisis con resumen, conclusiones y recomendaciones elaborado por el agente Data Analyst. Ideal para compartir resultados con el equipo del distrito.',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'campanas', 'reporte', 'pdf', 'analisis', 'ia', 'data-analyst', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.453.3',
         title: 'Hero del Evento: Zoom-in Suavizado 🎞️',
