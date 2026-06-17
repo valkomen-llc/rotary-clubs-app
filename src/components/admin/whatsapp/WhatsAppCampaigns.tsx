@@ -522,7 +522,7 @@ const WhatsAppCampaigns: React.FC = () => {
                         </div>
 
                         {/* Informe analítico (agente Data Analyst) */}
-                        <div className="px-5 py-4 border-b border-gray-100 max-h-72 overflow-auto">
+                        <div className="px-5 py-4 border-b border-gray-100 shrink-0 max-h-64 overflow-auto">
                             <div className="flex items-center gap-2 mb-2">
                                 <Sparkles className="w-4 h-4 text-green-600" />
                                 <h4 className="text-sm font-bold text-gray-900">Informe analítico</h4>
