@@ -225,7 +225,7 @@ const WhatsAppCampaigns: React.FC = () => {
         </style></head><body>
           <div class="head">
             <img class="logo" src="${esc(PLATFORM_LOGO)}" alt="Club Platform for Rotary" onerror="this.style.display='none'">
-            <div class="brand">Club Platform for Rotary <span class="email">· ${esc(PLATFORM_EMAIL)}</span></div>
+            <div class="brand"><span class="email">${esc(PLATFORM_EMAIL)}</span></div>
             <h1>Reporte de campaña WhatsApp${a ? '<span class="tag">Análisis IA</span>' : ''}</h1>
             <div class="meta">
               <b>${esc(c.name)}</b>${c.description ? ' — ' + esc(c.description) : ''}<br>
