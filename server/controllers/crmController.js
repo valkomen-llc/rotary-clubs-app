@@ -1489,7 +1489,8 @@ Las RECOMENDACIONES deben estar enfocadas en REFORZAR Y POTENCIAR LA DIFUSIÓN d
 - Segmentar y personalizar (por club, ciudad, rol) y probar variantes A/B del mensaje o de la imagen.
 - Definir cadencia de recordatorios (ej. 2do y 3er toque) con tiempos sugeridos según el tiempo medio de lectura.
 Cada recomendación debe ser una acción específica y ejecutable (no genérica), apoyada en los números reales de esta campaña.
-Sé concreto, usa los números reales, no inventes datos que no estén en el contexto.`;
+Sé concreto, usa los números reales, no inventes datos que no estén en el contexto.
+Escribe TEXTO PLANO: no uses markdown ni asteriscos (*, **), ni guiones bajos, ni viñetas dentro de los textos.`;
 
             const userPrompt = `Analiza esta campaña de WhatsApp:
 - Nombre: ${camp.name}
@@ -1516,6 +1517,21 @@ Devuelve el JSON del reporte.`;
             const end = cleaned.lastIndexOf('}');
             if (start !== -1 && end !== -1) {
                 analysis = JSON.parse(cleaned.slice(start, end + 1));
+                // Limpiar markdown que a veces devuelve el modelo (**negrita**, *cursiva*, etc.)
+                const stripMd = (t) => (t || '').toString()
+                    .replace(/\*\*(.*?)\*\*/g, '$1')   // **negrita**
+                    .replace(/__(.*?)__/g, '$1')        // __negrita__
+                    .replace(/(^|\s)\*(\S.*?\S)\*/g, '$1$2') // *cursiva*
+                    .replace(/`([^`]*)`/g, '$1')        // `code`
+                    .replace(/^\s*[-*•]\s+/, '')        // viñetas iniciales
+                    .trim();
+                const cleanArr = (a) => Array.isArray(a) ? a.map(stripMd).filter(Boolean) : a;
+                if (analysis && typeof analysis === 'object') {
+                    if (analysis.resumen) analysis.resumen = stripMd(analysis.resumen);
+                    analysis.analisis = cleanArr(analysis.analisis);
+                    analysis.conclusiones = cleanArr(analysis.conclusiones);
+                    analysis.recomendaciones = cleanArr(analysis.recomendaciones);
+                }
             } else {
                 throw new Error('Respuesta del modelo sin JSON');
             }
