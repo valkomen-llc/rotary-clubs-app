@@ -7,7 +7,7 @@
 import db from '../lib/db.js';
 import crypto from 'crypto';
 import { s3 } from '../lib/storage.js';
-import { normalizeForMeta } from '../lib/phone.js';
+import { normalizeForMeta, validateForMeta } from '../lib/phone.js';
 import pkg from '@aws-sdk/client-s3';
 const { PutObjectCommand } = pkg;
 
@@ -549,8 +549,13 @@ export const sendMessageToContact = async (req, res) => {
         const contactR = await db.query(`SELECT * FROM "WhatsAppContact" WHERE id=$1 AND "clubId"=$2`, [contactId, clubId]);
         if (!contactR.rows.length) return res.status(404).json({ error: 'Contacto no encontrado' });
         const contact = contactR.rows[0];
-        // Normalizar al formato que exige Meta (código de país, sin '+')
-        const toPhone = normalizeForMeta(contact.phone);
+        // Validar/normalizar SIN adivinar: si el número no es confiable, rechazar el
+        // envío en vez de mandarlo a un número equivocado.
+        const phoneCheck = validateForMeta(contact.phone);
+        if (!phoneCheck.ok) {
+            return res.status(400).json({ error: `Número del contacto inválido: ${phoneCheck.reason}` });
+        }
+        const toPhone = phoneCheck.e164;
 
         // Get config
         const config = await getClubConfig(clubId);
@@ -1273,8 +1278,21 @@ export const sendCampaign = async (req, res) => {
         // Send in parallel batches (10 concurrent) to fit within Vercel timeout
         const BATCH_SIZE = 10;
         const sendOne = async (contact) => {
-            // Normalizar al formato que exige Meta (código de país, sin '+')
-            const toPhone = normalizeForMeta(contact.phone);
+            // Validar/normalizar SIN adivinar. Si el número no es confiable NO se envía:
+            // se registra como fallido con motivo (evita mandarlo a un tercero y que el
+            // tracker muestre "entregado/leído" para el contacto equivocado).
+            const v = validateForMeta(contact.phone);
+            const toPhone = v.e164;
+            if (!v.ok) {
+                const invLogId = crypto.randomUUID();
+                await db.query(
+                    `INSERT INTO "WhatsAppMessageLog" (id,"clubId","campaignId","contactId",phone,"templateName","bodyText",status,direction,"errorMessage","failedAt","createdAt","updatedAt")
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,'failed','outgoing',$8,NOW(),NOW(),NOW())`,
+                    [invLogId, clubId, id, contact.id, toPhone || (contact.phone || ''), template.name, logBodyText, `Número inválido: ${v.reason}`]
+                ).catch(() => {});
+                await db.query(`UPDATE "WhatsAppContact" SET "totalFailed"="totalFailed"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]).catch(() => {});
+                return { ok: false };
+            }
             try {
                 const apiRes = await metaApiCall({
                     method: 'POST',
@@ -1362,6 +1380,7 @@ const explainWhatsAppError = (rawMsg) => {
     if (!msg) return 'No se registró el motivo del fallo (error genérico de la API de Meta).';
     const lower = msg.toLowerCase();
     const rules = [
+        { re: /número inválido|numero invalido|no reconocido como colombiano|longitud inválida/, txt: 'El número del contacto no pudo validarse, así que NO se envió (se evitó mandarlo a un destinatario equivocado). Revisa el número: móvil colombiano de 10 dígitos (3XXXXXXXXX), fijo (60XXXXXXXX), o internacional con prefijo "+" y código de país.' },
         { re: /131030|not in allowed list|allowed list/, txt: 'El número no está en la lista de destinatarios permitidos (la cuenta de WhatsApp está en modo de prueba o el número no fue aprobado).' },
         { re: /131026|undeliverable|message undeliverable/, txt: 'Mensaje no entregable: el número no tiene WhatsApp, está inactivo o no puede recibir mensajes de esta cuenta.' },
         { re: /131047|re-engagement|reengagement|outside.*24|24.?hour|24h window/, txt: 'Fuera de la ventana de 24 horas: se requiere una plantilla aprobada para volver a contactar a este destinatario.' },

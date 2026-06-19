@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.456.3 | 2026-06-18 (Data Analyst: limpieza de markdown — sin asteriscos en análisis y recomendaciones)
-// Cache bust: 2026-06-18 03:00
+// UI V4.456.4 | 2026-06-19 (Campañas WhatsApp: validación de números — evita envíos a destinatarios equivocados)
+// Cache bust: 2026-06-19 12:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.456.4',
+        title: 'Campañas WhatsApp: Fin de los "Entregados/Leídos" Falsos 🎯',
+        description: 'Se corrigió un problema serio por el que algunos contactos aparecían como "entregado" y "leído" en el tracker aunque nunca recibieron el mensaje. La causa: el sistema "adivinaba" el formato del número y podía enviarlo a un número equivocado (un tercero real que sí lo recibía y abría). Ahora los números se VALIDAN antes de enviar, sin adivinar: se corrigen los teléfonos fijos colombianos (60X), se respetan los números internacionales con prefijo "+", y cualquier número que no se pueda validar con confianza ya NO se envía: queda registrado como "fallido" con el motivo, para que se corrija en la base de datos. Así el tracker deja de reportar entregas que en realidad llegaron a la persona equivocada.',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'campanas', 'telefonos', 'entregabilidad', 'bugfix', 'critico'],
+        type: 'fix'
+    },
     {
         version: '4.456.3',
         title: 'Informe Analítico: Sin Asteriscos de Markdown ✍️',
