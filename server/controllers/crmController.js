@@ -1209,8 +1209,20 @@ export const sendCampaign = async (req, res) => {
         if (!campR.rows.length) return res.status(404).json({ error: 'Campaña no encontrada' });
         const campaign = campR.rows[0];
 
-        if (!['draft', 'paused', 'failed'].includes(campaign.status))
-            return res.status(400).json({ error: `No se puede enviar una campaña en estado "${campaign.status}"` });
+        // Una campaña puede quedar atascada en 'sending' si la función serverless se
+        // corta por timeout (Vercel: 120s) antes de terminar. Detectamos ese caso por
+        // antigüedad del heartbeat (updatedAt) y permitimos REANUDAR: la deduplicación
+        // por log de mensajes evita reenviar a quien ya recibió.
+        const STALE_SENDING_MS = 90 * 1000;
+        const updatedMs = campaign.updatedAt ? new Date(campaign.updatedAt).getTime() : 0;
+        const isStaleSending = campaign.status === 'sending' && (Date.now() - updatedMs) > STALE_SENDING_MS;
+        if (!['draft', 'paused', 'failed'].includes(campaign.status) && !isStaleSending) {
+            return res.status(400).json({
+                error: campaign.status === 'sending'
+                    ? 'La campaña se está enviando en este momento. Espera ~1 minuto y, si sigue detenida, reintenta para reanudar.'
+                    : `No se puede enviar una campaña en estado "${campaign.status}"`,
+            });
+        }
         if (!campaign.listId) return res.status(400).json({ error: 'La campaña debe tener una lista asignada' });
         if (!campaign.templateId) return res.status(400).json({ error: 'La campaña debe tener un template asignado' });
 
@@ -1326,13 +1338,37 @@ export const sendCampaign = async (req, res) => {
             }
         };
 
+        // Presupuesto de tiempo: cortar con margen antes del límite de Vercel (120s) y
+        // dejar la campaña en 'paused' (reanudable) en vez de que la maten a mitad y
+        // quede atascada en 'sending'.
+        const loopStart = Date.now();
+        const TIME_BUDGET_MS = 90 * 1000;
         for (let i = 0; i < pendingContacts.length; i += BATCH_SIZE) {
+            if (Date.now() - loopStart > TIME_BUDGET_MS) {
+                // Envío parcial: guardar progreso y pausar para continuar en un nuevo envío.
+                await db.query(
+                    `UPDATE "WhatsAppCampaign" SET status='paused',sent=$1,failed=$2,"updatedAt"=NOW() WHERE id=$3`,
+                    [sent + alreadySentIds.size, failed, id]
+                ).catch(() => {});
+                return res.json({
+                    success: true,
+                    partial: true,
+                    message: `Envío parcial: ${sent + alreadySentIds.size} enviados hasta ahora. La campaña quedó en pausa — pulsa "Enviar" de nuevo para continuar con los restantes.`,
+                    campaignId: id, sent: sent + alreadySentIds.size, failed, total: contacts.length,
+                });
+            }
             const batch = pendingContacts.slice(i, i + BATCH_SIZE);
             const results = await Promise.allSettled(batch.map(c => sendOne(c)));
             for (const r of results) {
                 if (r.status === 'fulfilled' && r.value.ok) sent++;
                 else failed++;
             }
+            // Heartbeat: progreso visible + marca de vida (permite detectar si la función
+            // muere por timeout y habilitar la reanudación).
+            await db.query(
+                `UPDATE "WhatsAppCampaign" SET sent=$1,failed=$2,"updatedAt"=NOW() WHERE id=$3`,
+                [sent + alreadySentIds.size, failed, id]
+            ).catch(() => {});
         }
 
         // Include previously sent contacts in totals

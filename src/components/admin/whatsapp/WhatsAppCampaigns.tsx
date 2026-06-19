@@ -444,8 +444,8 @@ const WhatsAppCampaigns: React.FC = () => {
                                 )}
 
                                 <div className="flex items-center gap-1">
-                                    {c.status === 'sent' && (
-                                        <button onClick={() => openLogs(c.id)} className="p-2 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600" title="Ver logs">
+                                    {(c.status === 'sent' || c.status === 'sending') && (
+                                        <button onClick={() => openLogs(c.id)} className="p-2 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600" title="Ver progreso / logs">
                                             <Eye className="w-4 h-4" />
                                         </button>
                                     )}
@@ -457,6 +457,13 @@ const WhatsAppCampaigns: React.FC = () => {
                                             </button>
                                             <button onClick={() => startEdit(c)} className="p-2 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600"><Edit3 className="w-4 h-4" /></button>
                                         </>
+                                    )}
+                                    {c.status === 'sending' && (
+                                        <button onClick={() => handleSend(c.id)} disabled={sending === c.id}
+                                            title="Si el envío se quedó detenido, reanúdalo (no reenvía a quien ya recibió)"
+                                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 disabled:opacity-50">
+                                            {sending === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />} Reanudar
+                                        </button>
                                     )}
                                     <button onClick={() => handleDelete(c.id)} className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
                                 </div>

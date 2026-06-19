@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.456.4 | 2026-06-19 (Campañas WhatsApp: validación de números — evita envíos a destinatarios equivocados)
-// Cache bust: 2026-06-19 12:00
+// UI V4.456.5 | 2026-06-20 (Campañas WhatsApp: campañas atascadas en "Enviando" ahora se reanudan)
+// Cache bust: 2026-06-20 02:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.456.5',
+        title: 'Campañas WhatsApp: Adiós al "Enviando" Eterno ⏳➡️✅',
+        description: 'Se corrigió que una campaña con muchos contactos se quedara atascada en "Enviando" para siempre (ocurría cuando el envío superaba el límite de tiempo del servidor y se cortaba a la mitad, sin poder reintentarse). Ahora: (1) el progreso se guarda en vivo lote por lote, así que ves cuántos van enviados sin esperar al final; (2) si el envío se acerca al límite de tiempo, la campaña se PAUSA automáticamente con su progreso guardado y basta pulsar "Enviar" para continuar con los que faltan (no reenvía a quien ya recibió); (3) si una campaña quedó detenida en "Enviando", aparece un botón "Reanudar" para retomarla. En resumen: las campañas grandes ahora se completan en varias tandas sin perder el avance ni duplicar mensajes.',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'campanas', 'envio', 'timeout', 'reanudar', 'bugfix'],
+        type: 'fix'
+    },
     {
         version: '4.456.4',
         title: 'Campañas WhatsApp: Fin de los "Entregados/Leídos" Falsos 🎯',
