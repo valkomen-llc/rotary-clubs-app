@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.456.3",
-  "cache_bust": "2026-06-18 03:00 (Data Analyst: limpieza de markdown — sin asteriscos en análisis y recomendaciones)",
+  "version": "4.456.4",
+  "cache_bust": "2026-06-19 12:00 (Campañas WhatsApp: validación de números — evita envíos a destinatarios equivocados marcados como 'leído')",
   "type": "module",
-  "//": "UI V4.456.3 | 2026-06-18 (Data Analyst: limpieza de markdown — sin asteriscos en análisis y recomendaciones)",
+  "//": "UI V4.456.4 | 2026-06-19 (Campañas WhatsApp: validación de números — evita envíos a destinatarios equivocados marcados como 'leído')",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
