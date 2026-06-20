@@ -33,6 +33,11 @@ const Navbar = () => {
   const currentParams = window.location.search;
   const isDistrict = (club as any)?.type === 'district' || currentHostname.includes('4271') || currentParams.includes('4271') || currentHostname.toLowerCase().startsWith('rye');
 
+  // Menú personalizable para sitios Evento/Convención: cada sección puede activarse/desactivarse.
+  const isEventSite = (club as any)?.type === 'Evento o Convención';
+  const navMenu = ((club as any)?.eventNavMenu || {}) as Record<string, boolean>;
+  const showNav = (key: string) => !isEventSite || navMenu[key] !== false;
+
   // Search state
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -162,7 +167,7 @@ const Navbar = () => {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-6">
-            <Link to="/" className="text-rotary-blue font-medium text-sm hover:text-rotary-gold transition-colors"><T>Inicio</T></Link>
+            {showNav('inicio') && <Link to="/" className="text-rotary-blue font-medium text-sm hover:text-rotary-gold transition-colors"><T>Inicio</T></Link>}
 
             {((club as any)?.type === 'association' || (club as any)?.type === 'Programa de Intercambio' || currentHostname.toLowerCase().startsWith('rye')) ? (
               <>
@@ -175,6 +180,7 @@ const Navbar = () => {
             ) : !isDistrict && (
               <>
                 {/* Sobre Nosotros Dropdown */}
+                {showNav('sobreNosotros') && (
                 <div className="relative" ref={sobreNosotrosRef}>
                   <button
                     onClick={() => setSobreNosotrosOpen(!sobreNosotrosOpen)}
@@ -197,11 +203,12 @@ const Navbar = () => {
                     </div>
                   )}
                 </div>
+                )}
 
-                <Link to="/proyectos" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Proyectos</T></Link>
-                <Link to="/blog" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Noticias</T></Link>
+                {showNav('proyectos') && <Link to="/proyectos" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Proyectos</T></Link>}
+                {showNav('noticias') && <Link to="/blog" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Noticias</T></Link>}
 
-                {(club.eventsCount && club.eventsCount > 0) ? (
+                {(showNav('eventos') && (isEventSite || (club.eventsCount && club.eventsCount > 0))) ? (
                   <Link to="/eventos" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Eventos</T></Link>
                 ) : null}
 
@@ -212,7 +219,7 @@ const Navbar = () => {
             )}
 
 
-            <Link to="/contacto" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Contacto</T></Link>
+            {showNav('contacto') && <Link to="/contacto" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Contacto</T></Link>}
           </div>
 
           {/* Right Side Icons */}
@@ -344,7 +351,7 @@ const Navbar = () => {
         {mobileMenuOpen && (
           <div className="md:hidden py-4 border-t">
             <div className="flex flex-col space-y-3 font-medium">
-              <Link to="/" className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Inicio</Link>
+              {showNav('inicio') && <Link to="/" className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Inicio</Link>}
 
               {((club as any)?.type === 'association' || (club as any)?.type === 'Programa de Intercambio' || currentHostname.toLowerCase().startsWith('rye')) ? (
                 <>
@@ -357,6 +364,7 @@ const Navbar = () => {
               ) : !isDistrict && (
                 <>
                   {/* Sobre Nosotros en móvil */}
+                  {showNav('sobreNosotros') && (
                   <div className="pl-4 border-l-2 border-gray-200 space-y-2">
                     <p className="text-xs text-gray-400 uppercase font-semibold">Sobre Nosotros</p>
                     {sobreNosotrosItems.map((item, index) => (
@@ -370,11 +378,12 @@ const Navbar = () => {
                       </Link>
                     ))}
                   </div>
+                  )}
 
-                  <Link to="/proyectos" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Proyectos</Link>
-                  <Link to="/blog" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Noticias</Link>
+                  {showNav('proyectos') && <Link to="/proyectos" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Proyectos</Link>}
+                  {showNav('noticias') && <Link to="/blog" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Noticias</Link>}
 
-                  {(club.eventsCount && club.eventsCount > 0) ? (
+                  {(showNav('eventos') && (isEventSite || (club.eventsCount && club.eventsCount > 0))) ? (
                     <Link to="/eventos" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Eventos</Link>
                   ) : null}
 
@@ -384,7 +393,7 @@ const Navbar = () => {
                 </>
               )}
 
-              <Link to="/contacto" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Contacto</Link>
+              {showNav('contacto') && <Link to="/contacto" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Contacto</Link>}
               {isAuthenticated ? (
                 <Link to="/admin/dashboard" className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Panel</Link>
               ) : (

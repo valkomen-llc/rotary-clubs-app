@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.456.5",
-  "cache_bust": "2026-06-20 02:00 (Campañas WhatsApp: campañas atascadas en 'Enviando' ahora se reanudan; corte parcial y progreso en vivo)",
+  "version": "4.457.0",
+  "cache_bust": "2026-06-20 03:00 (Eventos: menú principal configurable — activar/desactivar secciones)",
   "type": "module",
-  "//": "UI V4.456.5 | 2026-06-20 (Campañas WhatsApp: campañas atascadas en 'Enviando' ahora se reanudan; corte parcial y progreso en vivo)",
+  "//": "UI V4.457.0 | 2026-06-20 (Eventos: menú principal configurable — activar/desactivar secciones)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

@@ -6,7 +6,7 @@ import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (EVITA ERROR 500 
 // Clubes: el selector ahora incluye 'Evento o Convención', así que un registro mal
 // categorizado (ej. un evento guardado como club) puede moverse a su sección correcta
 // vía updateClub (addField('type', ...)) sin tocar la base de datos directamente.
-console.log('[clubController] v4.451.0 — colores personalizables: secciones + footer + copyright (texto) + botones del inicio');
+console.log('[clubController] v4.457.0 — Evento/Convención: colores + hero propio + menú principal configurable');
 
 export const getAllClubs = async (req, res) => {
     try {
@@ -176,7 +176,7 @@ export const updateClub = async (req, res) => {
         name, description, city, country, district, domain, subdomain, type, organizationType,
         email, phone, address, state, facebook, instagram, twitter, youtube, linkedin, tiktok, 
         socialLinks, customSocialLinks, siteImages, galleryImages,
-        primaryColor, secondaryColor, actionSectionBg, joinSectionBg, areasSectionBg, footerBg, copyrightBg, copyrightTextColor, buttonBg, buttonHoverBg, buttonTextColor, eventHeroImages, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, status,
+        primaryColor, secondaryColor, actionSectionBg, joinSectionBg, areasSectionBg, footerBg, copyrightBg, copyrightTextColor, buttonBg, buttonHoverBg, buttonTextColor, eventHeroImages, eventNavMenu, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, status,
         stripePublicKey, stripeSecretKey, useStripe,
         usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
         storeActive, logoHeaderSize, autoGenerateCalendar, mapStyle,
@@ -331,6 +331,7 @@ export const updateClub = async (req, res) => {
                 'button_hover_bg': buttonHoverBg,
                 'button_text_color': buttonTextColor,
                 'event_hero_images': eventHeroImages !== undefined ? JSON.stringify(eventHeroImages) : undefined,
+                'event_nav_menu': eventNavMenu !== undefined ? JSON.stringify(eventNavMenu) : undefined,
                 'rotaract_logo': rotaractLogo,
                 'interact_logo': interactLogo,
                 'youth_exchange_logo': youthExchangeLogo,
