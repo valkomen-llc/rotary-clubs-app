@@ -944,32 +944,24 @@ const ClubSettings: React.FC = () => {
                                             <input type="text" value={formData.actionContent.buttonUrl} onChange={e => setFormData({ ...formData, actionContent: { ...formData.actionContent, buttonUrl: e.target.value } })} placeholder="/involucrate o https://…" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none" />
                                         </div>
                                     </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                                        <div>
-                                            <label className="text-xs font-bold text-gray-400 uppercase">Icono del Botón</label>
-                                            <select value={formData.actionContent.icon} onChange={e => setFormData({ ...formData, actionContent: { ...formData.actionContent, icon: e.target.value } })} className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none bg-white">
-                                                <option value="star">★ Estrella</option>
-                                                <option value="heart">♥ Corazón</option>
-                                                <option value="handshake">🤝 Apretón de manos</option>
-                                                <option value="send">➤ Enviar</option>
-                                                <option value="sparkles">✦ Destellos</option>
-                                                <option value="megaphone">📣 Megáfono</option>
-                                                <option value="flag">⚑ Bandera</option>
-                                                <option value="gift">🎁 Regalo</option>
-                                                <option value="users">👥 Personas</option>
-                                                <option value="calendar">📅 Calendario</option>
-                                                <option value="award">🏅 Medalla</option>
-                                                <option value="trophy">🏆 Trofeo</option>
-                                                <option value="rocket">🚀 Cohete</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="text-xs font-bold text-gray-400 uppercase">Color del Icono</label>
-                                            <div className="flex items-center gap-4 mt-1">
-                                                <input type="color" value={formData.actionContent.iconColor} onChange={e => setFormData({ ...formData, actionContent: { ...formData.actionContent, iconColor: e.target.value } })} className="w-12 h-12 rounded-xl cursor-pointer border-none" />
-                                                <input type="text" value={formData.actionContent.iconColor} onChange={e => setFormData({ ...formData, actionContent: { ...formData.actionContent, iconColor: e.target.value } })} className="flex-1 px-4 py-2 bg-gray-50 rounded-lg text-sm font-mono font-bold" />
-                                            </div>
-                                        </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-400 uppercase">Icono del Botón (Emoji)</label>
+                                        <select value={formData.actionContent.icon} onChange={e => setFormData({ ...formData, actionContent: { ...formData.actionContent, icon: e.target.value } })} className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none bg-white">
+                                            <option value="star">⭐ Estrella</option>
+                                            <option value="heart">❤️ Corazón</option>
+                                            <option value="handshake">🤝 Apretón de manos</option>
+                                            <option value="send">✈️ Enviar</option>
+                                            <option value="sparkles">✨ Destellos</option>
+                                            <option value="megaphone">📣 Megáfono</option>
+                                            <option value="flag">🚩 Bandera</option>
+                                            <option value="gift">🎁 Regalo</option>
+                                            <option value="users">👥 Personas</option>
+                                            <option value="calendar">📅 Calendario</option>
+                                            <option value="award">🏅 Medalla</option>
+                                            <option value="trophy">🏆 Trofeo</option>
+                                            <option value="rocket">🚀 Cohete</option>
+                                        </select>
+                                        <p className="text-[11px] text-gray-400 mt-1">El emoji se muestra con sus colores originales en el botón.</p>
                                     </div>
                                 </div>
                             </div>

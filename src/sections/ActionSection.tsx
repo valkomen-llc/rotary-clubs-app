@@ -2,13 +2,12 @@ import { T } from '../components/T';
 import { Link } from 'react-router-dom';
 import { useClub } from '../contexts/ClubContext';
 import { useCtaButton } from '../hooks/useCtaButton';
-import { Star, Heart, Send, Sparkles, Megaphone, Flag, Gift, Users, Calendar, Award, Trophy, Rocket, Handshake } from 'lucide-react';
 
-// Iconos disponibles para el botón de la sección (configurable en sitios Evento/Convención).
-const ICONS: Record<string, any> = {
-  star: Star, heart: Heart, handshake: Handshake, send: Send, sparkles: Sparkles,
-  megaphone: Megaphone, flag: Flag, gift: Gift, users: Users, calendar: Calendar,
-  award: Award, trophy: Trophy, rocket: Rocket,
+// Emoji (multicolor) por nombre, para el botón de la sección en sitios Evento/Convención.
+const ICON_EMOJI: Record<string, string> = {
+  star: '⭐', heart: '❤️', handshake: '🤝', send: '✈️', sparkles: '✨',
+  megaphone: '📣', flag: '🚩', gift: '🎁', users: '👥', calendar: '📅',
+  award: '🏅', trophy: '🏆', rocket: '🚀',
 };
 
 // El color de fondo personalizable + textura overlay aplica SOLO a sitios de tipo
@@ -22,18 +21,17 @@ const ActionSection = () => {
   // Contenido configurable (solo Evento/Convención). Si no hay valor, se usa el texto por defecto.
   const content = (isEventSite && (club as any)?.actionContent) ? (club as any).actionContent : {};
   const buttonUrl = content.buttonUrl || '/involucrate';
-  const iconColor = content.iconColor || '#F5A623';
-  const IconComp = content.icon && ICONS[content.icon] ? ICONS[content.icon] : null;
+  const emoji = isEventSite ? (ICON_EMOJI[content.icon] || (content.icon && content.icon.length <= 4 ? content.icon : '⭐')) : '';
   const isExternal = /^https?:\/\//i.test(buttonUrl);
 
   const btnClass = `inline-flex items-center gap-2 ${cta.className} font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg`;
   const btnInner = (
     <>
-      {IconComp ? (
-        <IconComp className="w-5 h-5" style={{ color: iconColor }} />
+      {emoji ? (
+        <span className="text-xl leading-none">{emoji}</span>
       ) : (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill={iconColor} />
+          <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="#F5A623" />
         </svg>
       )}
       {content.buttonText ? content.buttonText : <T>Toma Acción con Nosotros</T>}
