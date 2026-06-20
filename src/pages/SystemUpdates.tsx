@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.458.1 | 2026-06-20 (Botón "Somos gente de acción": emoji multicolor original)
-// Cache bust: 2026-06-20 04:00
+// UI V4.458.2 | 2026-06-20 (Sección "gente de acción": título en negrilla + palabras resaltadas en color)
+// Cache bust: 2026-06-20 04:30
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.458.2',
+        title: 'Sección "Somos gente de acción": Título en Negrilla y Palabras Resaltadas 🅱️🎨',
+        description: 'El título de la sección "Somos gente de acción" ahora se muestra en negrilla. Además, puedes indicar una o varias palabras del título para resaltarlas en un color (por ejemplo "END POLIO NOW" en dorado #f6a40a): en Configuración → Identidad hay un campo "Palabras a resaltar en el título" y un selector de color. (Sitios Evento/Convención.)',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'contenido', 'gente-de-accion', 'titulo', 'eventos', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.458.1',
         title: 'Botón "Somos gente de acción": Emoji Multicolor 🎨',
