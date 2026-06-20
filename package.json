@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.458.1",
-  "cache_bust": "2026-06-20 04:00 (Botón Somos gente de acción: emoji multicolor original en vez de icono con color)",
+  "version": "4.458.2",
+  "cache_bust": "2026-06-20 04:30 (Sección gente de acción: título en negrilla + palabras resaltadas en color)",
   "type": "module",
-  "//": "UI V4.458.1 | 2026-06-20 (Botón Somos gente de acción: emoji multicolor original en vez de icono con color)",
+  "//": "UI V4.458.2 | 2026-06-20 (Sección gente de acción: título en negrilla + palabras resaltadas en color)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

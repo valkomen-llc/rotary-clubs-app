@@ -51,7 +51,7 @@ const ClubSettings: React.FC = () => {
         buttonTextColor: '#004080',
         eventHeroImages: [] as { url: string; alt?: string }[],
         eventNavMenu: { inicio: true, sobreNosotros: true, proyectos: true, noticias: true, eventos: true, contacto: true } as Record<string, boolean>,
-        actionContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', iconColor: '#F5A623' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; iconColor: string },
+        actionContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', iconColor: '#F5A623', titleHighlight: '', titleHighlightColor: '#f6a40a' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; iconColor: string; titleHighlight: string; titleHighlightColor: string },
         logo: '',
         footerLogo: '',
         endPolioLogo: '',
@@ -151,7 +151,7 @@ const ClubSettings: React.FC = () => {
                 })(),
                 actionContent: (() => {
                     const saved = (club as any).actionContent || (() => { try { return JSON.parse(settingsMap['action_section_content'] || '{}'); } catch { return {}; } })();
-                    return { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', iconColor: '#F5A623', ...saved };
+                    return { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', iconColor: '#F5A623', titleHighlight: '', titleHighlightColor: '#f6a40a', ...saved };
                 })(),
                 logo: club.logo || '',
                 footerLogo: club.footerLogo || '',
@@ -929,6 +929,21 @@ const ClubSettings: React.FC = () => {
                                     <div>
                                         <label className="text-xs font-bold text-gray-400 uppercase">Título</label>
                                         <input type="text" value={formData.actionContent.title} onChange={e => setFormData({ ...formData, actionContent: { ...formData.actionContent, title: e.target.value } })} placeholder="Somos gente de acción" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none" />
+                                        <p className="text-[11px] text-gray-400 mt-1">El título se muestra en negrilla.</p>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-400 uppercase">Palabras a resaltar en el título</label>
+                                            <input type="text" value={formData.actionContent.titleHighlight} onChange={e => setFormData({ ...formData, actionContent: { ...formData.actionContent, titleHighlight: e.target.value } })} placeholder="Ej: END POLIO NOW" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none" />
+                                            <p className="text-[11px] text-gray-400 mt-1">Esa parte del título se mostrará en el color elegido.</p>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-400 uppercase">Color del resaltado</label>
+                                            <div className="flex items-center gap-4 mt-1">
+                                                <input type="color" value={formData.actionContent.titleHighlightColor} onChange={e => setFormData({ ...formData, actionContent: { ...formData.actionContent, titleHighlightColor: e.target.value } })} className="w-12 h-12 rounded-xl cursor-pointer border-none" />
+                                                <input type="text" value={formData.actionContent.titleHighlightColor} onChange={e => setFormData({ ...formData, actionContent: { ...formData.actionContent, titleHighlightColor: e.target.value } })} className="flex-1 px-4 py-2 bg-gray-50 rounded-lg text-sm font-mono font-bold" />
+                                            </div>
+                                        </div>
                                     </div>
                                     <div>
                                         <label className="text-xs font-bold text-gray-400 uppercase">Texto</label>
