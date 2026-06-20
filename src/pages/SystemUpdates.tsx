@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.458.2 | 2026-06-20 (Sección "gente de acción": título en negrilla + palabras resaltadas en color)
-// Cache bust: 2026-06-20 04:30
+// UI V4.458.3 | 2026-06-20 (Título de "gente de acción": saltos de línea manuales con Enter)
+// Cache bust: 2026-06-20 05:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.458.3',
+        title: 'Título "Somos gente de acción": Saltos de Línea Manuales ↵',
+        description: 'Ahora el campo de título de la sección "Somos gente de acción" es un área de texto: puedes presionar Enter para decidir exactamente dónde corta cada línea del título, y el sitio respeta esos saltos. (Sitios Evento/Convención.)',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'contenido', 'gente-de-accion', 'titulo', 'eventos', 'improvement'],
+        type: 'improvement'
+    },
     {
         version: '4.458.2',
         title: 'Sección "Somos gente de acción": Título en Negrilla y Palabras Resaltadas 🅱️🎨',
