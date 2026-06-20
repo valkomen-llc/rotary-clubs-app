@@ -65,7 +65,7 @@ const ActionSection = () => {
         <div aria-hidden="true" className="absolute inset-0 pointer-events-none" style={{ backgroundImage: "url('/geo-darkblue.png')", backgroundPosition: '50% 0', backgroundRepeat: 'repeat', backgroundSize: '71px 85px', mixBlendMode: 'overlay', opacity: 0.85 }} />
       )}
       <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <h2 className={`text-3xl md:text-4xl ${content.title ? 'font-bold' : 'font-light'} text-white mb-6`}>
+        <h2 className={`text-3xl md:text-4xl ${content.title ? 'font-bold' : 'font-light'} text-white mb-6 whitespace-pre-line`}>
           {content.title ? renderTitle(content.title, content.titleHighlight, content.titleHighlightColor) : <T>Somos gente de acción</T>}
         </h2>
         <p className="text-white/90 text-base md:text-lg mb-8 max-w-3xl mx-auto leading-relaxed whitespace-pre-line">

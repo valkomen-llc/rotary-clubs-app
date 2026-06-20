@@ -928,8 +928,8 @@ const ClubSettings: React.FC = () => {
                                 <div className="space-y-4">
                                     <div>
                                         <label className="text-xs font-bold text-gray-400 uppercase">Título</label>
-                                        <input type="text" value={formData.actionContent.title} onChange={e => setFormData({ ...formData, actionContent: { ...formData.actionContent, title: e.target.value } })} placeholder="Somos gente de acción" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none" />
-                                        <p className="text-[11px] text-gray-400 mt-1">El título se muestra en negrilla.</p>
+                                        <textarea rows={2} value={formData.actionContent.title} onChange={e => setFormData({ ...formData, actionContent: { ...formData.actionContent, title: e.target.value } })} placeholder="Somos gente de acción" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none resize-y" />
+                                        <p className="text-[11px] text-gray-400 mt-1">El título se muestra en negrilla. Presiona <strong>Enter</strong> donde quieras un salto de línea.</p>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                                         <div>
