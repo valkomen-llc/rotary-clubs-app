@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.458.0 | 2026-06-20 (Eventos: sección "Somos gente de acción" editable — título, texto, botón, icono y color)
-// Cache bust: 2026-06-20 03:30
+// UI V4.458.1 | 2026-06-20 (Botón "Somos gente de acción": emoji multicolor original)
+// Cache bust: 2026-06-20 04:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.458.1',
+        title: 'Botón "Somos gente de acción": Emoji Multicolor 🎨',
+        description: 'El icono del botón de la sección "Somos gente de acción" ahora se muestra como emoji con sus colores originales (⭐ ❤️ 🤝 🏆 🚀, etc.), tal como aparece en el selector, en lugar de un icono de un solo color. Se quitó el selector de "Color del Icono" porque ya no aplica. (Sitios Evento/Convención.)',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'contenido', 'gente-de-accion', 'emoji', 'eventos', 'fix'],
+        type: 'improvement'
+    },
     {
         version: '4.458.0',
         title: 'Eventos: Sección "Somos gente de acción" Editable ✏️',
