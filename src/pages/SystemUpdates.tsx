@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.457.0 | 2026-06-20 (Eventos: menú principal configurable — activar/desactivar secciones)
-// Cache bust: 2026-06-20 03:00
+// UI V4.458.0 | 2026-06-20 (Eventos: sección "Somos gente de acción" editable — título, texto, botón, icono y color)
+// Cache bust: 2026-06-20 03:30
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.458.0',
+        title: 'Eventos: Sección "Somos gente de acción" Editable ✏️',
+        description: 'Los sitios de Evento o Convención ahora pueden editar por completo el segundo bloque de la portada ("Somos gente de acción"): título, texto, texto del botón, enlace del botón (interno o externo), icono del botón (13 opciones) y color del icono. Está en Configuración → Identidad → "Sección Somos gente de acción (Contenido)". Si un campo se deja vacío, se usa el texto por defecto. No afecta a los demás sitios.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'contenido', 'gente-de-accion', 'cta', 'eventos', 'convenciones', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.457.0',
         title: 'Eventos: Menú Principal Configurable 🧭',

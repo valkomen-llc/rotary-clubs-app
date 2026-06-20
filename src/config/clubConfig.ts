@@ -34,6 +34,7 @@ export interface ClubConfig {
     };
     eventHeroImages?: { url: string; alt?: string }[];
     eventNavMenu?: { [key: string]: boolean };
+    actionContent?: { title?: string; text?: string; buttonText?: string; buttonUrl?: string; icon?: string; iconColor?: string };
     type?: string;
     social: { platform: string; url: string }[];
     contact: {

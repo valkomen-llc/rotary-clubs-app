@@ -183,6 +183,11 @@ router.get('/by-domain', async (req, res) => {
                 try { return settings['event_nav_menu'] ? JSON.parse(settings['event_nav_menu']) : {}; }
                 catch { return {}; }
             })(),
+            // Contenido editable de la sección "Somos gente de acción" (Evento/Convención).
+            actionContent: (() => {
+                try { return settings['action_section_content'] ? JSON.parse(settings['action_section_content']) : {}; }
+                catch { return {}; }
+            })(),
             productsCount: activeClub._count?.products || 0,
             eventsCount: activeClub._count?.events || 0,
             // Logo Size Inheritance: Priority 1: Club Setting, Priority 2: Master Club Setting, Priority 3: Default 200
