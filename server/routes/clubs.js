@@ -178,6 +178,11 @@ router.get('/by-domain', async (req, res) => {
                 try { return settings['event_hero_images'] ? JSON.parse(settings['event_hero_images']) : []; }
                 catch { return []; }
             })(),
+            // Menú principal configurable (Evento/Convención): secciones activadas/desactivadas.
+            eventNavMenu: (() => {
+                try { return settings['event_nav_menu'] ? JSON.parse(settings['event_nav_menu']) : {}; }
+                catch { return {}; }
+            })(),
             productsCount: activeClub._count?.products || 0,
             eventsCount: activeClub._count?.events || 0,
             // Logo Size Inheritance: Priority 1: Club Setting, Priority 2: Master Club Setting, Priority 3: Default 200

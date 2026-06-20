@@ -50,6 +50,7 @@ const ClubSettings: React.FC = () => {
         buttonHoverBg: '#bae6fd',
         buttonTextColor: '#004080',
         eventHeroImages: [] as { url: string; alt?: string }[],
+        eventNavMenu: { inicio: true, sobreNosotros: true, proyectos: true, noticias: true, eventos: true, contacto: true } as Record<string, boolean>,
         logo: '',
         footerLogo: '',
         endPolioLogo: '',
@@ -143,6 +144,10 @@ const ClubSettings: React.FC = () => {
                 buttonHoverBg: club.colors?.buttonHoverBg || settingsMap['button_hover_bg'] || '#bae6fd',
                 buttonTextColor: club.colors?.buttonText || settingsMap['button_text_color'] || '#004080',
                 eventHeroImages: (club as any).eventHeroImages || (() => { try { return JSON.parse(settingsMap['event_hero_images'] || '[]'); } catch { return []; } })(),
+                eventNavMenu: (() => {
+                    const saved = (club as any).eventNavMenu || (() => { try { return JSON.parse(settingsMap['event_nav_menu'] || '{}'); } catch { return {}; } })();
+                    return { inicio: true, sobreNosotros: true, proyectos: true, noticias: true, eventos: true, contacto: true, ...saved };
+                })(),
                 logo: club.logo || '',
                 footerLogo: club.footerLogo || '',
                 endPolioLogo: club.endPolioLogo || '',
@@ -871,6 +876,38 @@ const ClubSettings: React.FC = () => {
                                         {formData.eventHeroImages.length === 1 ? 'Imagen única (hero estático).' : `${formData.eventHeroImages.length} imágenes (carrusel automático).`}
                                     </p>
                                 )}
+                            </div>
+                        )}
+
+                        {/* Menú principal configurable — solo Eventos/Convenciones */}
+                        {(isSuperAdmin || club?.type === 'Evento o Convención') && (
+                            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                                <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
+                                    <Palette className="w-5 h-5 text-rotary-blue" /> Menú Principal
+                                </h3>
+                                <p className="text-xs text-gray-400 mb-6">
+                                    Activa o desactiva las secciones que se muestran en el menú de navegación principal del sitio.
+                                </p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    {[
+                                        { key: 'inicio', label: 'Inicio' },
+                                        { key: 'sobreNosotros', label: 'Sobre Nosotros' },
+                                        { key: 'proyectos', label: 'Proyectos' },
+                                        { key: 'noticias', label: 'Noticias' },
+                                        { key: 'eventos', label: 'Eventos' },
+                                        { key: 'contacto', label: 'Contacto' },
+                                    ].map(item => (
+                                        <label key={item.key} className="flex items-center gap-3 cursor-pointer p-3 border border-gray-100 rounded-xl hover:bg-gray-50 transition-colors">
+                                            <input
+                                                type="checkbox"
+                                                className="w-4 h-4 text-rotary-blue rounded border-gray-300 focus:ring-rotary-blue"
+                                                checked={formData.eventNavMenu?.[item.key] !== false}
+                                                onChange={e => setFormData({ ...formData, eventNavMenu: { ...formData.eventNavMenu, [item.key]: e.target.checked } })}
+                                            />
+                                            <span className="text-[13px] font-bold text-gray-700">{item.label}</span>
+                                        </label>
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </div>

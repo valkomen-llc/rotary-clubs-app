@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.456.5 | 2026-06-20 (Campañas WhatsApp: campañas atascadas en "Enviando" ahora se reanudan)
-// Cache bust: 2026-06-20 02:00
+// UI V4.457.0 | 2026-06-20 (Eventos: menú principal configurable — activar/desactivar secciones)
+// Cache bust: 2026-06-20 03:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.457.0',
+        title: 'Eventos: Menú Principal Configurable 🧭',
+        description: 'Los sitios de tipo Evento o Convención ahora pueden personalizar el menú de navegación principal: activar o desactivar cada sección (Inicio, Sobre Nosotros, Proyectos, Noticias, Eventos y Contacto). La opción está en Configuración → Identidad → "Menú Principal", con casillas para cada sección. Aplica tanto al menú de escritorio como al móvil; los demás sitios no se ven afectados.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'menu', 'navegacion', 'eventos', 'convenciones', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.456.5',
         title: 'Campañas WhatsApp: Adiós al "Enviando" Eterno ⏳➡️✅',

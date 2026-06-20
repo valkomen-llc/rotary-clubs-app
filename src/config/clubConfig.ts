@@ -33,6 +33,7 @@ export interface ClubConfig {
         buttonText?: string;
     };
     eventHeroImages?: { url: string; alt?: string }[];
+    eventNavMenu?: { [key: string]: boolean };
     type?: string;
     social: { platform: string; url: string }[];
     contact: {
