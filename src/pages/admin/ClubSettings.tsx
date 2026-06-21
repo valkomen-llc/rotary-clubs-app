@@ -52,6 +52,7 @@ const ClubSettings: React.FC = () => {
         buttonTextHoverColor: '#004080',
         eventHeroImages: [] as { url: string; alt?: string }[],
         eventNavMenu: { inicio: true, sobreNosotros: true, proyectos: true, noticias: true, eventos: true, contacto: true } as Record<string, boolean>,
+        eventSections: { news: true } as Record<string, boolean>,
         actionContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', iconColor: '#F5A623', titleHighlight: '', titleHighlightColor: '#f6a40a' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; iconColor: string; titleHighlight: string; titleHighlightColor: string },
         statsContent: [
             { icon: 'globe', color: '#004080', value: '+1.2M', text: 'Somos más de 1.2 millones de rotarios en el mundo, dedicados a servir, mejorar y transformar nuestras comunidades.' },
@@ -157,6 +158,10 @@ const ClubSettings: React.FC = () => {
                 eventNavMenu: (() => {
                     const saved = (club as any).eventNavMenu || (() => { try { return JSON.parse(settingsMap['event_nav_menu'] || '{}'); } catch { return {}; } })();
                     return { inicio: true, sobreNosotros: true, proyectos: true, noticias: true, eventos: true, contacto: true, ...saved };
+                })(),
+                eventSections: (() => {
+                    const saved = (club as any).eventSections || (() => { try { return JSON.parse(settingsMap['event_sections_visibility'] || '{}'); } catch { return {}; } })();
+                    return { news: true, ...saved };
                 })(),
                 actionContent: (() => {
                     const saved = (club as any).actionContent || (() => { try { return JSON.parse(settingsMap['action_section_content'] || '{}'); } catch { return {}; } })();
@@ -941,6 +946,33 @@ const ClubSettings: React.FC = () => {
                                                 className="w-4 h-4 text-rotary-blue rounded border-gray-300 focus:ring-rotary-blue"
                                                 checked={formData.eventNavMenu?.[item.key] !== false}
                                                 onChange={e => setFormData({ ...formData, eventNavMenu: { ...formData.eventNavMenu, [item.key]: e.target.checked } })}
+                                            />
+                                            <span className="text-[13px] font-bold text-gray-700">{item.label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Secciones de la portada (activar/desactivar) — solo Eventos/Convenciones */}
+                        {(isSuperAdmin || club?.type === 'Evento o Convención') && (
+                            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                                <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
+                                    <Palette className="w-5 h-5 text-rotary-blue" /> Secciones de la Portada
+                                </h3>
+                                <p className="text-xs text-gray-400 mb-6">
+                                    Activa o desactiva contenedores completos de la portada (home) del sitio.
+                                </p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    {[
+                                        { key: 'news', label: 'Noticias y artículos' },
+                                    ].map(item => (
+                                        <label key={item.key} className="flex items-center gap-3 cursor-pointer p-3 border border-gray-100 rounded-xl hover:bg-gray-50 transition-colors">
+                                            <input
+                                                type="checkbox"
+                                                className="w-4 h-4 text-rotary-blue rounded border-gray-300 focus:ring-rotary-blue"
+                                                checked={formData.eventSections?.[item.key] !== false}
+                                                onChange={e => setFormData({ ...formData, eventSections: { ...formData.eventSections, [item.key]: e.target.checked } })}
                                             />
                                             <span className="text-[13px] font-bold text-gray-700">{item.label}</span>
                                         </label>

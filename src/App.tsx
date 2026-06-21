@@ -282,7 +282,8 @@ function SmartHome() {
         <JoinSection />
         <FoundationSection />
         <CausesHexSection />
-        <NewsSection />
+        {/* Evento/Convención: el contenedor de noticias se puede desactivar desde la configuración. */}
+        {((club as any)?.eventSections?.news !== false) && <NewsSection />}
       </main>
       <Footer />
     </div>

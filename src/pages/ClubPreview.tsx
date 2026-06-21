@@ -139,7 +139,7 @@ const ClubPreview: React.FC = () => {
                             <SectionErrorBoundary name="Join"><JoinSection /></SectionErrorBoundary>
                             <SectionErrorBoundary name="Foundation"><FoundationSection /></SectionErrorBoundary>
                             <SectionErrorBoundary name="Causes"><CausesHexSection /></SectionErrorBoundary>
-                            <SectionErrorBoundary name="News"><NewsSection /></SectionErrorBoundary>
+                            {((club as any)?.eventSections?.news !== false) && <SectionErrorBoundary name="News"><NewsSection /></SectionErrorBoundary>}
                         </>
                     )}
                 </main>

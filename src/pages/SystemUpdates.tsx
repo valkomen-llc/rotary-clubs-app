@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.462.0 | 2026-06-21 (Eventos: sección "Nuestra Fundación" editable)
-// Cache bust: 2026-06-21 12:30
+// UI V4.463.0 | 2026-06-21 (Eventos: activar/desactivar sección de Noticias)
+// Cache bust: 2026-06-21 13:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.463.0',
+        title: 'Eventos: Activar/Desactivar Sección de Noticias 📰',
+        description: 'Los sitios de Evento o Convención ahora pueden mostrar u ocultar por completo el contenedor "Noticias y artículos" de la portada (home). Se controla con un interruptor en Configuración → Identidad → "Secciones de la Portada". Por defecto la sección permanece visible.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'portada', 'noticias', 'seccion', 'eventos', 'convenciones', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.462.0',
         title: 'Eventos: Sección "Nuestra Fundación" Editable ✏️',
