@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.464.0 | 2026-06-21 (Eventos: footer configurable por sitio)
-// Cache bust: 2026-06-21 13:30
+// UI V4.465.0 | 2026-06-21 (Footer: auto-recorte del logo al subir)
+// Cache bust: 2026-06-21 15:20
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.465.0',
+        title: 'Footer: Auto-recorte del Logo al Subir ✂️',
+        description: 'Al subir un logo en "Footer del Sitio", ahora se recorta automáticamente el espacio vacío (márgenes y transparencias) alrededor del logo, igual que ya ocurría con los logos de la cabecera. Así el logo se ve más grande y nítido en el pie de página, sin quedar pequeño por los bordes en blanco.',
+        date: new Date().toISOString(),
+        tags: ['footer', 'logos', 'recorte', 'eventos', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.464.0',
         title: 'Eventos: Footer Configurable por Sitio 🦶',
