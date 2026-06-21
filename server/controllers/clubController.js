@@ -6,7 +6,7 @@ import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (EVITA ERROR 500 
 // Clubes: el selector ahora incluye 'Evento o Convención', así que un registro mal
 // categorizado (ej. un evento guardado como club) puede moverse a su sección correcta
 // vía updateClub (addField('type', ...)) sin tocar la base de datos directamente.
-console.log('[clubController] v4.473.0 — Evento/Convención: colores + hero + menú reordenable + secciones editables + footer configurable | scroll-to-top | correo: envío directo vía Resend + bandeja real (Resend Inbound)');
+console.log('[clubController] v4.474.0 — Evento/Convención: colores + hero + menú reordenable + secciones editables + footer configurable | scroll-to-top | correo: envío directo vía Resend + Enviados persistentes + webhook de entrada agnóstico al proveedor');
 
 export const getAllClubs = async (req, res) => {
     try {

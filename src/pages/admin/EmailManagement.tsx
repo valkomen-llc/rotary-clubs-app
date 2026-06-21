@@ -225,8 +225,44 @@ const EmailManagement: React.FC = () => {
         }
     };
 
+    // Enviados persistentes (desde el log de comunicaciones del club).
+    const fetchSent = async () => {
+        setLoadingMessages(true);
+        try {
+            const params = new URLSearchParams();
+            if ((club as any)?.id && user?.role === 'administrator') params.set('clubId', (club as any).id);
+            const res = await fetch(`/api/communications/logs?${params.toString()}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const logs = await res.json();
+                const sent = (Array.isArray(logs) ? logs : [])
+                    .filter((l: any) => l.type === 'email' && l.status === 'sent')
+                    .map((l: any): EmailMessage => {
+                        const bodyText = stripHtml(l.content) || l.content || '';
+                        return {
+                            id: l.id,
+                            from: { name: (club as any)?.name || 'Tú', email: activeAccount?.email || '' },
+                            to: l.recipient || '',
+                            subject: l.subject || '(Sin asunto)',
+                            preview: bodyText.slice(0, 90),
+                            body: bodyText,
+                            timestamp: formatTime(l.createdAt),
+                            read: true, starred: false, hasAttachments: false, folder: 'sent',
+                        };
+                    });
+                setSentMessages(sent);
+            }
+        } catch (e) {
+            console.error('Error fetching sent logs:', e);
+        } finally {
+            setLoadingMessages(false);
+        }
+    };
+
     useEffect(() => {
-        fetchMessages();
+        if (selectedFolder === 'sent') fetchSent();
+        else if (selectedFolder !== 'drafts') fetchMessages();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeAccount?.id, selectedFolder]);
 
@@ -422,7 +458,7 @@ const EmailManagement: React.FC = () => {
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                                     <input type="text" placeholder="Buscar..." className="w-full pl-10 pr-4 py-2 bg-gray-100 border-none rounded-xl text-sm outline-none" />
                                 </div>
-                                <button onClick={fetchMessages} title="Actualizar" className="p-2 text-gray-400 hover:text-rotary-blue rounded-lg hover:bg-gray-100">
+                                <button onClick={() => selectedFolder === 'sent' ? fetchSent() : fetchMessages()} title="Actualizar" className="p-2 text-gray-400 hover:text-rotary-blue rounded-lg hover:bg-gray-100">
                                     <RefreshCw className={`w-4 h-4 ${loadingMessages ? 'animate-spin' : ''}`} />
                                 </button>
                             </div>

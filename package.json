@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.473.0",
-  "cache_bust": "2026-06-21 18:40 (Correo: bandeja real de entrada vía Resend Inbound)",
+  "version": "4.474.0",
+  "cache_bust": "2026-06-21 19:10 (Correo: Enviados persistentes + webhook de entrada agnóstico al proveedor)",
   "type": "module",
-  "//": "UI V4.473.0 | 2026-06-21 (Correo: bandeja real de entrada vía Resend Inbound)",
+  "//": "UI V4.474.0 | 2026-06-21 (Correo: Enviados persistentes + webhook de entrada agnóstico al proveedor)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

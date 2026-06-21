@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.473.0 | 2026-06-21 (Correo: bandeja real de entrada vía Resend Inbound)
-// Cache bust: 2026-06-21 18:40
+// UI V4.474.0 | 2026-06-21 (Correo: Enviados persistentes + entrada multi-proveedor)
+// Cache bust: 2026-06-21 19:10
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.474.0',
+        title: 'Correo: Carpeta "Enviados" Persistente 📤',
+        description: 'La carpeta "Enviados" del Ecosistema de Correo ahora muestra el historial real de correos enviados por el club (no solo los de la sesión actual), tomado del registro de comunicaciones. Además, el webhook de recepción se hizo compatible con varios proveedores de correo entrante (Resend, Postmark, Mailgun y formato genérico), para poder conectar la recepción con el proveedor que corresponda.',
+        date: new Date().toISOString(),
+        tags: ['correo', 'enviados', 'recepcion', 'webhook', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.473.0',
         title: 'Correo: Bandeja de Entrada Real (Recepción) 📥',
