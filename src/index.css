@@ -109,6 +109,7 @@
   }
   .cta-btn:hover {
     background-color: var(--btn-hover, #bae6fd);
+    color: var(--btn-text-hover, var(--btn-text, #004080));
   }
 
   .text-rotaract {

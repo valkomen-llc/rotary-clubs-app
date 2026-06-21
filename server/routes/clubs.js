@@ -171,6 +171,7 @@ router.get('/by-domain', async (req, res) => {
                 buttonBg: settings['button_bg'] || '#e0f2fe',
                 buttonHoverBg: settings['button_hover_bg'] || '#bae6fd',
                 buttonText: settings['button_text_color'] || '#004080',
+                buttonTextHover: settings['button_text_hover_color'] || settings['button_text_color'] || '#004080',
             },
             logoText: activeClub.name?.split(' ').pop(),
             // Hero propio para sitios Evento/Convención (1 imagen = estática; varias = carrusel).

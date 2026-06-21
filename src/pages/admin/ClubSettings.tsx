@@ -49,6 +49,7 @@ const ClubSettings: React.FC = () => {
         buttonBg: '#e0f2fe',
         buttonHoverBg: '#bae6fd',
         buttonTextColor: '#004080',
+        buttonTextHoverColor: '#004080',
         eventHeroImages: [] as { url: string; alt?: string }[],
         eventNavMenu: { inicio: true, sobreNosotros: true, proyectos: true, noticias: true, eventos: true, contacto: true } as Record<string, boolean>,
         actionContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', iconColor: '#F5A623', titleHighlight: '', titleHighlightColor: '#f6a40a' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; iconColor: string; titleHighlight: string; titleHighlightColor: string },
@@ -144,6 +145,7 @@ const ClubSettings: React.FC = () => {
                 buttonBg: club.colors?.buttonBg || settingsMap['button_bg'] || '#e0f2fe',
                 buttonHoverBg: club.colors?.buttonHoverBg || settingsMap['button_hover_bg'] || '#bae6fd',
                 buttonTextColor: club.colors?.buttonText || settingsMap['button_text_color'] || '#004080',
+                buttonTextHoverColor: club.colors?.buttonTextHover || settingsMap['button_text_hover_color'] || club.colors?.buttonText || settingsMap['button_text_color'] || '#004080',
                 eventHeroImages: (club as any).eventHeroImages || (() => { try { return JSON.parse(settingsMap['event_hero_images'] || '[]'); } catch { return []; } })(),
                 eventNavMenu: (() => {
                     const saved = (club as any).eventNavMenu || (() => { try { return JSON.parse(settingsMap['event_nav_menu'] || '{}'); } catch { return {}; } })();
@@ -831,15 +833,23 @@ const ClubSettings: React.FC = () => {
                                                 <input type="text" value={formData.buttonTextColor} onChange={e => setFormData({...formData, buttonTextColor: e.target.value})} className="flex-1 px-4 py-2 bg-gray-50 rounded-lg text-sm font-mono font-bold" />
                                             </div>
                                         </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-gray-400 uppercase">Color del Texto al pasar el mouse (Hover)</label>
+                                            <div className="flex items-center gap-4">
+                                                <input type="color" value={formData.buttonTextHoverColor} onChange={e => setFormData({...formData, buttonTextHoverColor: e.target.value})} className="w-12 h-12 rounded-xl cursor-pointer border-none" />
+                                                <input type="text" value={formData.buttonTextHoverColor} onChange={e => setFormData({...formData, buttonTextHoverColor: e.target.value})} className="flex-1 px-4 py-2 bg-gray-50 rounded-lg text-sm font-mono font-bold" />
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="rounded-2xl p-8 flex items-center justify-center bg-gray-50 border border-gray-100">
+                                    <div className="rounded-2xl p-8 flex flex-col items-center justify-center gap-2 bg-gray-50 border border-gray-100">
                                         <button
                                             type="button"
                                             className="cta-btn inline-flex items-center gap-2 font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg"
-                                            style={{ ['--btn-bg' as string]: formData.buttonBg, ['--btn-hover' as string]: formData.buttonHoverBg, ['--btn-text' as string]: formData.buttonTextColor } as React.CSSProperties}
+                                            style={{ ['--btn-bg' as string]: formData.buttonBg, ['--btn-hover' as string]: formData.buttonHoverBg, ['--btn-text' as string]: formData.buttonTextColor, ['--btn-text-hover' as string]: formData.buttonTextHoverColor } as React.CSSProperties}
                                         >
                                             ★ Toma Acción con Nosotros
                                         </button>
+                                        <p className="text-[11px] text-gray-400">Pasa el mouse por el botón para ver el hover.</p>
                                     </div>
                                 </div>
                             </div>

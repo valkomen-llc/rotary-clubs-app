@@ -31,6 +31,7 @@ export interface ClubConfig {
         buttonBg?: string;
         buttonHoverBg?: string;
         buttonText?: string;
+        buttonTextHover?: string;
     };
     eventHeroImages?: { url: string; alt?: string }[];
     eventNavMenu?: { [key: string]: boolean };
