@@ -4,6 +4,17 @@ import prisma from '../lib/prisma.js';
 export class EmailService {
     constructor() { }
 
+    /**
+     * Normaliza la dirección remitente para usar el dominio raíz verificado en Resend.
+     * Quita el prefijo "www." del dominio (Resend verifica el apex, no el subdominio www).
+     * Ej: "contacto@www.jaquematealapolio.org" → "contacto@jaquematealapolio.org"
+     */
+    static normalizeSenderEmail(email) {
+        if (!email || !email.includes('@')) return email;
+        const [local, domain] = email.split('@');
+        return `${local}@${domain.replace(/^www\./i, '')}`;
+    }
+
     /* ═══════════════════════════════════════════════════════════
        PLATFORM-LEVEL EMAIL  (Registration verification, etc.)
        Uses Resend by default, or SMTP if configured in PlatformConfig
@@ -183,38 +194,33 @@ export class EmailService {
             });
             const senderName = club?.name || 'Club Platform';
 
-            // NEW: Try to use the institutional account's own SMTP if possible
+            // NEW: enviar directamente desde la dirección institucional vía Resend.
+            // El dominio del club está verificado en Resend (mismo API key de la plataforma),
+            // así que el correo sale realmente desde la cuenta del club (no como relay de noreply).
             if (fromEmail) {
                 const account = await prisma.emailAccount.findUnique({
                     where: { email: fromEmail }
                 });
 
-                if (account && account.password) {
-                    try {
-                        console.info(`[EmailService] Attempting direct SMTP for ${fromEmail}`);
-                        const domain = fromEmail.split('@')[1];
-                        const { default: nodemailer } = await import('nodemailer');
-                        
-                        // cPanel standard: mail.domain.com
-                        const directTransporter = nodemailer.createTransport({
-                            host: `mail.${domain}`,
-                            port: 465,
-                            secure: true,
-                            auth: { user: fromEmail, pass: account.password },
-                        });
+                if (account) {
+                    const senderEmail = EmailService.normalizeSenderEmail(fromEmail);
+                    const fromStr = `"${senderName}" <${senderEmail}>`;
+                    console.info(`[EmailService] Enviando vía Resend desde dirección institucional ${senderEmail}`);
 
-                        const fromStr = `"${senderName}" <${fromEmail}>`;
-                        const info = await directTransporter.sendMail({ from: fromStr, to, subject, html });
-                        
+                    const direct = await this.sendPlatformEmail({
+                        to, subject, html, from: fromStr, replyTo: senderEmail
+                    });
+
+                    if (direct.success) {
                         await this.logCommunication({
                             clubId, type: 'email', recipient: to, subject, content: html, status: 'sent',
                             errorMsg: null, sentById: userId
                         });
-
-                        return { success: true, messageId: info.messageId };
-                    } catch (smtpErr) {
-                        console.warn(`[EmailService] Direct SMTP failed for ${fromEmail}: ${smtpErr.message}. Falling back to platform relay.`);
+                        return direct;
                     }
+
+                    // Si Resend rechaza (p.ej. dominio aún no verificado), caemos al relay de plataforma.
+                    console.warn(`[EmailService] Envío directo desde ${senderEmail} falló (¿dominio no verificado en Resend?): ${direct.error}. Usando relay de plataforma.`);
                 }
             }
 
