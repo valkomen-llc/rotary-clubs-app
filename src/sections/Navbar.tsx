@@ -37,6 +37,8 @@ const Navbar = () => {
   const isEventSite = (club as any)?.type === 'Evento o Convención';
   const navMenu = ((club as any)?.eventNavMenu || {}) as Record<string, boolean>;
   const showNav = (key: string) => !isEventSite || navMenu[key] !== false;
+  // Ítems de menú adicionales (Evento/Convención): creados o tomados de secciones del sistema.
+  const extraNav = (isEventSite ? ((club as any)?.eventNavExtra || []) : []) as { label: string; href: string; external?: boolean }[];
 
   // Search state
   const [searchOpen, setSearchOpen] = useState(false);
@@ -220,6 +222,15 @@ const Navbar = () => {
 
 
             {showNav('contacto') && <Link to="/contacto" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Contacto</T></Link>}
+
+            {/* Ítems adicionales del menú (Evento/Convención) */}
+            {extraNav.map((it, i) => (
+              it.external ? (
+                <a key={`x-${i}`} href={it.href} target="_blank" rel="noopener noreferrer" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors">{it.label}</a>
+              ) : (
+                <Link key={`x-${i}`} to={it.href} className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors">{it.label}</Link>
+              )
+            ))}
           </div>
 
           {/* Right Side Icons */}
@@ -394,6 +405,16 @@ const Navbar = () => {
               )}
 
               {showNav('contacto') && <Link to="/contacto" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Contacto</Link>}
+
+              {/* Ítems adicionales del menú (Evento/Convención) */}
+              {extraNav.map((it, i) => (
+                it.external ? (
+                  <a key={`xm-${i}`} href={it.href} target="_blank" rel="noopener noreferrer" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>{it.label}</a>
+                ) : (
+                  <Link key={`xm-${i}`} to={it.href} className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>{it.label}</Link>
+                )
+              ))}
+
               {isAuthenticated ? (
                 <Link to="/admin/dashboard" className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Panel</Link>
               ) : (
