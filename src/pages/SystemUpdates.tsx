@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.469.0 | 2026-06-21 (Eventos: menús adicionales en el menú principal)
-// Cache bust: 2026-06-21 17:00
+// UI V4.470.0 | 2026-06-21 (Navegación: scroll al inicio al cambiar de página)
+// Cache bust: 2026-06-21 17:20
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.470.0',
+        title: 'Navegación: Las Páginas se Abren Siempre desde el Inicio ⬆️',
+        description: 'Al hacer clic en un enlace del menú o entrar a una sección (por ejemplo "Maneras de Contribuir"), la página ahora siempre se muestra desde la parte superior (el contenedor principal), en lugar de quedar en la posición de scroll anterior. Los enlaces con ancla (#) que llevan a una sección específica siguen funcionando igual.',
+        date: new Date().toISOString(),
+        tags: ['navegacion', 'scroll', 'ux', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.469.0',
         title: 'Eventos: Agregar Menús al Menú Principal ➕',

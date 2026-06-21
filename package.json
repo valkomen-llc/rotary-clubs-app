@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.469.0",
-  "cache_bust": "2026-06-21 17:00 (Eventos: agregar menús adicionales al menú principal — crear o desde secciones del sistema)",
+  "version": "4.470.0",
+  "cache_bust": "2026-06-21 17:20 (Navegación: al cambiar de página siempre se muestra desde el inicio)",
   "type": "module",
-  "//": "UI V4.469.0 | 2026-06-21 (Eventos: agregar menús adicionales al menú principal — crear o desde secciones del sistema)",
+  "//": "UI V4.470.0 | 2026-06-21 (Navegación: al cambiar de página siempre se muestra desde el inicio)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
