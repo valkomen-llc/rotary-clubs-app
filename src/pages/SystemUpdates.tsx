@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.472.0 | 2026-06-21 (Correo: envío directo desde el dominio del club)
-// Cache bust: 2026-06-21 18:10
+// UI V4.473.0 | 2026-06-21 (Correo: bandeja real de entrada vía Resend Inbound)
+// Cache bust: 2026-06-21 18:40
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.473.0',
+        title: 'Correo: Bandeja de Entrada Real (Recepción) 📥',
+        description: 'El Ecosistema de Correo ahora recibe correos reales: los mensajes entrantes a las cuentas del club (vía Resend Inbound) se guardan y se muestran en la bandeja de entrada, reemplazando los datos de ejemplo. Puedes abrir cada mensaje (se marca como leído), destacarlo, moverlo a la papelera y actualizar la bandeja. La recepción se enruta automáticamente al buzón correcto del club.',
+        date: new Date().toISOString(),
+        tags: ['correo', 'resend', 'recepcion', 'bandeja', 'inbound', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.472.0',
         title: 'Correo: Envío desde el Dominio del Club vía Resend ✉️',
