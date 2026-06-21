@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.467.0",
-  "cache_bust": "2026-06-21 16:10 (Eventos: sección Áreas de Interés — texto y botón editables)",
+  "version": "4.468.0",
+  "cache_bust": "2026-06-21 16:30 (Eventos: botón de Áreas de Interés usa los colores de los botones del inicio)",
   "type": "module",
-  "//": "UI V4.467.0 | 2026-06-21 (Eventos: sección Áreas de Interés — texto y botón editables)",
+  "//": "UI V4.468.0 | 2026-06-21 (Eventos: botón de Áreas de Interés usa los colores de los botones del inicio)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
