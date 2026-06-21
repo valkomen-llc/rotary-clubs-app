@@ -6,7 +6,7 @@ import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (EVITA ERROR 500 
 // Clubes: el selector ahora incluye 'Evento o Convención', así que un registro mal
 // categorizado (ej. un evento guardado como club) puede moverse a su sección correcta
 // vía updateClub (addField('type', ...)) sin tocar la base de datos directamente.
-console.log('[clubController] v4.468.0 — Evento/Convención: colores + hero + menú + secciones editables (incl. Áreas de Interés con colores de botón) + visibilidad de noticias + footer configurable');
+console.log('[clubController] v4.469.0 — Evento/Convención: colores + hero + menú (con ítems adicionales) + secciones editables + visibilidad de noticias + footer configurable');
 
 export const getAllClubs = async (req, res) => {
     try {
@@ -176,7 +176,7 @@ export const updateClub = async (req, res) => {
         name, description, city, country, district, domain, subdomain, type, organizationType,
         email, phone, address, state, facebook, instagram, twitter, youtube, linkedin, tiktok, 
         socialLinks, customSocialLinks, siteImages, galleryImages,
-        primaryColor, secondaryColor, actionSectionBg, joinSectionBg, areasSectionBg, footerBg, copyrightBg, copyrightTextColor, buttonBg, buttonHoverBg, buttonTextColor, buttonTextHoverColor, eventHeroImages, eventNavMenu, actionContent, statsContent, joinContent, foundationContent, causesContent, eventSections, footerConfig, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, status,
+        primaryColor, secondaryColor, actionSectionBg, joinSectionBg, areasSectionBg, footerBg, copyrightBg, copyrightTextColor, buttonBg, buttonHoverBg, buttonTextColor, buttonTextHoverColor, eventHeroImages, eventNavMenu, eventNavExtra, actionContent, statsContent, joinContent, foundationContent, causesContent, eventSections, footerConfig, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, status,
         stripePublicKey, stripeSecretKey, useStripe,
         usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
         storeActive, logoHeaderSize, autoGenerateCalendar, mapStyle,
@@ -333,6 +333,7 @@ export const updateClub = async (req, res) => {
                 'button_text_hover_color': buttonTextHoverColor,
                 'event_hero_images': eventHeroImages !== undefined ? JSON.stringify(eventHeroImages) : undefined,
                 'event_nav_menu': eventNavMenu !== undefined ? JSON.stringify(eventNavMenu) : undefined,
+                'event_nav_extra': eventNavExtra !== undefined ? JSON.stringify(eventNavExtra) : undefined,
                 'action_section_content': actionContent !== undefined ? JSON.stringify(actionContent) : undefined,
                 'stats_content': statsContent !== undefined ? JSON.stringify(statsContent) : undefined,
                 'join_section_content': joinContent !== undefined ? JSON.stringify(joinContent) : undefined,

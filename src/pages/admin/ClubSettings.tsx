@@ -17,6 +17,29 @@ import { useNavigate } from 'react-router-dom';
 import WhatsAppConfig from '../../components/admin/whatsapp/WhatsAppConfig';
 import SystemCommunicationsConfig from '../../components/admin/SystemCommunicationsConfig';
 
+// Secciones/páginas del sistema que se pueden añadir al menú principal.
+const SYSTEM_NAV_SECTIONS: { label: string; href: string }[] = [
+    { label: 'Inicio', href: '/' },
+    { label: 'Quiénes Somos', href: '/quienes-somos' },
+    { label: 'Nuestras Causas', href: '/nuestras-causas' },
+    { label: 'Maneras de Contribuir', href: '/maneras-de-contribuir' },
+    { label: 'Nuestra Historia', href: '/nuestra-historia' },
+    { label: 'Nuestros Socios', href: '/nuestros-socios' },
+    { label: 'Junta Directiva', href: '/nuestra-junta-directiva' },
+    { label: 'La Fundación Rotaria', href: '/la-fundacion-rotaria' },
+    { label: 'Programa de Intercambios', href: '/intercambio-jovenes' },
+    { label: 'Rotaract', href: '/rotaract' },
+    { label: 'Interact', href: '/interact' },
+    { label: 'Estados Financieros', href: '/estados-financieros' },
+    { label: 'Proyectos', href: '/proyectos' },
+    { label: 'Noticias', href: '/blog' },
+    { label: 'Eventos', href: '/eventos' },
+    { label: 'Calendario', href: '/calendario' },
+    { label: 'Tienda', href: '/shop' },
+    { label: 'Contacto', href: '/contacto' },
+];
+
+type NavExtraItem = { label: string; href: string; external?: boolean };
 type FooterMenuItem = { label: string; href: string; external?: boolean };
 type FooterConfig = {
     logoTop: string;
@@ -82,6 +105,7 @@ const ClubSettings: React.FC = () => {
         buttonTextHoverColor: '#004080',
         eventHeroImages: [] as { url: string; alt?: string }[],
         eventNavMenu: { inicio: true, sobreNosotros: true, proyectos: true, noticias: true, eventos: true, contacto: true } as Record<string, boolean>,
+        eventNavExtra: [] as NavExtraItem[],
         eventSections: { news: true } as Record<string, boolean>,
         footerConfig: buildDefaultFooter(null) as FooterConfig,
         actionContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', iconColor: '#F5A623', titleHighlight: '', titleHighlightColor: '#f6a40a' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; iconColor: string; titleHighlight: string; titleHighlightColor: string },
@@ -190,6 +214,10 @@ const ClubSettings: React.FC = () => {
                 eventNavMenu: (() => {
                     const saved = (club as any).eventNavMenu || (() => { try { return JSON.parse(settingsMap['event_nav_menu'] || '{}'); } catch { return {}; } })();
                     return { inicio: true, sobreNosotros: true, proyectos: true, noticias: true, eventos: true, contacto: true, ...saved };
+                })(),
+                eventNavExtra: (() => {
+                    const saved = (club as any).eventNavExtra || (() => { try { return JSON.parse(settingsMap['event_nav_extra'] || '[]'); } catch { return []; } })();
+                    return Array.isArray(saved) ? saved : [];
                 })(),
                 eventSections: (() => {
                     const saved = (club as any).eventSections || (() => { try { return JSON.parse(settingsMap['event_sections_visibility'] || '{}'); } catch { return {}; } })();
@@ -353,6 +381,17 @@ const ClubSettings: React.FC = () => {
 
     const removeEventHeroImage = (idx: number) => {
         setFormData(prev => ({ ...prev, eventHeroImages: (prev.eventHeroImages || []).filter((_, i) => i !== idx) }));
+    };
+
+    // Helpers de los ítems adicionales del menú principal (Evento/Convención).
+    const addNavExtra = (item?: NavExtraItem) => {
+        setFormData(prev => ({ ...prev, eventNavExtra: [...prev.eventNavExtra, item || { label: 'Nuevo Menú', href: '/' }] }));
+    };
+    const removeNavExtra = (idx: number) => {
+        setFormData(prev => ({ ...prev, eventNavExtra: prev.eventNavExtra.filter((_, i) => i !== idx) }));
+    };
+    const updateNavExtra = (idx: number, field: keyof NavExtraItem, value: any) => {
+        setFormData(prev => ({ ...prev, eventNavExtra: prev.eventNavExtra.map((it, i) => i === idx ? { ...it, [field]: value } : it) }));
     };
 
     // Helpers del footer configurable (Evento/Convención).
@@ -1047,6 +1086,61 @@ const ClubSettings: React.FC = () => {
                                             <span className="text-[13px] font-bold text-gray-700">{item.label}</span>
                                         </label>
                                     ))}
+                                </div>
+
+                                {/* Menús adicionales: crear o tomar de las secciones del sistema */}
+                                <div className="mt-8 pt-6 border-t border-gray-100">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                                        <div>
+                                            <h4 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                                                <LinkIcon className="w-4 h-4 text-rotary-blue" /> Menús adicionales
+                                            </h4>
+                                            <p className="text-xs text-gray-400 mt-1">Agrega elementos al menú: créalos manualmente o tómalos de una sección del sistema.</p>
+                                        </div>
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                            <select
+                                                value=""
+                                                onChange={e => { const sec = SYSTEM_NAV_SECTIONS.find(s => s.href === e.target.value); if (sec) addNavExtra({ label: sec.label, href: sec.href }); e.target.value = ''; }}
+                                                className="px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue bg-white text-sm"
+                                            >
+                                                <option value="">+ Desde una sección…</option>
+                                                {SYSTEM_NAV_SECTIONS.map(s => (
+                                                    <option key={s.href} value={s.href}>{s.label}</option>
+                                                ))}
+                                            </select>
+                                            <button type="button" onClick={() => addNavExtra()} className="flex items-center gap-1.5 text-xs font-bold text-rotary-blue bg-blue-50 px-3 py-2 rounded-lg hover:bg-blue-100 transition-all whitespace-nowrap">
+                                                <Plus className="w-4 h-4" /> Crear Link
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-3">
+                                        {formData.eventNavExtra.map((item, idx) => (
+                                            <div key={idx} className="flex flex-col md:flex-row gap-3 p-3 bg-gray-50 rounded-xl">
+                                                <div className="flex-1">
+                                                    <label className="text-[10px] font-bold text-gray-400 uppercase">Texto del Menú</label>
+                                                    <input type="text" value={item.label} onChange={e => updateNavExtra(idx, 'label', e.target.value)} className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue text-sm font-bold text-gray-700 bg-white" />
+                                                </div>
+                                                <div className="flex-[2]">
+                                                    <label className="text-[10px] font-bold text-gray-400 uppercase">Ruta o URL (#/blog, https://…)</label>
+                                                    <input type="text" value={item.href} onChange={e => updateNavExtra(idx, 'href', e.target.value)} className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue text-sm text-blue-600 bg-white" />
+                                                </div>
+                                                <div className="flex items-end gap-2">
+                                                    <label className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-lg cursor-pointer mt-1">
+                                                        <input type="checkbox" checked={!!item.external} onChange={e => updateNavExtra(idx, 'external', e.target.checked)} className="w-4 h-4 text-rotary-blue rounded border-gray-300" />
+                                                        <span className="text-[10px] font-bold text-gray-500 whitespace-nowrap">Externo</span>
+                                                    </label>
+                                                    <button type="button" onClick={() => removeNavExtra(idx)} className="p-2 mt-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Eliminar">
+                                                        <Trash2 className="w-5 h-5" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {formData.eventNavExtra.length === 0 && (
+                                            <div className="text-center py-6 text-gray-400 text-sm italic border-2 border-dashed border-gray-100 rounded-xl">
+                                                Sin menús adicionales. Usa "Crear Link" o "Desde una sección…".
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         )}

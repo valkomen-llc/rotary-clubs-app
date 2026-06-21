@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.468.0 | 2026-06-21 (Eventos: botón de Áreas de Interés usa los colores del inicio)
-// Cache bust: 2026-06-21 16:30
+// UI V4.469.0 | 2026-06-21 (Eventos: menús adicionales en el menú principal)
+// Cache bust: 2026-06-21 17:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.469.0',
+        title: 'Eventos: Agregar Menús al Menú Principal ➕',
+        description: 'Además de activar/desactivar las secciones fijas, los sitios de Evento o Convención ahora pueden agregar elementos al menú principal: créalos manualmente (texto + enlace, interno o externo) o tómalos de una sección del sistema (Quiénes Somos, Proyectos, Nuestras Causas, etc.) desde un selector. Está en Configuración → Identidad → "Menú Principal" → "Menús adicionales". Los nuevos elementos aparecen en el menú de navegación (escritorio y móvil).',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'menu', 'navegacion', 'eventos', 'convenciones', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.468.0',
         title: 'Eventos: El Botón de "Áreas de Interés" Usa los Colores del Inicio 🎨',

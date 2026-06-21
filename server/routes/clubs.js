@@ -184,6 +184,11 @@ router.get('/by-domain', async (req, res) => {
                 try { return settings['event_nav_menu'] ? JSON.parse(settings['event_nav_menu']) : {}; }
                 catch { return {}; }
             })(),
+            // Ítems adicionales del menú (Evento/Convención): creados o de secciones del sistema.
+            eventNavExtra: (() => {
+                try { return settings['event_nav_extra'] ? JSON.parse(settings['event_nav_extra']) : []; }
+                catch { return []; }
+            })(),
             // Contenido editable de la sección "Somos gente de acción" (Evento/Convención).
             actionContent: (() => {
                 try { return settings['action_section_content'] ? JSON.parse(settings['action_section_content']) : {}; }
