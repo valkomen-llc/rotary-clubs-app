@@ -48,6 +48,7 @@ export interface ClubConfig {
     statsContent?: { icon?: string; color?: string; value?: string; text?: string }[];
     joinContent?: { title?: string; text?: string; buttonText?: string; buttonUrl?: string; icon?: string; titleHighlight?: string; titleHighlightColor?: string };
     foundationContent?: { title?: string; text?: string; buttonText?: string; buttonUrl?: string; icon?: string; titleHighlight?: string; titleHighlightColor?: string };
+    causesContent?: { text?: string; buttonText?: string; buttonUrl?: string; icon?: string };
     type?: string;
     social: { platform: string; url: string }[];
     contact: {

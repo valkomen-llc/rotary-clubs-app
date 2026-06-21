@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.466.0 | 2026-06-21 (Footer: el recorte conserva logos blancos)
-// Cache bust: 2026-06-21 15:40
+// UI V4.467.0 | 2026-06-21 (Eventos: Áreas de Interés — texto y botón editables)
+// Cache bust: 2026-06-21 16:10
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.467.0',
+        title: 'Eventos: Sección "Áreas de Interés" — Texto y Botón Editables ✏️',
+        description: 'Los sitios de Evento o Convención ahora pueden editar el texto descriptivo y el botón de la sección "Áreas de Interés" (los círculos): texto (con saltos de línea), texto y enlace del botón, e icono (emoji). Está en Configuración → Identidad → "Sección Áreas de Interés (Texto y Botón)". El título sigue usando el nombre del sitio. Si un campo se deja vacío, se usa el contenido por defecto.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'contenido', 'areas-de-interes', 'cta', 'eventos', 'convenciones', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.466.0',
         title: 'Footer: El Recorte Conserva el Logo Completo 🔧',

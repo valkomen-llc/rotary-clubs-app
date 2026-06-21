@@ -15,6 +15,14 @@ import { ChevronLeft, ChevronRight, Globe } from 'lucide-react';
 import { useClub } from '../contexts/ClubContext';
 import { useSiteImages } from '../hooks/useSiteImages';
 
+const ICON_EMOJI: Record<string, string> = {
+  star: '⭐', heart: '❤️', handshake: '🤝', send: '✈️', sparkles: '✨',
+  megaphone: '📣', flag: '🚩', gift: '🎁', users: '👥', calendar: '📅',
+  award: '🏅', trophy: '🏆', rocket: '🚀', globe: '🌐',
+};
+
+const DEFAULT_AREAS_TEXT = 'La labor de Rotary surge directamente de las necesidades de las comunidades, cada una con sus propios desafíos. Para maximizar nuestro impacto, hemos enfocado nuestras acciones en siete áreas prioritarias que abordan las necesidades más urgentes y comunes de la humanidad. A través de la Fundación Rotaria, que gestiona y distribuye los recursos, implementamos proyectos y actividades con resultados comprobados y sostenibles en beneficio de la comunidad.';
+
 /* 
   ═══════════════════════════════════════════════════════════════════════════════
   VARIABLES CSS - Personaliza colores y medidas aquí
@@ -460,6 +468,23 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
   const carouselRef = useRef<HTMLDivElement>(null);
   const isLatir = club?.subdomain?.toLowerCase().includes('latir') || club?.name?.toLowerCase().includes('latir');
 
+  // Texto y botón editables (solo Evento/Convención).
+  const isEventSite = (club as any)?.type === 'Evento o Convención';
+  const causesContent = (isEventSite && (club as any)?.causesContent) ? (club as any).causesContent : {};
+  const areasText = causesContent.text || DEFAULT_AREAS_TEXT;
+  const ctaText = causesContent.buttonText || 'Nuestras Áreas de Interés';
+  const ctaUrl = causesContent.buttonUrl || '/nuestras-causas';
+  const ctaExternal = /^https?:\/\//i.test(ctaUrl);
+  const ctaEmoji = isEventSite && causesContent.icon
+    ? (ICON_EMOJI[causesContent.icon] || (causesContent.icon.length <= 4 ? causesContent.icon : ''))
+    : '';
+  const ctaInner = (
+    <>
+      {ctaEmoji ? <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>{ctaEmoji}</span> : <Globe className="w-5 h-5" />}
+      {ctaText}
+    </>
+  );
+
   // Override images and titles with custom ones from siteImages.causes
   const finalAreas = areas.map((area, i) => {
     const custom = siteImages.causes?.[i];
@@ -530,11 +555,8 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
             <h2 id="areas-title" className="areas-rotary__title">
               {club?.name || 'Rotary Club'}
             </h2>
-            <p className="areas-rotary__description">
-              La labor de Rotary surge directamente de las necesidades de las comunidades, cada una con sus propios desafíos.
-              Para maximizar nuestro impacto, hemos enfocado nuestras acciones en siete áreas prioritarias que abordan las
-              necesidades más urgentes y comunes de la humanidad. A través de la Fundación Rotaria, que gestiona y distribuye
-              los recursos, implementamos proyectos y actividades con resultados comprobados y sostenibles en beneficio de la comunidad.
+            <p className="areas-rotary__description" style={{ whiteSpace: 'pre-line' }}>
+              {areasText}
             </p>
           </header>
         )}
@@ -676,10 +698,11 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
 
         {/* CTA Button */}
         <div className="areas-rotary__cta">
-          <Link to="/nuestras-causas" className="areas-rotary__button">
-            <Globe className="w-5 h-5" />
-            Nuestras Áreas de Interés
-          </Link>
+          {ctaExternal ? (
+            <a href={ctaUrl} target="_blank" rel="noopener noreferrer" className="areas-rotary__button">{ctaInner}</a>
+          ) : (
+            <Link to={ctaUrl} className="areas-rotary__button">{ctaInner}</Link>
+          )}
         </div>
 
         {/* Lightbox Overlay */}

@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.466.0",
-  "cache_bust": "2026-06-21 15:40 (Footer: el auto-recorte conserva logos blancos sobre transparente)",
+  "version": "4.467.0",
+  "cache_bust": "2026-06-21 16:10 (Eventos: sección Áreas de Interés — texto y botón editables)",
   "type": "module",
-  "//": "UI V4.466.0 | 2026-06-21 (Footer: el auto-recorte conserva logos blancos sobre transparente)",
+  "//": "UI V4.467.0 | 2026-06-21 (Eventos: sección Áreas de Interés — texto y botón editables)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
