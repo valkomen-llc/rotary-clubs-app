@@ -209,6 +209,11 @@ router.get('/by-domain', async (req, res) => {
                 try { return settings['event_sections_visibility'] ? JSON.parse(settings['event_sections_visibility']) : {}; }
                 catch { return {}; }
             })(),
+            // Configuración del footer por sitio (Evento/Convención): logos + columnas de menú.
+            footerConfig: (() => {
+                try { return settings['footer_config'] ? JSON.parse(settings['footer_config']) : {}; }
+                catch { return {}; }
+            })(),
             productsCount: activeClub._count?.products || 0,
             eventsCount: activeClub._count?.events || 0,
             // Logo Size Inheritance: Priority 1: Club Setting, Priority 2: Master Club Setting, Priority 3: Default 200

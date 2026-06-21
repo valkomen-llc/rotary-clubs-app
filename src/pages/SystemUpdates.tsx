@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.463.0 | 2026-06-21 (Eventos: activar/desactivar sección de Noticias)
-// Cache bust: 2026-06-21 13:00
+// UI V4.464.0 | 2026-06-21 (Eventos: footer configurable por sitio)
+// Cache bust: 2026-06-21 13:30
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.464.0',
+        title: 'Eventos: Footer Configurable por Sitio 🦶',
+        description: 'Los sitios de Evento o Convención ahora pueden personalizar el pie de página directamente desde su panel: subir los dos logos (superior e inferior) y editar las columnas de enlaces "El Club" y "Realiza una Acción" (agregar, quitar, renombrar el título y marcar enlaces externos). Está en Configuración → Identidad → "Footer del Sitio". Si una columna se deja vacía, se usan los enlaces por defecto.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'footer', 'logos', 'menu', 'eventos', 'convenciones', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.463.0',
         title: 'Eventos: Activar/Desactivar Sección de Noticias 📰',

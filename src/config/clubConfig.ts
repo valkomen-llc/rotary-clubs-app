@@ -36,6 +36,14 @@ export interface ClubConfig {
     eventHeroImages?: { url: string; alt?: string }[];
     eventNavMenu?: { [key: string]: boolean };
     eventSections?: { [key: string]: boolean };
+    footerConfig?: {
+        logoTop?: string;
+        logoBottom?: string;
+        menu1Title?: string;
+        menu1Items?: { label: string; href: string; external?: boolean }[];
+        menu2Title?: string;
+        menu2Items?: { label: string; href: string; external?: boolean }[];
+    };
     actionContent?: { title?: string; text?: string; buttonText?: string; buttonUrl?: string; icon?: string; iconColor?: string; titleHighlight?: string; titleHighlightColor?: string };
     statsContent?: { icon?: string; color?: string; value?: string; text?: string }[];
     joinContent?: { title?: string; text?: string; buttonText?: string; buttonUrl?: string; icon?: string; titleHighlight?: string; titleHighlightColor?: string };

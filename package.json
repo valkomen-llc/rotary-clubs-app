@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.463.0",
-  "cache_bust": "2026-06-21 13:00 (Eventos: activar/desactivar sección de Noticias en la portada)",
+  "version": "4.464.0",
+  "cache_bust": "2026-06-21 13:30 (Eventos: footer configurable — logos y columnas de menú por sitio)",
   "type": "module",
-  "//": "UI V4.463.0 | 2026-06-21 (Eventos: activar/desactivar sección de Noticias en la portada)",
+  "//": "UI V4.464.0 | 2026-06-21 (Eventos: footer configurable — logos y columnas de menú por sitio)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

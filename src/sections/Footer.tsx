@@ -112,9 +112,23 @@ const Footer = () => {
         }
     };
 
-    const activeConfig = config || getLocalDefaults();
     // Colores/textura personalizables solo para sitios Evento/Convención; el resto, original.
     const isEventSite = (club as any)?.type === 'Evento o Convención';
+
+    // Footer configurable por sitio (solo Evento/Convención): logos + columnas de menú.
+    // Cualquier campo no definido cae al valor por defecto, para no romper sitios sin configurar.
+    const fc = isEventSite ? ((club as any)?.footerConfig || {}) : {};
+    const localDefaults = getLocalDefaults();
+    const activeConfig = isEventSite
+        ? {
+            logoTop: fc.logoTop || localDefaults.logoTop,
+            logoBottom: fc.logoBottom || localDefaults.logoBottom,
+            menu1Title: fc.menu1Title || localDefaults.menu1Title,
+            menu1Items: (fc.menu1Items && fc.menu1Items.length) ? fc.menu1Items : localDefaults.menu1Items,
+            menu2Title: fc.menu2Title || localDefaults.menu2Title,
+            menu2Items: (fc.menu2Items && fc.menu2Items.length) ? fc.menu2Items : localDefaults.menu2Items,
+        }
+        : (config || localDefaults);
     const footerBg = isEventSite ? ((club as any)?.colors?.footerBg || '#013E7D') : '#013E7D';
     const copyrightBg = isEventSite ? ((club as any)?.colors?.copyrightBg || '#013871') : null;
     const copyrightText = isEventSite ? ((club as any)?.colors?.copyrightText || '#FFFFFF') : null;

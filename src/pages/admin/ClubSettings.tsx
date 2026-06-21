@@ -7,7 +7,7 @@ import {
     Image as ImageIcon, Store, Dna, Settings as SettingsIcon, 
     CreditCard, ExternalLink, Sparkles, Layout, Mail, 
     MapPin, Share2, Info, Building2, Bot, ChevronRight, RefreshCw,
-    Facebook, Instagram, Twitter, Linkedin, Youtube
+    Facebook, Instagram, Twitter, Linkedin, Youtube, Plus, Trash2, Link as LinkIcon
 } from 'lucide-react';
 import { toast } from 'sonner';
 import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
@@ -16,6 +16,36 @@ import { getAutoCropCanvas, fileToImage, canvasToFile } from '../../utils/cropUt
 import { useNavigate } from 'react-router-dom';
 import WhatsAppConfig from '../../components/admin/whatsapp/WhatsAppConfig';
 import SystemCommunicationsConfig from '../../components/admin/SystemCommunicationsConfig';
+
+type FooterMenuItem = { label: string; href: string; external?: boolean };
+type FooterConfig = {
+    logoTop: string;
+    logoBottom: string;
+    menu1Title: string;
+    menu1Items: FooterMenuItem[];
+    menu2Title: string;
+    menu2Items: FooterMenuItem[];
+};
+
+// Footer por defecto para sitios Evento/Convención (coincide con el fallback de Footer.tsx).
+const buildDefaultFooter = (club: any): FooterConfig => ({
+    logoTop: club?.footerLogo || 'https://app.clubplatform.org/rotary-logo-white.png',
+    logoBottom: club?.settings?.youth_exchange_logo || club?.endPolioLogo || 'https://app.clubplatform.org/logo-end-polio.svg',
+    menu1Title: 'El Club',
+    menu1Items: [
+        { label: 'Quiénes Somos', href: '#/quienes-somos' },
+        { label: 'Nuestra Historia', href: '#/nuestra-historia' },
+        { label: 'Junta Directiva', href: '#/nuestra-junta-directiva' },
+        { label: 'Hazte Socio', href: '#/contacto' },
+    ],
+    menu2Title: 'Realiza una Acción',
+    menu2Items: [
+        { label: 'Aporte Voluntario', href: '#/maneras-de-contribuir' },
+        { label: 'Comunícate con nosotros', href: '#/contacto' },
+        { label: 'Rotary.org', href: 'https://rotary.org', external: true },
+        { label: 'Pongamos Fin a la Polio', href: 'https://endpolio.org', external: true },
+    ],
+});
 
 const ClubSettings: React.FC = () => {
     const { club, refreshClub } = useClub();
@@ -53,6 +83,7 @@ const ClubSettings: React.FC = () => {
         eventHeroImages: [] as { url: string; alt?: string }[],
         eventNavMenu: { inicio: true, sobreNosotros: true, proyectos: true, noticias: true, eventos: true, contacto: true } as Record<string, boolean>,
         eventSections: { news: true } as Record<string, boolean>,
+        footerConfig: buildDefaultFooter(null) as FooterConfig,
         actionContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', iconColor: '#F5A623', titleHighlight: '', titleHighlightColor: '#f6a40a' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; iconColor: string; titleHighlight: string; titleHighlightColor: string },
         statsContent: [
             { icon: 'globe', color: '#004080', value: '+1.2M', text: 'Somos más de 1.2 millones de rotarios en el mundo, dedicados a servir, mejorar y transformar nuestras comunidades.' },
@@ -162,6 +193,18 @@ const ClubSettings: React.FC = () => {
                 eventSections: (() => {
                     const saved = (club as any).eventSections || (() => { try { return JSON.parse(settingsMap['event_sections_visibility'] || '{}'); } catch { return {}; } })();
                     return { news: true, ...saved };
+                })(),
+                footerConfig: (() => {
+                    const def = buildDefaultFooter(club);
+                    const saved = (club as any).footerConfig || (() => { try { return JSON.parse(settingsMap['footer_config'] || '{}'); } catch { return {}; } })();
+                    return {
+                        logoTop: saved.logoTop || def.logoTop,
+                        logoBottom: saved.logoBottom || def.logoBottom,
+                        menu1Title: saved.menu1Title || def.menu1Title,
+                        menu1Items: (saved.menu1Items && saved.menu1Items.length) ? saved.menu1Items : def.menu1Items,
+                        menu2Title: saved.menu2Title || def.menu2Title,
+                        menu2Items: (saved.menu2Items && saved.menu2Items.length) ? saved.menu2Items : def.menu2Items,
+                    } as FooterConfig;
                 })(),
                 actionContent: (() => {
                     const saved = (club as any).actionContent || (() => { try { return JSON.parse(settingsMap['action_section_content'] || '{}'); } catch { return {}; } })();
@@ -305,6 +348,52 @@ const ClubSettings: React.FC = () => {
 
     const removeEventHeroImage = (idx: number) => {
         setFormData(prev => ({ ...prev, eventHeroImages: (prev.eventHeroImages || []).filter((_, i) => i !== idx) }));
+    };
+
+    // Helpers del footer configurable (Evento/Convención).
+    const updateFooter = (field: keyof FooterConfig, value: any) => {
+        setFormData(prev => ({ ...prev, footerConfig: { ...prev.footerConfig, [field]: value } }));
+    };
+    const addFooterItem = (menu: 'menu1Items' | 'menu2Items') => {
+        setFormData(prev => ({ ...prev, footerConfig: { ...prev.footerConfig, [menu]: [...prev.footerConfig[menu], { label: 'Nuevo Link', href: '#' }] } }));
+    };
+    const removeFooterItem = (menu: 'menu1Items' | 'menu2Items', idx: number) => {
+        setFormData(prev => ({ ...prev, footerConfig: { ...prev.footerConfig, [menu]: prev.footerConfig[menu].filter((_, i) => i !== idx) } }));
+    };
+    const updateFooterItem = (menu: 'menu1Items' | 'menu2Items', idx: number, field: keyof FooterMenuItem, value: any) => {
+        setFormData(prev => {
+            const items = prev.footerConfig[menu].map((it, i) => i === idx ? { ...it, [field]: value } : it);
+            return { ...prev, footerConfig: { ...prev.footerConfig, [menu]: items } };
+        });
+    };
+    // Subida de logos del footer (logoTop / logoBottom).
+    const handleFooterLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'logoTop' | 'logoBottom') => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setUploading(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const uploadData = new FormData();
+            uploadData.append('file', file);
+            uploadData.append('folder', 'footer-logos');
+            const res = await fetch(`${API_URL}/media/upload?folder=footer-logos&clubId=${club?.id}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: uploadData
+            });
+            if (res.ok) {
+                const data = await res.json();
+                updateFooter(field, data.url);
+                toast.success('Logo subido con éxito');
+            } else {
+                throw new Error('Falla en el servidor');
+            }
+        } catch (error: any) {
+            toast.error(`Error al subir: ${error.message}`);
+        } finally {
+            setUploading(false);
+            if (e.target) e.target.value = '';
+        }
     };
 
     const handleSave = async (e?: React.FormEvent) => {
@@ -1211,6 +1300,126 @@ const ClubSettings: React.FC = () => {
                                             <option value="rocket">🚀 Cohete</option>
                                         </select>
                                     </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Footer del sitio (logos + columnas de menú) — solo Eventos/Convenciones */}
+                        {(isSuperAdmin || club?.type === 'Evento o Convención') && (
+                            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                                <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
+                                    <Layout className="w-5 h-5 text-rotary-blue" /> Footer del Sitio
+                                </h3>
+                                <p className="text-xs text-gray-400 mb-6">
+                                    Configura los logos y las columnas de enlaces del pie de página. Si dejas una columna vacía, se usan los enlaces por defecto.
+                                </p>
+
+                                {/* Logos */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                                    {([
+                                        { field: 'logoTop' as const, label: 'Logo Superior (blanco preferible)', bg: 'bg-rotary-blue' },
+                                        { field: 'logoBottom' as const, label: 'Logo Inferior (End Polio / Youth)', bg: 'bg-gray-100' },
+                                    ]).map(logo => (
+                                        <div key={logo.field}>
+                                            <label className="text-xs font-bold text-gray-400 uppercase">{logo.label}</label>
+                                            <div className="flex gap-2 mt-1">
+                                                <input
+                                                    type="text"
+                                                    value={formData.footerConfig[logo.field]}
+                                                    onChange={e => updateFooter(logo.field, e.target.value)}
+                                                    placeholder="URL del logo"
+                                                    className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none text-sm"
+                                                />
+                                                <label className={`px-3 flex items-center justify-center bg-blue-50 text-rotary-blue rounded-lg hover:bg-blue-100 transition-all cursor-pointer ${uploading ? 'opacity-50 pointer-events-none' : ''}`} title="Subir imagen">
+                                                    <Upload className="w-5 h-5" />
+                                                    <input type="file" className="hidden" accept="image/*" onChange={e => handleFooterLogoUpload(e, logo.field)} />
+                                                </label>
+                                            </div>
+                                            {formData.footerConfig[logo.field] && (
+                                                <div className={`mt-2 p-4 rounded-lg flex justify-center ${logo.bg}`}>
+                                                    <img src={formData.footerConfig[logo.field]} alt="Vista previa" className="h-10 object-contain" />
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Columnas de menú */}
+                                <div className="space-y-6">
+                                    {([
+                                        { menu: 'menu1Items' as const, titleKey: 'menu1Title' as const, col: '2' },
+                                        { menu: 'menu2Items' as const, titleKey: 'menu2Title' as const, col: '3' },
+                                    ]).map(set => (
+                                        <div key={set.menu} className="border border-gray-100 rounded-2xl overflow-hidden">
+                                            <div className="p-4 bg-gray-50/70 border-b border-gray-100 flex items-center justify-between gap-3">
+                                                <div className="flex items-center gap-3 flex-1">
+                                                    <LinkIcon className="w-4 h-4 text-rotary-blue flex-shrink-0" />
+                                                    <input
+                                                        type="text"
+                                                        value={formData.footerConfig[set.titleKey]}
+                                                        onChange={e => updateFooter(set.titleKey, e.target.value)}
+                                                        placeholder={`Título de la columna ${set.col}`}
+                                                        className="font-bold text-gray-700 bg-transparent border-b border-dashed border-gray-300 focus:border-rotary-blue outline-none px-1"
+                                                    />
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => addFooterItem(set.menu)}
+                                                    className="flex items-center gap-1.5 text-xs font-bold text-rotary-blue bg-blue-50 px-3 py-2 rounded-lg hover:bg-blue-100 transition-all flex-shrink-0"
+                                                >
+                                                    <Plus className="w-4 h-4" /> Agregar Link
+                                                </button>
+                                            </div>
+                                            <div className="p-4 space-y-3">
+                                                {formData.footerConfig[set.menu].map((item, idx) => (
+                                                    <div key={idx} className="flex flex-col md:flex-row gap-3 p-3 bg-gray-50 rounded-xl">
+                                                        <div className="flex-1">
+                                                            <label className="text-[10px] font-bold text-gray-400 uppercase">Texto del Link</label>
+                                                            <input
+                                                                type="text"
+                                                                value={item.label}
+                                                                onChange={e => updateFooterItem(set.menu, idx, 'label', e.target.value)}
+                                                                className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue text-sm font-bold text-gray-700 bg-white"
+                                                            />
+                                                        </div>
+                                                        <div className="flex-[2]">
+                                                            <label className="text-[10px] font-bold text-gray-400 uppercase">Ruta o URL (#/blog, https://…)</label>
+                                                            <input
+                                                                type="text"
+                                                                value={item.href}
+                                                                onChange={e => updateFooterItem(set.menu, idx, 'href', e.target.value)}
+                                                                className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue text-sm text-blue-600 bg-white"
+                                                            />
+                                                        </div>
+                                                        <div className="flex items-end gap-2">
+                                                            <label className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-lg cursor-pointer mt-1">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={!!item.external}
+                                                                    onChange={e => updateFooterItem(set.menu, idx, 'external', e.target.checked)}
+                                                                    className="w-4 h-4 text-rotary-blue rounded border-gray-300"
+                                                                />
+                                                                <span className="text-[10px] font-bold text-gray-500 whitespace-nowrap">Externo</span>
+                                                            </label>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeFooterItem(set.menu, idx)}
+                                                                className="p-2 mt-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                                                title="Eliminar link"
+                                                            >
+                                                                <Trash2 className="w-5 h-5" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                {formData.footerConfig[set.menu].length === 0 && (
+                                                    <div className="text-center py-6 text-gray-400 text-sm italic border-2 border-dashed border-gray-100 rounded-xl">
+                                                        Sin enlaces (se usarán los predeterminados)
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         )}
