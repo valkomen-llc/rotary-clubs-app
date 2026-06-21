@@ -6,7 +6,7 @@ import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (EVITA ERROR 500 
 // Clubes: el selector ahora incluye 'Evento o Convención', así que un registro mal
 // categorizado (ej. un evento guardado como club) puede moverse a su sección correcta
 // vía updateClub (addField('type', ...)) sin tocar la base de datos directamente.
-console.log('[clubController] v4.458.0 — Evento/Convención: colores + hero + menú + sección "gente de acción" editable');
+console.log('[clubController] v4.462.0 — Evento/Convención: colores + hero + menú + secciones editables (acción, stats, únete, fundación)');
 
 export const getAllClubs = async (req, res) => {
     try {
@@ -176,7 +176,7 @@ export const updateClub = async (req, res) => {
         name, description, city, country, district, domain, subdomain, type, organizationType,
         email, phone, address, state, facebook, instagram, twitter, youtube, linkedin, tiktok, 
         socialLinks, customSocialLinks, siteImages, galleryImages,
-        primaryColor, secondaryColor, actionSectionBg, joinSectionBg, areasSectionBg, footerBg, copyrightBg, copyrightTextColor, buttonBg, buttonHoverBg, buttonTextColor, buttonTextHoverColor, eventHeroImages, eventNavMenu, actionContent, statsContent, joinContent, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, status,
+        primaryColor, secondaryColor, actionSectionBg, joinSectionBg, areasSectionBg, footerBg, copyrightBg, copyrightTextColor, buttonBg, buttonHoverBg, buttonTextColor, buttonTextHoverColor, eventHeroImages, eventNavMenu, actionContent, statsContent, joinContent, foundationContent, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, status,
         stripePublicKey, stripeSecretKey, useStripe,
         usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
         storeActive, logoHeaderSize, autoGenerateCalendar, mapStyle,
@@ -336,6 +336,7 @@ export const updateClub = async (req, res) => {
                 'action_section_content': actionContent !== undefined ? JSON.stringify(actionContent) : undefined,
                 'stats_content': statsContent !== undefined ? JSON.stringify(statsContent) : undefined,
                 'join_section_content': joinContent !== undefined ? JSON.stringify(joinContent) : undefined,
+                'foundation_section_content': foundationContent !== undefined ? JSON.stringify(foundationContent) : undefined,
                 'rotaract_logo': rotaractLogo,
                 'interact_logo': interactLogo,
                 'youth_exchange_logo': youthExchangeLogo,
