@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.461.0 | 2026-06-20 (Eventos: sección "Únete a Rotary" editable)
-// Cache bust: 2026-06-20 07:00
+// UI V4.462.0 | 2026-06-21 (Eventos: sección "Nuestra Fundación" editable)
+// Cache bust: 2026-06-21 12:30
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.462.0',
+        title: 'Eventos: Sección "Nuestra Fundación" Editable ✏️',
+        description: 'Los sitios de Evento o Convención ahora pueden editar el bloque "Nuestra Fundación": título (con palabras resaltadas y saltos de línea), texto, texto y enlace del botón, e icono (emoji). Está en Configuración → Identidad → "Sección Nuestra Fundación (Contenido)". La imagen del bloque se sigue cambiando en "Imágenes del Sitio". Si un campo se deja vacío, se usa el texto por defecto.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'contenido', 'fundacion', 'cta', 'eventos', 'convenciones', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.461.0',
         title: 'Eventos: Sección "Únete a Rotary" Editable ✏️',

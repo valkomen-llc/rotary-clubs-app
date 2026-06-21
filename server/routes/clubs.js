@@ -199,6 +199,11 @@ router.get('/by-domain', async (req, res) => {
                 try { return settings['join_section_content'] ? JSON.parse(settings['join_section_content']) : {}; }
                 catch { return {}; }
             })(),
+            // Contenido editable de la sección "Nuestra Fundación" (Evento/Convención).
+            foundationContent: (() => {
+                try { return settings['foundation_section_content'] ? JSON.parse(settings['foundation_section_content']) : {}; }
+                catch { return {}; }
+            })(),
             productsCount: activeClub._count?.products || 0,
             eventsCount: activeClub._count?.events || 0,
             // Logo Size Inheritance: Priority 1: Club Setting, Priority 2: Master Club Setting, Priority 3: Default 200
