@@ -373,8 +373,11 @@ const ClubSettings: React.FC = () => {
         setUploading(true);
         try {
             const token = localStorage.getItem('rotary_token');
+            // Mismo auto-recorte que los logos de la cabecera: elimina los márgenes/transparencias
+            // alrededor del logo para que no se vea pequeño en el footer.
+            const croppedFile = await handleAutoCrop(file);
             const uploadData = new FormData();
-            uploadData.append('file', file);
+            uploadData.append('file', croppedFile);
             uploadData.append('folder', 'footer-logos');
             const res = await fetch(`${API_URL}/media/upload?folder=footer-logos&clubId=${club?.id}`, {
                 method: 'POST',
