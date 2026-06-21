@@ -58,6 +58,7 @@ const ClubSettings: React.FC = () => {
             { icon: 'users', color: '#9333EA', value: '+47M', text: 'Con más de aproximadamente 47 millones de horas de trabajo voluntario cada año. Somos Resiliencia y Continuidad.' },
             { icon: 'dollar', color: '#F2B10D', value: '$291M', text: 'Hemos destinado 291 millones de dólares a iniciativas de servicio en el mundo y proyectos sostenibles.' },
         ] as { icon: string; color: string; value: string; text: string }[],
+        joinContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', titleHighlight: '', titleHighlightColor: '#f6a40a' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; titleHighlight: string; titleHighlightColor: string },
         logo: '',
         footerLogo: '',
         endPolioLogo: '',
@@ -167,6 +168,10 @@ const ClubSettings: React.FC = () => {
                         { icon: 'users', color: '#9333EA', value: '+47M', text: 'Con más de aproximadamente 47 millones de horas de trabajo voluntario cada año. Somos Resiliencia y Continuidad.' },
                         { icon: 'dollar', color: '#F2B10D', value: '$291M', text: 'Hemos destinado 291 millones de dólares a iniciativas de servicio en el mundo y proyectos sostenibles.' },
                     ];
+                })(),
+                joinContent: (() => {
+                    const saved = (club as any).joinContent || (() => { try { return JSON.parse(settingsMap['join_section_content'] || '{}'); } catch { return {}; } })();
+                    return { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', titleHighlight: '', titleHighlightColor: '#f6a40a', ...saved };
                 })(),
                 logo: club.logo || '',
                 footerLogo: club.footerLogo || '',
@@ -1041,6 +1046,70 @@ const ClubSettings: React.FC = () => {
                                             <textarea rows={4} value={box.text} onChange={e => { const s = [...formData.statsContent]; s[i] = { ...s[i], text: e.target.value }; setFormData({ ...formData, statsContent: s }); }} placeholder="Texto de la caja…" className="w-full px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue text-sm resize-y" />
                                         </div>
                                     ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Contenido de la sección "Únete a Rotary" — solo Eventos/Convenciones */}
+                        {(isSuperAdmin || club?.type === 'Evento o Convención') && (
+                            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                                <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
+                                    <Palette className="w-5 h-5 text-rotary-blue" /> Sección "Únete a Rotary" (Contenido)
+                                </h3>
+                                <p className="text-xs text-gray-400 mb-6">
+                                    Personaliza el título, el texto y el botón del bloque "Únete a Rotary". Si dejas un campo vacío, se usa el texto por defecto. (La imagen se cambia en "Imágenes del Sitio".)
+                                </p>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-400 uppercase">Título</label>
+                                        <textarea rows={2} value={formData.joinContent.title} onChange={e => setFormData({ ...formData, joinContent: { ...formData.joinContent, title: e.target.value } })} placeholder="Únete a Rotary y construyamos juntos…" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none resize-y" />
+                                        <p className="text-[11px] text-gray-400 mt-1">Presiona <strong>Enter</strong> donde quieras un salto de línea.</p>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-400 uppercase">Palabras a resaltar en el título</label>
+                                            <input type="text" value={formData.joinContent.titleHighlight} onChange={e => setFormData({ ...formData, joinContent: { ...formData.joinContent, titleHighlight: e.target.value } })} placeholder="Opcional" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none" />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-400 uppercase">Color del resaltado</label>
+                                            <div className="flex items-center gap-4 mt-1">
+                                                <input type="color" value={formData.joinContent.titleHighlightColor} onChange={e => setFormData({ ...formData, joinContent: { ...formData.joinContent, titleHighlightColor: e.target.value } })} className="w-12 h-12 rounded-xl cursor-pointer border-none" />
+                                                <input type="text" value={formData.joinContent.titleHighlightColor} onChange={e => setFormData({ ...formData, joinContent: { ...formData.joinContent, titleHighlightColor: e.target.value } })} className="flex-1 px-4 py-2 bg-gray-50 rounded-lg text-sm font-mono font-bold" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-400 uppercase">Texto</label>
+                                        <textarea rows={3} value={formData.joinContent.text} onChange={e => setFormData({ ...formData, joinContent: { ...formData.joinContent, text: e.target.value } })} placeholder="Descripción del bloque…" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none resize-y" />
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-400 uppercase">Texto del Botón</label>
+                                            <input type="text" value={formData.joinContent.buttonText} onChange={e => setFormData({ ...formData, joinContent: { ...formData.joinContent, buttonText: e.target.value } })} placeholder="Involúcrate en Rotary" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none" />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-400 uppercase">Enlace del Botón</label>
+                                            <input type="text" value={formData.joinContent.buttonUrl} onChange={e => setFormData({ ...formData, joinContent: { ...formData.joinContent, buttonUrl: e.target.value } })} placeholder="/involucrate o https://…" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none" />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-400 uppercase">Icono del Botón (Emoji)</label>
+                                        <select value={formData.joinContent.icon} onChange={e => setFormData({ ...formData, joinContent: { ...formData.joinContent, icon: e.target.value } })} className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none bg-white">
+                                            <option value="star">⭐ Estrella</option>
+                                            <option value="heart">❤️ Corazón</option>
+                                            <option value="handshake">🤝 Apretón de manos</option>
+                                            <option value="send">✈️ Enviar</option>
+                                            <option value="sparkles">✨ Destellos</option>
+                                            <option value="megaphone">📣 Megáfono</option>
+                                            <option value="flag">🚩 Bandera</option>
+                                            <option value="gift">🎁 Regalo</option>
+                                            <option value="users">👥 Personas</option>
+                                            <option value="calendar">📅 Calendario</option>
+                                            <option value="award">🏅 Medalla</option>
+                                            <option value="trophy">🏆 Trofeo</option>
+                                            <option value="rocket">🚀 Cohete</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                         )}

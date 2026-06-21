@@ -1,9 +1,31 @@
 import { Star } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useSiteImages } from '../hooks/useSiteImages';
 import { useClub } from '../contexts/ClubContext';
 import { useCtaButton } from '../hooks/useCtaButton';
 
 const DEFAULT_JOIN_IMG = 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=600&h=500&fit=crop';
+
+const ICON_EMOJI: Record<string, string> = {
+  star: '⭐', heart: '❤️', handshake: '🤝', send: '✈️', sparkles: '✨',
+  megaphone: '📣', flag: '🚩', gift: '🎁', users: '👥', calendar: '📅',
+  award: '🏅', trophy: '🏆', rocket: '🚀',
+};
+
+// Resalta (en color) la primera aparición de `highlight` en el título.
+const renderTitle = (title: string, highlight?: string, color?: string) => {
+  if (!highlight || !highlight.trim()) return title;
+  const idx = title.toLowerCase().indexOf(highlight.trim().toLowerCase());
+  if (idx === -1) return title;
+  const len = highlight.trim().length;
+  return (
+    <>
+      {title.slice(0, idx)}
+      <span style={{ color: color || '#f6a40a' }}>{title.slice(idx, idx + len)}</span>
+      {title.slice(idx + len)}
+    </>
+  );
+};
 
 const JoinSection = () => {
   const { club } = useClub();
@@ -17,6 +39,24 @@ const JoinSection = () => {
   const isEventSite = (club as any)?.type === 'Evento o Convención';
   const bgColor = isEventSite ? (club?.colors?.joinBg || '#0C3C7C') : '#0C3C7C';
   const cta = useCtaButton();
+
+  // Contenido editable (solo Evento/Convención).
+  const content = (isEventSite && (club as any)?.joinContent) ? (club as any).joinContent : {};
+  const buttonUrl = content.buttonUrl || '';
+  const emoji = isEventSite ? (ICON_EMOJI[content.icon] || (content.icon && content.icon.length <= 4 ? content.icon : '⭐')) : '';
+  const isExternal = /^https?:\/\//i.test(buttonUrl);
+
+  const btnClass = `mt-6 inline-flex items-center gap-2 ${cta.className} font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg`;
+  const btnInner = (
+    <>
+      {isEventSite ? (
+        <span className="text-xl leading-none">{emoji}</span>
+      ) : (
+        <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
+      )}
+      {content.buttonText ? content.buttonText : 'Involúcrate en Rotary'}
+    </>
+  );
 
   return (
     <section className="relative overflow-hidden py-20" style={{ backgroundColor: bgColor }}>
@@ -43,22 +83,24 @@ const JoinSection = () => {
               </>
             ) : (
               <>
-                <h2 className="text-3xl md:text-4xl font-light mb-6 leading-tight">
-                  Únete a Rotary y construyamos juntos un futuro de servicio y amistad, impulsando el cambio y la solidaridad en el mundo
+                <h2 className="text-3xl md:text-4xl font-light mb-6 leading-tight whitespace-pre-line">
+                  {content.title ? renderTitle(content.title, content.titleHighlight, content.titleHighlightColor) : 'Únete a Rotary y construyamos juntos un futuro de servicio y amistad, impulsando el cambio y la solidaridad en el mundo'}
                 </h2>
-                <p className="text-white/80 mb-8 leading-relaxed font-normal">
-                  Resolver algunos de los problemas más complejos y acuciantes del mundo requiere compromiso y visión. Los socios de Rotary creen que compartimos la responsabilidad de tomar acción para mejorar nuestras comunidades. Únete a nosotros, para que juntos podamos tener un impacto aún mayor.
+                <p className="text-white/80 mb-8 leading-relaxed font-normal whitespace-pre-line">
+                  {content.text ? content.text : 'Resolver algunos de los problemas más complejos y acuciantes del mundo requiere compromiso y visión. Los socios de Rotary creen que compartimos la responsabilidad de tomar acción para mejorar nuestras comunidades. Únete a nosotros, para que juntos podamos tener un impacto aún mayor.'}
                 </p>
               </>
             )}
-            
-            <button
-              className={`mt-6 inline-flex items-center gap-2 ${cta.className} font-medium px-8 py-3.5 rounded-full transition-all duration-300 shadow-lg`}
-              style={cta.style}
-            >
-              <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
-              Involúcrate en Rotary
-            </button>
+
+            {isEventSite && buttonUrl ? (
+              isExternal ? (
+                <a href={buttonUrl} target="_blank" rel="noopener noreferrer" className={btnClass} style={cta.style}>{btnInner}</a>
+              ) : (
+                <Link to={buttonUrl} className={btnClass} style={cta.style}>{btnInner}</Link>
+              )
+            ) : (
+              <button className={btnClass} style={cta.style}>{btnInner}</button>
+            )}
           </div>
 
           {/* Image */}
