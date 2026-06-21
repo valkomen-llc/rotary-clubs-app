@@ -192,6 +192,29 @@ model EmailAccount {
   @@index([clubId])
 }
 
+model ReceivedEmail {
+  id           String   @id @default(uuid())
+  clubId       String
+  accountEmail String // buzón local destino (normalizado, p.ej. contacto@jaquematealapolio.org)
+  fromName     String?
+  fromEmail    String?
+  toEmail      String?
+  subject      String?
+  text         String?  @db.Text
+  html         String?  @db.Text
+  messageId    String?
+  read         Boolean  @default(false)
+  starred      Boolean  @default(false)
+  folder       String   @default("inbox") // inbox | trash
+  hasAttachments Boolean @default(false)
+  receivedAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@index([clubId])
+  @@index([accountEmail])
+  @@index([clubId, folder])
+}
+
 model CrowdfundPool {
   id           String                @id @default(uuid())
   clubId       String

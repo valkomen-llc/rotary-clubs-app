@@ -169,35 +169,112 @@ const EmailManagement: React.FC = () => {
         }
     };
 
-    // Dynamic email state to persist sent messages
-    const [allEmails, setAllEmails] = useState<EmailMessage[]>([
-        {
-            id: 'e1',
-            from: { name: 'Juan Pérez', email: 'juan.perez@gmail.com' },
-            to: `info@${clubDomain}`,
-            subject: 'Interés en unirme al club',
-            preview: 'Hola, me gustaría recibir información sobre los requisitos para ser socio...',
-            body: 'Hola equipo del club,\n\nHe visto sus proyectos recientes y me ha impresionado mucho su impacto social. Me gustaría recibir información detallada sobre los pasos a seguir para postularme como socio.\n\nSaludos cordiales,\nJuan Pérez.',
-            timestamp: '10:45 AM',
-            read: false,
-            starred: true,
-            hasAttachments: false,
-            folder: 'inbox'
-        },
-        {
-            id: 'e2',
-            from: { name: 'Rotary International', email: 'no-reply@rotary.org' },
-            to: `info@${clubDomain}`,
-            subject: 'Actualización de cuotas semestrales',
-            preview: 'Estimados gobernadores y secretarios, adjuntamos el reporte de...',
-            body: 'Estimados líderes rotarios,\n\nSe ha generado la factura correspondiente al segundo semestre. Por favor revisen el panel de My Rotary para realizar el pago.\n\nAtentamente,\nServicios Financieros RI.',
-            timestamp: 'Ayer',
-            read: true,
-            starred: false,
-            hasAttachments: true,
-            folder: 'inbox'
+    // Bandeja real (correos recibidos vía Resend Inbound) + enviados de la sesión.
+    const [messages, setMessages] = useState<EmailMessage[]>([]);
+    const [sentMessages, setSentMessages] = useState<EmailMessage[]>([]);
+    const [loadingMessages, setLoadingMessages] = useState(false);
+
+    const stripHtml = (html?: string) => (html || '').replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const formatTime = (iso?: string) => {
+        if (!iso) return '';
+        const d = new Date(iso);
+        const now = new Date();
+        const sameDay = d.toDateString() === now.toDateString();
+        return sameDay
+            ? d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })
+            : d.toLocaleDateString('es', { day: '2-digit', month: 'short' });
+    };
+    const mapMessage = (r: any): EmailMessage & { _raw?: any } => {
+        const bodyText = r.text || stripHtml(r.html) || '';
+        return {
+            id: r.id,
+            from: { name: r.fromName || r.fromEmail || 'Desconocido', email: r.fromEmail || '' },
+            to: r.toEmail || activeAccount?.email || '',
+            subject: r.subject || '(Sin asunto)',
+            preview: bodyText.slice(0, 90),
+            body: r.html ? bodyText : bodyText,
+            timestamp: formatTime(r.receivedAt),
+            read: !!r.read,
+            starred: !!r.starred,
+            hasAttachments: !!r.hasAttachments,
+            folder: r.folder === 'trash' ? 'trash' : 'inbox',
+        };
+    };
+
+    const fetchMessages = async () => {
+        if (!activeAccount) { setMessages([]); return; }
+        if (selectedFolder === 'sent' || selectedFolder === 'drafts') return; // server no tiene estos folders
+        setLoadingMessages(true);
+        try {
+            const params = new URLSearchParams({ account: activeAccount.email, folder: selectedFolder });
+            if ((club as any)?.id && user?.role === 'administrator') params.set('clubId', (club as any).id);
+            const res = await fetch(`/api/email-accounts/messages?${params.toString()}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setMessages(Array.isArray(data) ? data.map(mapMessage) : []);
+            } else {
+                setMessages([]);
+            }
+        } catch (e) {
+            console.error('Error fetching messages:', e);
+            setMessages([]);
+        } finally {
+            setLoadingMessages(false);
         }
-    ]);
+    };
+
+    useEffect(() => {
+        fetchMessages();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeAccount?.id, selectedFolder]);
+
+    const markRead = async (id: string) => {
+        try {
+            await fetch(`/api/email-accounts/messages/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ read: true })
+            });
+        } catch { /* noop */ }
+    };
+
+    const handleOpenEmail = (email: EmailMessage) => {
+        setSelectedEmail(email);
+        if (!email.read && selectedFolder !== 'sent') {
+            setMessages(prev => prev.map(m => m.id === email.id ? { ...m, read: true } : m));
+            markRead(email.id);
+        }
+    };
+
+    const handleToggleStar = async (email: EmailMessage) => {
+        const next = !email.starred;
+        setMessages(prev => prev.map(m => m.id === email.id ? { ...m, starred: next } : m));
+        setSelectedEmail(prev => prev && prev.id === email.id ? { ...prev, starred: next } : prev);
+        try {
+            await fetch(`/api/email-accounts/messages/${email.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ starred: next })
+            });
+        } catch { /* noop */ }
+    };
+
+    const handleTrashEmail = async (email: EmailMessage) => {
+        try {
+            await fetch(`/api/email-accounts/messages/${email.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ folder: 'trash' })
+            });
+            setMessages(prev => prev.filter(m => m.id !== email.id));
+            setSelectedEmail(null);
+            toast.success('Movido a la papelera');
+        } catch {
+            toast.error('No se pudo mover a la papelera');
+        }
+    };
 
     const handleSendEmail = async () => {
         if (!composeData.to) {
@@ -241,7 +318,7 @@ const EmailManagement: React.FC = () => {
                     folder: 'sent'
                 };
                 
-                setAllEmails([newEmail, ...allEmails]);
+                setSentMessages([newEmail, ...sentMessages]);
                 setShowComposeModal(false);
                 setComposeData({ to: '', subject: '', body: '' });
                 toast.success(`Mensaje enviado con éxito desde ${activeAccount.email}`);
@@ -256,10 +333,11 @@ const EmailManagement: React.FC = () => {
         }
     };
 
-    const filteredEmails = allEmails.filter(e => {
-        if (selectedFolder === 'starred') return e.starred;
-        return e.folder === selectedFolder;
-    });
+    const filteredEmails = selectedFolder === 'sent'
+        ? sentMessages
+        : selectedFolder === 'drafts'
+            ? []
+            : messages;
 
     return (
         <AdminLayout>
@@ -344,15 +422,28 @@ const EmailManagement: React.FC = () => {
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                                     <input type="text" placeholder="Buscar..." className="w-full pl-10 pr-4 py-2 bg-gray-100 border-none rounded-xl text-sm outline-none" />
                                 </div>
+                                <button onClick={fetchMessages} title="Actualizar" className="p-2 text-gray-400 hover:text-rotary-blue rounded-lg hover:bg-gray-100">
+                                    <RefreshCw className={`w-4 h-4 ${loadingMessages ? 'animate-spin' : ''}`} />
+                                </button>
                             </div>
                             <div className="flex-1 overflow-y-auto">
+                                {loadingMessages && (
+                                    <div className="flex items-center justify-center py-10"><RefreshCw className="w-5 h-5 animate-spin text-gray-300" /></div>
+                                )}
+                                {!loadingMessages && filteredEmails.length === 0 && (
+                                    <div className="flex flex-col items-center justify-center text-center py-16 px-6">
+                                        <Inbox className="w-10 h-10 text-gray-200 mb-3" />
+                                        <p className="text-sm text-gray-400">{selectedFolder === 'sent' ? 'No has enviado correos en esta sesión.' : selectedFolder === 'drafts' ? 'Sin borradores.' : 'Sin mensajes en esta carpeta.'}</p>
+                                    </div>
+                                )}
                                 {filteredEmails.map((email) => (
-                                    <div key={email.id} onClick={() => setSelectedEmail(email)} className={`p-4 border-b border-gray-50 cursor-pointer transition-all hover:bg-gray-50 relative ${selectedEmail?.id === email.id ? 'bg-sky-50/50' : ''}`}>
+                                    <div key={email.id} onClick={() => handleOpenEmail(email)} className={`p-4 border-b border-gray-50 cursor-pointer transition-all hover:bg-gray-50 relative ${selectedEmail?.id === email.id ? 'bg-sky-50/50' : ''} ${!email.read ? 'bg-sky-50/30' : ''}`}>
                                         <div className="flex justify-between items-start mb-1">
-                                            <span className="text-sm font-bold text-gray-900">{email.from.name}</span>
+                                            <span className={`text-sm text-gray-900 ${!email.read ? 'font-black' : 'font-bold'}`}>{email.from.name}</span>
                                             <span className="text-[10px] text-gray-400">{email.timestamp}</span>
                                         </div>
                                         <h4 className="text-xs text-gray-600 truncate">{email.subject}</h4>
+                                        {email.preview && <p className="text-[11px] text-gray-400 truncate mt-0.5">{email.preview}</p>}
                                     </div>
                                 ))}
                             </div>
@@ -365,12 +456,16 @@ const EmailManagement: React.FC = () => {
                                     <div className="p-4 border-b border-gray-100 flex items-center justify-between">
                                         <button onClick={() => setSelectedEmail(null)} className="lg:hidden p-2 hover:bg-gray-100 rounded-lg"><ChevronLeft className="w-5 h-5" /></button>
                                         <div className="flex items-center gap-2">
-                                            <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-400"><Trash2 className="w-5 h-5" /></button>
-                                            <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-400"><Star className={`w-5 h-5 ${selectedEmail.starred ? 'fill-amber-400 text-amber-400' : ''}`} /></button>
+                                            <button onClick={() => handleTrashEmail(selectedEmail)} title="Mover a papelera" className="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-red-500"><Trash2 className="w-5 h-5" /></button>
+                                            <button onClick={() => handleToggleStar(selectedEmail)} title="Destacar" className="p-2 hover:bg-gray-100 rounded-lg text-gray-400"><Star className={`w-5 h-5 ${selectedEmail.starred ? 'fill-amber-400 text-amber-400' : ''}`} /></button>
                                         </div>
                                     </div>
                                     <div className="flex-1 overflow-y-auto p-8">
-                                        <h2 className="text-2xl font-bold text-gray-900 mb-6">{selectedEmail.subject}</h2>
+                                        <h2 className="text-2xl font-bold text-gray-900 mb-2">{selectedEmail.subject}</h2>
+                                        <div className="flex items-center gap-2 mb-6 text-sm">
+                                            <span className="font-bold text-gray-800">{selectedEmail.from.name}</span>
+                                            {selectedEmail.from.email && <span className="text-gray-400">&lt;{selectedEmail.from.email}&gt;</span>}
+                                        </div>
                                         <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-line">{selectedEmail.body}</div>
                                     </div>
                                 </>

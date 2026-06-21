@@ -26,6 +26,10 @@ router.get('/em/c/:rid', trackClick);
 // Webhook de Resend: rebotes y quejas → baja automática del contacto.
 router.post('/resend-webhook', handleResendWebhook);
 
+// Webhook de Resend Inbound: correos entrantes → bandeja del club.
+import { handleInboundEmail } from '../controllers/EmailAccountController.js';
+router.post('/inbound-email', express.json({ limit: '10mb' }), handleInboundEmail);
+
 // Baja de suscripción de Email Marketing (sin autenticación; enlace en el pie del correo).
 router.get('/unsubscribe', async (req, res) => {
     const { cid } = req.query;
