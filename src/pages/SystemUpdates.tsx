@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.459.0 | 2026-06-20 (Botones del inicio: color del texto configurable también en hover)
-// Cache bust: 2026-06-20 06:00
+// UI V4.460.0 | 2026-06-20 (Eventos: sección de estadísticas (3 cajas) editable)
+// Cache bust: 2026-06-20 06:40
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.460.0',
+        title: 'Eventos: Sección de Estadísticas (3 Cajas) Editable 📊',
+        description: 'Los sitios de Evento o Convención ahora pueden editar las tres cajas de estadísticas de la portada (las de "+1.2M", "+47M", "$291M"): para cada caja puedes elegir el icono, su color, el número/valor y el texto. Está en Configuración → Identidad → "Sección de Estadísticas (3 Cajas)". Si no se personaliza, se mantienen las cajas por defecto.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'contenido', 'estadisticas', 'iconos', 'eventos', 'convenciones', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.459.0',
         title: 'Botones del Inicio: Color del Texto también en Hover 🖱️',

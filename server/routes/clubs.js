@@ -189,6 +189,11 @@ router.get('/by-domain', async (req, res) => {
                 try { return settings['action_section_content'] ? JSON.parse(settings['action_section_content']) : {}; }
                 catch { return {}; }
             })(),
+            // Contenido editable de las cajas de estadísticas (Evento/Convención).
+            statsContent: (() => {
+                try { return settings['stats_content'] ? JSON.parse(settings['stats_content']) : []; }
+                catch { return []; }
+            })(),
             productsCount: activeClub._count?.products || 0,
             eventsCount: activeClub._count?.events || 0,
             // Logo Size Inheritance: Priority 1: Club Setting, Priority 2: Master Club Setting, Priority 3: Default 200

@@ -53,6 +53,11 @@ const ClubSettings: React.FC = () => {
         eventHeroImages: [] as { url: string; alt?: string }[],
         eventNavMenu: { inicio: true, sobreNosotros: true, proyectos: true, noticias: true, eventos: true, contacto: true } as Record<string, boolean>,
         actionContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', iconColor: '#F5A623', titleHighlight: '', titleHighlightColor: '#f6a40a' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; iconColor: string; titleHighlight: string; titleHighlightColor: string },
+        statsContent: [
+            { icon: 'globe', color: '#004080', value: '+1.2M', text: 'Somos más de 1.2 millones de rotarios en el mundo, dedicados a servir, mejorar y transformar nuestras comunidades.' },
+            { icon: 'users', color: '#9333EA', value: '+47M', text: 'Con más de aproximadamente 47 millones de horas de trabajo voluntario cada año. Somos Resiliencia y Continuidad.' },
+            { icon: 'dollar', color: '#F2B10D', value: '$291M', text: 'Hemos destinado 291 millones de dólares a iniciativas de servicio en el mundo y proyectos sostenibles.' },
+        ] as { icon: string; color: string; value: string; text: string }[],
         logo: '',
         footerLogo: '',
         endPolioLogo: '',
@@ -154,6 +159,14 @@ const ClubSettings: React.FC = () => {
                 actionContent: (() => {
                     const saved = (club as any).actionContent || (() => { try { return JSON.parse(settingsMap['action_section_content'] || '{}'); } catch { return {}; } })();
                     return { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', iconColor: '#F5A623', titleHighlight: '', titleHighlightColor: '#f6a40a', ...saved };
+                })(),
+                statsContent: (() => {
+                    const saved = ((club as any).statsContent && (club as any).statsContent.length) ? (club as any).statsContent : (() => { try { const v = JSON.parse(settingsMap['stats_content'] || '[]'); return v.length ? v : null; } catch { return null; } })();
+                    return saved || [
+                        { icon: 'globe', color: '#004080', value: '+1.2M', text: 'Somos más de 1.2 millones de rotarios en el mundo, dedicados a servir, mejorar y transformar nuestras comunidades.' },
+                        { icon: 'users', color: '#9333EA', value: '+47M', text: 'Con más de aproximadamente 47 millones de horas de trabajo voluntario cada año. Somos Resiliencia y Continuidad.' },
+                        { icon: 'dollar', color: '#F2B10D', value: '$291M', text: 'Hemos destinado 291 millones de dólares a iniciativas de servicio en el mundo y proyectos sostenibles.' },
+                    ];
                 })(),
                 logo: club.logo || '',
                 footerLogo: club.footerLogo || '',
@@ -988,6 +1001,46 @@ const ClubSettings: React.FC = () => {
                                         </select>
                                         <p className="text-[11px] text-gray-400 mt-1">El emoji se muestra con sus colores originales en el botón.</p>
                                     </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Sección de Estadísticas (3 cajas) — solo Eventos/Convenciones */}
+                        {(isSuperAdmin || club?.type === 'Evento o Convención') && (
+                            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                                <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
+                                    <Palette className="w-5 h-5 text-rotary-blue" /> Sección de Estadísticas (3 Cajas)
+                                </h3>
+                                <p className="text-xs text-gray-400 mb-6">
+                                    Personaliza el icono, color, número/valor y texto de cada una de las tres cajas de estadísticas de la portada.
+                                </p>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    {formData.statsContent.map((box, i) => (
+                                        <div key={i} className="border border-gray-100 rounded-2xl p-4 space-y-3 bg-gray-50/50">
+                                            <p className="text-[11px] font-black text-gray-400 uppercase tracking-wider">Caja {i + 1}</p>
+                                            <div className="flex items-center gap-2">
+                                                <select value={box.icon} onChange={e => { const s = [...formData.statsContent]; s[i] = { ...s[i], icon: e.target.value }; setFormData({ ...formData, statsContent: s }); }} className="flex-1 px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue bg-white text-sm">
+                                                    <option value="globe">🌐 Globo</option>
+                                                    <option value="users">👥 Personas</option>
+                                                    <option value="dollar">💲 Dólar</option>
+                                                    <option value="heart">❤️ Corazón</option>
+                                                    <option value="handheart">🫶 Mano/Corazón</option>
+                                                    <option value="award">🏅 Medalla</option>
+                                                    <option value="trophy">🏆 Trofeo</option>
+                                                    <option value="calendar">📅 Calendario</option>
+                                                    <option value="star">⭐ Estrella</option>
+                                                    <option value="flag">🚩 Bandera</option>
+                                                    <option value="gift">🎁 Regalo</option>
+                                                    <option value="sparkles">✨ Destellos</option>
+                                                    <option value="rocket">🚀 Cohete</option>
+                                                    <option value="megaphone">📣 Megáfono</option>
+                                                </select>
+                                                <input type="color" value={box.color} onChange={e => { const s = [...formData.statsContent]; s[i] = { ...s[i], color: e.target.value }; setFormData({ ...formData, statsContent: s }); }} className="w-10 h-10 rounded-lg cursor-pointer border-none flex-shrink-0" title="Color del icono y el número" />
+                                            </div>
+                                            <input type="text" value={box.value} onChange={e => { const s = [...formData.statsContent]; s[i] = { ...s[i], value: e.target.value }; setFormData({ ...formData, statsContent: s }); }} placeholder="Ej: +1.2M" className="w-full px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue text-sm font-bold" />
+                                            <textarea rows={4} value={box.text} onChange={e => { const s = [...formData.statsContent]; s[i] = { ...s[i], text: e.target.value }; setFormData({ ...formData, statsContent: s }); }} placeholder="Texto de la caja…" className="w-full px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue text-sm resize-y" />
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         )}

@@ -1,5 +1,13 @@
-import { Globe, Users, DollarSign, Heart } from 'lucide-react';
+import type { CSSProperties } from 'react';
+import { Globe, Users, DollarSign, Heart, Award, Trophy, Calendar, Star, Flag, Gift, Sparkles, Rocket, Megaphone, HandHeart } from 'lucide-react';
 import { useClub } from '../contexts/ClubContext';
+
+// Iconos disponibles para las cajas de estadísticas (configurable en sitios Evento/Convención).
+const STAT_ICONS: Record<string, any> = {
+  globe: Globe, users: Users, dollar: DollarSign, heart: Heart, handheart: HandHeart,
+  award: Award, trophy: Trophy, calendar: Calendar, star: Star, flag: Flag,
+  gift: Gift, sparkles: Sparkles, rocket: Rocket, megaphone: Megaphone,
+};
 
 const defaultStats = [
   {
@@ -75,23 +83,37 @@ const StatsSection = () => {
     }
   ] : defaultStats;
 
+  // Contenido editable de las cajas (solo Evento/Convención). Cada caja: icono (nombre),
+  // color (hex, para icono y valor), value y text.
+  const isEventSite = (club as any)?.type === 'Evento o Convención';
+  const statsContent = (club as any)?.statsContent;
+  const cards = (isEventSite && Array.isArray(statsContent) && statsContent.length > 0)
+    ? statsContent.slice(0, 3).map((c: any) => ({
+        Icon: STAT_ICONS[c.icon] || Globe,
+        value: c.value || '',
+        title: c.text || '',
+        colorClass: '',
+        colorStyle: { color: c.color || '#004080' } as CSSProperties,
+      }))
+    : stats.map((s) => ({ Icon: s.icon, value: s.value, title: s.title, colorClass: s.color, colorStyle: undefined as CSSProperties | undefined }));
+
   return (
     <section className="py-16 md:py-20 bg-rotary-concrete">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {stats.map((stat, index) => (
+          {cards.map((card, index) => (
             <div
               key={index}
               className="bg-gray-50 rounded-3xl border border-gray-100 p-8 text-center hover:bg-white hover:shadow-xl hover:border-[#0c3c7c]/10 transition-all duration-300"
             >
               <div className="flex justify-center mb-4">
-                <stat.icon className={`w-10 h-10 ${stat.color}`} />
+                <card.Icon className={`w-10 h-10 ${card.colorClass}`} style={card.colorStyle} />
               </div>
-              <h3 className={`text-4xl font-bold ${stat.color} mb-4`}>
-                {stat.value}
+              <h3 className={`text-4xl font-bold ${card.colorClass} mb-4`} style={card.colorStyle}>
+                {card.value}
               </h3>
-              <p className="text-gray-600 text-sm leading-relaxed">
-                {stat.title}
+              <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-line">
+                {card.title}
               </p>
             </div>
           ))}
