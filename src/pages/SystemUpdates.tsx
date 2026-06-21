@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.465.0 | 2026-06-21 (Footer: auto-recorte del logo al subir)
-// Cache bust: 2026-06-21 15:20
+// UI V4.466.0 | 2026-06-21 (Footer: el recorte conserva logos blancos)
+// Cache bust: 2026-06-21 15:40
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.466.0',
+        title: 'Footer: El Recorte Conserva el Logo Completo 🔧',
+        description: 'Se corrigió el auto-recorte del logo del footer: antes podía descartar el texto blanco (por ejemplo "Rotary") y dejar solo el isotipo/rueda. Ahora, para los logos del pie de página, el recorte se hace solo por transparencia, conservando las partes blancas del logo y eliminando únicamente el espacio vacío alrededor. (Los logos de la cabecera mantienen su comportamiento de recortar el fondo blanco.)',
+        date: new Date().toISOString(),
+        tags: ['footer', 'logos', 'recorte', 'eventos', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.465.0',
         title: 'Footer: Auto-recorte del Logo al Subir ✂️',
