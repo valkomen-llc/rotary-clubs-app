@@ -317,12 +317,20 @@ const EmailManagement: React.FC = () => {
             toast.error('Por favor ingresa un destinatario');
             return;
         }
+        if (!activeAccount) {
+            toast.error('No hay una cuenta de correo activa. Crea o selecciona una cuenta en "Cuentas".');
+            return;
+        }
 
         setSending(true);
+        // Evita que la petición se quede colgada para siempre (feedback garantizado).
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
         try {
             // Real API call to our backend communications service
             const response = await fetch('/api/communications/send', {
                 method: 'POST',
+                signal: controller.signal,
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}` // Ensure we pass auth
@@ -337,7 +345,7 @@ const EmailManagement: React.FC = () => {
                 })
             });
 
-            const result = await response.json();
+            const result = await response.json().catch(() => ({}));
 
             if (response.ok) {
                 const newEmail: EmailMessage = {
@@ -353,18 +361,23 @@ const EmailManagement: React.FC = () => {
                     hasAttachments: false,
                     folder: 'sent'
                 };
-                
+
                 setSentMessages([newEmail, ...sentMessages]);
                 setShowComposeModal(false);
                 setComposeData({ to: '', subject: '', body: '' });
                 toast.success(`Mensaje enviado con éxito desde ${activeAccount.email}`);
             } else {
-                toast.error(`Error al enviar: ${result.error || 'Servicio no disponible'}`);
+                toast.error(`Error al enviar: ${result.error || `El servidor respondió ${response.status}`}`);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error in handleSendEmail:', error);
-            toast.error('Error de conexión con el servidor de correo');
+            if (error?.name === 'AbortError') {
+                toast.error('El envío tardó demasiado y se canceló. Reintenta en un momento.');
+            } else {
+                toast.error('Error de conexión con el servidor de correo');
+            }
         } finally {
+            clearTimeout(timeout);
             setSending(false);
         }
     };
@@ -584,7 +597,7 @@ const EmailManagement: React.FC = () => {
                             </div>
                             <div className="p-8 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
                                 <button onClick={() => setShowComposeModal(false)} className="text-sm font-black text-gray-400 uppercase tracking-widest">Descartar</button>
-                                <button onClick={handleSendEmail} disabled={sending || !composeData.to || !activeAccount} className="px-10 py-4 bg-gray-900 text-white text-sm font-black rounded-3xl hover:bg-rotary-blue transition-all flex items-center gap-3">
+                                <button onClick={handleSendEmail} disabled={sending || !composeData.to} className="px-10 py-4 bg-gray-900 text-white text-sm font-black rounded-3xl hover:bg-rotary-blue transition-all flex items-center gap-3 disabled:opacity-50">
                                     {sending ? <RefreshCw className="w-5 h-5 animate-spin" /> : <SendHorizontal className="w-5 h-5" />}
                                     {sending ? 'Enviando...' : 'Enviar'}
                                 </button>

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.474.0 | 2026-06-21 (Correo: Enviados persistentes + entrada multi-proveedor)
-// Cache bust: 2026-06-21 19:10
+// UI V4.475.0 | 2026-06-21 (Correo: botón Enviar a prueba de fallos)
+// Cache bust: 2026-06-21 23:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.475.0',
+        title: 'Correo: Botón "Enviar" con Feedback Garantizado 🛟',
+        description: 'Se corrigió el botón de enviar del Ecosistema de Correo para que siempre dé respuesta: si no hay una cuenta activa, lo avisa; si el servidor tarda demasiado, cancela el intento a los 30s con un mensaje claro en vez de quedarse "pegado"; y cualquier error del servidor se muestra con su código. Antes, en algunos casos, pulsar "Enviar" no mostraba ninguna reacción.',
+        date: new Date().toISOString(),
+        tags: ['correo', 'envio', 'ux', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.474.0',
         title: 'Correo: Carpeta "Enviados" Persistente 📤',
