@@ -8,10 +8,13 @@ const normalizeEmail = (email) => {
 };
 
 // Extrae { name, email } de un remitente que puede venir como string ("Nombre <a@b>") u objeto.
+// Soporta variantes de distintos proveedores de inbound (Resend, Postmark, Mailgun, etc.).
 const parseAddress = (raw) => {
     if (!raw) return { name: null, email: null };
     if (typeof raw === 'object') {
-        return { name: raw.name || null, email: (raw.email || '').toLowerCase() || null };
+        const email = (raw.email || raw.Email || raw.address || '').toLowerCase() || null;
+        const name = raw.name || raw.Name || null;
+        return { name, email };
     }
     const s = String(raw);
     const m = s.match(/^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/);
@@ -20,7 +23,9 @@ const parseAddress = (raw) => {
 };
 
 const toEmailList = (to) => {
-    const arr = Array.isArray(to) ? to : (to ? [to] : []);
+    let arr = Array.isArray(to) ? to : (to ? [to] : []);
+    // Una sola cadena puede traer varias direcciones separadas por coma.
+    arr = arr.flatMap((x) => (typeof x === 'string' && x.includes(',')) ? x.split(',') : [x]);
     return arr.map((x) => parseAddress(x).email).filter(Boolean);
 };
 
@@ -108,13 +113,18 @@ export const handleInboundEmail = async (req, res) => {
         const event = req.body || {};
         const data = event.data || event;
 
-        const recipients = toEmailList(data.to);
-        const from = parseAddress(data.from);
-        const subject = data.subject || '(Sin asunto)';
-        const text = data.text || data.plain || null;
-        const html = data.html || null;
-        const messageId = data.message_id || data.messageId || data.id || event.id || null;
-        const hasAttachments = Array.isArray(data.attachments) && data.attachments.length > 0;
+        // Campos tolerantes a varios proveedores de inbound (Resend / Postmark / Mailgun / genérico).
+        const rawTo = data.to ?? data.To ?? data.recipient ?? data.ToFull ?? data.toFull;
+        const rawFrom = data.from ?? data.From ?? data.FromFull ?? data.sender ?? null;
+        const recipients = toEmailList(rawTo);
+        const from = parseAddress(rawFrom);
+        if (!from.name && data.FromName) from.name = data.FromName;
+        const subject = data.subject || data.Subject || '(Sin asunto)';
+        const text = data.text || data.TextBody || data['body-plain'] || data.plain || null;
+        const html = data.html || data.HtmlBody || data['body-html'] || null;
+        const messageId = data.message_id || data.MessageID || data.messageId || data.id || event.id || null;
+        const attachmentsArr = data.attachments || data.Attachments;
+        const hasAttachments = Array.isArray(attachmentsArr) && attachmentsArr.length > 0;
 
         let stored = 0;
         for (const rcpt of recipients) {
