@@ -1,21 +1,25 @@
 /**
  * Utility for automatic logo cropping
  * Detects the bounding box of non-transparent/non-white pixels
+ *
+ * @param trimWhite  When true (default) los píxeles blancos se tratan como fondo y se recortan
+ *                   (ideal para logos oscuros sobre fondo blanco, p.ej. la cabecera).
+ *                   Cuando es false solo se recorta por transparencia, conservando el contenido
+ *                   blanco (ideal para logos blancos sobre fondo transparente, p.ej. el footer).
  */
-
-export const getAutoCropCanvas = (image: HTMLImageElement): HTMLCanvasElement | null => {
+export const getAutoCropCanvas = (image: HTMLImageElement, trimWhite: boolean = true): HTMLCanvasElement | null => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    
+
     if (!ctx) return null;
-    
+
     canvas.width = image.width;
     canvas.height = image.height;
     ctx.drawImage(image, 0, 0);
-    
+
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
-    
+
     let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
     let found = false;
 
@@ -28,10 +32,11 @@ export const getAutoCropCanvas = (image: HTMLImageElement): HTMLCanvasElement | 
             const b = data[index + 2];
             const a = data[index + 3];
 
-            // Check if pixel is not fully transparent AND not pure white (with a small threshold)
-            // Logos often have white backgrounds that should be cropped if possible
+            // Check if pixel is not fully transparent AND (optionally) not pure white.
+            // Logos often have white backgrounds that should be cropped if possible,
+            // pero los logos blancos sobre transparente requieren conservar el blanco.
             const isTransparent = a < 10;
-            const isWhite = r > 250 && g > 250 && b > 250;
+            const isWhite = trimWhite && r > 250 && g > 250 && b > 250;
 
             if (!isTransparent && !isWhite) {
                 if (x < minX) minX = x;

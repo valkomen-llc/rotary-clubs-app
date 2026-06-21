@@ -266,10 +266,10 @@ const ClubSettings: React.FC = () => {
         }
     }, [club]);
 
-    const handleAutoCrop = async (file: File): Promise<File> => {
+    const handleAutoCrop = async (file: File, trimWhite: boolean = true): Promise<File> => {
         try {
             const img = await fileToImage(file);
-            const canvas = getAutoCropCanvas(img);
+            const canvas = getAutoCropCanvas(img, trimWhite);
             if (canvas) return await canvasToFile(canvas, file.name.replace(/\.[^.]+$/, '.png'));
             return file;
         } catch (error) {
@@ -373,9 +373,9 @@ const ClubSettings: React.FC = () => {
         setUploading(true);
         try {
             const token = localStorage.getItem('rotary_token');
-            // Mismo auto-recorte que los logos de la cabecera: elimina los márgenes/transparencias
-            // alrededor del logo para que no se vea pequeño en el footer.
-            const croppedFile = await handleAutoCrop(file);
+            // Auto-recorte por transparencia (trimWhite=false): conserva los logos blancos
+            // (texto + isotipo) sobre fondo transparente, recortando solo el espacio vacío.
+            const croppedFile = await handleAutoCrop(file, false);
             const uploadData = new FormData();
             uploadData.append('file', croppedFile);
             uploadData.append('folder', 'footer-logos');
