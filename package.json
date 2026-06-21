@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.460.0",
-  "cache_bust": "2026-06-20 06:40 (Eventos: sección de estadísticas (3 cajas) editable — icono, color, valor y texto)",
+  "version": "4.461.0",
+  "cache_bust": "2026-06-20 07:00 (Eventos: sección Únete a Rotary editable — título, texto, botón e icono)",
   "type": "module",
-  "//": "UI V4.460.0 | 2026-06-20 (Eventos: sección de estadísticas (3 cajas) editable — icono, color, valor y texto)",
+  "//": "UI V4.461.0 | 2026-06-20 (Eventos: sección Únete a Rotary editable — título, texto, botón e icono)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",
