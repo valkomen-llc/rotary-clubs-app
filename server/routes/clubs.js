@@ -214,6 +214,11 @@ router.get('/by-domain', async (req, res) => {
                 try { return settings['footer_config'] ? JSON.parse(settings['footer_config']) : {}; }
                 catch { return {}; }
             })(),
+            // Texto y botón editables de la sección "Áreas de Interés" (Evento/Convención).
+            causesContent: (() => {
+                try { return settings['causes_section_content'] ? JSON.parse(settings['causes_section_content']) : {}; }
+                catch { return {}; }
+            })(),
             productsCount: activeClub._count?.products || 0,
             eventsCount: activeClub._count?.events || 0,
             // Logo Size Inheritance: Priority 1: Club Setting, Priority 2: Master Club Setting, Priority 3: Default 200

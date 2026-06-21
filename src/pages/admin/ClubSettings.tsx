@@ -92,6 +92,7 @@ const ClubSettings: React.FC = () => {
         ] as { icon: string; color: string; value: string; text: string }[],
         joinContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', titleHighlight: '', titleHighlightColor: '#f6a40a' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; titleHighlight: string; titleHighlightColor: string },
         foundationContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'gift', titleHighlight: '', titleHighlightColor: '#f6a40a' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; titleHighlight: string; titleHighlightColor: string },
+        causesContent: { text: '', buttonText: '', buttonUrl: '', icon: 'globe' } as { text: string; buttonText: string; buttonUrl: string; icon: string },
         logo: '',
         footerLogo: '',
         endPolioLogo: '',
@@ -225,6 +226,10 @@ const ClubSettings: React.FC = () => {
                 foundationContent: (() => {
                     const saved = (club as any).foundationContent || (() => { try { return JSON.parse(settingsMap['foundation_section_content'] || '{}'); } catch { return {}; } })();
                     return { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'gift', titleHighlight: '', titleHighlightColor: '#f6a40a', ...saved };
+                })(),
+                causesContent: (() => {
+                    const saved = (club as any).causesContent || (() => { try { return JSON.parse(settingsMap['causes_section_content'] || '{}'); } catch { return {}; } })();
+                    return { text: '', buttonText: '', buttonUrl: '', icon: 'globe', ...saved };
                 })(),
                 logo: club.logo || '',
                 footerLogo: club.footerLogo || '',
@@ -1288,6 +1293,54 @@ const ClubSettings: React.FC = () => {
                                     <div>
                                         <label className="text-xs font-bold text-gray-400 uppercase">Icono del Botón (Emoji)</label>
                                         <select value={formData.foundationContent.icon} onChange={e => setFormData({ ...formData, foundationContent: { ...formData.foundationContent, icon: e.target.value } })} className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none bg-white">
+                                            <option value="star">⭐ Estrella</option>
+                                            <option value="heart">❤️ Corazón</option>
+                                            <option value="handshake">🤝 Apretón de manos</option>
+                                            <option value="send">✈️ Enviar</option>
+                                            <option value="sparkles">✨ Destellos</option>
+                                            <option value="megaphone">📣 Megáfono</option>
+                                            <option value="flag">🚩 Bandera</option>
+                                            <option value="gift">🎁 Regalo</option>
+                                            <option value="users">👥 Personas</option>
+                                            <option value="calendar">📅 Calendario</option>
+                                            <option value="award">🏅 Medalla</option>
+                                            <option value="trophy">🏆 Trofeo</option>
+                                            <option value="rocket">🚀 Cohete</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Contenido de la sección "Áreas de Interés" (texto + botón) — solo Eventos/Convenciones */}
+                        {(isSuperAdmin || club?.type === 'Evento o Convención') && (
+                            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                                <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
+                                    <Palette className="w-5 h-5 text-rotary-blue" /> Sección "Áreas de Interés" (Texto y Botón)
+                                </h3>
+                                <p className="text-xs text-gray-400 mb-6">
+                                    Personaliza el texto descriptivo y el botón de la sección "Áreas de Interés". Si dejas un campo vacío, se usa el texto por defecto. (El título usa el nombre del sitio.)
+                                </p>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-400 uppercase">Texto</label>
+                                        <textarea rows={5} value={formData.causesContent.text} onChange={e => setFormData({ ...formData, causesContent: { ...formData.causesContent, text: e.target.value } })} placeholder="Descripción de la sección…" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none resize-y" />
+                                        <p className="text-[11px] text-gray-400 mt-1">Presiona <strong>Enter</strong> donde quieras un salto de línea.</p>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-400 uppercase">Texto del Botón</label>
+                                            <input type="text" value={formData.causesContent.buttonText} onChange={e => setFormData({ ...formData, causesContent: { ...formData.causesContent, buttonText: e.target.value } })} placeholder="Nuestras Áreas de Interés" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none" />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-400 uppercase">Enlace del Botón</label>
+                                            <input type="text" value={formData.causesContent.buttonUrl} onChange={e => setFormData({ ...formData, causesContent: { ...formData.causesContent, buttonUrl: e.target.value } })} placeholder="/nuestras-causas o https://…" className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none" />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-400 uppercase">Icono del Botón (Emoji)</label>
+                                        <select value={formData.causesContent.icon} onChange={e => setFormData({ ...formData, causesContent: { ...formData.causesContent, icon: e.target.value } })} className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none bg-white">
+                                            <option value="globe">🌐 Globo</option>
                                             <option value="star">⭐ Estrella</option>
                                             <option value="heart">❤️ Corazón</option>
                                             <option value="handshake">🤝 Apretón de manos</option>
