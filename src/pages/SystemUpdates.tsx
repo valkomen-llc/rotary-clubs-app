@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.471.0 | 2026-06-21 (Eventos: reordenar todo el menú principal)
-// Cache bust: 2026-06-21 17:50
+// UI V4.472.0 | 2026-06-21 (Correo: envío directo desde el dominio del club)
+// Cache bust: 2026-06-21 18:10
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.472.0',
+        title: 'Correo: Envío desde el Dominio del Club vía Resend ✉️',
+        description: 'Los correos enviados desde el Ecosistema de Correo ahora salen directamente desde la dirección institucional del club (por ejemplo contacto@jaquematealapolio.org) usando Resend con el dominio verificado, en lugar de reenviarse desde una dirección genérica. Además se normaliza el dominio quitando el prefijo "www." para usar el dominio raíz verificado, y si el dominio aún no estuviera verificado se mantiene el reenvío de respaldo. (La recepción de correos entrantes se aborda por separado.)',
+        date: new Date().toISOString(),
+        tags: ['correo', 'resend', 'envio', 'dominio', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.471.0',
         title: 'Eventos: Reordenar Todo el Menú Principal ↕️',

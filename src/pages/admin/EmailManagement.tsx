@@ -44,9 +44,12 @@ const EmailManagement: React.FC = () => {
     const PLATFORM_HOSTS = ['clubplatform.org', 'www.clubplatform.org', 'app.clubplatform.org', 'localhost'];
     const currentHost = window.location.hostname;
     const isOnClubDomain = !PLATFORM_HOSTS.includes(currentHost);
-    const clubDomain = isOnClubDomain 
-        ? currentHost 
+    const rawClubDomain = isOnClubDomain
+        ? currentHost
         : ((club as any)?.domain || ((club as any)?.subdomain ? `${(club as any).subdomain}.clubplatform.org` : 'rotary.org'));
+    // El dominio verificado en Resend es el apex (sin "www."). Normalizamos para que las cuentas
+    // y el remitente usen jaquematealapolio.org y no www.jaquematealapolio.org.
+    const clubDomain = (rawClubDomain || '').replace(/^www\./i, '');
 
     // State
     const [selectedFolder, setSelectedFolder] = useState<string>('inbox');
