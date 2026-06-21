@@ -290,6 +290,17 @@ function SmartHome() {
   );
 }
 
+// Lleva la vista al inicio (contenedor principal) en cada cambio de ruta.
+// Respeta los anclas (#) para no romper el scroll a secciones específicas.
+const ScrollToTop = () => {
+  const { pathname, hash } = useLocation();
+  useEffect(() => {
+    if (hash) return;
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [pathname, hash]);
+  return null;
+};
+
 // Analytics Wrapper to track route changes
 const AnalyticsTracker = () => {
   const location = useLocation();
@@ -366,6 +377,7 @@ function App() {
               <ExpirationBanner />
               <DevelopmentBanner />
               <HashRedirector />
+              <ScrollToTop />
               <AnalyticsTracker />
               <SEOTracker />
               <Suspense fallback={
