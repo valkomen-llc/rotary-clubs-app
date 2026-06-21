@@ -7,7 +7,8 @@ import {
     Image as ImageIcon, Store, Dna, Settings as SettingsIcon, 
     CreditCard, ExternalLink, Sparkles, Layout, Mail, 
     MapPin, Share2, Info, Building2, Bot, ChevronRight, RefreshCw,
-    Facebook, Instagram, Twitter, Linkedin, Youtube, Plus, Trash2, Link as LinkIcon
+    Facebook, Instagram, Twitter, Linkedin, Youtube, Plus, Trash2, Link as LinkIcon,
+    ChevronUp, ChevronDown, GripVertical
 } from 'lucide-react';
 import { toast } from 'sonner';
 import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
@@ -40,7 +41,24 @@ const SYSTEM_NAV_SECTIONS: { label: string; href: string }[] = [
 ];
 
 type NavExtraItem = { label: string; href: string; external?: boolean };
+type NavOrderItem = { kind: 'fixed' | 'custom'; key?: string; label?: string; href?: string; external?: boolean; enabled?: boolean };
 type FooterMenuItem = { label: string; href: string; external?: boolean };
+
+// Ítems fijos del menú principal (con su etiqueta visible).
+const FIXED_NAV_ITEMS: { key: string; label: string }[] = [
+    { key: 'inicio', label: 'Inicio' },
+    { key: 'sobreNosotros', label: 'Sobre Nosotros' },
+    { key: 'proyectos', label: 'Proyectos' },
+    { key: 'noticias', label: 'Noticias' },
+    { key: 'eventos', label: 'Eventos' },
+    { key: 'contacto', label: 'Contacto' },
+];
+
+// Construye el orden por defecto del menú a partir del estado heredado (toggles + adicionales).
+const buildDefaultNavOrder = (navMenu: Record<string, boolean>, extra: NavExtraItem[]): NavOrderItem[] => [
+    ...FIXED_NAV_ITEMS.map(f => ({ kind: 'fixed' as const, key: f.key, label: f.label, enabled: navMenu?.[f.key] !== false })),
+    ...(Array.isArray(extra) ? extra : []).map(it => ({ kind: 'custom' as const, label: it.label, href: it.href, external: !!it.external, enabled: true })),
+];
 type FooterConfig = {
     logoTop: string;
     logoBottom: string;
@@ -106,6 +124,7 @@ const ClubSettings: React.FC = () => {
         eventHeroImages: [] as { url: string; alt?: string }[],
         eventNavMenu: { inicio: true, sobreNosotros: true, proyectos: true, noticias: true, eventos: true, contacto: true } as Record<string, boolean>,
         eventNavExtra: [] as NavExtraItem[],
+        eventNavOrder: buildDefaultNavOrder({ inicio: true, sobreNosotros: true, proyectos: true, noticias: true, eventos: true, contacto: true }, []) as NavOrderItem[],
         eventSections: { news: true } as Record<string, boolean>,
         footerConfig: buildDefaultFooter(null) as FooterConfig,
         actionContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', iconColor: '#F5A623', titleHighlight: '', titleHighlightColor: '#f6a40a' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; iconColor: string; titleHighlight: string; titleHighlightColor: string },
@@ -218,6 +237,18 @@ const ClubSettings: React.FC = () => {
                 eventNavExtra: (() => {
                     const saved = (club as any).eventNavExtra || (() => { try { return JSON.parse(settingsMap['event_nav_extra'] || '[]'); } catch { return []; } })();
                     return Array.isArray(saved) ? saved : [];
+                })(),
+                eventNavOrder: (() => {
+                    const savedOrder = (club as any).eventNavOrder || (() => { try { return JSON.parse(settingsMap['event_nav_order'] || '[]'); } catch { return []; } })();
+                    if (Array.isArray(savedOrder) && savedOrder.length) {
+                        // Asegura que todos los fijos estén presentes (por si se agregaron nuevos en el sistema).
+                        const present = new Set(savedOrder.filter((i: NavOrderItem) => i.kind === 'fixed').map((i: NavOrderItem) => i.key));
+                        const missing = FIXED_NAV_ITEMS.filter(f => !present.has(f.key)).map(f => ({ kind: 'fixed' as const, key: f.key, label: f.label, enabled: true }));
+                        return [...savedOrder, ...missing];
+                    }
+                    const navMenu = (club as any).eventNavMenu || (() => { try { return JSON.parse(settingsMap['event_nav_menu'] || '{}'); } catch { return {}; } })();
+                    const extra = (club as any).eventNavExtra || (() => { try { return JSON.parse(settingsMap['event_nav_extra'] || '[]'); } catch { return []; } })();
+                    return buildDefaultNavOrder(navMenu, extra);
                 })(),
                 eventSections: (() => {
                     const saved = (club as any).eventSections || (() => { try { return JSON.parse(settingsMap['event_sections_visibility'] || '{}'); } catch { return {}; } })();
@@ -383,15 +414,27 @@ const ClubSettings: React.FC = () => {
         setFormData(prev => ({ ...prev, eventHeroImages: (prev.eventHeroImages || []).filter((_, i) => i !== idx) }));
     };
 
-    // Helpers de los ítems adicionales del menú principal (Evento/Convención).
-    const addNavExtra = (item?: NavExtraItem) => {
-        setFormData(prev => ({ ...prev, eventNavExtra: [...prev.eventNavExtra, item || { label: 'Nuevo Menú', href: '/' }] }));
+    // Helpers del orden unificado del menú principal (Evento/Convención).
+    const moveNavOrder = (idx: number, dir: -1 | 1) => {
+        setFormData(prev => {
+            const arr = [...prev.eventNavOrder];
+            const j = idx + dir;
+            if (j < 0 || j >= arr.length) return prev;
+            [arr[idx], arr[j]] = [arr[j], arr[idx]];
+            return { ...prev, eventNavOrder: arr };
+        });
     };
-    const removeNavExtra = (idx: number) => {
-        setFormData(prev => ({ ...prev, eventNavExtra: prev.eventNavExtra.filter((_, i) => i !== idx) }));
+    const toggleNavOrderEnabled = (idx: number) => {
+        setFormData(prev => ({ ...prev, eventNavOrder: prev.eventNavOrder.map((it, i) => i === idx ? { ...it, enabled: it.enabled === false ? true : false } : it) }));
     };
-    const updateNavExtra = (idx: number, field: keyof NavExtraItem, value: any) => {
-        setFormData(prev => ({ ...prev, eventNavExtra: prev.eventNavExtra.map((it, i) => i === idx ? { ...it, [field]: value } : it) }));
+    const updateNavOrderItem = (idx: number, field: keyof NavOrderItem, value: any) => {
+        setFormData(prev => ({ ...prev, eventNavOrder: prev.eventNavOrder.map((it, i) => i === idx ? { ...it, [field]: value } : it) }));
+    };
+    const removeNavOrder = (idx: number) => {
+        setFormData(prev => ({ ...prev, eventNavOrder: prev.eventNavOrder.filter((_, i) => i !== idx) }));
+    };
+    const addNavOrderCustom = (item?: { label: string; href: string }) => {
+        setFormData(prev => ({ ...prev, eventNavOrder: [...prev.eventNavOrder, { kind: 'custom', label: item?.label || 'Nuevo Menú', href: item?.href || '/', external: false, enabled: true }] }));
     };
 
     // Helpers del footer configurable (Evento/Convención).
@@ -474,13 +517,23 @@ const ClubSettings: React.FC = () => {
                 }
             }
 
+            // Mantén eventNavMenu/eventNavExtra en sync con el orden unificado (fuente de verdad).
+            const derivedNavMenu = formData.eventNavOrder.reduce((acc, it) => {
+                if (it.kind === 'fixed' && it.key) acc[it.key] = it.enabled !== false;
+                return acc;
+            }, {} as Record<string, boolean>);
+            const derivedNavExtra = formData.eventNavOrder
+                .filter(it => it.kind === 'custom')
+                .map(it => ({ label: it.label || '', href: it.href || '/', external: !!it.external }));
+            const payload = { ...formData, eventNavMenu: { ...formData.eventNavMenu, ...derivedNavMenu }, eventNavExtra: derivedNavExtra };
+
             const response = await fetch(`${API_URL}/admin/clubs/${club?.id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify(formData)
+                body: JSON.stringify(payload)
             });
 
             if (response.ok) {
@@ -1064,83 +1117,71 @@ const ClubSettings: React.FC = () => {
                                 <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
                                     <Palette className="w-5 h-5 text-rotary-blue" /> Menú Principal
                                 </h3>
-                                <p className="text-xs text-gray-400 mb-6">
-                                    Activa o desactiva las secciones que se muestran en el menú de navegación principal del sitio.
-                                </p>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                    {[
-                                        { key: 'inicio', label: 'Inicio' },
-                                        { key: 'sobreNosotros', label: 'Sobre Nosotros' },
-                                        { key: 'proyectos', label: 'Proyectos' },
-                                        { key: 'noticias', label: 'Noticias' },
-                                        { key: 'eventos', label: 'Eventos' },
-                                        { key: 'contacto', label: 'Contacto' },
-                                    ].map(item => (
-                                        <label key={item.key} className="flex items-center gap-3 cursor-pointer p-3 border border-gray-100 rounded-xl hover:bg-gray-50 transition-colors">
-                                            <input
-                                                type="checkbox"
-                                                className="w-4 h-4 text-rotary-blue rounded border-gray-300 focus:ring-rotary-blue"
-                                                checked={formData.eventNavMenu?.[item.key] !== false}
-                                                onChange={e => setFormData({ ...formData, eventNavMenu: { ...formData.eventNavMenu, [item.key]: e.target.checked } })}
-                                            />
-                                            <span className="text-[13px] font-bold text-gray-700">{item.label}</span>
-                                        </label>
-                                    ))}
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+                                    <p className="text-xs text-gray-400">
+                                        Ordena (▲▼), activa/desactiva y agrega elementos al menú de navegación. Crea uno manual o tómalo de una sección del sistema.
+                                    </p>
+                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                        <select
+                                            value=""
+                                            onChange={e => { const sec = SYSTEM_NAV_SECTIONS.find(s => s.href === e.target.value); if (sec) addNavOrderCustom({ label: sec.label, href: sec.href }); e.target.value = ''; }}
+                                            className="px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue bg-white text-sm"
+                                        >
+                                            <option value="">+ Desde una sección…</option>
+                                            {SYSTEM_NAV_SECTIONS.map(s => (
+                                                <option key={s.href} value={s.href}>{s.label}</option>
+                                            ))}
+                                        </select>
+                                        <button type="button" onClick={() => addNavOrderCustom()} className="flex items-center gap-1.5 text-xs font-bold text-rotary-blue bg-blue-50 px-3 py-2 rounded-lg hover:bg-blue-100 transition-all whitespace-nowrap">
+                                            <Plus className="w-4 h-4" /> Crear Link
+                                        </button>
+                                    </div>
                                 </div>
 
-                                {/* Menús adicionales: crear o tomar de las secciones del sistema */}
-                                <div className="mt-8 pt-6 border-t border-gray-100">
-                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-                                        <div>
-                                            <h4 className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                                                <LinkIcon className="w-4 h-4 text-rotary-blue" /> Menús adicionales
-                                            </h4>
-                                            <p className="text-xs text-gray-400 mt-1">Agrega elementos al menú: créalos manualmente o tómalos de una sección del sistema.</p>
-                                        </div>
-                                        <div className="flex items-center gap-2 flex-shrink-0">
-                                            <select
-                                                value=""
-                                                onChange={e => { const sec = SYSTEM_NAV_SECTIONS.find(s => s.href === e.target.value); if (sec) addNavExtra({ label: sec.label, href: sec.href }); e.target.value = ''; }}
-                                                className="px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue bg-white text-sm"
-                                            >
-                                                <option value="">+ Desde una sección…</option>
-                                                {SYSTEM_NAV_SECTIONS.map(s => (
-                                                    <option key={s.href} value={s.href}>{s.label}</option>
-                                                ))}
-                                            </select>
-                                            <button type="button" onClick={() => addNavExtra()} className="flex items-center gap-1.5 text-xs font-bold text-rotary-blue bg-blue-50 px-3 py-2 rounded-lg hover:bg-blue-100 transition-all whitespace-nowrap">
-                                                <Plus className="w-4 h-4" /> Crear Link
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-3">
-                                        {formData.eventNavExtra.map((item, idx) => (
-                                            <div key={idx} className="flex flex-col md:flex-row gap-3 p-3 bg-gray-50 rounded-xl">
-                                                <div className="flex-1">
-                                                    <label className="text-[10px] font-bold text-gray-400 uppercase">Texto del Menú</label>
-                                                    <input type="text" value={item.label} onChange={e => updateNavExtra(idx, 'label', e.target.value)} className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue text-sm font-bold text-gray-700 bg-white" />
+                                <div className="space-y-2">
+                                    {formData.eventNavOrder.map((item, idx) => (
+                                        <div key={idx} className={`flex items-stretch gap-2 p-2 rounded-xl border ${item.enabled === false ? 'border-gray-100 bg-gray-50/60 opacity-70' : 'border-gray-100 bg-white'}`}>
+                                            {/* Reordenar */}
+                                            <div className="flex flex-col items-center justify-center text-gray-300">
+                                                <GripVertical className="w-4 h-4 mb-0.5 text-gray-200" />
+                                                <div className="flex flex-col">
+                                                    <button type="button" onClick={() => moveNavOrder(idx, -1)} disabled={idx === 0} className="p-0.5 hover:text-rotary-blue disabled:opacity-30 disabled:hover:text-gray-300" title="Subir"><ChevronUp className="w-4 h-4" /></button>
+                                                    <button type="button" onClick={() => moveNavOrder(idx, 1)} disabled={idx === formData.eventNavOrder.length - 1} className="p-0.5 hover:text-rotary-blue disabled:opacity-30 disabled:hover:text-gray-300" title="Bajar"><ChevronDown className="w-4 h-4" /></button>
                                                 </div>
-                                                <div className="flex-[2]">
-                                                    <label className="text-[10px] font-bold text-gray-400 uppercase">Ruta o URL (#/blog, https://…)</label>
-                                                    <input type="text" value={item.href} onChange={e => updateNavExtra(idx, 'href', e.target.value)} className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue text-sm text-blue-600 bg-white" />
+                                            </div>
+
+                                            {/* Activar/desactivar */}
+                                            <label className="flex items-center px-1 cursor-pointer" title={item.enabled === false ? 'Activar' : 'Desactivar'}>
+                                                <input type="checkbox" checked={item.enabled !== false} onChange={() => toggleNavOrderEnabled(idx)} className="w-4 h-4 text-rotary-blue rounded border-gray-300 focus:ring-rotary-blue" />
+                                            </label>
+
+                                            {/* Contenido del ítem */}
+                                            {item.kind === 'fixed' ? (
+                                                <div className="flex-1 flex items-center gap-2 px-2">
+                                                    <span className="text-[13px] font-bold text-gray-700">{item.label}</span>
+                                                    <span className="text-[9px] font-black uppercase tracking-wider text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Sección</span>
                                                 </div>
-                                                <div className="flex items-end gap-2">
-                                                    <label className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-lg cursor-pointer mt-1">
-                                                        <input type="checkbox" checked={!!item.external} onChange={e => updateNavExtra(idx, 'external', e.target.checked)} className="w-4 h-4 text-rotary-blue rounded border-gray-300" />
+                                            ) : (
+                                                <div className="flex-1 flex flex-col md:flex-row gap-2">
+                                                    <input type="text" value={item.label || ''} onChange={e => updateNavOrderItem(idx, 'label', e.target.value)} placeholder="Texto del menú" className="flex-1 px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue text-sm font-bold text-gray-700 bg-white" />
+                                                    <input type="text" value={item.href || ''} onChange={e => updateNavOrderItem(idx, 'href', e.target.value)} placeholder="/ruta o https://…" className="flex-[2] px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-rotary-blue text-sm text-blue-600 bg-white" />
+                                                    <label className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-lg cursor-pointer">
+                                                        <input type="checkbox" checked={!!item.external} onChange={e => updateNavOrderItem(idx, 'external', e.target.checked)} className="w-4 h-4 text-rotary-blue rounded border-gray-300" />
                                                         <span className="text-[10px] font-bold text-gray-500 whitespace-nowrap">Externo</span>
                                                     </label>
-                                                    <button type="button" onClick={() => removeNavExtra(idx)} className="p-2 mt-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Eliminar">
-                                                        <Trash2 className="w-5 h-5" />
-                                                    </button>
                                                 </div>
+                                            )}
+
+                                            {/* Eliminar (solo personalizados) */}
+                                            <div className="flex items-center">
+                                                {item.kind === 'custom' ? (
+                                                    <button type="button" onClick={() => removeNavOrder(idx)} className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Eliminar"><Trash2 className="w-5 h-5" /></button>
+                                                ) : (
+                                                    <span className="w-9" />
+                                                )}
                                             </div>
-                                        ))}
-                                        {formData.eventNavExtra.length === 0 && (
-                                            <div className="text-center py-6 text-gray-400 text-sm italic border-2 border-dashed border-gray-100 rounded-xl">
-                                                Sin menús adicionales. Usa "Crear Link" o "Desde una sección…".
-                                            </div>
-                                        )}
-                                    </div>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         )}
