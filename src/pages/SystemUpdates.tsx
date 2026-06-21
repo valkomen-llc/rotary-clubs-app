@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.458.4 | 2026-06-20 (Título gente de acción: más ancho para que la primera línea quepa completa)
-// Cache bust: 2026-06-20 05:20
+// UI V4.459.0 | 2026-06-20 (Botones del inicio: color del texto configurable también en hover)
+// Cache bust: 2026-06-20 06:00
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.459.0',
+        title: 'Botones del Inicio: Color del Texto también en Hover 🖱️',
+        description: 'Ahora puedes definir un color de texto distinto para cuando el mouse pasa sobre los botones de la portada (hover), además del color de fondo en hover que ya existía. En Configuración → Identidad → "Colores de los Botones del Inicio" hay un nuevo selector "Color del Texto al pasar el mouse (Hover)". Si no lo defines, el texto conserva su color normal. (Sitios Evento/Convención.)',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'color', 'botones', 'hover', 'texto', 'eventos', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.458.4',
         title: 'Título "Somos gente de acción": Primera Línea Completa 📏',

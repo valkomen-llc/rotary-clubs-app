@@ -17,6 +17,7 @@ export const useCtaButton = (): { className: string; style?: CSSProperties } => 
             ['--btn-bg' as string]: c.buttonBg || '#e0f2fe',
             ['--btn-hover' as string]: c.buttonHoverBg || '#bae6fd',
             ['--btn-text' as string]: c.buttonText || '#004080',
+            ['--btn-text-hover' as string]: c.buttonTextHover || c.buttonText || '#004080',
         } as CSSProperties,
     };
 };
