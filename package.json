@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.458.3",
-  "cache_bust": "2026-06-20 05:00 (Título de gente de acción: saltos de línea manuales con Enter)",
+  "version": "4.458.4",
+  "cache_bust": "2026-06-20 05:20 (Título gente de acción: más ancho para que la primera línea quepa completa)",
   "type": "module",
-  "//": "UI V4.458.3 | 2026-06-20 (Título de gente de acción: saltos de línea manuales con Enter)",
+  "//": "UI V4.458.4 | 2026-06-20 (Título gente de acción: más ancho para que la primera línea quepa completa)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.458.3 | 2026-06-20 (Título de "gente de acción": saltos de línea manuales con Enter)
-// Cache bust: 2026-06-20 05:00
+// UI V4.458.4 | 2026-06-20 (Título gente de acción: más ancho para que la primera línea quepa completa)
+// Cache bust: 2026-06-20 05:20
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.458.4',
+        title: 'Título "Somos gente de acción": Primera Línea Completa 📏',
+        description: 'Se amplió el ancho del título de la sección "Somos gente de acción" para que la primera línea quepa completa en escritorio y respete el salto de línea que defines, sin que palabras como "COLOMBIA" bajen por ajuste automático. En pantallas pequeñas sigue ajustándose de forma natural.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'contenido', 'gente-de-accion', 'titulo', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.458.3',
         title: 'Título "Somos gente de acción": Saltos de Línea Manuales ↵',
