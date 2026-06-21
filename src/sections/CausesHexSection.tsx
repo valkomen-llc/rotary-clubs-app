@@ -329,12 +329,14 @@ const styles = `
     margin-top: 3rem;
   }
 
+  /* Usa las variables de color de los botones del inicio (sitios Evento/Convención).
+     Si no están definidas, mantiene el celeste original. */
   .areas-rotary__button {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    background: #e8f4fc;
-    color: var(--rotary-blue);
+    background: var(--btn-bg, #e8f4fc);
+    color: var(--btn-text, var(--rotary-blue));
     padding: 0.875rem 2rem;
     border-radius: 9999px;
     font-weight: 600;
@@ -342,12 +344,13 @@ const styles = `
     text-decoration: none;
     border: none;
     cursor: pointer;
-    transition: background 0.3s ease, transform 0.2s ease;
+    transition: background 0.3s ease, color 0.3s ease, transform 0.2s ease;
     font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   }
 
   .areas-rotary__button:hover {
-    background: #d0e8f7;
+    background: var(--btn-hover, #d0e8f7);
+    color: var(--btn-text-hover, var(--btn-text, var(--rotary-blue)));
     transform: translateY(-2px);
   }
 
@@ -478,6 +481,14 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
   const ctaEmoji = isEventSite && causesContent.icon
     ? (ICON_EMOJI[causesContent.icon] || (causesContent.icon.length <= 4 ? causesContent.icon : ''))
     : '';
+  // Colores configurables de los botones del inicio (Evento/Convención). En el resto, sin vars → celeste original.
+  const btnColors = (club as any)?.colors || {};
+  const ctaStyle = isEventSite ? ({
+    ['--btn-bg' as string]: btnColors.buttonBg || '#e8f4fc',
+    ['--btn-hover' as string]: btnColors.buttonHoverBg || '#d0e8f7',
+    ['--btn-text' as string]: btnColors.buttonText || '#17458f',
+    ['--btn-text-hover' as string]: btnColors.buttonTextHover || btnColors.buttonText || '#17458f',
+  } as React.CSSProperties) : undefined;
   const ctaInner = (
     <>
       {ctaEmoji ? <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>{ctaEmoji}</span> : <Globe className="w-5 h-5" />}
@@ -699,9 +710,9 @@ const CausesHexSection = ({ showHeader = true }: { showHeader?: boolean }) => {
         {/* CTA Button */}
         <div className="areas-rotary__cta">
           {ctaExternal ? (
-            <a href={ctaUrl} target="_blank" rel="noopener noreferrer" className="areas-rotary__button">{ctaInner}</a>
+            <a href={ctaUrl} target="_blank" rel="noopener noreferrer" className="areas-rotary__button" style={ctaStyle}>{ctaInner}</a>
           ) : (
-            <Link to={ctaUrl} className="areas-rotary__button">{ctaInner}</Link>
+            <Link to={ctaUrl} className="areas-rotary__button" style={ctaStyle}>{ctaInner}</Link>
           )}
         </div>
 

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.467.0 | 2026-06-21 (Eventos: Áreas de Interés — texto y botón editables)
-// Cache bust: 2026-06-21 16:10
+// UI V4.468.0 | 2026-06-21 (Eventos: botón de Áreas de Interés usa los colores del inicio)
+// Cache bust: 2026-06-21 16:30
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.468.0',
+        title: 'Eventos: El Botón de "Áreas de Interés" Usa los Colores del Inicio 🎨',
+        description: 'El botón de la sección "Áreas de Interés" ahora respeta los "Colores de los Botones del Inicio" configurados (fondo, fondo al pasar el mouse, color del texto y color del texto en hover), igual que el resto de botones de la portada. Aplica a sitios de Evento o Convención; si no se personaliza, mantiene su estilo celeste original.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'color', 'botones', 'areas-de-interes', 'hover', 'eventos', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.467.0',
         title: 'Eventos: Sección "Áreas de Interés" — Texto y Botón Editables ✏️',
