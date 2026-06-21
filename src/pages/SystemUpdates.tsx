@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.470.0 | 2026-06-21 (Navegación: scroll al inicio al cambiar de página)
-// Cache bust: 2026-06-21 17:20
+// UI V4.471.0 | 2026-06-21 (Eventos: reordenar todo el menú principal)
+// Cache bust: 2026-06-21 17:50
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.471.0',
+        title: 'Eventos: Reordenar Todo el Menú Principal ↕️',
+        description: 'El "Menú Principal" ahora es una lista única reordenable: con las flechas ▲▼ puedes mover en cualquier orden tanto las secciones fijas (Inicio, Sobre Nosotros, Proyectos, Noticias, Eventos, Contacto) como los menús que agregues, y mezclarlos libremente. Cada elemento se puede activar/desactivar, y los menús personalizados se pueden crear o tomar de una sección del sistema, editar y eliminar. El orden se refleja en la barra de navegación (escritorio y móvil). Aplica a sitios de Evento o Convención.',
+        date: new Date().toISOString(),
+        tags: ['identidad', 'menu', 'navegacion', 'orden', 'eventos', 'convenciones', 'feature'],
+        type: 'added'
+    },
     {
         version: '4.470.0',
         title: 'Navegación: Las Páginas se Abren Siempre desde el Inicio ⬆️',

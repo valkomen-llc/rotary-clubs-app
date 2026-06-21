@@ -189,6 +189,11 @@ router.get('/by-domain', async (req, res) => {
                 try { return settings['event_nav_extra'] ? JSON.parse(settings['event_nav_extra']) : []; }
                 catch { return []; }
             })(),
+            // Orden unificado del menú (Evento/Convención): fijos + personalizados ordenados.
+            eventNavOrder: (() => {
+                try { return settings['event_nav_order'] ? JSON.parse(settings['event_nav_order']) : []; }
+                catch { return []; }
+            })(),
             // Contenido editable de la sección "Somos gente de acción" (Evento/Convención).
             actionContent: (() => {
                 try { return settings['action_section_content'] ? JSON.parse(settings['action_section_content']) : {}; }

@@ -39,6 +39,9 @@ const Navbar = () => {
   const showNav = (key: string) => !isEventSite || navMenu[key] !== false;
   // Ítems de menú adicionales (Evento/Convención): creados o tomados de secciones del sistema.
   const extraNav = (isEventSite ? ((club as any)?.eventNavExtra || []) : []) as { label: string; href: string; external?: boolean }[];
+  // Orden unificado del menú (Evento/Convención): fijos + personalizados en el orden elegido.
+  const orderedNav = (isEventSite ? ((club as any)?.eventNavOrder || []) : []) as { kind: 'fixed' | 'custom'; key?: string; label?: string; href?: string; external?: boolean; enabled?: boolean }[];
+  const useOrderedNav = isEventSite && Array.isArray(orderedNav) && orderedNav.length > 0;
 
   // Search state
   const [searchOpen, setSearchOpen] = useState(false);
@@ -137,6 +140,79 @@ const Navbar = () => {
     { label: 'Estados Financieros', href: '/estados-financieros' }
   ];
 
+  // Render de un ítem fijo del menú en escritorio (para el orden unificado).
+  const renderFixedDesktop = (key: string) => {
+    switch (key) {
+      case 'inicio':
+        return <Link key="inicio" to="/" className="text-rotary-blue font-medium text-sm hover:text-rotary-gold transition-colors"><T>Inicio</T></Link>;
+      case 'sobreNosotros':
+        return (
+          <div key="sobreNosotros" className="relative" ref={sobreNosotrosRef}>
+            <button onClick={() => setSobreNosotrosOpen(!sobreNosotrosOpen)} className="flex items-center text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors">
+              <T>Sobre Nosotros</T> <ChevronDown className={`w-4 h-4 ml-1 transition-transform ${sobreNosotrosOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {sobreNosotrosOpen && (
+              <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-100 py-2 z-50">
+                {sobreNosotrosItems.map((item, index) => (
+                  <Link key={index} to={item.href} className="flex items-center justify-between px-4 py-2 text-sm text-gray-700 hover:bg-sky-50 hover:text-rotary-blue transition-colors" onClick={() => setSobreNosotrosOpen(false)}>
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      case 'proyectos':
+        return <Link key="proyectos" to="/proyectos" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Proyectos</T></Link>;
+      case 'noticias':
+        return <Link key="noticias" to="/blog" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Noticias</T></Link>;
+      case 'eventos':
+        return <Link key="eventos" to="/eventos" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Eventos</T></Link>;
+      case 'contacto':
+        return <Link key="contacto" to="/contacto" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors"><T>Contacto</T></Link>;
+      default:
+        return null;
+    }
+  };
+
+  // Render de un ítem fijo del menú en móvil (para el orden unificado).
+  const renderFixedMobile = (key: string) => {
+    switch (key) {
+      case 'inicio':
+        return <Link key="inicio" to="/" className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Inicio</Link>;
+      case 'sobreNosotros':
+        return (
+          <div key="sobreNosotros" className="pl-4 border-l-2 border-gray-200 space-y-2">
+            <p className="text-xs text-gray-400 uppercase font-semibold">Sobre Nosotros</p>
+            {sobreNosotrosItems.map((item, index) => (
+              <Link key={index} to={item.href} className="block text-gray-600 text-sm" onClick={() => setMobileMenuOpen(false)}>{item.label}</Link>
+            ))}
+          </div>
+        );
+      case 'proyectos':
+        return <Link key="proyectos" to="/proyectos" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Proyectos</Link>;
+      case 'noticias':
+        return <Link key="noticias" to="/blog" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Noticias</Link>;
+      case 'eventos':
+        return <Link key="eventos" to="/eventos" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Eventos</Link>;
+      case 'contacto':
+        return <Link key="contacto" to="/contacto" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>Contacto</Link>;
+      default:
+        return null;
+    }
+  };
+
+  const renderCustomDesktop = (item: { label?: string; href?: string; external?: boolean }, idx: number) => (
+    item.external
+      ? <a key={`c-${idx}`} href={item.href} target="_blank" rel="noopener noreferrer" className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors">{item.label}</a>
+      : <Link key={`c-${idx}`} to={item.href || '/'} className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors">{item.label}</Link>
+  );
+  const renderCustomMobile = (item: { label?: string; href?: string; external?: boolean }, idx: number) => (
+    item.external
+      ? <a key={`cm-${idx}`} href={item.href} target="_blank" rel="noopener noreferrer" className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>{item.label}</a>
+      : <Link key={`cm-${idx}`} to={item.href || '/'} className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>{item.label}</Link>
+  );
+
   const showBannerOffset = club?.expirationBannerActive && bannerVisible;
 
   return (
@@ -169,6 +245,13 @@ const Navbar = () => {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-6">
+            {useOrderedNav && (
+              <>
+                {orderedNav.filter(i => i.enabled !== false).map((item, idx) => item.kind === 'custom' ? renderCustomDesktop(item, idx) : renderFixedDesktop(item.key || ''))}
+                {club.storeActive && <Link to="/shop" className="text-rotary-blue font-bold text-sm tracking-wide bg-rotary-blue/5 px-4 py-1.5 rounded-full hover:bg-rotary-blue/10 transition-colors">Tienda</Link>}
+              </>
+            )}
+            {!useOrderedNav && (<>
             {showNav('inicio') && <Link to="/" className="text-rotary-blue font-medium text-sm hover:text-rotary-gold transition-colors"><T>Inicio</T></Link>}
 
             {((club as any)?.type === 'association' || (club as any)?.type === 'Programa de Intercambio' || currentHostname.toLowerCase().startsWith('rye')) ? (
@@ -231,6 +314,7 @@ const Navbar = () => {
                 <Link key={`x-${i}`} to={it.href} className="text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors">{it.label}</Link>
               )
             ))}
+            </>)}
           </div>
 
           {/* Right Side Icons */}
@@ -362,6 +446,13 @@ const Navbar = () => {
         {mobileMenuOpen && (
           <div className="md:hidden py-4 border-t">
             <div className="flex flex-col space-y-3 font-medium">
+              {useOrderedNav && (
+                <>
+                  {orderedNav.filter(i => i.enabled !== false).map((item, idx) => item.kind === 'custom' ? renderCustomMobile(item, idx) : renderFixedMobile(item.key || ''))}
+                  {club.storeActive && <Link to="/shop" className="text-rotary-blue font-bold" onClick={() => setMobileMenuOpen(false)}>Tienda</Link>}
+                </>
+              )}
+              {!useOrderedNav && (<>
               {showNav('inicio') && <Link to="/" className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Inicio</Link>}
 
               {((club as any)?.type === 'association' || (club as any)?.type === 'Programa de Intercambio' || currentHostname.toLowerCase().startsWith('rye')) ? (
@@ -414,6 +505,7 @@ const Navbar = () => {
                   <Link key={`xm-${i}`} to={it.href} className="text-gray-600" onClick={() => setMobileMenuOpen(false)}>{it.label}</Link>
                 )
               ))}
+              </>)}
 
               {isAuthenticated ? (
                 <Link to="/admin/dashboard" className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Panel</Link>

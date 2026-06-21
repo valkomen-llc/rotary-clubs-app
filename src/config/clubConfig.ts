@@ -36,6 +36,7 @@ export interface ClubConfig {
     eventHeroImages?: { url: string; alt?: string }[];
     eventNavMenu?: { [key: string]: boolean };
     eventNavExtra?: { label: string; href: string; external?: boolean }[];
+    eventNavOrder?: { kind: 'fixed' | 'custom'; key?: string; label?: string; href?: string; external?: boolean; enabled?: boolean }[];
     eventSections?: { [key: string]: boolean };
     footerConfig?: {
         logoTop?: string;
