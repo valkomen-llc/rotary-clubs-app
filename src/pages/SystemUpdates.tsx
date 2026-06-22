@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.475.0 | 2026-06-21 (Correo: botón Enviar a prueba de fallos)
-// Cache bust: 2026-06-21 23:55
+// UI V4.476.0 | 2026-06-22 (Correo entrante: verificación de firma Svix de Resend)
+// Cache bust: 2026-06-22 16:10
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.476.0',
+        title: 'Correo Entrante: Recepción vía Resend 📥',
+        description: 'El webhook de correo entrante ahora valida correctamente la firma (formato Svix) de Resend, lo que habilita la recepción de correos en la Bandeja de Entrada con verificación de seguridad. Si se configura el secreto del webhook, cada correo entrante se valida criptográficamente; si no, se acepta igual para no bloquear la entrada.',
+        date: new Date().toISOString(),
+        tags: ['correo', 'recepcion', 'resend', 'seguridad'],
+        type: 'feature'
+    },
     {
         version: '4.475.0',
         title: 'Correo: Botón "Enviar" con Feedback Garantizado 🛟',

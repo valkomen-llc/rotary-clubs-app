@@ -1,4 +1,30 @@
 import prisma from '../lib/prisma.js';
+import crypto from 'crypto';
+
+// Verifica la firma Svix de los webhooks de Resend (cabeceras svix-id / svix-timestamp / svix-signature).
+// fail-open: si no hay RESEND_WEBHOOK_SECRET configurado, acepta el webhook (Resend igual lo entrega).
+// fail-closed: si hay secreto pero la firma no coincide, rechaza.
+const verifyResendWebhook = (req) => {
+    const secret = process.env.RESEND_WEBHOOK_SECRET;
+    if (!secret) return true;
+    try {
+        const id = req.headers['svix-id'];
+        const timestamp = req.headers['svix-timestamp'];
+        const signature = req.headers['svix-signature'];
+        if (!id || !timestamp || !signature) return false;
+        const raw = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body || {});
+        const key = Buffer.from(secret.replace(/^whsec_/, ''), 'base64');
+        const expected = crypto.createHmac('sha256', key).update(`${id}.${timestamp}.${raw}`).digest('base64');
+        // svix-signature puede traer varias firmas separadas por espacio: "v1,<b64> v1,<b64>".
+        return signature.split(' ').some((part) => {
+            const sig = part.includes(',') ? part.split(',')[1] : part;
+            try { return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected)); }
+            catch { return false; }
+        });
+    } catch {
+        return false;
+    }
+};
 
 // Normaliza una dirección al dominio raíz verificado en Resend (quita "www." y pasa a minúsculas).
 const normalizeEmail = (email) => {
@@ -103,11 +129,9 @@ export const deleteEmailAccount = async (req, res) => {
 // Recibe los correos dirigidos a los buzones del club y los guarda en ReceivedEmail.
 export const handleInboundEmail = async (req, res) => {
     try {
-        if (process.env.RESEND_WEBHOOK_SECRET) {
-            const provided = req.query.secret || req.headers['x-webhook-secret'];
-            if (provided !== process.env.RESEND_WEBHOOK_SECRET) {
-                return res.status(401).json({ error: 'Unauthorized webhook' });
-            }
+        if (!verifyResendWebhook(req)) {
+            console.warn('[inbound-email] firma de webhook inválida — rechazado');
+            return res.status(401).json({ error: 'Unauthorized webhook' });
         }
 
         const event = req.body || {};
