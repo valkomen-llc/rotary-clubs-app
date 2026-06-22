@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.480.0 | 2026-06-22 (Correo entrante: fetch del cuerpo vía API)
-// Cache bust: 2026-06-22 17:55
+// UI V4.481.0 | 2026-06-22 (Correo: probar envío real)
+// Cache bust: 2026-06-22 18:20
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.481.0',
+        title: 'Correo: Probar Envío Real 🧪',
+        description: 'El Diagnóstico ahora incluye un campo "Probar envío real": escribes un destinatario y la app intenta enviar desde tu dirección institucional vía Resend, mostrando la respuesta exacta (ID de mensaje si funciona, o el error literal de Resend si falla). Así se ve al instante por qué un envío no sale, en vez de quedarse sin pistas.',
+        date: new Date().toISOString(),
+        tags: ['correo', 'diagnostico', 'envio'],
+        type: 'feature'
+    },
     {
         version: '4.480.0',
         title: 'Correo Entrante: Cuerpo Completo vía API 📨',

@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma.js';
 import crypto from 'crypto';
+import EmailService from '../services/EmailService.js';
 
 // Verifica la firma Svix de los webhooks de Resend (cabeceras svix-id / svix-timestamp / svix-signature).
 // fail-open: si no hay RESEND_WEBHOOK_SECRET configurado, acepta el webhook (Resend igual lo entrega).
@@ -409,6 +410,55 @@ export const getEmailDiagnostics = async (req, res) => {
     }
 };
 
+// POST /api/email-accounts/test-send  body: { to, fromEmail? }
+// Envía un correo de prueba DESDE la dirección institucional vía Resend y devuelve la
+// respuesta CRUDA (messageId o el error exacto de Resend), sin el fallback a noreply.
+// Sirve para ver por qué "no envía": p.ej. dominio no verificado, key sin permiso, etc.
+export const testSendEmail = async (req, res) => {
+    try {
+        const clubId = req.user.role === 'administrator' && req.body.clubId ? req.body.clubId : req.user.clubId;
+        const to = (req.body.to || '').trim();
+        if (!to || !/^\S+@\S+\.\S+$/.test(to)) {
+            return res.status(400).json({ success: false, error: 'Destinatario inválido' });
+        }
+
+        let fromEmail = req.body.fromEmail;
+        if (!fromEmail) {
+            const acc = await prisma.emailAccount.findFirst({ where: { clubId }, orderBy: { createdAt: 'asc' } });
+            fromEmail = acc?.email;
+        }
+        if (!fromEmail) {
+            return res.status(400).json({ success: false, error: 'No hay ninguna cuenta de correo en este club' });
+        }
+
+        const sender = EmailService.normalizeSenderEmail(fromEmail);
+        const club = await prisma.club.findUnique({ where: { id: clubId }, select: { name: true } });
+        const fromStr = `"${club?.name || 'Club'}" <${sender}>`;
+
+        const html = `<div style="font-family:sans-serif"><h2>✅ Prueba de envío</h2><p>Si recibiste esto, el envío desde <b>${sender}</b> funciona. Enviado ${new Date().toLocaleString('es')}.</p></div>`;
+
+        const result = await EmailService.sendPlatformEmail({
+            to,
+            subject: '✅ Prueba de envío — Club Platform',
+            html,
+            from: fromStr,
+            replyTo: sender
+        });
+
+        console.log(`[test-send] desde ${fromStr} para ${to}:`, result);
+        return res.json({
+            success: result.success === true,
+            messageId: result.messageId || null,
+            error: result.error || null,
+            from: fromStr,
+            to
+        });
+    } catch (e) {
+        console.error('[test-send] error:', e);
+        return res.status(500).json({ success: false, error: e.message?.slice(0, 300) });
+    }
+};
+
 export default {
     getEmailAccounts,
     createEmailAccount,
@@ -417,5 +467,6 @@ export default {
     getAccountMessages,
     updateMessage,
     deleteMessage,
-    getEmailDiagnostics
+    getEmailDiagnostics,
+    testSendEmail
 };
