@@ -15,6 +15,19 @@ export class EmailService {
         return `${local}@${domain.replace(/^www\./i, '')}`;
     }
 
+    /**
+     * Convierte el destinatario en una lista de direcciones válida para Resend.
+     * Acepta string con varias direcciones separadas por coma o punto y coma
+     * ("a@b.com, c@d.com; e@f.com") o un array, y devuelve un array limpio.
+     */
+    static parseRecipients(to) {
+        const arr = Array.isArray(to) ? to : [to];
+        return arr
+            .flatMap((x) => (typeof x === 'string' ? x.split(/[,;]/) : [x]))
+            .map((x) => (typeof x === 'string' ? x.trim() : x))
+            .filter(Boolean);
+    }
+
     /* ═══════════════════════════════════════════════════════════
        PLATFORM-LEVEL EMAIL  (Registration verification, etc.)
        Uses Resend by default, or SMTP if configured in PlatformConfig
@@ -71,7 +84,7 @@ export class EmailService {
                 // Force "Club Platform for Rotary" as sender name instead of the local club's name
                 const senderEmail = fallbackConfig.fromEmail || fallbackConfig.user;
                 const fromStr = `"Club Platform for Rotary" <${senderEmail}>`;
-                const info = await transporter.sendMail({ from: fromStr, to, subject, html });
+                const info = await transporter.sendMail({ from: fromStr, to: EmailService.parseRecipients(to), subject, html });
                 return { success: true, messageId: info.messageId };
             }
 
@@ -90,11 +103,11 @@ export class EmailService {
         
         const finalFrom = customFrom || platformDefault;
 
-        const body = { 
-            from: finalFrom, 
-            to: [to], 
-            subject, 
-            html 
+        const body = {
+            from: finalFrom,
+            to: EmailService.parseRecipients(to),
+            subject,
+            html
         };
         
         if (replyTo) body.reply_to = replyTo;
@@ -146,7 +159,7 @@ export class EmailService {
             ? `"${cfg.smtp_from_name}" <${cfg.smtp_from_email || cfg.smtp_user}>`
             : (cfg.smtp_from_email || cfg.smtp_user);
 
-        const info = await transporter.sendMail({ from: fromStr, to, subject, html });
+        const info = await transporter.sendMail({ from: fromStr, to: EmailService.parseRecipients(to), subject, html });
         return { success: true, messageId: info.messageId };
     }
 
@@ -249,7 +262,7 @@ export class EmailService {
 
             const fromStr = config.fromName ? `"${config.fromName}" <${config.fromEmail}>` : config.fromEmail;
 
-            const info = await transporter.sendMail({ from: fromStr, to, subject, html });
+            const info = await transporter.sendMail({ from: fromStr, to: EmailService.parseRecipients(to), subject, html });
 
             await this.logCommunication({
                 clubId, type: 'email', recipient: to, subject, content: html, status: 'sent',

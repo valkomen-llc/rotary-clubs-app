@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.476.0 | 2026-06-22 (Correo entrante: verificación de firma Svix de Resend)
-// Cache bust: 2026-06-22 16:10
+// UI V4.477.0 | 2026-06-22 (Correo: envío a múltiples destinatarios)
+// Cache bust: 2026-06-22 16:25
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.477.0',
+        title: 'Correo: Enviar a Varios Destinatarios 👥',
+        description: 'Ahora puedes escribir varios destinatarios en el campo "Para" separados por coma o punto y coma (ej. "ana@x.com, juan@y.com") y el correo se envía correctamente a todos. Antes Resend rechazaba el envío con un error de formato de "to".',
+        date: new Date().toISOString(),
+        tags: ['correo', 'envio', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.476.0',
         title: 'Correo Entrante: Recepción vía Resend 📥',
