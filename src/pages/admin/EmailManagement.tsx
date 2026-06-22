@@ -73,6 +73,28 @@ const EmailManagement: React.FC = () => {
     const [showDiagModal, setShowDiagModal] = useState(false);
     const [diag, setDiag] = useState<any>(null);
     const [loadingDiag, setLoadingDiag] = useState(false);
+    const [testTo, setTestTo] = useState('');
+    const [testResult, setTestResult] = useState<any>(null);
+    const [testingSend, setTestingSend] = useState(false);
+
+    const runTestSend = async () => {
+        if (!testTo) { toast.error('Escribe un destinatario para la prueba'); return; }
+        setTestingSend(true);
+        setTestResult(null);
+        try {
+            const res = await fetch('/api/email-accounts/test-send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ to: testTo, clubId: club?.id, fromEmail: activeAccount?.email })
+            });
+            const data = await res.json().catch(() => ({}));
+            setTestResult(data);
+        } catch (e: any) {
+            setTestResult({ success: false, error: e?.message || 'Error de conexión' });
+        } finally {
+            setTestingSend(false);
+        }
+    };
 
     const runDiagnostics = async () => {
         setShowDiagModal(true);
@@ -693,6 +715,35 @@ const EmailManagement: React.FC = () => {
                                             <p>Cuentas: {(diag.accounts || []).map((a: any) => a.email).join(', ') || '—'}</p>
                                             <p>Recibidos: {diag.counts?.received ?? 0} · Enviados: {diag.counts?.sent ?? 0}</p>
                                             <p>URL de recepción (configurar en Resend Inbound): <code className="text-gray-700">{diag.inboundUrl}</code></p>
+                                        </div>
+
+                                        <div className="pt-4 mt-3 border-t border-gray-100">
+                                            <p className="text-xs font-bold text-gray-700 mb-2">Probar envío real (muestra el error exacto de Resend)</p>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="email"
+                                                    value={testTo}
+                                                    onChange={e => setTestTo(e.target.value)}
+                                                    placeholder="tu-correo@gmail.com"
+                                                    className="flex-1 px-3 py-2 bg-gray-50 rounded-xl outline-none text-sm focus:ring-2 focus:ring-sky-500"
+                                                />
+                                                <button
+                                                    onClick={runTestSend}
+                                                    disabled={testingSend || !testTo}
+                                                    className="px-4 py-2 bg-rotary-blue text-white text-sm font-bold rounded-xl hover:bg-sky-800 transition-all disabled:opacity-50"
+                                                >
+                                                    {testingSend ? 'Enviando…' : 'Enviar prueba'}
+                                                </button>
+                                            </div>
+                                            {testResult && (
+                                                <div className={`mt-3 p-3 rounded-xl text-sm ${testResult.success ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>
+                                                    {testResult.success ? (
+                                                        <span>✅ Resend aceptó el envío desde {testResult.from} (id: {testResult.messageId}). Revisa la bandeja (y spam) de {testResult.to}.</span>
+                                                    ) : (
+                                                        <span>❌ Error de Resend: {testResult.error || 'desconocido'}{testResult.from ? ` (intentado desde ${testResult.from})` : ''}</span>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}
