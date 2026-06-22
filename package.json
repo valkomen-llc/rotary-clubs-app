@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.479.0",
-  "cache_bust": "2026-06-22 17:30 (Correo: botón Diagnóstico — estado real del dominio en Resend, envío/recepción)",
+  "version": "4.480.0",
+  "cache_bust": "2026-06-22 17:55 (Correo entrante: traer cuerpo vía API de Resend (email.received es solo metadata) + diagnóstico detecta key solo-envío)",
   "type": "module",
-  "//": "UI V4.479.0 | 2026-06-22 (Correo: botón Diagnóstico de configuración)",
+  "//": "UI V4.480.0 | 2026-06-22 (Correo entrante: fetch del cuerpo vía API de Resend)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

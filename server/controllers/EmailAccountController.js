@@ -26,6 +26,28 @@ const verifyResendWebhook = (req) => {
     }
 };
 
+// Pide a Resend el correo entrante completo (html/text/headers) a partir de su id.
+// El webhook email.received NO trae el cuerpo, solo metadata. Necesita una API key
+// con permiso de lectura: RESEND_INBOUND_API_KEY (recomendado) o RESEND_API_KEY si es full.
+const fetchResendReceivedEmail = async (id) => {
+    const apiKey = process.env.RESEND_INBOUND_API_KEY || process.env.RESEND_API_KEY;
+    if (!apiKey || !id) return null;
+    try {
+        const resp = await fetch(`https://api.resend.com/emails/receiving/${id}`, {
+            headers: { Authorization: `Bearer ${apiKey}` }
+        });
+        const body = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            console.warn(`[inbound-email] no se pudo obtener el cuerpo del correo ${id} (HTTP ${resp.status}): ${body?.message || 'error'}. ¿La API key tiene permiso de lectura?`);
+            return null;
+        }
+        return body;
+    } catch (e) {
+        console.warn(`[inbound-email] error obteniendo el cuerpo del correo ${id}:`, e.message);
+        return null;
+    }
+};
+
 // Normaliza una dirección al dominio raíz verificado en Resend (quita "www." y pasa a minúsculas).
 const normalizeEmail = (email) => {
     if (!email || !String(email).includes('@')) return (email || '').toLowerCase();
@@ -137,7 +159,17 @@ export const handleInboundEmail = async (req, res) => {
         }
 
         const event = req.body || {};
-        const data = event.data || event;
+        let data = event.data || event;
+
+        // Resend Inbound: el webhook "email.received" trae SOLO metadata (from/to/subject),
+        // NO el cuerpo. Hay que pedir el correo completo a la API de recepción usando el id.
+        // Requiere una API key con permiso de lectura (RESEND_INBOUND_API_KEY o una key full).
+        const emailId = data.email_id || data.emailId || data.id || event.id || null;
+        const hasBody = !!(data.text || data.html || data.TextBody || data.HtmlBody || data['body-plain'] || data['body-html']);
+        if (emailId && !hasBody) {
+            const full = await fetchResendReceivedEmail(emailId);
+            if (full) data = { ...data, ...full };
+        }
 
         // Campos tolerantes a varios proveedores de inbound (Resend / Postmark / Mailgun / genérico).
         const rawTo = data.to ?? data.To ?? data.recipient ?? data.ToFull ?? data.toFull;
@@ -265,7 +297,9 @@ export const getEmailDiagnostics = async (req, res) => {
 
         const out = {
             resendConfigured: !!process.env.RESEND_API_KEY,
+            inboundKeySet: !!process.env.RESEND_INBOUND_API_KEY,
             webhookSecretSet: !!process.env.RESEND_WEBHOOK_SECRET,
+            sendOnlyKey: false,
             inboundUrl: '/api/public/inbound-email',
             accounts: [],
             domains: [],
@@ -310,6 +344,7 @@ export const getEmailDiagnostics = async (req, res) => {
                 const listData = await listResp.json();
                 if (!listResp.ok) {
                     out.resendError = listData.message || `HTTP ${listResp.status}`;
+                    if (/only send emails|restricted/i.test(out.resendError)) out.sendOnlyKey = true;
                 }
                 const all = listData.data || [];
                 for (const dom of domains) {
@@ -347,19 +382,25 @@ export const getEmailDiagnostics = async (req, res) => {
 
         // Verdictos en español (✅/❌) que el usuario puede leer directo.
         const checks = out.checks;
-        checks.push({ ok: out.resendConfigured, label: out.resendConfigured ? 'RESEND_API_KEY configurada' : 'FALTA RESEND_API_KEY: sin ella no se puede enviar ni recibir' });
+        checks.push({ ok: out.resendConfigured, label: out.resendConfigured ? 'RESEND_API_KEY configurada (envío)' : 'FALTA RESEND_API_KEY: sin ella no se puede enviar ni recibir' });
         checks.push({ ok: accounts.length > 0, label: accounts.length > 0 ? `${accounts.length} cuenta(s) de correo creada(s)` : 'No hay cuentas de correo creadas en este club' });
-        if (out.resendError) {
-            checks.push({ ok: false, label: `Resend respondió un error: ${out.resendError}` });
-        }
-        for (const d of out.domains) {
-            checks.push({ ok: d.foundInResend, label: d.foundInResend ? `Dominio ${d.domain} dado de alta en Resend` : `Dominio ${d.domain} NO está dado de alta en Resend` });
-            if (d.foundInResend) {
-                checks.push({ ok: d.sendingVerified, label: d.sendingVerified ? `ENVÍO verificado para ${d.domain}` : `ENVÍO NO verificado para ${d.domain} (estado en Resend: ${d.status || 'desconocido'}) — revisar registros SPF/DKIM en el DNS` });
-                checks.push({ ok: d.inboundMx, label: d.inboundMx ? `RECEPCIÓN: registro MX presente para ${d.domain}` : `RECEPCIÓN NO configurada para ${d.domain}: falta el registro MX de Resend Inbound en el DNS (por eso no llegan correos)` });
+
+        if (out.sendOnlyKey) {
+            // La key es solo-envío: no pudimos leer dominios/MX (las verificaciones de abajo no son fiables).
+            checks.push({ ok: false, label: 'Tu API key de Resend es SOLO-ENVÍO: no puede leer dominios ni correos entrantes. Para RECIBIR necesitas una key con permiso de lectura ("Full access") en una variable RESEND_INBOUND_API_KEY.' });
+            checks.push({ ok: out.inboundKeySet, label: out.inboundKeySet ? 'RESEND_INBOUND_API_KEY configurada (lectura de entrantes)' : 'FALTA RESEND_INBOUND_API_KEY: sin una key de lectura no se puede traer el cuerpo de los correos recibidos' });
+        } else if (out.resendError) {
+            checks.push({ ok: false, label: `Resend respondió un error al consultar dominios: ${out.resendError}` });
+        } else {
+            for (const d of out.domains) {
+                checks.push({ ok: d.foundInResend, label: d.foundInResend ? `Dominio ${d.domain} dado de alta en Resend` : `Dominio ${d.domain} NO está dado de alta en Resend` });
+                if (d.foundInResend) {
+                    checks.push({ ok: d.sendingVerified, label: d.sendingVerified ? `ENVÍO verificado para ${d.domain}` : `ENVÍO NO verificado para ${d.domain} (estado en Resend: ${d.status || 'desconocido'}) — revisar SPF/DKIM en el DNS` });
+                    checks.push({ ok: d.inboundMx, label: d.inboundMx ? `RECEPCIÓN: registro MX presente para ${d.domain}` : `RECEPCIÓN NO configurada para ${d.domain}: falta el registro MX de Resend Inbound en el DNS` });
+                }
             }
         }
-        checks.push({ ok: out.counts.received > 0, label: out.counts.received > 0 ? `${out.counts.received} correo(s) recibido(s) en total (último: ${out.lastReceivedAt ? new Date(out.lastReceivedAt).toLocaleString('es') : '—'})` : 'Aún no ha entrado NINGÚN correo al sistema (el webhook de Resend nunca depositó nada)' });
+        checks.push({ ok: out.counts.received > 0, label: out.counts.received > 0 ? `${out.counts.received} correo(s) recibido(s) en total (último: ${out.lastReceivedAt ? new Date(out.lastReceivedAt).toLocaleString('es') : '—'})` : 'Aún no ha entrado NINGÚN correo a la app (Resend nunca llamó al webhook: falta MX y/o el webhook email.received)' });
 
         return res.json(out);
     } catch (error) {
