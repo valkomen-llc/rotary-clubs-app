@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.479.0 | 2026-06-22 (Correo: botón Diagnóstico)
-// Cache bust: 2026-06-22 17:30
+// UI V4.480.0 | 2026-06-22 (Correo entrante: fetch del cuerpo vía API)
+// Cache bust: 2026-06-22 17:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.480.0',
+        title: 'Correo Entrante: Cuerpo Completo vía API 📨',
+        description: 'El webhook de Resend para correos entrantes solo envía los datos básicos (remitente, destinatario, asunto), no el cuerpo del mensaje. Ahora la app pide el contenido completo (texto y HTML) a la API de recepción de Resend usando el identificador del correo. Además, el Diagnóstico ahora detecta cuando tu API key es "solo envío" y te indica que necesitas una llave de lectura (RESEND_INBOUND_API_KEY) para poder recibir.',
+        date: new Date().toISOString(),
+        tags: ['correo', 'recepcion', 'resend'],
+        type: 'fix'
+    },
     {
         version: '4.479.0',
         title: 'Correo: Botón de Diagnóstico 🔎',
