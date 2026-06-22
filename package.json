@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.478.0",
-  "cache_bust": "2026-06-22 16:55 (Correo entrante: no bloquear por firma Svix + logs de diagnóstico)",
+  "version": "4.479.0",
+  "cache_bust": "2026-06-22 17:30 (Correo: botón Diagnóstico — estado real del dominio en Resend, envío/recepción)",
   "type": "module",
-  "//": "UI V4.478.0 | 2026-06-22 (Correo entrante: no bloquear por firma Svix + logs de diagnóstico)",
+  "//": "UI V4.479.0 | 2026-06-22 (Correo: botón Diagnóstico de configuración)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

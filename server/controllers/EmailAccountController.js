@@ -255,6 +255,119 @@ export const deleteMessage = async (req, res) => {
     }
 };
 
+// GET /api/email-accounts/diagnostics — radiografía real del correo del club.
+// Consulta el estado del dominio en Resend (verificación de ENVÍO y registro MX de
+// RECEPCIÓN), las cuentas locales y los contadores, y devuelve verdictos en español.
+export const getEmailDiagnostics = async (req, res) => {
+    try {
+        const clubId = req.user.role === 'administrator' && req.query.clubId ? req.query.clubId : req.user.clubId;
+        if (!clubId) return res.status(400).json({ error: 'Club ID requerido' });
+
+        const out = {
+            resendConfigured: !!process.env.RESEND_API_KEY,
+            webhookSecretSet: !!process.env.RESEND_WEBHOOK_SECRET,
+            inboundUrl: '/api/public/inbound-email',
+            accounts: [],
+            domains: [],
+            counts: { received: 0, sent: 0 },
+            lastReceivedAt: null,
+            checks: [],
+            resendError: null
+        };
+
+        const accounts = await prisma.emailAccount.findMany({
+            where: { clubId },
+            select: { email: true, verified: true, verificationStatus: true }
+        });
+        out.accounts = accounts;
+
+        out.counts.received = await prisma.receivedEmail.count({ where: { clubId } }).catch(() => 0);
+        out.counts.sent = await prisma.communicationLog.count({
+            where: { clubId, type: 'email', status: 'sent' }
+        }).catch(() => 0);
+        const last = await prisma.receivedEmail.findFirst({
+            where: { clubId },
+            orderBy: { receivedAt: 'desc' },
+            select: { receivedAt: true, fromEmail: true, accountEmail: true }
+        }).catch(() => null);
+        out.lastReceivedAt = last?.receivedAt || null;
+        out.lastReceivedFrom = last?.fromEmail || null;
+
+        // Dominios derivados de las cuentas (sin el prefijo www.)
+        const domains = Array.from(new Set(
+            accounts
+                .map((a) => (a.email.includes('@') ? a.email.split('@')[1] : null))
+                .filter(Boolean)
+                .map((d) => d.replace(/^www\./i, ''))
+        ));
+
+        const apiKey = process.env.RESEND_API_KEY;
+        if (apiKey && domains.length) {
+            try {
+                const listResp = await fetch('https://api.resend.com/domains', {
+                    headers: { Authorization: `Bearer ${apiKey}` }
+                });
+                const listData = await listResp.json();
+                if (!listResp.ok) {
+                    out.resendError = listData.message || `HTTP ${listResp.status}`;
+                }
+                const all = listData.data || [];
+                for (const dom of domains) {
+                    const match = all.find((d) => d.name?.toLowerCase() === dom.toLowerCase());
+                    const entry = {
+                        domain: dom,
+                        foundInResend: !!match,
+                        status: match?.status || null,
+                        sendingVerified: match?.status === 'verified',
+                        inboundMx: false,
+                        records: []
+                    };
+                    if (match?.id) {
+                        try {
+                            const dResp = await fetch(`https://api.resend.com/domains/${match.id}`, {
+                                headers: { Authorization: `Bearer ${apiKey}` }
+                            });
+                            const dData = await dResp.json();
+                            const records = dData.records || [];
+                            entry.inboundMx = records.some((r) => String(r.type || r.record).toUpperCase() === 'MX');
+                            entry.records = records.map((r) => ({
+                                type: r.type || r.record,
+                                name: r.name,
+                                status: r.status,
+                                value: typeof r.value === 'string' ? r.value.slice(0, 80) : r.value
+                            }));
+                        } catch { /* sin detalle de records */ }
+                    }
+                    out.domains.push(entry);
+                }
+            } catch (e) {
+                out.resendError = e.message?.slice(0, 200) || 'Error consultando Resend';
+            }
+        }
+
+        // Verdictos en español (✅/❌) que el usuario puede leer directo.
+        const checks = out.checks;
+        checks.push({ ok: out.resendConfigured, label: out.resendConfigured ? 'RESEND_API_KEY configurada' : 'FALTA RESEND_API_KEY: sin ella no se puede enviar ni recibir' });
+        checks.push({ ok: accounts.length > 0, label: accounts.length > 0 ? `${accounts.length} cuenta(s) de correo creada(s)` : 'No hay cuentas de correo creadas en este club' });
+        if (out.resendError) {
+            checks.push({ ok: false, label: `Resend respondió un error: ${out.resendError}` });
+        }
+        for (const d of out.domains) {
+            checks.push({ ok: d.foundInResend, label: d.foundInResend ? `Dominio ${d.domain} dado de alta en Resend` : `Dominio ${d.domain} NO está dado de alta en Resend` });
+            if (d.foundInResend) {
+                checks.push({ ok: d.sendingVerified, label: d.sendingVerified ? `ENVÍO verificado para ${d.domain}` : `ENVÍO NO verificado para ${d.domain} (estado en Resend: ${d.status || 'desconocido'}) — revisar registros SPF/DKIM en el DNS` });
+                checks.push({ ok: d.inboundMx, label: d.inboundMx ? `RECEPCIÓN: registro MX presente para ${d.domain}` : `RECEPCIÓN NO configurada para ${d.domain}: falta el registro MX de Resend Inbound en el DNS (por eso no llegan correos)` });
+            }
+        }
+        checks.push({ ok: out.counts.received > 0, label: out.counts.received > 0 ? `${out.counts.received} correo(s) recibido(s) en total (último: ${out.lastReceivedAt ? new Date(out.lastReceivedAt).toLocaleString('es') : '—'})` : 'Aún no ha entrado NINGÚN correo al sistema (el webhook de Resend nunca depositó nada)' });
+
+        return res.json(out);
+    } catch (error) {
+        console.error('[email-diagnostics] error:', error);
+        return res.status(500).json({ error: error.message || 'Error interno' });
+    }
+};
+
 export default {
     getEmailAccounts,
     createEmailAccount,
@@ -262,5 +375,6 @@ export default {
     handleInboundEmail,
     getAccountMessages,
     updateMessage,
-    deleteMessage
+    deleteMessage,
+    getEmailDiagnostics
 };

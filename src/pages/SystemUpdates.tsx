@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.478.0 | 2026-06-22 (Correo entrante: firma no bloqueante)
-// Cache bust: 2026-06-22 16:55
+// UI V4.479.0 | 2026-06-22 (Correo: botón Diagnóstico)
+// Cache bust: 2026-06-22 17:30
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.479.0',
+        title: 'Correo: Botón de Diagnóstico 🔎',
+        description: 'Nuevo botón "Diagnóstico" en el Ecosistema de Correo que revisa en tiempo real el estado real de tu dominio en Resend: si la API está configurada, si el ENVÍO está verificado (SPF/DKIM) y si la RECEPCIÓN tiene el registro MX necesario, además de cuántos correos se han enviado/recibido. Te dice en español exactamente qué falta para que envíe y reciba.',
+        date: new Date().toISOString(),
+        tags: ['correo', 'diagnostico', 'herramienta'],
+        type: 'feature'
+    },
     {
         version: '4.478.0',
         title: 'Correo Entrante: Recepción Más Robusta 🔧',
