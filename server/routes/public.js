@@ -27,8 +27,13 @@ router.get('/em/c/:rid', trackClick);
 router.post('/resend-webhook', handleResendWebhook);
 
 // Webhook de Resend Inbound: correos entrantes → bandeja del club.
+// Capturamos el cuerpo crudo (rawBody) para poder verificar la firma Svix de Resend.
 import { handleInboundEmail } from '../controllers/EmailAccountController.js';
-router.post('/inbound-email', express.json({ limit: '10mb' }), handleInboundEmail);
+router.post(
+    '/inbound-email',
+    express.json({ limit: '10mb', verify: (req, _res, buf) => { req.rawBody = buf; } }),
+    handleInboundEmail
+);
 
 // Baja de suscripción de Email Marketing (sin autenticación; enlace en el pie del correo).
 router.get('/unsubscribe', async (req, res) => {
