@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.477.0 | 2026-06-22 (Correo: envío a múltiples destinatarios)
-// Cache bust: 2026-06-22 16:25
+// UI V4.478.0 | 2026-06-22 (Correo entrante: firma no bloqueante)
+// Cache bust: 2026-06-22 16:55
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.478.0',
+        title: 'Correo Entrante: Recepción Más Robusta 🔧',
+        description: 'El correo entrante ya no se descarta si la verificación de firma del webhook de Resend no coincide: ahora se registra como aviso pero el correo se procesa igual, para no perder mensajes. Además se agregaron registros de diagnóstico para identificar rápidamente si un correo llega pero no encuentra el buzón destino.',
+        date: new Date().toISOString(),
+        tags: ['correo', 'recepcion', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.477.0',
         title: 'Correo: Enviar a Varios Destinatarios 👥',

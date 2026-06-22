@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.477.0",
-  "cache_bust": "2026-06-22 16:25 (Correo: envío a múltiples destinatarios (coma/punto y coma) como lista en Resend)",
+  "version": "4.478.0",
+  "cache_bust": "2026-06-22 16:55 (Correo entrante: no bloquear por firma Svix + logs de diagnóstico)",
   "type": "module",
-  "//": "UI V4.477.0 | 2026-06-22 (Correo: envío a múltiples destinatarios como lista en Resend)",
+  "//": "UI V4.478.0 | 2026-06-22 (Correo entrante: no bloquear por firma Svix + logs de diagnóstico)",
   "scripts": {
     "dev": "vite",
     "build": "npx prisma generate --schema=./server/prisma/schema.prisma && npx prisma db push --schema=./server/prisma/schema.prisma --accept-data-loss --skip-generate && vite build",

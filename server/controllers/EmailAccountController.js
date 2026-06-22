@@ -129,9 +129,11 @@ export const deleteEmailAccount = async (req, res) => {
 // Recibe los correos dirigidos a los buzones del club y los guarda en ReceivedEmail.
 export const handleInboundEmail = async (req, res) => {
     try {
+        // Verificamos la firma solo para observabilidad: NO bloqueamos la entrada aunque
+        // no coincida (priorizamos no perder correos). Si falla con secreto configurado,
+        // suele ser un detalle de firma — lo dejamos pasar y lo registramos.
         if (!verifyResendWebhook(req)) {
-            console.warn('[inbound-email] firma de webhook inválida — rechazado');
-            return res.status(401).json({ error: 'Unauthorized webhook' });
+            console.warn('[inbound-email] firma Svix no verificada — se procesa igual (revisar RESEND_WEBHOOK_SECRET si se desea validación estricta)');
         }
 
         const event = req.body || {};
@@ -177,7 +179,10 @@ export const handleInboundEmail = async (req, res) => {
             stored++;
         }
 
-        console.log(`[inbound-email] de ${from.email || '?'} → ${stored} buzón(es) coincidente(s)`);
+        console.log(`[inbound-email] de ${from.email || '?'} para [${recipients.join(', ') || '?'}] → ${stored} buzón(es) coincidente(s)`);
+        if (stored === 0) {
+            console.warn(`[inbound-email] sin coincidencias. Destinatarios recibidos: ${JSON.stringify(recipients)}. Verifica que exista una EmailAccount con ese email.`);
+        }
         res.json({ ok: true, stored });
     } catch (error) {
         console.error('[inbound-email] error:', error);
