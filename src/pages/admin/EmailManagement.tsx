@@ -69,6 +69,34 @@ const EmailManagement: React.FC = () => {
     const [composeData, setComposeData] = useState({ to: '', subject: '', body: '' });
     const [sending, setSending] = useState(false);
 
+    // Diagnóstico de configuración de correo
+    const [showDiagModal, setShowDiagModal] = useState(false);
+    const [diag, setDiag] = useState<any>(null);
+    const [loadingDiag, setLoadingDiag] = useState(false);
+
+    const runDiagnostics = async () => {
+        setShowDiagModal(true);
+        setLoadingDiag(true);
+        setDiag(null);
+        try {
+            const params = new URLSearchParams();
+            if (club?.id) params.set('clubId', club.id);
+            const res = await fetch(`/api/email-accounts/diagnostics?${params.toString()}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setDiag({ error: data.error || `El servidor respondió ${res.status}` });
+            } else {
+                setDiag(data);
+            }
+        } catch (e: any) {
+            setDiag({ error: e?.message || 'Error de conexión al ejecutar el diagnóstico' });
+        } finally {
+            setLoadingDiag(false);
+        }
+    };
+
     // Fetch accounts on mount
     useEffect(() => {
         const fetchAccounts = async () => {
@@ -410,7 +438,15 @@ const EmailManagement: React.FC = () => {
                             <button onClick={() => setActiveTab('inbox')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'inbox' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Bandeja</button>
                             <button onClick={() => setActiveTab('accounts')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'accounts' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Cuentas</button>
                         </div>
-                        <button 
+                        <button
+                            onClick={runDiagnostics}
+                            title="Verificar configuración de envío y recepción"
+                            className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-sm font-bold hover:bg-amber-100 transition-all active:scale-95"
+                        >
+                            <RefreshCw className="w-4 h-4" />
+                            Diagnóstico
+                        </button>
+                        <button
                             onClick={() => activeTab === 'inbox' ? setShowComposeModal(true) : setShowAccountModal(true)}
                             className="flex items-center gap-2 px-5 py-2.5 bg-rotary-blue text-white rounded-xl text-sm font-bold hover:bg-sky-800 transition-all shadow-xl shadow-blue-900/20 active:scale-95"
                         >
@@ -626,6 +662,44 @@ const EmailManagement: React.FC = () => {
                             <div className="p-8 bg-gray-50 border-t border-gray-100 flex gap-4">
                                 <button onClick={() => setShowAccountModal(false)} className="flex-1 py-4 text-sm font-black text-gray-400 uppercase tracking-widest">Cerrar</button>
                                 <button onClick={handleCreateAccount} disabled={!newAccount.user || !newAccount.password} className="flex-[2] py-4 bg-gray-900 text-white text-sm font-black rounded-3xl hover:bg-rotary-blue transition-all uppercase tracking-widest">Crear y Activar</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showDiagModal && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-md">
+                        <div className="bg-white rounded-[32px] w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+                            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                                <h3 className="text-xl font-bold text-gray-900">Diagnóstico de correo</h3>
+                                <button onClick={() => setShowDiagModal(false)} className="p-2 text-gray-400 hover:text-gray-900 rounded-xl"><X className="w-5 h-5" /></button>
+                            </div>
+                            <div className="p-6 overflow-y-auto">
+                                {loadingDiag && (
+                                    <div className="flex items-center justify-center py-10"><RefreshCw className="w-6 h-6 animate-spin text-gray-300" /></div>
+                                )}
+                                {!loadingDiag && diag?.error && (
+                                    <p className="text-sm text-red-600 bg-red-50 rounded-xl p-4">{diag.error}</p>
+                                )}
+                                {!loadingDiag && diag && !diag.error && (
+                                    <div className="space-y-2">
+                                        {(diag.checks || []).map((c: any, i: number) => (
+                                            <div key={i} className={`flex items-start gap-3 p-3 rounded-xl text-sm ${c.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>
+                                                <span className="mt-0.5">{c.ok ? '✅' : '❌'}</span>
+                                                <span>{c.label}</span>
+                                            </div>
+                                        ))}
+                                        <div className="pt-3 mt-2 border-t border-gray-100 text-xs text-gray-500 space-y-1">
+                                            <p>Cuentas: {(diag.accounts || []).map((a: any) => a.email).join(', ') || '—'}</p>
+                                            <p>Recibidos: {diag.counts?.received ?? 0} · Enviados: {diag.counts?.sent ?? 0}</p>
+                                            <p>URL de recepción (configurar en Resend Inbound): <code className="text-gray-700">{diag.inboundUrl}</code></p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="p-5 bg-gray-50 border-t border-gray-100 flex gap-3">
+                                <button onClick={() => setShowDiagModal(false)} className="flex-1 py-3 text-sm font-black text-gray-400 uppercase tracking-widest">Cerrar</button>
+                                <button onClick={runDiagnostics} disabled={loadingDiag} className="flex-1 py-3 bg-gray-900 text-white text-sm font-black rounded-2xl hover:bg-rotary-blue transition-all uppercase tracking-widest disabled:opacity-50">Reintentar</button>
                             </div>
                         </div>
                     </div>

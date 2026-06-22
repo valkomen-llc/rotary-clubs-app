@@ -5,13 +5,17 @@ import {
     deleteEmailAccount,
     getAccountMessages,
     updateMessage,
-    deleteMessage
+    deleteMessage,
+    getEmailDiagnostics
 } from '../controllers/EmailAccountController.js';
 import { authMiddleware } from '../middleware/auth.js';
 
 const router = express.Router();
 
 router.use(authMiddleware);
+
+// Diagnóstico de configuración de correo (estado real del dominio en Resend).
+router.get('/diagnostics', getEmailDiagnostics);
 
 // Bandeja real (correos recibidos vía Resend Inbound).
 router.get('/messages', getAccountMessages);
