@@ -336,11 +336,15 @@ export const getEmailDiagnostics = async (req, res) => {
                 .map((d) => d.replace(/^www\./i, ''))
         ));
 
-        const apiKey = process.env.RESEND_API_KEY;
-        if (apiKey && domains.length) {
+        // Para LEER (dominios, registros MX, webhooks) usamos la key de lectura si existe.
+        // La key de solo-envío no puede leer y devolvería "restricted".
+        const readKey = process.env.RESEND_INBOUND_API_KEY || process.env.RESEND_API_KEY;
+        out.webhook = { checked: false, hasReceivedEvent: false, endpoints: [] };
+
+        if (readKey && domains.length) {
             try {
                 const listResp = await fetch('https://api.resend.com/domains', {
-                    headers: { Authorization: `Bearer ${apiKey}` }
+                    headers: { Authorization: `Bearer ${readKey}` }
                 });
                 const listData = await listResp.json();
                 if (!listResp.ok) {
@@ -361,7 +365,7 @@ export const getEmailDiagnostics = async (req, res) => {
                     if (match?.id) {
                         try {
                             const dResp = await fetch(`https://api.resend.com/domains/${match.id}`, {
-                                headers: { Authorization: `Bearer ${apiKey}` }
+                                headers: { Authorization: `Bearer ${readKey}` }
                             });
                             const dData = await dResp.json();
                             const records = dData.records || [];
@@ -379,17 +383,37 @@ export const getEmailDiagnostics = async (req, res) => {
             } catch (e) {
                 out.resendError = e.message?.slice(0, 200) || 'Error consultando Resend';
             }
+
+            // ¿Hay un webhook email.received apuntando a nuestra URL?
+            try {
+                const whResp = await fetch('https://api.resend.com/webhooks', {
+                    headers: { Authorization: `Bearer ${readKey}` }
+                });
+                const whData = await whResp.json();
+                if (whResp.ok) {
+                    out.webhook.checked = true;
+                    const hooks = whData.data || [];
+                    for (const h of hooks) {
+                        const events = h.events || h.event_types || [];
+                        const url = h.endpoint || h.url || '';
+                        if (url) out.webhook.endpoints.push(url);
+                        if (Array.isArray(events) && events.some((ev) => String(ev).includes('email.received'))) {
+                            out.webhook.hasReceivedEvent = true;
+                        }
+                    }
+                }
+            } catch { /* la cuenta puede no exponer webhooks vía API */ }
         }
 
         // Verdictos en español (✅/❌) que el usuario puede leer directo.
         const checks = out.checks;
         checks.push({ ok: out.resendConfigured, label: out.resendConfigured ? 'RESEND_API_KEY configurada (envío)' : 'FALTA RESEND_API_KEY: sin ella no se puede enviar ni recibir' });
+        checks.push({ ok: out.inboundKeySet, label: out.inboundKeySet ? 'RESEND_INBOUND_API_KEY configurada (lectura de entrantes)' : 'FALTA RESEND_INBOUND_API_KEY: sin una key de lectura no se puede traer el cuerpo de los correos recibidos' });
         checks.push({ ok: accounts.length > 0, label: accounts.length > 0 ? `${accounts.length} cuenta(s) de correo creada(s)` : 'No hay cuentas de correo creadas en este club' });
 
         if (out.sendOnlyKey) {
-            // La key es solo-envío: no pudimos leer dominios/MX (las verificaciones de abajo no son fiables).
-            checks.push({ ok: false, label: 'Tu API key de Resend es SOLO-ENVÍO: no puede leer dominios ni correos entrantes. Para RECIBIR necesitas una key con permiso de lectura ("Full access") en una variable RESEND_INBOUND_API_KEY.' });
-            checks.push({ ok: out.inboundKeySet, label: out.inboundKeySet ? 'RESEND_INBOUND_API_KEY configurada (lectura de entrantes)' : 'FALTA RESEND_INBOUND_API_KEY: sin una key de lectura no se puede traer el cuerpo de los correos recibidos' });
+            // Ni siquiera la key de lectura pudo leer: probablemente RESEND_INBOUND_API_KEY también es solo-envío.
+            checks.push({ ok: false, label: 'La key usada para leer en Resend no tiene permiso de lectura ("restricted"). Asegúrate de que RESEND_INBOUND_API_KEY sea una key "Full access".' });
         } else if (out.resendError) {
             checks.push({ ok: false, label: `Resend respondió un error al consultar dominios: ${out.resendError}` });
         } else {
@@ -397,11 +421,15 @@ export const getEmailDiagnostics = async (req, res) => {
                 checks.push({ ok: d.foundInResend, label: d.foundInResend ? `Dominio ${d.domain} dado de alta en Resend` : `Dominio ${d.domain} NO está dado de alta en Resend` });
                 if (d.foundInResend) {
                     checks.push({ ok: d.sendingVerified, label: d.sendingVerified ? `ENVÍO verificado para ${d.domain}` : `ENVÍO NO verificado para ${d.domain} (estado en Resend: ${d.status || 'desconocido'}) — revisar SPF/DKIM en el DNS` });
-                    checks.push({ ok: d.inboundMx, label: d.inboundMx ? `RECEPCIÓN: registro MX presente para ${d.domain}` : `RECEPCIÓN NO configurada para ${d.domain}: falta el registro MX de Resend Inbound en el DNS` });
+                    checks.push({ ok: d.inboundMx, label: d.inboundMx ? `RECEPCIÓN: registro MX presente para ${d.domain} (dominio habilitado para recibir)` : `RECEPCIÓN: falta el MX de Resend Inbound para ${d.domain}. En Resend → Domains → ${d.domain} → habilita "Receiving" y agrega el MX que te da (prioridad más baja).` });
                 }
             }
+            // Estado del webhook email.received
+            if (out.webhook.checked) {
+                checks.push({ ok: out.webhook.hasReceivedEvent, label: out.webhook.hasReceivedEvent ? 'Webhook email.received configurado en Resend' : 'FALTA el webhook email.received en Resend → Webhooks → Add (URL /api/public/inbound-email, evento email.received)' });
+            }
         }
-        checks.push({ ok: out.counts.received > 0, label: out.counts.received > 0 ? `${out.counts.received} correo(s) recibido(s) en total (último: ${out.lastReceivedAt ? new Date(out.lastReceivedAt).toLocaleString('es') : '—'})` : 'Aún no ha entrado NINGÚN correo a la app (Resend nunca llamó al webhook: falta MX y/o el webhook email.received)' });
+        checks.push({ ok: out.counts.received > 0, label: out.counts.received > 0 ? `${out.counts.received} correo(s) recibido(s) en total (último: ${out.lastReceivedAt ? new Date(out.lastReceivedAt).toLocaleString('es') : '—'})` : 'Aún no ha entrado NINGÚN correo a la app (cuando MX + webhook estén listos, los correos nuevos aparecerán aquí)' });
 
         return res.json(out);
     } catch (error) {

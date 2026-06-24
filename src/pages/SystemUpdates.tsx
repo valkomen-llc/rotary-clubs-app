@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.481.0 | 2026-06-22 (Correo: probar envío real)
-// Cache bust: 2026-06-22 18:20
+// UI V4.482.0 | 2026-06-22 (Diagnóstico: webhook + MX reales)
+// Cache bust: 2026-06-22 18:45
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.482.0',
+        title: 'Diagnóstico de Correo Más Preciso 🎯',
+        description: 'El Diagnóstico ahora usa tu API key de lectura para consultar el estado real del dominio en Resend (verificación de envío y registro MX de recepción) y, además, verifica si el webhook email.received está configurado. Así te indica el paso exacto que falta para recibir, en vez de mostrar un aviso genérico.',
+        date: new Date().toISOString(),
+        tags: ['correo', 'diagnostico', 'resend'],
+        type: 'improvement'
+    },
     {
         version: '4.481.0',
         title: 'Correo: Probar Envío Real 🧪',
