@@ -16,8 +16,11 @@ const resolveApexMx = async (domain) => {
     }
 };
 
-// ¿Alguno de los MX apunta a la infraestructura de recepción de Resend?
-const isResendInboundMx = (mxList) => (mxList || []).some((m) => /resend/i.test(m.exchange || ''));
+// ¿Alguno de los MX apunta a la infraestructura de RECEPCIÓN de Resend?
+// Resend Inbound corre sobre AWS SES, así que el MX de recepción apunta a
+// inbound-smtp.<región>.amazonaws.com (NO contiene "resend"). OJO de no confundir con
+// el MX de ENVÍO/bounces, que es feedback-smtp.<región>.amazonses.com.
+const isResendInboundMx = (mxList) => (mxList || []).some((m) => /(^|\.)inbound-smtp\..*amazonaws\.com|resend/i.test(m.exchange || ''));
 
 // Verifica la firma Svix de los webhooks de Resend (cabeceras svix-id / svix-timestamp / svix-signature).
 // fail-open: si no hay RESEND_WEBHOOK_SECRET configurado, acepta el webhook (Resend igual lo entrega).
@@ -586,6 +589,8 @@ export const getEmailDiagnostics = async (req, res) => {
                         if (url) out.webhook.endpoints.push(url);
                         if (Array.isArray(events) && events.some((ev) => String(ev).includes('email.received'))) {
                             out.webhook.hasReceivedEvent = true;
+                            out.webhook.receivedEndpoint = url;
+                            out.webhook.receivedStatus = h.status || h.state || null;
                         }
                     }
                 }
@@ -615,9 +620,20 @@ export const getEmailDiagnostics = async (req, res) => {
                             : `RECEPCIÓN: el apex ${d.domain} NO tiene ningún MX en el DNS, por eso no llega ningún correo. En Resend → Domains → ${d.domain} activa el toggle "Receiving" y agrega a tu DNS el MX que te indique. (Verificar el envío NO habilita la recepción.)`) });
                 }
             }
-            // Estado del webhook email.received
+            // Estado del webhook email.received (incluye a dónde apunta y si está deshabilitado)
             if (out.webhook.checked) {
-                checks.push({ ok: out.webhook.hasReceivedEvent, label: out.webhook.hasReceivedEvent ? 'Webhook email.received configurado en Resend' : 'FALTA el webhook email.received en Resend → Webhooks → Add (URL /api/public/inbound-email, evento email.received)' });
+                const disabled = out.webhook.receivedStatus && !/enabled|active/i.test(String(out.webhook.receivedStatus));
+                const ep = out.webhook.receivedEndpoint || '';
+                const epOk = /\/api\/public\/inbound-email\/?$/.test(ep);
+                checks.push({
+                    ok: out.webhook.hasReceivedEvent && epOk && !disabled,
+                    label: !out.webhook.hasReceivedEvent
+                        ? 'FALTA el webhook email.received en Resend → Webhooks → Add (URL <tu-app>/api/public/inbound-email, evento email.received)'
+                        : disabled
+                            ? `Webhook email.received existe pero está DESHABILITADO en Resend (estado: ${out.webhook.receivedStatus}). Actívalo en Resend → Webhooks.`
+                            : !epOk
+                                ? `Webhook email.received apunta a "${ep || 'URL desconocida'}", que NO termina en /api/public/inbound-email. Corrige la URL del webhook en Resend (o vuelve a "Configurar recepción") para que los correos lleguen a la app.`
+                                : `Webhook email.received OK → ${ep}` });
             }
         }
         checks.push({ ok: out.counts.received > 0, label: out.counts.received > 0 ? `${out.counts.received} correo(s) recibido(s) en total (último: ${out.lastReceivedAt ? new Date(out.lastReceivedAt).toLocaleString('es') : '—'})` : 'Aún no ha entrado NINGÚN correo a la app (cuando MX + webhook estén listos, los correos nuevos aparecerán aquí)' });
@@ -691,4 +707,4 @@ export default {
     provisionInbound
 };
 
-console.log('[EmailAccountController] cargado (v4.484.0 — recepción: webhook + buzón por defecto + MX REAL del apex vía DNS (fin del falso positivo del MX de envío))');
+console.log('[EmailAccountController] cargado (v4.485.0 — recepción: MX inbound de Resend = inbound-smtp.*.amazonaws.com (fix falso negativo) + verificación de la URL del webhook)');
