@@ -207,6 +207,10 @@ model ReceivedEmail {
   starred      Boolean  @default(false)
   folder       String   @default("inbox") // inbox | trash
   hasAttachments Boolean @default(false)
+  // ID del correo entrante en Resend (data.email_id) — para descargar adjuntos vía su API si hace falta.
+  resendEmailId String?
+  // Adjuntos normalizados: [{ filename, contentType, size, url }]. El contenido se sube a S3 al recibir.
+  attachments  Json?
   receivedAt   DateTime @default(now())
   createdAt    DateTime @default(now())
 

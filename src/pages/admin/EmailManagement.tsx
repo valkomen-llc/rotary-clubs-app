@@ -35,6 +35,7 @@ interface EmailMessage {
     read: boolean;
     starred: boolean;
     hasAttachments: boolean;
+    attachments?: { filename: string; contentType?: string; size?: number | null; url?: string | null }[];
     folder: 'inbox' | 'sent' | 'drafts' | 'trash' | 'starred';
 }
 
@@ -392,6 +393,7 @@ const EmailManagement: React.FC = () => {
             read: !!r.read,
             starred: !!r.starred,
             hasAttachments: !!r.hasAttachments,
+            attachments: Array.isArray(r.attachments) ? r.attachments : [],
             folder: r.folder === 'trash' ? 'trash' : 'inbox',
         };
     };
@@ -710,7 +712,10 @@ const EmailManagement: React.FC = () => {
                                     <div key={email.id} onClick={() => handleOpenEmail(email)} className={`p-4 border-b border-gray-50 cursor-pointer transition-all hover:bg-gray-50 relative ${selectedEmail?.id === email.id ? 'bg-sky-50/50' : ''} ${!email.read ? 'bg-sky-50/30' : ''}`}>
                                         <div className="flex justify-between items-start mb-1">
                                             <span className={`text-sm text-gray-900 ${!email.read ? 'font-black' : 'font-bold'}`}>{email.from.name}</span>
-                                            <span className="text-[10px] text-gray-400">{email.timestamp}</span>
+                                            <div className="flex items-center gap-1.5">
+                                                {email.hasAttachments && <Paperclip className="w-3 h-3 text-gray-400" />}
+                                                <span className="text-[10px] text-gray-400">{email.timestamp}</span>
+                                            </div>
                                         </div>
                                         <h4 className="text-xs text-gray-600 truncate">{email.subject}</h4>
                                         {email.preview && <p className="text-[11px] text-gray-400 truncate mt-0.5">{email.preview}</p>}
@@ -762,6 +767,34 @@ const EmailManagement: React.FC = () => {
                                             />
                                         ) : (
                                             <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-line">{selectedEmail.body}</div>
+                                        )}
+
+                                        {selectedEmail.attachments && selectedEmail.attachments.length > 0 && (
+                                            <div className="mt-6 pt-5 border-t border-gray-100">
+                                                <p className="text-xs font-black text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2"><Paperclip className="w-3.5 h-3.5" />{selectedEmail.attachments.length} adjunto(s)</p>
+                                                <div className="flex flex-wrap gap-3">
+                                                    {selectedEmail.attachments.map((att, i) => (
+                                                        att.url ? (
+                                                            <a key={i} href={att.url} target="_blank" rel="noopener noreferrer" download={att.filename}
+                                                                className="flex items-center gap-3 border border-gray-200 rounded-2xl px-4 py-3 hover:bg-sky-50 hover:border-sky-200 transition-all max-w-[260px]">
+                                                                <div className="w-9 h-9 rounded-lg bg-sky-50 flex items-center justify-center text-rotary-blue shrink-0"><Paperclip className="w-4 h-4" /></div>
+                                                                <div className="min-w-0">
+                                                                    <p className="text-sm font-bold text-gray-900 truncate">{att.filename}</p>
+                                                                    <p className="text-[11px] text-gray-400">{att.size ? formatBytes(att.size) : att.contentType || 'archivo'}</p>
+                                                                </div>
+                                                            </a>
+                                                        ) : (
+                                                            <div key={i} title="Adjunto no disponible para descarga" className="flex items-center gap-3 border border-gray-200 rounded-2xl px-4 py-3 opacity-60 max-w-[260px]">
+                                                                <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 shrink-0"><Paperclip className="w-4 h-4" /></div>
+                                                                <div className="min-w-0">
+                                                                    <p className="text-sm font-bold text-gray-700 truncate">{att.filename}</p>
+                                                                    <p className="text-[11px] text-gray-400">No disponible</p>
+                                                                </div>
+                                                            </div>
+                                                        )
+                                                    ))}
+                                                </div>
+                                            </div>
                                         )}
                                     </div>
                                 </>

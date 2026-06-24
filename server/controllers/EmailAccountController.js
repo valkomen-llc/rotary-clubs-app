@@ -1,7 +1,52 @@
 import prisma from '../lib/prisma.js';
 import crypto from 'crypto';
 import { resolveMx } from 'node:dns/promises';
+import { s3 } from '../lib/storage.js';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
 import EmailService from '../services/EmailService.js';
+
+const ATT_BUCKET = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
+const ATT_REGION = process.env.AWS_REGION || 'us-east-1';
+
+// Sube a S3 los adjuntos de un correo entrante y devuelve metadata + URL pública.
+// Tolerante a las formas en que Resend entrega el contenido: base64 inline
+// (content/data) o una download_url protegida (se baja con la API key de lectura).
+// Si no logra obtener el contenido, guarda al menos la metadata (url: null).
+const storeInboundAttachments = async (emailId, rawList) => {
+    if (!Array.isArray(rawList) || rawList.length === 0) return [];
+    const apiKey = process.env.RESEND_INBOUND_API_KEY || process.env.RESEND_API_KEY;
+    const out = [];
+    for (let i = 0; i < rawList.length; i++) {
+        const a = rawList[i] || {};
+        const filename = a.filename || a.name || a.fileName || `adjunto-${i + 1}`;
+        const contentType = a.content_type || a.contentType || a.type || 'application/octet-stream';
+        let buffer = null;
+        try {
+            const b64 = a.content || a.data || (a.content && a.content.data);
+            if (typeof b64 === 'string' && b64.length) {
+                buffer = Buffer.from(b64, 'base64');
+            } else {
+                const url = a.download_url || a.downloadUrl || a.url || a.path;
+                if (url) {
+                    const resp = await fetch(url, apiKey ? { headers: { Authorization: `Bearer ${apiKey}` } } : undefined);
+                    if (resp.ok) buffer = Buffer.from(await resp.arrayBuffer());
+                }
+            }
+            if (buffer) {
+                const safe = String(filename).replace(/[^a-zA-Z0-9.\-_]/g, '_');
+                const key = `inbound-attachments/${emailId || 'na'}/${Date.now()}-${i}-${safe}`;
+                await s3.send(new PutObjectCommand({ Bucket: ATT_BUCKET, Key: key, Body: buffer, ContentType: contentType }));
+                const encodedKey = key.split('/').map(encodeURIComponent).join('/');
+                out.push({ filename, contentType, size: buffer.length, url: `https://${ATT_BUCKET}.s3.${ATT_REGION}.amazonaws.com/${encodedKey}` });
+                continue;
+            }
+        } catch (e) {
+            console.warn(`[inbound-email] no se pudo guardar el adjunto "${filename}":`, e.message);
+        }
+        out.push({ filename, contentType, size: a.size || null, url: null });
+    }
+    return out;
+};
 
 // Resuelve los registros MX REALES del DNS para un dominio (apex). Es la única forma
 // fiable de saber si un dominio puede RECIBIR: el estado de "envío" en Resend usa un MX
@@ -204,6 +249,8 @@ export const handleInboundEmail = async (req, res) => {
         const messageId = data.message_id || data.MessageID || data.messageId || data.id || event.id || null;
         const attachmentsArr = data.attachments || data.Attachments;
         const hasAttachments = Array.isArray(attachmentsArr) && attachmentsArr.length > 0;
+        // Subimos los adjuntos a S3 una sola vez (mismos archivos para todos los buzones destino).
+        const storedAttachments = hasAttachments ? await storeInboundAttachments(emailId, attachmentsArr) : [];
 
         let stored = 0;
         for (const rcpt of recipients) {
@@ -226,7 +273,9 @@ export const handleInboundEmail = async (req, res) => {
                     text,
                     html,
                     messageId,
-                    hasAttachments
+                    hasAttachments,
+                    resendEmailId: emailId,
+                    attachments: storedAttachments.length ? storedAttachments : undefined
                 }
             });
             stored++;
@@ -733,4 +782,4 @@ export default {
     provisionInbound
 };
 
-console.log('[EmailAccountController] cargado (v4.486.0 — recepción: reapunta el webhook si su URL redirige con 308 (apex Vercel); la causa de "Recibidos: 0" pese a todo verde)');
+console.log('[EmailAccountController] cargado (v4.488.0 — recepción: adjuntos entrantes guardados en S3 + metadata en ReceivedEmail (descargables en la bandeja))');

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.487.0 | 2026-06-24 (Bandeja estilo Gmail: responder/reenviar/formato/adjuntos)
-// Cache bust: 2026-06-24e
+// UI V4.488.0 | 2026-06-24 (Adjuntos de correos recibidos)
+// Cache bust: 2026-06-24f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.488.0',
+        title: 'Adjuntos de Correos Recibidos 📎',
+        description: 'Los correos que llegan con archivos adjuntos ahora los guardan automáticamente: aparecen al pie del mensaje con su nombre y tamaño, y se pueden descargar con un clic. En la lista de la bandeja se muestra un clip cuando el correo trae adjuntos.',
+        date: new Date().toISOString(),
+        tags: ['correo', 'adjuntos', 'recepcion'],
+        type: 'feature'
+    },
     {
         version: '4.487.0',
         title: 'Bandeja de Correo Estilo Gmail ✉️',
