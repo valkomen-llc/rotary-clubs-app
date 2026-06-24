@@ -28,6 +28,48 @@ const STAT_ICON_KEYS = [
     'calendar', 'star', 'flag', 'gift', 'sparkles', 'rocket', 'megaphone'
 ];
 
+// Iconos válidos para los bloques de texto (action/join/foundation) — DEBE
+// coincidir con sus <select> en ClubSettings.tsx.
+const TEXT_BLOCK_ICON_KEYS = [
+    'star', 'heart', 'handshake', 'send', 'sparkles', 'megaphone',
+    'flag', 'gift', 'users', 'calendar', 'award', 'trophy', 'rocket'
+];
+
+const HEX = /^#[0-9a-fA-F]{6}$/;
+
+// Constructor de definición para los bloques de texto título+highlight+cuerpo+CTA+icono.
+// `extraField` permite añadir campos propios del bloque (ej. iconColor en action).
+const textBlockContainer = ({ label, blockName, query, tone, fallbackIcon, withIconColor = false }) => ({
+    label,
+    query,
+    schemaField: 'content',
+    instructions:
+        `Genera TODO el contenido del bloque "${blockName}". Devuelve un objeto JSON con la clave ` +
+        `"content" que contenga:\n` +
+        '  - "title": título corto y potente (máx 8 palabras).\n' +
+        '  - "titleHighlight": una palabra o frase MUY corta del título para resaltar (o "" si no aplica).\n' +
+        '  - "titleHighlightColor": color hex para ese resaltado (ej "#f6a40a").\n' +
+        '  - "text": 2-3 frases descriptivas.\n' +
+        '  - "buttonText": texto del botón (CTA), 2-4 palabras.\n' +
+        `  - "icon": una de estas claves EXACTAS: ${TEXT_BLOCK_ICON_KEYS.join(', ')}.\n` +
+        (withIconColor ? '  - "iconColor": color hex para el icono (ej "#F5A623").\n' : '') +
+        `En español, tono ${tone}. NO inventes datos, nombres ni cifras fuera del CONTEXTO. ` +
+        'NO generes URLs ni enlaces.',
+    validate: (parsed) => {
+        const c = parsed?.content || {};
+        const out = {
+            title: String(c.title ?? '').slice(0, 120),
+            titleHighlight: String(c.titleHighlight ?? '').slice(0, 60),
+            titleHighlightColor: HEX.test(c.titleHighlightColor || '') ? c.titleHighlightColor : '#f6a40a',
+            text: String(c.text ?? '').slice(0, 800),
+            buttonText: String(c.buttonText ?? '').slice(0, 40),
+            icon: TEXT_BLOCK_ICON_KEYS.includes(c.icon) ? c.icon : fallbackIcon
+        };
+        if (withIconColor) out.iconColor = HEX.test(c.iconColor || '') ? c.iconColor : '#F5A623';
+        return out;
+    }
+});
+
 // ─── Registry de contenedores ────────────────────────────────────────────────
 // query       → consulta RAG hacia el Cerebro (qué memorias recuperar).
 // schemaField → nombre del campo en el JSON de salida del modelo.
@@ -67,61 +109,33 @@ const CONTAINERS = {
         }
     },
 
-    // Bloques de texto con título + cuerpo + botón. Mismo patrón, distinto query.
-    action: {
+    // Bloques de texto título + highlight + cuerpo + CTA + icono. Mismo patrón,
+    // distinto query/tono. La IA genera TODOS los campos del contenedor (menos la
+    // URL del botón, que es un enlace y no se inventa).
+    action: textBlockContainer({
         label: 'Somos gente de acción',
+        blockName: 'Somos gente de acción',
         query: 'misión, valores, propósito de servicio, gente de acción, qué hace el club y el evento, llamado a la acción',
-        schemaField: 'content',
-        instructions:
-            'Genera el contenido del bloque "Somos gente de acción". Devuelve un objeto JSON ' +
-            'con la clave "content": { "title", "text", "buttonText" }. En español, tono ' +
-            'institucional Rotary, inspirador. "title" corto (máx 8 palabras), "text" 2-3 frases, ' +
-            '"buttonText" 2-4 palabras. Basado SOLO en el contexto.',
-        validate: (parsed) => {
-            const c = parsed?.content || {};
-            return {
-                title: String(c.title ?? '').slice(0, 120),
-                text: String(c.text ?? '').slice(0, 800),
-                buttonText: String(c.buttonText ?? '').slice(0, 40)
-            };
-        }
-    },
+        tone: 'institucional Rotary, inspirador y movilizador',
+        fallbackIcon: 'star',
+        withIconColor: true
+    }),
 
-    join: {
+    join: textBlockContainer({
         label: 'Únete a Rotary',
+        blockName: 'Únete a Rotary',
         query: 'cómo unirse, membresía, beneficios de pertenecer, invitación a sumarse al club o al evento, comunidad',
-        schemaField: 'content',
-        instructions:
-            'Genera el contenido del bloque "Únete a Rotary". Devuelve un objeto JSON con la ' +
-            'clave "content": { "title", "text", "buttonText" }. En español, tono aspiracional y ' +
-            'comunitario. "title" corto, "text" 2-3 frases, "buttonText" 2-4 palabras. Basado SOLO en el contexto.',
-        validate: (parsed) => {
-            const c = parsed?.content || {};
-            return {
-                title: String(c.title ?? '').slice(0, 120),
-                text: String(c.text ?? '').slice(0, 800),
-                buttonText: String(c.buttonText ?? '').slice(0, 40)
-            };
-        }
-    },
+        tone: 'aspiracional y comunitario',
+        fallbackIcon: 'star'
+    }),
 
-    foundation: {
+    foundation: textBlockContainer({
         label: 'Nuestra Fundación',
+        blockName: 'Nuestra Fundación',
         query: 'La Fundación Rotaria, donaciones, subvenciones, proyectos sostenibles, impacto de los fondos, causas apoyadas',
-        schemaField: 'content',
-        instructions:
-            'Genera el contenido del bloque "Nuestra Fundación". Devuelve un objeto JSON con la ' +
-            'clave "content": { "title", "text", "buttonText" }. En español, tono institucional y ' +
-            'de impacto. "title" corto, "text" 2-3 frases, "buttonText" 2-4 palabras. Basado SOLO en el contexto.',
-        validate: (parsed) => {
-            const c = parsed?.content || {};
-            return {
-                title: String(c.title ?? '').slice(0, 120),
-                text: String(c.text ?? '').slice(0, 800),
-                buttonText: String(c.buttonText ?? '').slice(0, 40)
-            };
-        }
-    }
+        tone: 'institucional y de impacto',
+        fallbackIcon: 'gift'
+    })
 };
 
 // Lista pública de contenedores soportados (para un futuro selector en UI).
@@ -209,7 +223,7 @@ export const generateContainer = async (req, res) => {
         }
 
         const data = def.validate(parsed);
-        console.log(`[CONTAINER v4.491] "${containerId}" generado para club ${clubId} via ${result.provider} (${result.model}), ${sources.length} fuentes.`);
+        console.log(`[CONTAINER v4.492] "${containerId}" generado para club ${clubId} via ${result.provider} (${result.model}), ${sources.length} fuentes.`);
 
         return res.json({
             container: containerId,
