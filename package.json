@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.489.0",
-  "cache_bust": "2026-06-24g (Borradores persistentes: guardar/retomar/eliminar desde la bandeja)",
+  "version": "4.490.0",
+  "cache_bust": "2026-06-24h (Avatar de perfil del club (avatarUrl) editable en Configuración → Identidad, distinto del logo; se muestra en el panel)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

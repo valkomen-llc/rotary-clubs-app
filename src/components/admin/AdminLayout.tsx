@@ -780,9 +780,13 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                         </div>
 
                         <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100 flex items-center gap-3 mt-4">
-                            <div className="w-10 h-10 rounded-full bg-rotary-blue flex items-center justify-center text-white font-black text-xs shadow-md border-2 border-white">
-                                {user?.email?.charAt(0).toUpperCase()}
-                            </div>
+                            {(club as any)?.avatarUrl ? (
+                                <img src={(club as any).avatarUrl} alt={club?.name || 'Avatar'} className="w-10 h-10 rounded-full object-cover shadow-md border-2 border-white" />
+                            ) : (
+                                <div className="w-10 h-10 rounded-full bg-rotary-blue flex items-center justify-center text-white font-black text-xs shadow-md border-2 border-white">
+                                    {user?.email?.charAt(0).toUpperCase()}
+                                </div>
+                            )}
                             <div className="flex-1 min-w-0">
                                 <p className="text-xs font-black text-gray-900 truncate">Admin User</p>
                                 <p className="text-[10px] text-gray-400 truncate font-medium">{user?.email}</p>

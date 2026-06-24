@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.489.0 | 2026-06-24 (Borradores de correo)
-// Cache bust: 2026-06-24g
+// UI V4.490.0 | 2026-06-24 (Avatar de perfil del club)
+// Cache bust: 2026-06-24h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.490.0',
+        title: 'Avatar de Perfil del Club 🪪',
+        description: 'Ahora el club tiene una foto de perfil (avatar) circular, distinta del logo. Se sube desde Configuración → Identidad → "Avatar del Club" y se muestra en el panel de administración. El logo sigue cumpliendo su función en la cabecera del sitio público; el avatar es solo la identidad visual de la cuenta en el panel.',
+        date: new Date().toISOString(),
+        tags: ['perfil', 'club', 'avatar', 'identidad'],
+        type: 'feature'
+    },
     {
         version: '4.489.0',
         title: 'Borradores de Correo 📝',
