@@ -5,10 +5,10 @@ import {
     Search, Plus, Filter, MoreHorizontal, 
     RefreshCw, ChevronLeft, ChevronRight,
     AtSign, Settings, ShieldCheck, ExternalLink,
-    Paperclip, Reply, Forward, User, Globe, X,
+    Paperclip, Reply, ReplyAll, Forward, User, Globe, X,
     CheckCircle2, AlertTriangle, Database, ArrowRight,
     Lock, Key, Zap, SendHorizontal, Image as ImageIcon,
-    Smile
+    Smile, Bold, Italic, Underline, List, Link2
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
@@ -29,11 +29,20 @@ interface EmailMessage {
     subject: string;
     preview: string;
     body: string;
+    html?: string;
     timestamp: string;
+    rawDate?: string;
     read: boolean;
     starred: boolean;
     hasAttachments: boolean;
     folder: 'inbox' | 'sent' | 'drafts' | 'trash' | 'starred';
+}
+
+interface ComposeAttachment {
+    filename: string;
+    content: string; // base64 (sin prefijo data:)
+    contentType: string;
+    size: number;
 }
 
 const EmailManagement: React.FC = () => {
@@ -66,8 +75,103 @@ const EmailManagement: React.FC = () => {
     
     // Form states
     const [newAccount, setNewAccount] = useState({ user: '', label: '', password: '' });
-    const [composeData, setComposeData] = useState({ to: '', subject: '', body: '' });
+    const [composeData, setComposeData] = useState({ to: '', cc: '', subject: '' });
+    const [showCc, setShowCc] = useState(false);
+    const [composeInitialHtml, setComposeInitialHtml] = useState('');
+    const [attachments, setAttachments] = useState<ComposeAttachment[]>([]);
+    const [uploadingAttachment, setUploadingAttachment] = useState(false);
     const [sending, setSending] = useState(false);
+    const editorRef = React.useRef<HTMLDivElement>(null);
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+    // Semilla el editor enriquecido al abrir/redactar (editor no controlado para no perder el cursor).
+    useEffect(() => {
+        if (showComposeModal && editorRef.current) {
+            editorRef.current.innerHTML = composeInitialHtml || '';
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showComposeModal, composeInitialHtml]);
+
+    const exec = (command: string, value?: string) => {
+        editorRef.current?.focus();
+        document.execCommand(command, false, value);
+    };
+
+    const MAX_ATTACH_TOTAL = 8 * 1024 * 1024; // 8 MB en total (límite seguro para base64 + Resend)
+
+    const handleAttachFiles = async (files: FileList | null) => {
+        if (!files || files.length === 0) return;
+        setUploadingAttachment(true);
+        try {
+            const current = [...attachments];
+            for (const file of Array.from(files)) {
+                const totalSoFar = current.reduce((s, a) => s + a.size, 0);
+                if (totalSoFar + file.size > MAX_ATTACH_TOTAL) {
+                    toast.error(`"${file.name}" excede el límite total de 8 MB en adjuntos`);
+                    continue;
+                }
+                const base64 = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        const result = String(reader.result || '');
+                        resolve(result.includes(',') ? result.split(',')[1] : result);
+                    };
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+                current.push({ filename: file.name, content: base64, contentType: file.type || 'application/octet-stream', size: file.size });
+            }
+            setAttachments(current);
+        } catch {
+            toast.error('No se pudo adjuntar el archivo');
+        } finally {
+            setUploadingAttachment(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+
+    const formatBytes = (n: number) => n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+
+    const resetCompose = () => {
+        setComposeData({ to: '', cc: '', subject: '' });
+        setComposeInitialHtml('');
+        setAttachments([]);
+        setShowCc(false);
+    };
+
+    // Construye el bloque citado para Responder/Reenviar (estilo Gmail).
+    const buildQuote = (email: EmailMessage) => {
+        const when = email.rawDate ? new Date(email.rawDate).toLocaleString('es') : email.timestamp;
+        const inner = email.html || (email.body || '').replace(/\n/g, '<br>');
+        return `<br><br><div style="border-left:2px solid #d1d5db;padding-left:12px;color:#6b7280">`
+            + `El ${when}, ${email.from.name} &lt;${email.from.email}&gt; escribió:<br>${inner}</div>`;
+    };
+
+    const openCompose = () => { resetCompose(); setShowComposeModal(true); };
+
+    const openReply = (email: EmailMessage, all = false) => {
+        const subj = /^re:/i.test(email.subject) ? email.subject : `Re: ${email.subject}`;
+        let cc = '';
+        if (all && email.to) {
+            cc = email.to.split(/[,;]/).map(s => s.trim())
+                .filter(addr => addr && addr.toLowerCase() !== (activeAccount?.email || '').toLowerCase())
+                .join(', ');
+        }
+        setComposeData({ to: email.from.email, cc, subject: subj });
+        setShowCc(!!cc);
+        setComposeInitialHtml(buildQuote(email));
+        setAttachments([]);
+        setShowComposeModal(true);
+    };
+
+    const openForward = (email: EmailMessage) => {
+        const subj = /^fwd:/i.test(email.subject) ? email.subject : `Fwd: ${email.subject}`;
+        setComposeData({ to: '', cc: '', subject: subj });
+        setShowCc(false);
+        setComposeInitialHtml(buildQuote(email));
+        setAttachments([]);
+        setShowComposeModal(true);
+    };
 
     // Diagnóstico de configuración de correo
     const [showDiagModal, setShowDiagModal] = useState(false);
@@ -281,8 +385,10 @@ const EmailManagement: React.FC = () => {
             to: r.toEmail || activeAccount?.email || '',
             subject: r.subject || '(Sin asunto)',
             preview: bodyText.slice(0, 90),
-            body: r.html ? bodyText : bodyText,
+            body: bodyText,
+            html: r.html || undefined,
             timestamp: formatTime(r.receivedAt),
+            rawDate: r.receivedAt,
             read: !!r.read,
             starred: !!r.starred,
             hasAttachments: !!r.hasAttachments,
@@ -411,10 +517,13 @@ const EmailManagement: React.FC = () => {
             return;
         }
 
+        const htmlBody = editorRef.current?.innerHTML || '';
+        const plainPreview = htmlBody.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
         setSending(true);
         // Evita que la petición se quede colgada para siempre (feedback garantizado).
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000);
+        const timeout = setTimeout(() => controller.abort(), 45000);
         try {
             // Real API call to our backend communications service
             const response = await fetch('/api/communications/send', {
@@ -427,10 +536,14 @@ const EmailManagement: React.FC = () => {
                 body: JSON.stringify({
                     type: 'email',
                     recipient: composeData.to,
+                    cc: composeData.cc || undefined,
                     subject: composeData.subject || '(Sin Asunto)',
-                    content: composeData.body,
+                    content: htmlBody,
                     clubId: club?.id,
-                    fromEmail: activeAccount.email // The backend will use this if SMTP is shared or for logging
+                    fromEmail: activeAccount.email, // The backend will use this if SMTP is shared or for logging
+                    attachments: attachments.length
+                        ? attachments.map(a => ({ filename: a.filename, content: a.content, contentType: a.contentType }))
+                        : undefined
                 })
             });
 
@@ -442,18 +555,19 @@ const EmailManagement: React.FC = () => {
                     from: { name: user?.name || 'Admin', email: activeAccount.email },
                     to: composeData.to,
                     subject: composeData.subject || '(Sin Asunto)',
-                    preview: composeData.body.substring(0, 60) + '...',
-                    body: composeData.body,
+                    preview: plainPreview.substring(0, 60),
+                    body: plainPreview,
+                    html: htmlBody,
                     timestamp: 'Ahora',
                     read: true,
                     starred: false,
-                    hasAttachments: false,
+                    hasAttachments: attachments.length > 0,
                     folder: 'sent'
                 };
 
                 setSentMessages([newEmail, ...sentMessages]);
                 setShowComposeModal(false);
-                setComposeData({ to: '', subject: '', body: '' });
+                resetCompose();
                 toast.success(`Mensaje enviado con éxito desde ${activeAccount.email}`);
             } else {
                 toast.error(`Error al enviar: ${result.error || `El servidor respondió ${response.status}`}`);
@@ -518,7 +632,7 @@ const EmailManagement: React.FC = () => {
                             </button>
                         )}
                         <button
-                            onClick={() => activeTab === 'inbox' ? setShowComposeModal(true) : setShowAccountModal(true)}
+                            onClick={() => activeTab === 'inbox' ? openCompose() : setShowAccountModal(true)}
                             className="flex items-center gap-2 px-5 py-2.5 bg-rotary-blue text-white rounded-xl text-sm font-bold hover:bg-sky-800 transition-all shadow-xl shadow-blue-900/20 active:scale-95"
                         >
                             <Plus className="w-5 h-5" />
@@ -610,7 +724,16 @@ const EmailManagement: React.FC = () => {
                             {selectedEmail ? (
                                 <>
                                     <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-                                        <button onClick={() => setSelectedEmail(null)} className="lg:hidden p-2 hover:bg-gray-100 rounded-lg"><ChevronLeft className="w-5 h-5" /></button>
+                                        <div className="flex items-center gap-1">
+                                            <button onClick={() => setSelectedEmail(null)} className="lg:hidden p-2 hover:bg-gray-100 rounded-lg"><ChevronLeft className="w-5 h-5" /></button>
+                                            {selectedFolder !== 'sent' && (
+                                                <>
+                                                    <button onClick={() => openReply(selectedEmail)} title="Responder" className="flex items-center gap-1.5 px-3 py-2 hover:bg-sky-50 rounded-lg text-gray-600 hover:text-rotary-blue text-xs font-bold"><Reply className="w-4 h-4" />Responder</button>
+                                                    <button onClick={() => openReply(selectedEmail, true)} title="Responder a todos" className="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-rotary-blue"><ReplyAll className="w-5 h-5" /></button>
+                                                    <button onClick={() => openForward(selectedEmail)} title="Reenviar" className="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-rotary-blue"><Forward className="w-5 h-5" /></button>
+                                                </>
+                                            )}
+                                        </div>
                                         <div className="flex items-center gap-2">
                                             <button onClick={() => handleTrashEmail(selectedEmail)} title="Mover a papelera" className="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-red-500"><Trash2 className="w-5 h-5" /></button>
                                             <button onClick={() => handleToggleStar(selectedEmail)} title="Destacar" className="p-2 hover:bg-gray-100 rounded-lg text-gray-400"><Star className={`w-5 h-5 ${selectedEmail.starred ? 'fill-amber-400 text-amber-400' : ''}`} /></button>
@@ -622,7 +745,24 @@ const EmailManagement: React.FC = () => {
                                             <span className="font-bold text-gray-800">{selectedEmail.from.name}</span>
                                             {selectedEmail.from.email && <span className="text-gray-400">&lt;{selectedEmail.from.email}&gt;</span>}
                                         </div>
-                                        <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-line">{selectedEmail.body}</div>
+                                        {selectedEmail.html ? (
+                                            // HTML del correo recibido aislado en un iframe sin scripts (anti-XSS).
+                                            <iframe
+                                                title="Contenido del correo"
+                                                sandbox="allow-same-origin"
+                                                srcDoc={`<base target="_blank"><div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px;color:#374151;line-height:1.5">${selectedEmail.html}</div>`}
+                                                className="w-full border-0 min-h-[300px]"
+                                                onLoad={(e) => {
+                                                    try {
+                                                        const f = e.currentTarget;
+                                                        const h = f.contentWindow?.document?.body?.scrollHeight;
+                                                        if (h) f.style.height = `${h + 24}px`;
+                                                    } catch { /* cross-origin: dejamos min-height */ }
+                                                }}
+                                            />
+                                        ) : (
+                                            <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-line">{selectedEmail.body}</div>
+                                        )}
                                     </div>
                                 </>
                             ) : (
@@ -689,21 +829,70 @@ const EmailManagement: React.FC = () => {
                 {/* MODALS */}
                 {showComposeModal && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-md">
-                        <div className="bg-white rounded-[40px] w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-                            <div className="p-8 border-b border-gray-50 flex items-center justify-between">
+                        <div className="bg-white rounded-[32px] w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+                            <div className="p-6 border-b border-gray-50 flex items-center justify-between">
                                 <div>
-                                    <h3 className="text-2xl font-bold text-gray-900">Nuevo Mensaje</h3>
-                                    <p className="text-sm text-gray-500 mt-1">Desde: <span className="font-bold text-rotary-blue">{activeAccount?.email}</span></p>
+                                    <h3 className="text-xl font-bold text-gray-900">Nuevo Mensaje</h3>
+                                    <p className="text-xs text-gray-500 mt-1">Desde: <span className="font-bold text-rotary-blue">{activeAccount?.email}</span></p>
                                 </div>
-                                <button onClick={() => setShowComposeModal(false)} className="p-3 text-gray-400 hover:text-gray-900 rounded-2xl transition-all"><X className="w-6 h-6" /></button>
+                                <button onClick={() => { setShowComposeModal(false); resetCompose(); }} className="p-3 text-gray-400 hover:text-gray-900 rounded-2xl transition-all"><X className="w-6 h-6" /></button>
                             </div>
-                            <div className="p-8 space-y-6 flex-1 overflow-y-auto">
-                                <input type="email" value={composeData.to} onChange={e => setComposeData({ ...composeData, to: e.target.value })} placeholder="Para" className="w-full px-6 py-4 bg-gray-50 rounded-2xl outline-none focus:ring-2 focus:ring-sky-500 transition-all" />
-                                <input type="text" value={composeData.subject} onChange={e => setComposeData({ ...composeData, subject: e.target.value })} placeholder="Asunto" className="w-full px-6 py-4 bg-gray-50 rounded-2xl outline-none focus:ring-2 focus:ring-sky-500 transition-all" />
-                                <textarea value={composeData.body} onChange={e => setComposeData({ ...composeData, body: e.target.value })} placeholder="Mensaje..." className="w-full flex-1 px-6 py-4 bg-gray-50 rounded-2xl outline-none focus:ring-2 focus:ring-sky-500 transition-all resize-none min-h-[200px]" />
+                            <div className="px-6 pt-5 space-y-3 flex-1 overflow-y-auto">
+                                <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                                    <span className="text-xs font-bold text-gray-400 w-12">Para</span>
+                                    <input type="text" value={composeData.to} onChange={e => setComposeData({ ...composeData, to: e.target.value })} placeholder="destinatario@correo.com" className="flex-1 bg-transparent outline-none text-sm" />
+                                    {!showCc && <button onClick={() => setShowCc(true)} className="text-xs font-bold text-gray-400 hover:text-rotary-blue">Cc</button>}
+                                </div>
+                                {showCc && (
+                                    <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                                        <span className="text-xs font-bold text-gray-400 w-12">Cc</span>
+                                        <input type="text" value={composeData.cc} onChange={e => setComposeData({ ...composeData, cc: e.target.value })} placeholder="copia@correo.com, otro@correo.com" className="flex-1 bg-transparent outline-none text-sm" />
+                                    </div>
+                                )}
+                                <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                                    <span className="text-xs font-bold text-gray-400 w-12">Asunto</span>
+                                    <input type="text" value={composeData.subject} onChange={e => setComposeData({ ...composeData, subject: e.target.value })} placeholder="Asunto" className="flex-1 bg-transparent outline-none text-sm" />
+                                </div>
+
+                                {/* Barra de formato */}
+                                <div className="flex items-center gap-1 py-1">
+                                    <button onMouseDown={e => { e.preventDefault(); exec('bold'); }} title="Negrita" className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"><Bold className="w-4 h-4" /></button>
+                                    <button onMouseDown={e => { e.preventDefault(); exec('italic'); }} title="Cursiva" className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"><Italic className="w-4 h-4" /></button>
+                                    <button onMouseDown={e => { e.preventDefault(); exec('underline'); }} title="Subrayado" className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"><Underline className="w-4 h-4" /></button>
+                                    <button onMouseDown={e => { e.preventDefault(); exec('insertUnorderedList'); }} title="Lista" className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"><List className="w-4 h-4" /></button>
+                                    <button onMouseDown={e => { e.preventDefault(); const url = prompt('URL del enlace:'); if (url) exec('createLink', url); }} title="Insertar enlace" className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"><Link2 className="w-4 h-4" /></button>
+                                    <div className="w-px h-5 bg-gray-200 mx-1" />
+                                    <button onMouseDown={e => { e.preventDefault(); fileInputRef.current?.click(); }} title="Adjuntar archivo" className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 flex items-center gap-1">
+                                        <Paperclip className="w-4 h-4" />{uploadingAttachment && <RefreshCw className="w-3 h-3 animate-spin" />}
+                                    </button>
+                                    <input ref={fileInputRef} type="file" multiple className="hidden" onChange={e => handleAttachFiles(e.target.files)} />
+                                </div>
+
+                                {/* Editor enriquecido */}
+                                <div
+                                    ref={editorRef}
+                                    contentEditable
+                                    suppressContentEditableWarning
+                                    className="w-full min-h-[180px] px-4 py-3 bg-gray-50 rounded-2xl outline-none focus:ring-2 focus:ring-sky-500 text-sm text-gray-800 prose prose-sm max-w-none overflow-y-auto"
+                                    style={{ maxHeight: '40vh' }}
+                                />
+
+                                {/* Adjuntos */}
+                                {attachments.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 pb-2">
+                                        {attachments.map((a, i) => (
+                                            <div key={i} className="flex items-center gap-2 bg-sky-50 border border-sky-100 rounded-xl px-3 py-1.5 text-xs">
+                                                <Paperclip className="w-3 h-3 text-sky-600" />
+                                                <span className="font-medium text-gray-700 max-w-[160px] truncate">{a.filename}</span>
+                                                <span className="text-gray-400">{formatBytes(a.size)}</span>
+                                                <button onClick={() => setAttachments(attachments.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
-                            <div className="p-8 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
-                                <button onClick={() => setShowComposeModal(false)} className="text-sm font-black text-gray-400 uppercase tracking-widest">Descartar</button>
+                            <div className="p-5 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
+                                <button onClick={() => { setShowComposeModal(false); resetCompose(); }} className="text-sm font-black text-gray-400 uppercase tracking-widest">Descartar</button>
                                 <button onClick={handleSendEmail} disabled={sending || !composeData.to} className="px-10 py-4 bg-gray-900 text-white text-sm font-black rounded-3xl hover:bg-rotary-blue transition-all flex items-center gap-3 disabled:opacity-50">
                                     {sending ? <RefreshCw className="w-5 h-5 animate-spin" /> : <SendHorizontal className="w-5 h-5" />}
                                     {sending ? 'Enviando...' : 'Enviar'}
