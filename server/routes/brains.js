@@ -29,6 +29,7 @@ import {
     syncBrainWithOnboarding,
 } from '../services/brainService.js';
 import { processDocumentSafe, deleteDocument } from '../services/documentProcessor.js';
+import { regenerateDossier } from '../services/brainSynthesis.js';
 import { chatWithBrain, listChatHistory, listChatSessions, listActivities, listAvailableGeminiModels } from '../services/brainAgent.js';
 
 const router = express.Router();
@@ -76,6 +77,11 @@ const BRAIN_MIGRATION_SQLS = [
         ALTER TABLE "Brain" ADD CONSTRAINT "Brain_districtId_fkey"
             FOREIGN KEY ("districtId") REFERENCES "District"("id") ON DELETE CASCADE ON UPDATE CASCADE;
     EXCEPTION WHEN duplicate_object THEN NULL; WHEN undefined_table THEN NULL; END $$`,
+    // v4.494: Dossier vivo del sitio (síntesis institucional). Columnas nuevas
+    // sobre tablas existentes — ADD COLUMN IF NOT EXISTS es idempotente.
+    `ALTER TABLE "Brain" ADD COLUMN IF NOT EXISTS "dossier" TEXT`,
+    `ALTER TABLE "Brain" ADD COLUMN IF NOT EXISTS "dossierMeta" JSONB DEFAULT '{}'`,
+    `ALTER TABLE "Brain" ADD COLUMN IF NOT EXISTS "dossierUpdatedAt" TIMESTAMP(3)`,
 
     // BrainMemory
     `CREATE TABLE IF NOT EXISTS "BrainMemory" (
@@ -155,6 +161,10 @@ const BRAIN_MIGRATION_SQLS = [
         ALTER TABLE "BrainDocument" ADD CONSTRAINT "BrainDocument_brainId_fkey"
             FOREIGN KEY ("brainId") REFERENCES "Brain"("id") ON DELETE CASCADE ON UPDATE CASCADE;
     EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    // v4.494: Ficha de comprensión por documento (Capa A).
+    `ALTER TABLE "BrainDocument" ADD COLUMN IF NOT EXISTS "summary" TEXT`,
+    `ALTER TABLE "BrainDocument" ADD COLUMN IF NOT EXISTS "analysis" JSONB DEFAULT '{}'`,
+    `ALTER TABLE "BrainDocument" ADD COLUMN IF NOT EXISTS "analyzedAt" TIMESTAMP(3)`,
 
     // BrainActivity (v4.375)
     `CREATE TABLE IF NOT EXISTS "BrainActivity" (
@@ -1206,6 +1216,8 @@ router.post('/:id/sync-onboarding', authMiddleware, async (req, res) => {
         if (!brain.clubId) return res.status(400).json({ error: 'Brain has no clubId — no hay onboarding del cual sincronizar' });
 
         const result = await syncBrainWithOnboarding(brain.clubId);
+        // Refrescar el dossier con los datos de identidad recién sincronizados.
+        regenerateDossier(brain.id, { reason: 'onboarding-sync' }).catch(() => {});
         res.json(result);
     } catch (err) {
         console.error('[brains] sync-onboarding:', err);
@@ -1556,6 +1568,7 @@ router.get('/:id/documents', authMiddleware, async (req, res) => {
                 category: true, description: true, status: true, errorMessage: true,
                 chunkCount: true, charCount: true, uploadedBy: true,
                 createdAt: true, processedAt: true,
+                summary: true, analysis: true, analyzedAt: true,
             },
         });
         res.json(docs);
@@ -1702,6 +1715,37 @@ router.post('/documents/:docId/reprocess', authMiddleware, async (req, res) => {
     }
 });
 
+// ─── Dossier vivo del sitio ─────────────────────────────────────────────────
+// Re-sintetiza el dossier on-demand (botón "Regenerar" en la tab Resumen).
+// Síncrono porque el admin espera ver el resultado; el LLM tarda ~5-15s, dentro
+// del maxDuration: 120s de Vercel.
+router.post('/:id/dossier/regenerate', authMiddleware, async (req, res) => {
+    try {
+        const brain = await prisma.brain.findUnique({ where: { id: req.params.id } });
+        if (!brain) return res.status(404).json({ error: 'Brain not found' });
+
+        const scope = await resolveUserScope(req);
+        const canEdit = isSuperAdmin(req) ||
+            (brain.clubId && brain.clubId === scope.clubId) ||
+            (brain.districtId && brain.districtId === scope.districtId);
+        if (!canEdit) return res.status(403).json({ error: 'Access denied' });
+
+        const result = await regenerateDossier(brain.id, { reason: 'manual' });
+        if (!result.ok) {
+            const msg = result.skipped === 'no-llm'
+                ? 'El generador de IA no está configurado (falta GEMINI_API_KEY).'
+                : result.skipped === 'empty-brain'
+                ? 'El cerebro todavía no tiene documentos ni contenido para sintetizar.'
+                : result.error || 'No se pudo generar el dossier.';
+            return res.status(result.skipped ? 200 : 502).json({ ok: false, message: msg, ...result });
+        }
+        res.json({ ok: true, dossier: result.dossier, dossierMeta: result.dossierMeta, dossierUpdatedAt: new Date() });
+    } catch (err) {
+        console.error('[brains] dossier regenerate:', err);
+        res.status(500).json({ error: 'Error regenerating dossier', detail: err.message });
+    }
+});
+
 // ─── Ingest manual de nota libre (NOTE kind) ───────────────────────────────
 
 router.post('/:id/notes', authMiddleware, async (req, res) => {
@@ -1725,6 +1769,8 @@ router.post('/:id/notes', authMiddleware, async (req, res) => {
             content,
             metadata: { authorId: req.user.userId || req.user.id, authoredAt: new Date().toISOString() },
         });
+        // Refrescar el dossier con la nueva nota (fire-and-forget).
+        regenerateDossier(brain.id, { reason: 'note' }).catch(() => {});
         res.json({ ok: true, sourceId, ...result });
     } catch (err) {
         console.error('[brains] note:', err);

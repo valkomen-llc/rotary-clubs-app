@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.493.0",
-  "cache_bust": "2026-06-24k (Generar con el Cerebro: fallback a memorias recientes cuando la búsqueda semántica devuelve vacío — ya no bloquea si el cerebro tiene contenido pero sin embeddings o si falla el embedding del query)",
+  "version": "4.494.0",
+  "cache_bust": "2026-06-24l (Cerebro inteligente: cada documento que se sube genera una ficha de comprensión (resumen + análisis estructurado) y todo se fusiona en un Dossier vivo del sitio que se re-sintetiza solo y alimenta el chat — genérico para todos los sitios)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

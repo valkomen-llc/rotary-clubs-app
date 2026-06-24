@@ -417,7 +417,7 @@ const SiteBrainPanel: React.FC<SiteBrainPanelProps> = ({ headers, currentUser, i
                 <div className="p-6">
                     {tab === 'chat'     && <BrainChatTab brain={brain} headers={headers} />}
                     {tab === 'activity' && <ActivityTab headers={headers} />}
-                    {tab === 'overview' && <OverviewTab brain={brain} memories={extras?.memories || []} master={data.master} loadingExtras={loadingExtras} />}
+                    {tab === 'overview' && <OverviewTab brain={brain} memories={extras?.memories || []} master={data.master} loadingExtras={loadingExtras} headers={headers} canEdit={canEdit} onRefresh={fetchMe} />}
                     {tab === 'graph'    && <GraphTab brain={brain} headers={headers} />}
                     {tab === 'docs'     && <BrainDocumentsPanel brainId={brain.id} brainName={brain.name} canUpload={canEdit} headers={headers} onChange={fetchExtras} />}
                     {tab === 'memories' && <MemoriesTab brainId={brain.id} memories={extras?.memories || []} headers={headers} loadingExtras={loadingExtras} />}
@@ -689,7 +689,55 @@ const GraphTab: React.FC<{ brain: any; headers: Record<string, string> }> = ({ b
 
 // ─── Overview tab ────────────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const OverviewTab: React.FC<{ brain: any; memories: any[]; master: any; loadingExtras?: boolean }> = ({ brain, memories, master, loadingExtras }) => {
+// Renderer Markdown-lite (sin dependencias): headings ##/###, bullets - / ·,
+// y **negrita** inline. Suficiente para el dossier que genera el LLM.
+const renderInline = (text: string): React.ReactNode =>
+    text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+        part.startsWith('**') && part.endsWith('**')
+            ? <strong key={i}>{part.slice(2, -2)}</strong>
+            : <React.Fragment key={i}>{part}</React.Fragment>
+    );
+
+const DossierBody: React.FC<{ text: string }> = ({ text }) => {
+    const lines = text.split('\n');
+    const blocks: React.ReactNode[] = [];
+    let bullets: string[] = [];
+    const flushBullets = (key: string) => {
+        if (bullets.length) {
+            blocks.push(
+                <ul key={key} className="list-disc list-inside space-y-0.5 text-sm text-gray-700 my-1">
+                    {bullets.map((b, i) => <li key={i}>{renderInline(b)}</li>)}
+                </ul>
+            );
+            bullets = [];
+        }
+    };
+    lines.forEach((raw, idx) => {
+        const line = raw.trimEnd();
+        if (/^###\s+/.test(line)) {
+            flushBullets(`b${idx}`);
+            blocks.push(<h5 key={idx} className="text-xs font-bold text-gray-800 mt-3 mb-0.5 uppercase tracking-wide">{renderInline(line.replace(/^###\s+/, ''))}</h5>);
+        } else if (/^##\s+/.test(line)) {
+            flushBullets(`b${idx}`);
+            blocks.push(<h4 key={idx} className="text-sm font-bold text-violet-800 mt-3 mb-1 flex items-center gap-1.5"><Layers className="w-3.5 h-3.5" />{renderInline(line.replace(/^##\s+/, ''))}</h4>);
+        } else if (/^[-·•*]\s+/.test(line)) {
+            bullets.push(line.replace(/^[-·•*]\s+/, ''));
+        } else if (line.trim() === '') {
+            flushBullets(`b${idx}`);
+        } else {
+            flushBullets(`b${idx}`);
+            blocks.push(<p key={idx} className="text-sm text-gray-700 leading-relaxed my-1">{renderInline(line)}</p>);
+        }
+    });
+    flushBullets('b-final');
+    return <div>{blocks}</div>;
+};
+
+const OverviewTab: React.FC<{
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    brain: any; memories: any[]; master: any; loadingExtras?: boolean;
+    headers: Record<string, string>; canEdit: boolean; onRefresh: () => void;
+}> = ({ brain, memories, master, loadingExtras, headers, canEdit }) => {
     const memoryKindsCount = useMemo(() => {
         const map: Record<string, number> = {};
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -697,8 +745,113 @@ const OverviewTab: React.FC<{ brain: any; memories: any[]; master: any; loadingE
         return map;
     }, [memories]);
 
+    const [regenerating, setRegenerating] = useState(false);
+    const [dossier, setDossier] = useState<string | null>(brain.dossier || null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [meta, setMeta] = useState<any>(brain.dossierMeta || null);
+    const [updatedAt, setUpdatedAt] = useState<string | null>(brain.dossierUpdatedAt || null);
+
+    const regenerate = useCallback(async () => {
+        setRegenerating(true);
+        try {
+            const r = await fetch(`${API}/brains/${brain.id}/dossier/regenerate`, { method: 'POST', headers });
+            const json = await r.json();
+            if (r.ok && json.ok) {
+                setDossier(json.dossier);
+                setMeta(json.dossierMeta);
+                setUpdatedAt(json.dossierUpdatedAt);
+                toast.success('Dossier del sitio actualizado 🧬');
+            } else {
+                toast.error(json.message || 'No se pudo generar el dossier');
+            }
+        } catch {
+            toast.error('Error de red al generar el dossier');
+        } finally {
+            setRegenerating(false);
+        }
+    }, [brain.id, headers]);
+
+    const completeness = typeof meta?.completeness === 'number' ? meta.completeness : null;
+    const highlights: string[] = Array.isArray(meta?.highlights) ? meta.highlights : [];
+    const gaps: string[] = Array.isArray(meta?.gaps) ? meta.gaps : [];
+    const docCount = meta?.docCount ?? 0;
+
     return (
         <div className="space-y-5">
+            {/* Dossier vivo del sitio */}
+            <div className="border border-violet-100 rounded-xl overflow-hidden">
+                <div className="bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-white">
+                        <Sparkles className="w-4 h-4" />
+                        <span className="font-bold text-sm">Dossier del sitio</span>
+                        <span className="text-[11px] text-violet-100">síntesis viva de lo que el cerebro sabe</span>
+                    </div>
+                    {canEdit && (
+                        <button
+                            onClick={regenerate}
+                            disabled={regenerating}
+                            className="flex items-center gap-1.5 text-xs font-medium bg-white/15 hover:bg-white/25 text-white px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-60"
+                        >
+                            {regenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                            {regenerating ? 'Sintetizando…' : 'Regenerar'}
+                        </button>
+                    )}
+                </div>
+
+                <div className="p-4 bg-white">
+                    {dossier ? (
+                        <>
+                            <div className="flex items-center gap-3 flex-wrap mb-3 text-[11px] text-gray-500">
+                                <span className="flex items-center gap-1"><FileText className="w-3 h-3" />{docCount} documento{docCount === 1 ? '' : 's'} analizado{docCount === 1 ? '' : 's'}</span>
+                                {updatedAt && <span>· Actualizado {new Date(updatedAt).toLocaleString('es', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>}
+                            </div>
+
+                            {completeness !== null && (
+                                <div className="mb-3">
+                                    <div className="flex items-center justify-between text-[11px] text-gray-600 mb-1">
+                                        <span className="font-medium">Completitud institucional</span>
+                                        <span className="font-bold text-violet-700">{completeness}%</span>
+                                    </div>
+                                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                        <div className="h-full bg-gradient-to-r from-violet-500 to-indigo-500 rounded-full transition-all" style={{ width: `${completeness}%` }} />
+                                    </div>
+                                </div>
+                            )}
+
+                            {highlights.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5 mb-3">
+                                    {highlights.map((h, i) => (
+                                        <span key={i} className="text-[11px] bg-violet-50 text-violet-700 border border-violet-100 px-2 py-0.5 rounded-full">{h}</span>
+                                    ))}
+                                </div>
+                            )}
+
+                            <DossierBody text={dossier} />
+
+                            {gaps.length > 0 && (
+                                <div className="mt-4 bg-amber-50 border border-amber-100 rounded-lg p-3">
+                                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-800 uppercase tracking-wide mb-1.5">
+                                        <AlertCircle className="w-3.5 h-3.5" /> Información que falta cargar
+                                    </div>
+                                    <ul className="list-disc list-inside text-xs text-amber-900 space-y-0.5">
+                                        {gaps.map((g, i) => <li key={i}>{g}</li>)}
+                                    </ul>
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <div className="text-center py-6">
+                            <Sparkles className="w-9 h-9 text-violet-300 mx-auto mb-2" />
+                            <p className="text-sm font-medium text-gray-600">Todavía no hay dossier</p>
+                            <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
+                                Subí un documento institucional o publicá contenido y el cerebro sintetizará automáticamente un resumen detallado de tu sitio.
+                                {canEdit && ' También podés generarlo ahora con el botón "Regenerar".'}
+                            </p>
+                        </div>
+                    )}
+                </div>
+            </div>
+
             {/* Identidad */}
             <div className="bg-violet-50/40 border border-violet-100 rounded-xl p-4">
                 <div className="text-[10px] uppercase tracking-widest text-violet-700 font-bold mb-2 flex items-center gap-1.5">

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     Upload, FileText, FileType2, Loader2, CheckCircle2, AlertCircle, Trash2,
-    RefreshCw, BookOpen,
+    RefreshCw, BookOpen, Sparkles, Tag, ListChecks,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -22,6 +22,24 @@ interface BrainDocumentRow {
     uploadedBy: string | null;
     createdAt: string;
     processedAt: string | null;
+    summary?: string | null;
+    analysis?: DocAnalysis | null;
+    analyzedAt?: string | null;
+}
+
+interface DocAnalysis {
+    docType?: string;
+    topics?: string[];
+    entities?: {
+        people?: string[];
+        orgs?: string[];
+        dates?: string[];
+        amounts?: string[];
+        places?: string[];
+    };
+    keyFacts?: string[];
+    actionItems?: string[];
+    relationToSite?: string;
 }
 
 interface BrainDocumentsPanelProps {
@@ -322,6 +340,14 @@ const BrainDocumentsPanel: React.FC<BrainDocumentsPanelProps> = ({ brainId, brai
                                                 <span>{doc.errorMessage}</span>
                                             </div>
                                         )}
+                                        {doc.status === 'processing' && (
+                                            <div className="mt-2 text-[11px] text-violet-500 flex items-center gap-1">
+                                                <Sparkles className="w-3 h-3" /> Indexando y analizando comprensión del documento…
+                                            </div>
+                                        )}
+                                        {doc.status === 'completed' && doc.summary && (
+                                            <DocFicha summary={doc.summary} analysis={doc.analysis || null} />
+                                        )}
                                     </div>
                                     <div className="flex flex-col gap-1">
                                         {canUpload && doc.status === 'failed' && (
@@ -348,6 +374,83 @@ const BrainDocumentsPanel: React.FC<BrainDocumentsPanelProps> = ({ brainId, brai
                         );
                     })}
                 </div>
+            )}
+        </div>
+    );
+};
+
+// Ficha de comprensión de un documento — colapsable, prueba de que el cerebro
+// "leyó" y entendió el archivo (Capa A de la síntesis).
+const DocFicha: React.FC<{ summary: string; analysis: DocAnalysis | null }> = ({ summary, analysis }) => {
+    const a = analysis || {};
+    const ent = a.entities || {};
+    const chips = (label: string, items?: string[]) =>
+        items && items.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-1">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">{label}</span>
+                {items.slice(0, 8).map((it, i) => (
+                    <span key={i} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{it}</span>
+                ))}
+            </div>
+        ) : null;
+
+    const hasDetail = Boolean(
+        a.docType || (a.topics && a.topics.length) || (a.keyFacts && a.keyFacts.length) ||
+        (a.actionItems && a.actionItems.length) || a.relationToSite ||
+        Object.values(ent).some(v => Array.isArray(v) && v.length)
+    );
+
+    return (
+        <div className="mt-2 bg-violet-50/50 border border-violet-100 rounded-lg p-2.5">
+            <div className="flex items-center gap-1.5 mb-1">
+                <Sparkles className="w-3 h-3 text-violet-500" />
+                <span className="text-[10px] uppercase tracking-widest text-violet-700 font-bold">Ficha de comprensión del cerebro</span>
+                {a.docType && (
+                    <span className="text-[10px] bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-full font-medium ml-auto">{a.docType}</span>
+                )}
+            </div>
+            <p className="text-xs text-gray-700 leading-relaxed">{summary}</p>
+
+            {hasDetail && (
+                <details className="mt-2 group">
+                    <summary className="cursor-pointer text-[11px] text-violet-600 font-medium select-none">
+                        Ver análisis detallado
+                    </summary>
+                    <div className="mt-2 space-y-2">
+                        {chips('Temas', a.topics)}
+                        {chips('Personas', ent.people)}
+                        {chips('Organizaciones', ent.orgs)}
+                        {chips('Fechas', ent.dates)}
+                        {chips('Cifras', ent.amounts)}
+                        {chips('Lugares', ent.places)}
+
+                        {a.keyFacts && a.keyFacts.length > 0 && (
+                            <div>
+                                <div className="flex items-center gap-1 text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">
+                                    <Tag className="w-3 h-3" /> Datos clave
+                                </div>
+                                <ul className="list-disc list-inside text-[11px] text-gray-600 space-y-0.5">
+                                    {a.keyFacts.map((f, i) => <li key={i}>{f}</li>)}
+                                </ul>
+                            </div>
+                        )}
+                        {a.actionItems && a.actionItems.length > 0 && (
+                            <div>
+                                <div className="flex items-center gap-1 text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">
+                                    <ListChecks className="w-3 h-3" /> Acciones / compromisos
+                                </div>
+                                <ul className="list-disc list-inside text-[11px] text-gray-600 space-y-0.5">
+                                    {a.actionItems.map((f, i) => <li key={i}>{f}</li>)}
+                                </ul>
+                            </div>
+                        )}
+                        {a.relationToSite && (
+                            <div className="text-[11px] text-gray-600 italic border-l-2 border-violet-200 pl-2">
+                                {a.relationToSite}
+                            </div>
+                        )}
+                    </div>
+                </details>
             )}
         </div>
     );

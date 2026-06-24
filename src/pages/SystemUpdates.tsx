@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.493.0 | 2026-06-24 (Fallback de recuperación en Generar con el Cerebro)
-// Cache bust: 2026-06-24k
+// UI V4.494.0 | 2026-06-24 (Cerebro inteligente: ficha por documento + Dossier vivo del sitio)
+// Cache bust: 2026-06-24l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.494.0',
+        title: 'Cerebro inteligente: comprende tus documentos 🧠📑',
+        description: 'Ahora, cada documento que subís al Cerebro (PDF, Word, presentación, texto) genera una "Ficha de comprensión": un resumen y un análisis estructurado (tipo de documento, temas, personas, fechas, cifras, datos clave y acciones), visible en la tarjeta del archivo en la tab Documentos. Es la prueba de que el Cerebro realmente leyó y entendió lo que cargaste. Además, todo se fusiona automáticamente en un "Dossier del sitio": un resumen detallado y vivo —en la tab Resumen— que combina tus documentos con tus noticias, proyectos y eventos, se vuelve a sintetizar solo cada vez que entra información nueva, muestra el % de completitud institucional y qué información todavía falta cargar. El Dossier también alimenta el chat del Cerebro para que responda con mejor contexto. Funciona igual para todos los sitios.',
+        date: new Date().toISOString(),
+        tags: ['cerebro', 'IA', 'documentos', 'dossier', 'RAG'],
+        type: 'feature'
+    },
     {
         version: '4.493.0',
         title: 'Generar con el Cerebro: más robusto 🧠🔧',
