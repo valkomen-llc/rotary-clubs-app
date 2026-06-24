@@ -82,6 +82,9 @@ const EmailManagement: React.FC = () => {
     const [attachments, setAttachments] = useState<ComposeAttachment[]>([]);
     const [uploadingAttachment, setUploadingAttachment] = useState(false);
     const [sending, setSending] = useState(false);
+    const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
+    const [savingDraft, setSavingDraft] = useState(false);
+    const [drafts, setDrafts] = useState<any[]>([]);
     const editorRef = React.useRef<HTMLDivElement>(null);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -138,6 +141,77 @@ const EmailManagement: React.FC = () => {
         setComposeInitialHtml('');
         setAttachments([]);
         setShowCc(false);
+        setEditingDraftId(null);
+    };
+
+    const clubParam = () => ((club as any)?.id ? `?clubId=${(club as any).id}` : '');
+
+    const fetchDrafts = async () => {
+        try {
+            const res = await fetch(`/api/email-accounts/drafts${clubParam()}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) setDrafts(await res.json());
+        } catch (e) {
+            console.error('Error fetching drafts:', e);
+        }
+    };
+
+    const handleSaveDraft = async () => {
+        if (!activeAccount) { toast.error('Selecciona una cuenta'); return; }
+        const html = editorRef.current?.innerHTML || '';
+        setSavingDraft(true);
+        try {
+            const res = await fetch('/api/email-accounts/drafts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({
+                    id: editingDraftId || undefined,
+                    clubId: club?.id,
+                    fromEmail: activeAccount.email,
+                    to: composeData.to,
+                    cc: composeData.cc,
+                    subject: composeData.subject,
+                    html,
+                    attachments
+                })
+            });
+            if (res.ok) {
+                toast.success('Borrador guardado');
+                setShowComposeModal(false);
+                resetCompose();
+                if (selectedFolder === 'drafts') fetchDrafts();
+            } else {
+                const e = await res.json().catch(() => ({}));
+                toast.error(`No se pudo guardar: ${e.error || res.status}`);
+            }
+        } catch {
+            toast.error('Error de conexión al guardar el borrador');
+        } finally {
+            setSavingDraft(false);
+        }
+    };
+
+    const openDraft = (d: any) => {
+        setEditingDraftId(d.id);
+        setComposeData({ to: d.toEmail || '', cc: d.cc || '', subject: d.subject || '' });
+        setShowCc(!!d.cc);
+        setComposeInitialHtml(d.html || '');
+        setAttachments(Array.isArray(d.attachments) ? d.attachments : []);
+        if (d.fromEmail) {
+            const acc = accounts.find(a => a.email === d.fromEmail);
+            if (acc) setActiveAccount(acc);
+        }
+        setShowComposeModal(true);
+    };
+
+    const deleteDraft = async (id: string) => {
+        try {
+            await fetch(`/api/email-accounts/drafts/${id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+        } catch { /* noop */ }
     };
 
     // Construye el bloque citado para Responder/Reenviar (estilo Gmail).
@@ -459,7 +533,8 @@ const EmailManagement: React.FC = () => {
 
     useEffect(() => {
         if (selectedFolder === 'sent') fetchSent();
-        else if (selectedFolder !== 'drafts') fetchMessages();
+        else if (selectedFolder === 'drafts') fetchDrafts();
+        else fetchMessages();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeAccount?.id, selectedFolder]);
 
@@ -568,6 +643,11 @@ const EmailManagement: React.FC = () => {
                 };
 
                 setSentMessages([newEmail, ...sentMessages]);
+                // Si el envío venía de un borrador, lo eliminamos.
+                if (editingDraftId) {
+                    await deleteDraft(editingDraftId);
+                    setDrafts(prev => prev.filter(d => d.id !== editingDraftId));
+                }
                 setShowComposeModal(false);
                 resetCompose();
                 toast.success(`Mensaje enviado con éxito desde ${activeAccount.email}`);
@@ -650,10 +730,10 @@ const EmailManagement: React.FC = () => {
                             <div className="p-4">
                                 <div className="space-y-1">
                                     {[
-                                        { id: 'inbox', icon: Inbox, label: 'Entrada', count: filteredEmails.length },
+                                        { id: 'inbox', icon: Inbox, label: 'Entrada', count: selectedFolder === 'inbox' ? messages.length : 0 },
                                         { id: 'starred', icon: Star, label: 'Destacados', count: 0 },
                                         { id: 'sent', icon: Send, label: 'Enviados', count: 0 },
-                                        { id: 'drafts', icon: Archive, label: 'Borradores', count: 0 },
+                                        { id: 'drafts', icon: Archive, label: 'Borradores', count: drafts.length },
                                         { id: 'trash', icon: Trash2, label: 'Papelera', count: 0 },
                                     ].map((folder) => (
                                         <button
@@ -702,13 +782,23 @@ const EmailManagement: React.FC = () => {
                                 {loadingMessages && (
                                     <div className="flex items-center justify-center py-10"><RefreshCw className="w-5 h-5 animate-spin text-gray-300" /></div>
                                 )}
-                                {!loadingMessages && filteredEmails.length === 0 && (
+                                {!loadingMessages && (selectedFolder === 'drafts' ? drafts.length === 0 : filteredEmails.length === 0) && (
                                     <div className="flex flex-col items-center justify-center text-center py-16 px-6">
                                         <Inbox className="w-10 h-10 text-gray-200 mb-3" />
                                         <p className="text-sm text-gray-400">{selectedFolder === 'sent' ? 'No has enviado correos en esta sesión.' : selectedFolder === 'drafts' ? 'Sin borradores.' : 'Sin mensajes en esta carpeta.'}</p>
                                     </div>
                                 )}
-                                {filteredEmails.map((email) => (
+                                {selectedFolder === 'drafts' && drafts.map((d) => (
+                                    <div key={d.id} onClick={() => openDraft(d)} className="p-4 border-b border-gray-50 cursor-pointer transition-all hover:bg-gray-50 relative group">
+                                        <div className="flex justify-between items-start mb-1">
+                                            <span className="text-sm text-gray-900 font-bold truncate">{d.toEmail || '(Sin destinatario)'}</span>
+                                            <button onClick={(e) => { e.stopPropagation(); deleteDraft(d.id).then(fetchDrafts); }} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100"><Trash2 className="w-3.5 h-3.5" /></button>
+                                        </div>
+                                        <h4 className="text-xs text-gray-600 truncate">{d.subject || '(Sin asunto)'}</h4>
+                                        <p className="text-[11px] text-gray-400 truncate mt-0.5">{(d.html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 90) || 'Borrador vacío'}</p>
+                                    </div>
+                                ))}
+                                {selectedFolder !== 'drafts' && filteredEmails.map((email) => (
                                     <div key={email.id} onClick={() => handleOpenEmail(email)} className={`p-4 border-b border-gray-50 cursor-pointer transition-all hover:bg-gray-50 relative ${selectedEmail?.id === email.id ? 'bg-sky-50/50' : ''} ${!email.read ? 'bg-sky-50/30' : ''}`}>
                                         <div className="flex justify-between items-start mb-1">
                                             <span className={`text-sm text-gray-900 ${!email.read ? 'font-black' : 'font-bold'}`}>{email.from.name}</span>
@@ -926,10 +1016,16 @@ const EmailManagement: React.FC = () => {
                             </div>
                             <div className="p-5 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
                                 <button onClick={() => { setShowComposeModal(false); resetCompose(); }} className="text-sm font-black text-gray-400 uppercase tracking-widest">Descartar</button>
-                                <button onClick={handleSendEmail} disabled={sending || !composeData.to} className="px-10 py-4 bg-gray-900 text-white text-sm font-black rounded-3xl hover:bg-rotary-blue transition-all flex items-center gap-3 disabled:opacity-50">
-                                    {sending ? <RefreshCw className="w-5 h-5 animate-spin" /> : <SendHorizontal className="w-5 h-5" />}
-                                    {sending ? 'Enviando...' : 'Enviar'}
-                                </button>
+                                <div className="flex items-center gap-3">
+                                    <button onClick={handleSaveDraft} disabled={savingDraft} className="px-5 py-4 bg-white border border-gray-200 text-gray-700 text-sm font-bold rounded-3xl hover:bg-gray-50 transition-all flex items-center gap-2 disabled:opacity-50">
+                                        {savingDraft ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Archive className="w-4 h-4" />}
+                                        Guardar borrador
+                                    </button>
+                                    <button onClick={handleSendEmail} disabled={sending || !composeData.to} className="px-10 py-4 bg-gray-900 text-white text-sm font-black rounded-3xl hover:bg-rotary-blue transition-all flex items-center gap-3 disabled:opacity-50">
+                                        {sending ? <RefreshCw className="w-5 h-5 animate-spin" /> : <SendHorizontal className="w-5 h-5" />}
+                                        {sending ? 'Enviando...' : 'Enviar'}
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>

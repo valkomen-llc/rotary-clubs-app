@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.488.0",
-  "cache_bust": "2026-06-24f (Adjuntos entrantes: se guardan en S3 al recibir y se descargan desde la bandeja)",
+  "version": "4.489.0",
+  "cache_bust": "2026-06-24g (Borradores persistentes: guardar/retomar/eliminar desde la bandeja)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

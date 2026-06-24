@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.488.0 | 2026-06-24 (Adjuntos de correos recibidos)
-// Cache bust: 2026-06-24f
+// UI V4.489.0 | 2026-06-24 (Borradores de correo)
+// Cache bust: 2026-06-24g
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.489.0',
+        title: 'Borradores de Correo 📝',
+        description: 'Ahora podés guardar un correo como borrador y retomarlo después: el botón "Guardar borrador" en el compositor guarda destinatario, copia, asunto, formato y adjuntos. Los borradores aparecen en la carpeta "Borradores"; al abrir uno se recupera todo y, al enviarlo, se elimina automáticamente.',
+        date: new Date().toISOString(),
+        tags: ['correo', 'borradores', 'bandeja'],
+        type: 'feature'
+    },
     {
         version: '4.488.0',
         title: 'Adjuntos de Correos Recibidos 📎',
