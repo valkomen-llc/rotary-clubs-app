@@ -1120,7 +1120,31 @@ const ConfigTab: React.FC<{ brain: any; canEdit: boolean; headers: Record<string
     });
     const [saving, setSaving] = useState(false);
     const [resetting, setResetting] = useState(false);
+    const [generatingId, setGeneratingId] = useState(false);
     const overridden = md.identityPromptOverridden === true;
+
+    const generateIdentity = async () => {
+        if (!canEdit) return;
+        setGeneratingId(true);
+        try {
+            const r = await fetch(`${API}/brains/${brain.id}/identity/generate`, {
+                method: 'POST',
+                headers: { ...headers, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contextNote }),
+            });
+            const j = await r.json().catch(() => ({}));
+            if (r.ok && j.identityPrompt) {
+                setIdentityPrompt(j.identityPrompt);
+                toast.success('Identidad generada con IA — revisala y guardá ✨');
+            } else {
+                toast.error(j.error || 'No se pudo generar la identidad');
+            }
+        } catch {
+            toast.error('Error de red al generar la identidad');
+        } finally {
+            setGeneratingId(false);
+        }
+    };
 
     const dirty = identityPrompt !== (brain.identityPrompt || '') ||
                   contextNote !== (md.contextNote || '') ||
@@ -1253,16 +1277,27 @@ const ConfigTab: React.FC<{ brain: any; canEdit: boolean; headers: Record<string
                             Cómo razona, qué voz tiene, qué sabe. Este texto se le pasa al LLM como system prompt cada vez que el cerebro genera contenido o responde.
                         </div>
                     </div>
-                    {overridden && (
+                    <div className="flex items-center gap-1.5">
                         <button
-                            onClick={resetToAuto}
-                            disabled={resetting || !canEdit}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-violet-700 hover:bg-violet-50 rounded-lg font-medium"
+                            onClick={generateIdentity}
+                            disabled={generatingId || !canEdit}
+                            title="Redacta la identidad con IA usando el Contexto institucional"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-violet-600 hover:bg-violet-700 disabled:bg-gray-300 rounded-lg font-medium"
                         >
-                            {resetting ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                            Restaurar desde onboarding
+                            {generatingId ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                            {generatingId ? 'Generando…' : 'Generar con IA'}
                         </button>
-                    )}
+                        {overridden && (
+                            <button
+                                onClick={resetToAuto}
+                                disabled={resetting || !canEdit}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-violet-700 hover:bg-violet-50 rounded-lg font-medium"
+                            >
+                                {resetting ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                                Restaurar desde onboarding
+                            </button>
+                        )}
+                    </div>
                 </div>
                 <textarea
                     value={identityPrompt}

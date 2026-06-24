@@ -21,7 +21,7 @@
 import prisma from '../lib/prisma.js';
 import { generateText } from './brainAgent.js';
 
-console.log('🧬 BRAIN SYNTHESIS v4.497 — dossier evidence-first + contexto del admin + tipo de sitio recategorizable 📑🧠');
+console.log('🧬 BRAIN SYNTHESIS v4.498 — dossier evidence-first + identidad generada por IA desde el contexto del admin 📑✨');
 
 const DOC_TEXT_BUDGET = 12000;   // chars del documento que mandamos al LLM
 const DOSSIER_DOC_LIMIT = 40;    // máx fichas de documento a fusionar
@@ -143,6 +143,100 @@ export async function analyzeDocument({ documentId, fullText }) {
     }).catch(err => console.warn('[brainSynthesis] persist analysis:', err.message));
 
     return { ok: true, summary, analysis };
+}
+
+// ─── Generación de identidad asistida por IA ─────────────────────────────────
+// El admin puede pedir que la IA redacte la "Identidad del cerebro" tomando como
+// referencia el Contexto institucional que escribió, el tipo de sitio y señales
+// de sus documentos. Devuelve texto plano listo para el system prompt (no
+// persiste: el frontend lo muestra para revisar y el admin lo guarda).
+
+const KIND_LABEL_ES = {
+    CLUB: 'Club Rotary',
+    ASSOCIATION: 'Asociación Rotaria',
+    PROGRAM: 'Programa de Intercambio',
+    EVENT: 'Evento',
+    CONFERENCE: 'Conferencia / Convención',
+    PROJECT_FAIR: 'Feria de Proyectos',
+    FOUNDATION: 'Fundación',
+    DISTRICT: 'Distrito',
+};
+
+const IDENTITY_SYSTEM = [
+    'Redactás la IDENTIDAD (system prompt) del cerebro de IA de un sitio web',
+    'institucional. Recibís: el nombre del sitio, su tipo, el CONTEXTO que escribió',
+    'el administrador, y señales de sus documentos. Escribí en español, en segunda',
+    'persona ("Eres el cerebro institucional de…").',
+    '',
+    'La identidad DEBE:',
+    '· Declarar QUÉ es la organización según la EVIDENCIA (el contexto del admin manda;',
+    '  NO asumas que es un "club" si en realidad es un evento, convención, feria o',
+    '  fundación).',
+    '· Capturar su propósito, su causa y su voz.',
+    '· Incluir un rol breve (3 a 4 viñetas) sobre cómo razona y de qué aprende.',
+    '· Cerrar con la regla de no inventar información fuera de su memoria.',
+    '',
+    'Devolvé SOLO el texto de la identidad: sin encabezados extra, sin JSON, sin',
+    'comillas que envuelvan todo. Máximo ~1800 caracteres.',
+].join('\n');
+
+export async function generateIdentityFromContext(brainId, { contextNote } = {}) {
+    if (!hasLLM()) return { ok: false, skipped: 'no-llm' };
+    const brain = await prisma.brain.findUnique({ where: { id: brainId } });
+    if (!brain) return { ok: false, error: 'brain not found' };
+
+    const md = (brain.metadata && typeof brain.metadata === 'object' && !Array.isArray(brain.metadata)) ? brain.metadata : {};
+    const ctx = clampStr(typeof contextNote === 'string' ? contextNote : md.contextNote, 4000).trim();
+
+    const club = brain.clubId
+        ? await prisma.club.findUnique({ where: { id: brain.clubId } }).catch(() => null)
+        : null;
+    const location = club ? [club.city, club.country].filter(Boolean).join(', ') : '';
+
+    // Señales de los documentos analizados (si hay) para enriquecer la identidad.
+    const docs = await prisma.brainDocument.findMany({
+        where: { brainId: brain.id, summary: { not: null } },
+        orderBy: { processedAt: 'desc' },
+        take: 6,
+        select: { filename: true, summary: true },
+    }).catch(() => []);
+    const docHints = docs.map(d => `· ${d.filename}: ${clampStr(d.summary, 240)}`).join('\n');
+
+    const userMessage = [
+        `Nombre del sitio: "${brain.name}"`,
+        `Tipo declarado: ${KIND_LABEL_ES[brain.kind] || brain.kind || 'Sitio'}`,
+        location ? `Ubicación: ${location}` : null,
+        club?.description ? `Descripción registrada: ${clampStr(club.description, 600)}` : null,
+        '',
+        ctx ? `── Contexto institucional (FUENTE PRIMARIA) ──\n${ctx}` : '── El administrador no escribió contexto; deducí del resto ──',
+        '',
+        docHints ? `── Señales de documentos analizados ──\n${docHints}` : null,
+    ].filter(Boolean).join('\n');
+
+    let raw = '';
+    try {
+        raw = await generateText({
+            systemPrompt: IDENTITY_SYSTEM,
+            userMessage,
+            temperature: 0.5,
+            maxOutputTokens: 1024,
+        });
+    } catch (err) {
+        console.warn('[brainSynthesis] generateIdentity LLM error:', err.message);
+        return { ok: false, error: err.message };
+    }
+
+    let identity = (raw || '').trim();
+    // Quitar fences o comillas envolventes si el modelo las agregó.
+    const fence = identity.match(/^```[a-z]*\s*([\s\S]*?)```$/i);
+    if (fence) identity = fence[1].trim();
+    if (identity.length > 1 && identity.startsWith('"') && identity.endsWith('"')) {
+        identity = identity.slice(1, -1).trim();
+    }
+    identity = identity.slice(0, 4000);
+    if (!identity) return { ok: false, error: 'empty identity' };
+
+    return { ok: true, identityPrompt: identity };
 }
 
 // ─── Capa B — Dossier vivo del sitio ─────────────────────────────────────────
