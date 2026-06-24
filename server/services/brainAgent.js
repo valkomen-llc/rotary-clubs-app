@@ -315,8 +315,19 @@ async function callGemini({ systemPrompt, history, userMessage, contents: conten
     const body = {
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents,
-        generationConfig: { temperature: temperature ?? 0.7, maxOutputTokens: maxOutputTokens ?? 2048 },
         ...(enableTools ? { tools: [{ functionDeclarations: toolsToGeminiFunctions() }] } : {}),
+    };
+
+    // generationConfig por-candidato: en los modelos Gemini 2.5 (thinking models)
+    // el "pensamiento" consume maxOutputTokens y trunca la respuesta visible.
+    // Desactivamos thinking (thinkingBudget:0) SOLO para 2.5 para que todo el
+    // presupuesto vaya al texto. Los modelos 1.5/2.0 no llevan el campo.
+    const makeBody = (c) => {
+        const generationConfig = { temperature: temperature ?? 0.7, maxOutputTokens: maxOutputTokens ?? 2048 };
+        if (/2\.5/.test(c.model || '')) {
+            generationConfig.thinkingConfig = { thinkingBudget: 0 };
+        }
+        return JSON.stringify({ ...body, generationConfig });
     };
 
     // v4.377: probar combinaciones model+version. Si tenemos un working candidate
@@ -336,7 +347,7 @@ async function callGemini({ systemPrompt, history, userMessage, contents: conten
             const r = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
+                body: makeBody(c),
             });
             if (r.ok) {
                 data = await r.json();
@@ -400,7 +411,7 @@ async function callGemini({ systemPrompt, history, userMessage, contents: conten
                     const r = await fetch(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body),
+                        body: makeBody(c),
                     });
                     if (r.ok) {
                         data = await r.json();
@@ -447,6 +458,12 @@ async function callGemini({ systemPrompt, history, userMessage, contents: conten
                     args: part.functionCall.args || {},
                 });
             }
+        }
+        // Aviso si el modelo truncó por presupuesto de tokens (típico en modelos
+        // 2.5 cuando el "thinking" consume el budget). thinkingBudget:0 lo evita,
+        // pero dejamos el log por si vuelve a pasar con otro modelo.
+        if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
+            console.warn(`[brainAgent] gemini finishReason=${candidate.finishReason} · textLen=${text.length}`);
         }
         return { text, toolCalls };
     } catch (err) {

@@ -21,7 +21,7 @@
 import prisma from '../lib/prisma.js';
 import { generateText } from './brainAgent.js';
 
-console.log('🧬 BRAIN SYNTHESIS v4.499 — contexto institucional ampliado a 20k + identidad por IA + dossier evidence-first 📑✨');
+console.log('🧬 BRAIN SYNTHESIS v4.500 — identidad/dossier completos (sin truncado por thinking en Gemini 2.5) + contexto 20k 📑✨');
 
 const DOC_TEXT_BUDGET = 12000;   // chars del documento que mandamos al LLM
 const DOSSIER_DOC_LIMIT = 40;    // máx fichas de documento a fusionar
@@ -106,7 +106,7 @@ export async function analyzeDocument({ documentId, fullText }) {
             systemPrompt: DOC_ANALYSIS_SYSTEM,
             userMessage,
             temperature: 0.3,
-            maxOutputTokens: 1536,
+            maxOutputTokens: 2048,
         });
     } catch (err) {
         console.warn('[brainSynthesis] analyzeDocument LLM error:', err.message);
@@ -177,8 +177,11 @@ const IDENTITY_SYSTEM = [
     '· Incluir un rol breve (3 a 4 viñetas) sobre cómo razona y de qué aprende.',
     '· Cerrar con la regla de no inventar información fuera de su memoria.',
     '',
+    'Escribí una identidad COMPLETA y bien desarrollada (varios párrafos si hace',
+    'falta) que aproveche todo el contexto provisto. No la cortes a la mitad ni la',
+    'dejes incompleta.',
     'Devolvé SOLO el texto de la identidad: sin encabezados extra, sin JSON, sin',
-    'comillas que envuelvan todo. Máximo ~1800 caracteres.',
+    'comillas que envuelvan todo.',
 ].join('\n');
 
 export async function generateIdentityFromContext(brainId, { contextNote } = {}) {
@@ -220,7 +223,7 @@ export async function generateIdentityFromContext(brainId, { contextNote } = {})
             systemPrompt: IDENTITY_SYSTEM,
             userMessage,
             temperature: 0.5,
-            maxOutputTokens: 1024,
+            maxOutputTokens: 3072,
         });
     } catch (err) {
         console.warn('[brainSynthesis] generateIdentity LLM error:', err.message);
