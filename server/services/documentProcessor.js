@@ -12,8 +12,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import prisma from '../lib/prisma.js';
 import { ingestMemory } from './brainService.js';
+import { analyzeDocument, regenerateDossierSafe } from './brainSynthesis.js';
 
-console.log('📄 DOCUMENT PROCESSOR v4.353 — carga documental para cerebros online 📚');
+console.log('📄 DOCUMENT PROCESSOR v4.494 — carga documental + comprensión (ficha + dossier) para cerebros online 📚🧬');
 
 const MAX_CHUNK_CHARS = 1500; // ~375 tokens, dentro del límite de Gemini embed
 const CHUNK_OVERLAP = 200;
@@ -218,7 +219,19 @@ export async function processDocument({ documentId, buffer }) {
             }
         }
 
-        // 4. Marcar como completed (o failed si nada se ingestó)
+        // 4. Comprensión del documento (Capa A): mientras el status sigue en
+        // 'processing', generamos la ficha (summary + análisis estructurado) a
+        // partir del texto ya extraído. Best-effort: si falla, el documento
+        // igual queda 'completed' con sus chunks indexados.
+        if (successCount > 0) {
+            try {
+                await analyzeDocument({ documentId, fullText: rawText });
+            } catch (err) {
+                console.warn(`[documentProcessor] análisis ${documentId} fail:`, err.message);
+            }
+        }
+
+        // 5. Marcar como completed (o failed si nada se ingestó)
         const finalStatus = successCount > 0 ? 'completed' : 'failed';
         await prisma.brainDocument.update({
             where: { id: documentId },
@@ -231,6 +244,12 @@ export async function processDocument({ documentId, buffer }) {
                 processedAt: new Date(),
             },
         });
+
+        // 6. Re-sintetizar el Dossier del sitio (Capa B) con la nueva ficha
+        // incorporada. Fire-and-forget para no demorar el cierre del proceso.
+        if (successCount > 0 && doc.brainId) {
+            regenerateDossierSafe(doc.brainId, { reason: `document:${documentId}` });
+        }
 
         return { ok: true, status: finalStatus, chunks: successCount, charCount };
     } catch (err) {
@@ -272,5 +291,9 @@ export async function deleteDocument(documentId) {
     await prisma.brain.update({ where: { id: doc.brainId }, data: { memoryCount: newCount } });
 
     await prisma.brainDocument.delete({ where: { id: documentId } });
+
+    // El dossier ya no debe referenciar el documento eliminado — re-sintetizar.
+    regenerateDossierSafe(doc.brainId, { reason: `document-deleted:${documentId}` });
+
     return { ok: true, memoriesDeleted: deleted.count };
 }

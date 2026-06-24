@@ -1444,6 +1444,12 @@ model Brain {
   isMaster       Boolean  @default(false)
   memoryCount    Int      @default(0)
   metadata       Json?    @default("{}")
+  // Dossier vivo del sitio: síntesis institucional (Markdown) que fusiona las
+  // fichas de los documentos + las secciones publicadas. Se regenera cada vez
+  // que entra información nueva. dossierMeta: { highlights, gaps, completeness }.
+  dossier          String?
+  dossierMeta      Json?     @default("{}")
+  dossierUpdatedAt DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -1529,6 +1535,12 @@ model BrainDocument {
   charCount    Int       @default(0)
   uploadedBy   String?
   metadata     Json?     @default("{}")
+  // Ficha de comprensión (Capa A): resumen + análisis estructurado generados
+  // por el LLM a partir del texto del documento. Prueba de que el cerebro lo
+  // leyó. analysis: { docType, topics, entities, keyFacts, actionItems, ... }.
+  summary      String?
+  analysis     Json?     @default("{}")
+  analyzedAt   DateTime?
   createdAt    DateTime  @default(now())
   processedAt  DateTime?
   updatedAt    DateTime  @updatedAt

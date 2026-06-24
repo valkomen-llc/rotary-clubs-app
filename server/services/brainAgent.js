@@ -224,8 +224,15 @@ const TOOLS_BY_NAME = Object.fromEntries(TOOLS.map(t => [t.name, t]));
 
 async function buildSystemPrompt({ brain }) {
     const identity = brain.identityPrompt || `Eres el cerebro de "${brain.name}".`;
+    // Si el sitio ya tiene un Dossier sintetizado (resumen vivo de toda su
+    // documentación + secciones), lo inyectamos como contexto base. Así el chat
+    // responde desde la síntesis institucional y no solo desde chunks sueltos.
+    const dossierBlock = brain.dossier
+        ? ['', '── Dossier del sitio (síntesis institucional vigente) ──', String(brain.dossier).slice(0, 6000), '']
+        : [];
     return [
         identity,
+        ...dossierBlock,
         '',
         '── Capacidades disponibles ──',
         'Tenés acceso a herramientas que podés usar para responder mejor:',
@@ -243,6 +250,21 @@ async function buildSystemPrompt({ brain }) {
     ].join('\n');
 }
 
+// Generación de texto plano reutilizable (sin tools). La usan brainSynthesis
+// (análisis de documentos + dossier del sitio) y cualquier otro consumidor que
+// solo necesite texto del LLM, aprovechando la misma cascada de modelos Gemini
+// + cache de candidato que ya resuelve callGemini.
+export async function generateText({ systemPrompt, userMessage, temperature = 0.4, maxOutputTokens = 2048 }) {
+    const { text } = await callGemini({
+        systemPrompt,
+        userMessage,
+        enableTools: false,
+        temperature,
+        maxOutputTokens,
+    });
+    return text || '';
+}
+
 // Convierte tools a formato de Gemini function declarations
 function toolsToGeminiFunctions() {
     return TOOLS.map(t => ({
@@ -255,7 +277,7 @@ function toolsToGeminiFunctions() {
 // callGemini acepta `contents` ya formateados (formato exacto de Gemini API).
 // Internamente, también acepta el shape legacy { systemPrompt, history, userMessage }
 // para retro-compatibilidad, pero la API moderna espera `contents` directo.
-async function callGemini({ systemPrompt, history, userMessage, contents: contentsParam, enableTools = true }) {
+async function callGemini({ systemPrompt, history, userMessage, contents: contentsParam, enableTools = true, temperature, maxOutputTokens }) {
     const key = process.env.GEMINI_API_KEY;
     if (!key) {
         return { text: '⚠️ El LLM no está configurado (GEMINI_API_KEY faltante). Solo puedo responder con búsqueda semántica.', toolCalls: [] };
@@ -285,7 +307,7 @@ async function callGemini({ systemPrompt, history, userMessage, contents: conten
     const body = {
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents,
-        generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+        generationConfig: { temperature: temperature ?? 0.7, maxOutputTokens: maxOutputTokens ?? 2048 },
         ...(enableTools ? { tools: [{ functionDeclarations: toolsToGeminiFunctions() }] } : {}),
     };
 
