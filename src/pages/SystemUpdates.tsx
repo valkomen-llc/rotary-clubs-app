@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.490.0 | 2026-06-24 (Avatar de perfil del club)
-// Cache bust: 2026-06-24h
+// UI V4.491.0 | 2026-06-24 (Generador de textos de la portada desde el Cerebro)
+// Cache bust: 2026-06-24i
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.491.0',
+        title: 'Textos de la Portada con el Cerebro 🧠✍️',
+        description: 'Nuevo botón "Generar con el Cerebro" en Configuración → Sección de Estadísticas (3 Cajas). Consulta los documentos y memorias indexados en el Cerebro del sitio (RAG) y redacta automáticamente el icono, color, cifra y texto de cada caja, coherentes con la información cargada. Revisa el resultado y guarda. El backend ya soporta también los bloques "Somos gente de acción", "Únete a Rotary" y "Nuestra Fundación".',
+        date: new Date().toISOString(),
+        tags: ['cerebro', 'portada', 'IA', 'estadísticas', 'RAG'],
+        type: 'feature'
+    },
     {
         version: '4.490.0',
         title: 'Avatar de Perfil del Club 🪪',

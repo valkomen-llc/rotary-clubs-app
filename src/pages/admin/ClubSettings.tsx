@@ -165,8 +165,40 @@ const ClubSettings: React.FC = () => {
     const [platformLogoSize, setPlatformLogoSize] = useState<number>(48);
     const [saasRedirect, setSaasRedirect] = useState(false);
     const [updatingRedirect, setUpdatingRedirect] = useState(false);
+    const [generatingContainer, setGeneratingContainer] = useState<string | null>(null);
 
     const API_URL = import.meta.env.VITE_API_URL || '/api';
+
+    // Genera el texto de un contenedor de la portada a partir del Cerebro (RAG).
+    // Por ahora 'stats' rellena formData.statsContent; los demás contenedores
+    // (action/join/foundation) ya están soportados en el backend y se irán
+    // cableando aquí con el mismo patrón.
+    const handleGenerateFromBrain = async (container: string) => {
+        if (!club?.id) { toast.error('No hay club seleccionado.'); return; }
+        setGeneratingContainer(container);
+        const tId = toast.loading('Consultando el Cerebro y redactando…');
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const res = await fetch(`${API_URL}/content-studio/generate-container`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ clubId: club.id, container })
+            });
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error || 'No se pudo generar el contenido.');
+
+            if (container === 'stats' && Array.isArray(json.data)) {
+                setFormData(prev => ({ ...prev, statsContent: json.data.slice(0, 3) }));
+            }
+            toast.dismiss(tId);
+            toast.success(`Texto generado con ${json.sources?.length || 0} fuente(s) del Cerebro. Revísalo y guarda.`);
+        } catch (error: any) {
+            toast.dismiss(tId);
+            toast.error(error.message || 'Error al generar desde el Cerebro.');
+        } finally {
+            setGeneratingContainer(null);
+        }
+    };
 
     useEffect(() => {
         const token = localStorage.getItem('rotary_token');
@@ -1312,11 +1344,23 @@ const ClubSettings: React.FC = () => {
                         {/* Sección de Estadísticas (3 cajas) — solo Eventos/Convenciones */}
                         {(isSuperAdmin || club?.type === 'Evento o Convención') && (
                             <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
-                                <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
-                                    <Palette className="w-5 h-5 text-rotary-blue" /> Sección de Estadísticas (3 Cajas)
-                                </h3>
+                                <div className="flex items-start justify-between gap-4 mb-2">
+                                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-3">
+                                        <Palette className="w-5 h-5 text-rotary-blue" /> Sección de Estadísticas (3 Cajas)
+                                    </h3>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleGenerateFromBrain('stats')}
+                                        disabled={generatingContainer === 'stats'}
+                                        title="Genera las 3 cajas con la información del Cerebro del sitio"
+                                        className="flex-shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-semibold shadow-sm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                                    >
+                                        <Sparkles className={`w-4 h-4 ${generatingContainer === 'stats' ? 'animate-pulse' : ''}`} />
+                                        {generatingContainer === 'stats' ? 'Generando…' : 'Generar con el Cerebro'}
+                                    </button>
+                                </div>
                                 <p className="text-xs text-gray-400 mb-6">
-                                    Personaliza el icono, color, número/valor y texto de cada una de las tres cajas de estadísticas de la portada.
+                                    Personaliza el icono, color, número/valor y texto de cada una de las tres cajas de estadísticas de la portada. O deja que el <strong>Cerebro</strong> las redacte con la información indexada del sitio.
                                 </p>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     {formData.statsContent.map((box, i) => (
