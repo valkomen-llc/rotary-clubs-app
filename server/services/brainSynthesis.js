@@ -21,12 +21,13 @@
 import prisma from '../lib/prisma.js';
 import { generateText } from './brainAgent.js';
 
-console.log('🧬 BRAIN SYNTHESIS v4.498 — dossier evidence-first + identidad generada por IA desde el contexto del admin 📑✨');
+console.log('🧬 BRAIN SYNTHESIS v4.499 — contexto institucional ampliado a 20k + identidad por IA + dossier evidence-first 📑✨');
 
 const DOC_TEXT_BUDGET = 12000;   // chars del documento que mandamos al LLM
 const DOSSIER_DOC_LIMIT = 40;    // máx fichas de documento a fusionar
 const DOSSIER_MEM_SAMPLE = 8;    // títulos de muestra por tipo de memoria
 const DOSSIER_MIN_INTERVAL_MS = 10 * 60 * 1000; // debounce: máx 1 regen/10min por sitio
+const CONTEXT_NOTE_MAX = 20000;  // límite del contexto institucional libre del admin
 
 const hasLLM = () => Boolean(process.env.GEMINI_API_KEY);
 
@@ -186,7 +187,7 @@ export async function generateIdentityFromContext(brainId, { contextNote } = {})
     if (!brain) return { ok: false, error: 'brain not found' };
 
     const md = (brain.metadata && typeof brain.metadata === 'object' && !Array.isArray(brain.metadata)) ? brain.metadata : {};
-    const ctx = clampStr(typeof contextNote === 'string' ? contextNote : md.contextNote, 4000).trim();
+    const ctx = clampStr(typeof contextNote === 'string' ? contextNote : md.contextNote, CONTEXT_NOTE_MAX).trim();
 
     const club = brain.clubId
         ? await prisma.club.findUnique({ where: { id: brain.clubId } }).catch(() => null)
@@ -344,7 +345,7 @@ async function buildDossierContext(brain) {
     // Contexto que el administrador escribió a mano (metadata.contextNote).
     // Es la fuente PRIMARIA de la naturaleza real de la organización.
     const md = (brain.metadata && typeof brain.metadata === 'object' && !Array.isArray(brain.metadata)) ? brain.metadata : {};
-    const contextNote = clampStr(md.contextNote, 4000).trim();
+    const contextNote = clampStr(md.contextNote, CONTEXT_NOTE_MAX).trim();
 
     return {
         docCount: docs.length,

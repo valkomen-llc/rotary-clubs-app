@@ -1256,13 +1256,13 @@ const ConfigTab: React.FC<{ brain: any; canEdit: boolean; headers: Record<string
                     value={contextNote}
                     onChange={e => setContextNote(e.target.value)}
                     disabled={!canEdit}
-                    rows={5}
-                    maxLength={4000}
+                    rows={7}
+                    maxLength={20000}
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm leading-relaxed focus:border-violet-400 focus:ring-2 focus:ring-violet-100 outline-none disabled:bg-gray-50"
                     placeholder="Ej.: 'Jaque Mate A La Polio' es una convención/evento solidario para recaudar fondos contra la polio. No es un club rotario: es una actividad organizada por... Sus objetivos son..."
                 />
                 <div className="mt-1.5 text-[11px] text-gray-500 flex items-center gap-1">
-                    <Sparkles className="w-3 h-3" />Al guardar, el Dossier se regenera con este contexto. {contextNote.length}/4000
+                    <Sparkles className="w-3 h-3" />Al guardar, el Dossier se regenera con este contexto. {contextNote.length.toLocaleString()}/20.000
                 </div>
             </div>
 

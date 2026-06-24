@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.498.0 | 2026-06-25 (Generar la Identidad del cerebro con IA desde el contexto)
-// Cache bust: 2026-06-25a
+// UI V4.499.0 | 2026-06-25 (Contexto institucional admite textos largos: 20.000 caracteres)
+// Cache bust: 2026-06-25b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.499.0',
+        title: 'Contexto institucional sin quedarte corto 📝',
+        description: 'Ampliamos el límite del cuadro "Contexto institucional" del Cerebro de 4.000 a 20.000 caracteres. Ahora podés pegar la historia completa, la misión, los valores y todo el detalle de tu organización sin que se trunque, y el cerebro lo toma íntegro para el Dossier, la identidad y el chat.',
+        date: new Date().toISOString(),
+        tags: ['cerebro', 'contexto', 'mejora'],
+        type: 'improvement'
+    },
     {
         version: '4.498.0',
         title: 'Generá la Identidad del cerebro con IA ✨',

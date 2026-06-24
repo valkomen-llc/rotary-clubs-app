@@ -1202,7 +1202,7 @@ router.patch('/:id/settings', authMiddleware, async (req, res) => {
         // primaria de la naturaleza real del sitio (evento/convención/club/etc.)
         // y alimenta tanto el dossier como el chat del cerebro.
         if (typeof contextNote === 'string') {
-            const trimmed = contextNote.slice(0, 4000);
+            const trimmed = contextNote.slice(0, 20000);
             contextChanged = trimmed !== (typeof md.contextNote === 'string' ? md.contextNote : '');
             data.metadata = { ...(data.metadata || md), contextNote: trimmed };
         }
