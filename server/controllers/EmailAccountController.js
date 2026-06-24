@@ -341,7 +341,6 @@ export const provisionInbound = async (req, res) => {
         }
 
         const inboundUrl = getInboundUrl();
-        const isOurInbound = (url) => typeof url === 'string' && url.replace(/\/+$/, '').endsWith('/api/public/inbound-email');
 
         const out = {
             inboundUrl,
@@ -362,17 +361,44 @@ export const provisionInbound = async (req, res) => {
                 throw new Error(listData?.message || `HTTP ${listResp.status} al listar webhooks`);
             }
             const hooks = listData.data || [];
+            const normalizeUrl = (u) => (u || '').replace(/\/+$/, '');
+            // Cualquier webhook que YA escuche email.received, sin importar a qué host apunta.
             const existing = hooks.find((h) => {
                 const events = h.events || h.event_types || [];
-                const url = h.endpoint || h.url || '';
-                return isOurInbound(url) && Array.isArray(events) && events.some((ev) => String(ev).includes('email.received'));
+                return Array.isArray(events) && events.some((ev) => String(ev).includes('email.received'));
             });
+            const currentUrl = existing ? (existing.endpoint || existing.url || '') : '';
 
-            if (existing) {
+            if (existing && normalizeUrl(currentUrl) === normalizeUrl(inboundUrl)) {
                 out.webhook.action = 'already_configured';
-                out.webhook.endpoint = existing.endpoint || existing.url;
+                out.webhook.endpoint = currentUrl;
                 out.webhook.hasReceivedEvent = true;
-                out.steps.push(`Webhook email.received ya configurado → ${out.webhook.endpoint}`);
+                out.steps.push(`Webhook email.received ya apunta a la URL canónica → ${currentUrl}`);
+            } else if (existing) {
+                // Existe pero apunta a otro host (p.ej. el apex, que en Vercel redirige con 308
+                // y hace que Resend reciba un 3xx y reintente sin entregar). Lo reapuntamos a la
+                // URL canónica que no redirige.
+                const id = existing.id || existing.webhook_id || existing.uuid;
+                let patched = false;
+                if (id) {
+                    const upResp = await fetch(`https://api.resend.com/webhooks/${id}`, {
+                        method: 'PATCH',
+                        headers: { Authorization: `Bearer ${writeKey}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ endpoint: inboundUrl, events: ['email.received'] })
+                    });
+                    patched = upResp.ok;
+                    if (!upResp.ok) {
+                        const b = await upResp.json().catch(() => ({}));
+                        out.errors.push(`No se pudo actualizar la URL del webhook automáticamente (HTTP ${upResp.status} ${b?.message || ''}). Edítala a mano en Resend → Webhooks → ${inboundUrl}`);
+                    }
+                }
+                out.webhook.action = patched ? 'updated' : 'needs_manual_fix';
+                out.webhook.endpoint = patched ? inboundUrl : currentUrl;
+                out.webhook.previousEndpoint = currentUrl;
+                out.webhook.hasReceivedEvent = true;
+                out.steps.push(patched
+                    ? `Webhook email.received reapuntado: ${currentUrl} → ${inboundUrl} (la URL anterior redirigía con 308 y Resend nunca entregaba). Reenvía/replay los eventos fallidos en Resend para recuperar los correos ya recibidos.`
+                    : `El webhook email.received apunta a ${currentUrl}, que redirige (308). Cámbialo a ${inboundUrl} en Resend → Webhooks.`);
             } else {
                 const createResp = await fetch('https://api.resend.com/webhooks', {
                     method: 'POST',
@@ -707,4 +733,4 @@ export default {
     provisionInbound
 };
 
-console.log('[EmailAccountController] cargado (v4.485.0 — recepción: MX inbound de Resend = inbound-smtp.*.amazonaws.com (fix falso negativo) + verificación de la URL del webhook)');
+console.log('[EmailAccountController] cargado (v4.486.0 — recepción: reapunta el webhook si su URL redirige con 308 (apex Vercel); la causa de "Recibidos: 0" pese a todo verde)');

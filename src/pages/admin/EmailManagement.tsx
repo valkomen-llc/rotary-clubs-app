@@ -765,8 +765,13 @@ const EmailManagement: React.FC = () => {
                                                     <p className="font-bold">
                                                         {provisionResult.webhook?.action === 'created' && 'Webhook email.received creado'}
                                                         {provisionResult.webhook?.action === 'already_configured' && 'Webhook email.received ya estaba configurado'}
+                                                        {provisionResult.webhook?.action === 'updated' && 'Webhook email.received reapuntado a la URL correcta'}
+                                                        {provisionResult.webhook?.action === 'needs_manual_fix' && 'El webhook apunta a una URL que redirige — corrígela en Resend'}
                                                         {provisionResult.webhook?.action === 'none' && 'No se pudo configurar el webhook'}
                                                     </p>
+                                                    {provisionResult.webhook?.previousEndpoint && (
+                                                        <p className="text-xs mt-1 break-all opacity-70">Antes: {provisionResult.webhook.previousEndpoint}</p>
+                                                    )}
                                                     {provisionResult.webhook?.endpoint && <p className="text-xs mt-1 break-all">{provisionResult.webhook.endpoint}</p>}
                                                 </div>
                                             </div>

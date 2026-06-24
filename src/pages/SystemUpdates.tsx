@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.485.0 | 2026-06-24 (Recepción: reconoce el MX inbound de Resend + verifica webhook)
-// Cache bust: 2026-06-24c
+// UI V4.486.0 | 2026-06-24 (Recepción: reapunta el webhook si su URL redirige 308)
+// Cache bust: 2026-06-24d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.486.0',
+        title: 'Correo Entrante Arreglado: Webhook con Redirect 🩹',
+        description: 'Encontramos por qué no llegaban los correos pese a tener todo en verde: el webhook de Resend apuntaba al dominio apex, que en Vercel redirige con un 308, y Resend trataba ese redirect como fallo (nunca entregaba). Ahora "Configurar recepción" detecta un webhook email.received que apunta a una URL que redirige y lo reapunta automáticamente a la URL canónica que responde 200. Tras eso, basta con hacer "Replay" de los eventos fallidos en Resend para recuperar los correos ya recibidos.',
+        date: new Date().toISOString(),
+        tags: ['correo', 'recepcion', 'webhook', 'vercel'],
+        type: 'fix'
+    },
     {
         version: '4.485.0',
         title: 'Diagnóstico de Correo: Reconoce el MX de Resend Inbound ✅',
