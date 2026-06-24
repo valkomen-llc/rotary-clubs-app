@@ -800,11 +800,10 @@ const EmailManagement: React.FC = () => {
                                                             <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${d.inboundMx ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{d.inboundMx ? 'MX OK' : 'Falta MX'}</span>
                                                         </div>
                                                         {!d.inboundMx && (
-                                                            <p className="text-[11px] text-amber-700 mt-1">En Resend → Domains → {d.domain} habilita "Receiving" y agrega el MX a tu DNS (prioridad más baja).</p>
+                                                            <p className="text-[11px] text-amber-700 mt-1">El apex no apunta a Resend Inbound. En Resend → Domains → {d.domain} activa el toggle "Receiving" y agrega el MX a tu DNS (prioridad más baja). Verificar el <b>envío</b> NO habilita la recepción.</p>
                                                         )}
-                                                        {d.mxRecord && (
-                                                            <p className="text-[11px] text-gray-500 mt-1 break-all">MX: <code>{d.mxRecord.name} → {d.mxRecord.priority} {d.mxRecord.value}</code></p>
-                                                        )}
+                                                        <p className="text-[11px] text-gray-500 mt-1 break-all">MX real del apex: <code>{(d.liveMx && d.liveMx.length) ? d.liveMx.join(', ') : 'ninguno'}</code></p>
+                                                        {d.mailbox?.email && d.mailbox?.created && <p className="text-[11px] text-emerald-600 mt-1">Buzón: {d.mailbox.email}</p>}
                                                         {d.mailbox?.note && <p className="text-[11px] text-gray-400 mt-1">Buzón: {d.mailbox.note}</p>}
                                                     </div>
                                                 ))}

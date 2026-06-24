@@ -1,6 +1,23 @@
 import prisma from '../lib/prisma.js';
 import crypto from 'crypto';
+import { resolveMx } from 'node:dns/promises';
 import EmailService from '../services/EmailService.js';
+
+// Resuelve los registros MX REALES del DNS para un dominio (apex). Es la única forma
+// fiable de saber si un dominio puede RECIBIR: el estado de "envío" en Resend usa un MX
+// distinto (el de bounces en send.<dominio> → feedback-smtp.amazonses.com), que NO sirve
+// para recibir. Devuelve [] si el apex no tiene MX (no puede recibir) o si falla la consulta.
+const resolveApexMx = async (domain) => {
+    try {
+        const records = await resolveMx(domain);
+        return (records || []).sort((a, b) => a.priority - b.priority);
+    } catch {
+        return [];
+    }
+};
+
+// ¿Alguno de los MX apunta a la infraestructura de recepción de Resend?
+const isResendInboundMx = (mxList) => (mxList || []).some((m) => /resend/i.test(m.exchange || ''));
 
 // Verifica la firma Svix de los webhooks de Resend (cabeceras svix-id / svix-timestamp / svix-signature).
 // fail-open: si no hay RESEND_WEBHOOK_SECRET configurado, acepta el webhook (Resend igual lo entrega).
@@ -395,36 +412,24 @@ export const provisionInbound = async (req, res) => {
         for (const dom of all) {
             const name = (dom.name || '').toLowerCase();
             if (!name) continue;
+            // MX REAL del apex en el DNS — única forma fiable de saber si puede RECIBIR.
+            // (El MX de "envío" vive en send.<dominio> y apunta a feedback-smtp.amazonses.com:
+            //  ese NO sirve para recibir y no aparece en una consulta MX del apex.)
+            const liveMx = await resolveApexMx(name);
             const entry = {
                 domain: name,
                 sendingVerified: dom.status === 'verified',
-                inboundMx: false,
-                mxRecord: null,
+                inboundMx: isResendInboundMx(liveMx),
+                liveMx: liveMx.map((m) => `${m.priority} ${m.exchange}`),
                 mailbox: null
             };
 
-            // Registros que Resend espera para este dominio (incluye el MX de recepción si está habilitado).
-            if (dom.id) {
-                try {
-                    const dResp = await fetch(`https://api.resend.com/domains/${dom.id}`, {
-                        headers: { Authorization: `Bearer ${readKey}` }
-                    });
-                    const dData = await dResp.json().catch(() => ({}));
-                    const records = dData.records || [];
-                    const mx = records.find((r) => String(r.type || r.record).toUpperCase() === 'MX');
-                    if (mx) {
-                        entry.inboundMx = true;
-                        entry.mxRecord = {
-                            name: mx.name,
-                            value: typeof mx.value === 'string' ? mx.value : JSON.stringify(mx.value),
-                            priority: mx.priority ?? 10,
-                            status: mx.status || null
-                        };
-                    }
-                } catch { /* sin detalle de records */ }
-            }
-            if (!entry.inboundMx) {
-                out.steps.push(`Falta el MX de recepción para ${name}: en Resend → Domains → ${name} habilita "Receiving" y agrega a tu DNS el MX que te indique (prioridad más baja).`);
+            if (entry.inboundMx) {
+                out.steps.push(`RECEPCIÓN OK para ${name}: el apex apunta a Resend Inbound (${entry.liveMx.join(', ')}).`);
+            } else if (entry.liveMx.length) {
+                out.steps.push(`El apex ${name} tiene MX pero NO apunta a Resend Inbound (${entry.liveMx.join(', ')}). En Resend → Domains → ${name} activa "Receiving" y agrega/reemplaza por el MX que te muestre, con la prioridad más baja.`);
+            } else {
+                out.steps.push(`El apex ${name} NO tiene ningún MX en el DNS: no puede recibir. En Resend → Domains → ${name} activa "Receiving" y agrega a tu DNS el MX que te indique.`);
             }
 
             // 3. Buzón por defecto para dominios verificados que tengan club y sin cuentas.
@@ -532,12 +537,17 @@ export const getEmailDiagnostics = async (req, res) => {
                 const all = listData.data || [];
                 for (const dom of domains) {
                     const match = all.find((d) => d.name?.toLowerCase() === dom.toLowerCase());
+                    // MX REAL del apex en el DNS. NO usamos los records de Resend para esto:
+                    // esos incluyen el MX de ENVÍO (bounces en send.<dominio> → feedback-smtp.
+                    // amazonses.com), que daba un falso positivo de "recepción habilitada".
+                    const liveMx = await resolveApexMx(dom);
                     const entry = {
                         domain: dom,
                         foundInResend: !!match,
                         status: match?.status || null,
                         sendingVerified: match?.status === 'verified',
-                        inboundMx: false,
+                        inboundMx: isResendInboundMx(liveMx),
+                        liveMx: liveMx.map((m) => `${m.priority} ${m.exchange}`),
                         records: []
                     };
                     if (match?.id) {
@@ -547,7 +557,6 @@ export const getEmailDiagnostics = async (req, res) => {
                             });
                             const dData = await dResp.json();
                             const records = dData.records || [];
-                            entry.inboundMx = records.some((r) => String(r.type || r.record).toUpperCase() === 'MX');
                             entry.records = records.map((r) => ({
                                 type: r.type || r.record,
                                 name: r.name,
@@ -599,7 +608,11 @@ export const getEmailDiagnostics = async (req, res) => {
                 checks.push({ ok: d.foundInResend, label: d.foundInResend ? `Dominio ${d.domain} dado de alta en Resend` : `Dominio ${d.domain} NO está dado de alta en Resend` });
                 if (d.foundInResend) {
                     checks.push({ ok: d.sendingVerified, label: d.sendingVerified ? `ENVÍO verificado para ${d.domain}` : `ENVÍO NO verificado para ${d.domain} (estado en Resend: ${d.status || 'desconocido'}) — revisar SPF/DKIM en el DNS` });
-                    checks.push({ ok: d.inboundMx, label: d.inboundMx ? `RECEPCIÓN: registro MX presente para ${d.domain} (dominio habilitado para recibir)` : `RECEPCIÓN: falta el MX de Resend Inbound para ${d.domain}. En Resend → Domains → ${d.domain} → habilita "Receiving" y agrega el MX que te da (prioridad más baja).` });
+                    checks.push({ ok: d.inboundMx, label: d.inboundMx
+                        ? `RECEPCIÓN: el apex ${d.domain} apunta a Resend Inbound en el DNS (${(d.liveMx || []).join(', ')}) — habilitado para recibir`
+                        : ((d.liveMx && d.liveMx.length)
+                            ? `RECEPCIÓN: el apex ${d.domain} tiene MX pero NO apunta a Resend Inbound (${d.liveMx.join(', ')}). OJO: el MX de "envío" vive en send.${d.domain} y no sirve para recibir. En Resend → Domains → ${d.domain} activa "Receiving" y agrega/reemplaza por el MX que te muestre, con la prioridad más baja.`
+                            : `RECEPCIÓN: el apex ${d.domain} NO tiene ningún MX en el DNS, por eso no llega ningún correo. En Resend → Domains → ${d.domain} activa el toggle "Receiving" y agrega a tu DNS el MX que te indique. (Verificar el envío NO habilita la recepción.)`) });
                 }
             }
             // Estado del webhook email.received
@@ -678,4 +691,4 @@ export default {
     provisionInbound
 };
 
-console.log('[EmailAccountController] cargado (v4.483.0 — provisión de recepción: webhook email.received + buzón por defecto + reporte MX por dominio Resend)');
+console.log('[EmailAccountController] cargado (v4.484.0 — recepción: webhook + buzón por defecto + MX REAL del apex vía DNS (fin del falso positivo del MX de envío))');

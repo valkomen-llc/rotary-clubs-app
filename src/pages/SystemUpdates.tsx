@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.483.0 | 2026-06-24 (Configurar recepción: webhook + buzones + MX)
-// Cache bust: 2026-06-24
+// UI V4.484.0 | 2026-06-24 (Diagnóstico de recepción: MX real del apex)
+// Cache bust: 2026-06-24b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.484.0',
+        title: 'Diagnóstico de Correo: MX de Recepción Real 🔎',
+        description: 'El Diagnóstico ahora consulta el registro MX REAL del dominio en el DNS para saber si puede recibir, en vez de fiarse de los registros de Resend. Antes mostraba "RECEPCIÓN OK" en falso porque contaba el MX de envío (bounces). Ahora distingue: si el apex no tiene MX o no apunta a Resend Inbound, te lo dice claramente y recuerda que verificar el envío NO habilita la recepción (hay que activar el toggle "Receiving" en Resend y agregar su MX).',
+        date: new Date().toISOString(),
+        tags: ['correo', 'diagnostico', 'recepcion', 'dns'],
+        type: 'fix'
+    },
     {
         version: '4.483.0',
         title: 'Correo: Configurar Recepción en 1 Clic 📥',
