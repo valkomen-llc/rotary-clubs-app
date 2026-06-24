@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.491.0 | 2026-06-24 (Generador de textos de la portada desde el Cerebro)
-// Cache bust: 2026-06-24i
+// UI V4.492.0 | 2026-06-24 (Generador con el Cerebro extendido a todos los bloques)
+// Cache bust: 2026-06-24j
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.492.0',
+        title: 'Generar con el Cerebro en toda la portada 🧠🪄',
+        description: 'El botón "Generar con el Cerebro" ahora está en los cuatro bloques de la portada de eventos: Estadísticas (3 cajas), "Somos gente de acción", "Únete a Rotary" y "Nuestra Fundación". Cada botón redacta TODO el contenido del bloque (título, resaltado y su color, texto, botón/CTA e icono) usando los documentos y memorias del Cerebro del sitio. No inventa cifras ni enlaces: solo usa lo que está indexado.',
+        date: new Date().toISOString(),
+        tags: ['cerebro', 'portada', 'IA', 'RAG', 'contenido'],
+        type: 'feature'
+    },
     {
         version: '4.491.0',
         title: 'Textos de la Portada con el Cerebro 🧠✍️',

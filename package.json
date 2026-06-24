@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.491.0",
-  "cache_bust": "2026-06-24i (Generador de textos de la portada desde el Cerebro: botón 'Generar con el Cerebro' en la Sección de Estadísticas usa RAG sobre los documentos/memorias del sitio)",
+  "version": "4.492.0",
+  "cache_bust": "2026-06-24j (Botón 'Generar con el Cerebro' extendido a los bloques Acción, Únete y Fundación: genera todo el contenedor — título, highlight, texto, CTA e icono — vía RAG con Gemini)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

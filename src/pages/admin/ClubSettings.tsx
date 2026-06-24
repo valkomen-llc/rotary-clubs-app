@@ -169,10 +169,10 @@ const ClubSettings: React.FC = () => {
 
     const API_URL = import.meta.env.VITE_API_URL || '/api';
 
-    // Genera el texto de un contenedor de la portada a partir del Cerebro (RAG).
-    // Por ahora 'stats' rellena formData.statsContent; los demás contenedores
-    // (action/join/foundation) ya están soportados en el backend y se irán
-    // cableando aquí con el mismo patrón.
+    // Genera el contenido de un contenedor de la portada a partir del Cerebro (RAG).
+    // 'stats' reemplaza las 3 cajas; los bloques de texto (action/join/foundation)
+    // funden los campos generados sobre el contenido actual, preservando lo que la
+    // IA no toca (ej. la URL del botón).
     const handleGenerateFromBrain = async (container: string) => {
         if (!club?.id) { toast.error('No hay club seleccionado.'); return; }
         setGeneratingContainer(container);
@@ -187,11 +187,18 @@ const ClubSettings: React.FC = () => {
             const json = await res.json();
             if (!res.ok) throw new Error(json.error || 'No se pudo generar el contenido.');
 
-            if (container === 'stats' && Array.isArray(json.data)) {
-                setFormData(prev => ({ ...prev, statsContent: json.data.slice(0, 3) }));
+            const data = json.data;
+            if (container === 'stats' && Array.isArray(data)) {
+                setFormData(prev => ({ ...prev, statsContent: data.slice(0, 3) }));
+            } else if (container === 'action' && data) {
+                setFormData(prev => ({ ...prev, actionContent: { ...prev.actionContent, ...data } }));
+            } else if (container === 'join' && data) {
+                setFormData(prev => ({ ...prev, joinContent: { ...prev.joinContent, ...data } }));
+            } else if (container === 'foundation' && data) {
+                setFormData(prev => ({ ...prev, foundationContent: { ...prev.foundationContent, ...data } }));
             }
             toast.dismiss(tId);
-            toast.success(`Texto generado con ${json.sources?.length || 0} fuente(s) del Cerebro. Revísalo y guarda.`);
+            toast.success(`Contenido generado con ${json.sources?.length || 0} fuente(s) del Cerebro. Revísalo y guarda.`);
         } catch (error: any) {
             toast.dismiss(tId);
             toast.error(error.message || 'Error al generar desde el Cerebro.');
@@ -199,6 +206,20 @@ const ClubSettings: React.FC = () => {
             setGeneratingContainer(null);
         }
     };
+
+    // Botón reutilizable "Generar con el Cerebro" para los bloques de la portada.
+    const brainButton = (container: string) => (
+        <button
+            type="button"
+            onClick={() => handleGenerateFromBrain(container)}
+            disabled={generatingContainer === container}
+            title="Genera el contenido de este bloque con la información del Cerebro del sitio"
+            className="flex-shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-semibold shadow-sm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition"
+        >
+            <Sparkles className={`w-4 h-4 ${generatingContainer === container ? 'animate-pulse' : ''}`} />
+            {generatingContainer === container ? 'Generando…' : 'Generar con el Cerebro'}
+        </button>
+    );
 
     useEffect(() => {
         const token = localStorage.getItem('rotary_token');
@@ -1278,11 +1299,14 @@ const ClubSettings: React.FC = () => {
                         {/* Contenido de la sección "Somos gente de acción" — solo Eventos/Convenciones */}
                         {(isSuperAdmin || club?.type === 'Evento o Convención') && (
                             <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
-                                <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
-                                    <Palette className="w-5 h-5 text-rotary-blue" /> Sección "Somos gente de acción" (Contenido)
-                                </h3>
+                                <div className="flex items-start justify-between gap-4 mb-2">
+                                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-3">
+                                        <Palette className="w-5 h-5 text-rotary-blue" /> Sección "Somos gente de acción" (Contenido)
+                                    </h3>
+                                    {brainButton('action')}
+                                </div>
                                 <p className="text-xs text-gray-400 mb-6">
-                                    Personaliza el título, el texto y el botón de este bloque de la portada. Si dejas un campo vacío, se usa el texto por defecto.
+                                    Personaliza el título, el texto y el botón de este bloque de la portada. Si dejas un campo vacío, se usa el texto por defecto. O deja que el <strong>Cerebro</strong> lo redacte.
                                 </p>
                                 <div className="space-y-4">
                                     <div>
@@ -1348,16 +1372,7 @@ const ClubSettings: React.FC = () => {
                                     <h3 className="text-lg font-bold text-gray-800 flex items-center gap-3">
                                         <Palette className="w-5 h-5 text-rotary-blue" /> Sección de Estadísticas (3 Cajas)
                                     </h3>
-                                    <button
-                                        type="button"
-                                        onClick={() => handleGenerateFromBrain('stats')}
-                                        disabled={generatingContainer === 'stats'}
-                                        title="Genera las 3 cajas con la información del Cerebro del sitio"
-                                        className="flex-shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-semibold shadow-sm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                                    >
-                                        <Sparkles className={`w-4 h-4 ${generatingContainer === 'stats' ? 'animate-pulse' : ''}`} />
-                                        {generatingContainer === 'stats' ? 'Generando…' : 'Generar con el Cerebro'}
-                                    </button>
+                                    {brainButton('stats')}
                                 </div>
                                 <p className="text-xs text-gray-400 mb-6">
                                     Personaliza el icono, color, número/valor y texto de cada una de las tres cajas de estadísticas de la portada. O deja que el <strong>Cerebro</strong> las redacte con la información indexada del sitio.
@@ -1396,11 +1411,14 @@ const ClubSettings: React.FC = () => {
                         {/* Contenido de la sección "Únete a Rotary" — solo Eventos/Convenciones */}
                         {(isSuperAdmin || club?.type === 'Evento o Convención') && (
                             <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
-                                <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
-                                    <Palette className="w-5 h-5 text-rotary-blue" /> Sección "Únete a Rotary" (Contenido)
-                                </h3>
+                                <div className="flex items-start justify-between gap-4 mb-2">
+                                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-3">
+                                        <Palette className="w-5 h-5 text-rotary-blue" /> Sección "Únete a Rotary" (Contenido)
+                                    </h3>
+                                    {brainButton('join')}
+                                </div>
                                 <p className="text-xs text-gray-400 mb-6">
-                                    Personaliza el título, el texto y el botón del bloque "Únete a Rotary". Si dejas un campo vacío, se usa el texto por defecto. (La imagen se cambia en "Imágenes del Sitio".)
+                                    Personaliza el título, el texto y el botón del bloque "Únete a Rotary". Si dejas un campo vacío, se usa el texto por defecto. (La imagen se cambia en "Imágenes del Sitio".) O deja que el <strong>Cerebro</strong> lo redacte.
                                 </p>
                                 <div className="space-y-4">
                                     <div>
@@ -1460,11 +1478,14 @@ const ClubSettings: React.FC = () => {
                         {/* Contenido de la sección "Nuestra Fundación" — solo Eventos/Convenciones */}
                         {(isSuperAdmin || club?.type === 'Evento o Convención') && (
                             <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
-                                <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
-                                    <Palette className="w-5 h-5 text-rotary-blue" /> Sección "Nuestra Fundación" (Contenido)
-                                </h3>
+                                <div className="flex items-start justify-between gap-4 mb-2">
+                                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-3">
+                                        <Palette className="w-5 h-5 text-rotary-blue" /> Sección "Nuestra Fundación" (Contenido)
+                                    </h3>
+                                    {brainButton('foundation')}
+                                </div>
                                 <p className="text-xs text-gray-400 mb-6">
-                                    Personaliza el título, el texto y el botón del bloque "Nuestra Fundación". Si dejas un campo vacío, se usa el texto por defecto. (La imagen se cambia en "Imágenes del Sitio".)
+                                    Personaliza el título, el texto y el botón del bloque "Nuestra Fundación". Si dejas un campo vacío, se usa el texto por defecto. (La imagen se cambia en "Imágenes del Sitio".) O deja que el <strong>Cerebro</strong> lo redacte.
                                 </p>
                                 <div className="space-y-4">
                                     <div>
