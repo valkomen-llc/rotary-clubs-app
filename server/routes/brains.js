@@ -1149,8 +1149,9 @@ router.patch('/:id/settings', authMiddleware, async (req, res) => {
             (brain.districtId && brain.districtId === scope.districtId);
         if (!canEdit) return res.status(403).json({ error: 'Access denied', scope, brainClubId: brain.clubId });
 
-        const { identityPrompt, config, resetIdentityToAuto, contextNote } = req.body || {};
+        const { identityPrompt, config, resetIdentityToAuto, contextNote, kind } = req.body || {};
         let contextChanged = false;
+        let kindChanged = false;
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const data = {};
@@ -1161,16 +1162,40 @@ router.patch('/:id/settings', authMiddleware, async (req, res) => {
             ? brain.metadata
             : {};
 
+        // Recategorizar el sitio: cambia brain.kind (badge) y la category del
+        // club vinculado, y refresca la identidad automática si no fue override.
+        if (typeof kind === 'string' && kind !== brain.kind) {
+            const { KIND_TO_CATEGORY, buildIdentityPromptFromClub } = await import('../services/brainService.js');
+            const category = KIND_TO_CATEGORY[kind];
+            if (!category) {
+                return res.status(400).json({ error: 'Tipo de sitio inválido', kind, validKinds: Object.keys(KIND_TO_CATEGORY) });
+            }
+            data.kind = kind;
+            kindChanged = true;
+            if (brain.clubId) {
+                const club = await prisma.club.update({
+                    where: { id: brain.clubId },
+                    data: { category },
+                }).catch(() => null);
+                // Refrescar identidad auto solo si el admin no la personalizó.
+                if (club && md.identityPromptOverridden !== true && typeof identityPrompt !== 'string') {
+                    data.identityPrompt = buildIdentityPromptFromClub(club);
+                }
+            }
+            // Reflejar la category también en metadata para consistencia.
+            data.metadata = { ...(data.metadata || md), category };
+        }
+
         if (resetIdentityToAuto) {
             const club = brain.clubId ? await prisma.club.findUnique({ where: { id: brain.clubId } }) : null;
             if (club) {
                 const { buildIdentityPromptFromClub } = await import('../services/brainService.js');
                 data.identityPrompt = buildIdentityPromptFromClub(club);
             }
-            data.metadata = { ...md, identityPromptOverridden: false };
+            data.metadata = { ...(data.metadata || md), identityPromptOverridden: false };
         } else if (typeof identityPrompt === 'string') {
             data.identityPrompt = identityPrompt.slice(0, 4000);
-            data.metadata = { ...md, identityPromptOverridden: true };
+            data.metadata = { ...(data.metadata || md), identityPromptOverridden: true };
         }
 
         // Contexto institucional libre escrito por el admin. Es la fuente
@@ -1207,7 +1232,7 @@ router.patch('/:id/settings', authMiddleware, async (req, res) => {
 
         // Si cambió el contexto institucional o la identidad, regenerar el
         // dossier para que refleje la nueva fuente (fire-and-forget).
-        if (contextChanged || resetIdentityToAuto || typeof identityPrompt === 'string') {
+        if (contextChanged || kindChanged || resetIdentityToAuto || typeof identityPrompt === 'string') {
             import('../services/brainSynthesis.js')
                 .then(({ regenerateDossierSafe }) => regenerateDossierSafe(brain.id, { reason: 'settings-update' }))
                 .catch(() => {});

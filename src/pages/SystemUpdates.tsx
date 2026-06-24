@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.496.0 | 2026-06-24 (Dossier basado en evidencia + contexto del admin + fix unparseable)
-// Cache bust: 2026-06-24n
+// UI V4.497.0 | 2026-06-24 (Selector de tipo de sitio para recategorizar la cuenta)
+// Cache bust: 2026-06-24o
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.497.0',
+        title: 'Recategorizá tu sitio: ¿es un club, un evento o una convención? 🏷️',
+        description: 'Nuevo selector "Tipo de sitio" en Centro de Inteligencia → Configuración. Si tu cuenta no es un club rotario —por ejemplo, es un evento, una convención/conferencia, una fundación o un programa— ahora podés cambiarlo vos mismo. Al guardar, se actualiza la etiqueta del cerebro (el badge), se regenera la identidad automática para que deje de asumir "Club Rotary", y se resintetiza el Dossier acorde. Junto con el campo "Contexto institucional", el cerebro ya describe tu sitio por lo que realmente es.',
+        date: new Date().toISOString(),
+        tags: ['cerebro', 'configuración', 'tipo de sitio'],
+        type: 'improvement'
+    },
     {
         version: '4.496.0',
         title: 'El Cerebro ahora entiende qué ES tu sitio (no asume "club") 🧠✍️',

@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.496.0",
-  "cache_bust": "2026-06-24n (Cerebro: el Dossier se basa en la evidencia real del sitio (documentos + contexto que escribe el admin), no en etiquetas por defecto; nuevo campo 'Contexto institucional' libre; y arreglo del error 'unparseable dossier' al regenerar con parseo robusto)",
+  "version": "4.497.0",
+  "cache_bust": "2026-06-24o (Cerebro: nuevo selector 'Tipo de sitio' en Configuración para recategorizar la cuenta (ej. de Club a Evento o Convención/Conferencia); actualiza el badge, la identidad automática y regenera el dossier)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

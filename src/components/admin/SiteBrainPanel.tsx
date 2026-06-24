@@ -1109,6 +1109,7 @@ const ConfigTab: React.FC<{ brain: any; canEdit: boolean; headers: Record<string
 
     const [identityPrompt, setIdentityPrompt] = useState<string>(brain.identityPrompt || '');
     const [contextNote, setContextNote] = useState<string>(md.contextNote || '');
+    const [kind, setKind] = useState<string>(brain.kind || 'CLUB');
     const [config, setConfig] = useState({
         learnFromPosts:     cfg.learnFromPosts !== false,
         learnFromProjects:  cfg.learnFromProjects !== false,
@@ -1123,6 +1124,7 @@ const ConfigTab: React.FC<{ brain: any; canEdit: boolean; headers: Record<string
 
     const dirty = identityPrompt !== (brain.identityPrompt || '') ||
                   contextNote !== (md.contextNote || '') ||
+                  kind !== (brain.kind || 'CLUB') ||
                   JSON.stringify(config) !== JSON.stringify({
                       learnFromPosts:     cfg.learnFromPosts !== false,
                       learnFromProjects:  cfg.learnFromProjects !== false,
@@ -1139,7 +1141,7 @@ const ConfigTab: React.FC<{ brain: any; canEdit: boolean; headers: Record<string
             const r = await fetch(`${API}/brains/${brain.id}/settings`, {
                 method: 'PATCH',
                 headers: { ...headers, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ identityPrompt, contextNote, config }),
+                body: JSON.stringify({ identityPrompt, contextNote, kind, config }),
             });
             if (r.ok) {
                 toast.success('Configuración guardada');
@@ -1180,6 +1182,39 @@ const ConfigTab: React.FC<{ brain: any; canEdit: boolean; headers: Record<string
                 <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-800 flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                     Solo lectura — no tenés permisos para editar este cerebro.
+                </div>
+            )}
+
+            {/* Tipo de sitio (recategorización) */}
+            {brain.kind !== 'DISTRICT' && brain.kind !== 'MASTER' && (
+                <div>
+                    <div className="mb-2">
+                        <div className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                            <Layers className="w-4 h-4 text-violet-600" />Tipo de sitio
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5">
+                            Qué representa esta cuenta. Define la etiqueta del cerebro y la identidad automática. Cambialo si tu sitio no es un club (por ejemplo, un <strong>evento</strong> o una <strong>convención/conferencia</strong>).
+                        </div>
+                    </div>
+                    <select
+                        value={kind}
+                        onChange={e => setKind(e.target.value)}
+                        disabled={!canEdit}
+                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:border-violet-400 focus:ring-2 focus:ring-violet-100 outline-none disabled:bg-gray-50 bg-white"
+                    >
+                        <option value="CLUB">Club Rotary</option>
+                        <option value="EVENT">Evento</option>
+                        <option value="CONFERENCE">Conferencia / Convención</option>
+                        <option value="ASSOCIATION">Asociación</option>
+                        <option value="PROGRAM">Programa de Intercambio</option>
+                        <option value="PROJECT_FAIR">Feria de Proyectos</option>
+                        <option value="FOUNDATION">Fundación</option>
+                    </select>
+                    {kind !== (brain.kind || 'CLUB') && (
+                        <div className="mt-1.5 text-[11px] text-amber-700 flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" />Al guardar se recategoriza la cuenta y se regenera el dossier.
+                        </div>
+                    )}
                 </div>
             )}
 
