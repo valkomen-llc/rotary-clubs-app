@@ -21,11 +21,12 @@
 import prisma from '../lib/prisma.js';
 import { generateText } from './brainAgent.js';
 
-console.log('🧬 BRAIN SYNTHESIS v4.494 — comprensión documental + dossier vivo del sitio 📑');
+console.log('🧬 BRAIN SYNTHESIS v4.495 — comprensión documental + dossier vivo + refresco por secciones (debounce + cron) 📑🔄');
 
 const DOC_TEXT_BUDGET = 12000;   // chars del documento que mandamos al LLM
 const DOSSIER_DOC_LIMIT = 40;    // máx fichas de documento a fusionar
 const DOSSIER_MEM_SAMPLE = 8;    // títulos de muestra por tipo de memoria
+const DOSSIER_MIN_INTERVAL_MS = 10 * 60 * 1000; // debounce: máx 1 regen/10min por sitio
 
 const hasLLM = () => Boolean(process.env.GEMINI_API_KEY);
 
@@ -308,4 +309,74 @@ export function regenerateDossierSafe(brainId, opts) {
     return regenerateDossier(brainId, opts).catch(err =>
         console.warn('[brainSynthesis] regenerateDossierSafe:', err.message)
     );
+}
+
+// ─── Refresco debounced (Fase 3 — conexión con todas las secciones) ──────────
+// El flujo de contenido de alta frecuencia (publicar noticias, proyectos,
+// eventos, conocimiento) NO debe regenerar el dossier en cada ingesta. En su
+// lugar: si el dossier está "viejo" (> intervalo) regeneramos ya; si está
+// fresco, marcamos el sitio como dirty y un barrido por cron lo resintetiza
+// más tarde. Así el dossier refleja todas las secciones sin costo excesivo.
+export async function scheduleDossierRefresh(brainId, { reason = 'section' } = {}) {
+    if (!hasLLM() || !brainId) return { ok: false, skipped: 'no-llm' };
+    try {
+        const brain = await prisma.brain.findUnique({
+            where: { id: brainId },
+            select: { id: true, dossierUpdatedAt: true, dossierMeta: true },
+        });
+        if (!brain) return { ok: false, error: 'brain not found' };
+
+        const age = brain.dossierUpdatedAt
+            ? Date.now() - new Date(brain.dossierUpdatedAt).getTime()
+            : Infinity;
+
+        // Suficientemente viejo → regenerar ahora (fire-and-forget).
+        if (age >= DOSSIER_MIN_INTERVAL_MS) {
+            regenerateDossierSafe(brainId, { reason });
+            return { ok: true, action: 'regenerate' };
+        }
+
+        // Fresco → marcar dirty para que el barrido lo tome luego. Evitamos
+        // escrituras redundantes si ya está marcado.
+        const meta = brain.dossierMeta && typeof brain.dossierMeta === 'object' && !Array.isArray(brain.dossierMeta)
+            ? brain.dossierMeta : {};
+        if (!meta.dirty) {
+            await prisma.brain.update({
+                where: { id: brainId },
+                data: { dossierMeta: { ...meta, dirty: true, dirtyReason: reason, dirtySince: new Date().toISOString() } },
+            }).catch(() => {});
+        }
+        return { ok: true, action: 'marked-dirty' };
+    } catch (err) {
+        console.warn('[brainSynthesis] scheduleDossierRefresh:', err.message);
+        return { ok: false, error: err.message };
+    }
+}
+
+// Barrido por cron: resintetiza los dossiers marcados dirty cuyo último refresh
+// supera el intervalo. Secuencial y con presupuesto de tiempo para respetar el
+// maxDuration de Vercel. Cada regenerateDossier sobrescribe dossierMeta y, por
+// ende, limpia el flag dirty.
+export async function sweepStaleDossiers({ limit = 20, timeBudgetMs = 90000 } = {}) {
+    if (!hasLLM()) return { ok: false, skipped: 'no-llm', refreshed: 0 };
+    const startedAt = Date.now();
+    const cutoff = new Date(startedAt - DOSSIER_MIN_INTERVAL_MS);
+
+    const candidates = await prisma.brain.findMany({
+        where: {
+            dossierMeta: { path: ['dirty'], equals: true },
+            OR: [{ dossierUpdatedAt: null }, { dossierUpdatedAt: { lt: cutoff } }],
+        },
+        select: { id: true },
+        take: Math.max(1, Math.min(limit, 100)),
+        orderBy: { dossierUpdatedAt: 'asc' },
+    }).catch(() => []);
+
+    let refreshed = 0;
+    for (const b of candidates) {
+        if (Date.now() - startedAt > timeBudgetMs) break;
+        const r = await regenerateDossier(b.id, { reason: 'cron-sweep' });
+        if (r.ok) refreshed++;
+    }
+    return { ok: true, evaluated: candidates.length, refreshed, elapsedMs: Date.now() - startedAt };
 }

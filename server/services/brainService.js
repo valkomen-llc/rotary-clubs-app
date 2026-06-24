@@ -36,6 +36,10 @@ async function ensureTables() {
     }
 }
 
+// Kinds que representan una "sección" publicada del sitio (no chunks de
+// documento ni notas) y que disparan el refresco debounced del Dossier vivo.
+const DOSSIER_SECTION_KINDS = new Set(['POST', 'PROJECT', 'EVENT', 'KNOWLEDGE', 'MEMBER', 'PUBLICATION']);
+
 const EMBED_MODEL = 'text-embedding-004';
 const EMBED_DIMS  = 768;
 const EMBED_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${EMBED_MODEL}:embedContent`;
@@ -510,6 +514,15 @@ export async function ingestMemory({
                     metadata: { sourceType, sourceId, kind },
                 });
             }
+        }).catch(() => {});
+    }
+
+    // v4.495: una sección publicada del sitio (noticia/proyecto/evento/etc.)
+    // refresca el Dossier vivo del cerebro del sitio, con debounce. Lazy import
+    // para evitar el ciclo brainService → brainSynthesis → brainAgent.
+    if (site && DOSSIER_SECTION_KINDS.has(kind)) {
+        import('./brainSynthesis.js').then(({ scheduleDossierRefresh }) => {
+            scheduleDossierRefresh(site.id, { reason: `section:${kind}` });
         }).catch(() => {});
     }
 
