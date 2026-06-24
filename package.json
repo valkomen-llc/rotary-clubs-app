@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.497.0",
-  "cache_bust": "2026-06-24o (Cerebro: nuevo selector 'Tipo de sitio' en Configuración para recategorizar la cuenta (ej. de Club a Evento o Convención/Conferencia); actualiza el badge, la identidad automática y regenera el dossier)",
+  "version": "4.498.0",
+  "cache_bust": "2026-06-25a (Cerebro: botón 'Generar con IA' en la Identidad del cerebro — redacta la identidad tomando como referencia el Contexto institucional, el tipo de sitio y los documentos; el admin la revisa y guarda)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

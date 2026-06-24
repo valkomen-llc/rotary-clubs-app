@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.497.0 | 2026-06-24 (Selector de tipo de sitio para recategorizar la cuenta)
-// Cache bust: 2026-06-24o
+// UI V4.498.0 | 2026-06-25 (Generar la Identidad del cerebro con IA desde el contexto)
+// Cache bust: 2026-06-25a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.498.0',
+        title: 'Generá la Identidad del cerebro con IA ✨',
+        description: 'En Centro de Inteligencia → Configuración, la "Identidad del cerebro" ahora tiene un botón "Generar con IA". La IA redacta la identidad tomando como referencia tu "Contexto institucional", el tipo de sitio y el análisis de tus documentos —así deja de asumir "Club Rotary" y describe tu organización por lo que realmente es (evento, convención, fundación, etc.). Se completa en el cuadro para que la revises, la ajustes si querés y la guardes.',
+        date: new Date().toISOString(),
+        tags: ['cerebro', 'IA', 'identidad', 'contexto'],
+        type: 'improvement'
+    },
     {
         version: '4.497.0',
         title: 'Recategorizá tu sitio: ¿es un club, un evento o una convención? 🏷️',

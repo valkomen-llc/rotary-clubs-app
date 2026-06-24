@@ -1245,6 +1245,40 @@ router.patch('/:id/settings', authMiddleware, async (req, res) => {
     }
 });
 
+// POST /api/brains/:id/identity/generate — la IA redacta la "Identidad del
+// cerebro" tomando como referencia el Contexto institucional (y tipo de sitio +
+// documentos). Devuelve el texto para que el admin lo revise y guarde; NO
+// persiste por sí solo.
+router.post('/:id/identity/generate', authMiddleware, async (req, res) => {
+    try {
+        const brain = await prisma.brain.findUnique({ where: { id: req.params.id } });
+        if (!brain) return res.status(404).json({ error: 'Brain not found' });
+
+        const scope = await resolveUserScope(req);
+        const canEdit = isSuperAdmin(req) ||
+            (brain.clubId && brain.clubId === scope.clubId) ||
+            (brain.districtId && brain.districtId === scope.districtId);
+        if (!canEdit) return res.status(403).json({ error: 'Access denied' });
+
+        const { contextNote } = req.body || {};
+        const { generateIdentityFromContext } = await import('../services/brainSynthesis.js');
+        const result = await generateIdentityFromContext(brain.id, {
+            contextNote: typeof contextNote === 'string' ? contextNote : undefined,
+        });
+
+        if (!result.ok) {
+            const msg = result.skipped === 'no-llm'
+                ? 'Falta configurar la API de IA (GEMINI_API_KEY) para generar la identidad.'
+                : (result.error || 'No se pudo generar la identidad');
+            return res.status(result.skipped === 'no-llm' ? 422 : 500).json({ ok: false, error: msg });
+        }
+        res.json({ ok: true, identityPrompt: result.identityPrompt });
+    } catch (err) {
+        console.error('[brains] identity/generate:', err);
+        res.status(500).json({ error: 'Error generando identidad', detail: err.message?.slice(0, 300) });
+    }
+});
+
 // POST /api/brains/:id/sync-onboarding — re-extrae info del Club + Settings +
 // ContentSections y la persiste como memorias en el brain.
 router.post('/:id/sync-onboarding', authMiddleware, async (req, res) => {
