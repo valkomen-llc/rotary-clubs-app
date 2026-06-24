@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.492.0 | 2026-06-24 (Generador con el Cerebro extendido a todos los bloques)
-// Cache bust: 2026-06-24j
+// UI V4.493.0 | 2026-06-24 (Fallback de recuperación en Generar con el Cerebro)
+// Cache bust: 2026-06-24k
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.493.0',
+        title: 'Generar con el Cerebro: más robusto 🧠🔧',
+        description: 'Corrige el caso en que "Generar con el Cerebro" decía que no había información indexada aunque el Cerebro sí tenía documentos y memorias. Ahora, si la búsqueda semántica no encuentra coincidencias (por ejemplo, cuando las memorias se indexaron sin vector o falla el cálculo del embedding), el generador usa las memorias más recientes del Cerebro como respaldo. Solo avisa que falta contenido cuando el Cerebro está realmente vacío.',
+        date: new Date().toISOString(),
+        tags: ['cerebro', 'IA', 'fix', 'RAG'],
+        type: 'fix'
+    },
     {
         version: '4.492.0',
         title: 'Generar con el Cerebro en toda la portada 🧠🪄',

@@ -18,7 +18,7 @@
  * Diseñado como registry (igual que ENGINES de imagen): agregar un contenedor =
  * agregar una entrada a CONTAINERS, sin reescribir la lógica.
  */
-import { resolveBrainsForClub, searchMemories } from '../services/brainService.js';
+import { resolveBrainsForClub, searchMemories, listRecentMemories } from '../services/brainService.js';
 import { generateCopy } from '../services/copywritingService.js';
 
 // Iconos válidos para las cajas de estadísticas — DEBE coincidir con el <select>
@@ -177,7 +177,21 @@ export const generateContainer = async (req, res) => {
         }
 
         // 2. RAG: recuperar memorias relevantes del cerebro del sitio.
-        const results = await searchMemories({ brainId: site.id, query: def.query, k: 8 });
+        let results = await searchMemories({ brainId: site.id, query: def.query, k: 8 });
+        let retrieval = 'semantic';
+
+        // Fallback: la búsqueda semántica puede devolver vacío aunque el cerebro
+        // SÍ tenga contenido — p. ej. si el embedding del query falla (rate-limit)
+        // o si las memorias se indexaron sin embedding (coseno 0 → se filtran).
+        // En ese caso usamos las memorias más recientes del cerebro directamente,
+        // para no bloquear la generación cuando hay información disponible.
+        if (!results.length) {
+            const recent = await listRecentMemories({ brainId: site.id, limit: 12 });
+            results = recent.map(m => ({ memory: m, score: 0 }));
+            retrieval = 'recent';
+        }
+
+        // Solo bloqueamos si el cerebro está REALMENTE vacío.
         if (!results.length) {
             return res.status(422).json({
                 error: 'El Cerebro no tiene información indexada todavía. Sube documentos o sincroniza el onboarding antes de generar textos.',
@@ -223,7 +237,7 @@ export const generateContainer = async (req, res) => {
         }
 
         const data = def.validate(parsed);
-        console.log(`[CONTAINER v4.492] "${containerId}" generado para club ${clubId} via ${result.provider} (${result.model}), ${sources.length} fuentes.`);
+        console.log(`[CONTAINER v4.493] "${containerId}" generado para club ${clubId} via ${result.provider} (${result.model}), ${sources.length} fuentes (retrieval=${retrieval}).`);
 
         return res.json({
             container: containerId,

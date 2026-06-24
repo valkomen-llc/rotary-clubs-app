@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.492.0",
-  "cache_bust": "2026-06-24j (Botón 'Generar con el Cerebro' extendido a los bloques Acción, Únete y Fundación: genera todo el contenedor — título, highlight, texto, CTA e icono — vía RAG con Gemini)",
+  "version": "4.493.0",
+  "cache_bust": "2026-06-24k (Generar con el Cerebro: fallback a memorias recientes cuando la búsqueda semántica devuelve vacío — ya no bloquea si el cerebro tiene contenido pero sin embeddings o si falla el embedding del query)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
