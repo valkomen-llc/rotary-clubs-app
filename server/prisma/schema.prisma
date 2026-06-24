@@ -82,6 +82,9 @@ model Club {
   domain                   String?                 @unique
   subdomain                String?                 @unique
   logo                     String?
+  // Avatar/foto de perfil del club (circular, para el panel). DISTINTO de `logo`,
+  // que se usa en la cabecera/branding del sitio público.
+  avatarUrl                String?
   footerLogo               String?
   endPolioLogo             String?
   description              String?

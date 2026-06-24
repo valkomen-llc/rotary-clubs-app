@@ -137,6 +137,7 @@ const ClubSettings: React.FC = () => {
         foundationContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'gift', titleHighlight: '', titleHighlightColor: '#f6a40a' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string; titleHighlight: string; titleHighlightColor: string },
         causesContent: { text: '', buttonText: '', buttonUrl: '', icon: 'globe' } as { text: string; buttonText: string; buttonUrl: string; icon: string },
         logo: '',
+        avatarUrl: '',
         footerLogo: '',
         endPolioLogo: '',
         rotaractLogo: '',
@@ -291,6 +292,7 @@ const ClubSettings: React.FC = () => {
                     return { text: '', buttonText: '', buttonUrl: '', icon: 'globe', ...saved };
                 })(),
                 logo: club.logo || '',
+                avatarUrl: (club as any).avatarUrl || '',
                 footerLogo: club.footerLogo || '',
                 endPolioLogo: club.endPolioLogo || '',
                 rotaractLogo: settingsMap['rotaract_logo'] || '',
@@ -694,6 +696,34 @@ const ClubSettings: React.FC = () => {
                                         value={formData.country}
                                         onChange={e => setFormData({...formData, country: e.target.value})}
                                     />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Avatar del Club (foto de perfil circular para el panel, distinta del logo) */}
+                        <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                            <h3 className="text-lg font-bold text-gray-800 mb-1 flex items-center gap-3">
+                                <ImageIcon className="w-5 h-5 text-rotary-blue" /> Avatar del Club
+                            </h3>
+                            <p className="text-xs text-gray-400 mb-6">Foto de perfil circular que identifica al club en el panel. Es <b>distinta del logo</b>: el logo se usa en la cabecera del sitio público.</p>
+                            <div className="flex items-center gap-6">
+                                <div className="relative group w-28 h-28 shrink-0">
+                                    <div className="w-28 h-28 rounded-full bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden transition-all group-hover:border-rotary-blue/40">
+                                        {formData.avatarUrl ? <img src={formData.avatarUrl} className="w-full h-full object-cover" /> : <Building2 className="w-10 h-10 text-gray-300" />}
+                                    </div>
+                                    <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-full">
+                                        <Upload className="text-white w-7 h-7" />
+                                        <input type="file" className="hidden" onChange={e => handleFileUpload(e, 'avatars', 'avatarUrl')} accept="image/*" />
+                                    </label>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="inline-flex items-center gap-2 px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-100 cursor-pointer">
+                                        <Upload className="w-4 h-4" /> Subir foto
+                                        <input type="file" className="hidden" onChange={e => handleFileUpload(e, 'avatars', 'avatarUrl')} accept="image/*" />
+                                    </label>
+                                    {formData.avatarUrl && (
+                                        <button type="button" onClick={() => setFormData(prev => ({ ...prev, avatarUrl: '' }))} className="block text-xs font-bold text-gray-400 hover:text-red-500">Quitar avatar</button>
+                                    )}
                                 </div>
                             </div>
                         </div>

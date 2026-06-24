@@ -176,7 +176,7 @@ export const updateClub = async (req, res) => {
         name, description, city, country, district, domain, subdomain, type, organizationType,
         email, phone, address, state, facebook, instagram, twitter, youtube, linkedin, tiktok, 
         socialLinks, customSocialLinks, siteImages, galleryImages,
-        primaryColor, secondaryColor, actionSectionBg, joinSectionBg, areasSectionBg, footerBg, copyrightBg, copyrightTextColor, buttonBg, buttonHoverBg, buttonTextColor, buttonTextHoverColor, eventHeroImages, eventNavMenu, eventNavExtra, eventNavOrder, actionContent, statsContent, joinContent, foundationContent, causesContent, eventSections, footerConfig, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, status,
+        primaryColor, secondaryColor, actionSectionBg, joinSectionBg, areasSectionBg, footerBg, copyrightBg, copyrightTextColor, buttonBg, buttonHoverBg, buttonTextColor, buttonTextHoverColor, eventHeroImages, eventNavMenu, eventNavExtra, eventNavOrder, actionContent, statsContent, joinContent, foundationContent, causesContent, eventSections, footerConfig, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, avatarUrl, status,
         stripePublicKey, stripeSecretKey, useStripe,
         usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
         storeActive, logoHeaderSize, autoGenerateCalendar, mapStyle,
@@ -230,6 +230,7 @@ export const updateClub = async (req, res) => {
             addField('logo', logo);
             addField('footerLogo', footerLogo);
             addField('favicon', favicon);
+            addField('avatarUrl', avatarUrl);
             addField('status', status);
             addField('subscriptionStatus', subscriptionStatus);
             addField('expirationDate', expirationDate ? new Date(expirationDate) : undefined);
@@ -468,3 +469,5 @@ export const batchUpsertMembers = async (req, res) => {
         res.status(500).json({ error: 'Error agregando socios' });
     }
 };
+
+console.log('[clubController] cargado (v4.490.0 — avatar de perfil del club (avatarUrl), distinto del logo, editable en Configuración → Identidad)');
