@@ -219,6 +219,23 @@ model ReceivedEmail {
   @@index([clubId, folder])
 }
 
+// Borradores de correo del club (compositor de la bandeja). Outgoing, no inbound.
+model EmailDraft {
+  id          String   @id @default(uuid())
+  clubId      String
+  fromEmail   String? // cuenta remitente seleccionada
+  toEmail     String?
+  cc          String?
+  subject     String?
+  html        String?  @db.Text
+  // Adjuntos pendientes del borrador: [{ filename, content (base64), contentType, size }]
+  attachments Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([clubId])
+}
+
 model CrowdfundPool {
   id           String                @id @default(uuid())
   clubId       String

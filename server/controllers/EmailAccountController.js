@@ -549,6 +549,73 @@ export const provisionInbound = async (req, res) => {
     }
 };
 
+// ── BORRADORES ────────────────────────────────────────────────────────────────
+// GET /api/email-accounts/drafts — lista los borradores del club.
+export const listDrafts = async (req, res) => {
+    try {
+        const clubId = req.user.role === 'administrator' && req.query.clubId ? req.query.clubId : req.user.clubId;
+        if (!clubId) return res.status(400).json({ error: 'Club ID requerido' });
+        const drafts = await prisma.emailDraft.findMany({
+            where: { clubId },
+            orderBy: { updatedAt: 'desc' },
+            take: 100
+        });
+        res.json(drafts);
+    } catch (error) {
+        console.error('Error listando borradores:', error);
+        res.status(500).json({ error: error.message || 'Error interno' });
+    }
+};
+
+// POST /api/email-accounts/drafts — crea o actualiza un borrador (upsert por id).
+export const saveDraft = async (req, res) => {
+    try {
+        const clubId = req.user.role === 'administrator' && req.body.clubId ? req.body.clubId : req.user.clubId;
+        if (!clubId) return res.status(400).json({ error: 'Club ID requerido' });
+        const { id, fromEmail, to, cc, subject, html, attachments } = req.body;
+        const data = {
+            fromEmail: fromEmail || null,
+            toEmail: to || null,
+            cc: cc || null,
+            subject: subject || null,
+            html: html || null,
+            attachments: Array.isArray(attachments) && attachments.length ? attachments : undefined
+        };
+
+        let draft;
+        if (id) {
+            const existing = await prisma.emailDraft.findUnique({ where: { id } });
+            if (!existing || (existing.clubId !== clubId && req.user.role !== 'administrator')) {
+                return res.status(404).json({ error: 'Borrador no encontrado' });
+            }
+            draft = await prisma.emailDraft.update({ where: { id }, data });
+        } else {
+            draft = await prisma.emailDraft.create({ data: { ...data, clubId } });
+        }
+        res.json(draft);
+    } catch (error) {
+        console.error('Error guardando borrador:', error);
+        res.status(500).json({ error: error.message || 'Error interno' });
+    }
+};
+
+// DELETE /api/email-accounts/drafts/:id
+export const deleteDraft = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const existing = await prisma.emailDraft.findUnique({ where: { id } });
+        if (!existing) return res.status(404).json({ error: 'Borrador no encontrado' });
+        if (existing.clubId !== req.user.clubId && req.user.role !== 'administrator') {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+        await prisma.emailDraft.delete({ where: { id } });
+        res.json({ message: 'Borrador eliminado' });
+    } catch (error) {
+        console.error('Error eliminando borrador:', error);
+        res.status(500).json({ error: error.message || 'Error interno' });
+    }
+};
+
 // GET /api/email-accounts/diagnostics — radiografía real del correo del club.
 // Consulta el estado del dominio en Resend (verificación de ENVÍO y registro MX de
 // RECEPCIÓN), las cuentas locales y los contadores, y devuelve verdictos en español.
@@ -779,7 +846,10 @@ export default {
     deleteMessage,
     getEmailDiagnostics,
     testSendEmail,
-    provisionInbound
+    provisionInbound,
+    listDrafts,
+    saveDraft,
+    deleteDraft
 };
 
-console.log('[EmailAccountController] cargado (v4.488.0 — recepción: adjuntos entrantes guardados en S3 + metadata en ReceivedEmail (descargables en la bandeja))');
+console.log('[EmailAccountController] cargado (v4.489.0 — borradores persistentes (EmailDraft): guardar/retomar/eliminar desde la bandeja)');
