@@ -39,7 +39,7 @@ export class EmailService {
      *   - "smtp" → uses SMTP credentials from PlatformConfig
      *   - default → uses Resend API (env: RESEND_API_KEY)
      */
-    static async sendPlatformEmail({ to, subject, html, from, replyTo }) {
+    static async sendPlatformEmail({ to, subject, html, from, replyTo, cc, bcc, attachments }) {
         try {
             // Check if platform prefers SMTP
             const providerConfig = await prisma.platformConfig.findUnique({
@@ -49,10 +49,10 @@ export class EmailService {
             const provider = providerConfig?.value || 'resend';
 
             if (provider === 'smtp') {
-                return await this._sendViaPlatformSMTP({ to, subject, html, from, replyTo });
+                return await this._sendViaPlatformSMTP({ to, subject, html, from, replyTo, cc, bcc, attachments });
             }
 
-            return await this._sendViaResend({ to, subject, html, from, replyTo });
+            return await this._sendViaResend({ to, subject, html, from, replyTo, cc, bcc, attachments });
         } catch (error) {
             console.error(`[EmailService] Platform email failed to ${to}:`, error);
             return { success: false, error: error.message };
@@ -62,7 +62,35 @@ export class EmailService {
     /**
      * Send via Resend HTTP API (no npm package needed)
      */
-    static async _sendViaResend({ to, subject, html, from: customFrom, replyTo }) {
+    // Normaliza adjuntos al formato de Resend: { filename, content (base64) } o { filename, path (url) }.
+    static _resendAttachments(attachments) {
+        if (!Array.isArray(attachments)) return undefined;
+        const list = attachments
+            .map((a) => {
+                if (!a || !a.filename) return null;
+                if (a.content) return { filename: a.filename, content: a.content }; // base64
+                if (a.path || a.url) return { filename: a.filename, path: a.path || a.url };
+                return null;
+            })
+            .filter(Boolean);
+        return list.length ? list : undefined;
+    }
+
+    // Normaliza adjuntos al formato de nodemailer (SMTP): base64 → Buffer.
+    static _nodemailerAttachments(attachments) {
+        if (!Array.isArray(attachments)) return undefined;
+        const list = attachments
+            .map((a) => {
+                if (!a || !a.filename) return null;
+                if (a.content) return { filename: a.filename, content: Buffer.from(a.content, 'base64'), contentType: a.contentType };
+                if (a.path || a.url) return { filename: a.filename, path: a.path || a.url };
+                return null;
+            })
+            .filter(Boolean);
+        return list.length ? list : undefined;
+    }
+
+    static async _sendViaResend({ to, subject, html, from: customFrom, replyTo, cc, bcc, attachments }) {
         const apiKey = process.env.RESEND_API_KEY;
         if (!apiKey) {
             console.warn('[EmailService] RESEND_API_KEY not set. Intentando usar configuración SMTP de fallback del Super Admin...');
@@ -84,7 +112,12 @@ export class EmailService {
                 // Force "Club Platform for Rotary" as sender name instead of the local club's name
                 const senderEmail = fallbackConfig.fromEmail || fallbackConfig.user;
                 const fromStr = `"Club Platform for Rotary" <${senderEmail}>`;
-                const info = await transporter.sendMail({ from: fromStr, to: EmailService.parseRecipients(to), subject, html });
+                const info = await transporter.sendMail({
+                    from: fromStr, to: EmailService.parseRecipients(to), subject, html,
+                    ...(cc ? { cc: EmailService.parseRecipients(cc) } : {}),
+                    ...(bcc ? { bcc: EmailService.parseRecipients(bcc) } : {}),
+                    ...(EmailService._nodemailerAttachments(attachments) ? { attachments: EmailService._nodemailerAttachments(attachments) } : {})
+                });
                 return { success: true, messageId: info.messageId };
             }
 
@@ -109,8 +142,12 @@ export class EmailService {
             subject,
             html
         };
-        
+
         if (replyTo) body.reply_to = replyTo;
+        if (cc) body.cc = EmailService.parseRecipients(cc);
+        if (bcc) body.bcc = EmailService.parseRecipients(bcc);
+        const resendAtt = EmailService._resendAttachments(attachments);
+        if (resendAtt) body.attachments = resendAtt;
 
         const resp = await fetch('https://api.resend.com/emails', {
             method: 'POST',
@@ -134,7 +171,7 @@ export class EmailService {
     /**
      * Send via SMTP using PlatformConfig credentials
      */
-    static async _sendViaPlatformSMTP({ to, subject, html, from: customFrom, replyTo }) {
+    static async _sendViaPlatformSMTP({ to, subject, html, from: customFrom, replyTo, cc, bcc, attachments }) {
         const keys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from_name', 'smtp_from_email'];
         const configs = await prisma.platformConfig.findMany({
             where: { key: { in: keys } }
@@ -159,7 +196,13 @@ export class EmailService {
             ? `"${cfg.smtp_from_name}" <${cfg.smtp_from_email || cfg.smtp_user}>`
             : (cfg.smtp_from_email || cfg.smtp_user);
 
-        const info = await transporter.sendMail({ from: fromStr, to: EmailService.parseRecipients(to), subject, html });
+        const info = await transporter.sendMail({
+            from: fromStr, to: EmailService.parseRecipients(to), subject, html,
+            ...(replyTo ? { replyTo } : {}),
+            ...(cc ? { cc: EmailService.parseRecipients(cc) } : {}),
+            ...(bcc ? { bcc: EmailService.parseRecipients(bcc) } : {}),
+            ...(EmailService._nodemailerAttachments(attachments) ? { attachments: EmailService._nodemailerAttachments(attachments) } : {})
+        });
         return { success: true, messageId: info.messageId };
     }
 
@@ -196,7 +239,7 @@ export class EmailService {
      * Sends an email using the Club's own SMTP configuration, 
      * with fallback to Platform relay if club SMTP is not configured.
      */
-    static async sendEmail({ clubId, to, subject, html, userId, fromEmail }) {
+    static async sendEmail({ clubId, to, subject, html, userId, fromEmail, cc, bcc, attachments }) {
         try {
             const transporter = await this.getTransporter(clubId);
 
@@ -221,7 +264,7 @@ export class EmailService {
                     console.info(`[EmailService] Enviando vía Resend desde dirección institucional ${senderEmail}`);
 
                     const direct = await this.sendPlatformEmail({
-                        to, subject, html, from: fromStr, replyTo: senderEmail
+                        to, subject, html, from: fromStr, replyTo: senderEmail, cc, bcc, attachments
                     });
 
                     if (direct.success) {
@@ -247,12 +290,13 @@ export class EmailService {
                     ? `"${fromEmail}" <noreply@clubplatform.org>`
                     : `"${senderName}" <noreply@clubplatform.org>`;
 
-                return await this.sendPlatformEmail({ 
-                    to, 
-                    subject, 
-                    html, 
+                return await this.sendPlatformEmail({
+                    to,
+                    subject,
+                    html,
                     from: professionalFrom,
-                    replyTo: fromEmail
+                    replyTo: fromEmail,
+                    cc, bcc, attachments
                 });
             }
 
@@ -262,7 +306,12 @@ export class EmailService {
 
             const fromStr = config.fromName ? `"${config.fromName}" <${config.fromEmail}>` : config.fromEmail;
 
-            const info = await transporter.sendMail({ from: fromStr, to: EmailService.parseRecipients(to), subject, html });
+            const info = await transporter.sendMail({
+                from: fromStr, to: EmailService.parseRecipients(to), subject, html,
+                ...(cc ? { cc: EmailService.parseRecipients(cc) } : {}),
+                ...(bcc ? { bcc: EmailService.parseRecipients(bcc) } : {}),
+                ...(EmailService._nodemailerAttachments(attachments) ? { attachments: EmailService._nodemailerAttachments(attachments) } : {})
+            });
 
             await this.logCommunication({
                 clubId, type: 'email', recipient: to, subject, content: html, status: 'sent',

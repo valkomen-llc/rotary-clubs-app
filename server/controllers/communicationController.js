@@ -184,7 +184,10 @@ export const sendCommunication = async (req, res) => {
                 subject,
                 html: content,
                 userId: req.user.id,
-                fromEmail: req.body.fromEmail
+                fromEmail: req.body.fromEmail,
+                cc: req.body.cc,
+                bcc: req.body.bcc,
+                attachments: req.body.attachments
             });
         } else if (type === 'whatsapp') {
             result = await WhatsAppService.sendMessage({
@@ -218,3 +221,5 @@ export default {
     getCommunicationLogs,
     sendCommunication
 };
+
+console.log('[communicationController] cargado (v4.487.0 — envío con CC/BCC y adjuntos (base64) para la bandeja estilo Gmail: responder/reenviar/formato)');

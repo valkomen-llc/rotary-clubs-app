@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.486.0 | 2026-06-24 (Recepción: reapunta el webhook si su URL redirige 308)
-// Cache bust: 2026-06-24d
+// UI V4.487.0 | 2026-06-24 (Bandeja estilo Gmail: responder/reenviar/formato/adjuntos)
+// Cache bust: 2026-06-24e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.487.0',
+        title: 'Bandeja de Correo Estilo Gmail ✉️',
+        description: 'La bandeja ahora es un cliente de correo completo: Responder, Responder a todos y Reenviar (con el mensaje original citado), editor con formato (negrita, cursiva, subrayado, listas, enlaces), copia (CC) y adjuntar archivos. Además, los correos recibidos se muestran con su HTML original (aislado de forma segura) en vez de solo texto plano.',
+        date: new Date().toISOString(),
+        tags: ['correo', 'bandeja', 'responder', 'adjuntos'],
+        type: 'feature'
+    },
     {
         version: '4.486.0',
         title: 'Correo Entrante Arreglado: Webhook con Redirect 🩹',

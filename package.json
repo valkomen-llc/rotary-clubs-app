@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.486.0",
-  "cache_bust": "2026-06-24d (Recepción: reapunta el webhook si su URL redirige con 308 — causa real de Recibidos:0 pese a todo verde)",
+  "version": "4.487.0",
+  "cache_bust": "2026-06-24e (Bandeja estilo Gmail: responder/responder a todos/reenviar + editor con formato + CC + adjuntar archivos + render HTML del recibido)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
