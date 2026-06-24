@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.495.0",
-  "cache_bust": "2026-06-24m (Cerebro inteligente conectado a todas las secciones: publicar noticias, proyectos o eventos ahora refresca el Dossier vivo del sitio automáticamente (con debounce + barrido por cron), no solo al subir documentos)",
+  "version": "4.496.0",
+  "cache_bust": "2026-06-24n (Cerebro: el Dossier se basa en la evidencia real del sitio (documentos + contexto que escribe el admin), no en etiquetas por defecto; nuevo campo 'Contexto institucional' libre; y arreglo del error 'unparseable dossier' al regenerar con parseo robusto)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

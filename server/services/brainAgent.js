@@ -224,6 +224,13 @@ const TOOLS_BY_NAME = Object.fromEntries(TOOLS.map(t => [t.name, t]));
 
 async function buildSystemPrompt({ brain }) {
     const identity = brain.identityPrompt || `Eres el cerebro de "${brain.name}".`;
+    // Contexto institucional escrito a mano por el admin (metadata.contextNote):
+    // fuente primaria sobre la naturaleza real del sitio. Manda sobre la etiqueta
+    // declarada (p. ej. el sitio puede ser un evento/convención y no un club).
+    const md = (brain.metadata && typeof brain.metadata === 'object' && !Array.isArray(brain.metadata)) ? brain.metadata : {};
+    const contextBlock = (typeof md.contextNote === 'string' && md.contextNote.trim())
+        ? ['', '── Contexto institucional (definido por el administrador — fuente primaria) ──', md.contextNote.trim().slice(0, 4000), '']
+        : [];
     // Si el sitio ya tiene un Dossier sintetizado (resumen vivo de toda su
     // documentación + secciones), lo inyectamos como contexto base. Así el chat
     // responde desde la síntesis institucional y no solo desde chunks sueltos.
@@ -232,6 +239,7 @@ async function buildSystemPrompt({ brain }) {
         : [];
     return [
         identity,
+        ...contextBlock,
         ...dossierBlock,
         '',
         '── Capacidades disponibles ──',

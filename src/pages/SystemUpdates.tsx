@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.495.0 | 2026-06-24 (Dossier vivo conectado a todas las secciones del sitio)
-// Cache bust: 2026-06-24m
+// UI V4.496.0 | 2026-06-24 (Dossier basado en evidencia + contexto del admin + fix unparseable)
+// Cache bust: 2026-06-24n
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.496.0',
+        title: 'El Cerebro ahora entiende qué ES tu sitio (no asume "club") 🧠✍️',
+        description: 'Tres mejoras al Centro de Inteligencia: (1) Nuevo campo "Contexto institucional" en Configuración: escribís en tus palabras qué es tu sitio —una convención, un evento, una fundación, un club— y el cerebro lo toma como fuente primaria, junto al análisis de tus documentos, para armar el Dossier y responder en el chat. Manda sobre cualquier etiqueta automática. (2) El Dossier ahora deduce la naturaleza real de la organización desde la evidencia (tus documentos + tu contexto), en vez de asumir que todo sitio es un club rotario. (3) Arreglado el error "unparseable dossier" que aparecía al regenerar: el parseo del resumen es robusto y ya no falla aunque el modelo devuelva texto largo. Al guardar el contexto, el Dossier se regenera solo.',
+        date: new Date().toISOString(),
+        tags: ['cerebro', 'IA', 'dossier', 'contexto', 'fix'],
+        type: 'improvement'
+    },
     {
         version: '4.495.0',
         title: 'El Dossier del sitio ahora vive con todas tus secciones 🧠🔄',
