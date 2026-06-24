@@ -55,6 +55,19 @@ const CATEGORY_TO_KIND = {
     foundation: 'FOUNDATION',
 };
 
+// Map inverso Brain.kind → Club.category. Permite recategorizar un sitio desde
+// la configuración del cerebro (badge + identidad automática). DISTRICT/MASTER
+// no son tipos de sitio editables, por eso quedan fuera.
+export const KIND_TO_CATEGORY = {
+    CLUB: 'club',
+    ASSOCIATION: 'association',
+    PROGRAM: 'exchange_program',
+    EVENT: 'event',
+    CONFERENCE: 'conference',
+    PROJECT_FAIR: 'project_fair',
+    FOUNDATION: 'foundation',
+};
+
 const truncate = (str, max = 8000) => {
     if (!str) return '';
     const s = String(str);

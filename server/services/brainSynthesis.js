@@ -21,7 +21,7 @@
 import prisma from '../lib/prisma.js';
 import { generateText } from './brainAgent.js';
 
-console.log('🧬 BRAIN SYNTHESIS v4.496 — dossier basado en evidencia + contexto del admin + parseo robusto 📑🧠');
+console.log('🧬 BRAIN SYNTHESIS v4.497 — dossier evidence-first + contexto del admin + tipo de sitio recategorizable 📑🧠');
 
 const DOC_TEXT_BUDGET = 12000;   // chars del documento que mandamos al LLM
 const DOSSIER_DOC_LIMIT = 40;    // máx fichas de documento a fusionar
