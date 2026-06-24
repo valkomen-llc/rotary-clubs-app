@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.484.0",
-  "cache_bust": "2026-06-24b (Diagnóstico de recepción mira el MX REAL del apex vía DNS: fin del falso positivo del MX de envío)",
+  "version": "4.485.0",
+  "cache_bust": "2026-06-24c (El MX de recepción de Resend es inbound-smtp.*.amazonaws.com: fix del falso negativo + verifica la URL del webhook)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

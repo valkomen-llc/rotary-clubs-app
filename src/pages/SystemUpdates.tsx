@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.484.0 | 2026-06-24 (Diagnóstico de recepción: MX real del apex)
-// Cache bust: 2026-06-24b
+// UI V4.485.0 | 2026-06-24 (Recepción: reconoce el MX inbound de Resend + verifica webhook)
+// Cache bust: 2026-06-24c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.485.0',
+        title: 'Diagnóstico de Correo: Reconoce el MX de Resend Inbound ✅',
+        description: 'El Diagnóstico ahora identifica correctamente el MX de recepción de Resend (que apunta a inbound-smtp.<región>.amazonaws.com, no a un host "resend"). Antes daba un falso negativo cuando la recepción YA estaba bien configurada. Además, el chequeo del webhook ahora muestra a qué URL apunta y avisa si está deshabilitado o si la URL no termina en /api/public/inbound-email.',
+        date: new Date().toISOString(),
+        tags: ['correo', 'diagnostico', 'recepcion', 'webhook'],
+        type: 'fix'
+    },
     {
         version: '4.484.0',
         title: 'Diagnóstico de Correo: MX de Recepción Real 🔎',
