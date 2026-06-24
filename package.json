@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.494.0",
-  "cache_bust": "2026-06-24l (Cerebro inteligente: cada documento que se sube genera una ficha de comprensión (resumen + análisis estructurado) y todo se fusiona en un Dossier vivo del sitio que se re-sintetiza solo y alimenta el chat — genérico para todos los sitios)",
+  "version": "4.495.0",
+  "cache_bust": "2026-06-24m (Cerebro inteligente conectado a todas las secciones: publicar noticias, proyectos o eventos ahora refresca el Dossier vivo del sitio automáticamente (con debounce + barrido por cron), no solo al subir documentos)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.494.0 | 2026-06-24 (Cerebro inteligente: ficha por documento + Dossier vivo del sitio)
-// Cache bust: 2026-06-24l
+// UI V4.495.0 | 2026-06-24 (Dossier vivo conectado a todas las secciones del sitio)
+// Cache bust: 2026-06-24m
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.495.0',
+        title: 'El Dossier del sitio ahora vive con todas tus secciones 🧠🔄',
+        description: 'El "Dossier del sitio" del Cerebro ya no se actualiza solo cuando subís documentos: ahora también se refresca automáticamente cuando publicás noticias, proyectos, eventos o conocimiento. Para no recalcular en cada publicación, usa un refresco inteligente (debounce): si el dossier es reciente, marca el sitio y un proceso automático lo resintetiza poco después; si ya pasó un rato, lo actualiza al instante. Así la síntesis institucional refleja siempre el estado real del sitio —documentos + secciones— y alimenta mejor al chat del Cerebro. Funciona igual para todos los sitios.',
+        date: new Date().toISOString(),
+        tags: ['cerebro', 'IA', 'dossier', 'secciones', 'automatización'],
+        type: 'improvement'
+    },
     {
         version: '4.494.0',
         title: 'Cerebro inteligente: comprende tus documentos 🧠📑',

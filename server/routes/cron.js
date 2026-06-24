@@ -7,6 +7,7 @@ import { runScheduledPublicationsDue } from '../controllers/socialPublishingCont
 import { processAllActivations } from '../services/activationService.js';
 import { processScheduledCampaigns } from '../controllers/emailMarketingController.js';
 import { processEmailAutomations } from '../controllers/emailAutomationController.js';
+import { sweepStaleDossiers } from '../services/brainSynthesis.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -257,6 +258,27 @@ router.get('/send-scheduled-emails', async (req, res) => {
         res.json({ ok: true, ...summary, automations, elapsedMs });
     } catch (e) {
         console.error('[CRON send-scheduled-emails] error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Vercel Cron endpoint: /api/cron/refresh-dossiers
+// Resintetiza los Dossiers de sitios marcados "dirty" por publicaciones de
+// secciones (noticias/proyectos/eventos) que aún no se reflejaron. Cubre la
+// cola del debounce: el último cambio antes de un periodo de silencio.
+// Configurar en vercel.json con schedule "*/10 * * * *" (cada 10 minutos).
+router.get('/refresh-dossiers', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        console.warn('[CRON refresh-dossiers] Unauthorized');
+        return res.status(401).json({ error: 'Unauthorized cron trigger' });
+    }
+    try {
+        const summary = await sweepStaleDossiers({ limit: 20, timeBudgetMs: 90000 });
+        console.log(`[CRON refresh-dossiers] evaluados=${summary.evaluated ?? 0} refrescados=${summary.refreshed ?? 0} en ${summary.elapsedMs ?? 0}ms`);
+        res.json({ ok: true, ...summary });
+    } catch (e) {
+        console.error('[CRON refresh-dossiers] error:', e);
         res.status(500).json({ error: e.message });
     }
 });
