@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.499.0",
-  "cache_bust": "2026-06-25b (Cerebro: el Contexto institucional ahora admite textos largos — límite ampliado de 4.000 a 20.000 caracteres en el cuadro y en el backend)",
+  "version": "4.500.0",
+  "cache_bust": "2026-06-25c (Cerebro: la identidad generada con IA y el dossier ya no salen cortados — se desactiva el 'thinking' de Gemini 2.5 que consumía el presupuesto de tokens y truncaba la respuesta; más headroom de tokens)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

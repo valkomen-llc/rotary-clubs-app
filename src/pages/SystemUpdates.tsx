@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.499.0 | 2026-06-25 (Contexto institucional admite textos largos: 20.000 caracteres)
-// Cache bust: 2026-06-25b
+// UI V4.500.0 | 2026-06-25 (Fix: identidad/dossier ya no salen truncados con Gemini 2.5)
+// Cache bust: 2026-06-25c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.500.0',
+        title: 'La Identidad generada con IA ya no sale cortada ✅',
+        description: 'Arreglamos un truncado: al "Generar con IA" la Identidad del cerebro (y al sintetizar el Dossier), la respuesta se cortaba a mitad de oración. La causa era que los modelos Gemini 2.5 gastan parte del presupuesto de tokens "pensando", y eso dejaba sin espacio al texto final. Ahora desactivamos ese modo de pensamiento para estas tareas y ampliamos el margen de tokens, así la identidad y el dossier salen completos y aprovechan todo el contexto que cargaste.',
+        date: new Date().toISOString(),
+        tags: ['cerebro', 'IA', 'identidad', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.499.0',
         title: 'Contexto institucional sin quedarte corto 📝',
