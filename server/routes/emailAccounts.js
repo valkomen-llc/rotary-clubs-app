@@ -7,7 +7,8 @@ import {
     updateMessage,
     deleteMessage,
     getEmailDiagnostics,
-    testSendEmail
+    testSendEmail,
+    provisionInbound
 } from '../controllers/EmailAccountController.js';
 import { authMiddleware } from '../middleware/auth.js';
 
@@ -20,6 +21,10 @@ router.get('/diagnostics', getEmailDiagnostics);
 
 // Prueba de envío que devuelve la respuesta cruda de Resend.
 router.post('/test-send', testSendEmail);
+
+// Provisión de recepción: crea el webhook email.received + buzones por defecto para
+// todos los dominios conectados a Resend, y reporta el estado del MX por dominio.
+router.post('/provision-inbound', provisionInbound);
 
 // Bandeja real (correos recibidos vía Resend Inbound).
 router.get('/messages', getAccountMessages);

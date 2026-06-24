@@ -77,6 +77,45 @@ const EmailManagement: React.FC = () => {
     const [testResult, setTestResult] = useState<any>(null);
     const [testingSend, setTestingSend] = useState(false);
 
+    // Provisión de recepción (webhook + buzones + MX) para los dominios Resend.
+    const [showProvisionModal, setShowProvisionModal] = useState(false);
+    const [provisioning, setProvisioning] = useState(false);
+    const [provisionResult, setProvisionResult] = useState<any>(null);
+
+    const runProvisionInbound = async () => {
+        setShowProvisionModal(true);
+        setProvisioning(true);
+        setProvisionResult(null);
+        try {
+            const res = await fetch('/api/email-accounts/provision-inbound', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({})
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setProvisionResult({ error: data.error || `El servidor respondió ${res.status}` });
+            } else {
+                setProvisionResult(data);
+                // Refresca cuentas por si se crearon buzones por defecto.
+                if (Array.isArray(data.mailboxesCreated) && data.mailboxesCreated.length > 0) {
+                    try {
+                        const r = await fetch('/api/email-accounts', { headers: { 'Authorization': `Bearer ${token}` } });
+                        if (r.ok) {
+                            const accs = await r.json();
+                            setAccounts(accs);
+                            if (!activeAccount && accs.length > 0) setActiveAccount(accs[0]);
+                        }
+                    } catch { /* noop */ }
+                }
+            }
+        } catch (e: any) {
+            setProvisionResult({ error: e?.message || 'Error de conexión al configurar la recepción' });
+        } finally {
+            setProvisioning(false);
+        }
+    };
+
     const runTestSend = async () => {
         if (!testTo) { toast.error('Escribe un destinatario para la prueba'); return; }
         setTestingSend(true);
@@ -468,6 +507,16 @@ const EmailManagement: React.FC = () => {
                             <RefreshCw className="w-4 h-4" />
                             Diagnóstico
                         </button>
+                        {isSuperAdmin && (
+                            <button
+                                onClick={runProvisionInbound}
+                                title="Crear el webhook de recepción y los buzones por defecto para todos los dominios conectados a Resend"
+                                className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-sm font-bold hover:bg-emerald-100 transition-all active:scale-95"
+                            >
+                                <Inbox className="w-4 h-4" />
+                                Configurar recepción
+                            </button>
+                        )}
                         <button
                             onClick={() => activeTab === 'inbox' ? setShowComposeModal(true) : setShowAccountModal(true)}
                             className="flex items-center gap-2 px-5 py-2.5 bg-rotary-blue text-white rounded-xl text-sm font-bold hover:bg-sky-800 transition-all shadow-xl shadow-blue-900/20 active:scale-95"
@@ -684,6 +733,100 @@ const EmailManagement: React.FC = () => {
                             <div className="p-8 bg-gray-50 border-t border-gray-100 flex gap-4">
                                 <button onClick={() => setShowAccountModal(false)} className="flex-1 py-4 text-sm font-black text-gray-400 uppercase tracking-widest">Cerrar</button>
                                 <button onClick={handleCreateAccount} disabled={!newAccount.user || !newAccount.password} className="flex-[2] py-4 bg-gray-900 text-white text-sm font-black rounded-3xl hover:bg-rotary-blue transition-all uppercase tracking-widest">Crear y Activar</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showProvisionModal && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-md">
+                        <div className="bg-white rounded-[32px] w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+                            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                                <h3 className="text-xl font-bold text-gray-900">Configurar recepción</h3>
+                                <button onClick={() => setShowProvisionModal(false)} className="p-2 text-gray-400 hover:text-gray-900 rounded-xl"><X className="w-5 h-5" /></button>
+                            </div>
+                            <div className="p-6 overflow-y-auto">
+                                {provisioning && (
+                                    <div className="flex flex-col items-center justify-center py-10 gap-3">
+                                        <RefreshCw className="w-6 h-6 animate-spin text-emerald-500" />
+                                        <p className="text-sm text-gray-400">Conectando con Resend y configurando los buzones…</p>
+                                    </div>
+                                )}
+                                {!provisioning && provisionResult?.error && (
+                                    <p className="text-sm text-red-600 bg-red-50 rounded-xl p-4">{provisionResult.error}</p>
+                                )}
+                                {!provisioning && provisionResult && !provisionResult.error && (
+                                    <div className="space-y-4">
+                                        {/* Webhook */}
+                                        <div className={`p-4 rounded-xl text-sm ${provisionResult.webhook?.hasReceivedEvent ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>
+                                            <div className="flex items-start gap-2">
+                                                <span className="mt-0.5">{provisionResult.webhook?.hasReceivedEvent ? '✅' : '❌'}</span>
+                                                <div>
+                                                    <p className="font-bold">
+                                                        {provisionResult.webhook?.action === 'created' && 'Webhook email.received creado'}
+                                                        {provisionResult.webhook?.action === 'already_configured' && 'Webhook email.received ya estaba configurado'}
+                                                        {provisionResult.webhook?.action === 'none' && 'No se pudo configurar el webhook'}
+                                                    </p>
+                                                    {provisionResult.webhook?.endpoint && <p className="text-xs mt-1 break-all">{provisionResult.webhook.endpoint}</p>}
+                                                </div>
+                                            </div>
+                                            {provisionResult.webhook?.signingSecret && (
+                                                <div className="mt-3 bg-white/70 border border-emerald-200 rounded-lg p-3">
+                                                    <p className="text-[11px] font-black uppercase tracking-wide text-emerald-700 mb-1">Guarda esto como RESEND_WEBHOOK_SECRET</p>
+                                                    <code className="text-xs break-all text-gray-800">{provisionResult.webhook.signingSecret}</code>
+                                                    <p className="text-[11px] text-emerald-700 mt-1">Resend solo lo muestra una vez. Configúralo en las variables de entorno para validar las firmas.</p>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Buzones creados */}
+                                        {Array.isArray(provisionResult.mailboxesCreated) && provisionResult.mailboxesCreated.length > 0 && (
+                                            <div className="p-4 rounded-xl text-sm bg-sky-50 text-sky-800">
+                                                <p className="font-bold mb-1">Buzones por defecto creados</p>
+                                                <ul className="list-disc list-inside text-xs space-y-0.5">
+                                                    {provisionResult.mailboxesCreated.map((m: string) => <li key={m}>{m}</li>)}
+                                                </ul>
+                                            </div>
+                                        )}
+
+                                        {/* Dominios + MX */}
+                                        <div>
+                                            <p className="text-xs font-black text-gray-400 uppercase tracking-wider mb-2">Dominios conectados a Resend ({(provisionResult.domains || []).length})</p>
+                                            <div className="space-y-2">
+                                                {(provisionResult.domains || []).map((d: any) => (
+                                                    <div key={d.domain} className="border border-gray-100 rounded-xl p-3">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-sm font-bold text-gray-900">{d.domain}</span>
+                                                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${d.inboundMx ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{d.inboundMx ? 'MX OK' : 'Falta MX'}</span>
+                                                        </div>
+                                                        {!d.inboundMx && (
+                                                            <p className="text-[11px] text-amber-700 mt-1">En Resend → Domains → {d.domain} habilita "Receiving" y agrega el MX a tu DNS (prioridad más baja).</p>
+                                                        )}
+                                                        {d.mxRecord && (
+                                                            <p className="text-[11px] text-gray-500 mt-1 break-all">MX: <code>{d.mxRecord.name} → {d.mxRecord.priority} {d.mxRecord.value}</code></p>
+                                                        )}
+                                                        {d.mailbox?.note && <p className="text-[11px] text-gray-400 mt-1">Buzón: {d.mailbox.note}</p>}
+                                                    </div>
+                                                ))}
+                                                {(provisionResult.domains || []).length === 0 && <p className="text-sm text-gray-400">No se encontraron dominios en Resend.</p>}
+                                            </div>
+                                        </div>
+
+                                        {/* Errores */}
+                                        {Array.isArray(provisionResult.errors) && provisionResult.errors.length > 0 && (
+                                            <div className="p-4 rounded-xl text-sm bg-red-50 text-red-700">
+                                                <p className="font-bold mb-1">Avisos</p>
+                                                <ul className="list-disc list-inside text-xs space-y-0.5">
+                                                    {provisionResult.errors.map((e: string, i: number) => <li key={i}>{e}</li>)}
+                                                </ul>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="p-5 bg-gray-50 border-t border-gray-100 flex gap-3">
+                                <button onClick={() => setShowProvisionModal(false)} className="flex-1 py-3 text-sm font-black text-gray-400 uppercase tracking-widest">Cerrar</button>
+                                <button onClick={runProvisionInbound} disabled={provisioning} className="flex-1 py-3 bg-emerald-600 text-white text-sm font-black rounded-2xl hover:bg-emerald-700 transition-all uppercase tracking-widest disabled:opacity-50">Reintentar</button>
                             </div>
                         </div>
                     </div>
