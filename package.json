@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.485.0",
-  "cache_bust": "2026-06-24c (El MX de recepción de Resend es inbound-smtp.*.amazonaws.com: fix del falso negativo + verifica la URL del webhook)",
+  "version": "4.486.0",
+  "cache_bust": "2026-06-24d (Recepción: reapunta el webhook si su URL redirige con 308 — causa real de Recibidos:0 pese a todo verde)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
