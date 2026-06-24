@@ -1108,6 +1108,7 @@ const ConfigTab: React.FC<{ brain: any; canEdit: boolean; headers: Record<string
     const cfg = md.config || {};
 
     const [identityPrompt, setIdentityPrompt] = useState<string>(brain.identityPrompt || '');
+    const [contextNote, setContextNote] = useState<string>(md.contextNote || '');
     const [config, setConfig] = useState({
         learnFromPosts:     cfg.learnFromPosts !== false,
         learnFromProjects:  cfg.learnFromProjects !== false,
@@ -1121,6 +1122,7 @@ const ConfigTab: React.FC<{ brain: any; canEdit: boolean; headers: Record<string
     const overridden = md.identityPromptOverridden === true;
 
     const dirty = identityPrompt !== (brain.identityPrompt || '') ||
+                  contextNote !== (md.contextNote || '') ||
                   JSON.stringify(config) !== JSON.stringify({
                       learnFromPosts:     cfg.learnFromPosts !== false,
                       learnFromProjects:  cfg.learnFromProjects !== false,
@@ -1137,7 +1139,7 @@ const ConfigTab: React.FC<{ brain: any; canEdit: boolean; headers: Record<string
             const r = await fetch(`${API}/brains/${brain.id}/settings`, {
                 method: 'PATCH',
                 headers: { ...headers, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ identityPrompt, config }),
+                body: JSON.stringify({ identityPrompt, contextNote, config }),
             });
             if (r.ok) {
                 toast.success('Configuración guardada');
@@ -1180,6 +1182,30 @@ const ConfigTab: React.FC<{ brain: any; canEdit: boolean; headers: Record<string
                     Solo lectura — no tenés permisos para editar este cerebro.
                 </div>
             )}
+
+            {/* Contexto institucional (fuente primaria) */}
+            <div>
+                <div className="mb-2">
+                    <div className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-violet-600" />Contexto institucional
+                    </div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                        Escribí en tus palabras qué es este sitio y a qué se dedica (por ejemplo: una <strong>convención</strong>, un <strong>evento</strong>, una fundación o un club). El cerebro lo toma como <strong>fuente primaria</strong> —junto con el análisis de tus documentos— para construir el Dossier y responder en el chat. Manda sobre cualquier etiqueta automática.
+                    </div>
+                </div>
+                <textarea
+                    value={contextNote}
+                    onChange={e => setContextNote(e.target.value)}
+                    disabled={!canEdit}
+                    rows={5}
+                    maxLength={4000}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm leading-relaxed focus:border-violet-400 focus:ring-2 focus:ring-violet-100 outline-none disabled:bg-gray-50"
+                    placeholder="Ej.: 'Jaque Mate A La Polio' es una convención/evento solidario para recaudar fondos contra la polio. No es un club rotario: es una actividad organizada por... Sus objetivos son..."
+                />
+                <div className="mt-1.5 text-[11px] text-gray-500 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" />Al guardar, el Dossier se regenera con este contexto. {contextNote.length}/4000
+                </div>
+            </div>
 
             {/* Identity prompt */}
             <div>

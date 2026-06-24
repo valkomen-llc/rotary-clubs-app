@@ -21,7 +21,7 @@
 import prisma from '../lib/prisma.js';
 import { generateText } from './brainAgent.js';
 
-console.log('🧬 BRAIN SYNTHESIS v4.495 — comprensión documental + dossier vivo + refresco por secciones (debounce + cron) 📑🔄');
+console.log('🧬 BRAIN SYNTHESIS v4.496 — dossier basado en evidencia + contexto del admin + parseo robusto 📑🧠');
 
 const DOC_TEXT_BUDGET = 12000;   // chars del documento que mandamos al LLM
 const DOSSIER_DOC_LIMIT = 40;    // máx fichas de documento a fusionar
@@ -149,27 +149,65 @@ export async function analyzeDocument({ documentId, fullText }) {
 
 const DOSSIER_SYSTEM = [
     'Sos el redactor del DOSSIER INSTITUCIONAL de un sitio web de una organización.',
-    'Recibís: la identidad del sitio, las fichas de comprensión de sus documentos',
-    'cargados, y una muestra de las secciones que el sitio ya publicó (noticias,',
-    'proyectos, eventos, conocimiento, notas). Tu trabajo es FUSIONAR todo en un',
-    'único dossier detallado, coherente y vivo, en español.',
+    'Recibís, en orden de prioridad: (1) el CONTEXTO que el administrador escribió',
+    'a mano sobre la organización, (2) la identidad declarada del sitio, (3) las',
+    'fichas de comprensión de sus documentos cargados, y (4) una muestra de las',
+    'secciones publicadas. Tu trabajo es FUSIONAR todo en un único dossier',
+    'detallado, coherente y vivo, en español.',
+    '',
+    'CRÍTICO — la NATURALEZA de la organización se DEDUCE de la evidencia (contexto',
+    'del administrador + documentos + secciones), NO de etiquetas por defecto. Si la',
+    'evidencia indica que es un evento, convención, conferencia, feria, fundación o',
+    'programa —y no un "club"— describilo exactamente como tal. NO asumas que es un',
+    'club rotario salvo que la evidencia lo confirme. El contexto del administrador',
+    'manda sobre cualquier etiqueta declarada.',
     '',
     'El dossier debe demostrar que el cerebro entiende a la organización: qué es,',
     'qué hace, sus líneas de acción, su gente, sus cifras, sus próximas actividades',
-    'y qué información institucional aún falta cargar.',
+    'y qué información institucional aún falta cargar. No inventes datos que no estén.',
     '',
-    'Respondé EXCLUSIVAMENTE con un objeto JSON válido con esta forma:',
-    '{',
-    '  "dossier": "documento en Markdown con secciones (## Identidad, ## Qué hace,',
-    '              ## Documentos analizados, ## Líneas de acción, ## Datos clave,',
-    '              ## Próximas actividades). Detallado pero sin inventar.",',
-    '  "highlights": ["3 a 6 puntos clave que definen a la organización"],',
-    '  "gaps": ["información institucional que falta cargar para completar el cerebro"],',
-    '  "completeness": 0',
-    '}',
-    'completeness es un entero 0-100: qué tan completo está el perfil institucional',
-    'según la información disponible. No inventes hechos que no estén en el material.',
+    'FORMATO DE RESPUESTA — seguilo EXACTAMENTE:',
+    'Primero, el dossier en Markdown con secciones ## (## Identidad, ## Qué es / Qué',
+    'hace, ## Documentos analizados, ## Líneas de acción, ## Datos clave, ## Próximas',
+    'actividades). Detallado pero fiel.',
+    'Después, en una línea sola, el separador exacto:',
+    '===META===',
+    'y justo debajo un objeto JSON compacto en UNA línea:',
+    '{"highlights":["3 a 6 puntos clave que definen a la organización"],"gaps":["info institucional que falta cargar"],"completeness":0}',
+    'completeness es un entero 0-100 (qué tan completo está el perfil). No escribas',
+    'nada después del JSON.',
 ].join('\n');
+
+// Parser robusto del output del dossier. El modelo devuelve Markdown seguido de
+// un separador ===META=== y un JSON chico. Si el separador falta, tratamos todo
+// el texto como el dossier (con compat para el formato JSON viejo). Solo
+// devuelve null si no hay absolutamente nada de texto utilizable.
+function parseDossierOutput(raw) {
+    if (!raw || typeof raw !== 'string') return null;
+    let text = raw.trim();
+    // Quitar un fence de markdown que envuelva TODO el output.
+    const allFence = text.match(/^```(?:markdown|md)?\s*([\s\S]*?)```\s*$/i);
+    if (allFence) text = allFence[1].trim();
+
+    let dossier = text;
+    let meta = {};
+    const idx = text.indexOf('===META===');
+    if (idx !== -1) {
+        dossier = text.slice(0, idx).trim();
+        const parsed = parseJsonLoose(text.slice(idx + '===META==='.length));
+        if (parsed && typeof parsed === 'object') meta = parsed;
+    } else {
+        // Compat con el formato viejo {"dossier": "...", ...}.
+        const legacy = parseJsonLoose(text);
+        if (legacy && typeof legacy.dossier === 'string' && legacy.dossier.trim()) {
+            dossier = legacy.dossier;
+            meta = legacy;
+        }
+    }
+    dossier = dossier.trim();
+    if (!dossier) return null;
+    return { dossier, meta };
+}
 
 // Construye el bloque de contexto (fichas de documentos + muestra de memorias).
 async function buildDossierContext(brain) {
@@ -209,11 +247,20 @@ async function buildDossierContext(brain) {
         return `${kind} (${titles.length}):\n${sample}`;
     });
 
+    // Contexto que el administrador escribió a mano (metadata.contextNote).
+    // Es la fuente PRIMARIA de la naturaleza real de la organización.
+    const md = (brain.metadata && typeof brain.metadata === 'object' && !Array.isArray(brain.metadata)) ? brain.metadata : {};
+    const contextNote = clampStr(md.contextNote, 4000).trim();
+
     return {
         docCount: docs.length,
         memCount: memories.length,
         text: [
-            `Identidad declarada: ${brain.identityPrompt || `Cerebro de "${brain.name}".`}`,
+            contextNote
+                ? `── Contexto del administrador (FUENTE PRIMARIA — define qué es la organización) ──\n${contextNote}`
+                : '── El administrador no cargó contexto manual todavía ──',
+            '',
+            `Identidad declarada del sitio (secundaria, puede estar desactualizada): ${brain.identityPrompt || `Cerebro de "${brain.name}".`}`,
             '',
             docBlocks.length ? `── Fichas de documentos analizados (${docs.length}) ──\n${docBlocks.join('\n\n')}` : '── Sin documentos analizados todavía ──',
             '',
@@ -250,24 +297,25 @@ export async function regenerateDossier(brainId, { reason = 'update' } = {}) {
                 systemPrompt: DOSSIER_SYSTEM,
                 userMessage: `Organización: "${brain.name}"\n\n${ctx.text}`,
                 temperature: 0.4,
-                maxOutputTokens: 2560,
+                maxOutputTokens: 4000,
             });
         } catch (err) {
             console.warn('[brainSynthesis] dossier LLM error:', err.message);
             return { ok: false, error: err.message };
         }
 
-        const parsed = parseJsonLoose(raw);
-        if (!parsed || !parsed.dossier) {
-            console.warn('[brainSynthesis] dossier: JSON no parseable para', brainId);
-            return { ok: false, error: 'unparseable dossier' };
+        const parsed = parseDossierOutput(raw);
+        if (!parsed) {
+            console.warn('[brainSynthesis] dossier: output vacío para', brainId, '· len=', (raw || '').length);
+            return { ok: false, error: 'empty dossier' };
         }
+        const meta = parsed.meta || {};
 
         const dossier = clampStr(parsed.dossier, 12000);
         const dossierMeta = {
-            highlights: asArray(parsed.highlights).map(x => clampStr(String(x), 300)).slice(0, 8),
-            gaps: asArray(parsed.gaps).map(x => clampStr(String(x), 300)).slice(0, 10),
-            completeness: Math.max(0, Math.min(100, Math.round(Number(parsed.completeness) || 0))),
+            highlights: asArray(meta.highlights).map(x => clampStr(String(x), 300)).slice(0, 8),
+            gaps: asArray(meta.gaps).map(x => clampStr(String(x), 300)).slice(0, 10),
+            completeness: Math.max(0, Math.min(100, Math.round(Number(meta.completeness) || 0))),
             docCount: ctx.docCount,
             sectionCount: ctx.memCount,
             reason,

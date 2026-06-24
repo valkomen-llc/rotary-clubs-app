@@ -1149,7 +1149,8 @@ router.patch('/:id/settings', authMiddleware, async (req, res) => {
             (brain.districtId && brain.districtId === scope.districtId);
         if (!canEdit) return res.status(403).json({ error: 'Access denied', scope, brainClubId: brain.clubId });
 
-        const { identityPrompt, config, resetIdentityToAuto } = req.body || {};
+        const { identityPrompt, config, resetIdentityToAuto, contextNote } = req.body || {};
+        let contextChanged = false;
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const data = {};
@@ -1170,6 +1171,15 @@ router.patch('/:id/settings', authMiddleware, async (req, res) => {
         } else if (typeof identityPrompt === 'string') {
             data.identityPrompt = identityPrompt.slice(0, 4000);
             data.metadata = { ...md, identityPromptOverridden: true };
+        }
+
+        // Contexto institucional libre escrito por el admin. Es la fuente
+        // primaria de la naturaleza real del sitio (evento/convención/club/etc.)
+        // y alimenta tanto el dossier como el chat del cerebro.
+        if (typeof contextNote === 'string') {
+            const trimmed = contextNote.slice(0, 4000);
+            contextChanged = trimmed !== (typeof md.contextNote === 'string' ? md.contextNote : '');
+            data.metadata = { ...(data.metadata || md), contextNote: trimmed };
         }
 
         if (config && typeof config === 'object' && !Array.isArray(config)) {
@@ -1194,6 +1204,15 @@ router.patch('/:id/settings', authMiddleware, async (req, res) => {
         }
 
         const updated = await prisma.brain.update({ where: { id: brain.id }, data });
+
+        // Si cambió el contexto institucional o la identidad, regenerar el
+        // dossier para que refleje la nueva fuente (fire-and-forget).
+        if (contextChanged || resetIdentityToAuto || typeof identityPrompt === 'string') {
+            import('../services/brainSynthesis.js')
+                .then(({ regenerateDossierSafe }) => regenerateDossierSafe(brain.id, { reason: 'settings-update' }))
+                .catch(() => {});
+        }
+
         res.json({ ok: true, brain: updated });
     } catch (err) {
         console.error('[brains] settings:', err);
