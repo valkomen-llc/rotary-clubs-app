@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.482.0",
-  "cache_bust": "2026-06-22 18:45 (Diagnóstico: leer dominio/MX con la key de lectura + verificar webhook email.received)",
+  "version": "4.483.0",
+  "cache_bust": "2026-06-24 (Configurar recepción: crea webhook email.received + buzón por defecto + reporte MX para todos los dominios Resend)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

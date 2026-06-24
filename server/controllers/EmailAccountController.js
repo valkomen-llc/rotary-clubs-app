@@ -288,6 +288,184 @@ export const deleteMessage = async (req, res) => {
     }
 };
 
+// URL pública absoluta del endpoint que recibe los correos entrantes desde Resend.
+// El webhook de Resend exige una URL absoluta; usamos APP_URL (igual que el resto de
+// integraciones) con fallback al host de producción.
+const getInboundUrl = () => {
+    const base = (process.env.APP_URL || 'https://app.clubplatform.org').replace(/\/+$/, '');
+    return `${base}/api/public/inbound-email`;
+};
+
+// POST /api/email-accounts/provision-inbound — termina de configurar la RECEPCIÓN
+// (las "bandejas") para TODOS los dominios conectados a Resend, no solo el del club actual.
+//
+// Hace tres cosas, todas idempotentes:
+//   1. Webhook email.received: a nivel de CUENTA (un solo webhook cubre todos los dominios).
+//      Si ya hay uno apuntando a /api/public/inbound-email lo deja como está; si no, lo crea
+//      y devuelve el signing_secret (Resend solo lo muestra al crearlo) para fijar
+//      RESEND_WEBHOOK_SECRET.
+//   2. Buzón por defecto (contacto@<dominio>) para cada dominio verificado en Resend que
+//      tenga club en el sistema y todavía no tenga ninguna cuenta — así el sitio ya tiene bandeja.
+//   3. MX de recepción: lo REPORTA leyendo el registro exacto que Resend espera por dominio
+//      (no escribimos DNS a ciegas: el valor lo define Resend y la zona puede no ser nuestra).
+export const provisionInbound = async (req, res) => {
+    try {
+        if (req.user.role !== 'administrator' && req.user.role !== 'superadmin') {
+            return res.status(403).json({ error: 'Solo un administrador puede configurar la recepción de correo.' });
+        }
+
+        const writeKey = process.env.RESEND_API_KEY;
+        const readKey = process.env.RESEND_INBOUND_API_KEY || process.env.RESEND_API_KEY;
+        if (!writeKey) {
+            return res.status(400).json({ error: 'FALTA RESEND_API_KEY: es necesaria para crear el webhook de recepción en Resend.' });
+        }
+
+        const inboundUrl = getInboundUrl();
+        const isOurInbound = (url) => typeof url === 'string' && url.replace(/\/+$/, '').endsWith('/api/public/inbound-email');
+
+        const out = {
+            inboundUrl,
+            webhook: { action: 'none', endpoint: null, hasReceivedEvent: false, signingSecret: null, secretAlreadySet: !!process.env.RESEND_WEBHOOK_SECRET },
+            domains: [],
+            mailboxesCreated: [],
+            steps: [],
+            errors: []
+        };
+
+        // 1. WEBHOOK email.received (a nivel de cuenta) ----------------------------------
+        try {
+            const listResp = await fetch('https://api.resend.com/webhooks', {
+                headers: { Authorization: `Bearer ${writeKey}` }
+            });
+            const listData = await listResp.json().catch(() => ({}));
+            if (!listResp.ok) {
+                throw new Error(listData?.message || `HTTP ${listResp.status} al listar webhooks`);
+            }
+            const hooks = listData.data || [];
+            const existing = hooks.find((h) => {
+                const events = h.events || h.event_types || [];
+                const url = h.endpoint || h.url || '';
+                return isOurInbound(url) && Array.isArray(events) && events.some((ev) => String(ev).includes('email.received'));
+            });
+
+            if (existing) {
+                out.webhook.action = 'already_configured';
+                out.webhook.endpoint = existing.endpoint || existing.url;
+                out.webhook.hasReceivedEvent = true;
+                out.steps.push(`Webhook email.received ya configurado → ${out.webhook.endpoint}`);
+            } else {
+                const createResp = await fetch('https://api.resend.com/webhooks', {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${writeKey}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ endpoint: inboundUrl, events: ['email.received'] })
+                });
+                const created = await createResp.json().catch(() => ({}));
+                if (!createResp.ok) {
+                    throw new Error(created?.message || `HTTP ${createResp.status} al crear el webhook`);
+                }
+                const secret = created.signing_secret || created.data?.signing_secret || null;
+                out.webhook.action = 'created';
+                out.webhook.endpoint = inboundUrl;
+                out.webhook.hasReceivedEvent = true;
+                out.webhook.signingSecret = secret;
+                out.steps.push(`Webhook email.received creado → ${inboundUrl}`);
+                if (secret && !process.env.RESEND_WEBHOOK_SECRET) {
+                    out.steps.push('Copia el signing_secret y configúralo como RESEND_WEBHOOK_SECRET para validar firmas (Resend solo lo muestra una vez).');
+                }
+            }
+        } catch (e) {
+            out.errors.push(`Webhook: ${e.message}`);
+        }
+
+        // 2. DOMINIOS CONECTADOS A RESEND + MX de recepción + buzón por defecto ----------
+        const all = [];
+        try {
+            const domResp = await fetch('https://api.resend.com/domains', {
+                headers: { Authorization: `Bearer ${readKey}` }
+            });
+            const domData = await domResp.json().catch(() => ({}));
+            if (!domResp.ok) {
+                throw new Error(domData?.message || `HTTP ${domResp.status} al listar dominios`);
+            }
+            all.push(...(domData.data || []));
+        } catch (e) {
+            out.errors.push(`Dominios: ${e.message}`);
+        }
+
+        for (const dom of all) {
+            const name = (dom.name || '').toLowerCase();
+            if (!name) continue;
+            const entry = {
+                domain: name,
+                sendingVerified: dom.status === 'verified',
+                inboundMx: false,
+                mxRecord: null,
+                mailbox: null
+            };
+
+            // Registros que Resend espera para este dominio (incluye el MX de recepción si está habilitado).
+            if (dom.id) {
+                try {
+                    const dResp = await fetch(`https://api.resend.com/domains/${dom.id}`, {
+                        headers: { Authorization: `Bearer ${readKey}` }
+                    });
+                    const dData = await dResp.json().catch(() => ({}));
+                    const records = dData.records || [];
+                    const mx = records.find((r) => String(r.type || r.record).toUpperCase() === 'MX');
+                    if (mx) {
+                        entry.inboundMx = true;
+                        entry.mxRecord = {
+                            name: mx.name,
+                            value: typeof mx.value === 'string' ? mx.value : JSON.stringify(mx.value),
+                            priority: mx.priority ?? 10,
+                            status: mx.status || null
+                        };
+                    }
+                } catch { /* sin detalle de records */ }
+            }
+            if (!entry.inboundMx) {
+                out.steps.push(`Falta el MX de recepción para ${name}: en Resend → Domains → ${name} habilita "Receiving" y agrega a tu DNS el MX que te indique (prioridad más baja).`);
+            }
+
+            // 3. Buzón por defecto para dominios verificados que tengan club y sin cuentas.
+            if (entry.sendingVerified) {
+                const club = await prisma.club.findFirst({
+                    where: { OR: [{ domain: { equals: name, mode: 'insensitive' } }, { domain: { equals: `www.${name}`, mode: 'insensitive' } }] },
+                    select: { id: true, name: true }
+                }).catch(() => null);
+                if (club) {
+                    const count = await prisma.emailAccount.count({ where: { clubId: club.id } }).catch(() => 0);
+                    if (count === 0) {
+                        const email = `contacto@${name}`;
+                        try {
+                            const acc = await prisma.emailAccount.create({
+                                data: { email, label: 'Contacto', isPrimary: true, provider: 'platform', clubId: club.id }
+                            });
+                            entry.mailbox = { email: acc.email, created: true };
+                            out.mailboxesCreated.push(email);
+                            out.steps.push(`Buzón por defecto creado: ${email} (club "${club.name}")`);
+                        } catch (e) {
+                            // p.ej. el email ya existe (unique) — no es un fallo real.
+                            entry.mailbox = { email, created: false, note: e.code === 'P2002' ? 'ya existía' : (e.message || 'no creado') };
+                        }
+                    } else {
+                        entry.mailbox = { created: false, note: `${count} buzón(es) existente(s)` };
+                    }
+                }
+            }
+
+            out.domains.push(entry);
+        }
+
+        out.ok = out.errors.length === 0;
+        console.log(`[provision-inbound] webhook=${out.webhook.action}, dominios=${out.domains.length}, buzones nuevos=${out.mailboxesCreated.length}, errores=${out.errors.length}`);
+        return res.json(out);
+    } catch (error) {
+        console.error('[provision-inbound] error:', error);
+        return res.status(500).json({ error: error.message || 'Error interno' });
+    }
+};
+
 // GET /api/email-accounts/diagnostics — radiografía real del correo del club.
 // Consulta el estado del dominio en Resend (verificación de ENVÍO y registro MX de
 // RECEPCIÓN), las cuentas locales y los contadores, y devuelve verdictos en español.
@@ -496,5 +674,8 @@ export default {
     updateMessage,
     deleteMessage,
     getEmailDiagnostics,
-    testSendEmail
+    testSendEmail,
+    provisionInbound
 };
+
+console.log('[EmailAccountController] cargado (v4.483.0 — provisión de recepción: webhook email.received + buzón por defecto + reporte MX por dominio Resend)');

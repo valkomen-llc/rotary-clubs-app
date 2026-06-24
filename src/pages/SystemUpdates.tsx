@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.482.0 | 2026-06-22 (Diagnóstico: webhook + MX reales)
-// Cache bust: 2026-06-22 18:45
+// UI V4.483.0 | 2026-06-24 (Configurar recepción: webhook + buzones + MX)
+// Cache bust: 2026-06-24
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.483.0',
+        title: 'Correo: Configurar Recepción en 1 Clic 📥',
+        description: 'Nuevo botón "Configurar recepción" en el Ecosistema de Correo: crea automáticamente el webhook email.received en Resend (apuntando a la app), genera un buzón por defecto (contacto@) para cada dominio conectado a Resend que aún no tenga cuentas, y reporta el estado del registro MX por dominio. Termina de dejar listas las bandejas de todos los sitios sin pasos manuales en el panel de Resend (salvo el MX en el DNS, que se indica exactamente).',
+        date: new Date().toISOString(),
+        tags: ['correo', 'recepcion', 'resend', 'webhook'],
+        type: 'feature'
+    },
     {
         version: '4.482.0',
         title: 'Diagnóstico de Correo Más Preciso 🎯',
