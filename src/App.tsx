@@ -71,6 +71,7 @@ import { Toaster } from './components/ui/sonner';
 // LAZY-LOADED ADMIN ROUTES — Web Performance Optimization Agent
 // Only downloaded when the user navigates to /admin/*
 // ═══════════════════════════════════════════════════════════════
+const GeneradorPendones = React.lazy(() => import('./pages/GeneradorPendones'));
 const Dashboard = React.lazy(() => import('./pages/admin/Dashboard'));
 const ClubsManagement = React.lazy(() => import('./pages/admin/Clubs'));
 const AsociacionesManagement = React.lazy(() => import('./pages/admin/Asociaciones'));
@@ -424,6 +425,9 @@ function App() {
                 <Route path="/shop" element={<Shop />} />
                 <Route path="/shop/product/:slug" element={<ProductDetail />} />
                 <Route path="/system-updates" element={<SystemUpdates />} />
+
+                {/* Generador público de pendones (mesa de trabajo 80×180 cm) */}
+                <Route path="/generador-pendones" element={<GeneradorPendones />} />
 
                 {/* Club preview (provisional URL) */}
                 <Route path="/preview/:subdomain" element={<ClubPreview />} />
