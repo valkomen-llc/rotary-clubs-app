@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.504.0",
-  "cache_bust": "2026-06-29d (Pendones: multiselección de elementos — Shift/Ctrl/Cmd+clic suma o quita capas a la selección y al arrastrar cualquiera del grupo se mueven todas juntas; clic en el fondo deselecciona)",
+  "version": "4.505.0",
+  "cache_bust": "2026-06-29e (Pendones: la cabecera ahora usa el logo del club subido por el usuario en vez del logo Rotary generado; el admin define un logo por defecto y el público sube el suyo; el sistema auto-recorta los espacios vacíos y lo centra)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

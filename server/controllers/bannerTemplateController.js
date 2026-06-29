@@ -14,7 +14,7 @@
 // ════════════════════════════════════════════════════════════════════
 import db from '../lib/db.js';
 
-console.log('[bannerTemplateController] v4.504.0 cargado — Generador de Pendones (multiselección de elementos)');
+console.log('[bannerTemplateController] v4.505.0 cargado — Generador de Pendones (logo del club subible + auto-recorte)');
 
 const DEFAULT_WIDTH_CM = 80;
 const DEFAULT_HEIGHT_CM = 180;
@@ -22,7 +22,7 @@ const DEFAULT_HEIGHT_CM = 180;
 // Configuración por defecto que se devuelve aunque el admin todavía no haya
 // guardado una plantilla, para que el generador público siempre funcione.
 export const DEFAULT_CONFIG = {
-    logo: { variant: 'completo', color: 'color' },
+    logo: { url: null },
     header: { district: 'Distrito 4281', color: '#1a3a8f', sizePct: 4.8 },
     people: [
         { name: 'Francesco Arezzo', role: 'Presidente, Rotary International', period: '(Periodo Rotario 2025-2026)' },

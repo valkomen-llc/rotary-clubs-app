@@ -13,14 +13,16 @@
 // tamaño físico real (cm). Ambos comparten las fracciones de LAYOUT y los
 // mismos % de tamaño de fuente (relativos al ancho) → WYSIWYG.
 // ════════════════════════════════════════════════════════════════════
-import { logoDataUrl, logoRatio, type LogoVariant, type LogoColor } from './rotaryLogo';
+import { logoDataUrl, logoRatio } from './rotaryLogo';
 
 export interface Person { name: string; role: string; period: string; }
 
 export interface Offset { x: number; y: number } // x en % del ancho, y en % del alto
 
 export interface BannerConfig {
-    logo: { variant: LogoVariant; color: LogoColor };
+    // Logo de cabecera subido por el club (auto-recortado y centrado). Puede ser
+    // una URL de S3 (logo por defecto del admin) o un data URL (subida pública).
+    logo: { url: string | null };
     header: { district: string; color: string; sizePct: number };
     people: Person[];
     colors: { name: string; role: string; period: string };
@@ -48,7 +50,7 @@ export interface BannerTemplate {
 }
 
 export const DEFAULT_CONFIG: BannerConfig = {
-    logo: { variant: 'completo', color: 'color' },
+    logo: { url: null },
     header: { district: 'Distrito 4281', color: '#1a3a8f', sizePct: 4.8 },
     people: [
         { name: 'Francesco Arezzo', role: 'Presidente, Rotary International', period: '(Periodo Rotario 2025-2026)' },
@@ -64,6 +66,7 @@ export const DEFAULT_CONFIG: BannerConfig = {
 // Fracciones del lienzo (compartidas con el preview DOM vía cqw/cqh).
 export const LAYOUT = {
     logoWidthFracW: 0.50,
+    logoMaxHeightFracH: 0.20,  // alto máximo del logo de cabecera
     logoTopFracH: 0.065,
     districtGapFracH: 0.010,   // separación logo→distrito
     bodyTopFracH: 0.42,        // región donde se centra la lista de personas
@@ -94,9 +97,9 @@ const loadImage = (src: string, crossOrigin?: string): Promise<HTMLImageElement>
         img.src = src;
     });
 
-// Envuelve la imagen de fondo (S3) por el proxy público para evitar el
-// "tainted canvas" al exportar. Las data: URLs (logo) se cargan tal cual.
-const proxiedBackground = (url: string): string => {
+// Envuelve imágenes remotas (S3) por el proxy público para evitar el "tainted
+// canvas" al exportar. Las data: URLs (logo subido en público) se cargan tal cual.
+const proxiedImage = (url: string): string => {
     if (url.startsWith('data:')) return url;
     return `${API}/public/banner-image?url=${encodeURIComponent(url)}`;
 };
@@ -199,7 +202,7 @@ export const renderBannerToCanvas = async ({ template, config }: RenderInput): P
     // 1. Fondo
     let bgImg: HTMLImageElement | null = null;
     if (template.backgroundUrl) {
-        try { bgImg = await loadImage(proxiedBackground(template.backgroundUrl), 'anonymous'); }
+        try { bgImg = await loadImage(proxiedImage(template.backgroundUrl), 'anonymous'); }
         catch (e) { console.warn('[banner] fondo no cargado:', e); }
     }
     drawBackground(ctx, bgImg, W, H);
@@ -209,19 +212,23 @@ export const renderBannerToCanvas = async ({ template, config }: RenderInput): P
     // transform del preview DOM, que no afecta a los hermanos).
     const offPx = (id: string) => { const o = getOffset(config, id); return { x: (o.x / 100) * W, y: (o.y / 100) * H }; };
 
-    // 2. Cabecera: logo + distrito
+    // 2. Cabecera: logo del club (subido, auto-recortado) + distrito
     const baseLogoY = H * LAYOUT.logoTopFracH;
     let headerBottom = baseLogoY;
-    try {
-        const ratio = logoRatio(config.logo.variant);
-        const logoImg = await loadImage(logoDataUrl(config.logo.variant, config.logo.color));
-        const lw = W * LAYOUT.logoWidthFracW;
-        const lh = lw / ratio;
-        const lx = (W - lw) / 2;
-        const o = offPx('logo');
-        ctx.drawImage(logoImg, lx + o.x, baseLogoY + o.y, lw, lh);
-        headerBottom = baseLogoY + lh;
-    } catch (e) { console.warn('[banner] logo no dibujado:', e); }
+    if (config.logo?.url) {
+        try {
+            const logoImg = await loadImage(proxiedImage(config.logo.url), 'anonymous');
+            const maxW = W * LAYOUT.logoWidthFracW;
+            const maxH = H * LAYOUT.logoMaxHeightFracH;
+            const scale = Math.min(maxW / logoImg.width, maxH / logoImg.height);
+            const lw = logoImg.width * scale;
+            const lh = logoImg.height * scale;
+            const lx = (W - lw) / 2;
+            const o = offPx('logo');
+            ctx.drawImage(logoImg, lx + o.x, baseLogoY + o.y, lw, lh);
+            headerBottom = baseLogoY + lh;
+        } catch (e) { console.warn('[banner] logo no dibujado:', e); }
+    }
 
     if (config.header.district?.trim()) {
         const font = `600 ${(config.header.sizePct / 100) * W}px Arial, Helvetica, sans-serif`;
