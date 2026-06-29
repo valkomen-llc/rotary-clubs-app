@@ -14,7 +14,7 @@
 // ════════════════════════════════════════════════════════════════════
 import db from '../lib/db.js';
 
-console.log('[bannerTemplateController] v4.503.0 cargado — Generador de Pendones (edición tipo Canva: offsets por elemento)');
+console.log('[bannerTemplateController] v4.504.0 cargado — Generador de Pendones (multiselección de elementos)');
 
 const DEFAULT_WIDTH_CM = 80;
 const DEFAULT_HEIGHT_CM = 180;

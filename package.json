@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.503.0",
-  "cache_bust": "2026-06-29c (Pendones tipo Canva: ahora se puede seleccionar cada elemento (logo, distrito, persona, pie) y arrastrarlo sobre la mesa de trabajo para reubicarlo; el desplazamiento se guarda y se aplica también al PDF, con botón para restablecer posiciones)",
+  "version": "4.504.0",
+  "cache_bust": "2026-06-29d (Pendones: multiselección de elementos — Shift/Ctrl/Cmd+clic suma o quita capas a la selección y al arrastrar cualquiera del grupo se mueven todas juntas; clic en el fondo deselecciona)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

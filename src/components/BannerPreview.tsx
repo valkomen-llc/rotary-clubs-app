@@ -25,8 +25,9 @@ const BannerPreview: React.FC<Props> = ({ template, config, heightCss = 'min(80v
     const people = (config.people || []).filter(p => p.name?.trim() || p.role?.trim());
 
     const containerRef = useRef<HTMLDivElement>(null);
-    const [selected, setSelected] = useState<string | null>(null);
-    const drag = useRef<{ id: string; sx: number; sy: number; bx: number; by: number } | null>(null);
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    // Drag de grupo: mueve TODOS los seleccionados con el mismo delta.
+    const drag = useRef<{ ids: string[]; sx: number; sy: number; base: Record<string, Offset> } | null>(null);
     const [dragging, setDragging] = useState(false);
 
     useEffect(() => {
@@ -34,9 +35,11 @@ const BannerPreview: React.FC<Props> = ({ template, config, heightCss = 'min(80v
         const onMove = (e: PointerEvent) => {
             const d = drag.current; const rect = containerRef.current?.getBoundingClientRect();
             if (!d || !rect) return;
-            const nx = d.bx + ((e.clientX - d.sx) / rect.width) * 100;
-            const ny = d.by + ((e.clientY - d.sy) / rect.height) * 100;
-            onOffsetsChange?.({ ...(config.offsets || {}), [d.id]: { x: nx, y: ny } });
+            const dx = ((e.clientX - d.sx) / rect.width) * 100;
+            const dy = ((e.clientY - d.sy) / rect.height) * 100;
+            const next = { ...(config.offsets || {}) };
+            for (const id of d.ids) next[id] = { x: d.base[id].x + dx, y: d.base[id].y + dy };
+            onOffsetsChange?.(next);
         };
         const onUp = () => { setDragging(false); drag.current = null; };
         window.addEventListener('pointermove', onMove);
@@ -47,9 +50,19 @@ const BannerPreview: React.FC<Props> = ({ template, config, heightCss = 'min(80v
     const startDrag = (id: string) => (e: React.PointerEvent) => {
         if (!interactive) return;
         e.stopPropagation();
-        const o = getOffset(config, id);
-        drag.current = { id, sx: e.clientX, sy: e.clientY, bx: o.x, by: o.y };
-        setSelected(id);
+        const multi = e.shiftKey || e.metaKey || e.ctrlKey;
+        if (multi) {
+            // Shift/Ctrl/Cmd+clic: suma o quita de la selección (sin arrastrar).
+            setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+            return;
+        }
+        // Clic normal: si el elemento ya está dentro de una multiselección, se
+        // arrastra todo el grupo; si no, queda seleccionado solo él.
+        const ids = (selectedIds.includes(id) && selectedIds.length > 1) ? selectedIds : [id];
+        if (ids.length === 1) setSelectedIds([id]);
+        const base: Record<string, Offset> = {};
+        ids.forEach(k => { base[k] = getOffset(config, k); });
+        drag.current = { ids, sx: e.clientX, sy: e.clientY, base };
         setDragging(true);
     };
 
@@ -61,7 +74,7 @@ const BannerPreview: React.FC<Props> = ({ template, config, heightCss = 'min(80v
     };
     const sel = (id: string): React.CSSProperties => !interactive ? {} : {
         cursor: 'move',
-        ...(selected === id ? { outline: '0.45cqw dashed #6366f1', outlineOffset: '0.5cqw', borderRadius: '0.5cqw' } : {}),
+        ...(selectedIds.includes(id) ? { outline: '0.45cqw dashed #6366f1', outlineOffset: '0.5cqw', borderRadius: '0.5cqw' } : {}),
     };
 
     return (
@@ -69,7 +82,7 @@ const BannerPreview: React.FC<Props> = ({ template, config, heightCss = 'min(80v
             ref={containerRef}
             className={`relative overflow-hidden select-none ${className || ''}`}
             style={{ aspectRatio: `${widthCm} / ${heightCm}`, height: heightCss, containerType: 'size' } as React.CSSProperties}
-            onPointerDown={() => interactive && setSelected(null)}
+            onPointerDown={() => interactive && setSelectedIds([])}
         >
             {/* Fondo */}
             {template.backgroundUrl ? (
