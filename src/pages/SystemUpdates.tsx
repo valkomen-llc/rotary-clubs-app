@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.511.0 | 2026-06-29 (Pendones: pie solo logo, sin lema; config del pie solo admin)
-// Cache bust: 2026-06-29k
+// UI V4.512.0 | 2026-06-29 (Pendones: PDF en alta calidad para impresión, 150 DPI)
+// Cache bust: 2026-06-29l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.512.0',
+        title: 'Pendones: PDF en alta calidad para imprenta 🖨️✨',
+        description: 'Mejoramos la descarga del pendón en PDF para impresión profesional: ahora se genera a 150 DPI al tamaño físico real (antes quedaba en ~84 DPI por un tope técnico), con mayor calidad de imagen (JPEG al 95%) y mejor escalado del fondo y los logos. El resultado es un PDF mucho más nítido, apto para impresión a gran escala. El archivo pesa un poco más, lo cual es normal para alta calidad.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'PDF', 'impresión', 'alta calidad', 'DPI'],
+        type: 'improvement'
+    },
     {
         version: '4.511.0',
         title: 'Pendones: el pie es solo un logo (y lo controla el admin) 🔒',

@@ -103,8 +103,14 @@ export const computeLogoWidthFrac = (
     return Math.min(fw, 0.95); // tope de seguridad
 };
 
+// Calidad de impresión: 150 DPI al tamaño físico real (estándar de gran formato).
 const RENDER_TARGET_DPI = 150;
-const MAX_CANVAS_AREA = 16_000_000; // px² — límite seguro para todos los navegadores
+const JPEG_QUALITY = 0.95;
+// Topes de seguridad de canvas (memoria + límites del navegador). Permiten
+// 80×180 cm a 150 DPI (~50 MP). Para tamaños mayores se baja el DPI efectivo
+// de forma proporcional para no exceder estos límites.
+const MAX_CANVAS_AREA = 64_000_000; // px²
+const MAX_CANVAS_SIDE = 16000;      // px por lado
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const CM_PER_INCH = 2.54;
 const ROTARY_BLUE = '#16357e';
@@ -210,15 +216,20 @@ export const renderBannerToCanvas = async ({ template, config }: RenderInput): P
 
     let W = Math.round((widthCm / CM_PER_INCH) * RENDER_TARGET_DPI);
     let H = Math.round((heightCm / CM_PER_INCH) * RENDER_TARGET_DPI);
-    if (W * H > MAX_CANVAS_AREA) {
-        const f = Math.sqrt(MAX_CANVAS_AREA / (W * H));
-        W = Math.round(W * f); H = Math.round(H * f);
-    }
+    // Bajar DPI efectivo solo si excede los topes (área o lado), de forma
+    // proporcional, para no superar los límites del navegador/memoria.
+    const fArea = W * H > MAX_CANVAS_AREA ? Math.sqrt(MAX_CANVAS_AREA / (W * H)) : 1;
+    const fSide = Math.min(1, MAX_CANVAS_SIDE / W, MAX_CANVAS_SIDE / H);
+    const f = Math.min(fArea, fSide);
+    if (f < 1) { W = Math.round(W * f); H = Math.round(H * f); }
 
     const canvas = document.createElement('canvas');
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('No se pudo crear el contexto de canvas');
+    // Mejor calidad al escalar imágenes (fondo y logos).
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
 
     // 1. Fondo
     let bgImg: HTMLImageElement | null = null;
@@ -305,7 +316,7 @@ export const exportBannerToPdf = async (input: RenderInput): Promise<void> => {
     const widthCm = template.widthCm || 80;
     const heightCm = template.heightCm || 180;
     const canvas = await renderBannerToCanvas(input);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    const dataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
 
     const { jsPDF } = await import('jspdf');
     const pdf = new jsPDF({
