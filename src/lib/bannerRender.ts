@@ -26,7 +26,7 @@ export interface BannerConfig {
     people: Person[];
     colors: { name: string; role: string; period: string };
     sizes: { name: number; role: number; period: number }; // % del ancho
-    footer: { show: boolean; tagline: string; logoUrl?: string | null; logoScale?: number };
+    footer: { show: boolean; logoUrl?: string | null; logoScale?: number };
     // Márgenes de la mesa de trabajo (guías de edición; x en %ancho, y en %alto).
     // Solo se usan como guía/snap en el editor; NO se dibujan en el PDF.
     margins?: { x: number; y: number };
@@ -60,7 +60,7 @@ export const DEFAULT_CONFIG: BannerConfig = {
     ],
     colors: { name: '#17458f', role: '#2a5cb8', period: '#6b7da0' },
     sizes: { name: 6.5, role: 3.5, period: 2.5 },
-    footer: { show: true, tagline: 'GENERA UN IMPACTO DURADERO', logoUrl: null, logoScale: 1 },
+    footer: { show: true, logoUrl: null, logoScale: 1 },
     margins: { x: 6, y: 4 },
     offsets: {},
 };
@@ -278,53 +278,18 @@ export const renderBannerToCanvas = async ({ template, config }: RenderInput): P
         y += m.height + gap;
     }
 
-    // 4. Pie: logo subido (opcional) + lema (dos columnas con divisor)
-    if (config.footer.show) {
+    // 4. Pie: solo el logo subido, centrado
+    if (config.footer.show && config.footer.logoUrl) {
         try {
             const fo = offPx('footer');
             const cy = H * LAYOUT.footerCenterFracH + fo.y;
-            const hasTag = !!config.footer.tagline?.trim();
-
-            // Logo del pie (subido), ajustado por contención dentro de su caja.
-            let flw = 0, flh = 0, footerLogo: HTMLImageElement | null = null;
-            if (config.footer.logoUrl) {
-                footerLogo = await loadImage(proxiedImage(config.footer.logoUrl), 'anonymous');
-                const fScale = config.footer.logoScale ?? 1;
-                const maxW = W * LAYOUT.footerLogoWidthFracW * fScale;
-                const maxH = H * LAYOUT.footerLogoMaxHeightFracH * fScale;
-                const sc = Math.min(maxW / footerLogo.width, maxH / footerLogo.height);
-                flw = footerLogo.width * sc; flh = footerLogo.height * sc;
-            }
-            const hasLogo = !!footerLogo;
-
-            if (hasLogo && hasTag) {
-                // Dos columnas: [logo] | divisor | [lema]
-                const lx = W * 0.10 + fo.x;
-                ctx.drawImage(footerLogo as HTMLImageElement, lx, cy - flh / 2, flw, flh);
-                const divX = W * 0.52 + fo.x;
-                const half = Math.max(flh, (LAYOUT.footerTaglineSizePct / 100) * W * 1.6) * 0.5;
-                ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-                ctx.lineWidth = Math.max(1, W * 0.004);
-                ctx.beginPath(); ctx.moveTo(divX, cy - half); ctx.lineTo(divX, cy + half); ctx.stroke();
-                const tFont = (LAYOUT.footerTaglineSizePct / 100) * W;
-                ctx.font = `italic 800 ${tFont}px Arial, Helvetica, sans-serif`;
-                ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-                const lines = wrapLines(ctx, config.footer.tagline, W * 0.36);
-                const tx = W * 0.56 + fo.x;
-                let ty = cy - (lines.length - 1) * tFont * 0.58;
-                for (const line of lines) { ctx.fillText(line, tx, ty); ty += tFont * 1.15; }
-            } else if (hasLogo) {
-                // Solo logo, centrado
-                ctx.drawImage(footerLogo as HTMLImageElement, (W - flw) / 2 + fo.x, cy - flh / 2, flw, flh);
-            } else if (hasTag) {
-                // Solo lema, centrado
-                const tFont = (LAYOUT.footerTaglineSizePct / 100) * W;
-                ctx.font = `italic 800 ${tFont}px Arial, Helvetica, sans-serif`;
-                ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                const lines = wrapLines(ctx, config.footer.tagline, W * 0.8);
-                let ty = cy - (lines.length - 1) * tFont * 0.58;
-                for (const line of lines) { ctx.fillText(line, W / 2 + fo.x, ty); ty += tFont * 1.15; }
-            }
+            const footerLogo = await loadImage(proxiedImage(config.footer.logoUrl), 'anonymous');
+            const fScale = config.footer.logoScale ?? 1;
+            const maxW = W * LAYOUT.footerLogoWidthFracW * fScale;
+            const maxH = H * LAYOUT.footerLogoMaxHeightFracH * fScale;
+            const sc = Math.min(maxW / footerLogo.width, maxH / footerLogo.height);
+            const flw = footerLogo.width * sc, flh = footerLogo.height * sc;
+            ctx.drawImage(footerLogo, (W - flw) / 2 + fo.x, cy - flh / 2, flw, flh);
         } catch (e) { console.warn('[banner] pie no dibujado:', e); }
     }
 

@@ -15,10 +15,11 @@ interface Props {
     heightCss?: string;
     className?: string;
     interactive?: boolean;
+    lockFooter?: boolean; // si true, el pie no se puede seleccionar/arrastrar (config solo del admin)
     onOffsetsChange?: (offsets: Record<string, Offset>) => void;
 }
 
-const BannerPreview: React.FC<Props> = ({ template, config, heightCss = 'min(80vh, 1300px)', className, interactive = false, onOffsetsChange }) => {
+const BannerPreview: React.FC<Props> = ({ template, config, heightCss = 'min(80vh, 1300px)', className, interactive = false, lockFooter = false, onOffsetsChange }) => {
     const widthCm = template.widthCm || 80;
     const heightCm = template.heightCm || 180;
     const people = (config.people || []).filter(p => p.name?.trim() || p.role?.trim());
@@ -156,24 +157,20 @@ const BannerPreview: React.FC<Props> = ({ template, config, heightCss = 'min(80v
                 })}
             </div>
 
-            {/* Pie */}
-            {config.footer.show && (
-                <div onPointerDown={startDrag('footer')} style={{
+            {/* Pie: solo el logo (configurable únicamente desde el admin) */}
+            {config.footer.show && (config.footer.logoUrl || (interactive && !lockFooter)) && (
+                <div onPointerDown={lockFooter ? undefined : startDrag('footer')} style={{
                     position: 'absolute', left: '50%', top: `${LAYOUT.footerCenterFracH * 100}cqh`,
-                    transform: tf('footer', 'translate(-50%, -50%)'), width: '84cqw',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3cqw',
-                    fontFamily: 'Arial, Helvetica, sans-serif', ...sel('footer'),
+                    transform: tf('footer', 'translate(-50%, -50%)'),
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    ...(lockFooter ? {} : sel('footer')),
                 }}>
                     {config.footer.logoUrl ? (
                         <img src={config.footer.logoUrl} alt="Logo del pie" draggable={false}
                             style={{ maxWidth: `${LAYOUT.footerLogoWidthFracW * (config.footer.logoScale ?? 1) * 100}cqw`, maxHeight: `${LAYOUT.footerLogoMaxHeightFracH * (config.footer.logoScale ?? 1) * 100}cqh`, objectFit: 'contain' }} />
-                    ) : interactive ? (
-                        <div style={{ width: `${LAYOUT.footerLogoWidthFracW * 100}cqw`, height: `${LAYOUT.footerLogoMaxHeightFracH * 100}cqh`, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', border: '0.3cqw dashed rgba(255,255,255,0.7)', borderRadius: '1cqw', color: 'rgba(255,255,255,0.85)', fontSize: '2.2cqw' }}>Subí el logo del pie</div>
-                    ) : null}
-                    {(config.footer.logoUrl || interactive) && config.footer.tagline?.trim() && (
-                        <div style={{ width: '0.35cqw', height: `${LAYOUT.footerTaglineSizePct * 2.6}cqw`, background: 'rgba(255,255,255,0.6)' }} />
+                    ) : (
+                        <div style={{ width: `${LAYOUT.footerLogoWidthFracW * 100}cqw`, height: `${LAYOUT.footerLogoMaxHeightFracH * 100}cqh`, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', border: '0.3cqw dashed rgba(255,255,255,0.7)', borderRadius: '1cqw', color: 'rgba(255,255,255,0.85)', fontSize: '2.2cqw', fontFamily: 'Arial, Helvetica, sans-serif' }}>Subí el logo del pie</div>
                     )}
-                    {config.footer.tagline?.trim() && <div style={{ color: '#fff', fontSize: `${LAYOUT.footerTaglineSizePct}cqw`, fontWeight: 800, fontStyle: 'italic', lineHeight: 1.12, maxWidth: '36cqw', textAlign: 'left' }}>{config.footer.tagline}</div>}
                 </div>
             )}
 
