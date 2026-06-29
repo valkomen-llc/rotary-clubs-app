@@ -27,29 +27,52 @@ const BannerPreview: React.FC<Props> = ({ template, config, heightCss = 'min(80v
     const containerRef = useRef<HTMLDivElement>(null);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     // Drag de grupo: mueve TODOS los seleccionados con el mismo delta.
-    const drag = useRef<{ ids: string[]; sx: number; sy: number; base: Record<string, Offset> } | null>(null);
+    const drag = useRef<{ ids: string[]; sx: number; sy: number; base: Record<string, Offset>; elRect?: DOMRect } | null>(null);
     const [dragging, setDragging] = useState(false);
+    // Guías activas (snap) durante el arrastre.
+    const [guides, setGuides] = useState<{ vc?: boolean; hc?: boolean; ml?: boolean; mr?: boolean; mt?: boolean; mb?: boolean }>({});
     // Dimensiones naturales del logo (para normalizar su tamaño por área).
     const [logoDims, setLogoDims] = useState<{ w: number; h: number } | null>(null);
     useEffect(() => { setLogoDims(null); }, [config.logo?.url]);
     const logoFw = computeLogoWidthFrac(logoDims?.w || 0, logoDims?.h || 0, config.logo?.scale ?? 1, widthCm, heightCm);
 
+    const margins = { x: config.margins?.x ?? 6, y: config.margins?.y ?? 4 };
+    const anyMarginGuide = !!(guides.ml || guides.mr || guides.mt || guides.mb);
+
     useEffect(() => {
         if (!dragging) return;
+        const SNAP = 7; // px
         const onMove = (e: PointerEvent) => {
-            const d = drag.current; const rect = containerRef.current?.getBoundingClientRect();
-            if (!d || !rect) return;
-            const dx = ((e.clientX - d.sx) / rect.width) * 100;
-            const dy = ((e.clientY - d.sy) / rect.height) * 100;
+            const d = drag.current; const c = containerRef.current?.getBoundingClientRect();
+            if (!d || !c) return;
+            let dxPx = e.clientX - d.sx, dyPx = e.clientY - d.sy;
+            const g: typeof guides = {};
+            // Snap solo cuando se arrastra un único elemento (centrar/alinear).
+            if (d.ids.length === 1 && d.elRect) {
+                const r = d.elRect;
+                const cCx = c.left + c.width / 2, cCy = c.top + c.height / 2;
+                const mxPx = (margins.x / 100) * c.width, myPx = (margins.y / 100) * c.height;
+                const mL = c.left + mxPx, mR = c.right - mxPx, mT = c.top + myPx, mB = c.bottom - myPx;
+                const predL = r.left + dxPx, predT = r.top + dyPx, predR = predL + r.width, predB = predT + r.height;
+                const predCx = predL + r.width / 2, predCy = predT + r.height / 2;
+                if (Math.abs(predCx - cCx) <= SNAP) { dxPx += cCx - predCx; g.vc = true; }
+                else if (Math.abs(predL - mL) <= SNAP) { dxPx += mL - predL; g.ml = true; }
+                else if (Math.abs(predR - mR) <= SNAP) { dxPx += mR - predR; g.mr = true; }
+                if (Math.abs(predCy - cCy) <= SNAP) { dyPx += cCy - predCy; g.hc = true; }
+                else if (Math.abs(predT - mT) <= SNAP) { dyPx += mT - predT; g.mt = true; }
+                else if (Math.abs(predB - mB) <= SNAP) { dyPx += mB - predB; g.mb = true; }
+            }
+            setGuides(g);
+            const ddx = (dxPx / c.width) * 100, ddy = (dyPx / c.height) * 100;
             const next = { ...(config.offsets || {}) };
-            for (const id of d.ids) next[id] = { x: d.base[id].x + dx, y: d.base[id].y + dy };
+            for (const id of d.ids) next[id] = { x: d.base[id].x + ddx, y: d.base[id].y + ddy };
             onOffsetsChange?.(next);
         };
-        const onUp = () => { setDragging(false); drag.current = null; };
+        const onUp = () => { setDragging(false); drag.current = null; setGuides({}); };
         window.addEventListener('pointermove', onMove);
         window.addEventListener('pointerup', onUp);
         return () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
-    }, [dragging, config.offsets, onOffsetsChange]);
+    }, [dragging, config.offsets, config.margins, onOffsetsChange]);
 
     const startDrag = (id: string) => (e: React.PointerEvent) => {
         if (!interactive) return;
@@ -66,7 +89,8 @@ const BannerPreview: React.FC<Props> = ({ template, config, heightCss = 'min(80v
         if (ids.length === 1) setSelectedIds([id]);
         const base: Record<string, Offset> = {};
         ids.forEach(k => { base[k] = getOffset(config, k); });
-        drag.current = { ids, sx: e.clientX, sy: e.clientY, base };
+        const elRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        drag.current = { ids, sx: e.clientX, sy: e.clientY, base, elRect };
         setDragging(true);
     };
 
@@ -147,6 +171,24 @@ const BannerPreview: React.FC<Props> = ({ template, config, heightCss = 'min(80v
                     </div>
                     <div style={{ width: '0.35cqw', height: `${LAYOUT.footerTaglineSizePct * 2.6}cqw`, background: 'rgba(255,255,255,0.6)' }} />
                     {config.footer.tagline?.trim() && <div style={{ color: '#fff', fontSize: `${LAYOUT.footerTaglineSizePct}cqw`, fontWeight: 800, fontStyle: 'italic', lineHeight: 1.12, maxWidth: '36cqw', textAlign: 'left' }}>{config.footer.tagline}</div>}
+                </div>
+            )}
+
+            {/* Reglas / guías (solo en edición; no se exportan al PDF) */}
+            {interactive && (
+                <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+                    {/* Recuadro de márgenes */}
+                    <div style={{
+                        position: 'absolute', left: `${margins.x}%`, right: `${margins.x}%`, top: `${margins.y}%`, bottom: `${margins.y}%`,
+                        border: `0.25cqw dashed ${anyMarginGuide ? '#ec4899' : 'rgba(99,102,241,0.35)'}`, borderRadius: '0.5cqw',
+                    }} />
+                    {/* Líneas de centro (al seleccionar/arrastrar) */}
+                    {(dragging || selectedIds.length > 0) && (
+                        <>
+                            <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, borderLeft: `0.25cqw ${guides.vc ? 'solid #ec4899' : 'dashed rgba(99,102,241,0.45)'}` }} />
+                            <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderTop: `0.25cqw ${guides.hc ? 'solid #ec4899' : 'dashed rgba(99,102,241,0.45)'}` }} />
+                        </>
+                    )}
                 </div>
             )}
         </div>

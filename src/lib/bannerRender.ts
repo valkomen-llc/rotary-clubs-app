@@ -28,6 +28,9 @@ export interface BannerConfig {
     colors: { name: string; role: string; period: string };
     sizes: { name: number; role: number; period: number }; // % del ancho
     footer: { show: boolean; tagline: string; district: string };
+    // Márgenes de la mesa de trabajo (guías de edición; x en %ancho, y en %alto).
+    // Solo se usan como guía/snap en el editor; NO se dibujan en el PDF.
+    margins?: { x: number; y: number };
     // Desplazamientos manuales por elemento (edición tipo Canva). Con todo en 0
     // el pendón queda con el layout automático. IDs: 'logo', 'district',
     // `person-${i}`, 'footer'.
@@ -59,6 +62,7 @@ export const DEFAULT_CONFIG: BannerConfig = {
     colors: { name: '#17458f', role: '#2a5cb8', period: '#6b7da0' },
     sizes: { name: 6.5, role: 3.5, period: 2.5 },
     footer: { show: true, tagline: 'GENERA UN IMPACTO DURADERO', district: 'Distrito 4281' },
+    margins: { x: 6, y: 4 },
     offsets: {},
 };
 

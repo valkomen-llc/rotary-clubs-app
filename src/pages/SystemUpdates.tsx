@@ -24,9 +24,25 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.507.0 | 2026-06-29 (Pendones: logo auto-normalizado por área + tamaño manual)
-// Cache bust: 2026-06-29g
+// UI V4.509.0 | 2026-06-29 (Pendones: tamaño de los textos configurable)
+// Cache bust: 2026-06-29i
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.509.0',
+        title: 'Pendones: ajustá el tamaño de los textos 🔠',
+        description: 'Agregamos controles para definir el tamaño de las capas de texto de las personas: nombre, cargo y periodo, cada uno con su propio control deslizante. Desde el admin (Content Studio → Pendones) lo dejás como estilo predeterminado para el público, y en el generador público también se puede ajustar. El tamaño se respeta en la vista previa y en el PDF.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'tipografía', 'tamaño', 'content studio'],
+        type: 'feature'
+    },
+    {
+        version: '4.508.0',
+        title: 'Pendones: reglas, márgenes y guías para centrar 📏✨',
+        description: 'Sumamos ayudas de edición estilo Canva en la mesa de trabajo del pendón. Desde el admin podés definir los márgenes (horizontal y vertical) de la mesa, que se muestran como un recuadro guía. Y al seleccionar o arrastrar una capa aparecen automáticamente las líneas de centro (vertical y horizontal) y los márgenes, con efecto imán (snap): cuando acercás el elemento al centro o a un margen, se alinea solo y la guía se resalta. Es ideal para centrar perfecto. Las reglas y guías son solo de edición: no se imprimen en el PDF.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'canva', 'guías', 'márgenes', 'snap'],
+        type: 'feature'
+    },
     {
         version: '4.507.0',
         title: 'Pendones: el logo se adapta solo (y lo podés estirar) 📐',

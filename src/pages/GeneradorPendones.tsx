@@ -136,6 +136,21 @@ const GeneradorPendones = () => {
                             ))}
                             {config.people.length === 0 && <p className="text-xs text-gray-400">Sin personas. Usá "Agregar" para añadir.</p>}
                         </div>
+                        <p className="text-xs font-semibold text-gray-600 mt-3 mb-1">Tamaño de los textos</p>
+                        <div className="grid grid-cols-3 gap-3">
+                            <Field label={`Nombre (${config.sizes.name}%)`}>
+                                <input type="range" min={3} max={12} step={0.25} value={config.sizes.name} className="w-full accent-blue-700"
+                                    onChange={e => setConfig(c => ({ ...c, sizes: { ...c.sizes, name: parseFloat(e.target.value) } }))} />
+                            </Field>
+                            <Field label={`Cargo (${config.sizes.role}%)`}>
+                                <input type="range" min={2} max={8} step={0.25} value={config.sizes.role} className="w-full accent-blue-700"
+                                    onChange={e => setConfig(c => ({ ...c, sizes: { ...c.sizes, role: parseFloat(e.target.value) } }))} />
+                            </Field>
+                            <Field label={`Periodo (${config.sizes.period}%)`}>
+                                <input type="range" min={1.5} max={6} step={0.25} value={config.sizes.period} className="w-full accent-blue-700"
+                                    onChange={e => setConfig(c => ({ ...c, sizes: { ...c.sizes, period: parseFloat(e.target.value) } }))} />
+                            </Field>
+                        </div>
                     </section>
 
                     {/* Pie */}
