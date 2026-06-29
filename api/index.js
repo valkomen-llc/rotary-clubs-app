@@ -13,6 +13,7 @@ import clubRoutes from '../server/routes/clubs.js';
 import publicRoutes from '../server/routes/public.js';
 import mediaRoutes from '../server/routes/media.js';
 import emailAccountsRoutes from '../server/routes/emailAccounts.js';
+import bannerRoutes from '../server/routes/banner.js';
 
 
 const app = express();
@@ -174,6 +175,7 @@ app.use('/api/clubs', clubRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/email-accounts', emailAccountsRoutes);
+app.use('/api/banner', bannerRoutes);
 
 
 app.use('/api/calendar', async (req, res, next) => { try { return (await getCalendar())(req, res, next); } catch (e) { console.error('API Error [calendar]:', e); res.status(500).json({ error: e.message }); } });
