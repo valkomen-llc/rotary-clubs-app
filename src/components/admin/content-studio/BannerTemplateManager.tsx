@@ -195,10 +195,20 @@ const BannerTemplateManager = () => {
                     </button>
                 </div>
 
-                {/* Preview */}
+                {/* Preview interactivo */}
                 <div className="flex flex-col items-center">
-                    <span className="text-xs font-semibold text-gray-500 mb-2">Vista previa</span>
-                    <BannerPreview template={{ backgroundUrl, widthCm, heightCm }} config={config} heightCss="min(70vh, 760px)" />
+                    <div className="flex items-center justify-between w-full mb-2">
+                        <span className="text-xs font-semibold text-gray-500">Vista previa · arrastrá los textos para reubicarlos</span>
+                        <button onClick={() => setConfig(c => ({ ...c, offsets: {} }))}
+                            className="text-[11px] font-semibold text-gray-500 hover:text-indigo-600">Restablecer posiciones</button>
+                    </div>
+                    <BannerPreview
+                        template={{ backgroundUrl, widthCm, heightCm }}
+                        config={config}
+                        heightCss="min(70vh, 760px)"
+                        interactive
+                        onOffsetsChange={offsets => setConfig(c => ({ ...c, offsets }))}
+                    />
                 </div>
             </div>
         </div>
