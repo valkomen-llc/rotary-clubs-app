@@ -214,4 +214,26 @@ import { getPublicTemplate, proxyBannerImage } from '../controllers/bannerTempla
 router.get('/banner-template', getPublicTemplate);
 router.get('/banner-image', proxyBannerImage);
 
+// Subida pública del logo del club: auto-recorta los espacios vacíos (sharp
+// .trim) y devuelve un data URL (no se guarda en S3; es efímero por sesión).
+const bannerLogoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
+let _sharpBannerLogo = null;
+const getBannerLogoSharp = async () => _sharpBannerLogo || (_sharpBannerLogo = (await import('sharp')).default);
+router.post('/banner-logo', bannerLogoUpload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
+        const sharp = await getBannerLogoSharp();
+        let buf;
+        try {
+            buf = await sharp(req.file.buffer).trim(10).resize({ width: 1000, height: 1000, fit: 'inside', withoutEnlargement: true }).png().toBuffer();
+        } catch {
+            buf = await sharp(req.file.buffer).resize({ width: 1000, height: 1000, fit: 'inside', withoutEnlargement: true }).png().toBuffer();
+        }
+        res.json({ dataUrl: `data:image/png;base64,${buf.toString('base64')}` });
+    } catch (error) {
+        console.error('[public banner-logo]', error);
+        res.status(500).json({ error: 'No se pudo procesar el logo' });
+    }
+});
+
 export default router;

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.504.0 | 2026-06-29 (Pendones: multiselección de capas de texto)
-// Cache bust: 2026-06-29d
+// UI V4.505.0 | 2026-06-29 (Pendones: logo del club subible con auto-recorte)
+// Cache bust: 2026-06-29e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.505.0',
+        title: 'Pendones: subí el logo de tu club 🪪✂️',
+        description: 'En la cabecera del pendón, en lugar del logo de Rotary genérico, ahora va el logo de cada club. Desde el admin (Content Studio → Pendones) se define un logo por defecto, y en el generador público cada persona puede subir el logo de su club (generado en la herramienta de marca de Rotary). Al subirlo, el sistema recorta automáticamente los espacios/bordes vacíos y lo centra en la mesa de trabajo, igual que el patrón de los logos de cabecera de los sitios. El logo se puede arrastrar y reubicar como cualquier otra capa.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'logo', 'clubes', 'auto-recorte', 'content studio'],
+        type: 'feature'
+    },
     {
         version: '4.504.0',
         title: 'Pendones: seleccioná varios textos a la vez 🧲',

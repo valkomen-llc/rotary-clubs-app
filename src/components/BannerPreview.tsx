@@ -93,11 +93,19 @@ const BannerPreview: React.FC<Props> = ({ template, config, heightCss = 'min(80v
                 </div>
             )}
 
-            {/* Cabecera: logo + distrito */}
+            {/* Cabecera: logo del club (subido) + distrito */}
             <div style={{ position: 'absolute', left: '50%', top: `${LAYOUT.logoTopFracH * 100}cqh`, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '90cqw' }}>
-                <img src={logoDataUrl(config.logo.variant, config.logo.color)} alt="Rotary" draggable={false}
-                    onPointerDown={startDrag('logo')}
-                    style={{ width: `${LAYOUT.logoWidthFracW * 100}cqw`, height: 'auto', transform: tf('logo'), ...sel('logo') }} />
+                {config.logo?.url ? (
+                    <img src={config.logo.url} alt="Logo del club" draggable={false} onPointerDown={startDrag('logo')}
+                        style={{ maxWidth: `${LAYOUT.logoWidthFracW * 100}cqw`, maxHeight: `${LAYOUT.logoMaxHeightFracH * 100}cqh`, objectFit: 'contain', transform: tf('logo'), ...sel('logo') }} />
+                ) : interactive ? (
+                    <div onPointerDown={startDrag('logo')} style={{
+                        width: `${LAYOUT.logoWidthFracW * 100}cqw`, height: `${LAYOUT.logoMaxHeightFracH * 100}cqh`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center',
+                        border: '0.4cqw dashed rgba(100,116,139,0.7)', borderRadius: '1.5cqw', color: '#64748b',
+                        fontSize: '3.2cqw', fontFamily: 'Arial, Helvetica, sans-serif', transform: tf('logo'), ...sel('logo'),
+                    }}>Subí el logo del club</div>
+                ) : null}
                 {config.header.district?.trim() && (
                     <div onPointerDown={startDrag('district')} style={{
                         marginTop: `${LAYOUT.districtGapFracH * (heightCm / widthCm) * 100}cqw`,

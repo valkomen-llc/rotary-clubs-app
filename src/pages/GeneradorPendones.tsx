@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Download, Image as ImageIcon, Loader2, Users, Flag, Plus, Trash2, Layout, Info } from 'lucide-react';
+import { Download, Image as ImageIcon, Loader2, Users, Flag, Plus, Trash2, Layout, Info, Upload } from 'lucide-react';
 import {
     DEFAULT_CONFIG,
     exportBannerToPdf,
@@ -8,7 +8,6 @@ import {
     type BannerConfig,
     type Person,
 } from '../lib/bannerRender';
-import { LOGO_VARIANTS, LOGO_COLORS, type LogoVariant, type LogoColor } from '../lib/rotaryLogo';
 import BannerPreview from '../components/BannerPreview';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
@@ -31,6 +30,7 @@ const GeneradorPendones = () => {
     const [template, setTemplate] = useState<BannerTemplate>(FALLBACK_TEMPLATE);
     const [config, setConfig] = useState<BannerConfig>(DEFAULT_CONFIG);
     const [exporting, setExporting] = useState(false);
+    const [uploadingLogo, setUploadingLogo] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -55,6 +55,20 @@ const GeneradorPendones = () => {
         setConfig(c => ({ ...c, people: [...c.people, { name: 'Nombre y Apellido', role: 'Cargo', period: '(Periodo Rotario 2025-2026)' }] }));
     const removePerson = (i: number) =>
         setConfig(c => ({ ...c, people: c.people.filter((_, idx) => idx !== i) }));
+
+    const handleUploadLogo = async (file: File | undefined) => {
+        if (!file) return;
+        setUploadingLogo(true); setError(null);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const res = await fetch(`${API}/public/banner-logo`, { method: 'POST', body: formData });
+            const data = await res.json();
+            if (res.ok && data.dataUrl) setConfig(c => ({ ...c, logo: { url: data.dataUrl } }));
+            else setError(data.error || 'No se pudo subir el logo.');
+        } catch { setError('No se pudo subir el logo.'); }
+        finally { setUploadingLogo(false); }
+    };
 
     const handleDownload = async () => {
         setExporting(true); setError(null);
@@ -82,18 +96,19 @@ const GeneradorPendones = () => {
                 <aside className="w-full lg:w-[360px] bg-white border-r border-gray-200 p-5 overflow-y-auto">
                     {/* Cabecera */}
                     <section className="mb-6">
-                        <div className="flex items-center gap-2 mb-3 text-gray-800"><ImageIcon className="w-4 h-4" /><h2 className="text-sm font-bold">Cabecera</h2></div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <Field label="Logotipo">
-                                <select className={selectCls} value={config.logo.variant} onChange={e => setConfig(c => ({ ...c, logo: { ...c.logo, variant: e.target.value as LogoVariant } }))}>
-                                    {LOGO_VARIANTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                </select>
-                            </Field>
-                            <Field label="Color">
-                                <select className={selectCls} value={config.logo.color} onChange={e => setConfig(c => ({ ...c, logo: { ...c.logo, color: e.target.value as LogoColor } }))}>
-                                    {LOGO_COLORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                </select>
-                            </Field>
+                        <div className="flex items-center gap-2 mb-3 text-gray-800"><ImageIcon className="w-4 h-4" /><h2 className="text-sm font-bold">Logo del club</h2></div>
+                        <div className="flex items-center gap-3 mb-3">
+                            <div className="w-20 h-20 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center shrink-0 overflow-hidden">
+                                {config.logo?.url ? <img src={config.logo.url} alt="Logo" className="max-w-full max-h-full object-contain" /> : <ImageIcon className="w-6 h-6 text-gray-300" />}
+                            </div>
+                            <div className="flex-1">
+                                <label className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-xl py-3 cursor-pointer hover:border-blue-400 hover:bg-blue-50/40 transition-colors">
+                                    {uploadingLogo ? <Loader2 className="w-4 h-4 animate-spin text-blue-700" /> : <Upload className="w-4 h-4 text-gray-400" />}
+                                    <span className="text-xs text-gray-600 font-medium">{config.logo?.url ? 'Reemplazar logo' : 'Subí el logo de tu club'}</span>
+                                    <input type="file" accept="image/*" className="hidden" onChange={e => handleUploadLogo(e.target.files?.[0])} />
+                                </label>
+                                <p className="mt-1 text-[10px] text-gray-400">Generalo en la herramienta de marca de Rotary y subilo. Se recortan los bordes vacíos y se centra.</p>
+                            </div>
                         </div>
                         <Field label="Distrito (bajo el logo)">
                             <input className={selectCls} value={config.header.district} onChange={e => setConfig(c => ({ ...c, header: { ...c.header, district: e.target.value } }))} />

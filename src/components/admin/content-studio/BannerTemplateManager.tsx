@@ -3,7 +3,6 @@ import { Upload, Save, Loader2, ExternalLink, Image as ImageIcon, Users, Flag, P
 import { toast } from 'sonner';
 import BannerPreview from '../../BannerPreview';
 import { DEFAULT_CONFIG, type BannerTemplate, type BannerConfig, type Person } from '../../../lib/bannerRender';
-import { LOGO_VARIANTS, LOGO_COLORS, type LogoVariant, type LogoColor } from '../../../lib/rotaryLogo';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -25,6 +24,7 @@ const BannerTemplateManager = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [uploadingLogo, setUploadingLogo] = useState(false);
 
     useEffect(() => {
         const ctrl = new AbortController();
@@ -65,6 +65,28 @@ const BannerTemplateManager = () => {
             else toast.error(data.error || 'Error al subir', { id: toastId });
         } catch { toast.error('Error al subir la imagen', { id: toastId }); }
         finally { setUploading(false); }
+    };
+
+    // Logo del club: sube por /api/media/upload-logo, que auto-recorta los
+    // espacios vacíos (sharp .trim) y lo deja listo para centrar.
+    const handleUploadLogo = async (file: File | undefined) => {
+        if (!file) return;
+        setUploadingLogo(true);
+        const toastId = toast.loading('Subiendo y recortando logo…');
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('folder', 'banner-logos');
+            const res = await fetch(`${API}/media/upload-logo`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${localStorage.getItem('rotary_token')}` },
+                body: formData,
+            });
+            const data = await res.json();
+            if (res.ok && data.url) { setConfig(c => ({ ...c, logo: { url: data.url } })); toast.success('Logo recortado y listo', { id: toastId }); }
+            else toast.error(data.error || 'Error al subir el logo', { id: toastId });
+        } catch { toast.error('Error al subir el logo', { id: toastId }); }
+        finally { setUploadingLogo(false); }
     };
 
     const handleSave = async () => {
@@ -125,21 +147,25 @@ const BannerTemplateManager = () => {
                         </div>
                     </section>
 
-                    {/* Cabecera: logo + distrito */}
+                    {/* Cabecera: logo del club + distrito */}
                     <section className="mb-6 border-t border-gray-100 pt-5">
-                        <div className="flex items-center gap-2 mb-3 text-gray-800"><ImageIcon className="w-4 h-4" /><h4 className="text-sm font-bold">Cabecera (logo + distrito)</h4></div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <Field label="Logotipo">
-                                <select className={selectCls} value={config.logo.variant} onChange={e => setConfig(c => ({ ...c, logo: { ...c.logo, variant: e.target.value as LogoVariant } }))}>
-                                    {LOGO_VARIANTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                </select>
-                            </Field>
-                            <Field label="Color del logo">
-                                <select className={selectCls} value={config.logo.color} onChange={e => setConfig(c => ({ ...c, logo: { ...c.logo, color: e.target.value as LogoColor } }))}>
-                                    {LOGO_COLORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                </select>
-                            </Field>
-                        </div>
+                        <div className="flex items-center gap-2 mb-3 text-gray-800"><ImageIcon className="w-4 h-4" /><h4 className="text-sm font-bold">Cabecera (logo del club + distrito)</h4></div>
+                        <Field label="Logo por defecto del club">
+                            <div className="flex items-center gap-3">
+                                <div className="w-20 h-20 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center shrink-0 overflow-hidden">
+                                    {config.logo?.url ? <img src={config.logo.url} alt="Logo" className="max-w-full max-h-full object-contain" /> : <ImageIcon className="w-6 h-6 text-gray-300" />}
+                                </div>
+                                <div className="flex-1">
+                                    <label className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-xl py-3 cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/40 transition-colors">
+                                        {uploadingLogo ? <Loader2 className="w-4 h-4 animate-spin text-indigo-600" /> : <Upload className="w-4 h-4 text-gray-400" />}
+                                        <span className="text-xs text-gray-600 font-medium">{config.logo?.url ? 'Reemplazar logo' : 'Subir logo del club'}</span>
+                                        <input type="file" accept="image/*" className="hidden" onChange={e => handleUploadLogo(e.target.files?.[0])} />
+                                    </label>
+                                    {config.logo?.url && <button onClick={() => setConfig(c => ({ ...c, logo: { url: null } }))} className="mt-1 text-[11px] text-gray-400 hover:text-red-500">Quitar logo</button>}
+                                    <p className="mt-1 text-[10px] text-gray-400">Se recortan los espacios vacíos automáticamente y se centra.</p>
+                                </div>
+                            </div>
+                        </Field>
                         <div className="grid grid-cols-[1fr_auto] gap-3 items-end">
                             <Field label="Distrito (bajo el logo)">
                                 <input className={selectCls} value={config.header.district} onChange={e => setConfig(c => ({ ...c, header: { ...c.header, district: e.target.value } }))} />
