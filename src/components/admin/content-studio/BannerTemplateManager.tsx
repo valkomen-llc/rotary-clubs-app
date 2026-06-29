@@ -145,6 +145,19 @@ const BannerTemplateManager = () => {
                             <Field label="Ancho (cm)"><input type="number" min={1} className={selectCls} value={widthCm} onChange={e => setWidthCm(Math.max(1, parseInt(e.target.value) || 80))} /></Field>
                             <Field label="Alto (cm)"><input type="number" min={1} className={selectCls} value={heightCm} onChange={e => setHeightCm(Math.max(1, parseInt(e.target.value) || 180))} /></Field>
                         </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <Field label="Margen horizontal (%)">
+                                <input type="number" min={0} max={40} step={0.5} className={selectCls}
+                                    value={config.margins?.x ?? 6}
+                                    onChange={e => setConfig(c => ({ ...c, margins: { x: Math.max(0, parseFloat(e.target.value) || 0), y: c.margins?.y ?? 4 } }))} />
+                            </Field>
+                            <Field label="Margen vertical (%)">
+                                <input type="number" min={0} max={40} step={0.5} className={selectCls}
+                                    value={config.margins?.y ?? 4}
+                                    onChange={e => setConfig(c => ({ ...c, margins: { x: c.margins?.x ?? 6, y: Math.max(0, parseFloat(e.target.value) || 0) } }))} />
+                            </Field>
+                        </div>
+                        <p className="text-[10px] text-gray-400 -mt-1">Los márgenes y las guías de centrado son solo ayudas de edición; no se imprimen en el PDF.</p>
                     </section>
 
                     {/* Cabecera: logo del club + distrito */}
@@ -196,6 +209,21 @@ const BannerTemplateManager = () => {
                             <Field label="Color nombre"><input type="color" className="w-full h-9 rounded-md border border-gray-300 cursor-pointer" value={config.colors.name} onChange={e => setConfig(c => ({ ...c, colors: { ...c.colors, name: e.target.value } }))} /></Field>
                             <Field label="Color cargo"><input type="color" className="w-full h-9 rounded-md border border-gray-300 cursor-pointer" value={config.colors.role} onChange={e => setConfig(c => ({ ...c, colors: { ...c.colors, role: e.target.value } }))} /></Field>
                             <Field label="Color periodo"><input type="color" className="w-full h-9 rounded-md border border-gray-300 cursor-pointer" value={config.colors.period} onChange={e => setConfig(c => ({ ...c, colors: { ...c.colors, period: e.target.value } }))} /></Field>
+                        </div>
+                        <p className="text-xs font-semibold text-gray-600 mt-2 mb-1">Tamaño de los textos</p>
+                        <div className="grid grid-cols-3 gap-3">
+                            <Field label={`Nombre (${config.sizes.name}%)`}>
+                                <input type="range" min={3} max={12} step={0.25} value={config.sizes.name} className="w-full accent-indigo-600"
+                                    onChange={e => setConfig(c => ({ ...c, sizes: { ...c.sizes, name: parseFloat(e.target.value) } }))} />
+                            </Field>
+                            <Field label={`Cargo (${config.sizes.role}%)`}>
+                                <input type="range" min={2} max={8} step={0.25} value={config.sizes.role} className="w-full accent-indigo-600"
+                                    onChange={e => setConfig(c => ({ ...c, sizes: { ...c.sizes, role: parseFloat(e.target.value) } }))} />
+                            </Field>
+                            <Field label={`Periodo (${config.sizes.period}%)`}>
+                                <input type="range" min={1.5} max={6} step={0.25} value={config.sizes.period} className="w-full accent-indigo-600"
+                                    onChange={e => setConfig(c => ({ ...c, sizes: { ...c.sizes, period: parseFloat(e.target.value) } }))} />
+                            </Field>
                         </div>
                     </section>
 

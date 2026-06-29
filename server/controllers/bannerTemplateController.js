@@ -14,7 +14,7 @@
 // ════════════════════════════════════════════════════════════════════
 import db from '../lib/db.js';
 
-console.log('[bannerTemplateController] v4.507.0 cargado — Generador de Pendones (logo auto-normalizado por área + tamaño manual)');
+console.log('[bannerTemplateController] v4.509.0 cargado — Generador de Pendones (tamaño de textos configurable)');
 
 const DEFAULT_WIDTH_CM = 80;
 const DEFAULT_HEIGHT_CM = 180;
@@ -31,6 +31,7 @@ export const DEFAULT_CONFIG = {
     colors: { name: '#17458f', role: '#2a5cb8', period: '#6b7da0' },
     sizes: { name: 6.5, role: 3.5, period: 2.5 },
     footer: { show: true, tagline: 'GENERA UN IMPACTO DURADERO', district: 'Distrito 4281' },
+    margins: { x: 6, y: 4 },
     offsets: {},
 };
 
