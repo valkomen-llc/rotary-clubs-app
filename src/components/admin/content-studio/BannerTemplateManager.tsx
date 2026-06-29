@@ -279,7 +279,7 @@ const BannerTemplateManager = () => {
                                     className="w-full accent-indigo-600" />
                             </Field>
                         )}
-                        <Field label="Lema"><input className={selectCls} value={config.footer.tagline} onChange={e => setConfig(c => ({ ...c, footer: { ...c.footer, tagline: e.target.value } }))} /></Field>
+                        <p className="text-[10px] text-gray-400">El pie muestra únicamente este logo (sin lema). Esta configuración es solo del administrador.</p>
                     </section>
 
                     <button onClick={handleSave} disabled={saving}

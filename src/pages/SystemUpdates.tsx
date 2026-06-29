@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.510.0 | 2026-06-29 (Pendones: logo del pie subible; sin distrito en el pie)
-// Cache bust: 2026-06-29j
+// UI V4.511.0 | 2026-06-29 (Pendones: pie solo logo, sin lema; config del pie solo admin)
+// Cache bust: 2026-06-29k
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.511.0',
+        title: 'Pendones: el pie es solo un logo (y lo controla el admin) 🔒',
+        description: 'Simplificamos el pie de página del pendón: ahora muestra únicamente el logo que se sube (quitamos el lema y la línea divisoria). Además, la configuración del pie pasó a ser exclusiva del administrador: el generador público ya no muestra opciones del pie ni permite moverlo; simplemente hereda el logo del pie que el admin haya definido en la plantilla.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'pie', 'admin', 'content studio'],
+        type: 'improvement'
+    },
     {
         version: '4.510.0',
         title: 'Pendones: logo propio en el pie de página 🦶🪪',
