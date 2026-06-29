@@ -302,6 +302,15 @@ const ScrollToTop = () => {
   return null;
 };
 
+// Banners globales (desarrollo / expiración). Se ocultan en secciones públicas
+// "tool" que no son sitios de club, como el generador de pendones (gratis).
+const HIDE_BANNERS_PATHS = ['/generador-pendones'];
+const GlobalBanners = () => {
+  const { pathname } = useLocation();
+  if (HIDE_BANNERS_PATHS.some(p => pathname.startsWith(p))) return null;
+  return (<><ExpirationBanner /><DevelopmentBanner /></>);
+};
+
 // Analytics Wrapper to track route changes
 const AnalyticsTracker = () => {
   const location = useLocation();
@@ -375,8 +384,7 @@ function App() {
         <AuthProvider>
           <CartProvider>
             <Router>
-              <ExpirationBanner />
-              <DevelopmentBanner />
+              <GlobalBanners />
               <HashRedirector />
               <ScrollToTop />
               <AnalyticsTracker />

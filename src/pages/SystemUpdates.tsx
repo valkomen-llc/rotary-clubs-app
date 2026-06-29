@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.518.0 | 2026-06-29 (Generador público: logo Club Platform, título con periodo, enlace Brand Center, botón PDF)
-// Cache bust: 2026-06-29r
+// UI V4.519.0 | 2026-06-29 (Generador de pendones: sin barra de desarrollo en la sección pública)
+// Cache bust: 2026-06-29s
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.519.0',
+        title: 'Generador de Pendones sin barra de “sitio en desarrollo” 🟡🚫',
+        description: 'En la sección pública del Generador de Pendones (/generador-pendones) quitamos la barra amarilla de “sitio en construcción / desarrollo” que aparecía arriba. Al ser una herramienta pública y gratuita, ya no muestra ese aviso. Los banners de desarrollo y expiración siguen funcionando normalmente en el resto del sitio.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'público', 'UI'],
+        type: 'improvement'
+    },
     {
         version: '4.518.0',
         title: 'Generador de Pendones: marca y guía de Brand Center 🏷️🔗',
