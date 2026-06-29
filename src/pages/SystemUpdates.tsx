@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.517.0 | 2026-06-29 (Pendones público: solo edita personas editables; sin sliders de tamaño)
-// Cache bust: 2026-06-29q
+// UI V4.518.0 | 2026-06-29 (Generador público: logo Club Platform, título con periodo, enlace Brand Center, botón PDF)
+// Cache bust: 2026-06-29r
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.518.0',
+        title: 'Generador de Pendones: marca y guía de Brand Center 🏷️🔗',
+        description: 'Pulimos el generador público de pendones: agregamos el logo de Club Platform arriba a la izquierda, el título ahora dice "Plantilla de Pendón · Periodo Rotario 2026-2027", el texto del logo del club enlaza directo a Rotary Brand Center y aclara que el logo debe descargarse en formato PNG, y el botón de descarga ahora dice "Descargar PDF para Impresión".',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'público', 'brand center', 'UI'],
+        type: 'improvement'
+    },
     {
         version: '4.517.0',
         title: 'Pendones público: solo editable lo del club 🔏',

@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.517.0",
-  "cache_bust": "2026-06-29q (Pendones público: solo se editan las personas marcadas como 'editable por el público' en el admin (ej. presidente del club); las demás quedan fijas. Se quitan los controles de tamaño de los textos del generador público)",
+  "version": "4.518.0",
+  "cache_bust": "2026-06-29r (Generador público: logo de Club Platform arriba a la izquierda, título 'Plantilla de Pendón · Periodo Rotario 2026-2027', enlace a Rotary Brand Center (descargar el logo en PNG) y botón 'Descargar PDF para Impresión')",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Download, Image as ImageIcon, Loader2, Users, Layout, Info, Upload } from 'lucide-react';
+import { Download, Image as ImageIcon, Loader2, Users, Info, Upload } from 'lucide-react';
 import {
     DEFAULT_CONFIG,
     exportBannerToPdf,
@@ -26,12 +26,24 @@ const Field = ({ label, children }: { label: string; children: ReactNode }) => (
 
 const selectCls = 'w-full text-sm border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500';
 
+const PLATFORM_LOGO_FALLBACK = 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/platform/logo/1776225800089-Club_Platform_for_Rotary.png';
+const BRAND_CENTER_URL = 'https://brandcenter.rotary.org/es-xl/rotary-template?id=7d741b41-8182-4eeb-96d9-e44292aabb31';
+
 const GeneradorPendones = () => {
     const [template, setTemplate] = useState<BannerTemplate>(FALLBACK_TEMPLATE);
     const [config, setConfig] = useState<BannerConfig>(DEFAULT_CONFIG);
     const [exporting, setExporting] = useState(false);
     const [uploadingLogo, setUploadingLogo] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [platformLogo, setPlatformLogo] = useState<string>(PLATFORM_LOGO_FALLBACK);
+
+    useEffect(() => {
+        // Logo de Club Platform (mismo que usa el panel de administración).
+        fetch(`${API}/platform-config/logo`)
+            .then(r => r.json())
+            .then(d => { if (d?.url) setPlatformLogo(d.url); })
+            .catch(() => {/* se queda el fallback */});
+    }, []);
 
     useEffect(() => {
         const clubId = new URLSearchParams(window.location.search).get('clubId');
@@ -82,8 +94,8 @@ const GeneradorPendones = () => {
     return (
         <div className="min-h-screen flex flex-col bg-gray-100">
             <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-3">
-                <Layout className="w-5 h-5 text-blue-800" />
-                <h1 className="text-lg font-bold text-gray-900">{template.name || 'Generador de Pendones'}</h1>
+                <img src={platformLogo} alt="Club Platform for Rotary" className="h-9 w-auto max-w-[180px] object-contain" />
+                <h1 className="text-lg font-bold text-gray-900">Plantilla de Pendón · Periodo Rotario 2026-2027</h1>
                 <span className="ml-auto text-xs text-gray-500">{widthCm} × {heightCm} cm · listo para imprimir</span>
             </header>
 
@@ -103,7 +115,9 @@ const GeneradorPendones = () => {
                                     <span className="text-xs text-gray-600 font-medium">{config.logo?.url ? 'Reemplazar logo' : 'Subí el logo de tu club'}</span>
                                     <input type="file" accept="image/*" className="hidden" onChange={e => handleUploadLogo(e.target.files?.[0])} />
                                 </label>
-                                <p className="mt-1 text-[10px] text-gray-400">Generalo en la herramienta de marca de Rotary y subilo. Se recortan los bordes vacíos y se ajusta el tamaño automáticamente.</p>
+                                <p className="mt-1 text-[10px] text-gray-400">
+                                    Generalo en <a href={BRAND_CENTER_URL} target="_blank" rel="noreferrer" className="font-semibold text-blue-700 hover:text-blue-900 underline">Rotary Brand Center</a> y descargalo en formato <span className="font-semibold">PNG</span>; al subirlo se recortan los bordes vacíos y se ajusta el tamaño automáticamente.
+                                </p>
                             </div>
                         </div>
                         {config.logo?.url && (
@@ -138,7 +152,7 @@ const GeneradorPendones = () => {
                         <button onClick={handleDownload} disabled={exporting}
                             className="w-full flex items-center justify-center gap-2 bg-blue-800 hover:bg-blue-900 disabled:opacity-60 text-white font-bold rounded-lg px-4 py-3 transition-colors">
                             {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                            {exporting ? 'Generando…' : 'Descargar PDF'}
+                            {exporting ? 'Generando…' : 'Descargar PDF para Impresión'}
                         </button>
                         <button onClick={handleDownloadPng} disabled={exporting}
                             className="w-full mt-2 flex items-center justify-center gap-2 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 text-sm font-semibold rounded-lg px-4 py-2 transition-colors">
