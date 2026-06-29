@@ -35,8 +35,8 @@ const GeneradorPendones = () => {
 
     useEffect(() => {
         const clubId = new URLSearchParams(window.location.search).get('clubId');
-        const q = clubId ? `?clubId=${encodeURIComponent(clubId)}` : '';
-        fetch(`${API}/public/banner-template${q}`)
+        const q = `?t=${Date.now()}${clubId ? `&clubId=${encodeURIComponent(clubId)}` : ''}`;
+        fetch(`${API}/public/banner-template${q}`, { cache: 'no-store' })
             .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
             .then((tpl: BannerTemplate) => {
                 if (!tpl) return;
