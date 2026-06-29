@@ -14,7 +14,7 @@
 // ════════════════════════════════════════════════════════════════════
 import db from '../lib/db.js';
 
-console.log('[bannerTemplateController] v4.515.0 cargado — Generador de Pendones (no-store en GET de plantilla; público siempre lee la última)');
+console.log('[bannerTemplateController] v4.516.0 cargado — Generador de Pendones (posición del logo por X/Y en el admin)');
 
 const DEFAULT_WIDTH_CM = 80;
 const DEFAULT_HEIGHT_CM = 180;
