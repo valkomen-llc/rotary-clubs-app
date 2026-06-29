@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.501.1 | 2026-06-29 (Fix: pestaña Pendones del admin ya no queda cargando)
-// Cache bust: 2026-06-29a
+// UI V4.502.0 | 2026-06-29 (Pendones rediseñados estilo "directiva": cabecera + personas + pie)
+// Cache bust: 2026-06-29b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.502.0',
+        title: 'Pendones estilo “directiva” 🏛️🚩',
+        description: 'Rediseñamos el Generador de Pendones para armar pendones de autoridades/directiva como el modelo del Distrito 4281: una cabecera con el logo de Rotary y la línea de distrito, una lista de personas (nombre, cargo y periodo) que se puede ampliar o reducir, y un pie con el logo en blanco, el distrito y el lema “Genera un impacto duradero”. La imagen de fondo (azul con curvas doradas) se sube desde el admin y todo lo demás se superpone encima. Tanto el admin (Content Studio → Pendones) como el público pueden editar los textos y descargar el PDF al tamaño real de impresión.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'directiva', 'content studio', 'PDF'],
+        type: 'feature'
+    },
     {
         version: '4.501.1',
         title: 'Fix: la pestaña “Pendones” ya carga ⚡',
