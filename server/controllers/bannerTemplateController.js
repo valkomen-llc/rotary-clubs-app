@@ -14,7 +14,7 @@
 // ════════════════════════════════════════════════════════════════════
 import db from '../lib/db.js';
 
-console.log('[bannerTemplateController] v4.514.0 cargado — Generador de Pendones (logo en recuadro fijo; admin y público sincronizados)');
+console.log('[bannerTemplateController] v4.515.0 cargado — Generador de Pendones (no-store en GET de plantilla; público siempre lee la última)');
 
 const DEFAULT_WIDTH_CM = 80;
 const DEFAULT_HEIGHT_CM = 180;
@@ -116,6 +116,8 @@ const selectActive = async (clubId) => {
 
 // ── PÚBLICO: GET /api/public/banner-template ──────────────────────────
 export const getPublicTemplate = async (req, res) => {
+    // Sin caché: el público debe ver siempre la última plantilla guardada por el admin.
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     try {
         await ensureTable();
         const tpl = await selectActive(req.query.clubId);
@@ -134,6 +136,7 @@ export const getPublicTemplate = async (req, res) => {
 // ── ADMIN: GET /api/banner/template ───────────────────────────────────
 // Devuelve la plantilla que el admin de este club (o la global) edita.
 export const getAdminTemplate = async (req, res) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     try {
         await ensureTable();
         // Los administradores de plataforma editan la global; el resto, la de su club.

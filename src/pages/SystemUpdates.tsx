@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.514.0 | 2026-06-29 (Pendones: logo en recuadro fijo; admin y público sincronizados)
-// Cache bust: 2026-06-29n
+// UI V4.515.0 | 2026-06-29 (Pendones: el público siempre lee la última plantilla guardada)
+// Cache bust: 2026-06-29o
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.515.0',
+        title: 'Pendones: la posición del logo del admin ahora sí se refleja en el público 🔄',
+        description: 'Corregimos un problema de caché por el cual el generador público podía mostrar una versión vieja de la plantilla: por eso el logo aparecía arriba aunque en el administrador estuviera reubicado más abajo. Ahora las peticiones de la plantilla se piden siempre frescas (sin caché), así la posición y el tamaño del logo que dejás establecidos en el admin se ven de inmediato en el sitio público. Recordá guardar en el admin después de mover el logo.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'caché', 'logo', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.514.0',
         title: 'Pendones: el logo del público hereda la posición y el tamaño del admin 🎯',

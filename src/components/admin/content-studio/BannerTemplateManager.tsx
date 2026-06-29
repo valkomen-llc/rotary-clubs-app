@@ -30,9 +30,10 @@ const BannerTemplateManager = () => {
     useEffect(() => {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 12000);
-        fetch(`${API}/banner/template`, {
+        fetch(`${API}/banner/template?t=${Date.now()}`, {
             headers: { Authorization: `Bearer ${localStorage.getItem('rotary_token')}` },
             signal: ctrl.signal,
+            cache: 'no-store',
         })
             .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
             .then((tpl: BannerTemplate) => {
