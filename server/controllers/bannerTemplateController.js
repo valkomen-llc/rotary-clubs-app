@@ -14,7 +14,7 @@
 // ════════════════════════════════════════════════════════════════════
 import db from '../lib/db.js';
 
-console.log('[bannerTemplateController] v4.506.0 cargado — Generador de Pendones (cabecera solo logo; sin línea de distrito)');
+console.log('[bannerTemplateController] v4.507.0 cargado — Generador de Pendones (logo auto-normalizado por área + tamaño manual)');
 
 const DEFAULT_WIDTH_CM = 80;
 const DEFAULT_HEIGHT_CM = 180;
@@ -22,7 +22,7 @@ const DEFAULT_HEIGHT_CM = 180;
 // Configuración por defecto que se devuelve aunque el admin todavía no haya
 // guardado una plantilla, para que el generador público siempre funcione.
 export const DEFAULT_CONFIG = {
-    logo: { url: null },
+    logo: { url: null, scale: 1 },
     people: [
         { name: 'Francesco Arezzo', role: 'Presidente, Rotary International', period: '(Periodo Rotario 2025-2026)' },
         { name: 'Jorge Raúl Ossa Botero', role: 'Gobernador, Rotary Distrito 4281', period: '(Periodo Rotario 2025-2026)' },

@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.506.0",
-  "cache_bust": "2026-06-29f (Pendones: se elimina la línea de distrito bajo el logo, tanto del pendón como del configurador del admin y del generador público; la cabecera queda solo con el logo del club)",
+  "version": "4.507.0",
+  "cache_bust": "2026-06-29g (Pendones: el logo de cabecera se auto-normaliza por área según su forma (logos anchos con nombres largos vs angostos quedan con peso visual parejo) y se agrega un control manual de tamaño (slider) en el admin y en el público)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

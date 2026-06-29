@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { LAYOUT, getOffset, personElementId, type BannerTemplate, type BannerConfig, type Offset } from '../lib/bannerRender';
+import { LAYOUT, getOffset, personElementId, computeLogoWidthFrac, type BannerTemplate, type BannerConfig, type Offset } from '../lib/bannerRender';
 import { logoDataUrl } from '../lib/rotaryLogo';
 
 // Preview DOM del pendón. Usa unidades de container query (cqw/cqh) para que
@@ -29,6 +29,10 @@ const BannerPreview: React.FC<Props> = ({ template, config, heightCss = 'min(80v
     // Drag de grupo: mueve TODOS los seleccionados con el mismo delta.
     const drag = useRef<{ ids: string[]; sx: number; sy: number; base: Record<string, Offset> } | null>(null);
     const [dragging, setDragging] = useState(false);
+    // Dimensiones naturales del logo (para normalizar su tamaño por área).
+    const [logoDims, setLogoDims] = useState<{ w: number; h: number } | null>(null);
+    useEffect(() => { setLogoDims(null); }, [config.logo?.url]);
+    const logoFw = computeLogoWidthFrac(logoDims?.w || 0, logoDims?.h || 0, config.logo?.scale ?? 1, widthCm, heightCm);
 
     useEffect(() => {
         if (!dragging) return;
@@ -97,7 +101,8 @@ const BannerPreview: React.FC<Props> = ({ template, config, heightCss = 'min(80v
             <div style={{ position: 'absolute', left: '50%', top: `${LAYOUT.logoTopFracH * 100}cqh`, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '90cqw' }}>
                 {config.logo?.url ? (
                     <img src={config.logo.url} alt="Logo del club" draggable={false} onPointerDown={startDrag('logo')}
-                        style={{ maxWidth: `${LAYOUT.logoWidthFracW * 100}cqw`, maxHeight: `${LAYOUT.logoMaxHeightFracH * 100}cqh`, objectFit: 'contain', transform: tf('logo'), ...sel('logo') }} />
+                        onLoad={e => setLogoDims({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+                        style={{ width: `${logoFw * 100}cqw`, height: 'auto', transform: tf('logo'), ...sel('logo') }} />
                 ) : interactive ? (
                     <div onPointerDown={startDrag('logo')} style={{
                         width: `${LAYOUT.logoWidthFracW * 100}cqw`, height: `${LAYOUT.logoMaxHeightFracH * 100}cqh`,

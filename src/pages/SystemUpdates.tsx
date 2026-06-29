@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.506.0 | 2026-06-29 (Pendones: se quita la línea de distrito bajo el logo)
-// Cache bust: 2026-06-29f
+// UI V4.507.0 | 2026-06-29 (Pendones: logo auto-normalizado por área + tamaño manual)
+// Cache bust: 2026-06-29g
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.507.0',
+        title: 'Pendones: el logo se adapta solo (y lo podés estirar) 📐',
+        description: 'El logo del club de la cabecera ahora se ajusta automáticamente según su forma: los logos anchos (clubes con nombres largos) y los más angostos quedan con un “peso” visual parejo, sin verse ni muy chicos ni muy grandes. Es una normalización por área (no deforma el logo) que se aplica tras el auto-recorte de bordes. Además agregamos un control manual de “Tamaño del logo” (50%–200%) tanto en el configurador del admin como en el generador público, por si querés agrandarlo o achicarlo a gusto. El tamaño elegido se respeta en el PDF.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'logo', 'auto-ajuste', 'tamaño'],
+        type: 'improvement'
+    },
     {
         version: '4.506.0',
         title: 'Pendones: cabecera más limpia (sin distrito bajo el logo) 🧹',

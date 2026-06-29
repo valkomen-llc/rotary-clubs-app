@@ -83,7 +83,7 @@ const BannerTemplateManager = () => {
                 body: formData,
             });
             const data = await res.json();
-            if (res.ok && data.url) { setConfig(c => ({ ...c, logo: { url: data.url } })); toast.success('Logo recortado y listo', { id: toastId }); }
+            if (res.ok && data.url) { setConfig(c => ({ ...c, logo: { url: data.url, scale: c.logo?.scale ?? 1 } })); toast.success('Logo recortado y listo', { id: toastId }); }
             else toast.error(data.error || 'Error al subir el logo', { id: toastId });
         } catch { toast.error('Error al subir el logo', { id: toastId }); }
         finally { setUploadingLogo(false); }
@@ -161,11 +161,18 @@ const BannerTemplateManager = () => {
                                         <span className="text-xs text-gray-600 font-medium">{config.logo?.url ? 'Reemplazar logo' : 'Subir logo del club'}</span>
                                         <input type="file" accept="image/*" className="hidden" onChange={e => handleUploadLogo(e.target.files?.[0])} />
                                     </label>
-                                    {config.logo?.url && <button onClick={() => setConfig(c => ({ ...c, logo: { url: null } }))} className="mt-1 text-[11px] text-gray-400 hover:text-red-500">Quitar logo</button>}
-                                    <p className="mt-1 text-[10px] text-gray-400">Se recortan los espacios vacíos automáticamente y se centra.</p>
+                                    {config.logo?.url && <button onClick={() => setConfig(c => ({ ...c, logo: { url: null, scale: 1 } }))} className="mt-1 text-[11px] text-gray-400 hover:text-red-500">Quitar logo</button>}
+                                    <p className="mt-1 text-[10px] text-gray-400">Se recortan los espacios vacíos y se ajusta el tamaño automáticamente según la forma del logo.</p>
                                 </div>
                             </div>
                         </Field>
+                        {config.logo?.url && (
+                            <Field label={`Tamaño del logo (${Math.round((config.logo.scale ?? 1) * 100)}%)`}>
+                                <input type="range" min={0.5} max={2} step={0.05} value={config.logo.scale ?? 1}
+                                    onChange={e => setConfig(c => ({ ...c, logo: { ...c.logo, scale: parseFloat(e.target.value) } }))}
+                                    className="w-full accent-indigo-600" />
+                            </Field>
+                        )}
                     </section>
 
                     {/* Personas */}

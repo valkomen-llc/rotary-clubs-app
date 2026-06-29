@@ -22,7 +22,8 @@ export interface Offset { x: number; y: number } // x en % del ancho, y en % del
 export interface BannerConfig {
     // Logo de cabecera subido por el club (auto-recortado y centrado). Puede ser
     // una URL de S3 (logo por defecto del admin) o un data URL (subida pública).
-    logo: { url: string | null };
+    // `scale` es el multiplicador manual de tamaño (1 = auto-normalizado).
+    logo: { url: string | null; scale?: number };
     people: Person[];
     colors: { name: string; role: string; period: string };
     sizes: { name: number; role: number; period: number }; // % del ancho
@@ -49,7 +50,7 @@ export interface BannerTemplate {
 }
 
 export const DEFAULT_CONFIG: BannerConfig = {
-    logo: { url: null },
+    logo: { url: null, scale: 1 },
     people: [
         { name: 'Francesco Arezzo', role: 'Presidente, Rotary International', period: '(Periodo Rotario 2025-2026)' },
         { name: 'Jorge Raúl Ossa Botero', role: 'Gobernador, Rotary Distrito 4281', period: '(Periodo Rotario 2025-2026)' },
@@ -64,9 +65,10 @@ export const DEFAULT_CONFIG: BannerConfig = {
 // Fracciones del lienzo (compartidas con el preview DOM vía cqw/cqh).
 export const LAYOUT = {
     logoWidthFracW: 0.50,
-    logoMaxHeightFracH: 0.20,  // alto máximo del logo de cabecera
+    logoTargetAreaFrac: 0.085, // área visual objetivo del logo (fracción del lienzo) → normaliza logos anchos/altos
+    logoMaxWidthFrac: 0.72,    // ancho máximo del logo (fracción del ancho)
+    logoMaxHeightFracH: 0.22,  // alto máximo del logo (fracción del alto)
     logoTopFracH: 0.065,
-    districtGapFracH: 0.010,   // separación logo→distrito
     bodyTopFracH: 0.42,        // región donde se centra la lista de personas
     bodyBottomFracH: 0.80,
     sideFracW: 0.07,
@@ -78,6 +80,24 @@ export const LAYOUT = {
     footerLogoWidthFracW: 0.26,
     footerTaglineSizePct: 3.4,
     footerDistrictSizePct: 2.8,
+};
+
+// Ancho del logo (fracción del ancho del lienzo) auto-normalizado por ÁREA según
+// su forma (tras el auto-recorte), para que logos anchos (nombres largos) y
+// angostos se vean con un "peso" visual parecido. `scale` es el ajuste manual.
+export const computeLogoWidthFrac = (
+    naturalW: number, naturalH: number, scale: number, widthCm: number, heightCm: number,
+): number => {
+    const s = scale && scale > 0 ? scale : 1;
+    if (!naturalW || !naturalH) return Math.min(LAYOUT.logoMaxWidthFrac, LAYOUT.logoWidthFracW) * s;
+    const aspect = naturalW / naturalH;     // ancho/alto del logo
+    const hw = heightCm / widthCm;          // alto/ancho del lienzo
+    // Área objetivo: fw = sqrt(targetArea * aspect * (H/W))
+    let fw = Math.sqrt(LAYOUT.logoTargetAreaFrac * aspect * hw);
+    // Topes: por ancho y por alto (heightFrac = fw / (aspect * hw) ≤ maxHeight)
+    fw = Math.min(fw, LAYOUT.logoMaxWidthFrac, LAYOUT.logoMaxHeightFracH * aspect * hw);
+    fw = fw * s;
+    return Math.min(fw, 0.95); // tope de seguridad
 };
 
 const RENDER_TARGET_DPI = 150;
@@ -215,11 +235,9 @@ export const renderBannerToCanvas = async ({ template, config }: RenderInput): P
     if (config.logo?.url) {
         try {
             const logoImg = await loadImage(proxiedImage(config.logo.url), 'anonymous');
-            const maxW = W * LAYOUT.logoWidthFracW;
-            const maxH = H * LAYOUT.logoMaxHeightFracH;
-            const scale = Math.min(maxW / logoImg.width, maxH / logoImg.height);
-            const lw = logoImg.width * scale;
-            const lh = logoImg.height * scale;
+            const fw = computeLogoWidthFrac(logoImg.width, logoImg.height, config.logo.scale ?? 1, widthCm, heightCm);
+            const lw = fw * W;
+            const lh = lw * (logoImg.height / logoImg.width);
             const lx = (W - lw) / 2;
             const o = offPx('logo');
             ctx.drawImage(logoImg, lx + o.x, baseLogoY + o.y, lw, lh);
