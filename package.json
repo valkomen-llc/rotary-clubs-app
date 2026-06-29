@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.513.0",
-  "cache_bust": "2026-06-29m (Pendones: la plantilla guardada por el admin persiste entre actualizaciones — merge profundo al cargar/guardar para que las personalizaciones no se pierdan cuando agregamos campos nuevos; la tabla vive fuera de Prisma y no la toca el deploy)",
+  "version": "4.514.0",
+  "cache_bust": "2026-06-29n (Pendones: el logo de cabecera usa un recuadro fijo (posición + tamaño definidos en la plantilla por el admin); cualquier logo que suba el público se ajusta (contain) a ese mismo recuadro y posición, sincronizando admin y público)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

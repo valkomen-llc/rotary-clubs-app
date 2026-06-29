@@ -67,10 +67,8 @@ export const DEFAULT_CONFIG: BannerConfig = {
 
 // Fracciones del lienzo (compartidas con el preview DOM vía cqw/cqh).
 export const LAYOUT = {
-    logoWidthFracW: 0.50,
-    logoTargetAreaFrac: 0.085, // área visual objetivo del logo (fracción del lienzo) → normaliza logos anchos/altos
-    logoMaxWidthFrac: 0.72,    // ancho máximo del logo (fracción del ancho)
-    logoMaxHeightFracH: 0.22,  // alto máximo del logo (fracción del alto)
+    logoWidthFracW: 0.50,      // ancho del recuadro del logo (fracción del ancho)
+    logoMaxHeightFracH: 0.22,  // alto del recuadro del logo (fracción del alto)
     logoTopFracH: 0.065,
     bodyTopFracH: 0.42,        // región donde se centra la lista de personas
     bodyBottomFracH: 0.80,
@@ -83,24 +81,6 @@ export const LAYOUT = {
     footerLogoWidthFracW: 0.26,
     footerLogoMaxHeightFracH: 0.06,
     footerTaglineSizePct: 3.4,
-};
-
-// Ancho del logo (fracción del ancho del lienzo) auto-normalizado por ÁREA según
-// su forma (tras el auto-recorte), para que logos anchos (nombres largos) y
-// angostos se vean con un "peso" visual parecido. `scale` es el ajuste manual.
-export const computeLogoWidthFrac = (
-    naturalW: number, naturalH: number, scale: number, widthCm: number, heightCm: number,
-): number => {
-    const s = scale && scale > 0 ? scale : 1;
-    if (!naturalW || !naturalH) return Math.min(LAYOUT.logoMaxWidthFrac, LAYOUT.logoWidthFracW) * s;
-    const aspect = naturalW / naturalH;     // ancho/alto del logo
-    const hw = heightCm / widthCm;          // alto/ancho del lienzo
-    // Área objetivo: fw = sqrt(targetArea * aspect * (H/W))
-    let fw = Math.sqrt(LAYOUT.logoTargetAreaFrac * aspect * hw);
-    // Topes: por ancho y por alto (heightFrac = fw / (aspect * hw) ≤ maxHeight)
-    fw = Math.min(fw, LAYOUT.logoMaxWidthFrac, LAYOUT.logoMaxHeightFracH * aspect * hw);
-    fw = fw * s;
-    return Math.min(fw, 0.95); // tope de seguridad
 };
 
 // Calidad de impresión: 150 DPI al tamaño físico real (estándar de gran formato).
@@ -244,14 +224,18 @@ export const renderBannerToCanvas = async ({ template, config }: RenderInput): P
     // transform del preview DOM, que no afecta a los hermanos).
     const offPx = (id: string) => { const o = getOffset(config, id); return { x: (o.x / 100) * W, y: (o.y / 100) * H }; };
 
-    // 2. Cabecera: logo del club (subido, auto-recortado y centrado)
+    // 2. Cabecera: logo del club ajustado (contain) a un RECUADRO fijo definido
+    // por la plantilla (ancho/alto × escala) y posición (offset). Cualquier logo
+    // que se suba ocupa el mismo recuadro y posición → admin y público iguales.
     const baseLogoY = H * LAYOUT.logoTopFracH;
     if (config.logo?.url) {
         try {
             const logoImg = await loadImage(proxiedImage(config.logo.url), 'anonymous');
-            const fw = computeLogoWidthFrac(logoImg.width, logoImg.height, config.logo.scale ?? 1, widthCm, heightCm);
-            const lw = fw * W;
-            const lh = lw * (logoImg.height / logoImg.width);
+            const s = config.logo.scale ?? 1;
+            const boxW = W * LAYOUT.logoWidthFracW * s;
+            const boxH = H * LAYOUT.logoMaxHeightFracH * s;
+            const sc = Math.min(boxW / logoImg.width, boxH / logoImg.height);
+            const lw = logoImg.width * sc, lh = logoImg.height * sc;
             const lx = (W - lw) / 2;
             const o = offPx('logo');
             ctx.drawImage(logoImg, lx + o.x, baseLogoY + o.y, lw, lh);
