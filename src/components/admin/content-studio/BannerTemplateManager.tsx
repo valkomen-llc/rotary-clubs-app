@@ -25,6 +25,7 @@ const BannerTemplateManager = () => {
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [uploadingLogo, setUploadingLogo] = useState(false);
+    const [uploadingFooterLogo, setUploadingFooterLogo] = useState(false);
 
     useEffect(() => {
         const ctrl = new AbortController();
@@ -87,6 +88,27 @@ const BannerTemplateManager = () => {
             else toast.error(data.error || 'Error al subir el logo', { id: toastId });
         } catch { toast.error('Error al subir el logo', { id: toastId }); }
         finally { setUploadingLogo(false); }
+    };
+
+    // Logo del pie (mismo auto-recorte que el de la cabecera).
+    const handleUploadFooterLogo = async (file: File | undefined) => {
+        if (!file) return;
+        setUploadingFooterLogo(true);
+        const toastId = toast.loading('Subiendo y recortando logo del pie…');
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('folder', 'banner-logos');
+            const res = await fetch(`${API}/media/upload-logo`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${localStorage.getItem('rotary_token')}` },
+                body: formData,
+            });
+            const data = await res.json();
+            if (res.ok && data.url) { setConfig(c => ({ ...c, footer: { ...c.footer, logoUrl: data.url, logoScale: c.footer?.logoScale ?? 1 } })); toast.success('Logo del pie listo', { id: toastId }); }
+            else toast.error(data.error || 'Error al subir el logo', { id: toastId });
+        } catch { toast.error('Error al subir el logo', { id: toastId }); }
+        finally { setUploadingFooterLogo(false); }
     };
 
     const handleSave = async () => {
@@ -235,10 +257,29 @@ const BannerTemplateManager = () => {
                                 <input type="checkbox" checked={config.footer.show} onChange={e => setConfig(c => ({ ...c, footer: { ...c.footer, show: e.target.checked } }))} /> Mostrar
                             </label>
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <Field label="Distrito (pie)"><input className={selectCls} value={config.footer.district} onChange={e => setConfig(c => ({ ...c, footer: { ...c.footer, district: e.target.value } }))} /></Field>
-                            <Field label="Lema"><input className={selectCls} value={config.footer.tagline} onChange={e => setConfig(c => ({ ...c, footer: { ...c.footer, tagline: e.target.value } }))} /></Field>
-                        </div>
+                        <Field label="Logo del pie">
+                            <div className="flex items-center gap-3">
+                                <div className="w-16 h-16 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center shrink-0 overflow-hidden">
+                                    {config.footer.logoUrl ? <img src={config.footer.logoUrl} alt="Logo pie" className="max-w-full max-h-full object-contain" /> : <ImageIcon className="w-5 h-5 text-gray-300" />}
+                                </div>
+                                <div className="flex-1">
+                                    <label className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-xl py-3 cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/40 transition-colors">
+                                        {uploadingFooterLogo ? <Loader2 className="w-4 h-4 animate-spin text-indigo-600" /> : <Upload className="w-4 h-4 text-gray-400" />}
+                                        <span className="text-xs text-gray-600 font-medium">{config.footer.logoUrl ? 'Reemplazar logo del pie' : 'Subir logo del pie'}</span>
+                                        <input type="file" accept="image/*" className="hidden" onChange={e => handleUploadFooterLogo(e.target.files?.[0])} />
+                                    </label>
+                                    {config.footer.logoUrl && <button onClick={() => setConfig(c => ({ ...c, footer: { ...c.footer, logoUrl: null } }))} className="mt-1 text-[11px] text-gray-400 hover:text-red-500">Quitar logo del pie</button>}
+                                </div>
+                            </div>
+                        </Field>
+                        {config.footer.logoUrl && (
+                            <Field label={`Tamaño del logo del pie (${Math.round((config.footer.logoScale ?? 1) * 100)}%)`}>
+                                <input type="range" min={0.5} max={2} step={0.05} value={config.footer.logoScale ?? 1}
+                                    onChange={e => setConfig(c => ({ ...c, footer: { ...c.footer, logoScale: parseFloat(e.target.value) } }))}
+                                    className="w-full accent-indigo-600" />
+                            </Field>
+                        )}
+                        <Field label="Lema"><input className={selectCls} value={config.footer.tagline} onChange={e => setConfig(c => ({ ...c, footer: { ...c.footer, tagline: e.target.value } }))} /></Field>
                     </section>
 
                     <button onClick={handleSave} disabled={saving}

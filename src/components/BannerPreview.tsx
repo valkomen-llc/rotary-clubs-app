@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { LAYOUT, getOffset, personElementId, computeLogoWidthFrac, type BannerTemplate, type BannerConfig, type Offset } from '../lib/bannerRender';
-import { logoDataUrl } from '../lib/rotaryLogo';
 
 // Preview DOM del pendón. Usa unidades de container query (cqw/cqh) para que
 // escale exactamente igual que la exportación a canvas (misma LAYOUT y mismos
@@ -165,11 +164,15 @@ const BannerPreview: React.FC<Props> = ({ template, config, heightCss = 'min(80v
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3cqw',
                     fontFamily: 'Arial, Helvetica, sans-serif', ...sel('footer'),
                 }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                        <img src={logoDataUrl('completo', 'blanco')} alt="Rotary" draggable={false} style={{ width: `${LAYOUT.footerLogoWidthFracW * 100}cqw`, height: 'auto' }} />
-                        {config.footer.district?.trim() && <div style={{ color: '#fff', fontSize: `${LAYOUT.footerDistrictSizePct}cqw`, fontWeight: 500, marginTop: '0.6cqw', paddingLeft: '3cqw' }}>{config.footer.district}</div>}
-                    </div>
-                    <div style={{ width: '0.35cqw', height: `${LAYOUT.footerTaglineSizePct * 2.6}cqw`, background: 'rgba(255,255,255,0.6)' }} />
+                    {config.footer.logoUrl ? (
+                        <img src={config.footer.logoUrl} alt="Logo del pie" draggable={false}
+                            style={{ maxWidth: `${LAYOUT.footerLogoWidthFracW * (config.footer.logoScale ?? 1) * 100}cqw`, maxHeight: `${LAYOUT.footerLogoMaxHeightFracH * (config.footer.logoScale ?? 1) * 100}cqh`, objectFit: 'contain' }} />
+                    ) : interactive ? (
+                        <div style={{ width: `${LAYOUT.footerLogoWidthFracW * 100}cqw`, height: `${LAYOUT.footerLogoMaxHeightFracH * 100}cqh`, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', border: '0.3cqw dashed rgba(255,255,255,0.7)', borderRadius: '1cqw', color: 'rgba(255,255,255,0.85)', fontSize: '2.2cqw' }}>Subí el logo del pie</div>
+                    ) : null}
+                    {(config.footer.logoUrl || interactive) && config.footer.tagline?.trim() && (
+                        <div style={{ width: '0.35cqw', height: `${LAYOUT.footerTaglineSizePct * 2.6}cqw`, background: 'rgba(255,255,255,0.6)' }} />
+                    )}
                     {config.footer.tagline?.trim() && <div style={{ color: '#fff', fontSize: `${LAYOUT.footerTaglineSizePct}cqw`, fontWeight: 800, fontStyle: 'italic', lineHeight: 1.12, maxWidth: '36cqw', textAlign: 'left' }}>{config.footer.tagline}</div>}
                 </div>
             )}

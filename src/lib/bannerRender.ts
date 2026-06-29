@@ -13,7 +13,6 @@
 // tamaño físico real (cm). Ambos comparten las fracciones de LAYOUT y los
 // mismos % de tamaño de fuente (relativos al ancho) → WYSIWYG.
 // ════════════════════════════════════════════════════════════════════
-import { logoDataUrl, logoRatio } from './rotaryLogo';
 
 export interface Person { name: string; role: string; period: string; }
 
@@ -27,7 +26,7 @@ export interface BannerConfig {
     people: Person[];
     colors: { name: string; role: string; period: string };
     sizes: { name: number; role: number; period: number }; // % del ancho
-    footer: { show: boolean; tagline: string; district: string };
+    footer: { show: boolean; tagline: string; logoUrl?: string | null; logoScale?: number };
     // Márgenes de la mesa de trabajo (guías de edición; x en %ancho, y en %alto).
     // Solo se usan como guía/snap en el editor; NO se dibujan en el PDF.
     margins?: { x: number; y: number };
@@ -61,7 +60,7 @@ export const DEFAULT_CONFIG: BannerConfig = {
     ],
     colors: { name: '#17458f', role: '#2a5cb8', period: '#6b7da0' },
     sizes: { name: 6.5, role: 3.5, period: 2.5 },
-    footer: { show: true, tagline: 'GENERA UN IMPACTO DURADERO', district: 'Distrito 4281' },
+    footer: { show: true, tagline: 'GENERA UN IMPACTO DURADERO', logoUrl: null, logoScale: 1 },
     margins: { x: 6, y: 4 },
     offsets: {},
 };
@@ -82,8 +81,8 @@ export const LAYOUT = {
     personGapEm: 0.95,         // gap entre personas (en em del nombre)
     footerCenterFracH: 0.915,
     footerLogoWidthFracW: 0.26,
+    footerLogoMaxHeightFracH: 0.06,
     footerTaglineSizePct: 3.4,
-    footerDistrictSizePct: 2.8,
 };
 
 // Ancho del logo (fracción del ancho del lienzo) auto-normalizado por ÁREA según
@@ -279,49 +278,52 @@ export const renderBannerToCanvas = async ({ template, config }: RenderInput): P
         y += m.height + gap;
     }
 
-    // 4. Pie: logo blanco + distrito + lema (dos columnas con divisor)
+    // 4. Pie: logo subido (opcional) + lema (dos columnas con divisor)
     if (config.footer.show) {
         try {
             const fo = offPx('footer');
             const cy = H * LAYOUT.footerCenterFracH + fo.y;
-            const ratio = logoRatio('completo');
-            const flw = W * LAYOUT.footerLogoWidthFracW;
-            const flh = flw / ratio;
-            const distFont = (LAYOUT.footerDistrictSizePct / 100) * W;
-            const leftBlockH = flh + distFont * 1.3;
-            const lx = W * 0.10 + fo.x;
-            const ly = cy - leftBlockH / 2;
+            const hasTag = !!config.footer.tagline?.trim();
 
-            const wlogo = await loadImage(logoDataUrl('completo', 'blanco'));
-            ctx.drawImage(wlogo, lx, ly, flw, flh);
-            if (config.footer.district?.trim()) {
-                ctx.font = `500 ${distFont}px Arial, Helvetica, sans-serif`;
-                ctx.fillStyle = '#ffffff';
-                ctx.textAlign = 'left';
-                ctx.textBaseline = 'top';
-                ctx.fillText(config.footer.district, lx + flw * 0.18, ly + flh + distFont * 0.15);
+            // Logo del pie (subido), ajustado por contención dentro de su caja.
+            let flw = 0, flh = 0, footerLogo: HTMLImageElement | null = null;
+            if (config.footer.logoUrl) {
+                footerLogo = await loadImage(proxiedImage(config.footer.logoUrl), 'anonymous');
+                const fScale = config.footer.logoScale ?? 1;
+                const maxW = W * LAYOUT.footerLogoWidthFracW * fScale;
+                const maxH = H * LAYOUT.footerLogoMaxHeightFracH * fScale;
+                const sc = Math.min(maxW / footerLogo.width, maxH / footerLogo.height);
+                flw = footerLogo.width * sc; flh = footerLogo.height * sc;
             }
+            const hasLogo = !!footerLogo;
 
-            // Divisor
-            const divX = W * 0.52 + fo.x;
-            ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-            ctx.lineWidth = Math.max(1, W * 0.004);
-            ctx.beginPath();
-            ctx.moveTo(divX, cy - leftBlockH * 0.42);
-            ctx.lineTo(divX, cy + leftBlockH * 0.42);
-            ctx.stroke();
-
-            // Lema (italic bold), a la derecha
-            if (config.footer.tagline?.trim()) {
+            if (hasLogo && hasTag) {
+                // Dos columnas: [logo] | divisor | [lema]
+                const lx = W * 0.10 + fo.x;
+                ctx.drawImage(footerLogo as HTMLImageElement, lx, cy - flh / 2, flw, flh);
+                const divX = W * 0.52 + fo.x;
+                const half = Math.max(flh, (LAYOUT.footerTaglineSizePct / 100) * W * 1.6) * 0.5;
+                ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+                ctx.lineWidth = Math.max(1, W * 0.004);
+                ctx.beginPath(); ctx.moveTo(divX, cy - half); ctx.lineTo(divX, cy + half); ctx.stroke();
                 const tFont = (LAYOUT.footerTaglineSizePct / 100) * W;
                 ctx.font = `italic 800 ${tFont}px Arial, Helvetica, sans-serif`;
-                ctx.fillStyle = '#ffffff';
-                ctx.textAlign = 'left';
-                ctx.textBaseline = 'middle';
+                ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
                 const lines = wrapLines(ctx, config.footer.tagline, W * 0.36);
                 const tx = W * 0.56 + fo.x;
                 let ty = cy - (lines.length - 1) * tFont * 0.58;
                 for (const line of lines) { ctx.fillText(line, tx, ty); ty += tFont * 1.15; }
+            } else if (hasLogo) {
+                // Solo logo, centrado
+                ctx.drawImage(footerLogo as HTMLImageElement, (W - flw) / 2 + fo.x, cy - flh / 2, flw, flh);
+            } else if (hasTag) {
+                // Solo lema, centrado
+                const tFont = (LAYOUT.footerTaglineSizePct / 100) * W;
+                ctx.font = `italic 800 ${tFont}px Arial, Helvetica, sans-serif`;
+                ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                const lines = wrapLines(ctx, config.footer.tagline, W * 0.8);
+                let ty = cy - (lines.length - 1) * tFont * 0.58;
+                for (const line of lines) { ctx.fillText(line, W / 2 + fo.x, ty); ty += tFont * 1.15; }
             }
         } catch (e) { console.warn('[banner] pie no dibujado:', e); }
     }
