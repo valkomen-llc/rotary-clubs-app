@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.500.0 | 2026-06-25 (Fix: identidad/dossier ya no salen truncados con Gemini 2.5)
-// Cache bust: 2026-06-25c
+// UI V4.501.0 | 2026-06-28 (Generador público de pendones 80×180 cm con descarga en PDF)
+// Cache bust: 2026-06-28a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.501.0',
+        title: 'Generador de Pendones para imprimir 🚩🖨️',
+        description: 'Nueva sección pública para crear pendones (banners) de 80×180 cm listos para impresión a gran escala. Cualquier persona con el enlace (/generador-pendones) entra a una "mesa de trabajo", edita el título y el subtítulo, elige el logotipo de Rotary (versión, color y posición) sobre la imagen de fondo y descarga el resultado en PDF al tamaño físico real. La plantilla por defecto —imagen de fondo, textos y logo— se configura desde Content Studio → pestaña "Pendones", y queda establecida para el público. También se puede descargar una vista previa en PNG.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'banners', 'PDF', 'content studio', 'público'],
+        type: 'feature'
+    },
     {
         version: '4.500.0',
         title: 'La Identidad generada con IA ya no sale cortada ✅',

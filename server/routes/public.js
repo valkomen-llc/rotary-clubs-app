@@ -207,4 +207,11 @@ router.post('/district-media', express.json(), async (req, res) => {
 import { getFooterSkinPublic } from '../controllers/systemController.js';
 router.get('/footer-skin', getFooterSkinPublic);
 
+// Generador público de pendones (mesa de trabajo 80×180 cm).
+// Devuelve la plantilla por defecto y sirve la imagen de fondo con CORS
+// abierto para que el cliente pueda exportar a PDF sin "tainted canvas".
+import { getPublicTemplate, proxyBannerImage } from '../controllers/bannerTemplateController.js';
+router.get('/banner-template', getPublicTemplate);
+router.get('/banner-image', proxyBannerImage);
+
 export default router;

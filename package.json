@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.500.0",
-  "cache_bust": "2026-06-25c (Cerebro: la identidad generada con IA y el dossier ya no salen cortados — se desactiva el 'thinking' de Gemini 2.5 que consumía el presupuesto de tokens y truncaba la respuesta; más headroom de tokens)",
+  "version": "4.501.0",
+  "cache_bust": "2026-06-28a (Generador público de pendones: mesa de trabajo 80×180 cm con plantilla configurable desde Content Studio, edición de título/subtítulo + logo de Rotary y descarga en PDF apto para impresión a gran escala)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
@@ -63,6 +63,7 @@
     "framer-motion": "^12.4.10",
     "input-otp": "^1.4.2",
     "jsonwebtoken": "^9.0.0",
+    "jspdf": "^4.2.1",
     "jszip": "^3.10.1",
     "lucide-react": "^0.562.0",
     "mammoth": "^1.12.0",

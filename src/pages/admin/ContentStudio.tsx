@@ -5,9 +5,10 @@ import {
     Layers, 
     Share2, 
     Clock, 
-    Sparkles, 
+    Sparkles,
     Trophy,
-    Image as ImageIcon
+    Image as ImageIcon,
+    Flag
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import VideoCreator from '../../components/admin/content-studio/VideoCreator';
@@ -16,6 +17,7 @@ import PublicationLibrary from '../../components/admin/content-studio/Publicatio
 import AccountManager from '../../components/admin/content-studio/AccountManager';
 import ContentQueue from '../../components/admin/content-studio/ContentQueue';
 import PostGenerator from '../../components/admin/content-studio/PostGenerator';
+import BannerTemplateManager from '../../components/admin/content-studio/BannerTemplateManager';
 
 const ContentStudio: React.FC = () => {
     const [activeTab, setActiveTab] = useState('create');
@@ -54,6 +56,10 @@ const ContentStudio: React.FC = () => {
                             <ImageIcon className="w-4 h-4" />
                             Generador de Publicaciones
                         </TabsTrigger>
+                        <TabsTrigger value="pendones" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
+                            <Flag className="w-4 h-4" />
+                            Pendones
+                        </TabsTrigger>
                         <TabsTrigger value="library" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
                             <Layers className="w-4 h-4" />
                             Biblioteca
@@ -74,6 +80,10 @@ const ContentStudio: React.FC = () => {
 
                     <TabsContent value="post" className="mt-0 focus-visible:outline-none">
                         <PostGenerator />
+                    </TabsContent>
+
+                    <TabsContent value="pendones" className="mt-0 focus-visible:outline-none">
+                        <BannerTemplateManager />
                     </TabsContent>
 
                     <TabsContent value="library" className="mt-0 focus-visible:outline-none space-y-8">
