@@ -64,7 +64,7 @@ const GeneradorPendones = () => {
             formData.append('file', file);
             const res = await fetch(`${API}/public/banner-logo`, { method: 'POST', body: formData });
             const data = await res.json();
-            if (res.ok && data.dataUrl) setConfig(c => ({ ...c, logo: { url: data.dataUrl } }));
+            if (res.ok && data.dataUrl) setConfig(c => ({ ...c, logo: { url: data.dataUrl, scale: c.logo?.scale ?? 1 } }));
             else setError(data.error || 'No se pudo subir el logo.');
         } catch { setError('No se pudo subir el logo.'); }
         finally { setUploadingLogo(false); }
@@ -107,9 +107,16 @@ const GeneradorPendones = () => {
                                     <span className="text-xs text-gray-600 font-medium">{config.logo?.url ? 'Reemplazar logo' : 'Subí el logo de tu club'}</span>
                                     <input type="file" accept="image/*" className="hidden" onChange={e => handleUploadLogo(e.target.files?.[0])} />
                                 </label>
-                                <p className="mt-1 text-[10px] text-gray-400">Generalo en la herramienta de marca de Rotary y subilo. Se recortan los bordes vacíos y se centra.</p>
+                                <p className="mt-1 text-[10px] text-gray-400">Generalo en la herramienta de marca de Rotary y subilo. Se recortan los bordes vacíos y se ajusta el tamaño automáticamente.</p>
                             </div>
                         </div>
+                        {config.logo?.url && (
+                            <Field label={`Tamaño del logo (${Math.round((config.logo.scale ?? 1) * 100)}%)`}>
+                                <input type="range" min={0.5} max={2} step={0.05} value={config.logo.scale ?? 1}
+                                    onChange={e => setConfig(c => ({ ...c, logo: { ...c.logo, scale: parseFloat(e.target.value) } }))}
+                                    className="w-full accent-blue-700" />
+                            </Field>
+                        )}
                     </section>
 
                     {/* Personas */}
