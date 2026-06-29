@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.513.0 | 2026-06-29 (Pendones: la personalización guardada persiste entre actualizaciones)
-// Cache bust: 2026-06-29m
+// UI V4.514.0 | 2026-06-29 (Pendones: logo en recuadro fijo; admin y público sincronizados)
+// Cache bust: 2026-06-29n
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.514.0',
+        title: 'Pendones: el logo del público hereda la posición y el tamaño del admin 🎯',
+        description: 'Cambiamos cómo se dimensiona el logo de la cabecera: en lugar de auto-ajustarse según la forma de cada logo, ahora el administrador define un "recuadro" (posición + tamaño) en la plantilla, y cualquier logo que suba una persona en el generador público se acomoda (ajustándose dentro) a ese mismo recuadro y en la misma posición. Así el logo del club que sube el usuario queda exactamente donde y como lo dejaste establecido en el admin. Tip: tras esta actualización quizás necesites reajustar una vez el control "Tamaño del logo" a tu gusto.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'logo', 'sincronización', 'admin', 'público'],
+        type: 'improvement'
+    },
     {
         version: '4.513.0',
         title: 'Pendones: tu plantilla no se pierde al actualizar 💾🔒',

@@ -14,7 +14,7 @@
 // ════════════════════════════════════════════════════════════════════
 import db from '../lib/db.js';
 
-console.log('[bannerTemplateController] v4.513.0 cargado — Generador de Pendones (merge profundo; persistencia de personalización)');
+console.log('[bannerTemplateController] v4.514.0 cargado — Generador de Pendones (logo en recuadro fijo; admin y público sincronizados)');
 
 const DEFAULT_WIDTH_CM = 80;
 const DEFAULT_HEIGHT_CM = 180;
