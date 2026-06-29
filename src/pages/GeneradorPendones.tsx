@@ -164,6 +164,12 @@ const GeneradorPendones = () => {
                             El PDF se genera en alta calidad (150 DPI) al tamaño físico real ({widthCm}×{heightCm} cm), listo para impresión profesional a gran escala.
                         </p>
                     </section>
+
+                    {/* Copyright */}
+                    <p className="mt-6 pt-4 border-t border-gray-100 text-center text-gray-400" style={{ fontSize: '10px' }}>
+                        Release {__APP_VERSION__} by{' '}
+                        <a href="https://valkomen.com/" target="_blank" rel="noreferrer" className="font-semibold text-gray-500 hover:text-blue-700 underline">Valkomen LLC</a>
+                    </p>
                 </aside>
 
                 {/* Mesa de trabajo */}

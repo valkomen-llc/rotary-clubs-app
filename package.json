@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.519.0",
-  "cache_bust": "2026-06-29s (Generador de pendones público: se oculta la barra amarilla de 'sitio en desarrollo/demo' en /generador-pendones, ya que es una sección pública y gratuita)",
+  "version": "4.520.0",
+  "cache_bust": "2026-06-29t (Generador de pendones público: pie de copyright 'Release X by Valkomen LLC' (10px) con Valkomen enlazado a valkomen.com; la versión se inyecta automáticamente desde package.json vía __APP_VERSION__)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

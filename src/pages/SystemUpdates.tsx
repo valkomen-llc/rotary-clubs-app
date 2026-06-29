@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.519.0 | 2026-06-29 (Generador de pendones: sin barra de desarrollo en la sección pública)
-// Cache bust: 2026-06-29s
+// UI V4.520.0 | 2026-06-29 (Generador de pendones: pie de copyright con enlace a Valkomen)
+// Cache bust: 2026-06-29t
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.520.0',
+        title: 'Generador de Pendones: créditos de Valkomen LLC ©️',
+        description: 'Agregamos en la parte inferior del generador público de pendones una línea de copyright con la versión de la plataforma: "Release X by Valkomen LLC", donde "Valkomen LLC" enlaza a valkomen.com. El número de versión se toma automáticamente de la plataforma, así siempre muestra el release actual.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'público', 'branding', 'Valkomen'],
+        type: 'improvement'
+    },
     {
         version: '4.519.0',
         title: 'Generador de Pendones sin barra de “sitio en desarrollo” 🟡🚫',
