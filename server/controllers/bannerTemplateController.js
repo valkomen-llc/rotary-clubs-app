@@ -14,7 +14,7 @@
 // ════════════════════════════════════════════════════════════════════
 import db from '../lib/db.js';
 
-console.log('[bannerTemplateController] v4.502.0 cargado — Generador de Pendones (estructura directiva: cabecera + personas + pie)');
+console.log('[bannerTemplateController] v4.503.0 cargado — Generador de Pendones (edición tipo Canva: offsets por elemento)');
 
 const DEFAULT_WIDTH_CM = 80;
 const DEFAULT_HEIGHT_CM = 180;
@@ -32,6 +32,7 @@ export const DEFAULT_CONFIG = {
     colors: { name: '#17458f', role: '#2a5cb8', period: '#6b7da0' },
     sizes: { name: 6.5, role: 3.5, period: 2.5 },
     footer: { show: true, tagline: 'GENERA UN IMPACTO DURADERO', district: 'Distrito 4281' },
+    offsets: {},
 };
 
 let _tableReady = false;

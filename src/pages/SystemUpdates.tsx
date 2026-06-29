@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.502.0 | 2026-06-29 (Pendones rediseñados estilo "directiva": cabecera + personas + pie)
-// Cache bust: 2026-06-29b
+// UI V4.503.0 | 2026-06-29 (Pendones tipo Canva: arrastrar elementos para reubicarlos)
+// Cache bust: 2026-06-29c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.503.0',
+        title: 'Pendones tipo Canva: mové los textos a mano 🖱️🎯',
+        description: 'En el Generador de Pendones ahora podés seleccionar cada elemento (el logo, la línea de distrito, cada persona y el pie) y arrastrarlo sobre la mesa de trabajo para ubicarlo donde quieras. El elemento seleccionado se resalta y la nueva posición se guarda en la plantilla y se respeta al descargar el PDF. Hay un botón “Restablecer posiciones” para volver al acomodo automático. Funciona tanto en el configurador del admin (Content Studio → Pendones) como en el generador público.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'canva', 'drag and drop', 'content studio'],
+        type: 'feature'
+    },
     {
         version: '4.502.0',
         title: 'Pendones estilo “directiva” 🏛️🚩',

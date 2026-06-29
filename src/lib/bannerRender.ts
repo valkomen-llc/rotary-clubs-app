@@ -17,6 +17,8 @@ import { logoDataUrl, logoRatio, type LogoVariant, type LogoColor } from './rota
 
 export interface Person { name: string; role: string; period: string; }
 
+export interface Offset { x: number; y: number } // x en % del ancho, y en % del alto
+
 export interface BannerConfig {
     logo: { variant: LogoVariant; color: LogoColor };
     header: { district: string; color: string; sizePct: number };
@@ -24,7 +26,14 @@ export interface BannerConfig {
     colors: { name: string; role: string; period: string };
     sizes: { name: number; role: number; period: number }; // % del ancho
     footer: { show: boolean; tagline: string; district: string };
+    // Desplazamientos manuales por elemento (edición tipo Canva). Con todo en 0
+    // el pendón queda con el layout automático. IDs: 'logo', 'district',
+    // `person-${i}`, 'footer'.
+    offsets?: Record<string, Offset>;
 }
+
+export const personElementId = (i: number): string => `person-${i}`;
+export const getOffset = (config: BannerConfig, id: string): Offset => config.offsets?.[id] || { x: 0, y: 0 };
 
 export interface BannerTemplate {
     id: string | null;
@@ -49,6 +58,7 @@ export const DEFAULT_CONFIG: BannerConfig = {
     colors: { name: '#17458f', role: '#2a5cb8', period: '#6b7da0' },
     sizes: { name: 6.5, role: 3.5, period: 2.5 },
     footer: { show: true, tagline: 'GENERA UN IMPACTO DURADERO', district: 'Distrito 4281' },
+    offsets: {},
 };
 
 // Fracciones del lienzo (compartidas con el preview DOM vía cqw/cqh).
@@ -140,14 +150,14 @@ const measurePerson = (ctx: CanvasRenderingContext2D, p: Person, W: number, size
     return { nameLines, roleLines, periodLines, height };
 };
 
-const drawCenteredLines = (ctx: CanvasRenderingContext2D, lines: string[], W: number, y: number, font: string, color: string): number => {
+const drawCenteredLines = (ctx: CanvasRenderingContext2D, lines: string[], centerX: number, y: number, font: string, color: string): number => {
     ctx.font = font;
     ctx.fillStyle = color;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     const fontPx = parseFloat(font.match(/(\d+(?:\.\d+)?)px/)?.[1] || '0');
     let cy = y;
-    for (const line of lines) { ctx.fillText(line, W / 2, cy); cy += fontPx * LAYOUT.lineHeight; }
+    for (const line of lines) { ctx.fillText(line, centerX, cy); cy += fontPx * LAYOUT.lineHeight; }
     return cy;
 };
 
@@ -194,22 +204,29 @@ export const renderBannerToCanvas = async ({ template, config }: RenderInput): P
     }
     drawBackground(ctx, bgImg, W, H);
 
+    // Offsets manuales (% → px). El offset solo desplaza visualmente cada
+    // elemento; las posiciones base se calculan sin offset (igual que el
+    // transform del preview DOM, que no afecta a los hermanos).
+    const offPx = (id: string) => { const o = getOffset(config, id); return { x: (o.x / 100) * W, y: (o.y / 100) * H }; };
+
     // 2. Cabecera: logo + distrito
-    let headerBottom = H * LAYOUT.logoTopFracH;
+    const baseLogoY = H * LAYOUT.logoTopFracH;
+    let headerBottom = baseLogoY;
     try {
         const ratio = logoRatio(config.logo.variant);
         const logoImg = await loadImage(logoDataUrl(config.logo.variant, config.logo.color));
         const lw = W * LAYOUT.logoWidthFracW;
         const lh = lw / ratio;
         const lx = (W - lw) / 2;
-        const ly = H * LAYOUT.logoTopFracH;
-        ctx.drawImage(logoImg, lx, ly, lw, lh);
-        headerBottom = ly + lh;
+        const o = offPx('logo');
+        ctx.drawImage(logoImg, lx + o.x, baseLogoY + o.y, lw, lh);
+        headerBottom = baseLogoY + lh;
     } catch (e) { console.warn('[banner] logo no dibujado:', e); }
 
     if (config.header.district?.trim()) {
         const font = `600 ${(config.header.sizePct / 100) * W}px Arial, Helvetica, sans-serif`;
-        drawCenteredLines(ctx, [config.header.district], W, headerBottom + H * LAYOUT.districtGapFracH, font, config.header.color);
+        const o = offPx('district');
+        drawCenteredLines(ctx, [config.header.district], W / 2 + o.x, headerBottom + H * LAYOUT.districtGapFracH + o.y, font, config.header.color);
     }
 
     // 3. Cuerpo: lista de personas, centrada verticalmente en la región body
@@ -227,28 +244,33 @@ export const renderBannerToCanvas = async ({ template, config }: RenderInput): P
 
     for (let i = 0; i < people.length; i++) {
         const m = metrics[i];
-        y = drawCenteredLines(ctx, m.nameLines, W, y, `800 ${nameFontPx}px Arial, Helvetica, sans-serif`, config.colors.name);
+        const o = offPx(personElementId(i));
+        const cx = W / 2 + o.x;
+        let py = y + o.y; // el offset desplaza solo este bloque, no a los siguientes
+        py = drawCenteredLines(ctx, m.nameLines, cx, py, `800 ${nameFontPx}px Arial, Helvetica, sans-serif`, config.colors.name);
         if (m.roleLines.length) {
-            y += nameFontPx * LAYOUT.nameToRoleEm;
-            y = drawCenteredLines(ctx, m.roleLines, W, y, `600 ${roleFontPx}px Arial, Helvetica, sans-serif`, config.colors.role);
+            py += nameFontPx * LAYOUT.nameToRoleEm;
+            py = drawCenteredLines(ctx, m.roleLines, cx, py, `600 ${roleFontPx}px Arial, Helvetica, sans-serif`, config.colors.role);
         }
         if (m.periodLines.length) {
-            y += roleFontPx * LAYOUT.roleToPeriodEm;
-            y = drawCenteredLines(ctx, m.periodLines, W, y, `400 ${periodFontPx}px Arial, Helvetica, sans-serif`, config.colors.period);
+            py += roleFontPx * LAYOUT.roleToPeriodEm;
+            py = drawCenteredLines(ctx, m.periodLines, cx, py, `400 ${periodFontPx}px Arial, Helvetica, sans-serif`, config.colors.period);
         }
-        y += gap;
+        // Avanzar la base SIN el offset (para no arrastrar a los demás).
+        y += m.height + gap;
     }
 
     // 4. Pie: logo blanco + distrito + lema (dos columnas con divisor)
     if (config.footer.show) {
         try {
-            const cy = H * LAYOUT.footerCenterFracH;
+            const fo = offPx('footer');
+            const cy = H * LAYOUT.footerCenterFracH + fo.y;
             const ratio = logoRatio('completo');
             const flw = W * LAYOUT.footerLogoWidthFracW;
             const flh = flw / ratio;
             const distFont = (LAYOUT.footerDistrictSizePct / 100) * W;
             const leftBlockH = flh + distFont * 1.3;
-            const lx = W * 0.10;
+            const lx = W * 0.10 + fo.x;
             const ly = cy - leftBlockH / 2;
 
             const wlogo = await loadImage(logoDataUrl('completo', 'blanco'));
@@ -262,7 +284,7 @@ export const renderBannerToCanvas = async ({ template, config }: RenderInput): P
             }
 
             // Divisor
-            const divX = W * 0.52;
+            const divX = W * 0.52 + fo.x;
             ctx.strokeStyle = 'rgba(255,255,255,0.6)';
             ctx.lineWidth = Math.max(1, W * 0.004);
             ctx.beginPath();
@@ -278,7 +300,7 @@ export const renderBannerToCanvas = async ({ template, config }: RenderInput): P
                 ctx.textAlign = 'left';
                 ctx.textBaseline = 'middle';
                 const lines = wrapLines(ctx, config.footer.tagline, W * 0.36);
-                const tx = W * 0.56;
+                const tx = W * 0.56 + fo.x;
                 let ty = cy - (lines.length - 1) * tFont * 0.58;
                 for (const line of lines) { ctx.fillText(line, tx, ty); ty += tFont * 1.15; }
             }
