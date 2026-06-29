@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.503.0 | 2026-06-29 (Pendones tipo Canva: arrastrar elementos para reubicarlos)
-// Cache bust: 2026-06-29c
+// UI V4.504.0 | 2026-06-29 (Pendones: multiselección de capas de texto)
+// Cache bust: 2026-06-29d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.504.0',
+        title: 'Pendones: seleccioná varios textos a la vez 🧲',
+        description: 'En el Generador de Pendones ahora podés seleccionar varios elementos a la vez: hacé Shift+clic (también sirve Ctrl o Cmd+clic) para ir sumando o quitando capas de la selección, y al arrastrar cualquiera del grupo se mueven todas juntas manteniendo sus distancias. Un clic normal selecciona solo uno, y un clic en el fondo deselecciona todo. Ideal para reacomodar bloques completos sin perder la alineación.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'canva', 'multiselección', 'content studio'],
+        type: 'feature'
+    },
     {
         version: '4.503.0',
         title: 'Pendones tipo Canva: mové los textos a mano 🖱️🎯',

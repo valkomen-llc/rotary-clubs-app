@@ -153,7 +153,7 @@ const GeneradorPendones = () => {
                 {/* Mesa de trabajo */}
                 <main className="flex-1 flex flex-col items-center justify-center p-6 bg-gray-300/60 min-h-[60vh]">
                     <div className="flex items-center gap-3 mb-2 text-xs text-gray-600">
-                        <span>Arrastrá los textos para reubicarlos</span>
+                        <span>Arrastrá para reubicar · Shift+clic para seleccionar varios</span>
                         <button onClick={() => setConfig(c => ({ ...c, offsets: {} }))}
                             className="font-semibold text-gray-500 hover:text-blue-700">Restablecer posiciones</button>
                     </div>
