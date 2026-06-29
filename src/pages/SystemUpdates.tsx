@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.505.0 | 2026-06-29 (Pendones: logo del club subible con auto-recorte)
-// Cache bust: 2026-06-29e
+// UI V4.506.0 | 2026-06-29 (Pendones: se quita la línea de distrito bajo el logo)
+// Cache bust: 2026-06-29f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.506.0',
+        title: 'Pendones: cabecera más limpia (sin distrito bajo el logo) 🧹',
+        description: 'Quitamos la línea de texto "Distrito 4281" que aparecía debajo del logo en la cabecera del pendón, junto con su campo en el configurador del admin y en el generador público. La cabecera ahora queda solo con el logo del club. El distrito sigue mostrándose en el pie de página.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'cabecera', 'limpieza'],
+        type: 'improvement'
+    },
     {
         version: '4.505.0',
         title: 'Pendones: subí el logo de tu club 🪪✂️',
