@@ -33,10 +33,14 @@ const BannerTemplateManager = () => {
     const [uploading, setUploading] = useState(false);
 
     useEffect(() => {
+        // Timeout defensivo: si la API no responde, no dejamos el spinner colgado.
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 12000);
         fetch(`${API}/banner/template`, {
             headers: { Authorization: `Bearer ${localStorage.getItem('rotary_token')}` },
+            signal: ctrl.signal,
         })
-            .then(r => r.json())
+            .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
             .then((tpl: BannerTemplate) => {
                 if (!tpl) return;
                 setName(tpl.name || 'Plantilla de Pendón');
@@ -45,8 +49,9 @@ const BannerTemplateManager = () => {
                 setHeightCm(tpl.heightCm || 180);
                 setConfig({ ...DEFAULT_CONFIG, ...(tpl.config || {}) });
             })
-            .catch(() => toast.error('No se pudo cargar la plantilla'))
-            .finally(() => setLoading(false));
+            .catch(() => {/* seguimos con los valores por defecto del formulario */})
+            .finally(() => { clearTimeout(timer); setLoading(false); });
+        return () => { clearTimeout(timer); ctrl.abort(); };
     }, []);
 
     const handleUpload = async (file: File | undefined) => {

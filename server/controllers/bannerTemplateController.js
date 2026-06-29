@@ -14,7 +14,7 @@
 // ════════════════════════════════════════════════════════════════════
 import db from '../lib/db.js';
 
-console.log('[bannerTemplateController] v4.501.0 cargado — Generador de Pendones');
+console.log('[bannerTemplateController] v4.501.1 cargado — Generador de Pendones (ruta /api/banner montada en api/index.js)');
 
 const DEFAULT_WIDTH_CM = 80;
 const DEFAULT_HEIGHT_CM = 180;

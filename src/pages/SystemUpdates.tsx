@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.501.0 | 2026-06-28 (Generador público de pendones 80×180 cm con descarga en PDF)
-// Cache bust: 2026-06-28a
+// UI V4.501.1 | 2026-06-29 (Fix: pestaña Pendones del admin ya no queda cargando)
+// Cache bust: 2026-06-29a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.501.1',
+        title: 'Fix: la pestaña “Pendones” ya carga ⚡',
+        description: 'Corregimos un cuelgue en Content Studio → Pendones: la pestaña quedaba con el spinner girando para siempre. La causa era que la ruta interna de la plantilla (/api/banner) no estaba registrada en el servidor de producción, y las peticiones a rutas no registradas quedan sin respuesta. Ya quedó montada y, por las dudas, agregamos un tiempo de espera en el panel para que nunca se quede colgado.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'fix', 'content studio'],
+        type: 'fix'
+    },
     {
         version: '4.501.0',
         title: 'Generador de Pendones para imprimir 🚩🖨️',
