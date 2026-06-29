@@ -101,7 +101,7 @@ const GeneradorPendones = () => {
 
             <div className="flex-1 flex flex-col lg:flex-row">
                 {/* Panel de controles */}
-                <aside className="w-full lg:w-[360px] bg-white border-r border-gray-200 p-5 overflow-y-auto">
+                <aside className="w-full lg:w-[360px] bg-white border-r border-gray-200 p-5 overflow-y-auto flex flex-col">
                     {/* Cabecera */}
                     <section className="mb-6">
                         <div className="flex items-center gap-2 mb-3 text-gray-800"><ImageIcon className="w-4 h-4" /><h2 className="text-sm font-bold">Logo del club</h2></div>
@@ -165,10 +165,10 @@ const GeneradorPendones = () => {
                         </p>
                     </section>
 
-                    {/* Copyright */}
-                    <p className="mt-6 pt-4 border-t border-gray-100 text-center text-gray-400" style={{ fontSize: '10px' }}>
+                    {/* Copyright — anclado al fondo del panel */}
+                    <p className="mt-auto pt-6 text-center text-gray-400" style={{ fontSize: '10px' }}>
                         Release {__APP_VERSION__} by{' '}
-                        <a href="https://valkomen.com/" target="_blank" rel="noreferrer" className="font-semibold text-gray-500 hover:text-blue-700 underline">Valkomen LLC</a>
+                        <a href="https://valkomen.com/" target="_blank" rel="noreferrer" className="text-gray-400 no-underline hover:underline">Valkomen LLC</a>
                     </p>
                 </aside>
 

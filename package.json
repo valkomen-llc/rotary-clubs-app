@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.520.0",
-  "cache_bust": "2026-06-29t (Generador de pendones público: pie de copyright 'Release X by Valkomen LLC' (10px) con Valkomen enlazado a valkomen.com; la versión se inyecta automáticamente desde package.json vía __APP_VERSION__)",
+  "version": "4.521.0",
+  "cache_bust": "2026-06-29u (Generador de pendones: el copyright queda anclado al fondo del panel; 'Valkomen LLC' sin negrita ni subrayado (mismo color que la versión) y se subraya solo al pasar el cursor)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
