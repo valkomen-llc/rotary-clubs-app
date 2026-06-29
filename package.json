@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.515.0",
-  "cache_bust": "2026-06-29o (Pendones: el público lee siempre la última plantilla guardada — no-store + cache-bust en las peticiones de plantilla, para que la posición/tamaño del logo definidos en el admin se reflejen al instante y no quede una versión vieja en caché)",
+  "version": "4.516.0",
+  "cache_bust": "2026-06-29p (Pendones: controles numéricos de posición del logo (X/Y) en el admin además del arrastre, para fijar de forma exacta y verificable dónde va el logo; esa misma posición la hereda el logo que suba el público)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

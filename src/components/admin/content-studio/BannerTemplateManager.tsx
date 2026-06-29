@@ -203,11 +203,26 @@ const BannerTemplateManager = () => {
                             </div>
                         </Field>
                         {config.logo?.url && (
-                            <Field label={`Tamaño del logo (${Math.round((config.logo.scale ?? 1) * 100)}%)`}>
-                                <input type="range" min={0.5} max={2} step={0.05} value={config.logo.scale ?? 1}
-                                    onChange={e => setConfig(c => ({ ...c, logo: { ...c.logo, scale: parseFloat(e.target.value) } }))}
-                                    className="w-full accent-indigo-600" />
-                            </Field>
+                            <>
+                                <Field label={`Tamaño del logo (${Math.round((config.logo.scale ?? 1) * 100)}%)`}>
+                                    <input type="range" min={0.5} max={2} step={0.05} value={config.logo.scale ?? 1}
+                                        onChange={e => setConfig(c => ({ ...c, logo: { ...c.logo, scale: parseFloat(e.target.value) } }))}
+                                        className="w-full accent-indigo-600" />
+                                </Field>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <Field label={`Posición horizontal (${Math.round(config.offsets?.logo?.x ?? 0)}%)`}>
+                                        <input type="range" min={-40} max={40} step={1} value={config.offsets?.logo?.x ?? 0}
+                                            onChange={e => setConfig(c => ({ ...c, offsets: { ...(c.offsets || {}), logo: { x: parseFloat(e.target.value), y: c.offsets?.logo?.y ?? 0 } } }))}
+                                            className="w-full accent-indigo-600" />
+                                    </Field>
+                                    <Field label={`Posición vertical (${Math.round(config.offsets?.logo?.y ?? 0)}%)`}>
+                                        <input type="range" min={-10} max={60} step={1} value={config.offsets?.logo?.y ?? 0}
+                                            onChange={e => setConfig(c => ({ ...c, offsets: { ...(c.offsets || {}), logo: { x: c.offsets?.logo?.x ?? 0, y: parseFloat(e.target.value) } } }))}
+                                            className="w-full accent-indigo-600" />
+                                    </Field>
+                                </div>
+                                <p className="text-[10px] text-gray-400 -mt-1">La posición (y el tamaño) del logo se aplican igual al logo que suba el público. También podés arrastrarlo en la vista previa.</p>
+                            </>
                         )}
                     </section>
 

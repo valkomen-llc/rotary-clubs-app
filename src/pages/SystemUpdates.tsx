@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.515.0 | 2026-06-29 (Pendones: el público siempre lee la última plantilla guardada)
-// Cache bust: 2026-06-29o
+// UI V4.516.0 | 2026-06-29 (Pendones: posición del logo por X/Y en el admin)
+// Cache bust: 2026-06-29p
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.516.0',
+        title: 'Pendones: fijá la posición del logo con precisión 🎚️',
+        description: 'Agregamos en el administrador dos controles —Posición horizontal y Posición vertical— para ubicar el logo de la cabecera de forma exacta, además del arrastre en la vista previa. Así podés ver y fijar el valor que queda guardado. Esa misma posición (y el tamaño) se aplican al logo que suba cada club en el generador público. Recordá: después de ajustar, hacé "Guardar como predeterminada" y, en la pestaña pública, recargá (Cmd/Ctrl + Shift + R) para ver los cambios.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'logo', 'posición', 'admin'],
+        type: 'improvement'
+    },
     {
         version: '4.515.0',
         title: 'Pendones: la posición del logo del admin ahora sí se refleja en el público 🔄',
