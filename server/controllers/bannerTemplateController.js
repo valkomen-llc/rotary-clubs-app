@@ -14,7 +14,7 @@
 // ════════════════════════════════════════════════════════════════════
 import db from '../lib/db.js';
 
-console.log('[bannerTemplateController] v4.505.0 cargado — Generador de Pendones (logo del club subible + auto-recorte)');
+console.log('[bannerTemplateController] v4.506.0 cargado — Generador de Pendones (cabecera solo logo; sin línea de distrito)');
 
 const DEFAULT_WIDTH_CM = 80;
 const DEFAULT_HEIGHT_CM = 180;
@@ -23,7 +23,6 @@ const DEFAULT_HEIGHT_CM = 180;
 // guardado una plantilla, para que el generador público siempre funcione.
 export const DEFAULT_CONFIG = {
     logo: { url: null },
-    header: { district: 'Distrito 4281', color: '#1a3a8f', sizePct: 4.8 },
     people: [
         { name: 'Francesco Arezzo', role: 'Presidente, Rotary International', period: '(Periodo Rotario 2025-2026)' },
         { name: 'Jorge Raúl Ossa Botero', role: 'Gobernador, Rotary Distrito 4281', period: '(Periodo Rotario 2025-2026)' },

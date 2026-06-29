@@ -23,7 +23,6 @@ export interface BannerConfig {
     // Logo de cabecera subido por el club (auto-recortado y centrado). Puede ser
     // una URL de S3 (logo por defecto del admin) o un data URL (subida pública).
     logo: { url: string | null };
-    header: { district: string; color: string; sizePct: number };
     people: Person[];
     colors: { name: string; role: string; period: string };
     sizes: { name: number; role: number; period: number }; // % del ancho
@@ -51,7 +50,6 @@ export interface BannerTemplate {
 
 export const DEFAULT_CONFIG: BannerConfig = {
     logo: { url: null },
-    header: { district: 'Distrito 4281', color: '#1a3a8f', sizePct: 4.8 },
     people: [
         { name: 'Francesco Arezzo', role: 'Presidente, Rotary International', period: '(Periodo Rotario 2025-2026)' },
         { name: 'Jorge Raúl Ossa Botero', role: 'Gobernador, Rotary Distrito 4281', period: '(Periodo Rotario 2025-2026)' },
@@ -212,9 +210,8 @@ export const renderBannerToCanvas = async ({ template, config }: RenderInput): P
     // transform del preview DOM, que no afecta a los hermanos).
     const offPx = (id: string) => { const o = getOffset(config, id); return { x: (o.x / 100) * W, y: (o.y / 100) * H }; };
 
-    // 2. Cabecera: logo del club (subido, auto-recortado) + distrito
+    // 2. Cabecera: logo del club (subido, auto-recortado y centrado)
     const baseLogoY = H * LAYOUT.logoTopFracH;
-    let headerBottom = baseLogoY;
     if (config.logo?.url) {
         try {
             const logoImg = await loadImage(proxiedImage(config.logo.url), 'anonymous');
@@ -226,14 +223,7 @@ export const renderBannerToCanvas = async ({ template, config }: RenderInput): P
             const lx = (W - lw) / 2;
             const o = offPx('logo');
             ctx.drawImage(logoImg, lx + o.x, baseLogoY + o.y, lw, lh);
-            headerBottom = baseLogoY + lh;
         } catch (e) { console.warn('[banner] logo no dibujado:', e); }
-    }
-
-    if (config.header.district?.trim()) {
-        const font = `600 ${(config.header.sizePct / 100) * W}px Arial, Helvetica, sans-serif`;
-        const o = offPx('district');
-        drawCenteredLines(ctx, [config.header.district], W / 2 + o.x, headerBottom + H * LAYOUT.districtGapFracH + o.y, font, config.header.color);
     }
 
     // 3. Cuerpo: lista de personas, centrada verticalmente en la región body

@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.505.0",
-  "cache_bust": "2026-06-29e (Pendones: la cabecera ahora usa el logo del club subido por el usuario en vez del logo Rotary generado; el admin define un logo por defecto y el público sube el suyo; el sistema auto-recorta los espacios vacíos y lo centra)",
+  "version": "4.506.0",
+  "cache_bust": "2026-06-29f (Pendones: se elimina la línea de distrito bajo el logo, tanto del pendón como del configurador del admin y del generador público; la cabecera queda solo con el logo del club)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

@@ -106,13 +106,6 @@ const BannerPreview: React.FC<Props> = ({ template, config, heightCss = 'min(80v
                         fontSize: '3.2cqw', fontFamily: 'Arial, Helvetica, sans-serif', transform: tf('logo'), ...sel('logo'),
                     }}>Subí el logo del club</div>
                 ) : null}
-                {config.header.district?.trim() && (
-                    <div onPointerDown={startDrag('district')} style={{
-                        marginTop: `${LAYOUT.districtGapFracH * (heightCm / widthCm) * 100}cqw`,
-                        color: config.header.color, fontSize: `${config.header.sizePct}cqw`, fontWeight: 600,
-                        fontFamily: 'Arial, Helvetica, sans-serif', transform: tf('district'), ...sel('district'),
-                    }}>{config.header.district}</div>
-                )}
             </div>
 
             {/* Cuerpo: lista de personas */}

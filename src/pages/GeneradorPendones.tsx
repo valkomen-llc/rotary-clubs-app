@@ -110,9 +110,6 @@ const GeneradorPendones = () => {
                                 <p className="mt-1 text-[10px] text-gray-400">Generalo en la herramienta de marca de Rotary y subilo. Se recortan los bordes vacíos y se centra.</p>
                             </div>
                         </div>
-                        <Field label="Distrito (bajo el logo)">
-                            <input className={selectCls} value={config.header.district} onChange={e => setConfig(c => ({ ...c, header: { ...c.header, district: e.target.value } }))} />
-                        </Field>
                     </section>
 
                     {/* Personas */}

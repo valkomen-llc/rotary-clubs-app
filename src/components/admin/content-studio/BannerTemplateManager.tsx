@@ -166,14 +166,6 @@ const BannerTemplateManager = () => {
                                 </div>
                             </div>
                         </Field>
-                        <div className="grid grid-cols-[1fr_auto] gap-3 items-end">
-                            <Field label="Distrito (bajo el logo)">
-                                <input className={selectCls} value={config.header.district} onChange={e => setConfig(c => ({ ...c, header: { ...c.header, district: e.target.value } }))} />
-                            </Field>
-                            <Field label="Color">
-                                <input type="color" className="w-12 h-9 rounded-md border border-gray-300 cursor-pointer" value={config.header.color} onChange={e => setConfig(c => ({ ...c, header: { ...c.header, color: e.target.value } }))} />
-                            </Field>
-                        </div>
                     </section>
 
                     {/* Personas */}
