@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.520.0 | 2026-06-29 (Generador de pendones: pie de copyright con enlace a Valkomen)
-// Cache bust: 2026-06-29t
+// UI V4.521.0 | 2026-06-29 (Generador de pendones: copyright anclado al fondo, estilo uniforme)
+// Cache bust: 2026-06-29u
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.521.0',
+        title: 'Generador de Pendones: créditos al pie, más sobrios 🔻',
+        description: 'Ajustamos la línea de créditos del generador público: ahora queda anclada al fondo del panel y "Valkomen LLC" se muestra con el mismo color y estilo que el resto del texto (sin negrita ni subrayado). Sigue siendo un enlace a valkomen.com y se subraya solo al pasar el cursor.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'público', 'UI', 'Valkomen'],
+        type: 'improvement'
+    },
     {
         version: '4.520.0',
         title: 'Generador de Pendones: créditos de Valkomen LLC ©️',
