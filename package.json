@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.516.0",
-  "cache_bust": "2026-06-29p (Pendones: controles numéricos de posición del logo (X/Y) en el admin además del arrastre, para fijar de forma exacta y verificable dónde va el logo; esa misma posición la hereda el logo que suba el público)",
+  "version": "4.517.0",
+  "cache_bust": "2026-06-29q (Pendones público: solo se editan las personas marcadas como 'editable por el público' en el admin (ej. presidente del club); las demás quedan fijas. Se quitan los controles de tamaño de los textos del generador público)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.516.0 | 2026-06-29 (Pendones: posición del logo por X/Y en el admin)
-// Cache bust: 2026-06-29p
+// UI V4.517.0 | 2026-06-29 (Pendones público: solo edita personas editables; sin sliders de tamaño)
+// Cache bust: 2026-06-29q
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.517.0',
+        title: 'Pendones público: solo editable lo del club 🔏',
+        description: 'En el generador público ahora solo se pueden editar las personas que el administrador marque como "Editable por el público" (por ejemplo, el presidente del club). Los cargos predefinidos por el distrito (Presidente de Rotary International, Gobernador, etc.) quedan fijos y no editables desde el público. Además quitamos del generador público los controles de "Tamaño de los textos", que ahora se definen solo desde el administrador. En el admin, cada persona tiene una casilla "Editable por el público" para decidir qué puede cambiar cada club.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'público', 'permisos', 'content studio'],
+        type: 'improvement'
+    },
     {
         version: '4.516.0',
         title: 'Pendones: fijá la posición del logo con precisión 🎚️',
