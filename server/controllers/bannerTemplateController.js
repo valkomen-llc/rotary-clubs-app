@@ -14,7 +14,7 @@
 // ════════════════════════════════════════════════════════════════════
 import db from '../lib/db.js';
 
-console.log('[bannerTemplateController] v4.512.0 cargado — Generador de Pendones (PDF alta calidad 150 DPI)');
+console.log('[bannerTemplateController] v4.513.0 cargado — Generador de Pendones (merge profundo; persistencia de personalización)');
 
 const DEFAULT_WIDTH_CM = 80;
 const DEFAULT_HEIGHT_CM = 180;
@@ -55,6 +55,20 @@ const ensureTable = async () => {
     _tableReady = true;
 };
 
+// Merge profundo: los valores guardados (over) siempre mandan; los campos que
+// falten (p. ej. nuevos en una actualización) se completan con los defaults.
+// Los arrays (p. ej. `people`) se reemplazan tal cual (no se fusionan por índice).
+const isPlainObject = (v) => v && typeof v === 'object' && !Array.isArray(v);
+const deepMerge = (base, over) => {
+    if (over === undefined || over === null) return base;
+    if (!isPlainObject(base) || !isPlainObject(over)) return over;
+    const out = { ...base };
+    for (const k of Object.keys(over)) {
+        out[k] = (isPlainObject(base[k]) && isPlainObject(over[k])) ? deepMerge(base[k], over[k]) : over[k];
+    }
+    return out;
+};
+
 const normalizeRow = (row) => {
     if (!row) return null;
     let config = row.config;
@@ -67,7 +81,7 @@ const normalizeRow = (row) => {
         backgroundUrl: row.backgroundUrl,
         widthCm: row.widthCm,
         heightCm: row.heightCm,
-        config: { ...DEFAULT_CONFIG, ...(config || {}) },
+        config: deepMerge(DEFAULT_CONFIG, config || {}),
         isActive: row.isActive,
         clubId: row.clubId,
         updatedAt: row.updatedAt,
@@ -144,7 +158,7 @@ export const saveTemplate = async (req, res) => {
             ? (req.body?.clubId || null)
             : (req.user?.clubId || null);
 
-        const safeConfig = { ...DEFAULT_CONFIG, ...(config || {}) };
+        const safeConfig = deepMerge(DEFAULT_CONFIG, config || {});
         const w = Number.isFinite(+widthCm) && +widthCm > 0 ? Math.round(+widthCm) : DEFAULT_WIDTH_CM;
         const h = Number.isFinite(+heightCm) && +heightCm > 0 ? Math.round(+heightCm) : DEFAULT_HEIGHT_CM;
 

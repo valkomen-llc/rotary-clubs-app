@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.512.0 | 2026-06-29 (Pendones: PDF en alta calidad para impresión, 150 DPI)
-// Cache bust: 2026-06-29l
+// UI V4.513.0 | 2026-06-29 (Pendones: la personalización guardada persiste entre actualizaciones)
+// Cache bust: 2026-06-29m
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.513.0',
+        title: 'Pendones: tu plantilla no se pierde al actualizar 💾🔒',
+        description: 'La plantilla del pendón que configura el administrador queda guardada de forma persistente y ya no se pierde con las actualizaciones de la plataforma. Mejoramos la forma en que se combinan tus valores guardados con los nuevos: ahora siempre mandan tus personalizaciones y solo se completan los campos nuevos que vayamos agregando, sin pisar lo que ya dejaste establecido. Los datos viven en su propia tabla, separada del despliegue, así que cada deploy los respeta.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'persistencia', 'plantilla', 'fix'],
+        type: 'improvement'
+    },
     {
         version: '4.512.0',
         title: 'Pendones: PDF en alta calidad para imprenta 🖨️✨',

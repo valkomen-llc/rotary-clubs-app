@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.512.0",
-  "cache_bust": "2026-06-29l (Pendones: descarga de PDF en alta calidad para impresión — se sube la resolución a 150 DPI al tamaño físico real con JPEG 0.95 y mejor escalado de imágenes, en vez de los ~84 DPI efectivos anteriores)",
+  "version": "4.513.0",
+  "cache_bust": "2026-06-29m (Pendones: la plantilla guardada por el admin persiste entre actualizaciones — merge profundo al cargar/guardar para que las personalizaciones no se pierdan cuando agregamos campos nuevos; la tabla vive fuera de Prisma y no la toca el deploy)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
