@@ -14,7 +14,7 @@
 // ════════════════════════════════════════════════════════════════════
 import db from '../lib/db.js';
 
-console.log('[bannerTemplateController] v4.516.0 cargado — Generador de Pendones (posición del logo por X/Y en el admin)');
+console.log('[bannerTemplateController] v4.517.0 cargado — Generador de Pendones (público: solo edita personas editables; sin sliders de tamaño)');
 
 const DEFAULT_WIDTH_CM = 80;
 const DEFAULT_HEIGHT_CM = 180;
@@ -24,9 +24,9 @@ const DEFAULT_HEIGHT_CM = 180;
 export const DEFAULT_CONFIG = {
     logo: { url: null, scale: 1 },
     people: [
-        { name: 'Francesco Arezzo', role: 'Presidente, Rotary International', period: '(Periodo Rotario 2025-2026)' },
-        { name: 'Jorge Raúl Ossa Botero', role: 'Gobernador, Rotary Distrito 4281', period: '(Periodo Rotario 2025-2026)' },
-        { name: 'Pedro Alejandro Castillo', role: 'Presidente, Club Rotario Yopal', period: '(Periodo Rotario 2025-2026)' },
+        { name: 'Francesco Arezzo', role: 'Presidente, Rotary International', period: '(Periodo Rotario 2025-2026)', editable: false },
+        { name: 'Jorge Raúl Ossa Botero', role: 'Gobernador, Rotary Distrito 4281', period: '(Periodo Rotario 2025-2026)', editable: false },
+        { name: 'Pedro Alejandro Castillo', role: 'Presidente, Club Rotario Yopal', period: '(Periodo Rotario 2025-2026)', editable: true },
     ],
     colors: { name: '#17458f', role: '#2a5cb8', period: '#6b7da0' },
     sizes: { name: 6.5, role: 3.5, period: 2.5 },

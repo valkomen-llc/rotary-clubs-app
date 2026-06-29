@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Download, Image as ImageIcon, Loader2, Users, Plus, Trash2, Layout, Info, Upload } from 'lucide-react';
+import { Download, Image as ImageIcon, Loader2, Users, Layout, Info, Upload } from 'lucide-react';
 import {
     DEFAULT_CONFIG,
     exportBannerToPdf,
@@ -51,10 +51,6 @@ const GeneradorPendones = () => {
 
     const updatePerson = (i: number, patch: Partial<Person>) =>
         setConfig(c => ({ ...c, people: c.people.map((p, idx) => idx === i ? { ...p, ...patch } : p) }));
-    const addPerson = () =>
-        setConfig(c => ({ ...c, people: [...c.people, { name: 'Nombre y Apellido', role: 'Cargo', period: '(Periodo Rotario 2025-2026)' }] }));
-    const removePerson = (i: number) =>
-        setConfig(c => ({ ...c, people: c.people.filter((_, idx) => idx !== i) }));
 
     const handleUploadLogo = async (file: File | undefined) => {
         if (!file) return;
@@ -119,38 +115,20 @@ const GeneradorPendones = () => {
                         )}
                     </section>
 
-                    {/* Personas */}
+                    {/* Personas: el público solo edita las marcadas como editables (p. ej. presidente del club) */}
                     <section className="mb-6 border-t border-gray-100 pt-5">
-                        <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2 text-gray-800"><Users className="w-4 h-4" /><h2 className="text-sm font-bold">Personas</h2></div>
-                            <button onClick={addPerson} className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:text-blue-900"><Plus className="w-3.5 h-3.5" /> Agregar</button>
-                        </div>
+                        <div className="flex items-center gap-2 mb-3 text-gray-800"><Users className="w-4 h-4" /><h2 className="text-sm font-bold">Datos del club</h2></div>
                         <div className="space-y-3">
-                            {config.people.map((p, i) => (
-                                <div key={i} className="rounded-xl border border-gray-200 p-3 relative">
-                                    <button onClick={() => removePerson(i)} className="absolute top-2 right-2 text-gray-400 hover:text-red-500" title="Quitar"><Trash2 className="w-4 h-4" /></button>
+                            {config.people.map((p, i) => p.editable ? (
+                                <div key={i} className="rounded-xl border border-gray-200 p-3">
                                     <input className={`${selectCls} mb-2 font-semibold`} placeholder="Nombre y Apellido" value={p.name} onChange={e => updatePerson(i, { name: e.target.value })} />
-                                    <input className={`${selectCls} mb-2`} placeholder="Cargo" value={p.role} onChange={e => updatePerson(i, { role: e.target.value })} />
+                                    <input className={`${selectCls} mb-2`} placeholder="Cargo (ej. Presidente, Club Rotario...)" value={p.role} onChange={e => updatePerson(i, { role: e.target.value })} />
                                     <input className={selectCls} placeholder="(Periodo Rotario 2025-2026)" value={p.period} onChange={e => updatePerson(i, { period: e.target.value })} />
                                 </div>
-                            ))}
-                            {config.people.length === 0 && <p className="text-xs text-gray-400">Sin personas. Usá "Agregar" para añadir.</p>}
+                            ) : null)}
+                            {!config.people.some(p => p.editable) && <p className="text-xs text-gray-400">No hay campos editables en esta plantilla.</p>}
                         </div>
-                        <p className="text-xs font-semibold text-gray-600 mt-3 mb-1">Tamaño de los textos</p>
-                        <div className="grid grid-cols-3 gap-3">
-                            <Field label={`Nombre (${config.sizes.name}%)`}>
-                                <input type="range" min={3} max={12} step={0.25} value={config.sizes.name} className="w-full accent-blue-700"
-                                    onChange={e => setConfig(c => ({ ...c, sizes: { ...c.sizes, name: parseFloat(e.target.value) } }))} />
-                            </Field>
-                            <Field label={`Cargo (${config.sizes.role}%)`}>
-                                <input type="range" min={2} max={8} step={0.25} value={config.sizes.role} className="w-full accent-blue-700"
-                                    onChange={e => setConfig(c => ({ ...c, sizes: { ...c.sizes, role: parseFloat(e.target.value) } }))} />
-                            </Field>
-                            <Field label={`Periodo (${config.sizes.period}%)`}>
-                                <input type="range" min={1.5} max={6} step={0.25} value={config.sizes.period} className="w-full accent-blue-700"
-                                    onChange={e => setConfig(c => ({ ...c, sizes: { ...c.sizes, period: parseFloat(e.target.value) } }))} />
-                            </Field>
-                        </div>
+                        <p className="mt-2 text-[11px] text-gray-400">Los demás cargos (Presidente RI, Gobernador, etc.) vienen predefinidos por el distrito.</p>
                     </section>
 
                     {/* El pie de página (logo) se configura únicamente desde el administrador. */}

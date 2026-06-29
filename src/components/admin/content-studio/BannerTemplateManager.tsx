@@ -239,6 +239,10 @@ const BannerTemplateManager = () => {
                                     <input className={`${selectCls} mb-2 font-semibold`} placeholder="Nombre y Apellido" value={p.name} onChange={e => updatePerson(i, { name: e.target.value })} />
                                     <input className={`${selectCls} mb-2`} placeholder="Cargo (ej. Presidente, Club Rotario...)" value={p.role} onChange={e => updatePerson(i, { role: e.target.value })} />
                                     <input className={`${selectCls} text-sm`} placeholder="(Periodo Rotario 2025-2026)" value={p.period} onChange={e => updatePerson(i, { period: e.target.value })} />
+                                    <label className="flex items-center gap-2 mt-2 text-[11px] font-semibold text-gray-500">
+                                        <input type="checkbox" checked={!!p.editable} onChange={e => updatePerson(i, { editable: e.target.checked })} />
+                                        Editable por el público (ej. presidente del club)
+                                    </label>
                                 </div>
                             ))}
                             {config.people.length === 0 && <p className="text-xs text-gray-400">Sin personas. Usá "Agregar" para añadir.</p>}

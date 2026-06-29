@@ -14,7 +14,7 @@
 // mismos % de tamaño de fuente (relativos al ancho) → WYSIWYG.
 // ════════════════════════════════════════════════════════════════════
 
-export interface Person { name: string; role: string; period: string; }
+export interface Person { name: string; role: string; period: string; editable?: boolean; }
 
 export interface Offset { x: number; y: number } // x en % del ancho, y en % del alto
 
@@ -54,9 +54,9 @@ export interface BannerTemplate {
 export const DEFAULT_CONFIG: BannerConfig = {
     logo: { url: null, scale: 1 },
     people: [
-        { name: 'Francesco Arezzo', role: 'Presidente, Rotary International', period: '(Periodo Rotario 2025-2026)' },
-        { name: 'Jorge Raúl Ossa Botero', role: 'Gobernador, Rotary Distrito 4281', period: '(Periodo Rotario 2025-2026)' },
-        { name: 'Pedro Alejandro Castillo', role: 'Presidente, Club Rotario Yopal', period: '(Periodo Rotario 2025-2026)' },
+        { name: 'Francesco Arezzo', role: 'Presidente, Rotary International', period: '(Periodo Rotario 2025-2026)', editable: false },
+        { name: 'Jorge Raúl Ossa Botero', role: 'Gobernador, Rotary Distrito 4281', period: '(Periodo Rotario 2025-2026)', editable: false },
+        { name: 'Pedro Alejandro Castillo', role: 'Presidente, Club Rotario Yopal', period: '(Periodo Rotario 2025-2026)', editable: true },
     ],
     colors: { name: '#17458f', role: '#2a5cb8', period: '#6b7da0' },
     sizes: { name: 6.5, role: 3.5, period: 2.5 },
