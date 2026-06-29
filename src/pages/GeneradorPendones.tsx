@@ -23,6 +23,20 @@ const DEFAULT_CONFIG: BannerConfig = {
     logo: { variant: 'completo', color: 'color', placement: 'top' },
 };
 
+// Plantilla de respaldo: garantiza que el lienzo SIEMPRE se vea, aunque el
+// fetch a la plantilla configurada falle o todavía no haya una guardada.
+const FALLBACK_TEMPLATE: BannerTemplate = {
+    id: null,
+    name: 'Generador de Pendones',
+    backgroundUrl: null,
+    widthCm: 80,
+    heightCm: 180,
+    config: DEFAULT_CONFIG,
+    isActive: true,
+    clubId: null,
+    updatedAt: null,
+};
+
 const Field = ({ label, children }: { label: string; children: ReactNode }) => (
     <label className="block mb-3">
         <span className="block text-xs font-semibold text-gray-600 mb-1">{label}</span>
@@ -34,9 +48,10 @@ const selectCls = 'w-full text-sm border border-gray-300 rounded-md px-3 py-2 bg
 const inputCls = selectCls;
 
 const GeneradorPendones = () => {
-    const [template, setTemplate] = useState<BannerTemplate | null>(null);
+    // Arrancamos SIEMPRE con la plantilla de respaldo para que la página se
+    // vea de inmediato; la plantilla configurada (si existe) la sobreescribe.
+    const [template, setTemplate] = useState<BannerTemplate>(FALLBACK_TEMPLATE);
     const [config, setConfig] = useState<BannerConfig>(DEFAULT_CONFIG);
-    const [loading, setLoading] = useState(true);
     const [exporting, setExporting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -44,20 +59,20 @@ const GeneradorPendones = () => {
         const clubId = new URLSearchParams(window.location.search).get('clubId');
         const q = clubId ? `?clubId=${encodeURIComponent(clubId)}` : '';
         fetch(`${API}/public/banner-template${q}`)
-            .then(r => r.json())
+            .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
             .then((tpl: BannerTemplate) => {
-                setTemplate(tpl);
+                if (!tpl) return;
+                setTemplate({ ...FALLBACK_TEMPLATE, ...tpl });
                 setConfig({ ...DEFAULT_CONFIG, ...(tpl.config || {}) });
             })
             .catch(err => {
+                // No bloqueamos la página: seguimos con la plantilla de respaldo.
                 console.error('[GeneradorPendones] error cargando plantilla:', err);
-                setError('No se pudo cargar la plantilla.');
-            })
-            .finally(() => setLoading(false));
+            });
     }, []);
 
-    const widthCm = template?.widthCm || 80;
-    const heightCm = template?.heightCm || 180;
+    const widthCm = template.widthCm || 80;
+    const heightCm = template.heightCm || 180;
 
     const align = config.title.align;
     const setAlign = (a: TextAlign) =>
@@ -85,13 +100,6 @@ const GeneradorPendones = () => {
         finally { setExporting(false); }
     };
 
-    if (loading) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-100">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-700" />
-            </div>
-        );
-    }
 
     return (
         <div className="min-h-screen flex flex-col bg-gray-100">
