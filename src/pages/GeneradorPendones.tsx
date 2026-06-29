@@ -169,7 +169,7 @@ const GeneradorPendones = () => {
                         {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
                         <p className="mt-3 text-[11px] text-gray-500 flex gap-1.5">
                             <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                            El PDF se genera al tamaño físico real ({widthCm}×{heightCm} cm) para impresión a gran escala.
+                            El PDF se genera en alta calidad (150 DPI) al tamaño físico real ({widthCm}×{heightCm} cm), listo para impresión profesional a gran escala.
                         </p>
                     </section>
                 </aside>

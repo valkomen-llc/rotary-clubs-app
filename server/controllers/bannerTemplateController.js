@@ -14,7 +14,7 @@
 // ════════════════════════════════════════════════════════════════════
 import db from '../lib/db.js';
 
-console.log('[bannerTemplateController] v4.511.0 cargado — Generador de Pendones (pie solo logo, sin lema; config del pie solo admin)');
+console.log('[bannerTemplateController] v4.512.0 cargado — Generador de Pendones (PDF alta calidad 150 DPI)');
 
 const DEFAULT_WIDTH_CM = 80;
 const DEFAULT_HEIGHT_CM = 180;

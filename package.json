@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.511.0",
-  "cache_bust": "2026-06-29k (Pendones: el pie queda solo con el logo subido (se elimina el lema) y su configuración pasa a ser exclusiva del administrador — el generador público ya no muestra opciones del pie, solo hereda el logo definido por el admin)",
+  "version": "4.512.0",
+  "cache_bust": "2026-06-29l (Pendones: descarga de PDF en alta calidad para impresión — se sube la resolución a 150 DPI al tamaño físico real con JPEG 0.95 y mejor escalado de imágenes, en vez de los ~84 DPI efectivos anteriores)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
