@@ -31,6 +31,7 @@ const GeneradorPendones = () => {
     const [config, setConfig] = useState<BannerConfig>(DEFAULT_CONFIG);
     const [exporting, setExporting] = useState(false);
     const [uploadingLogo, setUploadingLogo] = useState(false);
+    const [uploadingFooterLogo, setUploadingFooterLogo] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -68,6 +69,20 @@ const GeneradorPendones = () => {
             else setError(data.error || 'No se pudo subir el logo.');
         } catch { setError('No se pudo subir el logo.'); }
         finally { setUploadingLogo(false); }
+    };
+
+    const handleUploadFooterLogo = async (file: File | undefined) => {
+        if (!file) return;
+        setUploadingFooterLogo(true); setError(null);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const res = await fetch(`${API}/public/banner-logo`, { method: 'POST', body: formData });
+            const data = await res.json();
+            if (res.ok && data.dataUrl) setConfig(c => ({ ...c, footer: { ...c.footer, logoUrl: data.dataUrl, logoScale: c.footer?.logoScale ?? 1 } }));
+            else setError(data.error || 'No se pudo subir el logo del pie.');
+        } catch { setError('No se pudo subir el logo del pie.'); }
+        finally { setUploadingFooterLogo(false); }
     };
 
     const handleDownload = async () => {
@@ -161,7 +176,19 @@ const GeneradorPendones = () => {
                                 <input type="checkbox" checked={config.footer.show} onChange={e => setConfig(c => ({ ...c, footer: { ...c.footer, show: e.target.checked } }))} /> Mostrar
                             </label>
                         </div>
-                        <Field label="Distrito (pie)"><input className={selectCls} value={config.footer.district} onChange={e => setConfig(c => ({ ...c, footer: { ...c.footer, district: e.target.value } }))} /></Field>
+                        <div className="flex items-center gap-3 mb-3">
+                            <div className="w-16 h-16 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center shrink-0 overflow-hidden">
+                                {config.footer.logoUrl ? <img src={config.footer.logoUrl} alt="Logo pie" className="max-w-full max-h-full object-contain" /> : <ImageIcon className="w-5 h-5 text-gray-300" />}
+                            </div>
+                            <div className="flex-1">
+                                <label className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-xl py-3 cursor-pointer hover:border-blue-400 hover:bg-blue-50/40 transition-colors">
+                                    {uploadingFooterLogo ? <Loader2 className="w-4 h-4 animate-spin text-blue-700" /> : <Upload className="w-4 h-4 text-gray-400" />}
+                                    <span className="text-xs text-gray-600 font-medium">{config.footer.logoUrl ? 'Reemplazar logo del pie' : 'Subir logo del pie'}</span>
+                                    <input type="file" accept="image/*" className="hidden" onChange={e => handleUploadFooterLogo(e.target.files?.[0])} />
+                                </label>
+                                {config.footer.logoUrl && <button onClick={() => setConfig(c => ({ ...c, footer: { ...c.footer, logoUrl: null } }))} className="mt-1 text-[11px] text-gray-400 hover:text-red-500">Quitar logo del pie</button>}
+                            </div>
+                        </div>
                         <Field label="Lema"><input className={selectCls} value={config.footer.tagline} onChange={e => setConfig(c => ({ ...c, footer: { ...c.footer, tagline: e.target.value } }))} /></Field>
                     </section>
 

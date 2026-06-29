@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.509.0 | 2026-06-29 (Pendones: tamaño de los textos configurable)
-// Cache bust: 2026-06-29i
+// UI V4.510.0 | 2026-06-29 (Pendones: logo del pie subible; sin distrito en el pie)
+// Cache bust: 2026-06-29j
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.510.0',
+        title: 'Pendones: logo propio en el pie de página 🦶🪪',
+        description: 'El pie de página ahora funciona igual que la cabecera: en lugar del logo de Rotary genérico, podés subir tu propio logo (con auto-recorte de bordes y tamaño ajustable). Quitamos también el texto de distrito del pie. Se mantiene el lema, separado por la línea divisoria. Configurable como predeterminado desde el admin y editable por cada persona en el generador público.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'pie', 'logo', 'content studio'],
+        type: 'improvement'
+    },
     {
         version: '4.509.0',
         title: 'Pendones: ajustá el tamaño de los textos 🔠',
