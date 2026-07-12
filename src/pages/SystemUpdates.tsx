@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.530.0 | 2026-07-12 (3 aportes de Rotary + moneda por club (COP) + templating {club})
-// Cache bust: 2026-07-12i
+// UI V4.531.0 | 2026-07-12 (Fase 3: generar bloques de pago con IA desde el Cerebro)
+// Cache bust: 2026-07-12j
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.531.0',
+        title: 'Fase 3: crea bloques de pago con IA ✨🧠',
+        description: 'En Panel → Bloques de Pago hay un nuevo botón "Generar con IA". Escribes una instrucción (ej. "crea una membresía anual de $150.000 con 3 beneficios") y el asistente arma el bloque completo — tipo, título, textos, ícono, color, montos, beneficios y (si es membresía) el cobro recurrente — usando el Cerebro del club para el tono y los datos. El bloque se agrega para que lo revises y ajustes antes de guardar. Con esto cerramos el módulo de pagos: editor, membresías recurrentes y generador con IA.',
+        date: new Date().toISOString(),
+        tags: ['aportes', 'IA', 'cerebro', 'pagos'],
+        type: 'feature'
+    },
     {
         version: '4.530.0',
         title: 'Los 3 aportes rotarios + moneda del club (COP) 💙🤝🌍',
