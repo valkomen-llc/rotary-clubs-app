@@ -91,7 +91,7 @@ const ManerasDeContribuir = () => {
             <section className="relative w-full h-[500px] md:h-[600px] overflow-hidden flex items-center">
                 <div className="absolute inset-0">
                     <img
-                        src={siteImages.donateHero?.url || getC('hero', 'image', "https://www.rotary.org/sites/default/files/styles/w_2800/public/Donate-hero-w2800x975-1.jpg?itok=PDJdtKJ9")}
+                        src={siteImages.donateHero?.url || getC('hero', 'image', "/defaults/hero/1-teamwork.png")}
                         alt={siteImages.donateHero?.alt || "Maneras de contribuir"}
                         className="w-full h-full object-cover"
                     />

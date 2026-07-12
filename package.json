@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.523.0",
-  "cache_bust": "2026-07-12b (Maneras de Contribuir: la imagen de portada ahora es editable desde Configuración → Imágenes del Sitio (contenedor 'Maneras de Contribuir'); antes estaba fija en el código)",
+  "version": "4.524.0",
+  "cache_bust": "2026-07-12c (Maneras de Contribuir: se reparan imágenes rotas que apuntaban a rotary.org — portada con default local confiable (editable) y sellos de credibilidad de La Fundación Rotaria (Charity Navigator, 90,8% a programas, logo TRF) recreados con gráficos propios que cargan siempre)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
