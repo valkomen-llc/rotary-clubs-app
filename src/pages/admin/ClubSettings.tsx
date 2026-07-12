@@ -24,6 +24,7 @@ const SYSTEM_NAV_SECTIONS: { label: string; href: string }[] = [
     { label: 'Quiénes Somos', href: '/quienes-somos' },
     { label: 'Nuestras Causas', href: '/nuestras-causas' },
     { label: 'Maneras de Contribuir', href: '/maneras-de-contribuir' },
+    { label: 'Aportes', href: '/aportes' },
     { label: 'Nuestra Historia', href: '/nuestra-historia' },
     { label: 'Nuestros Socios', href: '/nuestros-socios' },
     { label: 'Junta Directiva', href: '/nuestra-junta-directiva' },
