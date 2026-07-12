@@ -3,13 +3,14 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import { useClub } from '../../contexts/ClubContext';
 import { toast } from 'sonner';
 import {
-    Save, Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, HandCoins, ExternalLink,
+    Save, Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, HandCoins, ExternalLink, RefreshCw,
 } from 'lucide-react';
 import {
     PaymentBlock, PaymentBlockKind, KIND_LABELS,
     BLOCK_ICONS, BLOCK_ICON_KEYS, getBlockIcon,
     BLOCK_THEMES, BLOCK_THEME_KEYS, getBlockTheme,
     DEFAULT_PAYMENT_BLOCKS, resolvePaymentBlocks, normalizeBlock,
+    RECURRING_INTERVAL_ORDER, RECURRING_INTERVAL_LABELS,
 } from '../../lib/paymentBlocks';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -234,6 +235,50 @@ const PaymentBlocksManager: React.FC = () => {
                                             </label>
                                         ))}
                                     </div>
+
+                                    {/* Cobro recurrente (solo membresías) */}
+                                    {block.kind === 'membership' && (
+                                        <div className="pt-3 border-t border-gray-50">
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                <input type="checkbox" checked={block.recurring} onChange={e => update(idx, { recurring: e.target.checked })}
+                                                    className="w-4 h-4 accent-emerald-500 rounded" />
+                                                <span className="text-xs font-black uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+                                                    <RefreshCw className="w-3.5 h-3.5" /> Cobro recurrente (suscripción)
+                                                </span>
+                                            </label>
+                                            {block.recurring && (
+                                                <div className="mt-3 space-y-2 pl-1">
+                                                    <p className="text-[11px] text-gray-400">Activa las periodicidades a ofrecer y su precio. El socio elige una al suscribirse.</p>
+                                                    {RECURRING_INTERVAL_ORDER.map(key => {
+                                                        const iv = block.recurringIntervals.find(r => r.key === key);
+                                                        const on = !!iv;
+                                                        return (
+                                                            <div key={key} className="flex items-center gap-3">
+                                                                <label className="flex items-center gap-2 w-32 cursor-pointer">
+                                                                    <input type="checkbox" checked={on} onChange={e => {
+                                                                        const rest = block.recurringIntervals.filter(r => r.key !== key);
+                                                                        update(idx, { recurringIntervals: e.target.checked ? [...rest, { key, amount: iv?.amount || block.defaultAmount || 50 }] : rest });
+                                                                    }} className="w-4 h-4 accent-emerald-500 rounded" />
+                                                                    <span className="text-sm font-bold text-gray-600">{RECURRING_INTERVAL_LABELS[key]}</span>
+                                                                </label>
+                                                                {on && (
+                                                                    <div className="relative flex-1 max-w-[160px]">
+                                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                                                                        <input type="number" min="1" value={iv!.amount}
+                                                                            onChange={e => {
+                                                                                const amt = Number(e.target.value) || 0;
+                                                                                update(idx, { recurringIntervals: block.recurringIntervals.map(r => r.key === key ? { ...r, amount: amt } : r) });
+                                                                            }}
+                                                                            className="w-full pl-7 pr-3 py-2 bg-gray-50 border-2 border-transparent rounded-lg focus:border-rotary-blue/30 focus:bg-white outline-none font-bold text-gray-800 text-sm" />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         );
