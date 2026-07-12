@@ -35,7 +35,7 @@ const PaymentBlocksCarousel: React.FC<{ blocks: PaymentBlock[] }> = ({ blocks })
                 <div className="flex transition-transform duration-500 ease-out" style={{ transform: `translateX(-${index * 100}%)` }}>
                     {blocks.map(block => (
                         <div key={block.id} className="w-full flex-shrink-0 px-1">
-                            <div className={`grid gap-8 items-stretch ${block.image ? 'md:grid-cols-2' : 'max-w-md mx-auto'}`}>
+                            <div className={`grid gap-8 items-stretch h-full ${block.image ? 'md:grid-cols-2' : 'max-w-md mx-auto'}`}>
                                 {block.image && (
                                     <div className="rounded-3xl overflow-hidden">
                                         <img

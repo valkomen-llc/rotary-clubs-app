@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.537.1 | 2026-07-12 (Quitar sombra/caja detrás de las tarjetas de aporte)
-// Cache bust: 2026-07-12q
+// UI V4.537.2 | 2026-07-12 (Igualar altura de todas las tarjetas del carrusel)
+// Cache bust: 2026-07-12r
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.537.2',
+        title: 'Todas las tarjetas de aporte a la misma altura 📏',
+        description: 'Corregimos la altura de las tarjetas del carrusel: "Erradicación a la Polio" quedaba más baja que las otras. Ahora la tarjeta y la imagen de los 3 aportes tienen exactamente la misma altura, sin importar cuánto texto tenga cada una (no hay que rellenar caracteres).',
+        date: new Date().toISOString(),
+        tags: ['aportes', 'carrusel', 'UI'],
+        type: 'fix'
+    },
     {
         version: '4.537.1',
         title: 'Sin sombra detrás de las tarjetas de aporte 🧼',
