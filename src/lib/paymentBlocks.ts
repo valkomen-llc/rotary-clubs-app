@@ -37,6 +37,7 @@ export interface PaymentBlock {
     buttonText: string;
     benefits: string[];      // lista opcional de beneficios (ideal para membresía)
     campaign?: string;       // etiqueta de campaña (metadata)
+    image?: string;          // imagen que acompaña al bloque (carrusel de Aportes)
     // Cobro recurrente (solo aplica a kind === 'membership').
     recurring: boolean;
     recurringIntervals: RecurringInterval[];
@@ -110,6 +111,7 @@ export const DEFAULT_PAYMENT_BLOCKS: PaymentBlock[] = [
         buttonText: 'Aportar',
         benefits: [],
         campaign: 'Aporte Voluntario',
+        image: '/defaults/hero/1-teamwork.png',
         recurring: false,
         recurringIntervals: [],
     },
@@ -133,6 +135,7 @@ export const DEFAULT_PAYMENT_BLOCKS: PaymentBlock[] = [
             'Eres embajador de los valores rotarios.',
         ],
         campaign: 'Membresía Rotaria',
+        image: '/defaults/hero/4-education.png',
         recurring: true,
         recurringIntervals: [
             { key: 'month', amount: 120000 },
@@ -156,6 +159,7 @@ export const DEFAULT_PAYMENT_BLOCKS: PaymentBlock[] = [
         buttonText: 'Aportar',
         benefits: [],
         campaign: 'End Polio Now',
+        image: '/defaults/hero/3-health.png',
         recurring: false,
         recurringIntervals: [],
     },
@@ -178,6 +182,7 @@ export const normalizeBlock = (b: Partial<PaymentBlock>, idx = 0): PaymentBlock 
     buttonText: b.buttonText || 'Aportar',
     benefits: Array.isArray(b.benefits) ? b.benefits.filter(Boolean) : [],
     campaign: b.campaign || undefined,
+    image: b.image || undefined,
     recurring: !!b.recurring,
     recurringIntervals: Array.isArray(b.recurringIntervals)
         ? b.recurringIntervals
