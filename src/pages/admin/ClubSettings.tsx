@@ -153,6 +153,7 @@ const ClubSettings: React.FC = () => {
         autoGenerateCalendar: true,
         mapStyle: 'm',
         storeActive: true,
+        trfCredibilityVisible: true,
     });
     
     const [uploading, setUploading] = useState(false);
@@ -361,6 +362,7 @@ const ClubSettings: React.FC = () => {
                 autoGenerateCalendar: settingsMap['auto_generate_calendar'] !== 'false',
                 mapStyle: club.mapStyle || 'm',
                 storeActive: settingsMap['store_active'] !== 'false',
+                trfCredibilityVisible: (club as any).trfCredibilityVisible !== false && settingsMap['trf_credibility_visible'] !== 'false',
             });
 
             if (club.paymentConfigs && Array.isArray(club.paymentConfigs)) {
@@ -842,6 +844,32 @@ const ClubSettings: React.FC = () => {
                                     </div>
                                 </div>
                             </div>
+                        </div>
+
+                        {/* Sellos de La Fundación Rotaria — visibilidad del bloque en "Maneras de Contribuir" */}
+                        <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                            <div className="flex items-center justify-between gap-4">
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-3">
+                                        <Sparkles className="w-5 h-5 text-rotary-blue" /> Sellos de La Fundación Rotaria
+                                    </h3>
+                                    <p className="text-xs text-gray-400 mt-1 max-w-xl">
+                                        Bloque de credibilidad (Charity Navigator, eficacia y logo de The Rotary Foundation) que aparece en la página <b>Maneras de Contribuir</b>. Puedes ocultarlo si no aplica. Para cambiar los sellos usa <b>Imágenes del Sitio</b>.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={formData.trfCredibilityVisible}
+                                    onClick={() => setFormData(prev => ({ ...prev, trfCredibilityVisible: !prev.trfCredibilityVisible }))}
+                                    className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors ${formData.trfCredibilityVisible ? 'bg-rotary-blue' : 'bg-gray-300'}`}
+                                >
+                                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${formData.trfCredibilityVisible ? 'translate-x-6' : 'translate-x-1'}`} />
+                                </button>
+                            </div>
+                            <p className={`mt-3 text-xs font-bold ${formData.trfCredibilityVisible ? 'text-emerald-600' : 'text-gray-400'}`}>
+                                {formData.trfCredibilityVisible ? 'Visible en el sitio' : 'Oculto en el sitio'}
+                            </p>
                         </div>
 
                         {/* Contact and Social */}
