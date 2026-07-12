@@ -17,6 +17,7 @@ const ManerasContribuirEditor: React.FC = () => {
 
     const [header, setHeader] = useState({ title: '', description: '' });
     const [card, setCard] = useState({ title: '', description: '', buttonText: '' });
+    const [style, setStyle] = useState({ blocksBg: '#F9FAFB' });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [dirty, setDirty] = useState(false);
@@ -53,6 +54,7 @@ const ManerasContribuirEditor: React.FC = () => {
                     description: map.card?.description ?? defaults.card.description,
                     buttonText: map.card?.buttonText ?? defaults.card.buttonText,
                 });
+                setStyle({ blocksBg: map.style?.blocksBg || '#F9FAFB' });
             } catch {
                 setHeader(defaults.header);
                 setCard(defaults.card);
@@ -76,6 +78,7 @@ const ManerasContribuirEditor: React.FC = () => {
                     sections: [
                         { page: 'contribucion', section: 'header', content: header },
                         { page: 'contribucion', section: 'card', content: card },
+                        { page: 'contribucion', section: 'style', content: style },
                     ],
                 }),
             });
@@ -168,6 +171,35 @@ const ManerasContribuirEditor: React.FC = () => {
                             <label className={lbl}>Texto del botón</label>
                             <input className={field} value={card.buttonText}
                                 onChange={e => { setCard({ ...card, buttonText: e.target.value }); setDirty(true); }} />
+                        </div>
+                    </div>
+                </div>
+
+                {/* Color de fondo de la sección de aportes */}
+                <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                    <h3 className="text-lg font-bold text-gray-800 mb-1 flex items-center gap-3">
+                        <Layout className="w-5 h-5 text-rotary-blue" /> Fondo de la sección de aportes
+                    </h3>
+                    <p className="text-xs text-gray-400 mb-6">Color detrás del carrusel de aportes. Con un color oscuro, las tarjetas blancas resaltan.</p>
+                    <div className="flex flex-wrap items-center gap-4">
+                        <input type="color" value={/^#([0-9a-fA-F]{6})$/.test(style.blocksBg) ? style.blocksBg : '#F9FAFB'}
+                            onChange={e => { setStyle({ blocksBg: e.target.value }); setDirty(true); }}
+                            className="w-14 h-14 rounded-xl border border-gray-200 cursor-pointer bg-white p-1" />
+                        <input value={style.blocksBg}
+                            onChange={e => { setStyle({ blocksBg: e.target.value }); setDirty(true); }}
+                            placeholder="#212C3F"
+                            className="w-40 px-4 py-3 bg-gray-50 border-2 border-transparent rounded-xl focus:border-rotary-blue/30 focus:bg-white outline-none font-bold text-gray-800" />
+                        <div className="flex items-center gap-2">
+                            {[
+                                { label: 'Claro', c: '#F9FAFB' },
+                                { label: 'Azul oscuro', c: '#212C3F' },
+                                { label: 'Blanco', c: '#FFFFFF' },
+                            ].map(p => (
+                                <button key={p.c} type="button" onClick={() => { setStyle({ blocksBg: p.c }); setDirty(true); }}
+                                    className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-50 transition">
+                                    <span className="w-4 h-4 rounded-full border border-gray-200" style={{ backgroundColor: p.c }} /> {p.label}
+                                </button>
+                            ))}
                         </div>
                     </div>
                 </div>

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.538.0 | 2026-07-12 (Editor de textos de Maneras de Contribuir en el admin)
-// Cache bust: 2026-07-12s
+// UI V4.539.0 | 2026-07-12 (Color de fondo configurable en la sección de aportes)
+// Cache bust: 2026-07-12t
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.539.0',
+        title: 'Elige el color de fondo de la sección de aportes 🎨',
+        description: 'En Panel → Maneras de Contribuir agregamos un selector de "Fondo de la sección de aportes": puedes poner el color que quieras (por ejemplo un azul oscuro como #212C3F para que las tarjetas blancas resalten) o dejar el gris claro por defecto. Cada club elige el suyo.',
+        date: new Date().toISOString(),
+        tags: ['maneras de contribuir', 'aportes', 'color', 'admin'],
+        type: 'feature'
+    },
     {
         version: '4.538.0',
         title: 'Edita los textos de Maneras de Contribuir desde el panel ✍️',

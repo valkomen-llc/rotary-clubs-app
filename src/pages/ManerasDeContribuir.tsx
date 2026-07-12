@@ -18,6 +18,8 @@ const ManerasDeContribuir = () => {
 
     // Bloques de pago configurables (Donación / Aporte / Membresía).
     const blocks = resolvePaymentBlocks((club as any)?.paymentBlocks).filter(b => b.enabled);
+    // Color de fondo de la sección de aportes (configurable; default gris claro).
+    const blocksBg = getC('style', 'blocksBg', '#F9FAFB');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [amount, setAmount] = useState('50');
     const [frequency, setFrequency] = useState<'one-time' | 'monthly'>('one-time');
@@ -124,7 +126,7 @@ const ManerasDeContribuir = () => {
 
             {/* Formas de aportar — carrusel de bloques (Donación / Aporte / Membresía) */}
             {blocks.length > 0 && (
-                <section className="py-20 md:py-24 bg-gray-50">
+                <section className="py-20 md:py-24" style={{ backgroundColor: blocksBg }}>
                     <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
                         <PaymentBlocksCarousel blocks={blocks} />
                     </div>
