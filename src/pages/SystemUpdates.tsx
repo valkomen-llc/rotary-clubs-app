@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.533.0 | 2026-07-12 (Fix: suscribirse a la membresía con bloques por defecto)
-// Cache bust: 2026-07-12l
+// UI V4.534.0 | 2026-07-12 (Restaurar el hero de Aporte Voluntario en Maneras de Contribuir)
+// Cache bust: 2026-07-12m
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.534.0',
+        title: 'Vuelve el hero de "Aporte Voluntario" en Maneras de Contribuir 🦸',
+        description: 'Restauramos la tarjeta destacada de "Aporte Voluntario" sobre el hero de la página Maneras de Contribuir (con su botón APORTAR y ventana de donación), que se había quitado al agregar los bloques. Ahora conviven: el hero destacado arriba y los 3 bloques de aporte debajo.',
+        date: new Date().toISOString(),
+        tags: ['maneras de contribuir', 'aportes', 'hero', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.533.0',
         title: 'Arreglo: "Bloque de pago no encontrado" al suscribirse 🔧',
