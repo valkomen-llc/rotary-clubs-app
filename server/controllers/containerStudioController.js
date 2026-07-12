@@ -252,3 +252,119 @@ export const generateContainer = async (req, res) => {
         return res.status(500).json({ error: e.message || 'Error generando el contenedor.' });
     }
 };
+
+// ── Payment Block Studio (Fase 3) ────────────────────────────────────────────
+// Genera un "bloque de pago" (Donación/Aporte/Membresía) de la página Aportes a
+// partir de una instrucción en lenguaje natural + (opcional) el Cerebro del club.
+// Devuelve un bloque normalizado listo para revisar y guardar en el editor.
+const PB_KINDS = ['donation', 'aporte', 'membership'];
+const PB_ICONS = ['globe', 'heart', 'users', 'handheart', 'handshake', 'hearthandshake', 'gift', 'award', 'trophy', 'star', 'sparkles', 'dollar', 'shield', 'landmark'];
+const PB_THEMES = ['blue', 'sky', 'rose', 'emerald', 'amber', 'violet'];
+const PB_INTERVALS = ['month', 'quarter', 'semiannual', 'year'];
+
+function normalizePbFromAI(p) {
+    const pick = (v, allowed, def) => (allowed.includes(v) ? v : def);
+    const kind = pick(p?.kind, PB_KINDS, 'donation');
+    const nums = (a) => (Array.isArray(a) ? a.map(Number).filter(n => n > 0) : []);
+    const intervals = Array.isArray(p?.recurringIntervals)
+        ? p.recurringIntervals.filter(r => r && PB_INTERVALS.includes(r.key) && Number(r.amount) > 0).map(r => ({ key: r.key, amount: Number(r.amount) }))
+        : [];
+    const recurring = kind === 'membership' && !!p?.recurring && intervals.length > 0;
+    return {
+        id: `ai-${Math.random().toString(36).slice(2, 9)}`,
+        enabled: true,
+        kind,
+        title: String(p?.title || 'Nuevo aporte').slice(0, 60),
+        description: String(p?.description || '').slice(0, 800),
+        icon: pick(p?.icon, PB_ICONS, kind === 'membership' ? 'users' : 'heart'),
+        theme: pick(p?.theme, PB_THEMES, 'blue'),
+        presetAmounts: nums(p?.presetAmounts),
+        allowCustom: p?.allowCustom !== false,
+        defaultAmount: Number(p?.defaultAmount) > 0 ? Number(p.defaultAmount) : undefined,
+        showMessage: p?.showMessage !== false,
+        showAnonymous: !!p?.showAnonymous,
+        buttonText: String(p?.buttonText || 'Aportar').slice(0, 30),
+        benefits: Array.isArray(p?.benefits) ? p.benefits.map(String).filter(Boolean).slice(0, 8) : [],
+        campaign: String(p?.title || '').slice(0, 60) || undefined,
+        recurring,
+        recurringIntervals: recurring ? intervals : [],
+    };
+}
+
+export const generatePaymentBlock = async (req, res) => {
+    try {
+        const instruction = String(req.body?.instruction || '').trim();
+        if (!instruction) return res.status(400).json({ error: 'Escribe una instrucción para generar el bloque.' });
+
+        const clubId = req.user.role === 'administrator'
+            ? (req.body.clubId || req.user.clubId || null)
+            : (req.user.clubId || null);
+        if (!clubId) return res.status(400).json({ error: 'No se pudo resolver el club. Falta clubId.' });
+
+        // Contexto opcional del Cerebro — no bloquea si el club no tiene uno.
+        let context = '';
+        const sources = [];
+        try {
+            const { site } = await resolveBrainsForClub(clubId);
+            if (site) {
+                let results = await searchMemories({ brainId: site.id, query: instruction, k: 6 });
+                if (!results.length) {
+                    const recent = await listRecentMemories({ brainId: site.id, limit: 8 });
+                    results = recent.map(m => ({ memory: m, score: 0 }));
+                }
+                if (results.length) {
+                    context = results.map((r, i) => `[Fuente ${i + 1}: ${r.memory.title}]\n${(r.memory.content || '').slice(0, 1000)}`).join('\n\n---\n\n');
+                    results.forEach(r => sources.push({ title: r.memory.title, kind: r.memory.kind }));
+                }
+            }
+        } catch (e) {
+            console.warn('[PB-STUDIO] RAG opcional falló (se continúa sin contexto):', e?.message);
+        }
+
+        const system =
+            `Eres un asistente que diseña "bloques de pago" para la página de Aportes de un club Rotario. ` +
+            `Escribes en ESPAÑOL con tono Rotary (cálido, profesional, orientado al servicio) y puedes usar emojis con moderación. ` +
+            `Respondes SIEMPRE con UN objeto JSON válido y NADA más, con EXACTAMENTE estas claves:\n` +
+            `- "kind": uno de ${PB_KINDS.join(', ')} (membership = cuota/membresía; donation = donación o campaña; aporte = aporte voluntario).\n` +
+            `- "title": título corto (máx 4 palabras).\n` +
+            `- "description": 2 a 4 frases. Puedes usar {club} para nombrar al club.\n` +
+            `- "icon": una de estas claves EXACTAS: ${PB_ICONS.join(', ')}.\n` +
+            `- "theme": uno de: ${PB_THEMES.join(', ')}.\n` +
+            `- "presetAmounts": arreglo de números (montos sugeridos) o [] si no aplica.\n` +
+            `- "allowCustom": booleano (permitir monto libre).\n` +
+            `- "showMessage": booleano. "showAnonymous": booleano.\n` +
+            `- "buttonText": 1 a 3 palabras.\n` +
+            `- "benefits": arreglo de strings (beneficios) o [].\n` +
+            `- "recurring": booleano (true SOLO si es una membresía de cobro periódico).\n` +
+            `- "recurringIntervals": si recurring=true, arreglo de {"key","amount"} con key en ${PB_INTERVALS.join(', ')} y amount numérico; si no, [].\n` +
+            `Reglas: no inventes cifras que el usuario no pidió (si no da montos, deja presetAmounts [] y allowCustom true). NO generes URLs.`;
+
+        const userText =
+            (context ? `CONTEXTO del club (úsalo para el tono y los datos, no lo cites literalmente):\n\n${context}\n\n========================================\n\n` : '') +
+            `INSTRUCCIÓN DEL ADMINISTRADOR:\n${instruction}`;
+
+        const result = await generateCopy({
+            provider: 'gemini',
+            system,
+            userText,
+            jsonMode: true,
+            temperature: 0.6,
+            maxTokens: 2000,
+        });
+
+        let parsed;
+        try {
+            parsed = JSON.parse(result.content);
+        } catch (e) {
+            console.error('[PB-STUDIO] JSON parse falló:', e.message, '\nRaw:', result.content?.slice(0, 400));
+            return res.status(502).json({ error: 'El modelo devolvió una respuesta no parseable. Reintenta.' });
+        }
+
+        const block = normalizePbFromAI(parsed);
+        console.log(`[PB-STUDIO] Bloque generado para club ${clubId} via ${result.provider} (${result.model}), ${sources.length} fuentes.`);
+        return res.json({ block, sources, provider: result.provider, model: result.model });
+    } catch (error) {
+        console.error('[PB-STUDIO] Error generando bloque:', error);
+        return res.status(500).json({ error: error.message || 'Error generando el bloque' });
+    }
+};

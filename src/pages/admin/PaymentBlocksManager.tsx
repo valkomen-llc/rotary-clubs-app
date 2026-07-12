@@ -4,6 +4,7 @@ import { useClub } from '../../contexts/ClubContext';
 import { toast } from 'sonner';
 import {
     Save, Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, HandCoins, ExternalLink, RefreshCw,
+    Sparkles, X, Loader2,
 } from 'lucide-react';
 import {
     PaymentBlock, PaymentBlockKind, KIND_LABELS,
@@ -27,6 +28,9 @@ const PaymentBlocksManager: React.FC = () => {
     const [blocks, setBlocks] = useState<PaymentBlock[]>([]);
     const [dirty, setDirty] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [aiOpen, setAiOpen] = useState(false);
+    const [aiInstruction, setAiInstruction] = useState('');
+    const [aiLoading, setAiLoading] = useState(false);
 
     useEffect(() => {
         if (club) setBlocks(resolvePaymentBlocks((club as any).paymentBlocks));
@@ -49,6 +53,30 @@ const PaymentBlocksManager: React.FC = () => {
     const remove = (idx: number) => { setBlocks(prev => prev.filter((_, i) => i !== idx)); setDirty(true); };
     const add = () => { setBlocks(prev => [...prev, newBlock()]); setDirty(true); };
     const resetDefaults = () => { setBlocks(DEFAULT_PAYMENT_BLOCKS.map((b, i) => normalizeBlock(b, i))); setDirty(true); };
+
+    const generateWithAI = async () => {
+        if (!aiInstruction.trim() || !(club as any)?.id) return;
+        setAiLoading(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const res = await fetch(`${API}/content-studio/generate-payment-block`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ clubId: (club as any).id, instruction: aiInstruction.trim() }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.block) throw new Error(data.error || 'No se pudo generar el bloque');
+            setBlocks(prev => [...prev, normalizeBlock(data.block, prev.length)]);
+            setDirty(true);
+            setAiOpen(false);
+            setAiInstruction('');
+            toast.success('Bloque generado con IA. Revísalo y guarda.');
+        } catch (e: any) {
+            toast.error(e.message || 'Error generando el bloque');
+        } finally {
+            setAiLoading(false);
+        }
+    };
 
     const save = async () => {
         if (!(club as any)?.id) return;
@@ -290,11 +318,57 @@ const PaymentBlocksManager: React.FC = () => {
                     <button onClick={add} className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm bg-rotary-blue/5 text-rotary-blue hover:bg-rotary-blue/10 transition">
                         <Plus className="w-4 h-4" /> Agregar bloque
                     </button>
+                    <button onClick={() => setAiOpen(true)} className="flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:opacity-90 transition shadow-sm">
+                        <Sparkles className="w-4 h-4" /> Generar con IA
+                    </button>
                     <button onClick={resetDefaults} className="text-xs font-bold text-gray-400 hover:text-gray-600 transition">
                         Restaurar bloques por defecto
                     </button>
                 </div>
             </div>
+
+            {/* Modal: Generar con IA */}
+            {aiOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => !aiLoading && setAiOpen(false)}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                            <h2 className="font-bold text-gray-800 flex items-center gap-2">
+                                <Sparkles className="w-5 h-5 text-indigo-500" /> Generar bloque con IA
+                            </h2>
+                            <button onClick={() => setAiOpen(false)} disabled={aiLoading} className="text-gray-400 hover:text-gray-600 disabled:opacity-50"><X className="w-5 h-5" /></button>
+                        </div>
+                        <div className="p-6 space-y-3">
+                            <p className="text-sm text-gray-500">Describe el aporte que quieres crear. La IA usará el <b>Cerebro</b> del club para ajustar el tono y los datos.</p>
+                            <textarea
+                                value={aiInstruction}
+                                onChange={e => setAiInstruction(e.target.value)}
+                                rows={3}
+                                placeholder="Ej: Crea una membresía anual de $150.000 con 3 beneficios para socios jóvenes"
+                                className="w-full px-4 py-3 bg-gray-50 border-2 border-transparent rounded-xl focus:border-indigo-300 focus:bg-white outline-none text-sm resize-none"
+                            />
+                            <div className="flex flex-wrap gap-2">
+                                {[
+                                    'Donación para End Polio con opción de mensaje',
+                                    'Aporte voluntario con certificado tributario',
+                                    'Membresía mensual de $120.000 con 4 beneficios',
+                                ].map(ex => (
+                                    <button key={ex} onClick={() => setAiInstruction(ex)} className="text-[11px] px-2.5 py-1 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition">
+                                        {ex}
+                                    </button>
+                                ))}
+                            </div>
+                            <button
+                                onClick={generateWithAI}
+                                disabled={aiLoading || !aiInstruction.trim()}
+                                className="w-full py-3 rounded-xl font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                {aiLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando…</> : <><Sparkles className="w-4 h-4" /> Generar bloque</>}
+                            </button>
+                            <p className="text-[11px] text-gray-400 text-center">El bloque se agrega al final para que lo revises y ajustes antes de <b>Guardar</b>.</p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </AdminLayout>
     );
 };

@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.530.0",
-  "cache_bust": "2026-07-12i (Aportes: 3 bloques rotarios por defecto (Aporte Voluntario + Membresía Rotaria recurrente + Erradicación a la Polio) con sus copys/beneficios; moneda por club (default COP para Colombia) aplicada a donaciones/órdenes/membresías en Stripe con formato correcto; templating {club} en los textos)",
+  "version": "4.531.0",
+  "cache_bust": "2026-07-12j (Fase 3 módulo de pagos: botón 'Generar con IA' en Bloques de Pago — una instrucción arma el bloque completo (tipo, textos, ícono, color, montos, beneficios y recurrencia) usando el Cerebro del club, vía /content-studio/generate-payment-block; el bloque se agrega para revisar antes de guardar)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

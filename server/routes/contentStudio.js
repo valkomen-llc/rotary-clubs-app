@@ -14,7 +14,7 @@ import {
     generatePost,
     downloadProxy
 } from '../controllers/contentStudioController.js';
-import { generateContainer, listContainers } from '../controllers/containerStudioController.js';
+import { generateContainer, listContainers, generatePaymentBlock } from '../controllers/containerStudioController.js';
 import { COPY_PROVIDERS, DEFAULT_COPY_PROVIDER, isProviderAvailable } from '../services/copywritingService.js';
 
 const router = express.Router();
@@ -35,6 +35,9 @@ router.post('/generate-post', authMiddleware, generatePost);
 // Generación de textos de contenedores de la portada desde el Cerebro (RAG).
 router.post('/generate-container', authMiddleware, generateContainer);
 router.get('/containers', authMiddleware, listContainers);
+
+// Generación de un bloque de pago (Aportes) desde una instrucción + Cerebro (Fase 3).
+router.post('/generate-payment-block', authMiddleware, generatePaymentBlock);
 
 // GET /api/content-studio/copy-providers — lista de motores de copy disponibles
 // para el selector del frontend. Devuelve solo los configurados con API key.
