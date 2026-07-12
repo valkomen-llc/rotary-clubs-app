@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DollarSign, ArrowRight, ShieldCheck, Check, RefreshCw, Loader2 } from 'lucide-react';
+import { DollarSign, ArrowRight, ShieldCheck, Check, RefreshCw, Loader2, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCart } from '../contexts/CartContext';
 import { useClub } from '../contexts/ClubContext';
@@ -47,6 +47,7 @@ const PaymentBlockCard: React.FC<{ block: PaymentBlock }> = ({ block }) => {
         .filter(Boolean) as { key: RecurringIntervalKey; amount: number }[];
     const [interval, setInterval] = useState<RecurringIntervalKey | ''>(orderedIntervals[0]?.key || '');
     const [subscribing, setSubscribing] = useState(false);
+    const selectedInterval = orderedIntervals.find(iv => iv.key === interval);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -94,7 +95,7 @@ const PaymentBlockCard: React.FC<{ block: PaymentBlock }> = ({ block }) => {
     };
 
     return (
-        <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm hover:shadow-xl transition-all flex flex-col">
+        <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm hover:shadow-xl transition-all flex flex-col h-full">
             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-6 ${theme.bubble}`}>
                 <Icon className="w-7 h-7" />
             </div>
@@ -125,19 +126,28 @@ const PaymentBlockCard: React.FC<{ block: PaymentBlock }> = ({ block }) => {
                 /* ── Suscripción recurrente ── */
                 <div className="flex-1 flex flex-col">
                     <label className="text-[11px] font-black text-gray-400 uppercase tracking-wider mb-2">Elige la periodicidad</label>
-                    <div className="space-y-2 mb-6">
-                        {orderedIntervals.map(iv => (
-                            <button
-                                key={iv.key}
-                                type="button"
-                                onClick={() => setInterval(iv.key)}
-                                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ${interval === iv.key ? theme.ring : 'border-gray-100 hover:border-gray-200'}`}
-                            >
-                                <span className="font-bold text-sm">{RECURRING_INTERVAL_LABELS[iv.key]}</span>
-                                <span className="font-black">{fmt(iv.amount)}</span>
-                            </button>
-                        ))}
+                    <div className="relative mb-4">
+                        <select
+                            value={interval}
+                            onChange={e => setInterval(e.target.value as RecurringIntervalKey)}
+                            className="w-full appearance-none px-4 py-3 pr-10 rounded-xl border-2 border-gray-200 bg-white font-bold text-gray-800 focus:border-emerald-400 outline-none cursor-pointer"
+                        >
+                            {orderedIntervals.map(iv => (
+                                <option key={iv.key} value={iv.key}>
+                                    {RECURRING_INTERVAL_LABELS[iv.key]} — {fmt(iv.amount)}
+                                </option>
+                            ))}
+                        </select>
+                        <ChevronDown className="w-5 h-5 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                     </div>
+
+                    {selectedInterval && (
+                        <div className="mb-6 flex items-baseline gap-2">
+                            <span className="text-3xl font-black text-gray-900">{fmt(selectedInterval.amount)}</span>
+                            <span className="text-gray-500 text-sm">/ {RECURRING_INTERVAL_LABELS[selectedInterval.key].toLowerCase()}</span>
+                        </div>
+                    )}
+
                     <button
                         onClick={handleSubscribe}
                         disabled={!interval || subscribing}
