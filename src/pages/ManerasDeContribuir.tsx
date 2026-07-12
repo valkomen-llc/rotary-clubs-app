@@ -3,6 +3,7 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { Heart, X, Check, Loader2, ShieldCheck } from 'lucide-react';
 import { useCMSContent } from '../hooks/useCMSContent';
+import { useSiteImages } from '../hooks/useSiteImages';
 import { useClub } from '../contexts/ClubContext';
 import FoundationImpactSection from '../sections/FoundationImpactSection';
 
@@ -11,6 +12,7 @@ const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const ManerasDeContribuir = () => {
     const { club } = useClub();
     const { sections } = useCMSContent('contribucion', club.id);
+    const siteImages = useSiteImages();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [amount, setAmount] = useState('50');
     const [frequency, setFrequency] = useState<'one-time' | 'monthly'>('one-time');
@@ -89,8 +91,8 @@ const ManerasDeContribuir = () => {
             <section className="relative w-full h-[500px] md:h-[600px] overflow-hidden flex items-center">
                 <div className="absolute inset-0">
                     <img
-                        src={getC('hero', 'image', "https://www.rotary.org/sites/default/files/styles/w_2800/public/Donate-hero-w2800x975-1.jpg?itok=PDJdtKJ9")}
-                        alt="Maneras de contribuir"
+                        src={siteImages.donateHero?.url || getC('hero', 'image', "https://www.rotary.org/sites/default/files/styles/w_2800/public/Donate-hero-w2800x975-1.jpg?itok=PDJdtKJ9")}
+                        alt={siteImages.donateHero?.alt || "Maneras de contribuir"}
                         className="w-full h-full object-cover"
                     />
                     <div className="absolute inset-0 bg-white/10" />

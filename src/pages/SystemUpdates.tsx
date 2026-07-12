@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.522.0 | 2026-07-12 (Menú principal configurable para Clubes)
-// Cache bust: 2026-07-12a
+// UI V4.523.0 | 2026-07-12 (Imagen editable en Maneras de Contribuir)
+// Cache bust: 2026-07-12b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.523.0',
+        title: 'La imagen de "Maneras de Contribuir" ya es editable 🖼️',
+        description: 'Corregimos la portada de la página "Maneras de Contribuir": su imagen de fondo estaba fija y no se podía cambiar. Ahora aparece como un contenedor más en Configuración → Imágenes del Sitio ("Maneras de Contribuir"), donde puedes subir o elegir tu propia imagen igual que en el resto de las secciones. Si no subes ninguna, se mantiene la imagen por defecto.',
+        date: new Date().toISOString(),
+        tags: ['imágenes', 'maneras de contribuir', 'CMS', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.522.0',
         title: 'Menú principal configurable para los Clubes 🧭',

@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.522.0",
-  "cache_bust": "2026-07-12a (Menú principal configurable para los Clubes: reordenar, ocultar/mostrar secciones del sistema y crear enlaces a páginas propias/externas desde Configuración → Identidad; sitios de distrito/asociación/intercambio conservan su menú fijo)",
+  "version": "4.523.0",
+  "cache_bust": "2026-07-12b (Maneras de Contribuir: la imagen de portada ahora es editable desde Configuración → Imágenes del Sitio (contenedor 'Maneras de Contribuir'); antes estaba fija en el código)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
