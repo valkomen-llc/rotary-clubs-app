@@ -94,6 +94,11 @@ const ClubSettings: React.FC = () => {
     const navigate = useNavigate();
     const isSuperAdmin = user?.role === 'administrator';
 
+    // El menú principal configurable aplica a Clubes y Eventos/Convenciones (sitios con navbar estándar).
+    // Los sitios con navbar propia (distrito, asociación, intercambio) mantienen su menú fijo.
+    const SITES_WITH_CUSTOM_NAV = ['Distrito Rotario', 'district', 'Asociación Rotaria', 'association', 'Programa de Intercambio'];
+    const canConfigureNav = isSuperAdmin || !SITES_WITH_CUSTOM_NAV.includes((club?.type as string) || '');
+
     type TabType = 'estado' | 'identidad' | 'avanzado' | 'facturacion' | 'wa-api' | 'comms';
     const [activeTab, setActiveTab] = useState<TabType>('estado');
     const [stats, setStats] = useState<any>(null);
@@ -1194,8 +1199,8 @@ const ClubSettings: React.FC = () => {
                             </div>
                         )}
 
-                        {/* Menú principal configurable — solo Eventos/Convenciones */}
-                        {(isSuperAdmin || club?.type === 'Evento o Convención') && (
+                        {/* Menú principal configurable — Clubes y Eventos/Convenciones */}
+                        {canConfigureNav && (
                             <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
                                 <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
                                     <Palette className="w-5 h-5 text-rotary-blue" /> Menú Principal

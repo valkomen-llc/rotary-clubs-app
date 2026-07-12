@@ -470,4 +470,4 @@ export const batchUpsertMembers = async (req, res) => {
     }
 };
 
-console.log('[clubController] cargado (v4.490.0 — avatar de perfil del club (avatarUrl), distinto del logo, editable en Configuración → Identidad)');
+console.log('[clubController] cargado (v4.522.0 — menú principal configurable habilitado también para Clubes: reordenar/ocultar secciones del sistema + crear enlaces, servido vía event_nav_order para todo sitio con navbar estándar)');

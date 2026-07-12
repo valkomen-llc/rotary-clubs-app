@@ -39,9 +39,16 @@ const Navbar = () => {
   const showNav = (key: string) => !isEventSite || navMenu[key] !== false;
   // Ítems de menú adicionales (Evento/Convención): creados o tomados de secciones del sistema.
   const extraNav = (isEventSite ? ((club as any)?.eventNavExtra || []) : []) as { label: string; href: string; external?: boolean }[];
-  // Orden unificado del menú (Evento/Convención): fijos + personalizados en el orden elegido.
-  const orderedNav = (isEventSite ? ((club as any)?.eventNavOrder || []) : []) as { kind: 'fixed' | 'custom'; key?: string; label?: string; href?: string; external?: boolean; enabled?: boolean }[];
-  const useOrderedNav = isEventSite && Array.isArray(orderedNav) && orderedNav.length > 0;
+  // Sitios con navbar propia (distrito, asociación, intercambio/RYE): conservan su menú fijo
+  // y NO usan el menú configurable.
+  const hasCustomNav = isDistrict
+    || (club as any)?.type === 'association'
+    || (club as any)?.type === 'Programa de Intercambio'
+    || currentHostname.toLowerCase().startsWith('rye');
+  // Orden unificado del menú configurable: fijos + personalizados en el orden elegido.
+  // Disponible para Clubes y sitios Evento/Convención (todo sitio con navbar estándar).
+  const orderedNav = (!hasCustomNav ? ((club as any)?.eventNavOrder || []) : []) as { kind: 'fixed' | 'custom'; key?: string; label?: string; href?: string; external?: boolean; enabled?: boolean }[];
+  const useOrderedNav = Array.isArray(orderedNav) && orderedNav.length > 0;
 
   // Search state
   const [searchOpen, setSearchOpen] = useState(false);

@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.521.0 | 2026-06-29 (Generador de pendones: copyright anclado al fondo, estilo uniforme)
-// Cache bust: 2026-06-29u
+// UI V4.522.0 | 2026-07-12 (Menú principal configurable para Clubes)
+// Cache bust: 2026-07-12a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.522.0',
+        title: 'Menú principal configurable para los Clubes 🧭',
+        description: 'Ahora cada Club puede personalizar su propio menú de navegación desde Configuración → Identidad → "Menú Principal", igual que ya lo hacían los sitios de Evento/Convención. Se pueden reordenar los elementos (▲▼), ocultar o mostrar secciones del sistema, agregar secciones establecidas en el Onboarding (Inicio, Sobre Nosotros, Proyectos, Noticias, Eventos, Contacto, etc.) y crear enlaces manuales a páginas propias o externas. Los sitios de distrito, asociación e intercambio conservan su menú fijo.',
+        date: new Date().toISOString(),
+        tags: ['clubes', 'menú', 'navegación', 'configuración'],
+        type: 'feature'
+    },
     {
         version: '4.521.0',
         title: 'Generador de Pendones: créditos al pie, más sobrios 🔻',

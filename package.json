@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.521.0",
-  "cache_bust": "2026-06-29u (Generador de pendones: el copyright queda anclado al fondo del panel; 'Valkomen LLC' sin negrita ni subrayado (mismo color que la versión) y se subraya solo al pasar el cursor)",
+  "version": "4.522.0",
+  "cache_bust": "2026-07-12a (Menú principal configurable para los Clubes: reordenar, ocultar/mostrar secciones del sistema y crear enlaces a páginas propias/externas desde Configuración → Identidad; sitios de distrito/asociación/intercambio conservan su menú fijo)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
