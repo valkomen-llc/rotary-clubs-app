@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.532.0 | 2026-07-12 (Los bloques de aporte ahora salen en Maneras de Contribuir)
-// Cache bust: 2026-07-12k
+// UI V4.533.0 | 2026-07-12 (Fix: suscribirse a la membresía con bloques por defecto)
+// Cache bust: 2026-07-12l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.533.0',
+        title: 'Arreglo: "Bloque de pago no encontrado" al suscribirse 🔧',
+        description: 'Corregimos el error "Bloque de pago no encontrado" que aparecía al pulsar Suscribirme en la Membresía Rotaria cuando el club aún no había guardado sus bloques de pago. Ahora el servidor usa los bloques por defecto como respaldo para resolver el monto de la suscripción, así que el socio puede suscribirse sin necesidad de guardar antes en el panel.',
+        date: new Date().toISOString(),
+        tags: ['membresía', 'suscripción', 'stripe', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.532.0',
         title: 'Los bloques de aporte ahora aparecen en Maneras de Contribuir 🧩💙',
