@@ -37,7 +37,7 @@ const PaymentBlocksCarousel: React.FC<{ blocks: PaymentBlock[] }> = ({ blocks })
                         <div key={block.id} className="w-full flex-shrink-0 px-1">
                             <div className={`grid gap-8 items-stretch ${block.image ? 'md:grid-cols-2' : 'max-w-md mx-auto'}`}>
                                 {block.image && (
-                                    <div className="rounded-3xl overflow-hidden shadow-xl">
+                                    <div className="rounded-3xl overflow-hidden">
                                         <img
                                             src={block.image}
                                             alt={block.title}
