@@ -196,6 +196,11 @@ router.get('/by-domain', async (req, res) => {
             })(),
             // Visibilidad del bloque de sellos de credibilidad (La Fundación Rotaria). Default: visible.
             trfCredibilityVisible: settings['trf_credibility_visible'] !== 'false',
+            // Bloques de pago configurables de la página Aportes (donación/aporte/membresía).
+            paymentBlocks: (() => {
+                try { return settings['payment_blocks'] ? JSON.parse(settings['payment_blocks']) : []; }
+                catch { return []; }
+            })(),
             // Contenido editable de la sección "Somos gente de acción" (Evento/Convención).
             actionContent: (() => {
                 try { return settings['action_section_content'] ? JSON.parse(settings['action_section_content']) : {}; }

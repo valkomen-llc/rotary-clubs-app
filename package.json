@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.527.0",
-  "cache_bust": "2026-07-12f (Bloque de sellos de La Fundación Rotaria: ahora se puede ocultar/mostrar desde Configuración → Identidad y con controles inline (Editar/Ocultar) sobre el bloque en el sitio, visibles solo para administradores con sesión)",
+  "version": "4.528.0",
+  "cache_bust": "2026-07-12g (Fase 1 módulo de pagos: nuevo editor 'Bloques de Pago' en el panel para crear/editar/reordenar/ocultar tarjetas de Donación, Aporte y Membresía; la página Aportes se arma dinámicamente desde esa config, con los 3 bloques actuales por defecto)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
