@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.526.0 | 2026-07-12 (Botón de subir imagen siempre visible en Imágenes del Sitio)
-// Cache bust: 2026-07-12e
+// UI V4.527.0 | 2026-07-12 (Editar/ocultar el bloque de sellos: panel + lápiz inline)
+// Cache bust: 2026-07-12f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.527.0',
+        title: 'Editar u ocultar el bloque de sellos de La Fundación Rotaria ✏️👁️',
+        description: 'El bloque de sellos de credibilidad de "Maneras de Contribuir" ahora se puede ocultar o mostrar según lo necesites, desde dos lugares: (1) un interruptor en Configuración → Identidad → "Sellos de La Fundación Rotaria"; y (2) directamente sobre el bloque en el sitio, donde los administradores con sesión iniciada ven un botón "Editar" (lleva a Imágenes del Sitio para cambiar los sellos) y "Ocultar/Mostrar". Los visitantes no ven estos controles.',
+        date: new Date().toISOString(),
+        tags: ['maneras de contribuir', 'fundación rotaria', 'admin', 'UX'],
+        type: 'feature'
+    },
     {
         version: '4.526.0',
         title: 'Botón "Subir imagen" siempre visible en Imágenes del Sitio ⬆️👁️',

@@ -1,8 +1,14 @@
-import { Star } from 'lucide-react';
+import { useState } from 'react';
+import { Star, Pencil, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useSiteImages } from '../hooks/useSiteImages';
+import { useClub } from '../contexts/ClubContext';
+import { useAuth } from '../hooks/useAuth';
 
 // Una imagen se considera "subida" (personalizada) si no es un asset por defecto.
 const isUploaded = (url?: string) => !!url && !url.includes('/defaults/');
+
+const EDITOR_ROLES = ['administrator', 'club_admin', 'editor', 'crowdfunder'];
 
 // Rueda de Rotary autocontenida (SVG). Usa `currentColor`, con el centro
 // recortado (fill-rule evenodd) para que funcione sobre cualquier fondo.
@@ -54,6 +60,10 @@ export const TrfLogoLockup = ({ className = '' }: { className?: string }) => (
 // Totalmente autocontenida (sin imágenes externas), pensada para fondos oscuros.
 const FoundationCredibility = ({ percent = 90.8 }: { percent?: number }) => {
     const images = useSiteImages();
+    const { club, refreshClub } = useClub();
+    const { isAuthenticated, user } = useAuth();
+    const [saving, setSaving] = useState(false);
+
     const r = 42;
     const circ = 2 * Math.PI * r;
     const filled = (circ * percent) / 100;
@@ -63,8 +73,55 @@ const FoundationCredibility = ({ percent = 90.8 }: { percent?: number }) => {
     const efficiency = images.trfEfficiencyBadge;
     const logo = images.trfFoundationLogo;
 
+    const canEdit = isAuthenticated && EDITOR_ROLES.includes(user?.role || '');
+    const visible = (club as any)?.trfCredibilityVisible !== false;
+
+    const toggleVisible = async () => {
+        if (!(club as any)?.id) return;
+        setSaving(true);
+        try {
+            const API = import.meta.env.VITE_API_URL || '/api';
+            const token = localStorage.getItem('rotary_token');
+            const res = await fetch(`${API}/admin/clubs/${(club as any).id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ trfCredibilityVisible: !visible }),
+            });
+            if (res.ok) await refreshClub?.();
+        } catch { /* noop */ } finally {
+            setSaving(false);
+        }
+    };
+
+    // Oculto para el público; los admins ven un aviso para reactivarlo.
+    if (!visible && !canEdit) return null;
+    if (!visible && canEdit) {
+        return (
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 py-8 px-6 border border-dashed border-white/25 rounded-2xl text-white/70 max-w-2xl mx-auto">
+                <EyeOff className="w-5 h-5 shrink-0" />
+                <span className="text-sm text-center">Bloque de sellos de La Fundación Rotaria <b>oculto</b>. Solo tú (administrador) ves este aviso.</span>
+                <button onClick={toggleVisible} disabled={saving}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 transition whitespace-nowrap">
+                    {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />} Mostrar bloque
+                </button>
+            </div>
+        );
+    }
+
     return (
-        <div className="flex flex-col items-center gap-12">
+        <div className="relative flex flex-col items-center gap-12">
+            {canEdit && (
+                <div className="absolute -top-3 right-0 md:right-2 flex items-center gap-2 z-10">
+                    <Link to="/admin/imagenes-sitio" title="Cambiar los sellos"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur border border-white/20 transition">
+                        <Pencil className="w-3.5 h-3.5" /> Editar
+                    </Link>
+                    <button onClick={toggleVisible} disabled={saving} title="Ocultar este bloque en el sitio"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur border border-white/20 transition">
+                        {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <EyeOff className="w-3.5 h-3.5" />} Ocultar
+                    </button>
+                </div>
+            )}
             <div className="flex flex-col sm:flex-row items-center justify-center gap-10 sm:gap-16 md:gap-24">
                 {/* Charity Navigator — imagen subida o diseño por defecto */}
                 {isUploaded(charity?.url) ? (
