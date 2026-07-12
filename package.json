@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.537.2",
-  "cache_bust": "2026-07-12r (Igualar altura de las tarjetas del carrusel: la grilla interna (imagen+tarjeta) ahora ocupa la altura completa del slide (h-full), así los 3 aportes quedan a la misma altura sin depender del texto)",
+  "version": "4.538.0",
+  "cache_bust": "2026-07-12s (Nuevo editor 'Maneras de Contribuir' en el panel para editar los textos de esa página (encabezado + tarjeta destacada del hero), guardando en ContentSection (page='contribucion'); + accesos directos a imagen/bloques/sellos y fix de enlaces #/ a rutas reales)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

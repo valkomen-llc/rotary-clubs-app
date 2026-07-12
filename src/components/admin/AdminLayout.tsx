@@ -7,6 +7,7 @@ import {
     FolderKanban,
     Newspaper,
     HeartHandshake,
+    Heart,
     Image as ImageIcon,
     Settings,
     LogOut,
@@ -446,6 +447,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             { icon: ImageIcon, label: 'Multimedia', path: '/admin/media', category: 'Contenido', keywords: ['foto', 'video', 'imagen', 'galeria', 'archivo'] },
             { icon: Palette, label: 'Imágenes del Sitio', path: '/admin/imagenes-sitio', category: 'Contenido', keywords: ['hero', 'banner', 'portada', 'diseno'] },
             { icon: HeartHandshake, label: 'Bloques de Pago', path: '/admin/bloques-pago', category: 'Contenido', keywords: ['aportes', 'donaciones', 'membresia', 'cuota', 'pago', 'stripe', 'bloques'] },
+            { icon: Heart, label: 'Maneras de Contribuir', path: '/admin/maneras-de-contribuir', category: 'Contenido', keywords: ['maneras', 'contribuir', 'aportes', 'donar', 'textos', 'pagina'] },
             { icon: Upload, label: 'Centro de Descargas', path: '/admin/descargas', category: 'Contenido', keywords: ['descargas', 'archivos', 'manuales', 'plantillas'] }
         );
 
