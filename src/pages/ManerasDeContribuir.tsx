@@ -19,7 +19,8 @@ const ManerasDeContribuir = () => {
     // Bloques de pago configurables (Donación / Aporte / Membresía).
     const blocks = resolvePaymentBlocks((club as any)?.paymentBlocks).filter(b => b.enabled);
     // Color de fondo de la sección de aportes (configurable; default gris claro).
-    const blocksBg = getC('style', 'blocksBg', '#F9FAFB');
+    // Nota: se lee de `sections` directo (getC se define más abajo → evitar TDZ).
+    const blocksBg = sections['style']?.blocksBg || '#F9FAFB';
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [amount, setAmount] = useState('50');
     const [frequency, setFrequency] = useState<'one-time' | 'monthly'>('one-time');
