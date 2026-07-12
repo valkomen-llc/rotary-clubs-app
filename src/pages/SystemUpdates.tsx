@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.537.0 | 2026-07-12 (Carrusel de aportes al mismo ancho que la sección de abajo)
-// Cache bust: 2026-07-12p
+// UI V4.537.1 | 2026-07-12 (Quitar sombra/caja detrás de las tarjetas de aporte)
+// Cache bust: 2026-07-12q
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.537.1',
+        title: 'Sin sombra detrás de las tarjetas de aporte 🧼',
+        description: 'Quitamos la sombra que se veía como una "caja" detrás de las tarjetas de aporte y de la imagen del carrusel. Ahora quedan limpias, con un borde sutil y sin el recuadro de fondo.',
+        date: new Date().toISOString(),
+        tags: ['aportes', 'carrusel', 'UI'],
+        type: 'fix'
+    },
     {
         version: '4.537.0',
         title: 'El carrusel de aportes ahora ocupa el ancho completo 📐',

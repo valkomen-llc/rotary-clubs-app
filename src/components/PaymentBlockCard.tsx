@@ -95,7 +95,7 @@ const PaymentBlockCard: React.FC<{ block: PaymentBlock }> = ({ block }) => {
     };
 
     return (
-        <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm hover:shadow-xl transition-all flex flex-col h-full">
+        <div className="bg-white rounded-3xl p-8 border border-gray-100 flex flex-col h-full">
             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-6 ${theme.bubble}`}>
                 <Icon className="w-7 h-7" />
             </div>
