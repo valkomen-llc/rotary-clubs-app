@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.534.0 | 2026-07-12 (Restaurar el hero de Aporte Voluntario en Maneras de Contribuir)
-// Cache bust: 2026-07-12m
+// UI V4.535.0 | 2026-07-12 (Carrusel de aportes con imagen — auto + flechas)
+// Cache bust: 2026-07-12n
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.535.0',
+        title: 'Los aportes ahora en carrusel con imagen 🎠🖼️',
+        description: 'Los 3 tipos de aporte ya no van en 3 columnas: ahora se muestran en un carrusel, uno a la vez y acompañados de una imagen. Avanza solo cada 8 segundos y también puedes pasarlos manualmente con las flechas o los puntos; se pausa al pasar el cursor. Cada bloque tiene su propia imagen, editable en Panel → Bloques de Pago ("Imagen del carrusel"). Aplica en Maneras de Contribuir y en la página Aportes.',
+        date: new Date().toISOString(),
+        tags: ['aportes', 'carrusel', 'UI', 'maneras de contribuir'],
+        type: 'feature'
+    },
     {
         version: '4.534.0',
         title: 'Vuelve el hero de "Aporte Voluntario" en Maneras de Contribuir 🦸',

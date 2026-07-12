@@ -194,6 +194,20 @@ const PaymentBlocksManager: React.FC = () => {
                                             className="mt-1.5 w-full px-4 py-2.5 bg-gray-50 border-2 border-transparent rounded-xl focus:border-rotary-blue/30 focus:bg-white outline-none text-sm resize-none" />
                                     </div>
 
+                                    <div>
+                                        <label className="text-[11px] font-black text-gray-400 uppercase tracking-wider">Imagen del carrusel (URL)</label>
+                                        <div className="mt-1.5 flex items-center gap-3">
+                                            {block.image ? (
+                                                <img src={block.image} alt="" className="w-16 h-16 rounded-xl object-cover border border-gray-100 flex-shrink-0" />
+                                            ) : (
+                                                <div className="w-16 h-16 rounded-xl bg-gray-50 border border-dashed border-gray-200 flex-shrink-0" />
+                                            )}
+                                            <input value={block.image || ''} onChange={e => update(idx, { image: e.target.value })}
+                                                placeholder="Pega la URL de una imagen (ej. de Multimedia) o déjalo vacío"
+                                                className="flex-1 px-4 py-2.5 bg-gray-50 border-2 border-transparent rounded-xl focus:border-rotary-blue/30 focus:bg-white outline-none text-sm" />
+                                        </div>
+                                    </div>
+
                                     {/* Ícono */}
                                     <div>
                                         <label className="text-[11px] font-black text-gray-400 uppercase tracking-wider">Ícono</label>

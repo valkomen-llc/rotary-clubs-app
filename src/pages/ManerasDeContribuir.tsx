@@ -6,7 +6,7 @@ import { useCMSContent } from '../hooks/useCMSContent';
 import { useSiteImages } from '../hooks/useSiteImages';
 import { useClub } from '../contexts/ClubContext';
 import FoundationImpactSection from '../sections/FoundationImpactSection';
-import PaymentBlockCard from '../components/PaymentBlockCard';
+import PaymentBlocksCarousel from '../components/PaymentBlocksCarousel';
 import { resolvePaymentBlocks } from '../lib/paymentBlocks';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -18,11 +18,6 @@ const ManerasDeContribuir = () => {
 
     // Bloques de pago configurables (Donación / Aporte / Membresía).
     const blocks = resolvePaymentBlocks((club as any)?.paymentBlocks).filter(b => b.enabled);
-    const blocksCols = blocks.length === 1
-        ? 'lg:grid-cols-1 max-w-md mx-auto'
-        : blocks.length === 2
-            ? 'md:grid-cols-2 max-w-4xl mx-auto'
-            : 'md:grid-cols-2 lg:grid-cols-3';
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [amount, setAmount] = useState('50');
     const [frequency, setFrequency] = useState<'one-time' | 'monthly'>('one-time');
@@ -127,13 +122,11 @@ const ManerasDeContribuir = () => {
                 </div>
             </section>
 
-            {/* Formas de aportar — bloques configurables (Donación / Aporte / Membresía) */}
+            {/* Formas de aportar — carrusel de bloques (Donación / Aporte / Membresía) */}
             {blocks.length > 0 && (
                 <section className="py-20 md:py-24 bg-gray-50">
                     <div className="max-w-6xl mx-auto px-6">
-                        <div className={`grid grid-cols-1 gap-8 ${blocksCols}`}>
-                            {blocks.map(b => <PaymentBlockCard key={b.id} block={b} />)}
-                        </div>
+                        <PaymentBlocksCarousel blocks={blocks} />
                     </div>
                 </section>
             )}

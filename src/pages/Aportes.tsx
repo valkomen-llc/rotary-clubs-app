@@ -2,19 +2,12 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { Heart, Globe2, ShieldCheck } from 'lucide-react';
 import { useClub } from '../contexts/ClubContext';
-import PaymentBlockCard from '../components/PaymentBlockCard';
+import PaymentBlocksCarousel from '../components/PaymentBlocksCarousel';
 import { resolvePaymentBlocks } from '../lib/paymentBlocks';
 
 export default function Aportes() {
     const { club } = useClub();
     const blocks = resolvePaymentBlocks((club as any)?.paymentBlocks).filter(b => b.enabled);
-
-    // Grilla responsiva según cantidad de bloques activos.
-    const cols = blocks.length === 1
-        ? 'lg:grid-cols-1 max-w-md mx-auto'
-        : blocks.length === 2
-            ? 'md:grid-cols-2 max-w-4xl mx-auto'
-            : 'md:grid-cols-2 lg:grid-cols-3';
 
     return (
         <div className="min-h-screen bg-gray-50 font-sans">
@@ -42,11 +35,7 @@ export default function Aportes() {
                             Pronto habilitaremos las opciones de aporte.
                         </div>
                     ) : (
-                        <div className={`grid grid-cols-1 gap-8 ${cols}`}>
-                            {blocks.map(block => (
-                                <PaymentBlockCard key={block.id} block={block} />
-                            ))}
-                        </div>
+                        <PaymentBlocksCarousel blocks={blocks} />
                     )}
 
                     {/* Trust indicators */}
