@@ -7,6 +7,7 @@ export interface SiteImages {
     causes?: ImgSlot[];
     foundation?: ImgSlot;
     join?: ImgSlot;
+    donateHero?: ImgSlot;
     aboutHero?: ImgSlot;
     aboutCarousel?: ImgSlot[];
     causesHero?: ImgSlot;
@@ -84,6 +85,7 @@ const DEFAULTS = {
         { url: 'https://rotary-platform-assets.s3.us-east-1.amazonaws.com/clubs/global/images/1774367725680-home-areas-of-focus-2025-Protecting-the-Environment-2024-04-012.jpg', alt: 'Protección del medioambiente' }
     ],
     aboutHero: { url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1600&h=500&fit=crop', alt: 'Quiénes Somos' },
+    donateHero: { url: 'https://www.rotary.org/sites/default/files/styles/w_2800/public/Donate-hero-w2800x975-1.jpg?itok=PDJdtKJ9', alt: 'Maneras de contribuir' },
     causesHero: { url: 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=1600&h=600&fit=crop', alt: 'Nuestras Causas' },
     polio: { url: 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&h=600&fit=crop', alt: 'Erradicación de la Polio' },
     paulHarrisAvatar: { url: 'https://www.rotary.org/sites/default/files/styles/w_600/public/Paul%20Harris%20portrait.jpg', alt: 'Paul Harris' },
@@ -163,7 +165,7 @@ export function useSiteImages(): SiteImages & { _loading?: boolean } {
 
                 const allKeys = [
                     'hero', 'aboutCarousel', 'history', 'yep', 'rotexCarousel', 'causes',
-                    'foundation', 'join', 'aboutHero', 'causesHero', 'polio', 'rotaract', 
+                    'foundation', 'join', 'donateHero', 'aboutHero', 'causesHero', 'polio', 'rotaract',
                     'interact', 'yepExperience', 'yepBanner', 'ngse', 'rotexHero', 
                     'historyHero', 'historyImpact', 'historyTimeline', 'historyFounders',
                     'paulHarrisAvatar', 'chatbotPublicAvatar', 'chatbotAdminAvatar', 'missionControl'
