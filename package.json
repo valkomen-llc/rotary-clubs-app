@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.533.0",
-  "cache_bust": "2026-07-12l (Fix suscripciones: el backend usa los bloques por defecto como respaldo al resolver el monto de la membresía recurrente, corrigiendo 'Bloque de pago no encontrado' cuando el club no había guardado sus bloques)",
+  "version": "4.534.0",
+  "cache_bust": "2026-07-12m (Se restaura la tarjeta destacada de 'Aporte Voluntario' sobre el hero de Maneras de Contribuir (con su botón APORTAR y modal); ahora conviven el hero destacado y los 3 bloques de aporte debajo)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
