@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.527.0 | 2026-07-12 (Editar/ocultar el bloque de sellos: panel + lápiz inline)
-// Cache bust: 2026-07-12f
+// UI V4.528.0 | 2026-07-12 (Fase 1: Editor de Bloques de Pago — Aportes configurables)
+// Cache bust: 2026-07-12g
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.528.0',
+        title: 'Nuevo: Editor de Bloques de Pago (Aportes configurables) 💳🧩',
+        description: 'Estrenamos el módulo "Bloques de Pago" (Panel → Bloques de Pago) para configurar las tarjetas de la página de Aportes sin tocar código: crea, edita, reordena, activa u oculta bloques de Donación, Aporte voluntario y Membresía/Cuota. En cada bloque defines título, descripción, ícono, color, montos sugeridos, monto libre, mensaje, opción anónimo, beneficios y texto del botón. La página pública de Aportes ahora se arma dinámicamente desde esta configuración (con los 3 bloques actuales como punto de partida). Es la Fase 1 del módulo de pagos; siguen los pagos recurrentes y el generador con IA.',
+        date: new Date().toISOString(),
+        tags: ['aportes', 'pagos', 'donaciones', 'membresía', 'admin'],
+        type: 'feature'
+    },
     {
         version: '4.527.0',
         title: 'Editar u ocultar el bloque de sellos de La Fundación Rotaria ✏️👁️',

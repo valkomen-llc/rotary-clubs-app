@@ -85,6 +85,7 @@ const NewsManagement = React.lazy(() => import('./pages/admin/News'));
 const ProjectsManagement = React.lazy(() => import('./pages/admin/Projects'));
 const UsersManagement = React.lazy(() => import('./pages/admin/Users'));
 const StoreManagement = React.lazy(() => import('./pages/admin/StoreManagement'));
+const PaymentBlocksManager = React.lazy(() => import('./pages/admin/PaymentBlocksManager'));
 const OrdersManagement = React.lazy(() => import('./pages/admin/OrdersManagement'));
 const WalletManagement = React.lazy(() => import('./pages/admin/WalletManagement'));
 const NotificationSettings = React.lazy(() => import('./pages/admin/NotificationSettings'));
@@ -588,6 +589,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <OrdersManagement />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/bloques-pago"
+                  element={
+                    <PrivateRoute>
+                      <PaymentBlocksManager />
                     </PrivateRoute>
                   }
                 />
