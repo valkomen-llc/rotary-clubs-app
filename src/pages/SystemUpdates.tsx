@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.535.0 | 2026-07-12 (Carrusel de aportes con imagen — auto + flechas)
-// Cache bust: 2026-07-12n
+// UI V4.536.0 | 2026-07-12 (Carrusel: tarjetas uniformes, membresía primero, periodicidad desplegable)
+// Cache bust: 2026-07-12o
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.536.0',
+        title: 'Carrusel de aportes: más parejo y con periodicidad desplegable 🎛️',
+        description: 'Pulimos el carrusel de aportes: (1) las 3 tarjetas ahora tienen el mismo tamaño y la imagen acompaña a la altura completa; (2) la Membresía Rotaria queda de primera; y (3) en la Membresía, "Elige la periodicidad" pasa a ser un menú desplegable — al abrirlo aparecen las opciones disponibles (Mensual/Trimestral/Semestral/Anual) y el precio elegido se muestra destacado.',
+        date: new Date().toISOString(),
+        tags: ['aportes', 'carrusel', 'membresía', 'UI'],
+        type: 'improvement'
+    },
     {
         version: '4.535.0',
         title: 'Los aportes ahora en carrusel con imagen 🎠🖼️',
