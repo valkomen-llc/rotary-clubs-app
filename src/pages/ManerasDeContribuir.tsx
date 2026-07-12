@@ -6,6 +6,8 @@ import { useCMSContent } from '../hooks/useCMSContent';
 import { useSiteImages } from '../hooks/useSiteImages';
 import { useClub } from '../contexts/ClubContext';
 import FoundationImpactSection from '../sections/FoundationImpactSection';
+import PaymentBlockCard from '../components/PaymentBlockCard';
+import { resolvePaymentBlocks } from '../lib/paymentBlocks';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -13,6 +15,14 @@ const ManerasDeContribuir = () => {
     const { club } = useClub();
     const { sections } = useCMSContent('contribucion', club.id);
     const siteImages = useSiteImages();
+
+    // Bloques de pago configurables (Donación / Aporte / Membresía).
+    const blocks = resolvePaymentBlocks((club as any)?.paymentBlocks).filter(b => b.enabled);
+    const blocksCols = blocks.length === 1
+        ? 'lg:grid-cols-1 max-w-md mx-auto'
+        : blocks.length === 2
+            ? 'md:grid-cols-2 max-w-4xl mx-auto'
+            : 'md:grid-cols-2 lg:grid-cols-3';
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [amount, setAmount] = useState('50');
     const [frequency, setFrequency] = useState<'one-time' | 'monthly'>('one-time');
@@ -98,24 +108,18 @@ const ManerasDeContribuir = () => {
                     <div className="absolute inset-0 bg-white/10" />
                 </div>
 
-                <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full flex justify-center lg:justify-end">
-                    <div className="bg-white rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] p-10 max-w-md w-full border border-gray-50/50 mr-0 lg:mr-8 transform hover:-translate-y-1 transition-transform duration-300">
-                        <h2 className="text-[26px] font-bold text-gray-800 text-center mb-6 leading-tight">
-                            {getC('card', 'title', "Aporte voluntario al Club")}
-                        </h2>
-                        <p className="text-gray-600 text-[15px] text-center mb-10 leading-relaxed px-2">
-                            {getC('card', 'description', `Tu contribución fortalece el impacto del club ${club.name} y sostiene iniciativas de servicio que transforman vidas.`)}
-                        </p>
-                        <button
-                            onClick={() => { setErrorMsg(null); setIsModalOpen(true); }}
-                            className="w-full bg-[#9D2235] hover:bg-[#8B1E2F] text-white font-bold py-[18px] rounded-lg flex items-center justify-center gap-3 transition-colors uppercase tracking-widest text-[13px]"
-                        >
-                            <Heart className="w-5 h-5 fill-current" />
-                            {getC('card', 'buttonText', "APORTAR")}
-                        </button>
-                    </div>
-                </div>
             </section>
+
+            {/* Formas de aportar — bloques configurables (Donación / Aporte / Membresía) */}
+            {blocks.length > 0 && (
+                <section className="py-20 md:py-24 bg-gray-50">
+                    <div className="max-w-6xl mx-auto px-6">
+                        <div className={`grid grid-cols-1 gap-8 ${blocksCols}`}>
+                            {blocks.map(b => <PaymentBlockCard key={b.id} block={b} />)}
+                        </div>
+                    </div>
+                </section>
+            )}
 
             {/* Donation Modal */}
             {isModalOpen && (

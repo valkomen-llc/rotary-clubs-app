@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.531.0 | 2026-07-12 (Fase 3: generar bloques de pago con IA desde el Cerebro)
-// Cache bust: 2026-07-12j
+// UI V4.532.0 | 2026-07-12 (Los bloques de aporte ahora salen en Maneras de Contribuir)
+// Cache bust: 2026-07-12k
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.532.0',
+        title: 'Los bloques de aporte ahora aparecen en Maneras de Contribuir 🧩💙',
+        description: 'Los bloques de pago (Aporte Voluntario, Membresía Rotaria y Erradicación a la Polio) ahora se muestran directamente en la página Maneras de Contribuir, que es la que está enlazada en el menú — antes solo vivían en /aportes, que no estaba enlazada, por eso no se veían. Se configuran igual desde Panel → Bloques de Pago. También agregamos "Aportes" a las secciones disponibles del menú, por si quieres enlazar además esa página. Nota: si tu panel o el sitio se ven sin cambios, refresca con Cmd/Ctrl+Shift+R (el navegador cachea la versión anterior).',
+        date: new Date().toISOString(),
+        tags: ['aportes', 'maneras de contribuir', 'menú', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.531.0',
         title: 'Fase 3: crea bloques de pago con IA ✨🧠',

@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.531.0",
-  "cache_bust": "2026-07-12j (Fase 3 módulo de pagos: botón 'Generar con IA' en Bloques de Pago — una instrucción arma el bloque completo (tipo, textos, ícono, color, montos, beneficios y recurrencia) usando el Cerebro del club, vía /content-studio/generate-payment-block; el bloque se agrega para revisar antes de guardar)",
+  "version": "4.532.0",
+  "cache_bust": "2026-07-12k (Fix: los bloques de pago ahora se renderizan en la página Maneras de Contribuir (la enlazada en el menú), no solo en /aportes; se agrega 'Aportes' a las secciones del menú configurable. Requiere refresco fuerte del navegador por caché)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
