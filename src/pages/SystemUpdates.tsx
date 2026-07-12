@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.529.0 | 2026-07-12 (Fase 2: Membresías recurrentes — suscripciones Stripe)
-// Cache bust: 2026-07-12h
+// UI V4.530.0 | 2026-07-12 (3 aportes de Rotary + moneda por club (COP) + templating {club})
+// Cache bust: 2026-07-12i
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.530.0',
+        title: 'Los 3 aportes rotarios + moneda del club (COP) 💙🤝🌍',
+        description: 'La página de Aportes ahora trae de fábrica los 3 bloques rotarios listos: Aporte Voluntario (con nota de certificado tributario), Membresía Rotaria (cobro recurrente Mensual/Trimestral/Semestral/Anual) y Erradicación a la Polio, con sus textos y beneficios. Además agregamos la Moneda del club (Configuración → Identidad): los montos, donaciones y membresías ahora se cobran en la moneda correcta (ej. COP para Colombia, con formato $120.000) — antes todo asumía USD. Los textos pueden usar {club}, que se reemplaza por el nombre del club. Si ya tenías bloques guardados, usa "Restaurar bloques por defecto" en Bloques de Pago para cargar los nuevos.',
+        date: new Date().toISOString(),
+        tags: ['aportes', 'membresía', 'moneda', 'COP', 'rotary'],
+        type: 'feature'
+    },
     {
         version: '4.529.0',
         title: 'Fase 2: Membresías con cobro recurrente (suscripciones) 🔁💳',

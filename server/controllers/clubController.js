@@ -179,7 +179,7 @@ export const updateClub = async (req, res) => {
         primaryColor, secondaryColor, actionSectionBg, joinSectionBg, areasSectionBg, footerBg, copyrightBg, copyrightTextColor, buttonBg, buttonHoverBg, buttonTextColor, buttonTextHoverColor, eventHeroImages, eventNavMenu, eventNavExtra, eventNavOrder, actionContent, statsContent, joinContent, foundationContent, causesContent, eventSections, footerConfig, logo, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, avatarUrl, status,
         stripePublicKey, stripeSecretKey, useStripe,
         usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
-        storeActive, logoHeaderSize, autoGenerateCalendar, mapStyle, trfCredibilityVisible, paymentBlocks,
+        storeActive, logoHeaderSize, autoGenerateCalendar, mapStyle, trfCredibilityVisible, paymentBlocks, currency,
         memberCount, moduleProjects, moduleEvents, moduleRotaract, moduleInteract, moduleEcommerce, moduleDian,
         moduleYouthExchange, moduleNgse, moduleRotex,
         expirationBannerActive, expirationBannerMessage,
@@ -343,6 +343,7 @@ export const updateClub = async (req, res) => {
                 'event_sections_visibility': eventSections !== undefined ? JSON.stringify(eventSections) : undefined,
                 'trf_credibility_visible': trfCredibilityVisible !== undefined ? String(trfCredibilityVisible) : undefined,
                 'payment_blocks': paymentBlocks !== undefined ? JSON.stringify(paymentBlocks) : undefined,
+                'club_currency': currency !== undefined ? String(currency).toUpperCase() : undefined,
                 'footer_config': footerConfig !== undefined ? JSON.stringify(footerConfig) : undefined,
                 'causes_section_content': causesContent !== undefined ? JSON.stringify(causesContent) : undefined,
                 'rotaract_logo': rotaractLogo,
@@ -472,4 +473,4 @@ export const batchUpsertMembers = async (req, res) => {
     }
 };
 
-console.log('[clubController] cargado (v4.528.0 — Fase 1 módulo de pagos: persiste payment_blocks (bloques de Donación/Aporte/Membresía de la página Aportes) + trf_credibility_visible; menú principal configurable vía event_nav_order)');
+console.log('[clubController] cargado (v4.530.0 — módulo de pagos: persiste payment_blocks + club_currency (moneda del club) + trf_credibility_visible; menú principal configurable vía event_nav_order)');

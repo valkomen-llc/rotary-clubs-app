@@ -201,6 +201,12 @@ router.get('/by-domain', async (req, res) => {
                 try { return settings['payment_blocks'] ? JSON.parse(settings['payment_blocks']) : []; }
                 catch { return []; }
             })(),
+            // Moneda del club para pagos/aportes. Default por país (Colombia → COP), si no USD.
+            currency: (() => {
+                if (settings['club_currency']) return String(settings['club_currency']).toUpperCase();
+                const country = String(activeClub.country || '').toLowerCase();
+                return /colombia|^co$/.test(country) ? 'COP' : 'USD';
+            })(),
             // Contenido editable de la sección "Somos gente de acción" (Evento/Convención).
             actionContent: (() => {
                 try { return settings['action_section_content'] ? JSON.parse(settings['action_section_content']) : {}; }

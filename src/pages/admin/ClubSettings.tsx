@@ -154,6 +154,7 @@ const ClubSettings: React.FC = () => {
         mapStyle: 'm',
         storeActive: true,
         trfCredibilityVisible: true,
+        currency: 'USD',
     });
     
     const [uploading, setUploading] = useState(false);
@@ -363,6 +364,7 @@ const ClubSettings: React.FC = () => {
                 mapStyle: club.mapStyle || 'm',
                 storeActive: settingsMap['store_active'] !== 'false',
                 trfCredibilityVisible: (club as any).trfCredibilityVisible !== false && settingsMap['trf_credibility_visible'] !== 'false',
+                currency: (club as any).currency || settingsMap['club_currency'] || 'USD',
             });
 
             if (club.paymentConfigs && Array.isArray(club.paymentConfigs)) {
@@ -756,6 +758,24 @@ const ClubSettings: React.FC = () => {
                                         value={formData.country}
                                         onChange={e => setFormData({...formData, country: e.target.value})}
                                     />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Moneda de pagos</label>
+                                    <select
+                                        className="w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:border-rotary-blue/20 rounded-xl outline-none transition-all font-medium"
+                                        value={formData.currency}
+                                        onChange={e => setFormData({...formData, currency: e.target.value})}
+                                    >
+                                        <option value="USD">USD — Dólar</option>
+                                        <option value="COP">COP — Peso colombiano</option>
+                                        <option value="MXN">MXN — Peso mexicano</option>
+                                        <option value="EUR">EUR — Euro</option>
+                                        <option value="ARS">ARS — Peso argentino</option>
+                                        <option value="CLP">CLP — Peso chileno</option>
+                                        <option value="PEN">PEN — Sol peruano</option>
+                                        <option value="BRL">BRL — Real brasileño</option>
+                                    </select>
+                                    <p className="text-[11px] text-gray-400">Se usa en Aportes, donaciones y membresías (Stripe).</p>
                                 </div>
                             </div>
                         </div>

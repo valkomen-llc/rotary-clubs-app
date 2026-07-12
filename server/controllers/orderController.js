@@ -2,6 +2,19 @@ import { authMiddleware } from '../middleware/auth.js';
 import db from '../lib/db.js';
 import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (OBLIGATORIO)
 
+// Resuelve la moneda del club: setting club_currency, o por país (Colombia → COP), o USD.
+export async function resolveClubCurrency(clubId) {
+    try {
+        const s = await db.query('SELECT value FROM "Setting" WHERE key = $1 AND "clubId" = $2 LIMIT 1', ['club_currency', clubId]);
+        if (s.rows[0]?.value) return String(s.rows[0].value).toUpperCase();
+        const c = await db.query('SELECT country FROM "Club" WHERE id = $1 LIMIT 1', [clubId]);
+        const country = String(c.rows[0]?.country || '').toLowerCase();
+        return /colombia|^co$/.test(country) ? 'COP' : 'USD';
+    } catch {
+        return 'USD';
+    }
+}
+
 export const createOrder = async (req, res) => {
     try {
         const { items, customer, shipping, clubId, total } = req.body;
@@ -33,9 +46,12 @@ export const createOrder = async (req, res) => {
             console.warn(`Total mismatch: Calculated ${calculatedTotal}, Received ${total}`);
         }
 
+        const currency = await resolveClubCurrency(clubId);
+
         const order = await prisma.order.create({
             data: {
                 clubId,
+                currency,
                 total: calculatedTotal,
                 subtotal: calculatedTotal,
                 customerName: `${customer.firstName} ${customer.lastName}`,
