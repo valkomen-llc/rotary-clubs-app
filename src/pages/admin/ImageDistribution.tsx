@@ -41,6 +41,9 @@ const DEFAULTS = {
     foundation: { url: 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=1600&h=800&fit=crop', alt: 'Fundación Rotaria' },
     join: { url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=600&h=500&fit=crop', alt: 'Únete a Rotary' },
     donateHero: { url: '/defaults/hero/1-teamwork.png', alt: 'Maneras de contribuir' },
+    trfCharityBadge: { url: '/defaults/foundation/charity-navigator.png', alt: 'Charity Navigator · 4 estrellas' },
+    trfEfficiencyBadge: { url: '/defaults/foundation/efficiency.png', alt: 'Eficacia de las donaciones' },
+    trfFoundationLogo: { url: '/defaults/foundation/rotary-foundation.png', alt: 'The Rotary Foundation' },
     aboutHero: { url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1600&h=500&fit=crop', alt: 'Quiénes Somos' },
     aboutCarousel: [
         { url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=400&h=250&fit=crop', alt: 'Protegemos el medio ambiente' },
@@ -100,6 +103,9 @@ interface SiteImages {
     foundation: ImgSlot;
     join: ImgSlot;
     donateHero?: ImgSlot;
+    trfCharityBadge?: ImgSlot;
+    trfEfficiencyBadge?: ImgSlot;
+    trfFoundationLogo?: ImgSlot;
     aboutHero: ImgSlot;
     aboutCarousel: ImgSlot[];
     causesHero: ImgSlot;
@@ -136,6 +142,14 @@ const BASE_CONTAINERS: Container[] = [
     { key: 'foundation', label: 'Fundación Rotaria', desc: '1 imagen de fondo para la sección de la Fundación. Tamaño ideal: 1600×700px, panorámica.', count: 1, aspect: '16/7' },
     { key: 'join', label: 'Sección Únete', desc: '1 imagen motivacional para la sección de reclutamiento. Tamaño ideal: 800×600px.', count: 1, aspect: '4/3' },
     { key: 'donateHero', label: 'Maneras de Contribuir', desc: '1 imagen de fondo para la portada de la página "Maneras de Contribuir". Tamaño ideal: 1600×700px, panorámica.', count: 1, aspect: '16/7' },
+    {
+        key: 'trf-credibility', label: 'Sellos de La Fundación Rotaria', desc: 'Sellos de credibilidad de "Maneras de Contribuir". Sube los oficiales (Brand Center) o deja el diseño por defecto. Ideal: PNG con fondo transparente.', count: 3, aspect: '5/2',
+        groups: [
+            { key: 'trfCharityBadge', subLabel: 'Charity Navigator', count: 1, aspect: '5/2' },
+            { key: 'trfEfficiencyBadge', subLabel: 'Eficacia de las donaciones', count: 1, aspect: '5/2' },
+            { key: 'trfFoundationLogo', subLabel: 'The Rotary Foundation', count: 1, aspect: '5/2' },
+        ],
+    },
     {
         key: 'about', label: 'Quiénes Somos', desc: 'Imágenes institucionales de la sección Quiénes Somos.', count: 6, aspect: '16/5',
         groups: [

@@ -58,5 +58,7 @@ temp.json
 *.png
 !public/*.png
 !public/*.jpg
+!public/defaults/**/*.png
+!public/defaults/**/*.jpg
 
 .env.production

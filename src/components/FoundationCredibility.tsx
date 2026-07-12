@@ -1,4 +1,8 @@
 import { Star } from 'lucide-react';
+import { useSiteImages } from '../hooks/useSiteImages';
+
+// Una imagen se considera "subida" (personalizada) si no es un asset por defecto.
+const isUploaded = (url?: string) => !!url && !url.includes('/defaults/');
 
 // Rueda de Rotary autocontenida (SVG). Usa `currentColor`, con el centro
 // recortado (fill-rule evenodd) para que funcione sobre cualquier fondo.
@@ -49,52 +53,70 @@ export const TrfLogoLockup = ({ className = '' }: { className?: string }) => (
 // Fila de credibilidad: calificación de 4 estrellas + eficacia de las donaciones.
 // Totalmente autocontenida (sin imágenes externas), pensada para fondos oscuros.
 const FoundationCredibility = ({ percent = 90.8 }: { percent?: number }) => {
+    const images = useSiteImages();
     const r = 42;
     const circ = 2 * Math.PI * r;
     const filled = (circ * percent) / 100;
     const pctLabel = `${percent.toString().replace('.', ',')}%`;
 
+    const charity = images.trfCharityBadge;
+    const efficiency = images.trfEfficiencyBadge;
+    const logo = images.trfFoundationLogo;
+
     return (
         <div className="flex flex-col items-center gap-12">
             <div className="flex flex-col sm:flex-row items-center justify-center gap-10 sm:gap-16 md:gap-24">
-                {/* Charity Navigator — 4 estrellas */}
-                <div className="flex flex-col items-center gap-3 text-center">
-                    <div className="flex gap-1.5">
-                        {[0, 1, 2, 3].map(i => (
-                            <Star key={i} className="w-7 h-7 md:w-8 md:h-8 text-rotary-gold fill-current" strokeWidth={1} />
-                        ))}
-                    </div>
-                    <div>
-                        <p className="text-white font-bold text-lg md:text-xl leading-tight">Charity Navigator</p>
-                        <p className="text-white/60 text-sm">Máxima calificación · 4 estrellas</p>
-                    </div>
-                </div>
-
-                {/* Eficacia de las donaciones — anillo con porcentaje */}
-                <div className="flex items-center gap-5">
-                    <div className="relative w-28 h-28 shrink-0">
-                        <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-                            <circle cx="50" cy="50" r={r} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="8" />
-                            <circle
-                                cx="50" cy="50" r={r} fill="none"
-                                stroke="currentColor"
-                                className="text-rotary-gold"
-                                strokeWidth="8"
-                                strokeLinecap="round"
-                                strokeDasharray={`${filled.toFixed(2)} ${circ.toFixed(2)}`}
-                            />
-                        </svg>
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <span className="text-white font-extrabold text-xl md:text-2xl">{pctLabel}</span>
+                {/* Charity Navigator — imagen subida o diseño por defecto */}
+                {isUploaded(charity?.url) ? (
+                    <img src={charity!.url} alt={charity!.alt || 'Charity Navigator'} className="max-h-28 md:max-h-32 w-auto object-contain" />
+                ) : (
+                    <div className="flex flex-col items-center gap-3 text-center">
+                        <div className="flex gap-1.5">
+                            {[0, 1, 2, 3].map(i => (
+                                <Star key={i} className="w-7 h-7 md:w-8 md:h-8 text-rotary-gold fill-current" strokeWidth={1} />
+                            ))}
+                        </div>
+                        <div>
+                            <p className="text-white font-bold text-lg md:text-xl leading-tight">Charity Navigator</p>
+                            <p className="text-white/60 text-sm">Máxima calificación · 4 estrellas</p>
                         </div>
                     </div>
-                    <p className="text-white/80 text-sm max-w-[200px] text-left leading-snug">
-                        de los fondos se destinan directamente a los programas y su ejecución.
-                    </p>
-                </div>
+                )}
+
+                {/* Eficacia de las donaciones — imagen subida o anillo por defecto */}
+                {isUploaded(efficiency?.url) ? (
+                    <img src={efficiency!.url} alt={efficiency!.alt || 'Eficacia de las donaciones'} className="max-h-28 md:max-h-32 w-auto object-contain" />
+                ) : (
+                    <div className="flex items-center gap-5">
+                        <div className="relative w-28 h-28 shrink-0">
+                            <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+                                <circle cx="50" cy="50" r={r} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="8" />
+                                <circle
+                                    cx="50" cy="50" r={r} fill="none"
+                                    stroke="currentColor"
+                                    className="text-rotary-gold"
+                                    strokeWidth="8"
+                                    strokeLinecap="round"
+                                    strokeDasharray={`${filled.toFixed(2)} ${circ.toFixed(2)}`}
+                                />
+                            </svg>
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <span className="text-white font-extrabold text-xl md:text-2xl">{pctLabel}</span>
+                            </div>
+                        </div>
+                        <p className="text-white/80 text-sm max-w-[200px] text-left leading-snug">
+                            de los fondos se destinan directamente a los programas y su ejecución.
+                        </p>
+                    </div>
+                )}
             </div>
 
-            <TrfLogoLockup />
+            {/* Logo de The Rotary Foundation — imagen subida o lockup por defecto */}
+            {isUploaded(logo?.url) ? (
+                <img src={logo!.url} alt={logo!.alt || 'The Rotary Foundation'} className="h-16 md:h-20 w-auto object-contain" />
+            ) : (
+                <TrfLogoLockup />
+            )}
         </div>
     );
 };

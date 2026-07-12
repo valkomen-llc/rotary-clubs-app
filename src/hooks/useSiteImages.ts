@@ -8,6 +8,9 @@ export interface SiteImages {
     foundation?: ImgSlot;
     join?: ImgSlot;
     donateHero?: ImgSlot;
+    trfCharityBadge?: ImgSlot;
+    trfEfficiencyBadge?: ImgSlot;
+    trfFoundationLogo?: ImgSlot;
     aboutHero?: ImgSlot;
     aboutCarousel?: ImgSlot[];
     causesHero?: ImgSlot;
@@ -86,6 +89,9 @@ const DEFAULTS = {
     ],
     aboutHero: { url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1600&h=500&fit=crop', alt: 'Quiénes Somos' },
     donateHero: { url: '/defaults/hero/1-teamwork.png', alt: 'Maneras de contribuir' },
+    trfCharityBadge: { url: '/defaults/foundation/charity-navigator.png', alt: 'Charity Navigator · 4 estrellas' },
+    trfEfficiencyBadge: { url: '/defaults/foundation/efficiency.png', alt: 'Eficacia de las donaciones' },
+    trfFoundationLogo: { url: '/defaults/foundation/rotary-foundation.png', alt: 'The Rotary Foundation' },
     causesHero: { url: 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=1600&h=600&fit=crop', alt: 'Nuestras Causas' },
     polio: { url: 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&h=600&fit=crop', alt: 'Erradicación de la Polio' },
     paulHarrisAvatar: { url: 'https://www.rotary.org/sites/default/files/styles/w_600/public/Paul%20Harris%20portrait.jpg', alt: 'Paul Harris' },
@@ -165,7 +171,7 @@ export function useSiteImages(): SiteImages & { _loading?: boolean } {
 
                 const allKeys = [
                     'hero', 'aboutCarousel', 'history', 'yep', 'rotexCarousel', 'causes',
-                    'foundation', 'join', 'donateHero', 'aboutHero', 'causesHero', 'polio', 'rotaract',
+                    'foundation', 'join', 'donateHero', 'trfCharityBadge', 'trfEfficiencyBadge', 'trfFoundationLogo', 'aboutHero', 'causesHero', 'polio', 'rotaract',
                     'interact', 'yepExperience', 'yepBanner', 'ngse', 'rotexHero', 
                     'historyHero', 'historyImpact', 'historyTimeline', 'historyFounders',
                     'paulHarrisAvatar', 'chatbotPublicAvatar', 'chatbotAdminAvatar', 'missionControl'

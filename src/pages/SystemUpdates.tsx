@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.524.0 | 2026-07-12 (Fix imágenes rotas en Maneras de Contribuir + credibilidad TRF)
-// Cache bust: 2026-07-12c
+// UI V4.525.0 | 2026-07-12 (Sellos de La Fundación Rotaria editables desde el admin)
+// Cache bust: 2026-07-12d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.525.0',
+        title: 'Sellos de La Fundación Rotaria editables desde el admin 🏅⬆️',
+        description: 'Ahora puedes subir o cambiar los sellos de credibilidad de "Maneras de Contribuir" (Charity Navigator, indicador de eficacia y logo de The Rotary Foundation) desde Configuración → Imágenes del Sitio → "Sellos de La Fundación Rotaria". Si no subes ninguno, se muestra el diseño por defecto de la plataforma (que carga siempre, sin depender de sitios externos).',
+        date: new Date().toISOString(),
+        tags: ['imágenes', 'maneras de contribuir', 'fundación rotaria', 'admin'],
+        type: 'feature'
+    },
     {
         version: '4.524.0',
         title: 'Arreglo de imágenes rotas en "Maneras de Contribuir" 🛠️🖼️',
