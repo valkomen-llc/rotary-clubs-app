@@ -1,4 +1,4 @@
-
+import FoundationCredibility from '../components/FoundationCredibility';
 
 const FoundationImpactSection = () => {
     return (
@@ -55,28 +55,8 @@ const FoundationImpactSection = () => {
                     </div>
                 </div>
 
-                {/* 3. Sección de métricas / credibilidad */}
-                <div className="flex flex-col md:flex-row items-center justify-center gap-12 md:gap-24 mb-16">
-                    <img 
-                        src="https://www.rotary.org/sites/default/files/styles/w_1000/public/Proof-Charity-Navigator_ES.png" 
-                        alt="Charity Navigator 4 estrellas" 
-                        className="max-w-[300px] md:max-w-[400px] h-auto object-contain"
-                    />
-                    <img 
-                        src="https://www.rotary.org/sites/default/files/styles/w_1000/public/TRF-percentage-spent_ES.png" 
-                        alt="92% de los fondos se destinan a la concesión y ejecución de los programas" 
-                        className="max-w-[300px] md:max-w-[400px] h-auto object-contain"
-                    />
-                </div>
-
-                {/* 4. Footer del contenedor */}
-                <div className="flex justify-center mt-10">
-                    <img 
-                        src="https://www.rotary.org/sites/default/files/styles/w_800/public/TRF-R_LOGO_REVERSED.png" 
-                        alt="The Rotary Foundation" 
-                        className="h-20 md:h-24 w-auto object-contain"
-                    />
-                </div>
+                {/* 3. Sección de métricas / credibilidad (autocontenida, sin imágenes externas) */}
+                <FoundationCredibility percent={90.8} />
 
             </div>
         </section>

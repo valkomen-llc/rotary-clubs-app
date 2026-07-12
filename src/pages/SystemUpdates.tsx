@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.523.0 | 2026-07-12 (Imagen editable en Maneras de Contribuir)
-// Cache bust: 2026-07-12b
+// UI V4.524.0 | 2026-07-12 (Fix imágenes rotas en Maneras de Contribuir + credibilidad TRF)
+// Cache bust: 2026-07-12c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.524.0',
+        title: 'Arreglo de imágenes rotas en "Maneras de Contribuir" 🛠️🖼️',
+        description: 'La imagen de portada y los sellos de credibilidad de La Fundación Rotaria no cargaban porque apuntaban a rotary.org (que bloquea el enlace externo de imágenes). Ahora: (1) la portada usa una imagen por defecto propia y confiable (y sigue siendo editable desde Imágenes del Sitio); (2) los sellos "Charity Navigator · 4 estrellas", el indicador de eficacia (90,8% a programas) y el logo de The Rotary Foundation se rediseñaron con gráficos propios que cargan siempre, sin depender de sitios externos.',
+        date: new Date().toISOString(),
+        tags: ['imágenes', 'maneras de contribuir', 'fundación rotaria', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.523.0',
         title: 'La imagen de "Maneras de Contribuir" ya es editable 🖼️',
