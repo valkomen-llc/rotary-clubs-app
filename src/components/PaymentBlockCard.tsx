@@ -17,6 +17,21 @@ const PaymentBlockCard: React.FC<{ block: PaymentBlock }> = ({ block }) => {
     const theme = getBlockTheme(block.theme);
     const Icon = getBlockIcon(block.icon);
 
+    // {club} → nombre del club.
+    const tpl = (s: string) => (s || '').replace(/\{club\}/g, (club as any)?.name || 'nuestro club');
+    // Formato de moneda según la moneda del club (COP sin decimales, etc.).
+    const currency = ((club as any)?.currency || 'USD').toUpperCase();
+    const fmt = (n: number) => {
+        try {
+            return new Intl.NumberFormat(currency === 'COP' ? 'es-CO' : 'en-US', {
+                style: 'currency', currency, currencyDisplay: 'narrowSymbol',
+                maximumFractionDigits: currency === 'COP' ? 0 : 2,
+            }).format(n);
+        } catch {
+            return `$${n.toLocaleString()}`;
+        }
+    };
+
     const isRecurring = block.kind === 'membership' && block.recurring && block.recurringIntervals.length > 0;
 
     // ── Estado pago único ──
@@ -84,7 +99,7 @@ const PaymentBlockCard: React.FC<{ block: PaymentBlock }> = ({ block }) => {
                 <Icon className="w-7 h-7" />
             </div>
             <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <h2 className="text-2xl font-black text-gray-900 tracking-tight">{block.title}</h2>
+                <h2 className="text-2xl font-black text-gray-900 tracking-tight">{tpl(block.title)}</h2>
                 {isRecurring && (
                     <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
                         <RefreshCw className="w-3 h-3" /> Recurrente
@@ -92,7 +107,7 @@ const PaymentBlockCard: React.FC<{ block: PaymentBlock }> = ({ block }) => {
                 )}
             </div>
             {block.description && (
-                <p className="text-gray-500 text-sm mb-6 leading-relaxed">{block.description}</p>
+                <p className="text-gray-500 text-sm mb-6 leading-relaxed whitespace-pre-line">{tpl(block.description)}</p>
             )}
 
             {block.benefits.length > 0 && (
@@ -100,7 +115,7 @@ const PaymentBlockCard: React.FC<{ block: PaymentBlock }> = ({ block }) => {
                     {block.benefits.map((b, i) => (
                         <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
                             <Check className="w-4 h-4 mt-0.5 text-emerald-500 flex-shrink-0" />
-                            <span>{b}</span>
+                            <span>{tpl(b)}</span>
                         </li>
                     ))}
                 </ul>
@@ -119,7 +134,7 @@ const PaymentBlockCard: React.FC<{ block: PaymentBlock }> = ({ block }) => {
                                 className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ${interval === iv.key ? theme.ring : 'border-gray-100 hover:border-gray-200'}`}
                             >
                                 <span className="font-bold text-sm">{RECURRING_INTERVAL_LABELS[iv.key]}</span>
-                                <span className="font-black">${iv.amount.toLocaleString()}</span>
+                                <span className="font-black">{fmt(iv.amount)}</span>
                             </button>
                         ))}
                     </div>
@@ -146,7 +161,7 @@ const PaymentBlockCard: React.FC<{ block: PaymentBlock }> = ({ block }) => {
                                     onClick={() => setAmount(amt)}
                                     className={`py-3 rounded-xl border-2 font-black transition-all ${amount === amt ? theme.ring : 'border-gray-100 text-gray-400 hover:border-gray-200 hover:text-gray-600'}`}
                                 >
-                                    ${amt}
+                                    {fmt(amt)}
                                 </button>
                             ))}
                         </div>

@@ -20,6 +20,19 @@ const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 
+// Moneda del club: setting club_currency, o por país (Colombia → COP), o USD.
+const resolveClubCurrency = async (clubId) => {
+    try {
+        const s = await db.query('SELECT value FROM "Setting" WHERE key = $1 AND "clubId" = $2 LIMIT 1', ['club_currency', clubId]);
+        if (s.rows[0]?.value) return String(s.rows[0].value).toUpperCase();
+        const c = await db.query('SELECT country FROM "Club" WHERE id = $1 LIMIT 1', [clubId]);
+        const country = String(c.rows[0]?.country || '').toLowerCase();
+        return /colombia|^co$/.test(country) ? 'COP' : 'USD';
+    } catch {
+        return 'USD';
+    }
+};
+
 const resolveOrigin = (req, returnUrl) => {
     if (returnUrl && /^https?:\/\//.test(returnUrl)) return returnUrl.replace(/\/$/, '');
     const headerOrigin = req.headers.origin;
@@ -84,7 +97,8 @@ export const createDonationCheckout = async (req, res) => {
         const stripe = getStripe();
         const amountInCents = Math.round(numericAmount * 100);
         const origin = resolveOrigin(req, returnUrl);
-        const normalizedCurrency = String(currency).toLowerCase();
+        // Moneda autoritativa del club (ignora lo que mande el cliente).
+        const normalizedCurrency = (await resolveClubCurrency(clubId)).toLowerCase();
 
         const productName = project
             ? `Aporte al proyecto: ${project.title}`
@@ -175,7 +189,7 @@ export const createSubscriptionCheckout = async (req, res) => {
         const stripe = getStripe();
         const amountInCents = Math.round(amount * 100);
         const origin = resolveOrigin(req, returnUrl);
-        const normalizedCurrency = String(currency).toLowerCase();
+        const normalizedCurrency = (await resolveClubCurrency(clubId)).toLowerCase();
 
         const meta = {
             type: 'membership_subscription',

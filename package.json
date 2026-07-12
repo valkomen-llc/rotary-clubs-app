@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.529.0",
-  "cache_bust": "2026-07-12h (Fase 2 módulo de pagos: membresías con cobro recurrente vía Stripe Subscriptions — periodicidades Mensual/Trimestral/Semestral/Anual configurables por bloque; el socio elige y Stripe cobra cada periodo; pago inicial y renovaciones registrados en la bóveda; opt-in por bloque)",
+  "version": "4.530.0",
+  "cache_bust": "2026-07-12i (Aportes: 3 bloques rotarios por defecto (Aporte Voluntario + Membresía Rotaria recurrente + Erradicación a la Polio) con sus copys/beneficios; moneda por club (default COP para Colombia) aplicada a donaciones/órdenes/membresías en Stripe con formato correcto; templating {club} en los textos)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
