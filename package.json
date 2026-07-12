@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.525.0",
-  "cache_bust": "2026-07-12d (Sellos de La Fundación Rotaria en 'Maneras de Contribuir' ahora subibles/editables desde Configuración → Imágenes del Sitio → 'Sellos de La Fundación Rotaria'; si no se sube nada se usa el diseño por defecto de la plataforma)",
+  "version": "4.526.0",
+  "cache_bust": "2026-07-12e (Imágenes del Sitio: botón 'Subir/Cambiar imagen' siempre visible en cada slot (antes solo en hover) + auto-expansión de 'Maneras de Contribuir' y 'Sellos de La Fundación Rotaria' para encontrar fácil dónde subir los 3 sellos)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
