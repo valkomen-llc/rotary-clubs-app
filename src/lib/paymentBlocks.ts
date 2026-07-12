@@ -9,6 +9,18 @@ import {
 // kind determina el tipo de ítem que se agrega al carrito.
 export type PaymentBlockKind = 'donation' | 'aporte' | 'membership';
 
+// Periodicidades de cobro recurrente (membresías). El socio elige una.
+export type RecurringIntervalKey = 'month' | 'quarter' | 'semiannual' | 'year';
+export interface RecurringInterval { key: RecurringIntervalKey; amount: number; }
+
+export const RECURRING_INTERVAL_LABELS: Record<RecurringIntervalKey, string> = {
+    month: 'Mensual',
+    quarter: 'Trimestral',
+    semiannual: 'Semestral',
+    year: 'Anual',
+};
+export const RECURRING_INTERVAL_ORDER: RecurringIntervalKey[] = ['month', 'quarter', 'semiannual', 'year'];
+
 export interface PaymentBlock {
     id: string;
     enabled: boolean;
@@ -25,6 +37,9 @@ export interface PaymentBlock {
     buttonText: string;
     benefits: string[];      // lista opcional de beneficios (ideal para membresía)
     campaign?: string;       // etiqueta de campaña (metadata)
+    // Cobro recurrente (solo aplica a kind === 'membership').
+    recurring: boolean;
+    recurringIntervals: RecurringInterval[];
 }
 
 // ── Registro de iconos ───────────────────────────────────────────────────────
@@ -95,6 +110,8 @@ export const DEFAULT_PAYMENT_BLOCKS: PaymentBlock[] = [
         buttonText: 'Agregar al carrito',
         benefits: [],
         campaign: 'End Polio Now',
+        recurring: false,
+        recurringIntervals: [],
     },
     {
         id: 'aporte-club',
@@ -111,6 +128,8 @@ export const DEFAULT_PAYMENT_BLOCKS: PaymentBlock[] = [
         buttonText: 'Agregar al carrito',
         benefits: [],
         campaign: 'Club General',
+        recurring: false,
+        recurringIntervals: [],
     },
     {
         id: 'cuota-socios',
@@ -128,6 +147,8 @@ export const DEFAULT_PAYMENT_BLOCKS: PaymentBlock[] = [
         buttonText: 'Pagar Cuota',
         benefits: [],
         campaign: 'Membresía',
+        recurring: false,
+        recurringIntervals: [],
     },
 ];
 
@@ -148,6 +169,12 @@ export const normalizeBlock = (b: Partial<PaymentBlock>, idx = 0): PaymentBlock 
     buttonText: b.buttonText || 'Aportar',
     benefits: Array.isArray(b.benefits) ? b.benefits.filter(Boolean) : [],
     campaign: b.campaign || undefined,
+    recurring: !!b.recurring,
+    recurringIntervals: Array.isArray(b.recurringIntervals)
+        ? b.recurringIntervals
+            .filter((r: any) => r && RECURRING_INTERVAL_ORDER.includes(r.key) && typeof r.amount === 'number' && r.amount > 0)
+            .map((r: any) => ({ key: r.key as RecurringIntervalKey, amount: r.amount }))
+        : [],
 });
 
 export const resolvePaymentBlocks = (raw: any): PaymentBlock[] => {

@@ -135,6 +135,8 @@ export const stripeWebhook = async (req, res) => {
             case 'invoice.paid':
                 const invoice = event.data.object;
                 await handleSaaSReactivation(null, invoice.customer);
+                // Fase 2: registrar pago de membresía recurrente (inicial + renovaciones).
+                await handleSubscriptionInvoicePaid(invoice);
                 break;
             default:
                 console.log(`Unhandled event type ${event.type}`);
@@ -411,6 +413,77 @@ async function handleFailedPayment(paymentIntent) {
 // Crea Payment (con isPlatformCollection=true para que el balance del club
 // lo cuente) + Donation (para el historial visible en el panel del club).
 // Idempotente: si la session ya fue procesada, no duplica registros.
+// Fase 2 — Registra el cobro de una membresía recurrente (invoice.paid de Stripe),
+// tanto el pago inicial como cada renovación. Idempotente por providerRef.
+// Filtra por metadata.type === 'membership_subscription' para no tocar los
+// invoices de facturación SaaS de la plataforma.
+async function handleSubscriptionInvoicePaid(invoice) {
+    try {
+        if (!invoice || !invoice.subscription) return;
+
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
+        const sub = await stripe.subscriptions.retrieve(invoice.subscription);
+        const md = (sub && sub.metadata) || {};
+        if (md.type !== 'membership_subscription' || !md.clubId) return;
+
+        const providerRef = invoice.payment_intent || invoice.charge || invoice.id;
+
+        const existing = await prisma.payment.findFirst({
+            where: { providerRef, provider: 'stripe' },
+            select: { id: true }
+        });
+        if (existing) {
+            console.log(`[Stripe Webhook] Membresía recurrente ya registrada (skip) invoice ${invoice.id}`);
+            return;
+        }
+
+        const totalAmount = (invoice.amount_paid || 0) / 100;
+        if (totalAmount <= 0) return;
+        const currency = (invoice.currency || 'usd').toUpperCase();
+        const applicationFee = totalAmount * DEFAULT_PLATFORM_FEE_PERCENTAGE;
+        const estimatedStripeFee = (totalAmount * 0.029) + 0.30;
+        const netAmount = Math.max(0, totalAmount - applicationFee - estimatedStripeFee);
+
+        await prisma.payment.create({
+            data: {
+                provider: 'stripe',
+                providerRef,
+                status: 'succeeded',
+                amount: totalAmount,
+                currency,
+                applicationFee,
+                netAmount,
+                isPlatformCollection: true,
+                clubId: md.clubId,
+                rawPayload: JSON.stringify({
+                    invoiceId: invoice.id,
+                    subscription: invoice.subscription,
+                    blockId: md.blockId,
+                    interval: md.interval,
+                    billingReason: invoice.billing_reason,
+                })
+            }
+        });
+
+        await prisma.donation.create({
+            data: {
+                amount: totalAmount,
+                currency,
+                donorName: invoice.customer_name || null,
+                donorEmail: invoice.customer_email || null,
+                status: 'success',
+                clubId: md.clubId,
+                isAnonymous: false,
+                message: `Membresía recurrente (${md.interval || ''}) — ${md.blockTitle || ''}`.trim()
+            }
+        });
+
+        console.log(`[Stripe Webhook] Membresía recurrente registrada: club ${md.clubId} $${totalAmount} (${invoice.billing_reason})`);
+    } catch (err) {
+        console.error('[Stripe Webhook] Error registrando invoice de suscripción:', err?.message);
+    }
+}
+
 async function handleSuccessfulDonationCheckout(session) {
     const { clubId, donorEmail, donorName, message, isAnonymous, projectId } = session.metadata || {};
 

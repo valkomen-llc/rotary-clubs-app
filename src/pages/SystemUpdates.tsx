@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.528.0 | 2026-07-12 (Fase 1: Editor de Bloques de Pago — Aportes configurables)
-// Cache bust: 2026-07-12g
+// UI V4.529.0 | 2026-07-12 (Fase 2: Membresías recurrentes — suscripciones Stripe)
+// Cache bust: 2026-07-12h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.529.0',
+        title: 'Fase 2: Membresías con cobro recurrente (suscripciones) 🔁💳',
+        description: 'Los bloques de tipo Membresía ahora pueden activar "Cobro recurrente". En Panel → Bloques de Pago eliges qué periodicidades ofrecer (Mensual, Trimestral, Semestral, Anual) y su precio; el socio elige una en la página de Aportes y Stripe le cobra automáticamente cada periodo (puede cancelar cuando quiera). El pago inicial y cada renovación se registran en la bóveda del club, igual que las donaciones. Es opt-in: si no activas "recurrente", todo sigue como pago único. Requiere validación en modo de prueba de Stripe antes de usarlo en vivo.',
+        date: new Date().toISOString(),
+        tags: ['aportes', 'membresía', 'suscripción', 'stripe', 'pagos'],
+        type: 'feature'
+    },
     {
         version: '4.528.0',
         title: 'Nuevo: Editor de Bloques de Pago (Aportes configurables) 💳🧩',

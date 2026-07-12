@@ -129,6 +129,90 @@ export const createDonationCheckout = async (req, res) => {
     }
 };
 
+// ── Membresías recurrentes (Fase 2) ──────────────────────────────────────────
+// Mapeo de periodicidades a la config de precio recurrente de Stripe.
+const STRIPE_INTERVALS = {
+    month: { interval: 'month', interval_count: 1 },
+    quarter: { interval: 'month', interval_count: 3 },
+    semiannual: { interval: 'month', interval_count: 6 },
+    year: { interval: 'year', interval_count: 1 },
+};
+const INTERVAL_LABELS = { month: 'Mensual', quarter: 'Trimestral', semiannual: 'Semestral', year: 'Anual' };
+
+// POST /api/financial/subscribe  (público — suscripción a una membresía recurrente)
+// Body: { clubId, blockId, interval, returnUrl }
+// El monto NO se toma del cliente: se resuelve desde la config guardada del club
+// (setting payment_blocks) para evitar manipulación de precios.
+export const createSubscriptionCheckout = async (req, res) => {
+    try {
+        const { clubId, blockId, interval, currency = 'USD', returnUrl } = req.body || {};
+
+        if (!clubId) return res.status(400).json({ error: 'clubId es obligatorio' });
+        if (!blockId) return res.status(400).json({ error: 'blockId es obligatorio' });
+        if (!STRIPE_INTERVALS[interval]) return res.status(400).json({ error: 'Periodicidad inválida' });
+
+        const club = await prisma.club.findUnique({ where: { id: clubId }, select: { id: true, name: true } });
+        if (!club) return res.status(404).json({ error: 'Club no encontrado' });
+
+        // Resolver el bloque y el monto del intervalo desde la config guardada.
+        const settingRow = await db.query(
+            'SELECT value FROM "Setting" WHERE key = $1 AND "clubId" = $2 LIMIT 1',
+            ['payment_blocks', clubId]
+        );
+        let blocks = [];
+        try { blocks = settingRow.rows[0]?.value ? JSON.parse(settingRow.rows[0].value) : []; } catch { blocks = []; }
+
+        const block = Array.isArray(blocks) ? blocks.find(b => b && b.id === blockId) : null;
+        if (!block) return res.status(404).json({ error: 'Bloque de pago no encontrado' });
+        if (!block.recurring) return res.status(400).json({ error: 'Este bloque no admite cobro recurrente' });
+
+        const intervalCfg = Array.isArray(block.recurringIntervals)
+            ? block.recurringIntervals.find(r => r && r.key === interval)
+            : null;
+        const amount = intervalCfg && Number(intervalCfg.amount) > 0 ? Number(intervalCfg.amount) : null;
+        if (!amount) return res.status(400).json({ error: 'Periodicidad no disponible para este bloque' });
+
+        const stripe = getStripe();
+        const amountInCents = Math.round(amount * 100);
+        const origin = resolveOrigin(req, returnUrl);
+        const normalizedCurrency = String(currency).toLowerCase();
+
+        const meta = {
+            type: 'membership_subscription',
+            clubId,
+            blockId,
+            interval,
+            blockTitle: String(block.title || 'Membresía').slice(0, 150),
+        };
+
+        const session = await stripe.checkout.sessions.create({
+            mode: 'subscription',
+            payment_method_types: ['card'],
+            line_items: [{
+                price_data: {
+                    currency: normalizedCurrency,
+                    product_data: {
+                        name: `${block.title || 'Membresía'} — ${INTERVAL_LABELS[interval]}`,
+                        description: `Membresía recurrente (${INTERVAL_LABELS[interval]}) — ${club.name}`,
+                    },
+                    unit_amount: amountInCents,
+                    recurring: STRIPE_INTERVALS[interval],
+                },
+                quantity: 1,
+            }],
+            success_url: `${origin}/donacion/exito?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${origin}/aportes`,
+            metadata: meta,
+            subscription_data: { metadata: meta },
+        });
+
+        return res.json({ url: session.url, sessionId: session.id });
+    } catch (error) {
+        console.error('[FINANCIAL] Error creating subscription checkout:', error);
+        return res.status(500).json({ error: error.message || 'Error creando la suscripción' });
+    }
+};
+
 // GET /api/financial/donate/session/:id  (público — la página de éxito la consulta)
 export const getDonationSessionStatus = async (req, res) => {
     try {
