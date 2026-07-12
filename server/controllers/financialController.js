@@ -8,6 +8,7 @@ import Stripe from 'stripe';
 import prisma from '../lib/prisma.js';
 import db from '../lib/db.js'; // v4.414 — pg directo para LECTURAS (cold-start de Prisma es muy lento en Vercel)
 import EmailService from '../services/EmailService.js';
+import { DEFAULT_PAYMENT_BLOCKS } from '../lib/paymentBlockDefaults.js';
 
 console.log('[FINANCIAL v4.422] Controller cargado — donaciones Stripe Checkout + sync retroactivo');
 
@@ -175,8 +176,13 @@ export const createSubscriptionCheckout = async (req, res) => {
         );
         let blocks = [];
         try { blocks = settingRow.rows[0]?.value ? JSON.parse(settingRow.rows[0].value) : []; } catch { blocks = []; }
+        // Respaldo: si el club aún no guardó sus bloques (o el bloque no está en
+        // los guardados), usar los bloques por defecto — la página pública los
+        // muestra igual y el socio debe poder suscribirse sin pasos previos.
+        if (!Array.isArray(blocks) || blocks.length === 0) blocks = DEFAULT_PAYMENT_BLOCKS;
 
-        const block = Array.isArray(blocks) ? blocks.find(b => b && b.id === blockId) : null;
+        let block = blocks.find(b => b && b.id === blockId);
+        if (!block) block = DEFAULT_PAYMENT_BLOCKS.find(b => b.id === blockId);
         if (!block) return res.status(404).json({ error: 'Bloque de pago no encontrado' });
         if (!block.recurring) return res.status(400).json({ error: 'Este bloque no admite cobro recurrente' });
 
