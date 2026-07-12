@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.539.0",
-  "cache_bust": "2026-07-12t (Color de fondo de la sección de aportes configurable por club desde Panel → Maneras de Contribuir (ContentSection 'style'.blocksBg); default gris claro, con preset azul oscuro #212C3F)",
+  "version": "4.539.1",
+  "cache_bust": "2026-07-12u (HOTFIX pantalla en blanco de Maneras de Contribuir por TDZ (blocksBg usaba getC antes de definirse); ahora lee sections directo. + Color de fondo de la sección de aportes configurable por club desde Panel → Maneras de Contribuir (ContentSection 'style'.blocksBg); default gris claro, con preset azul oscuro #212C3F)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

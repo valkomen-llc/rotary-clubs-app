@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.539.0 | 2026-07-12 (Color de fondo configurable en la sección de aportes)
-// Cache bust: 2026-07-12t
+// UI V4.539.1 | 2026-07-12 (Hotfix: Maneras de Contribuir se quedaba en blanco)
+// Cache bust: 2026-07-12u
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.539.1',
+        title: 'Arreglo urgente: la página Maneras de Contribuir se veía en blanco 🚑',
+        description: 'Corregimos un error introducido con el color de fondo configurable que hacía que la página Maneras de Contribuir quedara en blanco. Ya carga con normalidad.',
+        date: new Date().toISOString(),
+        tags: ['maneras de contribuir', 'hotfix'],
+        type: 'fix'
+    },
     {
         version: '4.539.0',
         title: 'Elige el color de fondo de la sección de aportes 🎨',
