@@ -14,7 +14,7 @@ export default function Aportes() {
             <Navbar />
 
             <main className="pt-32 pb-24">
-                <div className="max-w-6xl mx-auto px-6">
+                <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
 
                     {/* Header */}
                     <div className="text-center max-w-2xl mx-auto mb-16">
