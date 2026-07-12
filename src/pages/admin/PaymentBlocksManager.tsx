@@ -116,7 +116,7 @@ const PaymentBlocksManager: React.FC = () => {
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <a href="#/aportes" target="_blank" rel="noreferrer"
+                        <a href="/maneras-de-contribuir" target="_blank" rel="noreferrer"
                             className="hidden sm:flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-500 hover:text-rotary-blue hover:bg-gray-50 transition">
                             <ExternalLink className="w-4 h-4" /> Ver página
                         </a>

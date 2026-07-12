@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.537.2 | 2026-07-12 (Igualar altura de todas las tarjetas del carrusel)
-// Cache bust: 2026-07-12r
+// UI V4.538.0 | 2026-07-12 (Editor de textos de Maneras de Contribuir en el admin)
+// Cache bust: 2026-07-12s
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.538.0',
+        title: 'Edita los textos de Maneras de Contribuir desde el panel ✍️',
+        description: 'Nueva sección en el Panel → "Maneras de Contribuir" (Contenido) para editar los textos de esa página: el encabezado (título y descripción) y la tarjeta destacada del hero (título, descripción y botón). Desde ahí también hay accesos directos a las otras partes editables: imagen del hero (Imágenes del Sitio), bloques de aporte (Bloques de Pago) y sellos de La Fundación (Identidad).',
+        date: new Date().toISOString(),
+        tags: ['maneras de contribuir', 'admin', 'CMS', 'textos'],
+        type: 'feature'
+    },
     {
         version: '4.537.2',
         title: 'Todas las tarjetas de aporte a la misma altura 📏',
