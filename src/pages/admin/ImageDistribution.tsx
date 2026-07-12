@@ -238,7 +238,7 @@ const ImageDistribution: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [dirty, setDirty] = useState(false);
-    const [expanded, setExpanded] = useState<Record<string, boolean>>({ hero: true, causes: false, foundation: false, join: false });
+    const [expanded, setExpanded] = useState<Record<string, boolean>>({ hero: true, causes: false, foundation: false, join: false, donateHero: true, 'trf-credibility': true });
 
     // Media picker
     const [pickerOpen, setPickerOpen] = useState(false);
@@ -776,7 +776,14 @@ const ImageDistribution: React.FC = () => {
 
                                                                 {/* Alt text / label — Now Editable! */}
                                                                 <div className="p-2.5 bg-white space-y-1.5">
-                                                                    <div className="flex items-center justify-between">
+                                                                    {/* Botón de subir/cambiar siempre visible (además del overlay en hover) */}
+                                                                    <button
+                                                                        onClick={() => openPicker(group.key, idx)}
+                                                                        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-bold bg-rotary-blue text-white hover:bg-sky-800 transition-colors shadow-sm"
+                                                                    >
+                                                                        <Upload className="w-3.5 h-3.5" /> {isDef ? 'Subir imagen' : 'Cambiar imagen'}
+                                                                    </button>
+                                                                    <div className="flex items-center justify-between pt-1">
                                                                         <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Etiqueta / Título</p>
                                                                         {slot.alt !== ((baseImages || DEFAULTS) as any)[group.key]?.[idx]?.alt && (
                                                                             <span className="w-1 h-1 rounded-full bg-violet-500 animate-pulse" />

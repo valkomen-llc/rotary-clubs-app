@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.525.0 | 2026-07-12 (Sellos de La Fundación Rotaria editables desde el admin)
-// Cache bust: 2026-07-12d
+// UI V4.526.0 | 2026-07-12 (Botón de subir imagen siempre visible en Imágenes del Sitio)
+// Cache bust: 2026-07-12e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.526.0',
+        title: 'Botón "Subir imagen" siempre visible en Imágenes del Sitio ⬆️👁️',
+        description: 'En Configuración → Imágenes del Sitio, cada imagen ahora tiene un botón "Subir imagen" / "Cambiar imagen" siempre visible (antes solo aparecía al pasar el cursor por encima, lo que dificultaba encontrarlo). Además, los contenedores "Maneras de Contribuir" y "Sellos de La Fundación Rotaria" ahora se abren automáticamente para que sea evidente dónde subir los 3 sellos.',
+        date: new Date().toISOString(),
+        tags: ['imágenes', 'admin', 'UX'],
+        type: 'improvement'
+    },
     {
         version: '4.525.0',
         title: 'Sellos de La Fundación Rotaria editables desde el admin 🏅⬆️',
