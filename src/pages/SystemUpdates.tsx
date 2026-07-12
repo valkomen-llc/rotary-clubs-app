@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.536.0 | 2026-07-12 (Carrusel: tarjetas uniformes, membresía primero, periodicidad desplegable)
-// Cache bust: 2026-07-12o
+// UI V4.537.0 | 2026-07-12 (Carrusel de aportes al mismo ancho que la sección de abajo)
+// Cache bust: 2026-07-12p
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.537.0',
+        title: 'El carrusel de aportes ahora ocupa el ancho completo 📐',
+        description: 'Ajustamos el ancho del carrusel de aportes para que coincida con el de las 3 columnas de la sección de La Fundación Rotaria que está debajo, quedando todo alineado y con el mismo ancho en Maneras de Contribuir y Aportes.',
+        date: new Date().toISOString(),
+        tags: ['aportes', 'carrusel', 'UI', 'layout'],
+        type: 'improvement'
+    },
     {
         version: '4.536.0',
         title: 'Carrusel de aportes: más parejo y con periodicidad desplegable 🎛️',

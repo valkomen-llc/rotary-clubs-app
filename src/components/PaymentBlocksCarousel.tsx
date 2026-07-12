@@ -27,7 +27,7 @@ const PaymentBlocksCarousel: React.FC<{ blocks: PaymentBlock[] }> = ({ blocks })
 
     return (
         <div
-            className="relative max-w-5xl mx-auto"
+            className="relative"
             onMouseEnter={() => setPaused(true)}
             onMouseLeave={() => setPaused(false)}
         >
