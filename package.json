@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.540.3",
-  "cache_bust": "2026-07-13d (Precio de la membresía sin negrilla (font-black → font-normal) + flechas prev/next del carrusel de aportes movidas afuera del contenedor, con overflow-x-clip para evitar scroll horizontal)",
+  "version": "4.541.0",
+  "cache_bust": "2026-07-13e (Subida de imágenes ahora admite SVG: se amplió el accept de los cargadores (.svg) y en Imágenes del Sitio el SVG se sube tal cual, sin recorte/rasterizado. Backend ya lo soportaba)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {

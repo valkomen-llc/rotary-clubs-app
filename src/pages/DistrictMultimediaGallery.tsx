@@ -325,7 +325,7 @@ const DistrictMultimediaGallery: React.FC = () => {
                                 >
                                     <input 
                                         type="file" multiple ref={fileInputRef} className="hidden"
-                                        accept=".jpg,.jpeg,.png,.mov,.mp4"
+                                        accept=".jpg,.jpeg,.png,.webp,.svg,.mov,.mp4"
                                         onChange={e => { if (e.target.files) handleFiles(Array.from(e.target.files)); }}
                                     />
                                     <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">

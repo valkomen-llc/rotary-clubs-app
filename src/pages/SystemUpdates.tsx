@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.540.3 | 2026-07-13 (Precio de membresía sin negrilla + flechas del carrusel afuera)
-// Cache bust: 2026-07-13d
+// UI V4.541.0 | 2026-07-13 (Subida de imágenes admite SVG)
+// Cache bust: 2026-07-13e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.541.0',
+        title: 'Ahora puedes subir imágenes en formato SVG 🖼️',
+        description: 'Los cargadores de imágenes admiten archivos SVG (ideal para logos y sellos: escalan sin perder calidad). En "Imágenes del Sitio" el SVG se sube tal cual, sin recorte ni conversión, para conservar su nitidez vectorial.',
+        date: new Date().toISOString(),
+        tags: ['imágenes', 'svg', 'admin', 'uploads'],
+        type: 'feature'
+    },
     {
         version: '4.540.3',
         title: 'Precio de membresía más ligero y flechas del carrusel afuera 🎠',
