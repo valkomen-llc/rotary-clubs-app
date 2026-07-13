@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.546.0 | 2026-07-13 (Botón "Ver más" por socio, sobre todo en Autores)
-// Cache bust: 2026-07-13o
+// UI V4.547.0 | 2026-07-13 (Preset de pendones blindado — persistencia durable)
+// Cache bust: 2026-07-13p
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.547.0',
+        title: 'Preset de pendones blindado contra las actualizaciones 🛡️',
+        description: 'La plantilla por defecto del Generador de Pendones ahora se guarda de forma durable (en almacenamiento S3, además de la base de datos), de modo que ninguna actualización de la plataforma pueda desconfigurarla. Al abrir el generador se lee siempre la última versión guardada. Nota: como el preset se había perdido, hay que volver a guardarlo UNA vez desde el configurador del admin; a partir de ahí queda protegido de forma permanente.',
+        date: new Date().toISOString(),
+        tags: ['pendones', 'preset', 'durabilidad', 'S3', 'fix'],
+        type: 'fix'
+    },
     {
         version: '4.546.0',
         title: 'Botón "Ver más" con enlace en los directorios de socios 🔗',

@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.546.0",
-  "cache_bust": "2026-07-13o (Botón 'Ver más' por socio en los directorios (sobre todo Nuestros Autores): nuevo campo opcional 'link' por socio en Socios y Junta Directiva; si tiene enlace, la tarjeta pública muestra un botón 'Ver más' que abre ese enlace. Cambio aditivo (columna nueva), no destructivo; no toca el pendón)",
+  "version": "4.547.0",
+  "cache_bust": "2026-07-13p (Blindaje del preset de pendones: ahora se guarda TAMBIÉN en S3 (fuente prioritaria al leer) para que sea inmune a resets/migraciones de la BD. La BD queda de respaldo y se hace backfill automático a S3. No se toca la forma del config, ni el build, ni DEFAULT_CONFIG)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
