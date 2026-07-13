@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.540.1",
-  "cache_bust": "2026-07-13b (Títulos sin negrilla: la tarjeta hero 'Aporte voluntario al Club' y los títulos de las tarjetas del carrusel de aportes pasan de negrilla a peso normal)",
+  "version": "4.540.2",
+  "cache_bust": "2026-07-13c (Títulos de las tarjetas del carrusel de aportes igualados al tamaño de 'Aporte voluntario al Club' (text-2xl → text-[26px]))",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
