@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.542.2 | 2026-07-13 (Color de la barra superior ajustado)
-// Cache bust: 2026-07-13h
+// UI V4.543.0 | 2026-07-13 (Botones Contribuye y Únete a un club en el header)
+// Cache bust: 2026-07-13i
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.543.0',
+        title: 'Nuevos botones en el header: Contribuye y Únete a un club 🤝',
+        description: 'Agregamos dos botones en el header, justo antes del buscador. "Contribuye" lleva a la sección de Maneras de Contribuir. "Únete a un club" lleva al formulario de Contacto ya configurado con el asunto "Quiero ser socio", que muestra los pasos para afiliarse. Cuando la persona envía el formulario, el mensaje queda guardado en la plataforma (sección de Leads/mensajes de contacto).',
+        date: new Date().toISOString(),
+        tags: ['header', 'CTA', 'membresía', 'contacto', 'UI'],
+        type: 'feature'
+    },
     {
         version: '4.542.2',
         title: 'Nuevo color en la barra superior del header 🎨',
