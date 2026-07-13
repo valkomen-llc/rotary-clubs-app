@@ -225,39 +225,39 @@ const Navbar = () => {
   return (
     <>
     {/* Barra superior estilo Rotary.org: enlaces externos + selector de idioma */}
-    <div className="bg-rotary-navy text-white" data-no-translate>
+    <div className="bg-[#2b2f44] text-white relative z-[60]" data-no-translate>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-end gap-5 h-9 text-xs">
+        <div className="flex items-center justify-end gap-6 sm:gap-8 py-4 text-sm">
           <a
             href="https://www.endpolio.org"
             target="_blank"
             rel="noopener noreferrer"
-            className="hidden sm:flex items-center gap-1 font-semibold text-white/85 hover:text-white transition-colors"
+            className="hidden sm:flex items-center gap-1.5 font-bold text-white hover:text-white/80 transition-colors"
           >
-            Endpolio.org <ExternalLink className="w-3 h-3" />
+            Endpolio.org <ExternalLink className="w-3.5 h-3.5" />
           </a>
           <a
             href="https://my.rotary.org"
             target="_blank"
             rel="noopener noreferrer"
-            className="hidden sm:flex items-center gap-1 font-semibold text-white/85 hover:text-white transition-colors"
+            className="hidden sm:flex items-center gap-1.5 font-bold text-white hover:text-white/80 transition-colors"
           >
-            My Rotary <ExternalLink className="w-3 h-3" />
+            My Rotary <ExternalLink className="w-3.5 h-3.5" />
           </a>
 
           {/* Selector de idioma */}
           <div className="relative" ref={languageRef}>
             <button
               onClick={() => setLanguageOpen(!languageOpen)}
-              className="flex items-center gap-1.5 font-semibold text-white/85 hover:text-white transition-colors"
+              className="flex items-center gap-1.5 font-bold text-white hover:text-white/80 transition-colors"
             >
               <Globe className="w-4 h-4" />
               <span>{currentLanguage.name}</span>
-              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${languageOpen ? 'rotate-180' : ''}`} />
+              <ChevronDown className={`w-4 h-4 transition-transform ${languageOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {languageOpen && (
-              <div className="absolute top-full right-0 mt-1.5 w-48 bg-white rounded-lg shadow-lg border border-gray-100 py-2 z-50">
+              <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-100 py-2 z-[70]">
                 {SUPPORTED_LANGUAGES.map((l) => (
                   <button
                     key={l.code}

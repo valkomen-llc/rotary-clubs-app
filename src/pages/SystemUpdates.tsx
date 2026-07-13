@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.542.0 | 2026-07-13 (Nueva barra superior estilo Rotary.org en el header)
-// Cache bust: 2026-07-13f
+// UI V4.542.1 | 2026-07-13 (Ajustes de la barra superior del header)
+// Cache bust: 2026-07-13g
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.542.1',
+        title: 'Barra superior del header más pulida 🎨',
+        description: 'La barra superior del header ahora tiene fondo azul oscuro (#2b2f44), es más alta y sus textos (Endpolio.org, My Rotary y el idioma) van en negrilla. Además corregimos el menú de idiomas, que se veía cortado porque quedaba tapado por la barra de navegación.',
+        date: new Date().toISOString(),
+        tags: ['header', 'barra superior', 'idiomas', 'UI'],
+        type: 'fix'
+    },
     {
         version: '4.542.0',
         title: 'Nueva barra superior en el header estilo Rotary.org 🌐',
