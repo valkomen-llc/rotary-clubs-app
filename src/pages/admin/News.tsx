@@ -1146,7 +1146,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                             <p className="text-[10px] text-gray-400 font-bold uppercase">Haz clic para subir portada</p>
                                                         </div>
                                                     )}
-                                                    <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept=".jpg,.jpeg,.png" onChange={(e) => handleImageUpload(e)} disabled={uploading} />
+                                                    <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept=".jpg,.jpeg,.png,.webp,.svg" onChange={(e) => handleImageUpload(e)} disabled={uploading} />
                                                 </div>
                                             </div>
 
@@ -1586,7 +1586,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                             <input 
                                                                 type="file" 
                                                                 className="absolute inset-0 opacity-0 cursor-pointer" 
-                                                                accept=".jpg,.jpeg,.png"
+                                                                accept=".jpg,.jpeg,.png,.webp,.svg"
                                                                 onChange={(e) => handleImageUpload(e, false, 'seoImage')} 
                                                             />
                                                         </div>

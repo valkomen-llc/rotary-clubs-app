@@ -438,6 +438,20 @@ const ImageDistribution: React.FC = () => {
         const file = e.target.files?.[0];
         if (!file) return;
 
+        // SVG: es vectorial — recortarlo/rasterizarlo con canvas lo dañaría y
+        // pierde su ventaja (escala infinita, ideal para logos/sellos). Se sube
+        // tal cual, saltando el recorte y el smart-crop.
+        const isSvg = file.type === 'image/svg+xml' || /\.svg$/i.test(file.name);
+        if (isSvg) {
+            const data = await performUpload(file);
+            if (data && data.url) {
+                selectMedia(data.url, file.name);
+                toast.success('SVG subido y actualizado con éxito');
+            }
+            e.target.value = '';
+            return;
+        }
+
         // Logic for sections that require cropping
         const needsCrop = pickerTarget?.key.startsWith('chatbot') || 
             ['hero', 'aboutHero', 'aboutCarousel', 'causesHero', 'causes', 'yep', 'yepExperience', 'yepBanner', 'rotaract', 'interact', 'ngse', 'rotexHero', 'rotexCarousel', 'foundation', 'donateHero', 'polio', 'history', 'historyHero', 'historyImpact', 'historyTimeline', 'historyFounders', 'paulHarrisAvatar'].includes(pickerTarget?.key || '');
@@ -823,7 +837,7 @@ const ImageDistribution: React.FC = () => {
                                 <label className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold cursor-pointer transition-all ${uploading ? 'bg-gray-100 text-gray-400' : 'bg-violet-600 text-white hover:bg-violet-700 shadow-lg'}`}>
                                     {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                                     {uploading ? 'Subiendo...' : 'Subir imagen'}
-                                    <input type="file" accept=".jpg,.jpeg,.png" className="hidden" onChange={handleUpload} disabled={uploading} />
+                                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.svg" className="hidden" onChange={handleUpload} disabled={uploading} />
                                 </label>
                                 <button onClick={() => setPickerOpen(false)} className="text-gray-400 hover:text-gray-600 p-1">
                                     <X className="w-6 h-6" />

@@ -13,7 +13,7 @@ export default function Aportes() {
         <div className="min-h-screen bg-gray-50 font-sans">
             <Navbar />
 
-            <main className="pt-32 pb-24">
+            <main className="pt-32 pb-24 overflow-x-clip">
                 <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
 
                     {/* Header */}
