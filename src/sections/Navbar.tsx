@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Search, ShoppingCart, ChevronDown, Menu, X, LogIn } from 'lucide-react';
+import { Search, ShoppingCart, ChevronDown, Menu, X, LogIn, Globe, ExternalLink } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useClub } from '../contexts/ClubContext';
@@ -223,6 +223,67 @@ const Navbar = () => {
   const showBannerOffset = club?.expirationBannerActive && bannerVisible;
 
   return (
+    <>
+    {/* Barra superior estilo Rotary.org: enlaces externos + selector de idioma */}
+    <div className="bg-rotary-navy text-white" data-no-translate>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-end gap-5 h-9 text-xs">
+          <a
+            href="https://www.endpolio.org"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden sm:flex items-center gap-1 font-semibold text-white/85 hover:text-white transition-colors"
+          >
+            Endpolio.org <ExternalLink className="w-3 h-3" />
+          </a>
+          <a
+            href="https://my.rotary.org"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden sm:flex items-center gap-1 font-semibold text-white/85 hover:text-white transition-colors"
+          >
+            My Rotary <ExternalLink className="w-3 h-3" />
+          </a>
+
+          {/* Selector de idioma */}
+          <div className="relative" ref={languageRef}>
+            <button
+              onClick={() => setLanguageOpen(!languageOpen)}
+              className="flex items-center gap-1.5 font-semibold text-white/85 hover:text-white transition-colors"
+            >
+              <Globe className="w-4 h-4" />
+              <span>{currentLanguage.name}</span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${languageOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {languageOpen && (
+              <div className="absolute top-full right-0 mt-1.5 w-48 bg-white rounded-lg shadow-lg border border-gray-100 py-2 z-50">
+                {SUPPORTED_LANGUAGES.map((l) => (
+                  <button
+                    key={l.code}
+                    onClick={() => { setLang(l.code); setLanguageOpen(false); }}
+                    className={`w-full flex items-center gap-3 px-4 py-1.5 text-sm hover:bg-sky-50 transition-colors ${currentLanguage.code === l.code ? 'text-rotary-blue font-medium' : 'text-gray-700'}`}
+                  >
+                    <div className="w-5 h-3.5 overflow-hidden rounded-sm flex-shrink-0 shadow-sm border border-black/5">
+                      <img
+                        src={`https://flagcdn.com/w40/${l.flag}.png`}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <span>{l.name}</span>
+                    {currentLanguage.code === l.code && (
+                      <span className="ml-auto w-2 h-2 bg-rotary-blue rounded-full"></span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+
     <nav className={`bg-white shadow-sm sticky ${showBannerOffset ? 'top-11' : 'top-0'} z-50 transition-all duration-300`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between min-h-[4rem] py-2 cursor-default">
@@ -396,48 +457,6 @@ const Navbar = () => {
                 <LogIn className="w-4 h-4 ml-0.5" />
               </button>
             )}
-
-            {/* Language Selector */}
-            <div className="relative" ref={languageRef} data-no-translate>
-              <button
-                onClick={() => setLanguageOpen(!languageOpen)}
-                className="flex items-center gap-1.5 px-2.5 py-1 border border-rotary-blue rounded-full text-xs text-rotary-blue hover:bg-sky-50 transition-colors"
-              >
-                <div className="w-5 h-3.5 overflow-hidden rounded-sm flex-shrink-0 shadow-sm border border-black/5">
-                  <img 
-                    src={`https://flagcdn.com/w40/${currentLanguage.flag}.png`} 
-                    alt="" 
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <span className="font-semibold tracking-wide">{currentLanguage.code.toUpperCase()}</span>
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${languageOpen ? 'rotate-180' : ''}`} />
-              </button>
-
-              {languageOpen && (
-                <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-100 py-2 z-50">
-                  {SUPPORTED_LANGUAGES.map((l) => (
-                    <button
-                      key={l.code}
-                      onClick={() => { setLang(l.code); setLanguageOpen(false); }}
-                      className={`w-full flex items-center gap-3 px-4 py-1.5 text-sm hover:bg-sky-50 transition-colors ${currentLanguage.code === l.code ? 'text-rotary-blue font-medium' : 'text-gray-700'}`}
-                    >
-                      <div className="w-5 h-3.5 overflow-hidden rounded-sm flex-shrink-0 shadow-sm border border-black/5">
-                        <img 
-                          src={`https://flagcdn.com/w40/${l.flag}.png`} 
-                          alt="" 
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <span>{l.name}</span>
-                      {currentLanguage.code === l.code && (
-                        <span className="ml-auto w-2 h-2 bg-rotary-blue rounded-full"></span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
 
             {/* Mobile Menu Button */}
             <button
@@ -736,6 +755,7 @@ const Navbar = () => {
 
       <CartDrawer />
     </nav>
+    </>
   );
 };
 

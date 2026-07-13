@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.541.0",
-  "cache_bust": "2026-07-13e (Subida de imágenes ahora admite SVG: se amplió el accept de los cargadores (.svg) y en Imágenes del Sitio el SVG se sube tal cual, sin recorte/rasterizado. Backend ya lo soportaba)",
+  "version": "4.542.0",
+  "cache_bust": "2026-07-13f (Header de sitios: nueva barra superior estilo Rotary.org con enlaces Endpolio.org y My Rotary, y el selector de idioma reubicado ahí arriba, con fondo azul oscuro (rotary-navy))",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
