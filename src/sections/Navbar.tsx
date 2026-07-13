@@ -133,6 +133,11 @@ const Navbar = () => {
     }
   };
 
+  // "Socios Honorarios": aparece en el desplegable solo si el club tiene socios
+  // marcados como honorarios, y no está ocultado explícitamente desde el panel.
+  const hasHonoraryMembers = (((club as any)?.members) || []).some((m: any) => m?.isHonorary);
+  const showHonorary = hasHonoraryMembers && (club as any)?.honoraryMembersVisible !== false;
+
   const sobreNosotrosItems = [
     { label: 'Quienes Somos', href: '/quienes-somos' },
     { label: 'Nuestras Causas', href: '/nuestras-causas' },
@@ -140,6 +145,7 @@ const Navbar = () => {
     { label: 'Nuestra Historia', href: '/nuestra-historia' },
     { label: 'Nuestros Socios', href: '/nuestros-socios' },
     { label: 'Nuestra Junta Directiva', href: '/nuestra-junta-directiva' },
+    ...(showHonorary ? [{ label: 'Socios Honorarios', href: '/socios-honorarios' }] : []),
     { label: 'Programa de Intercambios', href: '/intercambio-jovenes' },
     { label: 'Rotaract', href: '/rotaract' },
     { label: 'Interact', href: '/interact' },

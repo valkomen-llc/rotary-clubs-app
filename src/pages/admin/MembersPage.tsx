@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-    Users, Plus, Loader2, Camera, ShieldCheck, Trash2, 
-    UserCheck, AlertCircle, Save, UserPlus, Search, 
-    Filter, MoreVertical, X, CheckCircle2, ArrowUp, ArrowDown, GripVertical
+    Users, Plus, Loader2, Camera, ShieldCheck, Trash2,
+    UserCheck, AlertCircle, Save, UserPlus, Search,
+    Filter, MoreVertical, X, CheckCircle2, ArrowUp, ArrowDown, GripVertical, Award
 } from 'lucide-react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
@@ -18,6 +18,7 @@ interface Member {
     description: string;
     isBoard: boolean;
     boardRole: string;
+    isHonorary: boolean;
     position: number;
 }
 
@@ -31,7 +32,7 @@ const MembersPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [filter, setFilter] = useState<'all' | 'board'>('all');
+    const [filter, setFilter] = useState<'all' | 'board' | 'honorary'>('all');
 
     // ── Fetch members ──
     useEffect(() => {
@@ -46,8 +47,9 @@ const MembersPage: React.FC = () => {
                         name: m.name || '', 
                         image: m.image || '', 
                         description: m.description || '',
-                        isBoard: m.isBoard || false, 
+                        isBoard: m.isBoard || false,
                         boardRole: m.boardRole || '',
+                        isHonorary: m.isHonorary || false,
                         position: m.position || 0
                     })));
                 }
@@ -60,10 +62,11 @@ const MembersPage: React.FC = () => {
         const newMember = {
             id: 'temp-' + Date.now(), 
             name: '', 
-            image: '', 
-            description: '', 
-            isBoard: false, 
+            image: '',
+            description: '',
+            isBoard: false,
             boardRole: '',
+            isHonorary: false,
             position: members.length > 0 ? members[0].position - 1 : 0
         };
         setMembers(prev => [newMember, ...prev]);
@@ -176,11 +179,12 @@ const MembersPage: React.FC = () => {
     const filteredMembers = members.filter(m => {
         const matchesSearch = m.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                              m.description.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesFilter = filter === 'all' || m.isBoard;
+        const matchesFilter = filter === 'all' || (filter === 'board' ? m.isBoard : m.isHonorary);
         return matchesSearch && matchesFilter;
     });
 
     const boardMembersCount = members.filter(m => m.isBoard).length;
+    const honoraryMembersCount = members.filter(m => m.isHonorary).length;
     const incompleteCount = members.filter(m => !m.name || !m.image).length;
 
     if (loading) {
@@ -226,10 +230,11 @@ const MembersPage: React.FC = () => {
                 </div>
 
                 {/* Stats Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
                     {[
                         { label: 'Total Miembros', value: members.length, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
                         { label: 'Junta Directiva', value: boardMembersCount, icon: UserCheck, color: 'text-violet-600', bg: 'bg-violet-50' },
+                        { label: 'Honorarios', value: honoraryMembersCount, icon: Award, color: 'text-amber-600', bg: 'bg-amber-50' },
                         { label: 'Por completar', value: incompleteCount, icon: AlertCircle, color: incompleteCount > 0 ? 'text-amber-500' : 'text-emerald-500', bg: incompleteCount > 0 ? 'bg-amber-50' : 'bg-emerald-50' },
                     ].map((stat, i) => (
                         <div key={i} className="bg-white rounded-2xl border border-gray-100 p-6 flex items-center gap-4 shadow-sm hover:shadow-md transition-all">
@@ -263,10 +268,15 @@ const MembersPage: React.FC = () => {
                             className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all ${filter === 'all' ? 'bg-gray-900 text-white shadow-lg shadow-gray-200' : 'text-gray-400 hover:bg-gray-50'}`}>
                             TODOS
                         </button>
-                        <button 
+                        <button
                             onClick={() => setFilter('board')}
                             className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all ${filter === 'board' ? 'bg-sky-500 text-white shadow-lg shadow-sky-100' : 'text-gray-400 hover:bg-gray-50'}`}>
                             DIRECTIVOS
+                        </button>
+                        <button
+                            onClick={() => setFilter('honorary')}
+                            className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all ${filter === 'honorary' ? 'bg-amber-500 text-white shadow-lg shadow-amber-100' : 'text-gray-400 hover:bg-gray-50'}`}>
+                            HONORARIOS
                         </button>
                     </div>
                 </div>
@@ -445,15 +455,33 @@ const MemberCard: React.FC<{
                     
                     {member.isBoard && (
                         <div className="flex items-center gap-2">
-                             <input 
-                                value={member.boardRole} 
+                             <input
+                                value={member.boardRole}
                                 onChange={e => onUpdate(index, 'boardRole', e.target.value)}
                                 className="bg-white border border-sky-200 rounded-xl px-3 py-1.5 text-[10px] font-black text-sky-600 w-32 focus:outline-none focus:ring-2 focus:ring-sky-200 shadow-sm transition-all"
-                                placeholder="Presidente..." 
+                                placeholder="Presidente..."
                             />
                         </div>
                     )}
                 </div>
+            </div>
+
+            {/* Honorary Section */}
+            <div className={`p-3 rounded-2xl transition-all ${member.isHonorary ? 'bg-amber-50 border border-amber-100' : 'bg-gray-50/50 border border-transparent'}`}>
+                <label className="flex items-center gap-3 cursor-pointer select-none">
+                    <div className={`w-10 h-6 rounded-full relative transition-colors ${member.isHonorary ? 'bg-amber-500' : 'bg-gray-300'}`}>
+                        <input
+                            type="checkbox"
+                            checked={member.isHonorary}
+                            onChange={e => onUpdate(index, 'isHonorary', e.target.checked)}
+                            className="hidden"
+                        />
+                        <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm ${member.isHonorary ? 'left-5' : 'left-1'}`} />
+                    </div>
+                    <span className={`text-[11px] font-black uppercase tracking-tight ${member.isHonorary ? 'text-amber-600' : 'text-gray-400'}`}>
+                        Socio Honorario
+                    </span>
+                </label>
             </div>
         </div>
     );
