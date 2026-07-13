@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.541.0 | 2026-07-13 (Subida de imágenes admite SVG)
-// Cache bust: 2026-07-13e
+// UI V4.542.0 | 2026-07-13 (Nueva barra superior estilo Rotary.org en el header)
+// Cache bust: 2026-07-13f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.542.0',
+        title: 'Nueva barra superior en el header estilo Rotary.org 🌐',
+        description: 'Agregamos una barra superior azul oscuro en el header de los sitios, con enlaces a Endpolio.org y My Rotary, siguiendo el estilo de Rotary.org. El selector de idioma se movió a esa barra de arriba, con el mismo fondo azul oscuro.',
+        date: new Date().toISOString(),
+        tags: ['header', 'idiomas', 'barra superior', 'UI'],
+        type: 'feature'
+    },
     {
         version: '4.541.0',
         title: 'Ahora puedes subir imágenes en formato SVG 🖼️',
