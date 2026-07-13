@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.543.0 | 2026-07-13 (Botones Contribuye y Únete a un club en el header)
-// Cache bust: 2026-07-13i
+// UI V4.543.1 | 2026-07-13 (Botones del header con un poco más de altura)
+// Cache bust: 2026-07-13j
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.543.1',
+        title: 'Botones del header un poco más altos 📏',
+        description: 'Aumentamos ligeramente el relleno (padding vertical) de los botones "Contribuye" y "Únete a un club" del header para que se vean mejor proporcionados.',
+        date: new Date().toISOString(),
+        tags: ['header', 'CTA', 'UI'],
+        type: 'improvement'
+    },
     {
         version: '4.543.0',
         title: 'Nuevos botones en el header: Contribuye y Únete a un club 🤝',
