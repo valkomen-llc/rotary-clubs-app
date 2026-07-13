@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.539.1 | 2026-07-12 (Hotfix: Maneras de Contribuir se quedaba en blanco)
-// Cache bust: 2026-07-12u
+// UI V4.540.0 | 2026-07-13 (Fondo azul oscuro por defecto en la sección de aportes)
+// Cache bust: 2026-07-13a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.540.0',
+        title: 'Fondo azul oscuro por defecto en la sección de aportes 🎨',
+        description: 'La sección del carrusel de aportes ahora viene con fondo azul oscuro (#212C3F) por defecto, para que las tarjetas blancas resalten. Si algún club prefiere otro color (o el gris claro anterior), puede cambiarlo en Panel → Maneras de Contribuir → "Fondo de la sección de aportes".',
+        date: new Date().toISOString(),
+        tags: ['maneras de contribuir', 'aportes', 'color', 'UI'],
+        type: 'improvement'
+    },
     {
         version: '4.539.1',
         title: 'Arreglo urgente: la página Maneras de Contribuir se veía en blanco 🚑',

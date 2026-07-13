@@ -17,7 +17,7 @@ const ManerasContribuirEditor: React.FC = () => {
 
     const [header, setHeader] = useState({ title: '', description: '' });
     const [card, setCard] = useState({ title: '', description: '', buttonText: '' });
-    const [style, setStyle] = useState({ blocksBg: '#F9FAFB' });
+    const [style, setStyle] = useState({ blocksBg: '#212C3F' });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [dirty, setDirty] = useState(false);
@@ -54,7 +54,7 @@ const ManerasContribuirEditor: React.FC = () => {
                     description: map.card?.description ?? defaults.card.description,
                     buttonText: map.card?.buttonText ?? defaults.card.buttonText,
                 });
-                setStyle({ blocksBg: map.style?.blocksBg || '#F9FAFB' });
+                setStyle({ blocksBg: map.style?.blocksBg || '#212C3F' });
             } catch {
                 setHeader(defaults.header);
                 setCard(defaults.card);
@@ -182,7 +182,7 @@ const ManerasContribuirEditor: React.FC = () => {
                     </h3>
                     <p className="text-xs text-gray-400 mb-6">Color detrás del carrusel de aportes. Con un color oscuro, las tarjetas blancas resaltan.</p>
                     <div className="flex flex-wrap items-center gap-4">
-                        <input type="color" value={/^#([0-9a-fA-F]{6})$/.test(style.blocksBg) ? style.blocksBg : '#F9FAFB'}
+                        <input type="color" value={/^#([0-9a-fA-F]{6})$/.test(style.blocksBg) ? style.blocksBg : '#212C3F'}
                             onChange={e => { setStyle({ blocksBg: e.target.value }); setDirty(true); }}
                             className="w-14 h-14 rounded-xl border border-gray-200 cursor-pointer bg-white p-1" />
                         <input value={style.blocksBg}
