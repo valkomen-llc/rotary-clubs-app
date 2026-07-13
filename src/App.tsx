@@ -35,7 +35,7 @@ import QuienesSomos from './pages/QuienesSomos';
 import NuestraHistoria from './pages/NuestraHistoria';
 import NuestrosSocios from './pages/NuestrosSocios';
 import NuestraJuntaDirectiva from './pages/NuestraJuntaDirectiva';
-import SociosHonorarios from './pages/SociosHonorarios';
+import CategoryDirectory from './pages/CategoryDirectory';
 import IntercambioJovenes from './pages/IntercambioJovenes';
 import Blog from './pages/Blog';
 import BlogPost from './pages/BlogPost';
@@ -415,7 +415,9 @@ function App() {
                 <Route path="/nuestra-historia" element={<NuestraHistoria />} />
                 <Route path="/nuestros-socios" element={<NuestrosSocios />} />
                 <Route path="/nuestra-junta-directiva" element={<NuestraJuntaDirectiva />} />
-                <Route path="/socios-honorarios" element={<SociosHonorarios />} />
+                <Route path="/socios-honorarios" element={<CategoryDirectory category="honorary" />} />
+                <Route path="/nuestros-gobernadores" element={<CategoryDirectory category="governor" />} />
+                <Route path="/nuestros-autores" element={<CategoryDirectory category="author" />} />
                 <Route path="/intercambio-jovenes" element={<IntercambioJovenes />} />
                 <Route path="/blog" element={<Blog />} />
                 <Route path="/blog/:id" element={<BlogPost />} />

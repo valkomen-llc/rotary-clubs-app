@@ -7,6 +7,7 @@ import { useCart } from '../contexts/CartContext';
 import { useLang, SUPPORTED_LANGUAGES } from '../contexts/LanguageContext';
 import { T } from '../components/T';
 import CartDrawer from '../components/ui/CartDrawer';
+import { SPECIAL_CATEGORIES, memberCategory } from '../lib/memberCategories';
 
 // Map Navbar language list to SUPPORTED_LANGUAGES (already defined in LanguageContext)
 // kept for reference — we now use SUPPORTED_LANGUAGES from context
@@ -133,10 +134,13 @@ const Navbar = () => {
     }
   };
 
-  // "Socios Honorarios": aparece en el desplegable solo si el club tiene socios
-  // marcados como honorarios, y no está ocultado explícitamente desde el panel.
-  const hasHonoraryMembers = (((club as any)?.members) || []).some((m: any) => m?.isHonorary);
-  const showHonorary = hasHonoraryMembers && (club as any)?.honoraryMembersVisible !== false;
+  // Categorías especiales de socios (Honorarios / Gobernadores / Autores): cada
+  // enlace aparece en el desplegable solo si el club tiene miembros de esa
+  // categoría, y no está ocultada explícitamente desde el panel.
+  const clubMembers = (((club as any)?.members) || []) as any[];
+  const specialLinks = SPECIAL_CATEGORIES
+    .filter(c => clubMembers.some(m => memberCategory(m) === c.key) && (club as any)?.[c.visibleField] !== false)
+    .map(c => ({ label: c.label, href: c.href }));
 
   const sobreNosotrosItems = [
     { label: 'Quienes Somos', href: '/quienes-somos' },
@@ -145,7 +149,7 @@ const Navbar = () => {
     { label: 'Nuestra Historia', href: '/nuestra-historia' },
     { label: 'Nuestros Socios', href: '/nuestros-socios' },
     { label: 'Nuestra Junta Directiva', href: '/nuestra-junta-directiva' },
-    ...(showHonorary ? [{ label: 'Socios Honorarios', href: '/socios-honorarios' }] : []),
+    ...specialLinks,
     { label: 'Programa de Intercambios', href: '/intercambio-jovenes' },
     { label: 'Rotaract', href: '/rotaract' },
     { label: 'Interact', href: '/interact' },

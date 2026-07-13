@@ -13,6 +13,7 @@ import {
 import { toast } from 'sonner';
 import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
 import SiteSetupCard from '../../components/admin/SiteSetupCard';
+import { SPECIAL_CATEGORIES } from '../../lib/memberCategories';
 import { getAutoCropCanvas, fileToImage, canvasToFile } from '../../utils/cropUtils';
 import { useNavigate } from 'react-router-dom';
 import WhatsAppConfig from '../../components/admin/whatsapp/WhatsAppConfig';
@@ -156,6 +157,8 @@ const ClubSettings: React.FC = () => {
         storeActive: true,
         trfCredibilityVisible: true,
         honoraryMembersVisible: true,
+        governorsVisible: true,
+        authorsVisible: true,
         currency: 'USD',
     });
     
@@ -367,6 +370,8 @@ const ClubSettings: React.FC = () => {
                 storeActive: settingsMap['store_active'] !== 'false',
                 trfCredibilityVisible: (club as any).trfCredibilityVisible !== false && settingsMap['trf_credibility_visible'] !== 'false',
                 honoraryMembersVisible: (club as any).honoraryMembersVisible !== false && settingsMap['honorary_members_visible'] !== 'false',
+                governorsVisible: (club as any).governorsVisible !== false && settingsMap['governors_visible'] !== 'false',
+                authorsVisible: (club as any).authorsVisible !== false && settingsMap['authors_visible'] !== 'false',
                 currency: (club as any).currency || settingsMap['club_currency'] || 'USD',
             });
 
@@ -895,30 +900,39 @@ const ClubSettings: React.FC = () => {
                             </p>
                         </div>
 
-                        {/* Socios Honorarios — visibilidad de la sección en el menú */}
+                        {/* Categorías de socios — visibilidad de cada sección en el menú */}
                         <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
-                            <div className="flex items-center justify-between gap-4">
-                                <div>
-                                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-3">
-                                        <Award className="w-5 h-5 text-amber-500" /> Socios Honorarios
-                                    </h3>
-                                    <p className="text-xs text-gray-400 mt-1 max-w-xl">
-                                        La sección <b>Socios Honorarios</b> (menú <b>Sobre Nosotros</b>) aparece automáticamente cuando el club tiene socios marcados como honorarios en <b>Socios y Junta Directiva</b>. Puedes ocultarla aquí aunque tengas socios honorarios.
-                                    </p>
-                                </div>
-                                <button
-                                    type="button"
-                                    role="switch"
-                                    aria-checked={formData.honoraryMembersVisible}
-                                    onClick={() => setFormData(prev => ({ ...prev, honoraryMembersVisible: !prev.honoraryMembersVisible }))}
-                                    className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors ${formData.honoraryMembersVisible ? 'bg-rotary-blue' : 'bg-gray-300'}`}
-                                >
-                                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${formData.honoraryMembersVisible ? 'translate-x-6' : 'translate-x-1'}`} />
-                                </button>
-                            </div>
-                            <p className={`mt-3 text-xs font-bold ${formData.honoraryMembersVisible ? 'text-emerald-600' : 'text-gray-400'}`}>
-                                {formData.honoraryMembersVisible ? 'Se muestra en el menú si hay socios honorarios' : 'Oculta en el menú'}
+                            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-3">
+                                <Award className="w-5 h-5 text-amber-500" /> Secciones de socios especiales
+                            </h3>
+                            <p className="text-xs text-gray-400 mt-1 max-w-2xl">
+                                Cada sección (menú <b>Sobre Nosotros</b>) aparece automáticamente cuando el club tiene miembros de esa categoría, marcados en <b>Socios y Junta Directiva</b>. Puedes ocultar cualquiera aquí aunque tengas miembros de esa categoría.
                             </p>
+                            <div className="mt-5 divide-y divide-gray-50">
+                                {SPECIAL_CATEGORIES.map(c => {
+                                    const field = c.visibleField;
+                                    const on = (formData as any)[field] !== false;
+                                    return (
+                                        <div key={c.key} className="flex items-center justify-between gap-4 py-3">
+                                            <span className="text-sm font-bold text-gray-700">{c.label}</span>
+                                            <div className="flex items-center gap-3">
+                                                <span className={`text-[11px] font-bold ${on ? 'text-emerald-600' : 'text-gray-400'}`}>
+                                                    {on ? 'Visible si hay miembros' : 'Oculta'}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    role="switch"
+                                                    aria-checked={on}
+                                                    onClick={() => setFormData(prev => ({ ...prev, [field]: !on }))}
+                                                    className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors ${on ? 'bg-rotary-blue' : 'bg-gray-300'}`}
+                                                >
+                                                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${on ? 'translate-x-6' : 'translate-x-1'}`} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
 
                         {/* Contact and Social */}

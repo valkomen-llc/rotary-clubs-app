@@ -3,20 +3,22 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
+import { SPECIAL_CATEGORIES, memberCategory, SpecialCategoryKey } from '../lib/memberCategories';
 
-// Directorio público de "Socios Honorarios". Espejo de "Nuestros Socios"
-// (mismo diseño, sin badge de cargo), pero filtrando los socios marcados
-// como honorarios (m.isHonorary). Textos editables vía CMS 'socios-honorarios'.
-const SociosHonorarios = () => {
+// Directorio público genérico para una categoría especial de socios
+// (Honorarios / Gobernadores / Autores). Mismo diseño que "Nuestros Socios"
+// (foto + nombre + profesión), filtrando por la categoría indicada.
+const CategoryDirectory = ({ category }: { category: SpecialCategoryKey }) => {
   const { club } = useClub();
-  const { sections } = useCMSContent('socios-honorarios', club.id);
+  const def = SPECIAL_CATEGORIES.find(c => c.key === category)!;
+  const { sections } = useCMSContent(def.cmsPage, club.id);
 
   const getC = (section: string, field: string, fallback: string) => {
     return sections[section]?.[field] || fallback;
   }
 
   const socios = ((club as any).members || [])
-    .filter((m: any) => m.isHonorary)
+    .filter((m: any) => memberCategory(m) === category)
     .map((m: any) => ({
       id: m.id,
       nombre: m.name,
@@ -41,10 +43,10 @@ const SociosHonorarios = () => {
       >
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl md:text-5xl font-light text-white mb-6">
-            {getC('header', 'title', "Socios Honorarios")}
+            {getC('header', 'title', def.label)}
           </h1>
           <p className="text-white/90 text-lg max-w-2xl mx-auto">
-            {getC('header', 'description', "Reconocemos a quienes, con su trayectoria y entrega, han dejado una huella imborrable en nuestro club y en la comunidad.")}
+            {getC('header', 'description', def.description)}
           </p>
         </div>
       </section>
@@ -55,7 +57,7 @@ const SociosHonorarios = () => {
           {socios.length === 0 ? (
             <div className="text-center py-16">
               <Award className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-400 font-medium">Aún no hay socios honorarios para mostrar.</p>
+              <p className="text-gray-400 font-medium">{def.emptyText}</p>
             </div>
           ) : (
             <div className="flex flex-wrap justify-center gap-8">
@@ -108,4 +110,4 @@ const SociosHonorarios = () => {
   );
 };
 
-export default SociosHonorarios;
+export default CategoryDirectory;
