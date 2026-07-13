@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.542.0",
-  "cache_bust": "2026-07-13f (Header de sitios: nueva barra superior estilo Rotary.org con enlaces Endpolio.org y My Rotary, y el selector de idioma reubicado ahí arriba, con fondo azul oscuro (rotary-navy))",
+  "version": "4.542.1",
+  "cache_bust": "2026-07-13g (Barra superior del header: fondo #2b2f44, más altura, textos en negrilla y fix del menú de idiomas que quedaba tapado por la navbar (z-index))",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
