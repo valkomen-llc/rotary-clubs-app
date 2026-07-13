@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.545.0 | 2026-07-13 (Un socio puede tener varias categorías a la vez)
-// Cache bust: 2026-07-13n
+// UI V4.546.0 | 2026-07-13 (Botón "Ver más" por socio, sobre todo en Autores)
+// Cache bust: 2026-07-13o
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.546.0',
+        title: 'Botón "Ver más" con enlace en los directorios de socios 🔗',
+        description: 'Cada socio puede tener ahora un enlace propio (campo "Enlace \'Ver más\'" en Panel → Socios y Junta Directiva). Cuando un socio tiene enlace, su tarjeta en los directorios (sobre todo en "Nuestros Autores") muestra un botón "Ver más" que abre ese enlace en una pestaña nueva — ideal para relacionar a cada autor con su libro, publicación o perfil.',
+        date: new Date().toISOString(),
+        tags: ['socios', 'autores', 'enlace', 'ver más', 'admin'],
+        type: 'feature'
+    },
     {
         version: '4.545.0',
         title: 'Un socio puede pertenecer a varias categorías a la vez 🔀',

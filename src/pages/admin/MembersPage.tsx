@@ -23,6 +23,7 @@ interface Member {
     isHonorary: boolean;
     isGovernor: boolean;
     isAuthor: boolean;
+    link: string;
     position: number;
 }
 
@@ -60,6 +61,7 @@ const MembersPage: React.FC = () => {
                         isHonorary: memberHasCategory(m, 'honorary'),
                         isGovernor: memberHasCategory(m, 'governor'),
                         isAuthor: memberHasCategory(m, 'author'),
+                        link: m.link || '',
                         position: m.position || 0
                     })));
                 }
@@ -83,6 +85,7 @@ const MembersPage: React.FC = () => {
             isHonorary: kind === 'honorary',
             isGovernor: kind === 'governor',
             isAuthor: kind === 'author',
+            link: '',
             position: members.length > 0 ? members[0].position - 1 : 0
         };
         setMembers(prev => [newMember, ...prev]);
@@ -464,12 +467,24 @@ const MemberCard: React.FC<{
                     <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5 ml-1">
                         Cargo / Reseña Breve
                     </label>
-                    <textarea 
-                        value={member.description} 
+                    <textarea
+                        value={member.description}
                         onChange={e => onUpdate(index, 'description', e.target.value)}
                         className="w-full bg-gray-50 border border-transparent rounded-2xl px-4 py-3 text-xs text-gray-600 focus:outline-none focus:bg-white focus:border-sky-200 resize-none transition-all"
-                        rows={2} 
-                        placeholder="Ej: Socio Activo, ex-presidente..." 
+                        rows={2}
+                        placeholder="Ej: Socio Activo, ex-presidente..."
+                    />
+                </div>
+
+                <div className="space-y-1">
+                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5 ml-1">
+                        Enlace "Ver más" (opcional)
+                    </label>
+                    <input
+                        value={member.link}
+                        onChange={e => onUpdate(index, 'link', e.target.value)}
+                        className="w-full bg-gray-50 border border-transparent rounded-2xl px-4 py-2.5 text-xs text-gray-600 focus:outline-none focus:bg-white focus:border-sky-200 transition-all"
+                        placeholder="https://… (libro, publicación, perfil)"
                     />
                 </div>
             </div>

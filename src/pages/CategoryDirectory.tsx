@@ -1,4 +1,4 @@
-import { Award } from 'lucide-react';
+import { Award, ArrowRight } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
@@ -23,6 +23,7 @@ const CategoryDirectory = ({ category }: { category: SpecialCategoryKey }) => {
       id: m.id,
       nombre: m.name,
       profesion: m.description || '',
+      enlace: (typeof m.link === 'string' && m.link.trim()) ? m.link.trim() : '',
       imagen: m.image || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face'
     }));
 
@@ -82,6 +83,17 @@ const CategoryDirectory = ({ category }: { category: SpecialCategoryKey }) => {
                     <p className="text-rotary-blue font-medium text-sm md:text-base leading-relaxed">
                       {socio.profesion}
                     </p>
+                    {socio.enlace && (
+                      <a
+                        href={socio.enlace}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-4 inline-flex items-center justify-center gap-1.5 bg-sky-100 hover:bg-rotary-blue hover:text-white text-rotary-blue font-bold text-sm px-5 py-2.5 rounded-full transition-all duration-300 self-center group/btn"
+                      >
+                        Ver más
+                        <ArrowRight className="w-4 h-4 transition-transform group-hover/btn:translate-x-0.5" />
+                      </a>
+                    )}
                   </div>
                 </div>
               ))}

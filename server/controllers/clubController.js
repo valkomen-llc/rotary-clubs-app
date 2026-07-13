@@ -58,7 +58,7 @@ export const getClubById = async (req, res) => {
 
         const settingsResult = await db.query('SELECT * FROM "Setting" WHERE "clubId" = $1', [id]);
         const paymentConfigs = await prisma.paymentProviderConfig.findMany({ where: { clubId: id } });
-        const membersResult = await db.query('SELECT id, name, image, description, "isBoard", "boardRole", "isHonorary", "isGovernor", "isAuthor", "isActive", category, position FROM "ClubMember" WHERE "clubId" = $1 ORDER BY position ASC, "createdAt" DESC', [id]);
+        const membersResult = await db.query('SELECT id, name, image, description, "isBoard", "boardRole", "isHonorary", "isGovernor", "isAuthor", "isActive", category, link, position FROM "ClubMember" WHERE "clubId" = $1 ORDER BY position ASC, "createdAt" DESC', [id]);
 
         entity.settings = settingsResult.rows;
         entity.paymentConfigs = paymentConfigs;
@@ -478,6 +478,7 @@ export const batchUpsertMembers = async (req, res) => {
                             isAuthor,
                             isActive,
                             category: 'active',
+                            link: (typeof m.link === 'string' && m.link.trim()) ? m.link.trim() : null,
                             position: m.position || 0
                         };
                     })
@@ -492,4 +493,4 @@ export const batchUpsertMembers = async (req, res) => {
     }
 };
 
-console.log('[clubController] cargado (v4.545.0 — Categorías de socio múltiples: isActive/isBoard/isHonorary/isGovernor/isAuthor independientes; un socio puede pertenecer a varias secciones a la vez)');
+console.log('[clubController] cargado (v4.546.0 — Socios: campo link opcional por socio (botón "Ver más" en los directorios, sobre todo Autores). Cambio aditivo, no destructivo)');
