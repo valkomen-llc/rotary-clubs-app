@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.540.0 | 2026-07-13 (Fondo azul oscuro por defecto en la sección de aportes)
-// Cache bust: 2026-07-13a
+// UI V4.540.1 | 2026-07-13 (Títulos de aportes sin negrilla)
+// Cache bust: 2026-07-13b
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.540.1',
+        title: 'Títulos de aportes con un estilo más ligero ✨',
+        description: 'Quitamos la negrilla de los títulos "Aporte voluntario al Club" (la tarjeta sobre la imagen) y de los títulos de las tarjetas del carrusel de aportes. Ahora se ven con un peso normal, más elegante.',
+        date: new Date().toISOString(),
+        tags: ['maneras de contribuir', 'aportes', 'tipografía', 'UI'],
+        type: 'improvement'
+    },
     {
         version: '4.540.0',
         title: 'Fondo azul oscuro por defecto en la sección de aportes 🎨',

@@ -108,7 +108,7 @@ const ManerasDeContribuir = () => {
 
                 <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full flex justify-center lg:justify-end">
                     <div className="bg-white rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] p-10 max-w-md w-full border border-gray-50/50 mr-0 lg:mr-8 transform hover:-translate-y-1 transition-transform duration-300">
-                        <h2 className="text-[26px] font-bold text-gray-800 text-center mb-6 leading-tight">
+                        <h2 className="text-[26px] font-normal text-gray-800 text-center mb-6 leading-tight">
                             {getC('card', 'title', "Aporte voluntario al Club")}
                         </h2>
                         <p className="text-gray-600 text-[15px] text-center mb-10 leading-relaxed px-2">

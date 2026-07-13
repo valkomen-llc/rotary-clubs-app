@@ -100,7 +100,7 @@ const PaymentBlockCard: React.FC<{ block: PaymentBlock }> = ({ block }) => {
                 <Icon className="w-7 h-7" />
             </div>
             <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <h2 className="text-2xl font-black text-gray-900 tracking-tight">{tpl(block.title)}</h2>
+                <h2 className="text-2xl font-normal text-gray-900 tracking-tight">{tpl(block.title)}</h2>
                 {isRecurring && (
                     <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
                         <RefreshCw className="w-3 h-3" /> Recurrente
