@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.543.1",
-  "cache_bust": "2026-07-13j (Header: un poco más de altura (padding vertical) en los botones Contribuye y Únete a un club)",
+  "version": "4.543.2",
+  "cache_bust": "2026-07-13k (Contacto/Proceso para ser socio: los círculos de los 4 pasos ahora muestran íconos (fondo azul + ícono blanco) en vez del sprite externo que no cargaba)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
