@@ -390,13 +390,13 @@ const Navbar = () => {
             {/* CTAs del header: Contribuye + Únete a un club */}
             <Link
               to="/maneras-de-contribuir"
-              className="hidden lg:inline-flex items-center justify-center bg-rotary-blue text-white font-bold text-sm px-5 py-2 rounded-full hover:bg-rotary-blue/90 transition-colors"
+              className="hidden lg:inline-flex items-center justify-center bg-rotary-blue text-white font-bold text-sm px-5 py-2.5 rounded-full hover:bg-rotary-blue/90 transition-colors"
             >
               <T>Contribuye</T>
             </Link>
             <Link
               to="/contacto?asunto=Quiero+ser+socio"
-              className="hidden lg:inline-flex items-center justify-center bg-sky-100 text-rotary-blue font-bold text-sm px-5 py-2 rounded-full hover:bg-sky-200 transition-colors"
+              className="hidden lg:inline-flex items-center justify-center bg-sky-100 text-rotary-blue font-bold text-sm px-5 py-2.5 rounded-full hover:bg-sky-200 transition-colors"
             >
               <T>Únete a un club</T>
             </Link>

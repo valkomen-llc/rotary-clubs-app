@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.543.0",
-  "cache_bust": "2026-07-13i (Header: dos botones nuevos antes del buscador — Contribuye (va a Maneras de Contribuir) y Únete a un club (va a Contacto con el asunto Quiero ser socio, que muestra los pasos de membresía y guarda el envío en Leads))",
+  "version": "4.543.1",
+  "cache_bust": "2026-07-13j (Header: un poco más de altura (padding vertical) en los botones Contribuye y Únete a un club)",
   "type": "module",
   "//": "UI V4.482.0 | 2026-06-22 (Diagnóstico usa key de lectura + chequea webhook)",
   "scripts": {
