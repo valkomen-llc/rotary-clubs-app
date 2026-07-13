@@ -387,6 +387,20 @@ const Navbar = () => {
 
           {/* Right Side Icons */}
           <div className="flex items-center space-x-4">
+            {/* CTAs del header: Contribuye + Únete a un club */}
+            <Link
+              to="/maneras-de-contribuir"
+              className="hidden lg:inline-flex items-center justify-center bg-rotary-blue text-white font-bold text-sm px-5 py-2 rounded-full hover:bg-rotary-blue/90 transition-colors"
+            >
+              <T>Contribuye</T>
+            </Link>
+            <Link
+              to="/contacto?asunto=Quiero+ser+socio"
+              className="hidden lg:inline-flex items-center justify-center bg-sky-100 text-rotary-blue font-bold text-sm px-5 py-2 rounded-full hover:bg-sky-200 transition-colors"
+            >
+              <T>Únete a un club</T>
+            </Link>
+
             <button
               onClick={() => setSearchOpen(true)}
               className="text-gray-600 hover:text-rotary-blue transition-colors"
@@ -532,6 +546,24 @@ const Navbar = () => {
                 )
               ))}
               </>)}
+
+              {/* CTAs del header en móvil */}
+              <div className="flex flex-col gap-2 pt-2">
+                <Link
+                  to="/maneras-de-contribuir"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="inline-flex items-center justify-center bg-rotary-blue text-white font-bold text-sm px-5 py-2.5 rounded-full hover:bg-rotary-blue/90 transition-colors"
+                >
+                  <T>Contribuye</T>
+                </Link>
+                <Link
+                  to="/contacto?asunto=Quiero+ser+socio"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="inline-flex items-center justify-center bg-sky-100 text-rotary-blue font-bold text-sm px-5 py-2.5 rounded-full hover:bg-sky-200 transition-colors"
+                >
+                  <T>Únete a un club</T>
+                </Link>
+              </div>
 
               {isAuthenticated ? (
                 <Link to="/admin/dashboard" className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Panel</Link>
