@@ -14,7 +14,7 @@
 // ════════════════════════════════════════════════════════════════════
 import db from '../lib/db.js';
 
-console.log('[bannerTemplateController] v4.517.0 cargado — Generador de Pendones (público: solo edita personas editables; sin sliders de tamaño)');
+console.log('[bannerTemplateController] v4.547.0 cargado — Generador de Pendones. Preset con persistencia DURABLE en S3 (inmune a resets/migraciones de BD); BD como respaldo + backfill automático a S3');
 
 const DEFAULT_WIDTH_CM = 80;
 const DEFAULT_HEIGHT_CM = 180;
@@ -88,11 +88,97 @@ const normalizeRow = (row) => {
     };
 };
 
-// Selecciona la plantilla activa. Si hay clubId, prioriza la del club y cae a
-// la global (clubId NULL). Si no hay ninguna, devuelve una plantilla virtual
-// con la config por defecto (sin imagen de fondo).
+// ════════════════════════════════════════════════════════════════════
+// Persistencia DURABLE en S3 (independiente de la base de datos).
+//
+// La plantilla del pendón se guarda TAMBIÉN como un JSON en S3, y al leer se
+// prioriza S3. Así el preset es inmune a cualquier reseteo/migración de la
+// base de datos de la plataforma: aunque la fila de "BannerTemplate" se pierda
+// en un deploy, el pendón se sigue viendo con la última versión guardada.
+// La BD se conserva como respaldo secundario.
+// ════════════════════════════════════════════════════════════════════
+const bannerBucket = () => process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
+const bannerKey = (clubId) => `banner-templates/${clubId || 'global'}.json`;
+
+let _s3deps = null;
+const getS3 = async () => {
+    if (_s3deps) return _s3deps;
+    const awsMod = await import('@aws-sdk/client-s3');
+    const aws = awsMod.default || awsMod;
+    const s3 = new aws.S3Client({
+        region: process.env.AWS_REGION || 'us-east-1',
+        credentials: {
+            accessKeyId: process.env.ROTARY_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID,
+            secretAccessKey: process.env.ROTARY_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY,
+        },
+        maxAttempts: 2,
+    });
+    _s3deps = { s3, PutObjectCommand: aws.PutObjectCommand, GetObjectCommand: aws.GetObjectCommand };
+    return _s3deps;
+};
+
+// Guarda el preset en S3. Best-effort: si falla, no rompe el guardado en BD.
+const s3PutTemplate = async (clubId, tpl) => {
+    try {
+        const { s3, PutObjectCommand } = await getS3();
+        await s3.send(new PutObjectCommand({
+            Bucket: bannerBucket(),
+            Key: bannerKey(clubId),
+            Body: JSON.stringify(tpl),
+            ContentType: 'application/json',
+        }));
+        return true;
+    } catch (e) {
+        console.error('[bannerTemplate] s3Put:', e.message);
+        return false;
+    }
+};
+
+const streamToString = async (stream) => {
+    if (!stream) return '';
+    if (typeof stream.transformToString === 'function') return stream.transformToString();
+    const chunks = [];
+    for await (const c of stream) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+    return Buffer.concat(chunks).toString('utf8');
+};
+
+// Lee el preset de S3. Devuelve null si no existe (NoSuchKey) o ante error.
+const s3GetTemplate = async (clubId) => {
+    try {
+        const { s3, GetObjectCommand } = await getS3();
+        const out = await s3.send(new GetObjectCommand({ Bucket: bannerBucket(), Key: bannerKey(clubId) }));
+        const body = await streamToString(out.Body);
+        return body ? JSON.parse(body) : null;
+    } catch {
+        return null;
+    }
+};
+
+// Normaliza un objeto de plantilla venido de S3 (misma forma que normalizeRow).
+const normalizeStored = (o) => ({
+    id: o.id ?? null,
+    name: o.name || 'Plantilla de Pendón',
+    backgroundUrl: o.backgroundUrl ?? null,
+    widthCm: o.widthCm || DEFAULT_WIDTH_CM,
+    heightCm: o.heightCm || DEFAULT_HEIGHT_CM,
+    config: deepMerge(DEFAULT_CONFIG, o.config || {}),
+    isActive: o.isActive !== false,
+    clubId: o.clubId ?? null,
+    updatedAt: o.updatedAt ?? null,
+});
+
+// Selecciona la plantilla activa. Prioridad: S3 durable (club → global) →
+// base de datos (club → global) → config por defecto. Si encuentra la fila
+// en BD pero aún no está en S3, la respalda en S3 (blindaje ante futuros
+// resets), sin modificar su contenido.
 const selectActive = async (clubId) => {
     const cid = clubId || null;
+
+    // 1) Fuente durable: S3 (inmune a resets de BD).
+    const fromS3 = (cid ? await s3GetTemplate(cid) : null) || await s3GetTemplate(null);
+    if (fromS3) return normalizeStored(fromS3);
+
+    // 2) Respaldo: base de datos.
     const result = await db.query(
         `SELECT * FROM "BannerTemplate"
          WHERE "isActive" = true AND ("clubId" = $1 OR "clubId" IS NULL)
@@ -100,7 +186,14 @@ const selectActive = async (clubId) => {
          LIMIT 1`,
         [cid]
     );
-    if (result.rows[0]) return normalizeRow(result.rows[0]);
+    if (result.rows[0]) {
+        const tpl = normalizeRow(result.rows[0]);
+        // Backfill a S3 para blindar presets ya existentes (sin cambiar su contenido).
+        s3PutTemplate(tpl.clubId, tpl).catch(() => {});
+        return tpl;
+    }
+
+    // 3) Defaults.
     return {
         id: null,
         name: 'Plantilla de Pendón',
@@ -190,7 +283,12 @@ export const saveTemplate = async (req, res) => {
             row = ins.rows[0];
         }
 
-        res.json(normalizeRow(row));
+        const saved = normalizeRow(row);
+        // Persistencia durable: guardar TAMBIÉN en S3 (fuente prioritaria al leer).
+        // Así el preset sobrevive a cualquier reseteo de la base de datos.
+        await s3PutTemplate(clubId, saved);
+
+        res.json(saved);
     } catch (error) {
         console.error('[bannerTemplate] save:', error);
         res.status(500).json({ error: 'No se pudo guardar la plantilla', details: error.message });
