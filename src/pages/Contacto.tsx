@@ -12,6 +12,9 @@ import {
   Mail,
   ChevronDown,
   Heart,
+  UserPlus,
+  Users,
+  Award,
 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
@@ -686,38 +689,34 @@ const Contacto = () => {
                         step: 1,
                         title: 'Solicita unirte a un club Rotario',
                         description: 'Los clubes rotarios son la experiencia rotaria tradicional. Los clubes están compuestos por voluntarios dedicados que trabajan juntos para marcar la diferencia en su comunidad y en comunidades de todo el mundo.',
-                        bgPos: '0 0',
+                        icon: UserPlus,
                       },
                       {
                         step: 2,
                         title: 'La experiencia del candidato',
                         description: 'Dado que la experiencia es tan personal para el club al que te unes, la membresía es determinada por el club individual y cada uno tiene su propio proceso de ingreso. Algunos pueden llamar, algunos pueden enviar un mensaje, algunos pueden invitarte a participar en un proyecto de servicio o asistir a una reunión del club.',
-                        bgPos: '0 -280px',
+                        icon: Users,
                       },
                       {
                         step: 3,
                         title: 'Invitación para unirte',
                         description: 'Esperamos que unirte a Rotary se convierta en una experiencia enriquecedora para toda la vida. Porque unirse a menudo conduce a amistades significativas, la decisión de invitar a una nueva persona no se toma a la ligera y a menudo involucra a todos los miembros del club.',
-                        bgPos: '0 -420px',
+                        icon: Mail,
                       },
                       {
                         step: 4,
                         title: '¡Eres miembro de un club Rotario!',
                         description: '¡Felicidades, eres parte de un legado de más de 100 años de poner el Servicio por Encima de Uno Mismo! Tienes un club lleno de nuevos amigos y asociados que te apoyarán durante tu primer año en Rotary y más allá.',
-                        bgPos: '0 -560px',
+                        icon: Award,
                       },
-                    ].map((item, idx, arr) => (
+                    ].map((item, idx, arr) => {
+                      const StepIcon = item.icon;
+                      return (
                       <div key={idx} className="flex gap-5">
                         <div className="flex flex-col items-center flex-shrink-0">
-                          <div
-                            className="w-14 h-14 rounded-full bg-sky-100 border-4 border-white shadow-md overflow-hidden flex-shrink-0"
-                            style={{
-                              backgroundImage: `url('https://my-cms.rotary.org/sites/all/modules/custom/rotary_manage_membership/images/Progress-Tracker-Graphic.png')`,
-                              backgroundSize: '56px auto',
-                              backgroundPosition: item.bgPos,
-                              backgroundRepeat: 'no-repeat',
-                            }}
-                          />
+                          <div className="w-14 h-14 rounded-full bg-rotary-blue border-4 border-white shadow-md flex items-center justify-center flex-shrink-0">
+                            <StepIcon className="w-6 h-6 text-white" strokeWidth={2} />
+                          </div>
                           {idx < arr.length - 1 && (
                             <div className="w-0.5 flex-1 bg-gray-200 min-h-[30px]" />
                           )}
@@ -730,7 +729,8 @@ const Contacto = () => {
                           <p className="text-gray-600 text-sm leading-relaxed">{item.description}</p>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

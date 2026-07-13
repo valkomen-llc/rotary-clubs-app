@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.543.1 | 2026-07-13 (Botones del header con un poco más de altura)
-// Cache bust: 2026-07-13j
+// UI V4.543.2 | 2026-07-13 (Íconos en los pasos de "Proceso para ser socio")
+// Cache bust: 2026-07-13k
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.543.2',
+        title: 'Íconos en los pasos para ser socio ✨',
+        description: 'En el formulario "Quiero ser socio", los círculos de los 4 pasos del "Proceso para ser socio" ahora muestran íconos (fondo azul con ícono blanco: solicitud, experiencia, invitación y logro), en vez de la imagen externa que no cargaba y dejaba los círculos vacíos.',
+        date: new Date().toISOString(),
+        tags: ['contacto', 'membresía', 'íconos', 'UI'],
+        type: 'improvement'
+    },
     {
         version: '4.543.1',
         title: 'Botones del header un poco más altos 📏',
