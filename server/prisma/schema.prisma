@@ -453,6 +453,7 @@ model ClubMember {
   isBoard     Boolean  @default(false)
   boardRole   String?
   isHonorary  Boolean  @default(false)
+  category    String   @default("active")
   clubId      String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

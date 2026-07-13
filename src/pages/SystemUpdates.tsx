@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.543.3 | 2026-07-13 (Nueva sección Socios Honorarios)
-// Cache bust: 2026-07-13l
+// UI V4.544.0 | 2026-07-13 (Categorías de socio: Honorarios, Gobernadores y Autores)
+// Cache bust: 2026-07-13m
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.544.0',
+        title: 'Nuevas categorías de socios: Gobernadores y Autores 🎖️',
+        description: 'Ampliamos las secciones especiales de socios. Además de "Socios Honorarios", ahora hay "Nuestros Gobernadores" y "Nuestros Autores". En Panel → Socios y Junta Directiva agregas cada uno con su propio botón ("Agregar Socio Honorario / Gobernador / Autor") o cambias la categoría de un socio con el selector. Los socios de estas categorías especiales NO aparecen en "Nuestros Socios" ni en la Junta Directiva; cada categoría tiene su propio directorio y su enlace en el menú "Sobre Nosotros" (aparece si el club tiene miembros de esa categoría). Puedes ocultar cada sección desde Panel → Configuración → "Secciones de socios especiales".',
+        date: new Date().toISOString(),
+        tags: ['socios', 'honorarios', 'gobernadores', 'autores', 'directorio', 'menú', 'admin'],
+        type: 'feature'
+    },
     {
         version: '4.543.3',
         title: 'Nueva sección: Socios Honorarios 🏅',

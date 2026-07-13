@@ -8,6 +8,7 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import { toast } from 'sonner';
+import { MemberCategory, memberCategory, SPECIAL_CATEGORIES, CATEGORY_LABELS } from '../../lib/memberCategories';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -18,7 +19,7 @@ interface Member {
     description: string;
     isBoard: boolean;
     boardRole: string;
-    isHonorary: boolean;
+    category: MemberCategory;
     position: number;
 }
 
@@ -32,7 +33,7 @@ const MembersPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [filter, setFilter] = useState<'all' | 'board' | 'honorary'>('all');
+    const [filter, setFilter] = useState<'all' | 'board' | MemberCategory>('all');
 
     // ── Fetch members ──
     useEffect(() => {
@@ -49,7 +50,7 @@ const MembersPage: React.FC = () => {
                         description: m.description || '',
                         isBoard: m.isBoard || false,
                         boardRole: m.boardRole || '',
-                        isHonorary: m.isHonorary || false,
+                        category: memberCategory(m),
                         position: m.position || 0
                     })));
                 }
@@ -58,19 +59,20 @@ const MembersPage: React.FC = () => {
             .finally(() => setLoading(false));
     }, [clubId]);
 
-    const addMember = () => {
-        const newMember = {
-            id: 'temp-' + Date.now(), 
-            name: '', 
+    const addMember = (category: MemberCategory = 'active') => {
+        const newMember: Member = {
+            id: 'temp-' + Date.now(),
+            name: '',
             image: '',
             description: '',
             isBoard: false,
             boardRole: '',
-            isHonorary: false,
+            category,
             position: members.length > 0 ? members[0].position - 1 : 0
         };
         setMembers(prev => [newMember, ...prev]);
-        toast.info('Nuevo socio añadido al inicio de la lista');
+        const label = category === 'active' ? 'Socio' : CATEGORY_LABELS[category];
+        toast.info(`Nuevo ${label.toLowerCase()} añadido al inicio de la lista`);
     };
 
     const updateMember = (index: number, field: keyof Member, value: any) => {
@@ -177,14 +179,17 @@ const MembersPage: React.FC = () => {
     };
 
     const filteredMembers = members.filter(m => {
-        const matchesSearch = m.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        const matchesSearch = m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                              m.description.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesFilter = filter === 'all' || (filter === 'board' ? m.isBoard : m.isHonorary);
+        const matchesFilter =
+            filter === 'all' ? true :
+            filter === 'board' ? m.isBoard :
+            m.category === filter;
         return matchesSearch && matchesFilter;
     });
 
     const boardMembersCount = members.filter(m => m.isBoard).length;
-    const honoraryMembersCount = members.filter(m => m.isHonorary).length;
+    const countByCategory = (cat: MemberCategory) => members.filter(m => m.category === cat).length;
     const incompleteCount = members.filter(m => !m.name || !m.image).length;
 
     if (loading) {
@@ -215,26 +220,35 @@ const MembersPage: React.FC = () => {
                         </div>
                     </div>
                     
-                    <div className="flex items-center gap-3">
-                        <button onClick={addMember}
-                            className="group flex items-center gap-2 px-5 py-3 bg-white border border-gray-100 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-50 hover:border-gray-200 transition-all shadow-sm">
-                            <UserPlus className="w-4 h-4 text-sky-500 group-hover:scale-110 transition-transform" /> 
-                            Agregar Socio
+                    <button onClick={saveMembers} disabled={saving}
+                        className="flex items-center gap-2 px-6 py-3 bg-rotary-blue text-white rounded-xl text-sm font-black hover:bg-sky-800 transition-all disabled:opacity-50 shadow-xl shadow-blue-900/20 active:scale-95 self-start md:self-auto">
+                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        Guardar Directorio
+                    </button>
+                </div>
+
+                {/* Botones para agregar por categoría */}
+                <div className="flex flex-wrap items-center gap-2.5">
+                    <button onClick={() => addMember('active')}
+                        className="group flex items-center gap-2 px-5 py-2.5 bg-rotary-blue/5 border border-rotary-blue/20 text-rotary-blue rounded-xl text-sm font-bold hover:bg-rotary-blue/10 transition-all">
+                        <UserPlus className="w-4 h-4 group-hover:scale-110 transition-transform" /> Agregar Socio
+                    </button>
+                    {SPECIAL_CATEGORIES.map(c => (
+                        <button key={c.key} onClick={() => addMember(c.key)}
+                            className="group flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-xl text-sm font-bold hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50/50 transition-all">
+                            <Award className="w-4 h-4 text-amber-500 group-hover:scale-110 transition-transform" /> Agregar {c.addLabel}
                         </button>
-                        <button onClick={saveMembers} disabled={saving}
-                            className="flex items-center gap-2 px-6 py-3 bg-rotary-blue text-white rounded-xl text-sm font-black hover:bg-sky-800 transition-all disabled:opacity-50 shadow-xl shadow-blue-900/20 active:scale-95">
-                            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                            Guardar Directorio
-                        </button>
-                    </div>
+                    ))}
                 </div>
 
                 {/* Stats Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                     {[
                         { label: 'Total Miembros', value: members.length, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
                         { label: 'Junta Directiva', value: boardMembersCount, icon: UserCheck, color: 'text-violet-600', bg: 'bg-violet-50' },
-                        { label: 'Honorarios', value: honoraryMembersCount, icon: Award, color: 'text-amber-600', bg: 'bg-amber-50' },
+                        { label: 'Honorarios', value: countByCategory('honorary'), icon: Award, color: 'text-amber-600', bg: 'bg-amber-50' },
+                        { label: 'Gobernadores', value: countByCategory('governor'), icon: Award, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                        { label: 'Autores', value: countByCategory('author'), icon: Award, color: 'text-rose-600', bg: 'bg-rose-50' },
                         { label: 'Por completar', value: incompleteCount, icon: AlertCircle, color: incompleteCount > 0 ? 'text-amber-500' : 'text-emerald-500', bg: incompleteCount > 0 ? 'bg-amber-50' : 'bg-emerald-50' },
                     ].map((stat, i) => (
                         <div key={i} className="bg-white rounded-2xl border border-gray-100 p-6 flex items-center gap-4 shadow-sm hover:shadow-md transition-all">
@@ -273,11 +287,13 @@ const MembersPage: React.FC = () => {
                             className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all ${filter === 'board' ? 'bg-sky-500 text-white shadow-lg shadow-sky-100' : 'text-gray-400 hover:bg-gray-50'}`}>
                             DIRECTIVOS
                         </button>
-                        <button
-                            onClick={() => setFilter('honorary')}
-                            className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all ${filter === 'honorary' ? 'bg-amber-500 text-white shadow-lg shadow-amber-100' : 'text-gray-400 hover:bg-gray-50'}`}>
-                            HONORARIOS
-                        </button>
+                        {SPECIAL_CATEGORIES.map(c => (
+                            <button key={c.key}
+                                onClick={() => setFilter(c.key)}
+                                className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase transition-all ${filter === c.key ? 'bg-amber-500 text-white shadow-lg shadow-amber-100' : 'text-gray-400 hover:bg-gray-50'}`}>
+                                {CATEGORY_LABELS[c.key]}
+                            </button>
+                        ))}
                     </div>
                 </div>
 
@@ -435,54 +451,57 @@ const MemberCard: React.FC<{
                 </div>
             </div>
 
-            {/* Board Section */}
-            <div className={`mt-2 p-3 rounded-2xl transition-all ${member.isBoard ? 'bg-sky-50 border border-sky-100' : 'bg-gray-50/50 border border-transparent'}`}>
-                <div className="flex items-center justify-between">
-                    <label className="flex items-center gap-3 cursor-pointer select-none">
-                        <div className={`w-10 h-6 rounded-full relative transition-colors ${member.isBoard ? 'bg-sky-500' : 'bg-gray-300'}`}>
-                            <input 
-                                type="checkbox" 
-                                checked={member.isBoard}
-                                onChange={e => onUpdate(index, 'isBoard', e.target.checked)}
-                                className="hidden" 
-                            />
-                            <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm ${member.isBoard ? 'left-5' : 'left-1'}`} />
-                        </div>
-                        <span className={`text-[11px] font-black uppercase tracking-tight ${member.isBoard ? 'text-sky-600' : 'text-gray-400'}`}>
-                            Junta Directiva
-                        </span>
-                    </label>
-                    
-                    {member.isBoard && (
-                        <div className="flex items-center gap-2">
-                             <input
-                                value={member.boardRole}
-                                onChange={e => onUpdate(index, 'boardRole', e.target.value)}
-                                className="bg-white border border-sky-200 rounded-xl px-3 py-1.5 text-[10px] font-black text-sky-600 w-32 focus:outline-none focus:ring-2 focus:ring-sky-200 shadow-sm transition-all"
-                                placeholder="Presidente..."
-                            />
-                        </div>
-                    )}
+            {/* Categoría del socio */}
+            <div className="mt-2 p-3 rounded-2xl bg-gray-50/50 border border-gray-100">
+                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-0.5">Categoría</p>
+                <div className="flex flex-wrap gap-1.5">
+                    {(['active', ...SPECIAL_CATEGORIES.map(c => c.key)] as MemberCategory[]).map(cat => (
+                        <button key={cat} type="button"
+                            onClick={() => { onUpdate(index, 'category', cat); if (cat !== 'active') onUpdate(index, 'isBoard', false); }}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-tight transition-all border ${member.category === cat ? 'bg-rotary-blue text-white border-rotary-blue shadow-sm' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
+                            {CATEGORY_LABELS[cat]}
+                        </button>
+                    ))}
                 </div>
+                {member.category !== 'active' && (
+                    <p className="text-[10px] text-gray-400 mt-2 ml-0.5">
+                        No aparece en "Nuestros Socios" ni en la Junta Directiva; se muestra en su propia sección.
+                    </p>
+                )}
             </div>
 
-            {/* Honorary Section */}
-            <div className={`p-3 rounded-2xl transition-all ${member.isHonorary ? 'bg-amber-50 border border-amber-100' : 'bg-gray-50/50 border border-transparent'}`}>
-                <label className="flex items-center gap-3 cursor-pointer select-none">
-                    <div className={`w-10 h-6 rounded-full relative transition-colors ${member.isHonorary ? 'bg-amber-500' : 'bg-gray-300'}`}>
-                        <input
-                            type="checkbox"
-                            checked={member.isHonorary}
-                            onChange={e => onUpdate(index, 'isHonorary', e.target.checked)}
-                            className="hidden"
-                        />
-                        <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm ${member.isHonorary ? 'left-5' : 'left-1'}`} />
+            {/* Junta Directiva — solo para socios activos */}
+            {member.category === 'active' && (
+                <div className={`p-3 rounded-2xl transition-all ${member.isBoard ? 'bg-sky-50 border border-sky-100' : 'bg-gray-50/50 border border-transparent'}`}>
+                    <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-3 cursor-pointer select-none">
+                            <div className={`w-10 h-6 rounded-full relative transition-colors ${member.isBoard ? 'bg-sky-500' : 'bg-gray-300'}`}>
+                                <input
+                                    type="checkbox"
+                                    checked={member.isBoard}
+                                    onChange={e => onUpdate(index, 'isBoard', e.target.checked)}
+                                    className="hidden"
+                                />
+                                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm ${member.isBoard ? 'left-5' : 'left-1'}`} />
+                            </div>
+                            <span className={`text-[11px] font-black uppercase tracking-tight ${member.isBoard ? 'text-sky-600' : 'text-gray-400'}`}>
+                                Junta Directiva
+                            </span>
+                        </label>
+
+                        {member.isBoard && (
+                            <div className="flex items-center gap-2">
+                                 <input
+                                    value={member.boardRole}
+                                    onChange={e => onUpdate(index, 'boardRole', e.target.value)}
+                                    className="bg-white border border-sky-200 rounded-xl px-3 py-1.5 text-[10px] font-black text-sky-600 w-32 focus:outline-none focus:ring-2 focus:ring-sky-200 shadow-sm transition-all"
+                                    placeholder="Presidente..."
+                                />
+                            </div>
+                        )}
                     </div>
-                    <span className={`text-[11px] font-black uppercase tracking-tight ${member.isHonorary ? 'text-amber-600' : 'text-gray-400'}`}>
-                        Socio Honorario
-                    </span>
-                </label>
-            </div>
+                </div>
+            )}
         </div>
     );
 };

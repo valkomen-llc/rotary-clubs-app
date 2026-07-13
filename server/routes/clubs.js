@@ -196,9 +196,12 @@ router.get('/by-domain', async (req, res) => {
             })(),
             // Visibilidad del bloque de sellos de credibilidad (La Fundación Rotaria). Default: visible.
             trfCredibilityVisible: settings['trf_credibility_visible'] !== 'false',
-            // Mostrar la sección "Socios Honorarios" en el menú. Default: visible (se muestra
-            // solo si el club tiene socios honorarios; este flag permite ocultarla igualmente).
+            // Visibilidad de las secciones de categorías especiales de socios en el menú.
+            // Default: visible (cada sección se muestra solo si el club tiene miembros de esa
+            // categoría; estos flags permiten ocultarlas igualmente).
             honoraryMembersVisible: settings['honorary_members_visible'] !== 'false',
+            governorsVisible: settings['governors_visible'] !== 'false',
+            authorsVisible: settings['authors_visible'] !== 'false',
             // Bloques de pago configurables de la página Aportes (donación/aporte/membresía).
             paymentBlocks: (() => {
                 try { return settings['payment_blocks'] ? JSON.parse(settings['payment_blocks']) : []; }
@@ -266,7 +269,7 @@ router.get('/by-domain', async (req, res) => {
                 tiktok_url: settings['social_tiktok'] || '',
             },
             members: (await db.query(
-                `SELECT id, name, image, description, "isBoard", "boardRole", "isHonorary", position
+                `SELECT id, name, image, description, "isBoard", "boardRole", "isHonorary", category, position
                  FROM "ClubMember" WHERE "clubId" = $1 ORDER BY position ASC, "createdAt" DESC`,
                 [activeClub.id]
             )).rows
