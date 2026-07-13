@@ -269,7 +269,7 @@ router.get('/by-domain', async (req, res) => {
                 tiktok_url: settings['social_tiktok'] || '',
             },
             members: (await db.query(
-                `SELECT id, name, image, description, "isBoard", "boardRole", "isHonorary", category, position
+                `SELECT id, name, image, description, "isBoard", "boardRole", "isHonorary", "isGovernor", "isAuthor", "isActive", category, position
                  FROM "ClubMember" WHERE "clubId" = $1 ORDER BY position ASC, "createdAt" DESC`,
                 [activeClub.id]
             )).rows

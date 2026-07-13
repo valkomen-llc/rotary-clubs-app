@@ -24,9 +24,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.544.0 | 2026-07-13 (Categorías de socio: Honorarios, Gobernadores y Autores)
-// Cache bust: 2026-07-13m
+// UI V4.545.0 | 2026-07-13 (Un socio puede tener varias categorías a la vez)
+// Cache bust: 2026-07-13n
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.545.0',
+        title: 'Un socio puede pertenecer a varias categorías a la vez 🔀',
+        description: 'Ahora las categorías son combinables: un mismo socio puede ser "Socio activo" y además Honorario, Gobernador, Autor y/o Junta Directiva, y aparecer en todas esas secciones a la vez. En Panel → Socios y Junta Directiva cada categoría es un interruptor independiente en la tarjeta del socio (marca las que apliquen). Si un socio NO es "Socio activo", no aparece en "Nuestros Socios", solo en las secciones especiales que marques. Los botones "Agregar Socio / Socio Honorario / Gobernador / Autor" siguen creando el socio ya en esa categoría.',
+        date: new Date().toISOString(),
+        tags: ['socios', 'categorías', 'honorarios', 'gobernadores', 'autores', 'admin'],
+        type: 'improvement'
+    },
     {
         version: '4.544.0',
         title: 'Nuevas categorías de socios: Gobernadores y Autores 🎖️',
